@@ -303,7 +303,7 @@ An agent learns IMGWTools from a single source consistent with the code (`AGENTS
 
 ### Open questions
 
-- **For the owner:** (1) approval of D1–D12 — resolved 2026-10-19 (status "Accepted"); (2) whether the public server should enable `/mcp` (`IMGW_MCP_ENABLED`).
+- **For the owner:** (1) approval of D1–D12 — resolved 2026-10-19 (status "Accepted"); (2) whether the public server should enable `/mcp` (`IMGW_MCP_ENABLED`, now `OBSERWATOR_MCP_ENABLED`) — resolved 2026-11-09 by the author: off by default; the default `false` of `Settings.mcp_enabled`, `.env.example` and `docker/docker-compose.yml` stays, and an operator enables `/mcp` explicitly.
 - **After 3.0.0:** (3) translating execution content (`detail`, `Notice.text`); (4) filtering MCP tools by group or provider (`data_commands(provider=…)`, ADR-003 D13); (5) a limit on network calls of the stdio server; (6) writing via MCP over HTTP with authorization.
 
 ### Errata
