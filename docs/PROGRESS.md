@@ -182,9 +182,15 @@ The response contains **16 durations × 27 probabilities** for each of the `ks`/
 
 Decisions waiting for the author (remove once resolved):
 
-None. Resolved 2026-11-09 by the author: the public server keeps `/mcp` off by default (`OBSERWATOR_MCP_ENABLED=false` in `Settings`, `.env.example` and `docker/docker-compose.yml`; ADR-004, open question 2).
+None.
 
 **For the author (outside the agent's reach):** branch/tag rulesets, Dependabot security updates, `SECURITY.md` and private vulnerability reporting (DEV-3.6, DEV-13.7); the CLA text. Done on 2026-11-03: the branches renamed `master`/`slave` → `main`/`develop` on GitHub (rename API; `main` is the default branch) and locally, with the links in the docs and `llms.*` (ECO-008); the history and author identities rewritten (phase 1).
+
+### Decided
+
+Author's decisions of 2026-11-09.
+
+- **`/mcp` on the public server.** Off by default: `OBSERWATOR_MCP_ENABLED=false` stays in `Settings`, `.env.example` and `docker/docker-compose.yml`, and an operator enables `/mcp` explicitly (ADR-004, open question 2).
 
 ---
 
