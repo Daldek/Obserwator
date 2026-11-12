@@ -1,0 +1,20 @@
+[project]
+name = "obserwator-gui-mockup"
+version = "0.1.0"
+description = "Mockup of Obserwator's web GUI (plan 2026-11-12-obserwator-gui, pending): real data of a demo store, analyses by Hydrolog's catalog commands and labelled prototypes."
+requires-python = ">=3.12"
+dependencies = [
+    "obserwator[store,api]",
+    "hydrolog",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "uvicorn>=0.24",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+obserwator = { path = "../..", editable = true }
+# The Hydrolog of the deployment's GUI (hydrolog-test), so the numbers match it.
+hydrolog = { git = "https://github.com/Daldek/Hydrolog", rev = "912dbf2190edeb31b7e28efb31f18a01b41c4b90" }

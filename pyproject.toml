@@ -92,8 +92,9 @@ packages = ["src/obserwator"]
 target-version = "py312"
 line-length = 88
 # Local agent worktrees; Markdown code blocks are documentation examples, not
-# formatted by ruff.
-extend-exclude = [".claude", "*.md"]
+# formatted by ruff; the GUI mockup (mockup/gui, its own project) is a throwaway
+# demonstration outside the package.
+extend-exclude = [".claude", "*.md", "mockup"]
 
 [tool.ruff.lint]
 select = [

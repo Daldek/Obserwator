@@ -1,0 +1,179 @@
+/*
+ * The map of the stations (src/map.js): the basemap's greys, the station symbols and the
+ * water states in both themes, the tooltip, the legend (bottom left; zoom bottom right,
+ * Nogat design/README.md) and the note shown without WebGL. map.js reads the --map-*,
+ * --st-* and --ws-* colours when the map starts and again when the theme changes.
+ */
+
+:root {
+  /* The basemap: greys a shade off the background, so the stations stay the strong colours */
+  --map-bg: #eef0f3;
+  --map-land: #f4f5f7;
+  --map-landuse: #e4e7eb;
+  --map-water: #d3d9e1;
+  --map-road: #ffffff;
+  --map-road-far: #d5dae1;
+  --map-casing: #cfd5dd;
+  --map-state: #c3c9d2;
+  --map-country: #98a2b3;
+  --map-water-text: #5f6f82;
+  --map-halo: rgba(255, 255, 255, 0.85);
+  --map-place-1: #667085;
+  --map-place-2: #5d6878;
+  --map-place-3: #344054;
+  --map-place-4: #667085;
+  --map-border: #8a94a6;
+  /* Stations: kind by shape and colour, provider by outline, data by fill */
+  --st-hydro: #1d5fd1;
+  --st-meteo: #c25110;
+  --st-ink: #1f2937;
+  --st-hollow: #ffffff;
+  /* IMGW-PIB's water states */
+  --ws-alarm: #dc2626;
+  --ws-warning: #ea580c;
+  --ws-high: #d4a106;
+  --ws-medium: #16a34a;
+  --ws-low: #0284c7;
+  --ws-unknown: #98a2b3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --map-bg: #1b2028;
+    --map-land: #1f252d;
+    --map-landuse: #232a33;
+    --map-water: #0f141a;
+    --map-road: #343c47;
+    --map-road-far: #2c333d;
+    --map-casing: #2c333d;
+    --map-state: #3a424d;
+    --map-country: #5d6875;
+    --map-water-text: #7d8a99;
+    --map-halo: rgba(13, 17, 23, 0.85);
+    --map-place-1: #8b949e;
+    --map-place-2: #9da7b3;
+    --map-place-3: #c9d1d9;
+    --map-place-4: #8b949e;
+    --map-border: #6e7781;
+    --st-hydro: #58a6ff;
+    --st-meteo: #f0883e;
+    --st-ink: #e6edf3;
+    --st-hollow: #0d1117;
+    --ws-alarm: #f85149;
+    --ws-warning: #f0883e;
+    --ws-high: #e3b341;
+    --ws-medium: #3fb950;
+    --ws-low: #39c5f3;
+    --ws-unknown: #6e7781;
+  }
+}
+
+:root[data-theme="dark"] {
+  --map-bg: #1b2028;
+  --map-land: #1f252d;
+  --map-landuse: #232a33;
+  --map-water: #0f141a;
+  --map-road: #343c47;
+  --map-road-far: #2c333d;
+  --map-casing: #2c333d;
+  --map-state: #3a424d;
+  --map-country: #5d6875;
+  --map-water-text: #7d8a99;
+  --map-halo: rgba(13, 17, 23, 0.85);
+  --map-place-1: #8b949e;
+  --map-place-2: #9da7b3;
+  --map-place-3: #c9d1d9;
+  --map-place-4: #8b949e;
+  --map-border: #6e7781;
+  --st-hydro: #58a6ff;
+  --st-meteo: #f0883e;
+  --st-ink: #e6edf3;
+  --st-hollow: #0d1117;
+  --ws-alarm: #f85149;
+  --ws-warning: #f0883e;
+  --ws-high: #e3b341;
+  --ws-medium: #3fb950;
+  --ws-low: #39c5f3;
+  --ws-unknown: #6e7781;
+}
+
+.map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); }
+.map { position: absolute; inset: 0; }
+.map .maplibregl-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* MapLibre's controls in the tokens */
+.map-wrap .maplibregl-ctrl-group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.map-wrap .maplibregl-ctrl-group button + button { border-top: 1px solid var(--line); }
+.map-wrap .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: none; }
+html[data-theme="dark"] .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
+}
+.map-wrap .maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--text-3); font-size: 10px; }
+.map-wrap .maplibregl-ctrl-attrib a { color: var(--text-2); }
+.map-wrap .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--surface); }
+.map-wrap .maplibregl-ctrl-attrib-button { background-color: transparent; }
+
+/* The station symbols in the list and the legend: map.js draws the same on the map */
+.st-sym { flex: none; overflow: visible; }
+.st-sym path { stroke-width: 1.4; }
+.st-sym.hydro.data path { fill: var(--st-hydro); stroke: var(--st-ink); }
+.st-sym.meteo.data path { fill: var(--st-meteo); stroke: var(--st-ink); }
+.st-sym.hydro.catalog path { fill: var(--st-hollow); stroke: var(--st-hydro); stroke-width: 1.8; }
+.st-sym.meteo.catalog path { fill: var(--st-hollow); stroke: var(--st-meteo); stroke-width: 1.8; }
+.st-sym.chmi path { stroke-dasharray: 2.2 1.6; }
+
+/* Tooltip */
+.map-tip {
+  position: absolute; z-index: 4; pointer-events: none;
+  transform: translate(12px, -50%);
+  display: grid; gap: 1px; max-width: 280px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+  font-size: var(--text-sm); line-height: 1.35;
+}
+.map-tip strong { font-size: var(--text-base); }
+.map-tip .muted { font-size: var(--text-xs); }
+.map-tip code { font-size: var(--text-xs); }
+.tip-state { font-weight: var(--weight-bold); }
+
+/* Legend, bottom left */
+.map-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 3;
+  max-width: min(330px, calc(100% - 80px));
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs); color: var(--text-2);
+}
+.legend-toggle {
+  display: block; width: 100%; padding: 4px 10px; border: 0; background: none; text-align: left; cursor: pointer;
+  font: var(--weight-bold) var(--text-xs) var(--font-sans); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.map-legend:not(.closed) .legend-toggle { border-bottom: 1px solid var(--line); }
+.legend-body { padding: 6px 10px 8px; }
+.legend-list { display: grid; gap: 3px 12px; margin: 0; padding: 0; list-style: none; }
+.legend-list.two { grid-template-columns: repeat(2, max-content); }
+.legend-list li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend-note { margin: 6px 0 0; color: var(--text-3); line-height: 1.35; white-space: normal; }
+.ws-dot { width: 11px; height: 11px; flex: none; border-radius: 50%; border: 1px solid var(--st-ink); background: var(--ws-unknown); }
+.ws-dot.alarm { background: var(--ws-alarm); }
+.ws-dot.warning { background: var(--ws-warning); }
+.ws-dot.high { background: var(--ws-high); }
+.ws-dot.medium { background: var(--ws-medium); }
+.ws-dot.low { background: var(--ws-low); }
+.ws-dot.old { opacity: 0.45; }
+.sel-ring { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 3px solid var(--accent); }
+.faded-dot { width: 11px; height: 11px; flex: none; border-radius: 50%; border: 1px solid var(--st-ink); background: var(--st-hydro); opacity: 0.45; }
+
+/* Without WebGL */
+.map-failure {
+  position: absolute; left: 50%; top: 40%; z-index: 5; transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px)); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text-2); box-shadow: var(--shadow); font-size: var(--text-sm);
+}
+
+@media (max-width: 860px) {
+  .map-legend { left: 6px; bottom: 6px; max-width: calc(100% - 64px); }
+  .legend-list.two { grid-template-columns: max-content; }
+}
