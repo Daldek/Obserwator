@@ -17,7 +17,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Single command catalog, CLI and REST (ADR-002) | done (3.0.0) | CLI and REST generated from the catalog |
 | ČHMÚ provider (ADR-003) | done (3.0.0) | questions to ČHMÚ and Archiwista confirmations: open (below) |
 | AI agent support, MCP server (ADR-004) | done (3.0.0) | agent surfaces in English (ADR-006): done, entry in [HISTORY.md](HISTORY.md) |
-| Web GUI (HTMX + Jinja2) | done | Nogat's app menu from `[nogat] gui` of `nogat.toml` (ADR-011, Nogat plan 2026-11-12 step 7, `feature/nogat-kit`): done; ČHMÚ data and GeoJSON layer: planned; the pages give way to the GUI hub of Nogat's stage 2 |
+| Web GUI (HTMX + Jinja2) | done | Nogat's app menu from `[nogat] gui` of `nogat.toml` (ADR-011, Nogat plan 2026-11-12 step 7): done, merged into `develop` (`6d21a68`, 2026-11-12); the running `imgwtools-api` container (built 2026-08-02) is not rebuilt, its pages being in no public deployment; ČHMÚ data and GeoJSON layer: planned; the pages give way to the GUI hub of Nogat's stage 2 |
 | API key enforcement, per-key limits | planned | backlog in "Next" |
 | Compliance with Nogat standard 1.0 (`chore/nogat-2.1`, merged into `develop`) | in progress | done and to do: below and in "Next" |
 | Data output: plain mode, store, default root (ADR-007, DEV §19) | done (`develop`) | code, tests and documents finished; for consumers: [CHANGELOG "Migration guide: data output"](CHANGELOG.md) |
