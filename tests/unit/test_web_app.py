@@ -1,5 +1,6 @@
 import json
 import re
+from html.parser import HTMLParser
 
 import httpx
 import pytest
@@ -121,6 +122,54 @@ def test_web_app_page_title_uses_base_layout(client):
     response = client.get("/download/archives")
 
     assert "<title>Dane archiwalne | Obserwator</title>" in response.text
+
+
+def _app_menu(html: str) -> dict[str, str | None]:
+    """Attributes of the page's ``<nogat-app-menu>``, unescaped as a browser reads them."""
+    found: list[dict[str, str | None]] = []
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag == "nogat-app-menu":
+                found.append(dict(attrs))
+
+    Parser().feed(html)
+    assert len(found) == 1
+    return found[0]
+
+
+def test_web_app_menu_gets_the_gui_table_of_nogat_toml(client, tmp_path, monkeypatch):
+    config = tmp_path / "nogat.toml"
+    config.write_text(
+        "[nogat.gui]\n"
+        "Hydrolog = \"https://example.test/hydrolog/?a=1&b='x'\"\n"
+        'archiwista = "/archiwista/\\"<tab>"\n'
+        "hydrograf = 8080\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOGAT_CONFIG", str(config))
+
+    menu = _app_menu(client.get("/stations").text)
+
+    assert menu["current"] == "obserwator"
+    assert menu["marks"] == "/static/nogat/marks/"
+    # Names in lower case, the file's order, an address that is not text left out.
+    assert list(json.loads(menu["apps"] or "")) == ["hydrolog", "archiwista"]
+    assert json.loads(menu["apps"] or "") == {
+        "hydrolog": "https://example.test/hydrolog/?a=1&b='x'",
+        "archiwista": '/archiwista/"<tab>',
+    }
+
+
+@pytest.mark.parametrize("text", ["", "[nogat]\nlang = 'pl'\n", "[nogat]\ngui = 'x'\n"])
+def test_web_app_menu_has_no_apps_without_the_gui_table(
+    client, tmp_path, monkeypatch, text
+):
+    config = tmp_path / "nogat.toml"
+    config.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("NOGAT_CONFIG", str(config))
+
+    assert "apps" not in _app_menu(client.get("/").text)
 
 
 def test_web_app_pages_stay_out_of_the_openapi_document(client):

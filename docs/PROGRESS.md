@@ -7,7 +7,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Field | Value |
 |------|---------|
 | **Version** | 3.0.0 |
-| **Date** | 2026-11-03 |
+| **Date** | 2026-11-12 |
 | **Working branch** | `develop` (formerly `slave`, ECO-008). On 2026-11-03 the finished `feature/archiwista-projects` stack `0e0bc3a` (tree as after the green gate `8cd6844c`) was merged into it (`--no-ff`, the author's decision, without a pull request): projects moved to Archiwista and `command_for_version` (ADR-008), data output (`feature/data-output`, ADR-007), Nogat standard 1.0 (`chore/nogat-2.1`), Archiwista compatibility fixes (`fix/archiwista-compat-2`), and earlier `feature/chmi-agents` (ADR-003, ADR-004) and `feature/versioned-store` (ADR-001, ADR-002); these branches were deleted locally and on GitHub. Remaining: `main` (releases, v2.1.1); `fix/archiwista-compat` — superseded by `fix/archiwista-compat-2` (`e77a6f9` and `c280088` cherry-picked over), but `e9d8886` (publication without hard links, rejected in favour of `cb6af4f`) and `2e78eb6` are not in any other branch, so its deletion awaits the author's decision; the local `backup/versioned-store-master-base` `7263212` (a copy of `feature/versioned-store` from before the rework, 8 commits not present elsewhere, not on GitHub) — also the author's decision. Next: merge `develop` → `main` and tag 3.0.0 with the author's approval |
 | **Python** | >=3.12 |
 
@@ -17,7 +17,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Single command catalog, CLI and REST (ADR-002) | done (3.0.0) | CLI and REST generated from the catalog |
 | ČHMÚ provider (ADR-003) | done (3.0.0) | questions to ČHMÚ and Archiwista confirmations: open (below) |
 | AI agent support, MCP server (ADR-004) | done (3.0.0) | agent surfaces in English (ADR-006): done, entry in [HISTORY.md](HISTORY.md) |
-| Web GUI (HTMX + Jinja2) | done | ČHMÚ data and GeoJSON layer: planned |
+| Web GUI (HTMX + Jinja2) | done | Nogat's app menu from `[nogat] gui` of `nogat.toml` (ADR-011, Nogat plan 2026-11-12 step 7, `feature/nogat-kit`): done; ČHMÚ data and GeoJSON layer: planned; the pages give way to the GUI hub of Nogat's stage 2 |
 | API key enforcement, per-key limits | planned | backlog in "Next" |
 | Compliance with Nogat standard 1.0 (`chore/nogat-2.1`, merged into `develop`) | in progress | done and to do: below and in "Next" |
 | Data output: plain mode, store, default root (ADR-007, DEV §19) | done (`develop`) | code, tests and documents finished; for consumers: [CHANGELOG "Migration guide: data output"](CHANGELOG.md) |

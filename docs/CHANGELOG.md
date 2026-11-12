@@ -12,6 +12,10 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 - `SECURITY.md`: supported versions, private reporting through GitHub Security Advisories and the
   scope (REST and MCP servers, store writes, the `--allow-dir` sandbox, API keys); `CONTRIBUTING.md`
   points to it (Nogat DEV-13.7).
+- The web pages show Nogat's app menu „Aplikacje” (`<nogat-app-menu>`, kit 0.1.0, DEV-15.4, ECO-058,
+  ADR-011) at the right end of the top bar: it lists the GUIs of the table `gui` of `[nogat]` in
+  `nogat.toml` (e.g. `[nogat.gui]` `hydrolog = "http://127.0.0.1:8070/"`) and is not drawn without
+  it. The kit's menu files and the marks are copied byte for byte into `web/static/nogat/`.
 
 Changes since 2.1.1, to be released as 3.0.0. The tool released as IMGWTools 2.1.1 is called
 Obserwator from this release (ADR-009): the distribution, the import package, the command and

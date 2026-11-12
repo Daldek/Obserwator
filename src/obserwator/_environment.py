@@ -8,7 +8,8 @@ keys ``data_dir``, ``cache_dir`` and ``lang``), the section ``[obserwator]`` of
 built-in default (DEV-18.1, ECO-028). The file is ``nogat.toml`` in
 ``platformdirs.user_config_path("nogat")`` or the path in ``NOGAT_CONFIG``; it
 is read with ``tomllib`` and its absence is no error. Credentials come from the
-environment only, never from the file (DEV-18.4).
+environment only, never from the file (DEV-18.4). The table ``gui`` of ``[nogat]``
+(GUI addresses, DEV-15.4) is no setting: the file alone gives it (`gui_addresses`).
 
 `obserwator.config.Settings` (``pydantic-settings``, a core dependency) adds ``.env``
 files and the typed settings on top of the same sources; this module needs
@@ -109,3 +110,25 @@ def config_file() -> ConfigFile:
             return unusable(f"[{name}] is not a table", exists=True)
         sections[name] = table
     return ConfigFile(path, source, True, sections, None)
+
+
+def gui_addresses() -> dict[str, str]:
+    """
+    The table ``gui`` of ``[nogat]`` in ``nogat.toml``: GUI addresses (DEV-15.4).
+
+    Returns
+    -------
+    dict of {str : str}
+        Registry name in lower case to the address of that GUI (absolute or a
+        path), in the order of the file; entries whose address is not text are
+        left out. Empty when the file, the table or a usable entry is missing:
+        there are no built-in addresses, and the web pages then draw no app menu.
+    """
+    table = config_file().sections.get(APP, {}).get("gui")
+    if not isinstance(table, dict):
+        return {}
+    return {
+        name.lower(): address
+        for name, address in table.items()
+        if isinstance(address, str)
+    }
