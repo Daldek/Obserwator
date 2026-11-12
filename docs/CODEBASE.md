@@ -56,7 +56,7 @@ src/obserwator/
 └── web/                  # Web GUI (HTMX + Jinja2)
     ├── app.py            # Web routes
     ├── templates/        # Jinja2 templates
-    └── static/           # CSS, JavaScript
+    └── static/           # CSS, JavaScript; nogat/: copy of Nogat's app menu and marks (ADR-011)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```
@@ -392,6 +392,8 @@ The store is at `--root`, `OBSERWATOR_ROOT`, `root` in `[obserwator]` of `nogat.
 ### Configuration
 
 Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from the file, never printed. Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
+
+The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. Every web page reads it on each request (`_environment.gui_addresses`) and passes it as JSON to the `apps` attribute of Nogat's `<nogat-app-menu>` in the top bar; without the table the attribute is left out and the menu is not drawn.
 
 |Variable|Default|Description|
 |---|---|---|

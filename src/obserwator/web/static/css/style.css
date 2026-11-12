@@ -14,6 +14,22 @@ nav ul li a {
     padding: 0.5rem 1rem;
 }
 
+/* Pico lays out every list and link inside <nav> as the bar; the list of Nogat's app
+   menu (static/nogat/, ADR-011) keeps the kit's layout. */
+nav .nogat-app-menu-list ul {
+    display: block;
+    margin: 0;
+}
+
+nav .nogat-app-menu-list li {
+    display: block;
+    padding: 0;
+}
+
+nav .nogat-app-menu-list a {
+    margin: 0;
+}
+
 /* Article cards */
 article {
     margin-bottom: 1.5rem;

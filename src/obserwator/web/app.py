@@ -9,11 +9,13 @@ The GUI offers IMGW-PIB data only: its forms have no station field, which the
 per-station ČHMÚ datasets require (spec 2026-10-18 §9.3). Every `ObserwatorError` is
 rendered as ``partials/error.html`` with its ``code`` and ``detail`` and the
 HTTP status of the error registry; HTMX swaps those answers too
-(``static/js/app.js``).
+(``static/js/app.js``). Every page carries Nogat's app menu (DEV-15.4) with the
+GUI addresses of ``[nogat] gui`` in ``nogat.toml``, read on each request.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 from urllib.parse import urlencode
@@ -32,6 +34,7 @@ from obserwator import (
     run_command,
     validate_command,
 )
+from obserwator import _environment as environment
 from obserwator._version import __version__
 from obserwator.api.errors import hide_server_paths
 from obserwator.messages import Lang, localize, message
@@ -40,8 +43,33 @@ from obserwator.store.types import Page, cursor_index, page_cursor
 if TYPE_CHECKING:
     from obserwator import StationListEntry
 
+
+def _app_menu(request: Request) -> dict[str, object]:
+    """
+    Template context of Nogat's app menu in ``base.html`` (DEV-15.4).
+
+    Parameters
+    ----------
+    request : Request
+        Current request (unused: the table is the deployment's, not the page's).
+
+    Returns
+    -------
+    dict of {str : object}
+        ``gui_json``: the table ``gui`` of ``[nogat]`` as JSON for the element's
+        ``apps`` attribute (autoescaped in the template), or None without it, so
+        the attribute is left out and the menu is not drawn.
+    """
+    addresses = environment.gui_addresses()
+    return {
+        "gui_json": json.dumps(addresses, ensure_ascii=False) if addresses else None
+    }
+
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[_app_menu]
+)
 templates.env.globals["version"] = __version__
 
 # HTML pages are not part of the API: they stay out of the OpenAPI document.

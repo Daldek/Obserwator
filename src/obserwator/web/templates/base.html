@@ -11,6 +11,10 @@
     <!-- Pico CSS (minimal CSS framework) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 
+    <!-- Nogat's app menu (DEV-15.4), a byte-for-byte copy of Nogat design/kit/ -->
+    <link rel="stylesheet" href="/static/nogat/nogat-app-menu.css">
+    <script type="module" src="/static/nogat/nogat-app-menu.js"></script>
+
     <!-- Custom styles -->
     <link rel="stylesheet" href="/static/css/style.css">
 
@@ -27,6 +31,7 @@
             <li><a href="/stations">Stacje</a></li>
             <li><a href="/map">Mapa</a></li>
             <li><a href="/docs" target="_blank">API</a></li>
+            <li><nogat-app-menu current="obserwator" marks="/static/nogat/marks/"{% if gui_json %} apps="{{ gui_json }}"{% endif %}></nogat-app-menu></li>
         </ul>
     </nav>
 

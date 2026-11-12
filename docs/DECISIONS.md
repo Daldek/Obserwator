@@ -16,6 +16,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-008](#adr-008-projects-move-to-archiwista) | Projects move to Archiwista | 2026-10-31 | Accepted |
 | [ADR-009](#adr-009-the-tool-is-called-obserwator) | The tool is called Obserwator | 2026-11-03 | Accepted |
 | [ADR-010](#adr-010-result-error-and-catalog-documents-follow-the-nogat-standard-10) | Result, error and catalog documents follow the Nogat standard 1.0 | 2026-11-04 | Accepted |
+| [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted |
 
 ---
 
@@ -546,3 +547,26 @@ ADR-002 gave the CLI, REST, MCP and Python one catalog and one envelope, but in 
 ### Consequences
 
 **Breaking** for every reader of the envelope, the error, the catalog and the CLI stdout (`docs/CHANGELOG.md`, `[Unreleased]`, with the migration lines); no released interface breaks, because 2.1.1 has none of them and 3.0.0 is untagged. `AGENTS.md` and `llms.txt` are regenerated and every call that reads output uses `--json`. The consumers follow in the order of the Nogat plan (HUB-5.2) through the pin set `candidate-1`: Retman and Archiwista read `page`, `cursor`, the notice and error `message` and call the CLI with `--json`; Hydraulik and Hydrograf use only `fetch_pmaxtp`.
+
+## ADR-011: Nogat's app menu in the web pages
+
+**Date:** 2026-11-12  
+**Status:** Accepted (the author approved the Nogat plan on 2026-11-12, „przejdź do etapu 1”)  
+**Plan:** Nogat [`docs/plans/2026-11-12-gui-links-and-handoff.md`](https://github.com/Daldek/Nogat/blob/main/docs/plans/2026-11-12-gui-links-and-handoff.md), step 7; decision ECO-058  
+**Standard:** Nogat DEV-15.4, DEV-15.6, DEV-18.1  
+
+### Context and options
+
+No GUI of the ecosystem linked to another. Nogat's kit 0.1.0 (`design/kit/`) gives one custom element, `<nogat-app-menu>`, that lists the GUIs whose addresses a deployment sets in the table `gui` of `[nogat]` in `nogat.toml`. Options for these pages: (a) a menu written here (a fourth copy of the same code, rejected by the plan); (b) the kit's element, copied byte for byte. The web pages produce and consume no `nogat-handoff/1`, and they will be replaced by the GUI hub of stage 2, so the step stays small; Nogat's tokens are not adopted (visual identity step 7 is outside this plan).
+
+### Decisions D1–D3
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Copy.** `src/obserwator/web/static/nogat/` holds `nogat-app-menu.js`, `nogat-app-menu.css`, `nogat-kit.json` of kit 0.1.0 (Nogat commit `7786271`) and the marks of the four GUIs in `marks/`, byte for byte; Nogat's `drift` reports them. `nogat-handoff.js` is not copied: no page hands data off. | Copying the whole kit (an unused module that would still have to follow every kit change). |
+| D2 | **Addresses.** `_environment.gui_addresses()` reads `[nogat] gui` from the same `nogat.toml` as the settings (`NOGAT_CONFIG` or the user config directory): names in lower case, the file's order, values that are not text left out. It is no `Settings` field: no variable and no default (plan D4), and `obserwator config show` does not list it. Each request reads it, so a changed file shows without a restart. | A `Settings` field with `NOGAT_GUI` (a JSON value in a variable that no other tool reads); a route the page fetches (one more request and script for a value the server already renders). |
+| D3 | **Page.** `base.html` puts the element at the right end of the top bar (the pages have no theme switch) with `current="obserwator"`, `marks="/static/nogat/marks/"` and the table as JSON in the `apps` attribute, escaped by Jinja's autoescape; without the table the attribute is left out and the element hides itself. | Leaving the element out of the page without the table (the element already decides). |
+
+### Consequences
+
+The pages link to every other GUI of the deployment, opened in the tab `nogat-<name>`. A new kit version is copied again (DEV-15.6); `tests/unit/test_web_app.py` checks the attribute against a `nogat.toml` with characters that need escaping.
