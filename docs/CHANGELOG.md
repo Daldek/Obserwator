@@ -21,7 +21,9 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   in `nogat.toml`) follows Nogat's terms: a rate limit per client address
   (`OBSERWATOR_REQUEST_LIMIT` requests in `OBSERWATOR_REQUEST_WINDOW` s, `429` with
   `Retry-After`), daily access logs without the address deleted after 14 days, daily totals in
-  `<data_dir>/obserwator/stats.jsonl`, `regulamin.html` from Nogat's kit 0.3.0, and „Zgłoś
+  `<data_dir>/obserwator/stats.jsonl`, `regulamin.html` from Nogat's kit 0.4.0 (regulamin 1.0;
+  `[nogat.operator]` needs `name`, `email`, `terms_effective`, `processor` and `mail_provider`,
+  and may give `processor_transfer`, `processor_cookie` and `mail_transfer`), and „Zgłoś
   uwagę” reports appended to `<data_dir>/obserwator/feedback.jsonl` (no admin routes). Texts are
   the area `gui` of the message catalog. Settings: `OBSERWATOR_GUI_BASEMAP_URL` (empty: the
   packaged borders only) and `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`. The page vendors Preact,
@@ -43,6 +45,22 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
   gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still
   brings python-multipart).
+
+- **Documentation of the GUI (GUI plan S8, S9).** `README.md`: the GUI among the interfaces,
+  `pip install "obserwator[cli,gui]"` (the command needs the CLI too; `create_app` and `serve`
+  only the extra `gui`) and a quick start that names what each daily total counts (Nogat
+  DEV-15.11). `docs/USAGE.md` „GUI” replaces „Web GUI”: starting it, the page, what it reads and
+  writes, the settings, the private API, hosting under a prefix and as Nogat's module, „Behind
+  an authenticating proxy” (the headers and the CSP, `FORWARDED_ALLOW_IPS`, a systemd user unit,
+  journald kept 14 days) and „Public deployment” (DEV-15.7 to DEV-15.12, a `nogat.toml` example
+  with `[nogat.operator]` of kit 0.4.0 and `[nogat.gui]`, reading `feedback.jsonl` with `jq`).
+  `docs/ARCHITECTURE.md` section 5, the component diagram and the file tree; `docs/CODEBASE.md`:
+  the `gui/` and `messages/gui/` trees, the five settings, `[nogat.gui]`, `[nogat.operator]` and
+  the deployment notes; `docs/PRD.md` section 5 and the visualization and export rows;
+  `CLAUDE.md` with the deviations from AGI-6.1 (the private API) and DEV-15.12 (no admin routes);
+  ADR-013 in `docs/DECISIONS.md`; `docs/TESTING.md` with the GUI's tests and markers;
+  `docs/PROGRESS.md` with the GUI's status and open gaps; a GUI block in `.env.example`. The GUI
+  serves its guide in Polish at `instrukcja/`, and `tests/e2e/test_smoke.py` opens every view.
 
 - **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
   2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,

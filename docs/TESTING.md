@@ -2,7 +2,7 @@
 
 Test layout, markers and how to run the tests, moved out of [CLAUDE.md](../CLAUDE.md) (Nogat standard 1.0, DOC-3.2). Test strategy and plan: [TEST_PLAN.md](TEST_PLAN.md).
 
-The project includes unit and contract tests for the public API, CLI, REST, MCP and web GUI; all run offline (`respx` mocks or packaged recordings).
+The project includes unit and contract tests for the public API, CLI, REST, MCP and the GUI, and browser tests of the GUI (Playwright with Chromium); all run offline (`respx` mocks or packaged recordings).
 
 ## Running Tests
 
@@ -22,6 +22,13 @@ uv run pytest --cov=obserwator
 # Run specific test file
 uv run pytest tests/unit/test_models.py -v
 
+# The GUI in Chromium (tests/e2e, marker e2e; skipped while Chromium does not start)
+uv run playwright install chromium
+uv run pytest tests/e2e
+
+# The GUI's analysis sections with Hydrolog's program on a root with long records (marker hydrolog)
+OBSERWATOR_GUI_E2E_ROOT=<data root> OBSERWATOR_HYDROLOG_COMMAND=<hydrolog> uv run pytest tests/e2e -m hydrolog
+
 # Lint and types
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src tests
@@ -34,9 +41,12 @@ uv run mypy src tests
 |Marker|Tests|Run|
 |---|---|---|
 |`live`|Real network services (`tests/live/`), outside the gate|`uv run pytest tests/live -m live`|
+|`e2e`|The GUI in Chromium: every test of `tests/e2e/`, given the marker by its `conftest.py` and skipped while Chromium does not start (CI installs none)|`uv run pytest tests/e2e`|
 |`slow`|More than ~10 s or Docker (`test_library_install.py`, in the gate)|with the suite|
 |`db`|Needs a database (none at present)|-|
-|`hydrolog`|Needs Hydrolog's program: the analyses of `complete_pl_cz` built by the real Hydrolog, every stored line compared byte for byte with its single CLI call; skipped without `OBSERWATOR_HYDROLOG_COMMAND` (about 2 minutes on 4 CPUs)|`OBSERWATOR_HYDROLOG_COMMAND=<hydrolog> uv run pytest tests/unit/test_analyses.py -m hydrolog`|
+|`hydrolog`|Needs Hydrolog's program: the analyses of `complete_pl_cz` built by the real Hydrolog, every stored line compared byte for byte with its single CLI call (about 2 minutes on 4 CPUs), and the GUI's analysis sections in Chromium, which also need `OBSERWATOR_GUI_E2E_ROOT`; skipped without `OBSERWATOR_HYDROLOG_COMMAND`|`OBSERWATOR_HYDROLOG_COMMAND=<hydrolog> uv run pytest tests/unit/test_analyses.py -m hydrolog`, `OBSERWATOR_GUI_E2E_ROOT=<data root> OBSERWATOR_HYDROLOG_COMMAND=<hydrolog> uv run pytest tests/e2e -m hydrolog`|
+
+The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both providers as a read-only copy, no basemap, IMGW-PIB's current data and PMAXTP from the library's recordings), `public_url` (the same as a public deployment with `[nogat.operator]`), `analysis_url` (the root of `OBSERWATOR_GUI_E2E_ROOT` with Hydrolog's program) and `open_page` (a page in a chosen theme, language and width that fails its test on any console error, page error or Content-Security-Policy violation).
 
 ## Test Structure
 
@@ -59,7 +69,9 @@ uv run mypy src tests
 |`tests/unit/test_store_*.py` (IMGW), `test_series_export.py`|341|Store writer, sync, series, catalog, pmaxtp, reader, incremental scan, export, types, fixtures, markers of both roots (`test_store_marker.py`), the split of a combined store and a data root built from a read-only raw root (`test_store_split.py`)|
 |`tests/unit/test_*_chmi.py`, `test_parsing_chmi.py`, `test_store_content.py`|363|ČHMÚ: parsers, registry, listing sync, catalog, series, export, commands, stations, content form|
 |`tests/unit/test_catalog_effects.py`, `test_catalog_i18n.py`, `test_agent_guide.py`, `test_mcp_*.py`|212|Agents: effects = behavior, English texts, guide drift test, MCP tools/calls/stdio/HTTP|
-|`tests/unit/test_web_app.py`|58|Web GUI|
+|`tests/unit/gui/`|251|The GUI's server through Starlette's `TestClient` on the fixture root and its read-only copy: routes, headers, refused methods and parameters, error statuses and cache rules, the app under a prefix, `gui serve` until `SIGTERM` and the `nogat.gui` entry point; the rate limit, daily totals, access log, „Zgłoś uwagę” and regulamin; IMGW-PIB snapshots and PMAXTP from recorded answers; analyses against a fake Hydrolog program answering recorded envelopes (`fake_hydrolog.py`, `hydrolog_recordings.json`) with its timeout and failure, and one test against the real program (marker `hydrolog`)|
+|`tests/contract/test_gui_web.py`|7|The page's files: the SHA-256 of the copied Nogat files and the vendored libraries, no remote URL, no inline script or style in `index.html` and the guide `instrukcja/index.html`, every text the scripts name a key of the area `gui`, no Polish literal in the scripts|
+|`tests/e2e/` (Playwright, Chromium)|135|The GUI in Chromium on a live server (marker `e2e`): `test_shell.py`, `test_map.py`, `test_station.py`, `test_charts.py`, `test_files.py`, `test_pmaxtp.py` (91 tests on the fixture root) and the analysis sections `test_hydro_levels.py`, `test_hydro_regime.py`, `test_meteo_precipitation.py`, `test_meteo_temperature.py` (44 tests, marker `hydrolog`, on `OBSERWATOR_GUI_E2E_ROOT` with Hydrolog's program); `test_smoke.py` opens every view in both themes and on a phone's width|
 |`tests/unit/test_cli_interrupt.py` (with `interrupt_driver.py`)|6|SIGINT and SIGTERM of real plain writes (`datasets download -o`, `store export --output`): exit codes, no staging directory, old target whole|
 |`tests/unit/test_output.py`, `test_plain_output.py`|37|Plain output (ADR-007): target list, conflicts, staging and its cleanup, `files[]`, `--check` plan|
 |`tests/unit/test_default_root.py`, `test_environment.py`|52|Default roots and their sources (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`, `nogat.toml`, `<data_dir>/obserwator`, `<data_dir>/obserwator-raw`), REST and MCP write refusals, `nogat.toml` settings|
@@ -75,11 +87,13 @@ uv run mypy src tests
 
 **Total: 3092 tests** (`pytest --collect-only`, 2026-11-13): 3020 offline, 72 live (`uv run pytest tests/live -m live`; JSON report via `OBSERWATOR_LIVE_REPORT=<file>`). The counts of the rows above were recounted the same day with `pytest --collect-only -q`. The contract suite and the analyses tests run the recorded Hydrolog (`OBSERWATOR_HYDROLOG_COMMAND` set by their fixtures); no offline test needs the real program. Fixtures: `fixture_roots` (`FixtureRoots`), `fixture_root` (the data root) and `fixture_raw_root` (the raw root) in `tests/conftest.py`; `served_root`, `served_raw_root` and `served` (both server settings) in `tests/contract/conftest.py`.
 
+The rows of the GUI (`tests/unit/gui/`, `tests/contract/test_gui_web.py`, `tests/e2e/`) were counted on 2026-11-13 with `uv run --no-sync pytest --collect-only -q <dir>`, without `tests/e2e/test_smoke.py`, and are not in that total.
+
 ## Tests (from README)
 
 Test instructions from the README (moved unchanged).
 
-The project includes unit and contract tests for the public API, CLI, REST, MCP and Web GUI. All run offline: the network is mocked (`respx`) or replayed from recordings in `tests/fixtures/store/`.
+The project includes unit and contract tests for the public API, CLI, REST, MCP and the GUI, and browser tests of the GUI. All run offline: the network is mocked (`respx`) or replayed from recordings in `tests/fixtures/store/`.
 
 ### Running the tests
 
@@ -111,10 +125,12 @@ tests/
 │   ├── test_agent_guide.py                             # AGENTS.md and llms.txt (drift test)
 │   ├── test_mcp_*.py                                   # MCP server: tools, calls, stdio, /mcp
 │   ├── test_exceptions.py                              # error code registry
-│   ├── test_cli_*.py, test_api_*.py, test_web_app.py   # CLI, REST and Web GUI
+│   ├── test_cli_*.py, test_api_*.py                    # CLI and REST
+│   ├── gui/                                            # the GUI's server (TestClient), a fake Hydrolog program
 │   ├── test_reference_data.py                          # python -m obserwator.reference_data
 │   └── test_public_store_api.py                        # public exports contract
-├── contract/                # store contract, Python = CLI = REST = MCP, ČHMÚ (IMGW-15..19)
+├── contract/                # store contract, Python = CLI = REST = MCP, ČHMÚ (IMGW-15..19), the GUI's page files
+├── e2e/                     # the GUI in Chromium (Playwright; markers e2e and hydrolog)
 └── live/                    # live regression (marker `live`, outside the gate): IMGW-PIB 30 commands × Python/CLI/REST + MCP; ČHMÚ
 ```
 

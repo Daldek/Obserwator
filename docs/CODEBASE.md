@@ -18,6 +18,7 @@ src/obserwator/
 ├── exceptions.py         # PUBLIC: ObserwatorError hierarchy + ERROR_CODES registry (title as a catalog message)
 ├── error_report.py       # PUBLIC: obserwator-error/1 document (ErrorReport, error_document, error_report, error_hint)
 ├── messages/             # Message catalog: message(), Message, localize(), one module of Text(en, pl) per area (ADR-006; analyses.py: titles and errors of the analyses)
+│   └── gui/              # The GUI's texts (area gui, one module per part of the page), served by api/texts
 ├── urls.py               # PUBLIC: IMGW URL constants, build_pmaxtp_url, build_api_url
 ├── parsers.py            # PUBLIC: Parser re-exports (IMGW-PIB hydro/meteo, ČHMÚ, station lists)
 ├── testing.py            # PUBLIC: build_fixture_store (complete, complete_pl_cz, ...) → FixtureRoots(raw, data), fixture_files
@@ -43,12 +44,13 @@ src/obserwator/
 │   ├── analysis_registry.py # The 87 analyses: AnalysisDefinition (variants, picks, overridable, locked, rounds), definitions_digest
 │   └── plain.py          # plain_actions: the obserwator-plan/1 actions of a plain write
 ├── api/                  # FastAPI REST API [optional: obserwator[api]]
-│   ├── main.py           # App entry point (/health, /api/v1, /llms.txt, /mcp, web router, static)
+│   ├── main.py           # App entry point (/health, /api/v1, /llms.txt, /docs, /mcp; GET / redirects to /docs)
 │   ├── routes/commands.py# Routes generated from the catalog (commands._input_schemas, x-obserwator.rest), Accept-Language (English by default)
 │   ├── errors.py         # application/problem+json handlers, hide_server_paths, accept_language
 │   └── schemas.py        # HealthCheck
 ├── cli/                  # Typer/Click CLI [optional: obserwator[cli]]
-│   ├── main.py           # Entry point (obserwator command): version, server, mcp, admin + catalog groups
+│   ├── main.py           # Entry point (obserwator command): version, server, mcp, gui, admin, config + catalog groups
+│   ├── gui_cmd.py        # obserwator gui serve (outside the catalog, ADR-013)
 │   ├── _dispatch.py      # ObserwatorGroup + register_catalog: the only CLI adapter of the catalog (OBSERWATOR_LANG)
 │   ├── _render.py        # Summary for a person of the envelope (without --json): one renderer, key-field hints
 │   └── admin.py          # API key management
@@ -56,10 +58,24 @@ src/obserwator/
 │   ├── _tools.py         # Tools from the catalog (modes read/write/http, schemas, annotations)
 │   ├── _calls.py         # Calls: stdio (check_command/run_command), http (REST routes in process)
 │   └── server.py         # create_server, run_stdio, http_app
-└── web/                  # Web GUI (HTMX + Jinja2)
-    ├── app.py            # Web routes
-    ├── templates/        # Jinja2 templates
-    └── static/           # CSS, JavaScript; nogat/: copy of Nogat's app menu and marks (ADR-011)
+└── gui/                  # Web GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013); not in obserwator.__all__
+    ├── __init__.py       # create_app, serve, gui_module, GuiModule, WEB_DIR, SECTIONS (imports neither Starlette nor uvicorn)
+    ├── _extra.py         # require_gui_extra: missing_dependency without Starlette, uvicorn or pyarrow
+    ├── _config.py        # GuiConfig.resolve: root, own directory, basemap, rate limit, Hydrolog's program, [nogat.gui], [nogat.operator]
+    ├── _serving.py       # uvicorn: binds, prints the address on stderr, stops on Ctrl+C or SIGTERM; no access log
+    ├── _app.py           # Starlette app: the private API's routes, SecurityHeaders (headers, CSP, methods), build_app
+    ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
+    ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
+    ├── _state.py         # GuiState: the parts of a running app
+    ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute
+    ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only
+    ├── _analyses.py      # Analyses: stored results, else Hydrolog's program on request (2 processes, 30 s, 500 results)
+    ├── _standin/         # Stand-in for the stored analyses until they land: a copy of their registry, Hydrolog's batch runner
+    ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
+    ├── _traffic.py       # Traffic: rate limit, daily totals (stats.jsonl), access log (Nogat DEV-15.9 to DEV-15.11)
+    ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit 0.4.0 filled for the deployment (DEV-15.7)
+    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```
@@ -70,6 +86,7 @@ AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obse
 # CLI examples (stdout: a summary for a person; with --json the one-line envelope obserwator-result/1)
 obserwator version                                   # Show version
 obserwator server --host 0.0.0.0 --port 8000         # Run API server
+obserwator gui serve --root /dane/obserwator --no-browser  # Web GUI on 127.0.0.1:8060 (obserwator[cli,gui])
 obserwator datasets list -k hydro                    # Dataset registry
 obserwator datasets files -d hydro/dobowe -y 2023 -m 1  # Archive URLs (no download)
 obserwator datasets download -d hydro/dobowe -y 2023 -m 1 -o dane  # Download archives
@@ -288,7 +305,7 @@ CLI command = `obserwator <group> <name>`; REST route = `/api/v1/<group>/<name>`
 
 The `analyses` group (ADR-016): `analyses build` takes `root` (the data root), `stations` (`-s`, compute only these; the others are carried forward) and `workers` (Hydrolog processes at a time, ≥ 1, default 1) and is store only; `analyses list|read|export` take `version` (directory, `analyses.json` or sidecar; default the current version of the station's provider), `root` and the required `station` (`-s`; its code names the provider), `analyses read` the required `analysis` and `analyses export` the list `analyses` (both from the 87 registry ids, with their titles as `enum` meanings), `format` (`json`|`csv`), `output` and `force`. No option names Hydrolog's program. Errors (`errors` of `command_schema`): `analyses build` `validation_error`, `not_found`, `conflict`, `source_unavailable` (`hydrolog_failed`, `timeout`), `missing_dependency` (`hydrolog_missing`), `data_error`, `store_unavailable`, `io_error`, `cancelled`, `forbidden`, `internal_error`; `analyses list` and `analyses read` `validation_error`, `not_found`, `missing_dependency`, `data_error`, `store_unavailable`, `forbidden`, `internal_error`; `analyses export` the same plus `io_error` and `cancelled`.
 
-Outside the catalog: `obserwator version`, `obserwator server` (`--host`, `--port`, `--reload`), `obserwator mcp` (`--allow-writes`, repeatable `--allow-dir`), `obserwator admin keys|create|revoke|delete|stats`, `obserwator config show`, `GET /health`, `GET /api/v1` (name, version, schema route, list of catalog routes), `GET /llms.txt` (agent guide, language from `Accept-Language`), `/mcp` (MCP Streamable HTTP, English, only with `OBSERWATOR_MCP_ENABLED=true`) and the HTML pages.
+Outside the catalog: `obserwator version`, `obserwator server` (`--host`, `--port`, `--reload`), `obserwator mcp` (`--allow-writes`, repeatable `--allow-dir`), `obserwator gui serve` (`--host`, `--port`, `--root`, `--no-browser`; the GUI and its private API, `docs/USAGE.md` „GUI”), `obserwator admin keys|create|revoke|delete|stats`, `obserwator config show`, `GET /health`, `GET /api/v1` (name, version, schema route, list of catalog routes), `GET /llms.txt` (agent guide, language from `Accept-Language`) and `/mcp` (MCP Streamable HTTP, English, only with `OBSERWATOR_MCP_ENABLED=true`).
 
 Effects (`effects.writes`/`effects.network` of `command_schema`, ADR-004 D2): `none` = no file changes, `add` = only new files/versions, `replace` = may replace or remove user content (no command as a whole; only writing options); writing options (`writes` of an option): `plan` of `store check` (`replace`), `output_dir` of `datasets download`/`store sync`/`pmaxtp sync` and `output` of `store export`/`series export`/`analyses export`/`commands guide` (`add`: new files), and `force` of the same commands (`replace`: an existing file). Every writing command has a check twin.
 
@@ -392,7 +409,7 @@ docker compose up -d
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d  # with /mcp
 ```
 
-Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process), nginx (reverse proxy, `location = /mcp` with the `api_limit` zone, no buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`). No Redis needed.
+Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process), nginx (reverse proxy, `location = /mcp` with the `api_limit` zone, no buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`). No Redis needed. The GUI is not part of the image.
 
 ## Cloud & Deployment Details
 
@@ -400,10 +417,12 @@ Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvic
 Application hosted on a private server. Components:
 - **Nginx** — reverse proxy + HTTPS + rate limiting
 - **FastAPI (Uvicorn)** — backend API
+- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes only `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl,logs/}`, none of them when that directory and the data root are one or one holds the other; unit, headers and public rules: `docs/USAGE.md` „GUI”
 
 ### Rate limiting
 - Nginx: `limit_req_zone` (10 req/s per IP)
 - API keys support rate limits (configured per key, stored in JSON)
+- GUI: per client address in the app, 300 requests in 60 s by default (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`; Nogat DEV-15.9), static files not counted; behind a proxy uvicorn's `FORWARDED_ALLOW_IPS` names the proxy
 
 ### Authorization (Planned)
 API keys in a JSON file (`api_keys.json`). Header: `X-API-Key: <token>`
@@ -421,7 +440,9 @@ The store has two roots (ADR-017), each readable offline, also from network shar
 
 Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from the file, never printed. Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
 
-The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. Every web page reads it on each request (`_environment.gui_addresses`) and passes it as JSON to the `apps` attribute of Nogat's `<nogat-app-menu>` in the top bar; without the table the attribute is left out and the menu is not drawn.
+The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. The GUI reads it when its app starts (`_environment.gui_addresses`) and gives it to the page in `api/session`, which hands it to Nogat's `<nogat-app-menu>` in the top bar; with no other GUI in it the menu is not drawn. Its `obserwator` entry is the GUI's own public address, named by the regulamin and by a hand-off.
+
+The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) names who runs a deployment open to others, from the file only: `name`, `email`, `terms_effective` (a TOML date or `YYYY-MM-DD`), `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` may be empty or left out (Nogat kit 0.4.0). A table with a required key missing or empty is not used. With a usable table and the `obserwator` address of `[nogat.gui]`, the GUI is public and serves `regulamin.html` (`docs/USAGE.md` „GUI”, „Public deployment”).
 
 |Variable|Default|Description|
 |---|---|---|
@@ -441,7 +462,12 @@ The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gi
 |`OBSERWATOR_API_KEYS_FILE`|`<data_dir>/obserwator/api_keys.json`|File of the API keys of `obserwator admin`|
 |`OBSERWATOR_RATE_LIMIT`|`100`|Requests per hour (0 = unlimited)|
 |`OBSERWATOR_ENV`, `OBSERWATOR_HOST`, `OBSERWATOR_PORT`, `OBSERWATOR_LOG_LEVEL`|`development`, `0.0.0.0`, `8000`, `INFO`|REST server (`obserwator server`); `OBSERWATOR_ENV=production` disables reload|
+|`OBSERWATOR_GUI_BASEMAP_URL`|`https://tiles.openfreemap.org/planet`|TileJSON of the GUI's basemap; `none`, `off` or the variable set and empty: no basemap, the packaged borders (offline)|
+|`OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`|`OpenFreeMap © OpenMapTiles Data from OpenStreetMap`|The basemap's credit line|
 |`OBSERWATOR_HYDROLOG_COMMAND`|unset|`hydrolog_command` (also `[obserwator] hydrolog_command`): Hydrolog's program of `analyses build` and `compute_analysis` (ADR-016), a command line split as a shell splits it; unset → `hydrolog` on `PATH`, none → `missing_dependency` (`details.reason="hydrolog_missing"`); no command option replaces it|
+|`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`|`300`, `60`|The GUI's rate limit: counted requests of one client address in a window of seconds (DEV-15.9)|
+
+`FORWARDED_ALLOW_IPS` is uvicorn's own variable (default `127.0.0.1,::1`): the addresses whose `X-Forwarded-For` the GUI's server trusts.
 
 ### Layout
 
@@ -487,7 +513,7 @@ Directory tree from the README (moved unchanged); the detailed module tree: "Pac
 ```
 src/obserwator/
 ├── api/          # REST API (FastAPI): routes/commands.py (routes from the catalog), errors.py (problem+json), main.py (/health, /api/v1, /llms.txt, /mcp)
-├── cli/          # CLI: _dispatch.py (commands from the catalog), admin.py, main.py (version, server, mcp)
+├── cli/          # CLI: _dispatch.py (commands from the catalog), admin.py, gui_cmd.py (gui serve), main.py (version, server, mcp, gui)
 ├── mcp/          # MCP server (extra obserwator[mcp]): tools from the catalog, stdio and /mcp
 ├── _parsing/     # Parsers of IMGW-PIB and ČHMÚ archives, listings and station lists (public: obserwator.parsers)
 ├── _data/        # Borders of Poland and Czechia (Natural Earth), guide templates agents/, test fixtures
@@ -500,11 +526,11 @@ src/obserwator/
 ├── stations.py   # find_stations (IMGW-PIB and ČHMÚ)
 ├── urls.py       # IMGW URL constants, build_pmaxtp_url, build_api_url
 ├── testing.py    # build_fixture_store — offline test roots, raw and data (also PL + CZ)
-├── web/          # Web GUI (HTMX + Jinja2)
+├── gui/          # Web GUI (obserwator gui serve): Starlette server, the page in web/, texts in messages/gui/
 └── config.py     # Configuration (OBSERWATOR_*)
 
 AGENTS.md, llms.txt  # Guide for AI agents — derived files (obserwator commands guide)
 
 docker/           # Docker configuration
-tests/            # Tests (offline; store fixtures in tests/fixtures/store)
+tests/            # Tests (offline; store fixtures in tests/fixtures/store; the GUI in Chromium in tests/e2e)
 ```
