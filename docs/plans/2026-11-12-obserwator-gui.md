@@ -1,8 +1,8 @@
 # Plan: Obserwator's web GUI: stations on a map, harmonized data and analyses, standalone and as a Nogat module
 
-Approved: pending
+Approved: 2026-11-13, the author (answers to questions 1–6 and the go-ahead to implement, in session)
 
-Requirements: DEV-17.4, DEV-15.1 to DEV-15.6, DEV-2.2, DEV-2.3, DEV-13.2, DEV-13.3, DEV-18.1, AGI-6.1, ECO-054, ECO-055, ECO-058, HUB-2.9, HUB-5.2. Inputs: the author's answers and requirements of 2026-11-12 (below); the cross-project plan, Nogat `docs/plans/2026-11-12-station-data-and-analyses.md` (branch `plan/station-data-and-analyses`, pending), which fixes the roles of Archiwista, Obserwator and Hydrolog, the split of the store, the analyses and the steps of every project; Nogat's stage 1 plan `docs/plans/2026-11-12-gui-links-and-handoff.md` (approved 2026-11-12) and stage 2 plan `docs/plans/2026-11-01-nogat-gui-platform.md` (pending; decision B6, item 9, step 14); step 7 of Nogat's visual identity plan; Hydrolog's GUI plan `docs/plans/2026-11-02-hydrolog-gui.md` and its ADR-0014 as the model. This plan is the GUI part of the Nogat plan (its steps O3 and O4). No code before `Approved:`.
+Requirements: DEV-17.4, DEV-15.1 to DEV-15.6, DEV-2.2, DEV-2.3, DEV-13.2, DEV-13.3, DEV-18.1, AGI-6.1, ECO-054, ECO-055, ECO-058, ECO-059, HUB-2.9, HUB-5.2. Inputs: the author's answers and requirements of 2026-11-12 and 2026-11-13 (below); the cross-project plan, Nogat `docs/plans/2026-11-12-station-data-and-analyses.md` (branch `plan/station-data-and-analyses`, approved 2026-11-13, its step N1 at `70ba25a`), which fixes the roles of Archiwista, Obserwator and Hydrolog (ECO-059), the split of the store, the analyses and the steps of every project; Nogat's stage 1 plan `docs/plans/2026-11-12-gui-links-and-handoff.md` (approved 2026-11-12) and stage 2 plan `docs/plans/2026-11-01-nogat-gui-platform.md` (pending; decision B6, item 9, step 14); step 7 of Nogat's visual identity plan; Hydrolog's GUI plan `docs/plans/2026-11-02-hydrolog-gui.md` and its ADR-0014 as the model. This plan is the GUI part of the Nogat plan (its steps O3 and O4). The reviewed prototype is the mockup on branch `feat/gui-mockup` (below). No code before `Approved:`.
 
 ## The author's answers (2026-11-12)
 
@@ -11,15 +11,32 @@ Requirements: DEV-17.4, DEV-15.1 to DEV-15.6, DEV-2.2, DEV-2.3, DEV-13.2, DEV-13
 - Public: yes, in the public test deployment beside Hydrograf (hydrograf-test.debever.pl), Hydrolog (hydrolog-test.debever.pl) and Archiwista (archiwista-test.debever.pl), the last two behind Cloudflare Access.
 - Requirements of the same day (Nogat plan, „The author's requests”): raw data and downloads are Archiwista's; Obserwator keeps only harmonized data and analysis results and serves them; Hydrolog does every computation; a station's view differs by kind; the hydrological and meteorological analyses listed there.
 
+## The author's answers (2026-11-13)
+
+Verbatim where the author wrote in Polish; the full record is in the Nogat plan's „The author's answers (2026-11-13)”.
+
+- Download code: „Kod pobierania zostaje biblioteką Obserwatora, którą Archiwista wywołuje” (the Nogat plan's B1).
+- Roots and refresh: „Surowy leży u Archiwisty, zharmonizowany też, ale tylko jako backup całego zakresu. Wersja produkcyjna leży u Obserwatora. Co do odświeżania — dane powinny być przeliczone raz, na początku i tyle, a pobieranie nowych będzie realizowane 1 raz w roku, gdy pojawią się nowe paczki danych publicznych. Jeżeli user liczy jakieś rzeczy dla wybranego wycinka danych, to robimy to w locie i nie jest to w żaden sposób zapisywane na stałe.” The GUI reads Obserwator's production data root; the stored results are computed once and refreshed yearly; a subset the person chooses is computed on the fly and never stored.
+- IMGW-PIB's warning and alarm levels: „Nie, danych operacyjnych nie archiwizujemy”; the station view shows ČHMÚ's thresholds and the characteristic levels only.
+- IMGW-PIB's terms for the public instance: „do sprawdzenia”; a research note follows.
+- Reference periods (relayed in English): the whole record by default, adjustable by the person, with a note that the recommended minimum period is 30 years.
+- XLSX (this plan's question): not needed; exports are CSV, JSON and Parquet.
+- PMAXTP in the GUI, relayed in English: no graphic layer of the PMAXTP grid; the person picks a point and gets the results; downloads come straight from IMGW-PIB's service if correct file addresses can be generated, otherwise through the API queried by coordinates and packed into a file, as Obserwator's old PMAXTP page did.
+- The map, relayed in English: switching from „Stacje” to „Stan wody (IMGW-PIB)” did not hide the stations (a bug of the mockup); the view is renamed „Pomiary bieżące” and shows the current measurements of IMGW-PIB's hydrological and meteorological stations (meteo was missing); station points are styled as on hydro.imgw.pl, so people orient themselves easily.
+
+## Prototype
+
+The working mockup on Obserwator's branch `feat/gui-mockup`, `mockup/gui/` (`27cfb4e` and the changes of 2026-11-13 for the answers above), is the prototype the author reviewed: the map with every station of the demo store, the panel by station kind, Hydrolog's numbers where Hydrolog has a command and labelled prototypes elsewhere. Its `README.md` lists what is real and what is mocked. The slices take its layout, sections and texts as the reference and rebuild the code by this plan (the mockup imports Hydrolog in-process, keeps its texts in the code and is not part of the package).
+
 ## Goal
 
 A browser GUI of Obserwator, in Nogat's identity, that the public test deployment serves read-only:
 
 - every station of IMGW-PIB and ČHMÚ that Obserwator's catalogs locate is a point on one map; a click opens the station in the right panel (Hydrograf's form), with a view for a hydrological and another for a meteorological station: the station's description, its series as a chart and a table, current IMGW-PIB values, the analyses of the Nogat plan (H1 to H18, M1 to M14) and downloads;
 - harmonized data out: a station's series as CSV (exists), JSON or Parquet, the stations of both providers as GeoJSON or CSV, analysis results as CSV and JSON, each file with its provider's licence and attribution, made by catalog commands so that the CLI, REST and MCP give the same files;
-- PMAXTP of a point in Poland, which the Jinja pages offer today;
+- PMAXTP of a point in Poland, which the Jinja pages offer today: a point picked on the map or by coordinates, the results tables and the downloads, without a layer of the PMAXTP grid;
 - it runs alone (`obserwator gui serve`, 127.0.0.1:8060 by default) and is the hosted module of Nogat's stage 2 (B6) through the entry point group `nogat.gui`; the Jinja, HTMX and Pico pages are removed at the end;
-- it reads Obserwator's data root (series, catalogs, stored analysis results) and never writes it; it never downloads (raw data are Archiwista's); every number of an analysis is Hydrolog's, read from the stored results or, for options the person chooses, computed by Hydrolog's program on the server's request; the browser formats, decimates for drawing and draws.
+- it reads Obserwator's production data root (series, catalogs, stored analysis results) and never writes it; it never downloads (raw data are Archiwista's); every number of an analysis is Hydrolog's, read from the stored results or, for a subset the person chooses, computed by Hydrolog's program on the server's request and never stored; the browser formats, decimates for drawing and draws.
 
 ## Where it starts
 
@@ -93,7 +110,7 @@ Read on 2026-11-12: Obserwator `origin/develop` `b853637` (the base of this bran
 
 | Option | Verdict |
 |---|---|
-| F1. The stored results of the Nogat plan's O2, and for options the person chooses (a range of years, a distribution, a threshold, a period) one call of Hydrolog's program made by the server, cached and not stored | Recommended: the Nogat plan's C1 and D7; every number is Hydrolog's |
+| F1. The stored results of the Nogat plan's O2, computed once over the whole record and refreshed yearly, and for a subset the person chooses (a range of years, a distribution, a threshold, a period) one call of Hydrolog's program made by the server, computed on the fly and never stored | Chosen: the Nogat plan's C1, D7 and D12; every number is Hydrolog's |
 | F2. Every analysis computed on request | Rejected: dozens of Hydrolog calls per station view on a small server |
 | F3. The browser or the server computes | Rejected: „Hydrolog does every computation” |
 
@@ -106,7 +123,7 @@ Read on 2026-11-12: Obserwator `origin/develop` `b853637` (the base of this bran
 | G3. A series as Parquet, typed, with the licence and attribution in its metadata | Recommended: for pandas, R and DuckDB; cheap with pyarrow, which the series need anyway |
 | G4. The stations of both providers as GeoJSON and CSV, one schema, each provider's attribution | Recommended: closes the backlog item (`docs/PROGRESS.md:55`); the harmonized station list neither provider publishes |
 | G5. Analysis results as CSV and JSON (`analyses export`, Nogat plan O2), with the series version and Hydrolog's version | Recommended: requirement 1, „udostępniać statystyki” |
-| G6. XLSX | The question of this plan |
+| G6. XLSX | Rejected (answer of 2026-11-13): not needed; CSV, JSON and Parquet cover the files |
 | G7. NetCDF, WaterML 2.0 | Rejected for now: no consumer in the ecosystem, heavier dependencies |
 | G8. The providers' raw files and the wget script of today's page | Rejected: raw data are Archiwista's; `obserwator datasets files` and `datasets download` stay |
 
@@ -135,9 +152,9 @@ After approval `feature/gui` starts from this plan's commit on `plan/obserwator-
 | Stations | every station of Obserwator's current catalogs, on the map or in the list | the stations of its configured stores, in its catalog and map views |
 | Series | the current version only: values and flags in Obserwator's format, chart, table, the definition of each variable | every stored version; coverage, origin, technical details; monthly bands and annual extremes (A-ADR-051) |
 | Analyses | Hydrolog's results, stored by Obserwator or computed on request (the Nogat plan's H1 to H18, M1 to M14) | none beyond its display-only annual extremes (A-ADR-051 D8) |
-| Current data | IMGW-PIB values and water states from a server snapshot | none (Archiwista `docs/SCOPE.md:109`) |
-| PMAXTP | the tables of a point | none |
-| Files | series as CSV, JSON, Parquet; stations as GeoJSON, CSV; analysis results as CSV, JSON; PMAXTP as CSV, JSON; each with its attribution | copies of pinned files in a project's export; series CSV through `export_series` from its v1.1 (`docs/SCOPE.md:226`) |
+| Current data | IMGW-PIB current measurements of hydrological and meteorological stations and the water states, from a server snapshot | none (Archiwista `docs/SCOPE.md:109`) |
+| PMAXTP | the results tables of a point and their files (D12) | none |
+| Files | series as CSV, JSON, Parquet; stations as GeoJSON, CSV; analysis results as CSV, JSON; PMAXTP from IMGW-PIB's files or as CSV and JSON (D12); each with its attribution | copies of pinned files in a project's export; series CSV through `export_series` from its v1.1 (`docs/SCOPE.md:226`) |
 | Hand-off to Hydrolog | a series or annual maxima with the options of an analysis, for the same numbers in Hydrolog (D13) | a station's series (A-ADR-052) |
 | Raw data, versions, provenance | never read; the panel names the series version, the analysis's Hydrolog version and their dates | yes: the raw root and its downloads (the Nogat plan's D5) |
 | Downloading, store management | never; the GUI writes nothing | through its jobs and the `store.write` permission (Archiwista `README.md:43`) |
@@ -165,22 +182,22 @@ GET and HEAD only, relative to the page (routes under Interfaces). They serve th
 ### D7. Reading the data root
 
 - Read-only: the server never writes under `--root`; a test serves a read-only copy of the fixture data root.
-- The current versions of catalogs, series and analysis results are read again at most once a minute, so a new `series build` or `analyses build` shows without a restart; the panel names the series version, the Hydrolog version of a result and their dates.
+- The current versions of catalogs, series and analysis results are read again at most once a minute, so a new `series build` or `analyses build` (once at the start, then at the yearly refresh, the Nogat plan's D7) shows without a restart; the panel names the series version, the Hydrolog version of a result and their dates.
 - Answers from the data root carry a strong ETag made of the versions' SHA-256 and the query, with `Cache-Control: no-cache`.
 - One uvicorn process; blocking reads (pyarrow) run in threads, at most four at a time (the VPS's 4 vCPU). In memory: the station layer per set of catalog and series versions, and the 32 most recent series documents.
 
 ### D8. Live data and on-demand computations, through the server only
 
 - Snapshots of `current hydro`, `current meteo` and `current hydro-states` (IMGW-PIB), each fetched on demand at most once per 10 minutes, one request at a time (single-flight), with the library's timeout (DEV-13.2). A failed refresh keeps the last snapshot, shown with its time („Dane z 14:20”). Nothing is stored.
-- PMAXTP: cached per method and point at the four decimals of IMGW-PIB's URL (`urls.py:59`) for 24 hours, at most 1,000 entries; one live request at a time; nothing stored.
-- Analyses with options the person chooses: the public function of the Nogat plan's O2 that computes one analysis through Hydrolog's program without storing it; at most two Hydrolog processes at a time, 30 s each, the result cached per series version, analysis, options and Hydrolog version (at most 500 entries). The configured program (`OBSERWATOR_HYDROLOG_COMMAND`) is the same as the one `analyses build` uses.
-- The browser connects only to its own origin and the basemap's (D16).
+- PMAXTP: cached in memory per method and point at the four decimals of IMGW-PIB's URL (`urls.py:59`) for 24 hours, at most 1,000 entries; one live request at a time; nothing stored.
+- A subset the person chooses (the Nogat plan's D7 and D12): the public function of the Nogat plan's O2 that computes one analysis through Hydrolog's program without storing it; at most two Hydrolog processes at a time, 30 s each. The result is held in the server's memory only, per series version, analysis, options and Hydrolog version (at most 500 entries), and is never written to the data root or to disk. The configured program (`OBSERWATOR_HYDROLOG_COMMAND`) is the same as the one `analyses build` uses.
+- The browser connects only to its own origin and the basemap's (D16); a link to an IMGW-PIB PMAXTP file (D12) is a navigation the person starts, not a request of the page.
 
 ### D9. The map
 
 - MapLibre GL JS 6.14.0. The basemap comes from settings, `OBSERWATOR_GUI_BASEMAP_URL` (a TileJSON; default `https://tiles.openfreemap.org/planet`, Archiwista's default) and `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION` (default „OpenFreeMap © OpenMapTiles Data from OpenStreetMap”), drawn by the GUI's own grey style in the tokens for both themes, place names from `name:pl` where present. An empty URL is the offline mode: the borders of Poland and Czechia from the package (`src/obserwator/_data/poland_border_wgs84.geojson`, `czechia_border_wgs84.geojson`) are the background.
-- Stations as circles: hydrological and meteorological told apart by shape, the provider by outline, inactive ones muted, the selected one ringed; colours carry meaning only (design principles); no text labels on the map, a tooltip names the station.
-- The `.map-bar`: „Stacje” | „Stan wody (IMGW-PIB)”; the second colours IMGW-PIB hydro stations by the snapshot's water state, today's `/map` function (`map.html:164-207`). Legend bottom-left, zoom bottom-right (Nogat `design/README.md:187`). Without WebGL the map says so and the list and panel still work.
+- Stations as circles: hydrological and meteorological told apart by shape, the provider by outline, inactive ones muted, the selected one ringed; the symbols and colours follow hydro.imgw.pl's map, so a person who knows IMGW-PIB's map reads this one at once; where hydro.imgw.pl has no counterpart (ČHMÚ, inactive stations) the colours carry meaning only (design principles). No text labels on the map; a tooltip names the station.
+- The `.map-bar`: „Stacje” | „Pomiary bieżące”. „Stacje” shows the station layer of the catalogs. „Pomiary bieżące” shows only the layer of IMGW-PIB's current measurements and hides the station layer: hydrological stations with their water level, discharge and temperature, coloured by the snapshot's water state as hydro.imgw.pl colours them (today's `/map` function, `map.html:164-207`), and meteorological stations with their latest measurements (`current meteo`, located by the snapshot's coordinates); each point names its measurement time, and the bar names the snapshot's time. The water state is a live class of IMGW-PIB's current data, not an archived level (answer 3). Legend bottom-left, in the same symbols; zoom bottom-right (Nogat `design/README.md:187`). Without WebGL the map says so and the list and panel still work.
 
 ### D10. Left panel: search and filters
 
@@ -191,7 +208,7 @@ GET and HEAD only, relative to the page (routes under Interfaces). They serve th
 
 ### D11. Right panel: the station, by kind
 
-Every view has the header (name, river, code, provider, kind, active or not), „Dane” and „Pobierz”; the other sections depend on the kind and show only what the station's data allow. Every analysis section shows Hydrolog's result with its method, source, series version and Hydrolog version, its (i) explanation, and „Otwórz w Hydrologu” where D13 applies.
+Every view has the header (name, river, code, provider, kind, active or not), „Dane” and „Pobierz”; the other sections depend on the kind and show only what the station's data allow. Every analysis section shows Hydrolog's result with its method, source, series version and Hydrolog version, its (i) explanation, and „Otwórz w Hydrologu” where D13 applies. An analysis over a period runs over the whole record by default; the person may choose another period, computed on the fly (D8), and the choice shows „Zalecany minimalny okres: 30 lat”, marking a shorter period (the Nogat plan's D12).
 
 Hydrological station:
 
@@ -199,7 +216,7 @@ Hydrological station:
 |---|---|---|
 | „Dane” | H, Q, T daily, monthly and half-year: dataset, variables, range, „rok hydrologiczny \| kalendarzowy”, the chart and „Tabela”, units and definitions, flags (`missing` as gaps, `accumulated` and `no_phenomenon` marked), the attribution | — |
 | „Teraz” | IMGW-PIB: the snapshot's values with their times and the water state; ČHMÚ: „Dane bieżące ČHMÚ nie są udostępniane” | — |
-| „Stany charakterystyczne” | first degree per year and half-year; second degree over the period the person chooses (on request); warning and alarm levels, ČHMÚ's SPA, drought level and Q50; the levels drawn on the H chart; days and events above each level | H1, H2, H3 |
+| „Stany charakterystyczne” | first degree per year and half-year; second degree over the whole record or the period the person chooses (on the fly); ČHMÚ's SPA, drought level and Q50 (IMGW-PIB's warning and alarm levels are not archived); the levels drawn on the H chart; days and events above each level | H1, H2, H3 |
 | „Krzywa natężenia przepływu” | the fitted curve over the years the person chooses (on request), the curves of successive periods, ČHMÚ's published curve; the H–Q points coloured by year | H4 |
 | „Przepływy maksymalne i minimalne” | quantiles of annual maxima and minima with the probability plot; the distribution and method the person chooses (on request); the source of the maxima | H5, H6, H16 (homogeneity) |
 | „Niżówki” | low-flow periods per year with the threshold the person chooses (on request), the deficit, the longest period | H7 |
@@ -226,7 +243,7 @@ Charts are an own SVG module with Hydrolog's `charts/` as the model (its D12; Ch
 
 ### D12. PMAXTP
 
-The rail item „PMAXTP”: a point by a click on the map or by coordinates (the bounds of `fetch_pmaxtp`), POT or AMP; the tables of today's page (`templates/partials/pmaxtp_result.html`), downloads as CSV and JSON written in the browser, and IMGW-PIB's formula. It replaces `/download/pmaxtp`.
+The rail item „PMAXTP”: a point picked by a click on the map or by coordinates (the bounds of `fetch_pmaxtp`), POT or AMP. The map draws no layer of the PMAXTP grid, only the chosen point. The panel shows the results tables of today's page (`templates/partials/pmaxtp_result.html`) and IMGW-PIB's formula. Downloads: where correct addresses of IMGW-PIB's own PMAXTP files can be generated for the point, the links lead straight to IMGW-PIB's service; otherwise the server fetches the point through the API by its coordinates (`fetch_pmaxtp`, D8) and the browser packs the result into CSV and JSON files with IMGW-PIB's formula, as today's page does. S7 records which path holds, with a recorded example, in ADR-012. It replaces `/download/pmaxtp`.
 
 ### D13. Hand-off to Hydrolog
 
@@ -242,7 +259,7 @@ The rail item „PMAXTP”: a point by a click on the map or by coordinates (the
 | Stations, GeoJSON | `export_stations(format="geojson")`, new: the current catalogs of the chosen providers, each feature with `provider` and the series that hold it, each provider's attribution as a member of the collection |
 | Stations, CSV | `export_stations(format="csv")`, new: one row per station, the attribution columns of `series export` |
 | Analysis results, CSV and JSON | `analyses export` (Nogat plan O2), with the station, series version, method, options and Hydrolog's version; a result computed on request downloads as its JSON with the same fields |
-| PMAXTP, CSV and JSON | written in the browser from the fetched result, with IMGW-PIB's formula, as today's page does |
+| PMAXTP | IMGW-PIB's own files by generated addresses where they exist; otherwise CSV and JSON written in the browser from the fetched result, with IMGW-PIB's formula, as today's page does (D12) |
 
 Each series, stations and analysis download shows the equivalent command line (`format_command`, public, `docs/PROGRESS.md:27`), so the same file comes from the CLI, REST or MCP.
 
@@ -325,7 +342,7 @@ api.pmaxtp({latitude, longitude, method});
 // src/ui/view-layout.js
 html`<${ViewLayout} left=${{title, body}} center=${{bar, body}} right=${{title, body}} />`
 // src/map/stations.js
-stationLayer(map, collection, {filters, selected, mode: "stations" | "water-state", onSelect});
+stationLayer(map, collection, {filters, selected, mode: "stations" | "current", onSelect});
 // src/charts/chart.js
 html`<${Chart} spec=${{x: {kind: "time" | "linear" | "log" | "probability" | "calendar"}, y: {label, unit},
                        series: [{id, kind, data, cls, label}], marks, readout}} />`
@@ -343,22 +360,22 @@ Producers before consumers (HUB-5.2): the Nogat plan's O1 (the data root), O2 (t
 | S1 | `src/obserwator/gui/*.py`, `cli/main.py` (`gui serve`), `config.py`, `messages/gui.py`, `pyproject.toml`, `uv.lock`, `.github/workflows/ci.yml` (Chromium), `CLAUDE.md` (the exception, the AGI-6.1 deviation), `tests/unit/gui/`, `tests/integration/gui/`, `tests/e2e/conftest.py` | D4 to D8 and D16 without the analyses' routes, `gui_module`, `serve`. Acceptance: `TestClient` tests of every route, header, refused method and parameter, error status and cache rule on the fixture data root and its read-only copy; the app mounted at `/m/obserwator/` serves the page and the API; `obserwator gui serve --no-browser` answers on 8060 and stops with exit 0; the `nogat.gui` entry point loads; RSS after warm-up and the p95 of `api/stations` and `api/series` recorded in PROGRESS | 2-2.5 | O1, S0 |
 | S2 | `gui/web/{index.html,theme-init.js}`, `gui/web/nogat/`, `gui/web/vendor/`, `gui/web/css/app.css`, `gui/web/src/*.js`, `gui/web/src/ui/`, `tests/e2e/test_shell.py`, `tests/contract/test_gui_web.py` | the shell, theme, language switch, router with the address state, API client, texts, layout with resizers and sheets, status and errors. Acceptance: the page loads in both themes and at 390 px without a console error or CSP violation; the hashes of every copied and vendored file are checked; `?nogat=1` hides the top bar and the rail before the first paint | 2-2.5 | A1 of the Nogat plan |
 | S2b | `gui/web/src/charts/`, `gui/web/css/charts.css`, `tests/e2e/test_charts.py` | `Chart`: time, log, probability and calendar axes, lines, steps, bars, band, reference lines, decimation, zoom, readout. Acceptance: scales, ticks and decimation tested as pure functions; 50,000 daily values drawn in under 200 ms in Chromium at 1440 px; the readout works by keys | 1.5-2 | A1 of the Nogat plan |
-| S3 | `gui/web/src/map/`, `gui/web/src/sections/stacje/{map,list,filters}.js`, `gui/web/css/map.css`, `tests/e2e/test_map.py` | D9, D10. Acceptance: the fixture's stations of both providers on the map and those without coordinates in the list with their count; search ignores case and diacritics; the filters; „Stan wody (IMGW-PIB)” from a recorded snapshot; the borders without a basemap; a copied address opens the same selection | 2-2.5 | S1, S2 |
+| S3 | `gui/web/src/map/`, `gui/web/src/sections/stacje/{map,list,filters}.js`, `gui/web/css/map.css`, `tests/e2e/test_map.py` | D9, D10. Acceptance: the fixture's stations of both providers on the map and those without coordinates in the list with their count; search ignores case and diacritics; the filters; „Pomiary bieżące” from recorded hydro and meteo snapshots shows both kinds and hides the station layer, and „Stacje” brings it back; the symbols and legend of D9; the borders without a basemap; a copied address opens the same selection | 2-2.5 | S1, S2 |
 | S4 | `gui/web/src/sections/{panel,dane,teraz,stacja}.js`, `tests/e2e/test_station.py` | D11's „Dane”, „Teraz” and „Stacja” for both kinds. Acceptance: the fixture's IMGW-PIB daily series shows H, Q and T with flags and the year switch, and its table equals the CSV; a meteorological station shows P and temperatures; a ČHMÚ station shows its thresholds and „Dane bieżące ČHMÚ nie są udostępniane”; current values from a recorded snapshot with their time | 2-2.5 | S1, S2, S2b; lands after S3 |
 | S5 | the analyses' routes of the API, `gui/web/src/sections/hydro/`, `tests/e2e/test_hydro_analyses.py` | D11's hydrological sections, on-demand computations (D8), the hand-off (D13). Acceptance: every section of the fixture's IMGW-PIB and ČHMÚ station shows the stored result of O2 with its provenance; a chosen range of years refits the rating curve through the recorded Hydrolog program; a flood quantile equals Hydrolog's single call; the hand-off validates against `handoff-1` and `hydrolog-series/1` | 2.5-3.5 | S4, O2 |
 | S6 | `gui/web/src/sections/meteo/`, `tests/e2e/test_meteo_analyses.py` | D11's meteorological sections. Acceptance: every section of the fixture's IMGW-PIB climate station and ČHMÚ station shows the stored result; a dry-spell threshold chosen by the person recomputes through the recorded Hydrolog program | 1.5-2 | S5 |
-| S7 | `gui/web/src/sections/{pobierz,pmaxtp}/`, `tests/e2e/test_files.py`, `tests/e2e/test_pmaxtp.py` | D12, D14. Acceptance: every download equals, byte for byte, the catalog command's output for the same options, and the shown command line gives the same file; PMAXTP of a recorded point shows the tables of today's page and downloads CSV and JSON with the formula | 1.5-2 | S0, S3, S4, O2 |
+| S7 | `gui/web/src/sections/{pobierz,pmaxtp}/`, `tests/e2e/test_files.py`, `tests/e2e/test_pmaxtp.py` | D12, D14. Acceptance: every download equals, byte for byte, the catalog command's output for the same options, and the shown command line gives the same file; PMAXTP of a recorded point, picked on the map and by coordinates, shows the tables of today's page with no grid layer, and its downloads are IMGW-PIB's files or CSV and JSON with the formula (D12) | 1.5-2 | S0, S3, S4, O2 |
 | S8 | `src/obserwator/web/` (removed), `api/main.py`, `pyproject.toml`, `uv.lock`, `tests/unit/test_web_app.py` (removed), `docker/Dockerfile`, `README.md`, `docs/{USAGE,ARCHITECTURE,CODEBASE,PRD}.md`, `CLAUDE.md` | D18. Acceptance: the REST and MCP tests green; `GET /` redirects to `/docs`; Jinja2 and python-multipart leave the lock unless another package needs them | 1 | S7 |
 | S9 | `gui/web/instrukcja/`, the top bar's „Instrukcja”, `docs/USAGE.md` (a „GUI” section), `README.md`, `docs/PROGRESS.md`, `tests/e2e/test_smoke.py` | the guide in Polish (what the GUI shows, the analyses and their sources, the licences and how to cite them, the formats); USAGE in English, with running the GUI behind an authenticating proxy. Acceptance: every view opens without a console error in both themes and on a phone; the guide's examples work on the fixture data root | 1-1.5 | S8 |
 
 Waves: **A** = S0, S2, S2b in parallel, then S1 when O1 lands; **B** = S3, S4 (landing order S3, S4); **C** = S5, S6 when O2 lands; **D** = S7, S8, S9. S1 to S9 take about 17 to 22 sessions (the Nogat plan's O4) and S0 2 to 2.5 (its O3).
 
-Outside Obserwator, by the Nogat plan: N2 gives the registry `interfaces.gui: obserwator gui serve`, the route „Open Obserwator's GUI in the browser” and the routes of the new commands; the tunnel host `obserwator-test.debever.pl` and its Access exist already (the author's); the author answers the questions, chooses where the data root lives (its question 2) and merges `feature/gui` into `develop` (DEV-3.3).
+Outside Obserwator, by the Nogat plan: N2 gives the registry `interfaces.gui: obserwator gui serve`, the route „Open Obserwator's GUI in the browser” and the routes of the new commands; the tunnel host `obserwator-test.debever.pl` and its Access exist already (the author's); the author places the roots (the Nogat plan's A2), answers IMGW-PIB's terms (its question 4) and merges `feature/gui` into `develop` (DEV-3.3).
 
 ## Deployment
 
-1. After wave B, the user unit `obserwator-public.service` changes from the placeholder (`python3 -m http.server 8060 … placeholder`) to `<integration worktree>/.venv/bin/obserwator gui serve --no-browser --host 127.0.0.1 --port 8060 --root <the data root of the Nogat plan's question 2>` with `TMPDIR=/home/claude-agent/data/tmp` and `OBSERWATOR_HYDROLOG_COMMAND=/home/claude-agent/workspace/Hydrolog-gui/.venv/bin/hydrolog` (the Hydrolog of hydrolog-test, so both give the same numbers), after `uv sync --locked --all-extras` in that worktree, as `hydrolog-gui.service` runs Hydrolog's; it is restarted after each landing. The host's `nogat.toml` already gives the other GUIs' menus the address, and the tunnel host and Access exist.
-2. Smoke through the public address after each wave: the Access sign-in; the map with both providers; a station's chart and table of each kind; „Stan wody (IMGW-PIB)”; an analysis of each section; a rating curve over a chosen range of years; a flood quantile equal in Obserwator and in Hydrolog after the hand-off; a CSV, JSON and Parquet download read back with pandas; PMAXTP of a point; `curl -sI` shows the headers of D16; a phone at 390 px; no console errors.
+1. After wave B, the user unit `obserwator-public.service` changes from the placeholder (`python3 -m http.server 8060 … placeholder`) to `<integration worktree>/.venv/bin/obserwator gui serve --no-browser --host 127.0.0.1 --port 8060 --root <Obserwator's production data root, the Nogat plan's D2>` with `TMPDIR=/home/claude-agent/data/tmp` and `OBSERWATOR_HYDROLOG_COMMAND=/home/claude-agent/workspace/Hydrolog-gui/.venv/bin/hydrolog` (the Hydrolog of hydrolog-test, so both give the same numbers), after `uv sync --locked --all-extras` in that worktree, as `hydrolog-gui.service` runs Hydrolog's; it is restarted after each landing. The host's `nogat.toml` already gives the other GUIs' menus the address, and the tunnel host and Access exist.
+2. Smoke through the public address after each wave: the Access sign-in; the map with both providers; a station's chart and table of each kind; „Pomiary bieżące” with hydrological and meteorological stations and the station layer hidden; an analysis of each section; a rating curve over a chosen range of years; a flood quantile equal in Obserwator and in Hydrolog after the hand-off; a CSV, JSON and Parquet download read back with pandas; PMAXTP of a point; `curl -sI` shows the headers of D16; a phone at 390 px; no console errors.
 3. On the VPS later: the same unit, the data root copied there, Hydrolog installed beside; the RSS and p95 recorded in S1 show whether anything needs tuning.
 
 ## Risks
@@ -366,9 +383,9 @@ Outside Obserwator, by the Nogat plan: N2 gives the registry `interfaces.gui: ob
 | Risk | Effect | Mitigation |
 |---|---|---|
 | 2,142 of the 3,810 IMGW-PIB stations of the test store have no coordinates | „wszystkie stacje na mapie” holds for ČHMÚ and the current IMGW-PIB stations only | the list and search reach every station, with the count; IMGW-PIB's official list (`docs/PROGRESS.md:73`) |
-| IMGW-PIB's terms on a public instance | data and results published beyond the terms | an Access-limited audience; the formula, processed mark and notice beside every series, result and file; the Nogat plan's question 4 |
-| Load on IMGW-PIB from a public page | the source slows or blocks the host | snapshots at most every 10 minutes, single-flight, the PMAXTP cache and one request at a time; the browser never calls a provider |
-| On-demand computations on a 4 vCPU, 8 GB VPS shared by four apps | slow answers, memory | at most two Hydrolog processes, 30 s each, a result cache; stored defaults cover the first view of every section |
+| IMGW-PIB's terms on a public instance | data and results published beyond the terms | an Access-limited audience until the Nogat plan's open question (its question 4, „do sprawdzenia”) is answered; the formula, processed mark and notice beside every series, result and file |
+| Load on IMGW-PIB from a public page | the source slows or blocks the host | snapshots at most every 10 minutes, single-flight, the PMAXTP cache and one request at a time; the page itself never calls a provider (a PMAXTP file link is the person's own download) |
+| On-demand computations on a 4 vCPU, 8 GB VPS shared by four apps | slow answers, memory | at most two Hydrolog processes, 30 s each, a result cache in memory only; stored defaults over the whole record cover the first view of every section |
 | The slices wait for the Nogat plan's O1 and O2 | a late GUI | S0, S2 and S2b start at once; the analysis sections come last (wave C) |
 | Two GUIs draw a station's series | people ask which to use; the two drift apart | D3; the guide says what each app is for |
 | A third chart module and basemap style in the ecosystem | duplicated work, a diverging look | pure modules, ready for the kit's `chart-theme.js` and `basemaps.json` (platform plan, step 3) |
@@ -378,14 +395,14 @@ Outside Obserwator, by the Nogat plan: N2 gives the registry `interfaces.gui: ob
 | Copies of the kit and the tokens drift | the look, the menu and the hand-off split again | the hashes and Nogat's `drift` (DEV-15.6) |
 | Parallel slices of one branch | conflicts | owned files, one integration owner, a rebase and the gate per landing |
 
-## Open question for the author
+## Decided (2026-11-13)
 
-The cross-project questions (the download code, where the roots live, IMGW-PIB's warning and alarm levels, IMGW-PIB's terms, reference periods) are the Nogat plan's 1 to 5. This plan adds one:
+The cross-project questions are the Nogat plan's; its „Decided (2026-11-13)” records the answers (B1; the raw root and the data root's backup in Archiwista, the production data root in Obserwator; computed once, refreshed yearly, subsets on the fly and never stored; no IMGW-PIB warning and alarm levels; the whole record by default with the 30-year note). IMGW-PIB's terms on the public instance stay open there (its question 4). This plan's question:
 
-1. **Spreadsheets.** CSV (comma, decimal dot), JSON and Parquet, or XLSX as well (one dependency, `openpyxl`, MIT), which today's PMAXTP page offers through SheetJS from a CDN (`templates/partials/pmaxtp_result.html:71`)? [inference] A CSV with a decimal dot opens in a Polish Excel through its import dialog, not by a double click.
+1. **Spreadsheets.** No XLSX: CSV (comma, decimal dot), JSON and Parquet (G6, D14). The PMAXTP page's SheetJS goes with the pages (D18).
 
 Decided here, open to the author's veto: port 8060 (the placeholder's); Polish by default and English through the switch (no deviation from DEV-2.2); IMGW-PIB's synop data and warnings left out (warnings name areas, not stations); the page of archive links and its wget script dropped; `GET /` of `obserwator server` redirecting to `/docs`; the app menu's line for Obserwator, „Dane IMGW-PIB i ČHMÚ, PMAXTP” (Nogat `design/kit/nogat-app-menu.js:15`), unchanged.
 
 ## Not in this plan
 
-The roles, the data root, the stored analyses and Hydrolog's computations (the Nogat plan's steps N1, H1 to H5, R1, R2, O1, O2); „Zgłoś uwagę” (Nogat plan `2026-11-03-feedback-in-archiwista-and-hydrolog.md`; reports need a store, and Obserwator keeps no database, `CLAUDE.md:11`); a link into Archiwista's station card (`/?view=catalog&station=<store>/<provider>/<code>`, Archiwista `src/archiwista/web/src/views/catalog-stations.js:250-251`), which needs Archiwista's store id and a published address; exports of several stations in one file; IMGW-PIB synop and warnings; ČHMÚ current data (`AGENTS.md:9`); the native PMAXTP grid (`docs/PROGRESS.md:62`); coordinates of closed IMGW-PIB stations (`docs/PROGRESS.md:73`); an English guide; the hub itself (platform plan, steps 8 to 10).
+The roles, the data root, the stored analyses and Hydrolog's computations (the Nogat plan's steps N1, H1 to H5, R1, R2, O1, O2); „Zgłoś uwagę” (Nogat plan `2026-11-03-feedback-in-archiwista-and-hydrolog.md`; reports need a store, and Obserwator keeps no database, `CLAUDE.md:11`); a link into Archiwista's station card (`/?view=catalog&station=<store>/<provider>/<code>`, Archiwista `src/archiwista/web/src/views/catalog-stations.js:250-251`), which needs Archiwista's store id and a published address; exports of several stations in one file; IMGW-PIB synop and warnings; IMGW-PIB's warning and alarm levels (operational data, not archived); ČHMÚ current data (`AGENTS.md:9`); the native PMAXTP grid (`docs/PROGRESS.md:62`) and any layer of it on the map; coordinates of closed IMGW-PIB stations (`docs/PROGRESS.md:73`); an English guide; the hub itself (platform plan, steps 8 to 10).
