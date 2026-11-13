@@ -8,8 +8,10 @@ comma-separated text), POST from a JSON body checked by a model built with
 `pydantic.create_model` (``extra="forbid"``, loose JSON kinds: text, number,
 list, object). Values are normalized only by `validate_command`; the answer is
 the ``obserwator-result/1`` envelope of `run_command` (on POST with ``?check=true``
-of `check_command`) with the store root written as ``"."``, or a text stream
-for ``store export``, ``series export`` and ``commands guide``.
+of `check_command`) with the store root written as ``"."``, or an attachment for
+``store export``, ``stations export``, ``series export`` and ``commands guide``:
+the text stream, or for a binary format (Parquet) the file the export wrote to
+a private directory outside the store, removed after the answer is read.
 
 Server rules: the store root comes only from ``OBSERWATOR_ROOT`` (503
 ``store_unavailable`` when it is missing, relative or unsupported; ``store
@@ -80,6 +82,7 @@ from obserwator.exceptions import (
 from obserwator.messages import Lang, message
 from obserwator.models import PMaXTPResult
 from obserwator.store import store_info
+from obserwator.store.export import _BINARY_FORMATS
 from obserwator.store.types import (
     CommandOption,
     CommandResult,
@@ -107,6 +110,9 @@ _DIAGNOSTIC = ("store info", "store scan")
 _MEDIA_TYPES = {
     "csv": "text/csv; charset=utf-8",
     "jsonl": "application/x-ndjson",
+    "json": "application/json",
+    "geojson": "application/geo+json",
+    "parquet": "application/vnd.apache.parquet",
     "agents": "text/markdown; charset=utf-8",
     "llms": "text/markdown; charset=utf-8",
 }
@@ -538,40 +544,67 @@ def _attachment(route: _Route, options: Mapping[str, object]) -> str:
     if format_ in _GUIDE_FILES:
         return _GUIDE_FILES[format_]
     if route.spec.name == "series export":
-        return f"{options['station']}.csv"
+        return f"{options['station']}.{format_}"
+    if route.spec.name == "stations export":
+        return f"stations.{format_}"
     version = cast(Path, options["version"])
     name = version.name.removesuffix(".meta.json")
     stem = version.parent.name if version.is_dir() else PurePosixPath(name).stem
     return f"{stem}.{format_}"
 
 
-def _stream(
+def _binary(route: _Route, options: Mapping[str, object]) -> bool:
+    """Whether a stream is one binary file (Parquet): REST writes it, then sends it."""
+    value = options.get("format")
+    if route.spec.result != "stream" or not isinstance(value, str):
+        return False
+    choices = next(o.choices for o in route.spec.options if o.name == "format")
+    return value.strip() in _BINARY_FORMATS and value.strip() in choices
+
+
+@contextmanager
+def _binary_file(root: Path) -> Iterator[Path]:
+    """The output of a binary export: a file in a private directory outside the store."""
+    directory = _scratch(root)
+    try:
+        yield directory / "export"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def _download(
     route: _Route,
     envelope: CommandResult[object],
     options: Mapping[str, object],
     root: Path | None,
     lang: Lang,
-) -> StreamingResponse:
-    lines = cast(Iterator[str], envelope.result)
+    data: bytes | None,
+) -> Response:
+    """The attachment of a stream: its lines, or the bytes of a binary file."""
     notices = hide_server_paths(
         jsonable(envelope.notices, root=root, server=True, lang=lang)
     )
+    media_type = _MEDIA_TYPES[_stream_format(route, options)]
+    headers = {
+        "Content-Disposition": f'attachment; filename="{_attachment(route, options)}"',
+        "X-Obserwator-Status": envelope.status,
+        "X-Obserwator-Notices": _ascii_json(notices),
+        **{
+            header: _ascii_json(list(value))
+            for header, value in (
+                ("X-Obserwator-Attribution", envelope.attribution),
+                ("X-Obserwator-Terms-Notice", envelope.terms_notice),
+            )
+            if value
+        },
+    }
+    if data is not None:
+        return Response(data, media_type=media_type, headers=headers)
+    lines = cast(Iterator[str], envelope.result)
     return StreamingResponse(
         (line.encode("utf-8") for line in lines),
-        media_type=_MEDIA_TYPES[_stream_format(route, options)],
-        headers={
-            "Content-Disposition": f'attachment; filename="{_attachment(route, options)}"',
-            "X-Obserwator-Status": envelope.status,
-            "X-Obserwator-Notices": _ascii_json(notices),
-            **{
-                header: _ascii_json(list(value))
-                for header, value in (
-                    ("X-Obserwator-Attribution", envelope.attribution),
-                    ("X-Obserwator-Terms-Notice", envelope.terms_notice),
-                )
-                if value
-            },
-        },
+        media_type=media_type,
+        headers=headers,
     )
 
 
@@ -590,12 +623,17 @@ def _respond(
             _confine_version(route, root, options["version"])
     if "user_locations" in options:
         options["user_locations"] = _user_locations(options["user_locations"])
+    data: bytes | None = None
     with ExitStack() as stack:
         document = options.pop(_PLAN, None)
         if document is not None:
             # Only store sync takes a plan; its root option always yields a root.
             plan = _plan_file(document, cast(Path, root))
             options[_PLAN] = stack.enter_context(plan)
+        binary = not check and _binary(route, options)
+        if binary:
+            # A binary export has no lines: it writes its file, which is sent.
+            options["output"] = stack.enter_context(_binary_file(cast(Path, root)))
         normalized = validate_command(route.spec.name, options=options)
         if check:
             envelope: CommandResult[Any] = check_command(
@@ -605,12 +643,16 @@ def _respond(
             if route.spec.result == "list":
                 _paged(normalized)
             envelope = run_command(route.spec.name, options=normalized)
+            if binary and envelope.status != "cancelled":
+                data = cast(Path, normalized["output"]).read_bytes()
     if envelope.status == "cancelled":
         raise ObserwatorError(message("api.operation_was_interrupted_without_report"))
     # The ``lang`` option of a command wins; else the language of the caller.
     language = cast(Lang, normalized.get(_LANG, lang))
     if route.spec.result == "stream" and not check:
-        response: Response = _stream(route, envelope, normalized, root, language)
+        response: Response = _download(
+            route, envelope, normalized, root, language, data
+        )
     else:
         response = JSONResponse(
             hide_server_paths(envelope.to_json(root=root, server=True, lang=language))
@@ -824,12 +866,17 @@ def _add_route(route: _Route) -> None:
         body = _body_model(route)
     if route.spec.result == "stream":
         responses[200] = {
-            "description": "The data stream (an attachment) with the headers "
-            "X-Obserwator-Status and X-Obserwator-Notices and, for data of a "
-            "provider, X-Obserwator-Attribution and X-Obserwator-Terms-Notice "
-            "(JSON arrays of the lines, non-ASCII escaped; the data carry them too)",
+            "description": "The data (an attachment: text lines, or the file of a "
+            "binary format such as Parquet) with the headers X-Obserwator-Status and "
+            "X-Obserwator-Notices and, for data of a provider, X-Obserwator-Attribution "
+            "and X-Obserwator-Terms-Notice (JSON arrays of the lines, non-ASCII "
+            "escaped; the data carry them too)",
             "content": {
-                _MEDIA_TYPES[name]: {"schema": {"type": "string"}}
+                _MEDIA_TYPES[name]: {
+                    "schema": {"type": "string", "format": "binary"}
+                    if name in _BINARY_FORMATS
+                    else {"type": "string"}
+                }
                 for name in route.schema["properties"]["format"]["enum"]
             },
         }

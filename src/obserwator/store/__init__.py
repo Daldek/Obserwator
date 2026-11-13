@@ -5,7 +5,7 @@ and raise ``ObserwatorStoreDependencyError`` when the ``[store]`` extra is missi
 """
 
 from obserwator.store.catalog import RootArg, build_catalog, check_catalog
-from obserwator.store.export import export_archive, export_series
+from obserwator.store.export import export_archive, export_series, export_stations
 from obserwator.store.pmaxtp import check_pmaxtp, read_pmaxtp, sync_pmaxtp
 from obserwator.store.reader import (
     current_version,
@@ -85,6 +85,7 @@ __all__ = [
     "current_version",
     "export_archive",
     "export_series",
+    "export_stations",
     "init_store",
     "iter_store",
     "open_store",

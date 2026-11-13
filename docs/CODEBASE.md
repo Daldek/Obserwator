@@ -12,7 +12,7 @@ src/obserwator/
 ├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, NormalizedRecord, Measurement, ...)
 ├── stations.py           # PUBLIC: find_stations (live lists of IMGW-PIB and ČHMÚ, or store)
 ├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 17 dataset descriptors, archive_files
-├── commands.py           # PUBLIC: Command catalog (30 commands, PL + EN texts, effects), run_command, command_schema, list_commands
+├── commands.py           # PUBLIC: Command catalog (31 commands, PL + EN texts, effects), run_command, command_schema, list_commands
 ├── agent_guide.py        # PUBLIC: agent_guide (AGENTS.md / llms.txt), MCP server instructions
 ├── coverage.py           # PUBLIC: summarize_coverage (per-station periods for ČHMÚ)
 ├── exceptions.py         # PUBLIC: ObserwatorError hierarchy + ERROR_CODES registry (title as a catalog message)
@@ -37,7 +37,7 @@ src/obserwator/
 │   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider)
 │   ├── pmaxtp.py         # check_pmaxtp, sync_pmaxtp, read_pmaxtp
 │   ├── reader.py         # store_info, iter_store, current_version, read_*, select/summarize_series
-│   ├── export.py         # export_archive, export_series (CSV/JSONL, file or line iterator)
+│   ├── export.py         # export_archive, export_series (CSV/JSON/Parquet), export_stations (GeoJSON/CSV); ADR-014
 │   └── plain.py          # plain_actions: the obserwator-plan/1 actions of a plain write
 ├── api/                  # FastAPI REST API [optional: obserwator[api]]
 │   ├── main.py           # App entry point (/health, /api/v1, /llms.txt, /mcp, web router, static)
@@ -136,7 +136,8 @@ Every live function has an `*_async` twin with identical arguments.
 |`current_version(root, /, *, slot)`|Current version of a slot (`archive:<key>:<file>`, `series:<key>`, ...)|
 |`read_meta`, `read_archive`, `read_station_list(root, /, *, kind, provider="IMGW-PIB")`, `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index`, `read_series`|Offline readers|
 |`select_series`, `summarize_series`|Series selection and coverage|
-|`export_archive`, `export_series`|CSV/JSONL export as a line iterator, or with `output` (+ `force`) one plain file and its `OutputReport`|
+|`export_archive`, `export_series`|CSV/JSONL export of an archive version; one station's series as CSV, JSON (`obserwator-series-export/1`) or Parquet (needs `output`); a line iterator, or with `output` (+ `force`) one plain file and its `OutputReport`|
+|`export_stations`|The stations of the current catalogs as GeoJSON (`obserwator-stations-export/1`, RFC 7946) or CSV, with the series that hold them (ADR-014; schemas in `schemas/`)|
 
 **Command Catalog:**
 |Function|Description|
@@ -258,6 +259,7 @@ CLI command = `obserwator <group> <name>`; REST route = `/api/v1/<group>/<name>`
 |`series read`|`read_series`|—|`GET /api/v1/series/read`|
 |`series summary`|`summarize_series`|—|`GET /api/v1/series/summary`|
 |`series export`|`export_series`|`check_command`|`GET /api/v1/series/export`|
+|`stations export`|`export_stations`|`check_command`|`GET /api/v1/stations/export`|
 |`commands list`|`list_commands`|—|`GET /api/v1/commands/list`|
 |`commands schema`|`command_schema`|—|`GET /api/v1/commands/schema`|
 |`commands guide`|`agent_guide`|`check_command`|`GET /api/v1/commands/guide`|
@@ -458,7 +460,7 @@ src/obserwator/
 ├── store/        # Versioned store: writer, sync, series, catalog, pmaxtp, reader, export, content, plain
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
 ├── datasets.py   # Registry of providers and 17 datasets (pl.imgw.*, cz.chmi.*), archive file generator
-├── commands.py   # Catalog of 30 commands shared by Python, CLI, REST, MCP and integrations
+├── commands.py   # Catalog of 31 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads
 ├── stations.py   # find_stations (IMGW-PIB and ČHMÚ)

@@ -31,7 +31,7 @@ Ta sama komenda w każdym interfejsie: CLI `obserwator <grupa> <komenda> --opcja
 
 ## Koperta, statusy i błędy
 
-Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}` (każdy raz, np. `license_terms`). Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Komendy strumieniowe bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST odpowiada załącznikiem (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
+Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}` (każdy raz, np. `license_terms`). Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Strumienie bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST daje załącznik (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
 
 <!-- obserwator:statuses -->
 
@@ -39,7 +39,7 @@ Błąd ma kod z zamkniętego rejestru, ten sam w Pythonie, CLI, REST (problem+js
 
 ## Zbiory danych
 
-Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane wyłącznie na wejściu. Zbiory magazynu:
+Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane tylko na wejściu. Zbiory magazynu:
 
 <!-- obserwator:datasets -->
 
@@ -48,7 +48,7 @@ Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i ali
 
 ## Komendy
 
-Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwator commands schema --command "<komenda>" --json`. Znaczniki: `[output: …]` — opcja zapisuje plik, gdy ją podasz; `[jest sprawdzeniem]` — komenda sama planuje; `[lokalna]` — bez trasy REST.
+Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwator commands schema --command "<komenda>" --json`. Znaczniki: `[output: …]` — opcja zapisuje plik; `[jest sprawdzeniem]` — komenda sama planuje; `[lokalna]` — bez trasy REST.
 
 <!-- obserwator:commands -->
 
@@ -58,14 +58,14 @@ Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwa
 
 ## Typowe przepływy
 
-Symbole pisane wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcześniejszych kroków.
+Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcześniejszych kroków.
 
 <!-- obserwator:flows -->
 
 ## Czego nie robić
 
-1. Nie buduj URL-i serwerów IMGW-PIB i ČHMÚ ręcznie ani ich nie przeszukuj — `datasets files`, `datasets download`, `store sync`.
-2. Kody wyjścia 10 i 11 nie oznaczają awarii programu — przeczytaj kopertę (`items[].status`, `error_code`).
+1. Nie składaj ani nie przeszukuj URL-i serwerów IMGW-PIB i ČHMÚ — `datasets files`, `datasets download`, `store sync`.
+2. Kody wyjścia 10 i 11 to nie awaria programu — czytaj kopertę (`items[].status`, `error_code`).
 3. Nie uruchamiaj zapisu (`store sync`, `series build`, `datasets download`) bez planu i zgody użytkownika.
 4. Nie zgaduj stacji ani zbioru: przy kilku trafieniach `stations find` zapytaj; obecność stacji w zbiorze sprawdź `series summary`.
 5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — magazyn jest tylko przyrostowy.

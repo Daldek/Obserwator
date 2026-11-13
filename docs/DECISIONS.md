@@ -18,6 +18,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-010](#adr-010-result-error-and-catalog-documents-follow-the-nogat-standard-10) | Result, error and catalog documents follow the Nogat standard 1.0 | 2026-11-04 | Accepted |
 | [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted |
 | [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted |
+| [ADR-014](#adr-014-harmonized-exports) | Harmonized exports | 2026-11-13 | Accepted |
 
 ---
 
@@ -604,3 +605,29 @@ The IMGW-PIB terms (danepubliczne.imgw.pl/regulations §5 ust. 3–4) make the s
 ### Consequences
 
 Additive changes of `/1` contracts (no version changes): the envelope fields and stream headers, two trailing CSV columns of each export, the first JSONL object, Parquet metadata keys, the fields of `series.json`, `stations.geojson` and `cell.json`, the texts of `license.attribution` and of the `license_terms` notice, and `ATTRIBUTION.txt` in plain mode; `ProviderDescriptor.license_notice` takes an `Attribution` instead of a text. Hydrolog reads the CSV by column names, so the trailing columns are harmless, and carries the lines on; Archiwista reads `license.attribution` as a text as before; Retman and the web pages take the envelope fields. `tests/unit/test_attribution.py` and the tests of each surface family (CSV, JSON, Parquet, REST, MCP, the PMAXTP page) compare with the lines of `obserwator.attribution`.
+
+## ADR-014: Harmonized exports
+
+**Date:** 2026-11-13  
+**Status:** Accepted (the author approved the GUI plan `docs/plans/2026-11-12-obserwator-gui.md` on 2026-11-13: its D14 and slice S0, the Nogat plan's step O3; ADR-013 is reserved for the GUI, ADR-015 for the data root)  
+**Standard:** Nogat DEV-20.5, DEV-20.6 (ADR-012), AGI-4.1; RFC 7946  
+
+### Context and options
+
+The GUI shows every station on a map and serves the harmonized data of IMGW-PIB and ČHMÚ in formats other than the providers' (D13 of the Nogat plan: CSV, JSON, Parquet; no XLSX). Obserwator exported one station's series as CSV only, and the versioned catalogs `stations.geojson` had no catalog command (PROGRESS backlog „GeoJSON in REST/GUI”). Options: (a) the GUI reads the store files itself (a second reader beside the library, and the CLI, REST and MCP get nothing); (b) new exports of the library, one catalog command each, which the GUI downloads byte for byte as the CLI writes them.
+
+### Decisions D1–D7
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Stations.** `export_stations(root=None, /, *, provider, kind, series=True, format="geojson"\|"csv", output, force, on_progress, on_notice, cancel)` and `stations export` (group `stations`, GET `/api/v1/stations/export`, MCP `obserwator_stations_export`) read the current catalog of each chosen provider (`root=None`: the default root) and, with `series`, the `series.json` indexes of its current series (no pyarrow). GeoJSON is `obserwator-stations-export/1`, an RFC 7946 FeatureCollection with the foreign members `schema`, `catalogs`, `series`, `attribution`, `terms_notice`; a feature has the station code as `id`, a Point or null, the catalog's properties, `provider` and `series` (per dataset key `first`, `last`, `variables` with values). CSV has one row per station, the other properties sorted, `latitude`, `longitude`, `datasets` and the attribution columns of `series export`; each provider's rows start with its lines. No catalog is `not_found`, no station of `kind` a `data_error`. | The GUI reading the store files. |
+| D2 | **Series.** `series export --format json` gives `obserwator-series-export/1`: the series version, `year_type`, `time_unit`, `variables` (`unit`, `note`), `license`, the lines and `columns` (the CSV's data columns as arrays, a value column by its variable name). `--format parquet` writes the CSV's data columns with their names, typed, and the same fields as file metadata (`obserwator_schema`, `units`, `variable_notes`, JSON text for objects and arrays). The three formats come from one column list; the CSV stays byte for byte (golden files of seven series shapes). | Renamed Parquet columns (pandas would read other columns from the CSV and the Parquet of one series). |
+| D3 | **Lines.** Every file carries the lines of ADR-012: JSON and GeoJSON as the arrays `attribution` and `terms_notice` (DEV-20.6), so the plan's „attribution per provider” is each `catalogs` entry: the provider's `license` `{id, url, terms_url}` and the catalog's `attribution` (the formula, the processed mark and, for a location of the hydro.imgw.pl map, its line) and `terms_notice`; Parquet the metadata keys `attribution` and `terms_notice` (DEV-20.5) and `license`. | A member `attribution` of objects per provider (contrary to DEV-20.6). |
+| D4 | **Binary formats.** Parquet has no lines to stream: without `output` it is a `validation_error` (`details.reason="output_required"`) in Python, the CLI and MCP, also over HTTP, where `output` does not exist. REST answers every format as an attachment (`text/csv`, `application/json`, `application/geo+json`, `application/vnd.apache.parquet`): it lets the export write Parquet to a private directory outside the store and sends the bytes. MCP over HTTP tells a stream from an envelope by the command's result, not by the media type. | Parquet bytes as a base64 stream (no file a person can open). |
+| D5 | **Definitions.** The IMGW-PIB series variables get `variable_notes` from IMGW-PIB's format descriptions of danepubliczne.imgw.pl (`CODZ`, `MIES`, `POLR_publiczne_format.txt`, `k_d_format.txt`, `o_d_format.txt`, read 2026-11-12 in the reference directory): field names, extremum indicators and the meaning of missing values, nothing beyond them. They appear in the exports and in the metadata of IMGW-PIB series built from new inputs (an additive key; versions already written keep their bytes; unchanged inputs reuse the version). | Definitions written by Obserwator (not IMGW-PIB's). |
+| D6 | **Versions.** An export names the versions it read by their directory relative to the root (`series/versions/<slug>/<label>_<sha8>`, `stations/versions/…`), the form of `--version` and `iter_store(skip_versions)`. The stations export opens its root in one helper (`_data_root`), the place the data root of ADR-015 changes. | The label only (ambiguous for two versions of a day). |
+| D7 | **Schemas.** `schemas/obserwator-stations-export-1.schema.json` and `schemas/obserwator-series-export-1.schema.json` (JSON Schema 2020-12, unknown fields allowed, AGI-4.1); the tests validate real exports against them and the GeoJSON against the structure of RFC 7946. | — |
+
+### Consequences
+
+Additive: a 31st catalog command, two `format` values, two schemas, the REST media types and the `variable_notes` of IMGW-PIB datasets (`datasets list`, new series). `AGENTS.md` and `llms.txt` are regenerated within the budget of 16 KiB in both languages. The GUI's downloads (S7) and map (S3) use these functions; Hydrolog keeps reading the unchanged CSV.

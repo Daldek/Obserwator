@@ -53,7 +53,7 @@ Further open backlog items (priority in the text):
 
 - [ ] API key enforcement — middleware validating the `X-API-Key` header. `docs/CODEBASE.md` (section "Cloud & Deployment Details") notes that keys are managed by the CLI (`obserwator admin`) but not enforced on API requests — this is a missing security layer, not a new feature. Priority: high.
 - [ ] Per-key rate limiting — tracking and limiting requests per API key. Depends on API key enforcement. Priority: medium.
-- [ ] GeoJSON in REST/GUI — the versioned `stations.geojson` catalog exists since 3.0.0 (`build_catalog`, `read_catalog`); missing are a catalog command that reads it (and therefore a REST route) and a layer on the Web GUI map. Priority: medium.
+- [x] GeoJSON in REST/GUI — done 2026-11-13 (ADR-014, GUI plan S0): `export_stations` / `obserwator stations export` / `GET /api/v1/stations/export` export the current catalogs as GeoJSON (`obserwator-stations-export/1`) or CSV with the series of each station, and `series export` gained JSON and Parquet; the map layer is the GUI plan's S3.
 - [ ] Data charts — time series visualisation. A possible pattern: the hydro-dane repo approach — min/avg/max aggregates with validation of a full hydrological year and export to compact static JSON files. Priority: low.
 - [ ] CSV export in REST/GUI for data without a store — since 3.0.0 `export_series`/`obserwator series export`/`GET /api/v1/series/export` export series from the store; there is no on-demand export without a store. Priority: low.
 - [ ] Request logging — tracking API usage for analytics. Priority: low.

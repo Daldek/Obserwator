@@ -41,7 +41,7 @@ Extras: `obserwator[cli|api|store|mcp|pandas|full]` (install lines in the README
 ```
 src/obserwator/
 ├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
-├── commands.py           # command catalog (30 commands), run_command, command_schema
+├── commands.py           # command catalog (31 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
 ├── coverage.py, exceptions.py (ERROR_CODES), testing.py, config.py, reference_data.py
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)

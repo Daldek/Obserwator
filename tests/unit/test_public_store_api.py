@@ -59,6 +59,7 @@ SPEC_FUNCTIONS = (
     "read_series_index",
     "read_series",
     "export_series",
+    "export_stations",
     "export_archive",
     "select_series",
     "summarize_series",

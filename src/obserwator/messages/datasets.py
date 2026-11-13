@@ -189,6 +189,90 @@ MESSAGES = {
         "Meteorological data at observation times from climate stations",
         "Dane meteorologiczne terminowe ze stacji klimatycznych",
     ),
+    # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
+    # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt),
+    # with the field names of the files and nothing beyond them.
+    "note_imgw_hydro_daily_h": Text(
+        "Water level of the day (COSTAN); no value where IMGW-PIB's database has no "
+        "data (9999 or NULL in the source file)",
+        "Stan wody w danym dniu (COSTAN); brak wartości, gdy baza IMGW-PIB nie ma "
+        "danych (9999 albo NULL w pliku źródłowym)",
+    ),
+    "note_imgw_hydro_daily_q": Text(
+        "Discharge of the day (COPRZP); no value on a day for which the discharge "
+        "was not computed (99999.999 or NULL in the source file)",
+        "Przepływ w danym dniu (COPRZP); brak wartości w dniu, dla którego przepływ "
+        "nie był opracowywany (99999.999 albo NULL w pliku źródłowym)",
+    ),
+    "note_imgw_hydro_daily_t": Text(
+        "Water temperature of the day (COPTMP); no value where the database has no "
+        "data, e.g. without temperature measurements at the station (99.9 or NULL "
+        "in the source file)",
+        "Temperatura wody w danym dniu (COPTMP); brak wartości, gdy baza nie ma "
+        "danych, np. bez pomiarów temperatury na stacji (99.9 albo NULL w pliku "
+        "źródłowym)",
+    ),
+    "note_imgw_hydro_monthly": Text(
+        "{statistic} of the month ({field} with the extremum indicator MCWSKEX = "
+        "{code}); no value where the database has no data or the observations of "
+        "the month were interrupted",
+        "{statistic} w miesiącu ({field} przy wskaźniku ekstremum MCWSKEX = {code}); "
+        "brak wartości, gdy baza nie ma danych lub obserwacje w miesiącu były "
+        "przerwane",
+    ),
+    "note_imgw_hydro_semiannual": Text(
+        "{statistic} of the winter or summer half-year or of the year (PLWLKS with "
+        "PLRDZW = {quantity} and PLWSKEX = {code}); _start and _end: the date of "
+        "occurrence of the extremum, from and to; no value where the observations "
+        "were interrupted",
+        "{statistic} w półroczu zimowym albo letnim albo w roku (PLWLKS przy PLRDZW = "
+        "{quantity} i PLWSKEX = {code}); _start i _end: data wystąpienia ekstremum, "
+        "od i do; brak wartości, gdy obserwacje były przerwane",
+    ),
+    "stat_imgw_h_min": Text("Minimum water level", "Minimalny stan wody"),
+    "stat_imgw_h_mean": Text("Mean water level", "Średni stan wody"),
+    "stat_imgw_h_max": Text("Maximum water level", "Maksymalny stan wody"),
+    "stat_imgw_q_min": Text("Minimum discharge", "Minimalny przepływ"),
+    "stat_imgw_q_mean": Text("Mean discharge", "Średni przepływ"),
+    "stat_imgw_q_max": Text("Maximum discharge", "Maksymalny przepływ"),
+    "stat_imgw_t_min": Text("Minimum water temperature", "Minimalna temperatura wody"),
+    "stat_imgw_t_mean": Text("Mean water temperature", "Średnia temperatura wody"),
+    "stat_imgw_t_max": Text("Maximum water temperature", "Maksymalna temperatura wody"),
+    "note_imgw_tmax": Text(
+        "Maximum daily air temperature (TMAX)",
+        "Maksymalna dobowa temperatura powietrza (TMAX)",
+    ),
+    "note_imgw_tmin": Text(
+        "Minimum daily air temperature (TMIN)",
+        "Minimalna dobowa temperatura powietrza (TMIN)",
+    ),
+    "note_imgw_tmean": Text(
+        "Mean daily air temperature (STD)",
+        "Średnia dobowa temperatura powietrza (STD)",
+    ),
+    "note_imgw_tground": Text(
+        "Minimum daily air temperature at the ground (TMNG)",
+        "Minimalna dobowa temperatura powietrza przy gruncie (TMNG)",
+    ),
+    "note_imgw_p": Text(
+        "Daily precipitation sum (SMDB)",
+        "Suma dobowa opadów (SMDB)",
+    ),
+    "note_imgw_precip_p": Text(
+        "Daily precipitation sum (SMDB); flag accumulated (status Z): a collective sum "
+        "for the preceding days without measurement, with no indication of when it "
+        "fell",
+        "Suma dobowa opadów (SMDB); flaga accumulated (status Z): opad zbiorczy za "
+        "poprzedzające dni z brakiem pomiaru, bez określenia, kiedy wystąpił",
+    ),
+    "note_imgw_snow_cover": Text(
+        "Snow cover depth (PKSN)",
+        "Wysokość pokrywy śnieżnej (PKSN)",
+    ),
+    "note_imgw_fresh_snow": Text(
+        "Depth of freshly fallen snow (HSS)",
+        "Wysokość świeżo spadłego śniegu (HSS)",
+    ),
     "title_chmi_hydro_daily": Text(
         "ČHMÚ — daily hydrological data (H, Q, T)",
         "ČHMÚ — dane hydrologiczne dobowe (H, Q, T)",

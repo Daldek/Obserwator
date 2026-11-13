@@ -339,6 +339,43 @@ _HYDRO_STATS = {
     for v, unit in (("H", "cm"), ("Q", "m3/s"), ("T", "degC"))
     for stat in ("min", "mean", "max")
 }
+# Variable definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl,
+# CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt): the
+# fields of the files, the extremum indicators and what a missing value means.
+_IMGW_STATISTICS = {
+    "H_min": message("datasets.stat_imgw_h_min"),
+    "H_mean": message("datasets.stat_imgw_h_mean"),
+    "H_max": message("datasets.stat_imgw_h_max"),
+    "Q_min": message("datasets.stat_imgw_q_min"),
+    "Q_mean": message("datasets.stat_imgw_q_mean"),
+    "Q_max": message("datasets.stat_imgw_q_max"),
+    "T_min": message("datasets.stat_imgw_t_min"),
+    "T_mean": message("datasets.stat_imgw_t_mean"),
+    "T_max": message("datasets.stat_imgw_t_max"),
+}
+# MCWSKEX and PLWSKEX: 1 minimum, 2 mean, 3 maximum; the monthly value fields.
+_IMGW_EXTREMA = {"min": 1, "mean": 2, "max": 3}
+_IMGW_MONTHLY_FIELDS = {"H": "MCSTAN", "Q": "MCPRZP", "T": "MCPTMP"}
+_IMGW_MONTHLY_NOTES = {
+    name: message(
+        "datasets.note_imgw_hydro_monthly",
+        statistic=statistic,
+        field=_IMGW_MONTHLY_FIELDS[name[0]],
+        code=_IMGW_EXTREMA[name[2:]],
+    )
+    for name, statistic in _IMGW_STATISTICS.items()
+}
+_IMGW_SEMIANNUAL_NOTES = {
+    name: message(
+        "datasets.note_imgw_hydro_semiannual",
+        statistic=statistic,
+        quantity=name[0],
+        code=_IMGW_EXTREMA[name[2:]],
+    )
+    for name, statistic in _IMGW_STATISTICS.items()
+}
+_IMGW_SNOW_COVER = message("datasets.note_imgw_snow_cover")
+
 
 _DATASETS = (
     DatasetDescriptor(
@@ -356,6 +393,11 @@ _DATASETS = (
         license=_LICENSE,
         legacy_alias="hydro/dobowe",
         in_store=True,
+        variable_notes={
+            "H": message("datasets.note_imgw_hydro_daily_h"),
+            "Q": message("datasets.note_imgw_hydro_daily_q"),
+            "T": message("datasets.note_imgw_hydro_daily_t"),
+        },
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_monthly",
@@ -372,6 +414,7 @@ _DATASETS = (
         license=_LICENSE,
         legacy_alias="hydro/miesieczne",
         in_store=True,
+        variable_notes=_IMGW_MONTHLY_NOTES,
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_semiannual",
@@ -388,6 +431,7 @@ _DATASETS = (
         license=_LICENSE,
         legacy_alias="hydro/polroczne_i_roczne",
         in_store=True,
+        variable_notes=_IMGW_SEMIANNUAL_NOTES,
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_climate_daily",
@@ -411,6 +455,14 @@ _DATASETS = (
         license=_LICENSE,
         legacy_alias="meteo/dobowe/klimat",
         in_store=True,
+        variable_notes={
+            "Tmax": message("datasets.note_imgw_tmax"),
+            "Tmin": message("datasets.note_imgw_tmin"),
+            "Tmean": message("datasets.note_imgw_tmean"),
+            "Tground": message("datasets.note_imgw_tground"),
+            "P": message("datasets.note_imgw_p"),
+            "snow_cover": _IMGW_SNOW_COVER,
+        },
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_precip_daily",
@@ -427,6 +479,11 @@ _DATASETS = (
         license=_LICENSE,
         legacy_alias="meteo/dobowe/opad",
         in_store=True,
+        variable_notes={
+            "P": message("datasets.note_imgw_precip_p"),
+            "snow_cover": _IMGW_SNOW_COVER,
+            "fresh_snow": message("datasets.note_imgw_fresh_snow"),
+        },
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_stations",

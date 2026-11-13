@@ -1,4 +1,4 @@
-"""Command catalog (spec §13.3, §13.6): 30 commands, validation, envelope, paging, checks."""
+"""Command catalog (spec §13.3, §13.6): 31 commands, validation, envelope, paging, checks."""
 
 import functools
 import importlib
@@ -62,6 +62,7 @@ SPEC_COMMANDS = [
     "datasets download",
     "datasets providers",
     "stations find",
+    "stations export",
     "current hydro",
     "current meteo",
     "current synop",
@@ -116,6 +117,18 @@ VALID: dict[str, list[dict[str, object]]] = {
     "stations find": [
         {"kind": "hydro", "query": "raba", "limit": 20},
         {"source": "store", "root": ROOT},
+    ],
+    "stations export": [
+        {"root": ROOT},
+        {
+            "root": ROOT,
+            "provider": "CHMI",
+            "kind": "hydro",
+            "series": False,
+            "format": "csv",
+            "output": "/tmp/stacje.csv",
+            "force": True,
+        },
     ],
     "current hydro": [{"station": RABA}],
     "current meteo": [{}],
@@ -204,7 +217,16 @@ VALID: dict[str, list[dict[str, object]]] = {
             "format": "csv",
             "output": "/tmp/eksport.csv",
             "force": True,
-        }
+        },
+        {"root": ROOT, "dataset": DAILY, "station": RABA, "format": "json"},
+        {
+            "version": "series/versions/hydro_daily/v",
+            "root": ROOT,
+            "station": RABA,
+            "variables": ["Q", "H"],
+            "format": "parquet",
+            "output": "/tmp/raba.parquet",
+        },
     ],
     "commands list": [{}, {"lang": "en"}],
     "commands schema": [{}, {"command": "stations find"}],
@@ -229,6 +251,12 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
     "stations find": [
         ({"query": "raba", "cursor": 3}, "cursor"),
         ({"source": "archive"}, "source"),
+    ],
+    "stations export": [
+        ({"root": ROOT, "format": "shapefile"}, "format"),
+        ({"root": ROOT, "kind": "air"}, "kind"),
+        ({"root": ROOT, "provider": "DWD"}, "provider"),
+        ({"root": ROOT, "force": True}, "output"),
     ],
     "current hydro": [({"station": "12345"}, "station")],
     "current meteo": [({"station": "abc"}, "station")],
@@ -913,6 +941,7 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         },
         "datasets providers": {},
         "stations find": {"source": "store", "root": root},
+        "stations export": {"root": root, "output": tmp_path / "stations.geojson"},
         "current hydro": {},
         "current meteo": {"station": RABA},
         "current synop": {"station": "12375"},

@@ -172,7 +172,12 @@ CASES: dict[str, list[Case]] = {
                 "end": "2024-03-31",
             },
             "served",
-        )
+        ),
+        Case({"dataset": DAILY, "station": RABA, "format": "json"}, "served"),
+    ],
+    "stations export": [
+        Case({"format": "csv", "kind": "hydro"}, "served"),
+        Case({"series": False}, "served"),
     ],
     "commands list": [Case({}), Case({"lang": "en"})],
     "commands schema": [

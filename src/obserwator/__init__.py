@@ -25,6 +25,8 @@ Features:
     - Archive data download (daily, monthly, semi-annual)
     - Station search and hydrological station states with coordinates
     - Versioned local store of IMGW archives, Parquet series and station catalog
+    - Exports of a station series (CSV, JSON, Parquet) and of the station catalogs
+      (GeoJSON, CSV), with the providers' attribution
     - ČHMÚ daily hydrological and meteorological data, stations and catalog
     - Data command catalog shared by Python, CLI, REST and MCP
     - Guide for AI agents (``AGENTS.md``, ``llms.txt``) generated from the catalog
@@ -193,6 +195,7 @@ from obserwator.store import (
     current_version,
     export_archive,
     export_series,
+    export_stations,
     init_store,
     iter_store,
     open_store,
@@ -374,6 +377,7 @@ __all__ = [
     "select_series",
     "summarize_series",
     "export_series",
+    "export_stations",
     "export_archive",
     "check_pmaxtp",
     "sync_pmaxtp",

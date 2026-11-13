@@ -215,6 +215,10 @@ MESSAGES = {
         "the export of the series of the station {station} from {path}",
         "eksportu szeregu stacji {station} z {path}",
     ),
+    "export_stations": Text(
+        "the export of the stations of {catalogs} ({format})",
+        "eksportu stacji z {catalogs} ({format})",
+    ),
     "standard_output": Text(
         "the standard output",
         "standardowe wyjście",
@@ -427,6 +431,20 @@ MESSAGES = {
         "Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.",
         "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece albo prefiksie kodu.",
     ),
+    "stations_export_description": Text(
+        "Export the stations of the current catalogs as GeoJSON or CSV. Each "
+        "station names the current series that hold it.",
+        "Wyeksportuj stacje bieżących katalogów jako GeoJSON albo CSV. Każda stacja "
+        "podaje bieżące szeregi, w których jest.",
+    ),
+    "stations_export_series_help": Text(
+        "Name the current series that hold each station (--no-series leaves them out)",
+        "Podaj bieżące szeregi, w których jest każda stacja (--no-series je pomija)",
+    ),
+    "stations_export_format_help": Text(
+        "Export format: geojson or csv",
+        "Format eksportu: geojson albo csv",
+    ),
     "stations_find_rule_1": Text(
         "root is required with source=store and not allowed with source=live",
         "root jest wymagany przy source=store i niedozwolony przy source=live",
@@ -556,9 +574,13 @@ MESSAGES = {
         "Pokaż pokrycie stacji i zmiennych szeregu ze spisu series.json (bez pyarrow).",
     ),
     "series_export_description": Text(
-        "Export the series of one station as CSV with the attribution of the data "
-        "provider.",
-        "Wyeksportuj szereg jednej stacji jako CSV z atrybucją dostawcy danych.",
+        "Export one station's series as CSV, JSON or Parquet with the provider's "
+        "attribution.",
+        "Wyeksportuj szereg stacji jako CSV, JSON albo Parquet z atrybucją dostawcy.",
+    ),
+    "series_export_rule_parquet": Text(
+        "format=parquet needs output; REST answers every format as an attachment",
+        "format=parquet wymaga output; REST zwraca każdy format jako załącznik",
     ),
     "commands_list_description": Text(
         "List the catalog commands: tool names, effects and routes. Start here, then "
@@ -700,8 +722,8 @@ MESSAGES = {
         "przecinkami (domyślnie wszystkie)",
     ),
     "series_export_format_help": Text(
-        "Export format (csv only)",
-        "Format eksportu (tylko csv)",
+        "Export format: csv, json or parquet (parquet needs output)",
+        "Format eksportu: csv, json albo parquet (parquet wymaga output)",
     ),
     "commands_schema_command_help": Text(
         "Name of a catalog command; none = the whole obserwator-commands/1 catalog",
@@ -725,8 +747,8 @@ MESSAGES = {
         "Rejestr dostawców i zbiorów: lista, pliki i pobieranie",
     ),
     "group_stations": Text(
-        "Station search",
-        "Wyszukiwanie stacji",
+        "Stations: search and export",
+        "Stacje: wyszukiwanie i eksport",
     ),
     "group_current": Text(
         "Current data from the IMGW API",
@@ -966,6 +988,18 @@ MESSAGES = {
     ),
     "meaning_format_jsonl": Text(
         "One JSON object per line", "Jeden obiekt JSON w każdym wierszu"
+    ),
+    "meaning_format_json": Text(
+        "One JSON document with the data as columns",
+        "Jeden dokument JSON z danymi jako kolumny",
+    ),
+    "meaning_format_parquet": Text(
+        "A typed Parquet file (needs output)",
+        "Plik Parquet z typami kolumn (wymaga output)",
+    ),
+    "meaning_format_geojson": Text(
+        "An RFC 7946 GeoJSON FeatureCollection",
+        "Kolekcja GeoJSON FeatureCollection (RFC 7946)",
     ),
     "meaning_format_agents": Text(
         "AGENTS.md: the guide for coding agents",

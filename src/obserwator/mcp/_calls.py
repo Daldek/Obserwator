@@ -20,9 +20,11 @@ parameters, POST with a JSON body and always ``?check=true``, in English
 
 An envelope ``obserwator-result/1`` is ``structuredContent`` and, as compact JSON,
 the only text content (the CLI ``--json`` stdout line without its line end); a stream
-(``store export``, ``series export``, ``commands guide`` without ``output``) is its
-text, at most 256 KiB, with an envelope whose result is the ``obserwator-stream/1``
-document ``{schema, format, bytes, lines}``. An error is ``isError`` with the
+(``store export``, ``stations export``, ``series export``, ``commands guide`` without
+``output``) is its text, at most 256 KiB, with an envelope whose result is the
+``obserwator-stream/1`` document ``{schema, format, bytes, lines}``; a binary format
+(Parquet) has no text: it needs ``output``, which only stdio offers. An error is
+``isError`` with the
 ``obserwator-error/1`` document of the CLI error line (`obserwator.error_report`)
 as ``structuredContent`` and as its only text content: in English (AGI-9.2),
 with the tool's command as ``command``,
@@ -57,6 +59,7 @@ from obserwator.exceptions import (
 )
 from obserwator.mcp._tools import CatalogTool
 from obserwator.messages import message
+from obserwator.store.export import _needs_output
 from obserwator.store.types import CommandResult, Notice, Progress
 
 __all__ = ["STREAM_LIMIT", "Report", "call_tool"]
@@ -455,6 +458,19 @@ async def _asgi(
     return status, answer, b"".join(chunks), stop.is_set()
 
 
+def _binary_stream(tool: CatalogTool, options: Mapping[str, object]) -> None:
+    """
+    Refuse a binary format of a stream over HTTP (Parquet).
+
+    Its one file needs ``output``, a local option that HTTP has not, so the
+    call is the ``validation_error`` of the call without ``output`` in stdio.
+    """
+    choices = next((o.choices for o in tool.command.options if o.name == "format"), ())
+    value = options.get("format")
+    if isinstance(value, str) and value.strip() in choices:
+        _needs_output(value, None)
+
+
 async def _route(
     tool: CatalogTool, arguments: Mapping[str, Any]
 ) -> types.CallToolResult:
@@ -465,6 +481,8 @@ async def _route(
         options["limit"] = tool.limit[0]
     method, path = cast(tuple[str, str], tool.route)
     stream = tool.command.result == "stream"
+    if stream:
+        _binary_stream(tool, options)
     if method == "GET":
         query, body = _query(options), b""
     else:
@@ -486,7 +504,7 @@ async def _route(
         )
     if status != 200:
         raise RuntimeError(f"The REST route {method} {path} answered {status} {media}")
-    if media.startswith("application/json"):
+    if not stream:  # an envelope; a stream is an attachment, also JSON or GeoJSON
         text = data.decode("utf-8")
         return _answer(json.loads(text), text)
     if stopped:

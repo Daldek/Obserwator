@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Obserwator/schemas/obserwator-series-export-1.schema.json",
+  "title": "obserwator-series-export/1",
+  "description": "One station's series exported by `obserwator series export --format json` (ADR-014): the series version it comes from, the variables with their units and definitions, the provider's licence and attribution lines (ADR-012), and the data as columns, each an array of the values in date order. The columns are those of the CSV export, a value column named by its variable alone. Unknown fields are allowed: adding optional fields keeps the version.",
+  "type": "object",
+  "required": [
+    "schema",
+    "dataset",
+    "provider",
+    "station",
+    "series_version",
+    "year_type",
+    "time_unit",
+    "variables",
+    "license",
+    "attribution",
+    "columns"
+  ],
+  "properties": {
+    "schema": {"const": "obserwator-series-export/1"},
+    "dataset": {
+      "description": "Dataset key of the series",
+      "type": "string",
+      "pattern": "^[a-z]{2}\\.[a-z][a-z0-9]*\\.[a-z][a-z0-9_]*$"
+    },
+    "provider": {
+      "description": "Identifier of the dataset's provider, e.g. IMGW-PIB or CHMI",
+      "type": "string",
+      "minLength": 1
+    },
+    "station": {
+      "description": "Station code: nine IMGW-PIB digits or a WIGOS identifier",
+      "type": "string",
+      "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
+    },
+    "series_version": {
+      "description": "The series version exported, its directory relative to the root (the form of --version)",
+      "type": "string",
+      "pattern": "^series/versions/[a-z][a-z0-9_]*/[^/]+_[0-9a-f]{8}$"
+    },
+    "year_type": {
+      "description": "Convention of the year column",
+      "enum": ["hydrological", "calendar"]
+    },
+    "time_unit": {
+      "description": "The unit of a row: a day, a month or a half-year (winter, summer, the year)",
+      "enum": ["day", "month", "half_year"]
+    },
+    "variables": {
+      "description": "The exported variables in column order",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["unit", "note"],
+        "properties": {
+          "unit": {"type": "string", "minLength": 1},
+          "note": {
+            "description": "The definition the provider's format description gives, or null",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "license": {"$ref": "#/$defs/license"},
+    "attribution": {"$ref": "#/$defs/lines"},
+    "terms_notice": {"$ref": "#/$defs/lines"},
+    "columns": {
+      "type": "object",
+      "required": ["date", "year"],
+      "properties": {
+        "date": {
+          "description": "Start date of the row's period",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+        },
+        "year": {"type": "array", "items": {"type": "integer"}},
+        "period": {
+          "description": "Half-year of a row (half-year series only)",
+          "type": "array",
+          "items": {"enum": ["winter", "summer", "annual"]}
+        }
+      },
+      "patternProperties": {
+        "^(?!.*_source_flag$).*_flag$": {
+          "type": "array",
+          "items": {"enum": ["value", "missing", "no_phenomenon", "accumulated"]}
+        },
+        "_quality$": {
+          "description": "ČHMÚ QUALITY as published",
+          "type": "array",
+          "items": {"type": ["integer", "null"], "minimum": 0, "maximum": 5}
+        },
+        "_source_flag$": {
+          "description": "ČHMÚ FLAG verbatim",
+          "type": "array",
+          "items": {"type": ["string", "null"]}
+        },
+        "_(start|end)$": {
+          "description": "When the extremum of a half-year row occurred, from and to",
+          "type": "array",
+          "items": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?)?$"
+          }
+        },
+        "_occurrences$": {
+          "description": "Number of the merged provider rows of a half-year extremum",
+          "type": "array",
+          "items": {"type": ["integer", "null"], "minimum": 0}
+        }
+      },
+      "additionalProperties": {
+        "description": "The values of a variable, null without a value",
+        "type": "array",
+        "items": {"type": ["number", "null"]}
+      }
+    }
+  },
+  "$defs": {
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "license": {
+      "type": "object",
+      "required": ["id", "url", "terms_url"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "pattern": "^https://"},
+        "terms_url": {"type": ["string", "null"], "pattern": "^https://"}
+      }
+    }
+  }
+}

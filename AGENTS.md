@@ -80,6 +80,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `datasets list` — List the datasets of the registry: keys, providers, legacy aliases, variables and first year.
 - `datasets files` — List the source files of a dataset for given years or stations (offline, no download).
 - `datasets providers` — List the data providers: identifiers, countries, licenses, station code patterns, datasets.
+- `stations export` — Export the stations of the current catalogs as GeoJSON or CSV. [`output`: write; `force`: overwrite]
 - `pmaxtp url` — Build the PMAXTP API URL of a point (offline, without downloading).
 - `pmaxtp check` — Check the PMAXTP cell in the store without downloading data. [is a check]
 - `pmaxtp read` — Read a saved PMAXTP cell from the store (offline).
@@ -89,7 +90,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `series select` — Select stations, variables and years of the current series (without writing).
 - `series read` — Read the values and flags of one station's series from the store.
 - `series summary` — Show the coverage of stations and variables of a series from series.json (without pyarrow).
-- `series export` — Export the series of one station as CSV with the attribution of the data provider. [`output`: write; `force`: overwrite]
+- `series export` — Export one station's series as CSV, JSON or Parquet with the provider's attribution. [`output`: write; `force`: overwrite]
 - `commands list` — List the catalog commands: tool names, effects and routes.
 - `commands schema` — Describe a command or the whole catalog as obserwator-commands/1.
 - `commands guide` — Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or English. [`output`: write; `force`: overwrite]
@@ -122,7 +123,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 - Lists (`--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
-- Output of the CLI: `--json` (every command) prints the envelope as one JSON line on stdout — parse only that; without it stdout carries a short summary for a person in the language of `--lang` (`pl`, `en`). The data lines of `store export`, `series export` and `commands guide` without `--output` are the same in both modes.
+- Output of the CLI: `--json` (every command) prints the envelope as one JSON line on stdout — parse only that; without it stdout carries a short summary for a person in the language of `--lang` (`pl`, `en`). The data lines of the exports and `commands guide` without `--output` are the same in both modes.
 - Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
 
 ## Typical flows

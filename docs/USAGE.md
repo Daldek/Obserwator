@@ -408,6 +408,7 @@ Catalog commands (full list: `obserwator commands list`):
 | `obserwator series read` | `read_series` | — | `GET /api/v1/series/read` |
 | `obserwator series summary` | `summarize_series` | — | `GET /api/v1/series/summary` |
 | `obserwator series export` | `export_series` | `check_command` | `GET /api/v1/series/export` |
+| `obserwator stations export` | `export_stations` | `check_command` | `GET /api/v1/stations/export` |
 | `obserwator commands list` | `list_commands` | — | `GET /api/v1/commands/list` |
 | `obserwator commands schema` | `command_schema` | — | `GET /api/v1/commands/schema` |
 | `obserwator commands guide` | `agent_guide` | `check_command` | `GET /api/v1/commands/guide` |
@@ -435,6 +436,52 @@ obserwator datasets download -d hydro/miesieczne -y 2023 -o dane     # files in 
 obserwator datasets download -d hydro/miesieczne -y 2023 -o dane --force  # replaces existing files
 obserwator datasets download -d hydro/miesieczne -y 2023             # no target: store in <data_dir>/obserwator
 ```
+
+### Exports (ADR-014)
+
+The stations of the current catalogs as GeoJSON or CSV, and one station's series as CSV, JSON or
+Parquet; every file carries the attribution lines of its providers (ADR-012). JSON Schemas:
+`schemas/obserwator-stations-export-1.schema.json`, `schemas/obserwator-series-export-1.schema.json`.
+
+```python
+from obserwator import export_series, export_stations
+
+geojson = "".join(export_stations("/data/obserwator"))            # both providers, with series
+export_stations("/data/obserwator", provider="CHMI", kind="hydro", series=False,
+                format="csv", output="chmi_hydro.csv")
+document = "".join(export_series(root="/data/obserwator", dataset="pl.imgw.hydro_daily",
+                                 station="150160180", format="json"))
+export_series(root="/data/obserwator", dataset="pl.imgw.hydro_daily", station="150160180",
+              format="parquet", output="klodzko.parquet")       # Parquet needs output
+```
+
+```bash
+obserwator stations export --root /data/obserwator --output stations.geojson
+obserwator series export --root /data/obserwator -d pl.imgw.hydro_daily -s 150160180 -f parquet --output k.parquet
+curl -OJ 'http://127.0.0.1:8000/api/v1/series/export?dataset=pl.imgw.hydro_daily&station=150160180&format=parquet'
+```
+
+- **GeoJSON** (`obserwator-stations-export/1`): an RFC 7946 FeatureCollection; `catalogs` names
+  each catalog read (`provider`, `dataset`, `version` relative to the root, `label`,
+  `downloaded_at`, `stations`, `license` `{id, url, terms_url}`, its `attribution` and
+  `terms_notice`), `series` the series read (`provider`, `dataset`, `version`), `attribution` and
+  `terms_notice` all lines; a feature has the station code as `id`, a `Point` `[lon, lat]` or
+  null, the catalog's properties, `provider` and `series`
+  (`{"pl.imgw.hydro_daily": {"first": "1951-11-01", "last": "2025-10-31", "variables": ["H", "Q", "T"]}}`,
+  read from `series.json`, no pyarrow).
+- **Stations CSV:** `station_code,name,kind,provider`, the other properties sorted (ČHMÚ
+  `thresholds` as JSON), `latitude,longitude` (empty without a location), `datasets` (`;`), then
+  `attribution_source,attribution_processed,attribution,terms_notice`; each provider's rows start
+  with its lines.
+- **Series JSON** (`obserwator-series-export/1`): `dataset`, `provider`, `station`,
+  `series_version` (`series/versions/<slug>/<label>_<sha8>`), `year_type`, `time_unit`,
+  `variables` (`unit`, `note`), `license`, `attribution`, `terms_notice`, and `columns`: the CSV's
+  data columns as arrays (a value column by its variable name, `null` without a value).
+- **Series Parquet:** the CSV's data columns with their names, typed (`date32`, `int32`, `float64`,
+  `string`, `int8` quality, `timestamp[us]` extremum times); the file metadata holds
+  `obserwator_schema`, `dataset`, `provider`, `station`, `series_version`, `year_type`,
+  `time_unit`, `units`, `variable_notes`, `license`, `attribution`, `terms_notice` (JSON text).
+  Without `output` (Python, CLI, MCP) it is a `validation_error` (`details.reason="output_required"`).
 
 ## REST API
 

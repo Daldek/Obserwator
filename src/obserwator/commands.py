@@ -1,5 +1,5 @@
 """
-Catalog of the 30 data commands and the single dispatcher of public functions.
+Catalog of the 31 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -189,6 +189,7 @@ _STORE_FUNCTIONS = (
     "read_series",
     "summarize_series",
     "export_series",
+    "export_stations",
 )
 # Public module of every function the catalog dispatches to (resolved per call).
 _MODULES = {
@@ -655,6 +656,38 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         env_root_when={"source": "store"},
     ),
     _command(
+        "stations export",
+        message("commands.stations_export_description"),
+        (
+            _ROOT,
+            replace(_PROVIDER, help=message("commands.stations_find_provider_help")),
+            replace(_FAMILY, help=message("commands.stations_find_family_help")),
+            _option(
+                "series",
+                "bool",
+                message("commands.stations_export_series_help"),
+                default=True,
+            ),
+            _option(
+                "format",
+                "choice",
+                message("commands.stations_export_format_help"),
+                choices=("geojson", "csv"),
+                default="geojson",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_stations",
+        check="check_command",
+        result="stream",
+        method="GET",
+        requires=_NEEDS_OUTPUT,
+        result_type="str",
+        rules=(_OUTPUT_RULE,),
+    ),
+    _command(
         "current hydro",
         message("commands.current_hydro_description"),
         (
@@ -1077,7 +1110,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
                 "format",
                 "choice",
                 message("commands.series_export_format_help"),
-                choices=("csv",),
+                choices=("csv", "json", "parquet"),
                 default="csv",
                 aliases=("-f",),
             ),
@@ -1091,7 +1124,13 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         one_of=_VERSION_OR_DATASET,
         requires=_NEEDS_OUTPUT,
         result_type="str",
-        rules=(*_SERIES_RULES, _START_RULE, _HALF_YEAR_RULE, _OUTPUT_RULE),
+        rules=(
+            *_SERIES_RULES,
+            _START_RULE,
+            _HALF_YEAR_RULE,
+            _OUTPUT_RULE,
+            message("commands.series_export_rule_parquet"),
+        ),
     ),
 )
 # The description commands close the catalog: commands schema names every command.
@@ -1183,7 +1222,7 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
 
 def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
     """
-    Return the catalog of all 38 data commands or its view for one provider.
+    Return the catalog of all 31 data commands or its view for one provider.
 
     Parameters
     ----------
@@ -1634,6 +1673,8 @@ def _rules_series(options: Options) -> None:
             value=end.isoformat(),
         )
     _rules_result_file(options)
+    # Parquet is one binary file: there are no lines to stream without output.
+    _export._needs_output(options.get("format"), options.get("output"))
 
 
 def _rules_result_file(options: Options) -> None:
@@ -1648,6 +1689,7 @@ _RULES: dict[str, Rule] = {
     "datasets files": _rules_archives,
     "datasets download": _rules_download,
     "stations find": _rules_stations,
+    "stations export": _rules_result_file,
     "pmaxtp fetch": _rules_coordinates,
     "pmaxtp url": _rules_coordinates,
     "pmaxtp check": _rules_coordinates,
@@ -2701,6 +2743,15 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     return lines
 
 
+def _stations_export_lines(options: Options, result: object) -> Attribution:
+    """The lines of the catalogs ``stations export`` reads (their series add none)."""
+    return _export._stations_attribution(
+        cast("PathArg | None", options.get("root")),
+        cast("str | None", options.get("provider")),
+        cast("str | None", options.get("kind")),
+    )
+
+
 def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
     """Resolver of a command whose data have fixed origins (processed)."""
     lines = attribution(*origins)
@@ -2712,6 +2763,7 @@ def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
 _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "datasets download": _download_lines,
     "stations find": _stations_lines,
+    "stations export": _stations_export_lines,
     "current hydro": _origin_lines("imgw"),
     "current meteo": _origin_lines("imgw"),
     "current synop": _origin_lines("imgw"),
@@ -2750,10 +2802,11 @@ def run_command(
     without ``limit``), where ``cursor`` names ``start`` (0 without it), and
     ``page`` gives their ``total``, whether more follow (``truncated``) and
     the ``next_cursor`` that fetches them. A function result that is no
-    document gets one (``pmaxtp url``: `PMaXTPUrl`). Stream
-    commands (``store export``, ``series export``, ``commands guide``
-    without ``output``) return the iterator of text lines as ``result``; with
-    ``output`` they write the one file and return its `OutputReport`; an
+    document gets one (``pmaxtp url``: `PMaXTPUrl`). Stream commands
+    (``store export``, ``stations export``, ``series export``, ``commands
+    guide`` without ``output``) return the iterator of text lines as
+    ``result``; with ``output`` they write the one file and return its
+    `OutputReport` (``series export --format parquet`` needs ``output``); an
     error while iterating is raised from the iterator.
 
     Parameters
@@ -3230,6 +3283,24 @@ def _check_series(command: str) -> Checker:
     return check
 
 
+def _check_stations_export(options: Options, hooks: Hooks) -> StorePlan:
+    root = cast(Path, options["root"])
+    try:
+        catalogs = _export._catalogs(
+            _export._data_root(root), options.get("provider"), options.get("kind")
+        )
+    except ObserwatorError as exc:
+        actions = [PlanAction("stations export", "check_failed", reason(exc))]
+    else:
+        what = message(
+            "commands.export_stations",
+            catalogs=", ".join(catalog.version for catalog in catalogs),
+            format=options.get("format", "geojson"),
+        )
+        actions = _export_actions("stations export", what, options)
+    return _plan(root, actions)
+
+
 def _check_commands_guide(options: Options, hooks: Hooks) -> StorePlan:
     # The guide is rendered offline from the package; the plan names its target.
     format_, language = options.get("format", "agents"), options.get("lang", "en")
@@ -3259,6 +3330,7 @@ _CHECKS: dict[str, Checker] = {
     "datasets download": _check_download,
     "datasets providers": _check_datasets_providers,
     "stations find": _check_stations,
+    "stations export": _check_stations_export,
     "current hydro": _check_current("hydro"),
     "current meteo": _check_current("meteo"),
     "current synop": _check_current("synop"),
@@ -3526,6 +3598,9 @@ _MEANINGS = {
     ("method", "AMP"): message("commands.meaning_method_amp"),
     ("format", "csv"): message("commands.meaning_format_csv"),
     ("format", "jsonl"): message("commands.meaning_format_jsonl"),
+    ("format", "json"): message("commands.meaning_format_json"),
+    ("format", "parquet"): message("commands.meaning_format_parquet"),
+    ("format", "geojson"): message("commands.meaning_format_geojson"),
     ("format", "agents"): message("commands.meaning_format_agents"),
     ("format", "llms"): message("commands.meaning_format_llms"),
     ("year_type", "hydrological"): message("commands.meaning_year_type_hydrological"),

@@ -275,6 +275,21 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
 
 ### Added
 
+- **Harmonized exports (ADR-014, Obserwator GUI plan S0, Nogat plan O3):** `export_stations` and
+  the command `stations export` (`GET /api/v1/stations/export`, MCP `obserwator_stations_export`)
+  export the stations of the current catalogs of the chosen providers as GeoJSON
+  (`obserwator-stations-export/1`, an RFC 7946 FeatureCollection with the members `schema`,
+  `catalogs`, `series`, `attribution`, `terms_notice`; each feature with the catalog's properties,
+  `provider` and the current series that hold the station) or as CSV (one row per station,
+  `latitude`, `longitude`, `datasets` and the attribution columns of `series export`);
+  `--kind`, `--provider`, `--no-series`. `series export` gains `--format json`
+  (`obserwator-series-export/1`, columnar, with the series version, units, definitions, licence
+  and lines) and `--format parquet` (the CSV's columns typed, the same fields as file metadata;
+  it needs `--output`, REST answers it as an attachment `application/vnd.apache.parquet`); the
+  CSV stays byte for byte (`tests/fixtures/export_golden/series_export_*.csv`). JSON Schemas of
+  both documents in `schemas/`. IMGW-PIB variables carry the definitions of IMGW-PIB's format
+  descriptions (`variable_notes`), also in the metadata of newly built IMGW-PIB series.
+  MCP over HTTP answers a JSON or GeoJSON export as a stream (no longer taken for an envelope).
 - **`command_for_version(version, *, root=None)` (ADR-008, Nogat ECO-054, plan 2026-10-31 step 3):**
   the data command that fetches a stored version again, rebuilt offline and read-only from its
   sidecar (`obserwator-meta/1`) and the store layout, as the `CommandCall` that `parse_command` reads

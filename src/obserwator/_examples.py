@@ -208,6 +208,20 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             ),
         ),
     ),
+    "stations export": (
+        Example(
+            "obserwator stations export --root /data/obserwator --provider CHMI --kind hydro",
+            '{"type":"FeatureCollection","schema":"obserwator-stations-export/1",',
+        ),
+        Example(
+            "obserwator stations export --root /data/obserwator --format csv "
+            "--output /data/stations.csv --json",
+            {
+                "output": "/data/stations.csv",
+                "files": [{"path": "/data/stations.csv", "status": "written"}],
+            },
+        ),
+    ),
     "current hydro": (
         Example(
             "obserwator current hydro --station 149190310 --json",
@@ -487,6 +501,19 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             {
                 "output": "/data/raba.csv",
                 "files": [{"path": "/data/raba.csv", "status": "written"}],
+            },
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format json",
+            '{"schema":"obserwator-series-export/1","dataset":"pl.imgw.hydro_daily",',
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format parquet --output /data/raba.parquet --json",
+            {
+                "output": "/data/raba.parquet",
+                "files": [{"path": "/data/raba.parquet", "status": "written"}],
             },
         ),
     ),

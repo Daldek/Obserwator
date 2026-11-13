@@ -51,6 +51,7 @@ EFFECTS = {
     "store sync": ("add", True, {"output_dir": "add", "force": "replace"}),
     "store catalog": ("add", True, {}),
     "store export": ("none", False, {"output": "add", "force": "replace"}),
+    "stations export": ("none", False, {"output": "add", "force": "replace"}),
     "series build": ("add", False, {}),
     "series select": ("none", False, {}),
     "series read": ("none", False, {}),
@@ -71,6 +72,7 @@ LOCAL_WRITES = {
     ("pmaxtp sync", "force"),
     ("store export", "force"),
     ("series export", "force"),
+    ("stations export", "force"),
     ("commands guide", "force"),
 }
 

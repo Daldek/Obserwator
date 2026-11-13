@@ -514,11 +514,12 @@ def test_imgw_series_keep_the_layout_of_3_0_0(root):
         for entry in index["stations"].values()
     )
     table = station_table(report, next(iter(index["stations"])))
-    # 3.0.0 keys plus the lines of ADR-012 D4
+    # 3.0.0 keys plus the lines of ADR-012 D4 and the definitions of ADR-014 D5
     assert set(table.schema.metadata) == {
         b"obserwator_schema",
         b"dataset",
         b"units",
+        b"variable_notes",
         b"attribution",
         b"terms_notice",
     }

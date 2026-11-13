@@ -1094,6 +1094,11 @@ RUNS = [
     ),
     Run("series export", {"dataset": METEO, "station": FULL}, "served"),
     Run(
+        "series export", {"dataset": METEO, "station": FULL, "format": "json"}, "served"
+    ),
+    Run("stations export", {}, "served"),
+    Run("stations export", {"provider": "CHMI", "format": "csv"}, "served"),
+    Run(
         "series export",
         {
             "dataset": HYDRO,
