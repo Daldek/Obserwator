@@ -24,6 +24,7 @@ from obserwator.datasets import (
     License,
     YearsArg,
     _archive_from_path,
+    _station_file,
     datasets,
     get_dataset,
     get_provider,
@@ -914,35 +915,27 @@ def _archive_slot(server_path: str) -> str | None:
     Slot ``archive:<key>:<selector>`` of a stored server path.
 
     The owning dataset is the stored one with the longest matching server
-    directory. Station lists accept only their published file name, other
+    directory; station-source datasets (lists and station metadata) accept
+    only their own file names, so two of them may share a directory, other
     datasets a selector with a folder; any other path has no slot.
     """
-    descriptor = next(
-        (
-            item
-            for item in _archive_descriptors()
-            if server_path.startswith(f"{item.server_dir}/")
-        ),
-        None,
-    )
-    if descriptor is None:
-        return None
-    selector = server_path.removeprefix(f"{descriptor.server_dir}/")
-    if descriptor.time_unit == "station_list":
-        names = {
-            PurePosixPath(item.server_path).name
-            for item in station_source_files(provider=descriptor.provider)
-            if item.dataset == descriptor.key
-        }
-        valid = selector in names
-    elif descriptor.archive_scope != "country":
-        # Per-station files follow the file-name grammar of the dataset.
-        valid = _archive_from_path(descriptor.key, server_path) is not None
-    else:
-        valid = "/" in selector
-    if not valid or ":" in selector:
-        return None
-    return f"archive:{descriptor.key}:{selector}"
+    for descriptor in _archive_descriptors():
+        if not server_path.startswith(f"{descriptor.server_dir}/"):
+            continue
+        selector = server_path.removeprefix(f"{descriptor.server_dir}/")
+        if descriptor.time_unit == "station_list":
+            if _station_file(descriptor, selector) is None:
+                continue
+            valid = True
+        elif descriptor.archive_scope != "country":
+            # Per-station files follow the file-name grammar of the dataset.
+            valid = _archive_from_path(descriptor.key, server_path) is not None
+        else:
+            valid = "/" in selector
+        if not valid or ":" in selector:
+            return None
+        return f"archive:{descriptor.key}:{selector}"
+    return None
 
 
 def _scanned_archive_slot(
@@ -2008,10 +2001,21 @@ def read_archive(version: PathArg, /) -> Iterator[NormalizedRecord]:
         )
     if descriptor.time_unit == "station_list":
         kind = next(
-            k
-            for k, a in _station_lists(descriptor.provider).items()
-            if a.dataset == descriptor.key
+            (
+                k
+                for k, a in _station_lists(descriptor.provider).items()
+                if a.dataset == descriptor.key
+            ),
+            None,
         )
+        if kind is None:
+            raise ObserwatorValidationError(
+                message(
+                    "reader.version_station_metadata",
+                    main=main,
+                    dataset=meta.dataset,
+                )
+            )
         option = (
             ""
             if descriptor.provider == "IMGW-PIB"

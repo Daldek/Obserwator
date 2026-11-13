@@ -148,7 +148,7 @@ Every live function has an `*_async` twin with identical arguments.
 |`validate_command(command, /, *, options)`|Normalized options or `ObserwatorValidationError` with `details.option`|
 |`format_command(command, /, *, options, run=None)`|Canonical CLI command line of a call; `run={"check": True}` adds `--check`|
 |`parse_command(line, /)`|An `obserwator` line (text or words) → `CommandCall(command, options, run)` with the texts the CLI passes (`run`: `check`); a mistake of the line is `validation_error`, `details.reason="usage"`|
-|`command_for_version(version, *, root=None)`|Offline, read-only: the `CommandCall` that fetches a stored version again, from its sidecar and the layout (`version` relative to `root`, default `store_root()`: directory, main file, sidecar, PMAXTP `response.json` or a series station file); the shape `parse_command` gives, with the absolute `root`. Archives → `store sync` (IMGW-PIB `--datasets --years [--months]`, ČHMÚ `--datasets --stations [--years]`), station lists and catalogs → `store catalog --provider`, series → `series build --dataset`, PMAXTP → `pmaxtp sync` of its point and cell. Refusals: `unsupported` with `details.reason="command_not_rebuildable"` (catalog built with `user_locations`, sidecar without a needed field, a file `store sync` does not select), `not_found`, `data_error`; ADR-008|
+|`command_for_version(version, *, root=None)`|Offline, read-only: the `CommandCall` that fetches a stored version again, from its sidecar and the layout (`version` relative to `root`, default `store_root()`: directory, main file, sidecar, PMAXTP `response.json` or a series station file); the shape `parse_command` gives, with the absolute `root`. Archives → `store sync` (IMGW-PIB `--datasets --years [--months]`, ČHMÚ `--datasets --stations [--years]`), station lists and station metadata → `store sync --datasets <key>` (ADR-015), catalogs → `store catalog --provider`, series → `series build --dataset`, PMAXTP → `pmaxtp sync` of its point and cell. Refusals: `unsupported` with `details.reason="command_not_rebuildable"` (catalog built with `user_locations`, sidecar without a needed field, a file `store sync` does not select), `not_found`, `data_error`; ADR-008|
 |`run_command(command, /, *, options)`|Run a command → `CommandResult` (list commands → `Page`)|
 |`check_command(command, /, *, options)`|Plan of a command without side effects → `CommandResult`|
 |`agent_guide(*, format="agents", lang="en", output=None, force=False)`|Agent guide `AGENTS.md`/`llms.txt`: line iterator, or with `output` one plain file and its `OutputReport`|
@@ -203,8 +203,8 @@ The command catalog is the single source of options, validation, help texts and 
   - Encoding: CP1250
 
 ### Real-time API
-- **Hydro data**: `https://danepubliczne.imgw.pl/api/data/hydro`
-- **Meteo data**: `https://danepubliczne.imgw.pl/api/data/meteo`
+- **Hydro data**: `https://danepubliczne.imgw.pl/api/data/hydro` (also `pl.imgw.hydro_now`: `store sync` keeps each station's code, name, river and coordinates for the catalog, never the measurements; ADR-015 D5)
+- **Meteo data**: `https://danepubliczne.imgw.pl/api/data/meteo` (also `pl.imgw.meteo_now`, likewise)
 - **Synop data**: `https://danepubliczne.imgw.pl/api/data/synop`
 - **Warnings**: `https://danepubliczne.imgw.pl/api/data/warningshydro`, `.../warningsmeteo`
 
@@ -222,9 +222,9 @@ The command catalog is the single source of options, validation, help texts and 
 - **Hydro daily** (`cz.chmi.hydro_daily`): `https://opendata.chmi.cz/hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON per station and calendar year (from 1887); `HD`/`QD`/`TD` → H [cm], Q [m3/s], T [°C]
 - **Meteo daily** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — four CSV files per station with the whole station history; `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
 - **Station lists** (`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`): `hydrology/historical/metadata/meta1.json`, `meteorology/climate/historical/metadata/meta1.json` (JSON envelope `zaznamID`/`datumVytvoreni` changes with every regeneration → canonical form `chmi-json/1`)
-- **Catalog sources**: `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
+- **Catalog sources** (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, stored by `store sync --datasets`; ADR-015): `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
 - **Inventory and freshness**: nginx directory listings (name, mtime to the minute, size): one GET instead of a HEAD per file; requests are sequential with `User-Agent: obserwator/<version>`; license CC BY 4.0 (attribution from the registry)
-- Out of scope: `now`/`recent` data, hourly data, CAP warnings, PMAXTP
+- Out of scope: `now`/`recent` measurements, hourly data, CAP warnings, PMAXTP
 
 ## Command Catalog (CLI, REST and MCP)
 
@@ -316,7 +316,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 
 ## Data Structure
 
-### Dataset registry (17 descriptors, 2 providers)
+### Dataset registry (21 descriptors, 2 providers)
 
 |Key|Legacy alias|Store|
 |---|---|---|
@@ -326,6 +326,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.meteo_climate_daily`|`meteo/dobowe/klimat`|yes|
 |`pl.imgw.meteo_precip_daily`|`meteo/dobowe/opad`|yes|
 |`pl.imgw.hydro_stations`, `pl.imgw.meteo_stations`|—|yes (station lists)|
+|`pl.imgw.hydro_now`, `pl.imgw.meteo_now`|—|yes (station metadata of the current-data API, derived: code, name, river, coordinates; ADR-015 D5)|
 |`pl.imgw.pmaxtp`|—|yes (grid cells)|
 |`pl.imgw.hydro_phenomena`|— (`hydro/dobowe` with month 13)|download only|
 |`pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`|`meteo/miesieczne/klimat\|opad\|synop`|download only|
@@ -333,8 +334,9 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`cz.chmi.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
 |`cz.chmi.meteo_daily`|—|yes (4 files per station: SRA, T, TMA, TMI; no `years`)|
 |`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|
+|`cz.chmi.hydro_now`, `cz.chmi.meteo_now`|—|yes (`now` station metadata, canonical form `chmi-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 12 datasets, store/series commands 7. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`. `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 12 datasets, `store check|sync` the 7 measurement datasets and the 8 station sources (lists and metadata, `time_unit="station_list"`, a call of their own; ADR-015), series commands 7. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):

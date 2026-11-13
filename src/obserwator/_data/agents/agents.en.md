@@ -4,7 +4,7 @@
 
 ## What Obserwator is
 
-Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned store (a plain directory whose versions never change and are identified by SHA-256) or are written as plain files, and station series are read offline from the store.
+Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned store (immutable versions identified by SHA-256) or plain files; series and station catalogs are built from the store and read offline.
 
 Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), IMGW-PIB daily synoptic archives, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
@@ -27,11 +27,11 @@ One command in every interface: CLI `obserwator <group> <command> --option value
 
 - **REST:** the server sets the store root (`OBSERWATOR_ROOT`), `version` is relative to it, local options do not exist; writing (POST without `?check=true`) must be enabled on the server and needs the `X-API-Key` header.
 - **MCP:** `obserwator mcp` (stdio) starts without writes — writing commands return a plan (`check` fixed to `true`); the user enables writes (`--allow-writes`), and even then `check` is `true` by default. `/mcp` of the REST server (`OBSERWATOR_MCP_ENABLED=true`) reads and plans only.
-- **Language:** machine output is English (this guide, the envelope of `--json`, error lines, MCP, REST). Polish only on request: `--lang pl` (`commands list|schema|guide`; for the other commands the language of the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
+- **Language:** machine output is English; Polish on request: `--lang pl` (`commands list|schema|guide`, else the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
 ## Envelope, statuses and errors
 
-A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}` (each once, e.g. `license_terms`). List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
+A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}`. List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
 
 <!-- obserwator:statuses -->
 
@@ -68,8 +68,8 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
-5. Do not edit, move or delete store files (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — the store only grows.
-6. Do not download "just in case": narrow `years`, `months` and `stations`; do not mix providers in one call with `stations`.
+5. Do not edit, move or delete files of a store — it only grows.
+6. Do not download "just in case": narrow `years`, `months` and `stations`.
 7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.
 9. Show the `attribution` and `terms_notice` lines verbatim with the data and in what you make of it (the `license_terms` notice too).

@@ -13,7 +13,7 @@ import socket
 import time
 import uuid
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
@@ -24,6 +24,7 @@ from obserwator.datasets import (
     ArchiveFile,
     DatasetDescriptor,
     _license_document,
+    _station_file,
     get_dataset,
     get_provider,
 )
@@ -81,6 +82,42 @@ def _canonical(value: object) -> bytes:
         json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         + "\n"
     ).encode("utf-8")
+
+
+def _station_metadata(data: bytes, fields: tuple[str, ...], *, url: str) -> bytes:
+    """
+    The station metadata of a current-data answer: each station with ``fields`` only.
+
+    The answer of IMGW-PIB's current-data API also carries operational data
+    (measurements, their times, warning and alarm levels), which are never
+    archived (ADR-015 D5). The file keeps the fields of ``fields`` that a
+    station has, in that order, the stations ordered by the first field (the
+    station code), as compact UTF-8 JSON with a final line feed, so an answer
+    whose station metadata did not change gives the same bytes.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the answer is not a JSON list of objects.
+    """
+    try:
+        rows = json.loads(data)
+    except ValueError as exc:
+        raise ObserwatorDataError(
+            message("writer.station_answer_not_json", url=url, exc=exc),
+            details={"url": url},
+        ) from exc
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise ObserwatorDataError(
+            message("writer.station_answer_not_list", url=url), details={"url": url}
+        )
+    kept = sorted(
+        ({name: row[name] for name in fields if name in row} for row in rows),
+        key=lambda row: str(row.get(fields[0]) or ""),
+    )
+    return (json.dumps(kept, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+        "utf-8"
+    )
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -1372,7 +1409,11 @@ def write_archive(
         raise ObserwatorValidationError(
             message("writer.path_does_not_belong_dataset", dataset=archive.dataset)
         )
-    if relative.suffix.lower() not in _SUFFIXES.get(provider.id, ()):
+    if (
+        _station_file(descriptor, relative.name) is None
+        if descriptor.time_unit == "station_list"
+        else relative.suffix.lower() not in _SUFFIXES.get(provider.id, ())
+    ):
         raise ObserwatorValidationError(
             message("writer.disallowed_type_archive", relative=relative)
         )
@@ -1380,6 +1421,15 @@ def write_archive(
     slot = _validate_slot(path, slot_dir)
     filename = relative.name
     form = descriptor.content_form
+    if descriptor.kept_fields:
+        # Operational data are never archived (ADR-015 D5): of the answer only
+        # the station fields of the dataset are written.
+        response = replace(
+            response,
+            data=_station_metadata(
+                response.data, descriptor.kept_fields, url=response.url
+            ),
+        )
     # A file that does not meet the dataset's form is rejected before any write.
     content = (
         None
@@ -1495,6 +1545,11 @@ def write_archive(
                     "last_modified": response.last_modified,
                     "content_length": response.content_length,
                 },
+                **(
+                    {"kept_fields": list(descriptor.kept_fields)}
+                    if descriptor.kept_fields
+                    else {}
+                ),
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)

@@ -66,6 +66,8 @@ _REGISTRY = [
     ),
     ("pl.imgw.hydro_stations", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_stations", "meteo", True, "station_list", "none", None, None),
+    ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
+    ("pl.imgw.meteo_now", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.pmaxtp", None, True, "cell", "none", None, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
@@ -111,10 +113,12 @@ _CHMI_KEYS = [
     "cz.chmi.meteo_daily",
     "cz.chmi.hydro_stations",
     "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
 ]
 
 
-def test_registry_has_thirteen_imgw_descriptors_with_spec_fields():
+def test_registry_has_fifteen_imgw_descriptors_with_spec_fields():
     descriptors = datasets(provider="IMGW-PIB")
     assert [
         (
@@ -141,11 +145,11 @@ def test_datasets_kind_filter():
     meteo = datasets(kind="meteo")
     assert [d.key for d in meteo] == [
         row[0] for row in _REGISTRY if row[1] == "meteo"
-    ] + ["cz.chmi.meteo_daily", "cz.chmi.meteo_stations"]
+    ] + ["cz.chmi.meteo_daily", "cz.chmi.meteo_stations", "cz.chmi.meteo_now"]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
-    ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations"]
-    assert len(meteo) == 9
+    ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
+    assert len(meteo) == 11
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"

@@ -33,7 +33,7 @@ from obserwator.store import build_catalog, build_series, write_archive
 from obserwator.store.export import _number
 from obserwator.testing import build_fixture_store
 from tests.contract.support import trailing_lines
-from tests.unit.test_store_catalog import mock_sources
+from tests.unit.test_store_catalog import sync_sources
 
 SCHEMAS = Path(__file__).parents[2] / "schemas"
 GOLDEN = Path(__file__).parents[1] / "fixtures" / "export_golden"
@@ -419,7 +419,7 @@ def test_a_location_of_the_hydro_imgw_pl_map_adds_its_lines(
         "station_code,latitude,longitude\n149190312,50.0512,19.9512\n", encoding="utf-8"
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         build_catalog(store)
 
     document = json.loads(text(export_stations(store, series=False)))

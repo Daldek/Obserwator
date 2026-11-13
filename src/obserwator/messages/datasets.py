@@ -165,6 +165,14 @@ MESSAGES = {
         "List of meteorological stations",
         "Lista stacji meteorologicznych",
     ),
+    "title_hydro_now": Text(
+        "Current hydrological data: station locations",
+        "Bieżące dane hydrologiczne: położenie stacji",
+    ),
+    "title_meteo_now": Text(
+        "Current meteorological data: station locations",
+        "Bieżące dane meteorologiczne: położenie stacji",
+    ),
     "title_pmaxtp": Text(
         "Probable maximum precipitation PMAXTP",
         "Opady maksymalne prawdopodobne PMAXTP",
@@ -328,5 +336,13 @@ MESSAGES = {
     "title_chmi_meteo_stations": Text(
         "ČHMÚ — list of meteorological stations",
         "ČHMÚ — wykaz stacji meteorologicznych",
+    ),
+    "title_chmi_hydro_now": Text(
+        "ČHMÚ — current metadata of hydrological stations",
+        "ČHMÚ — bieżące metadane stacji hydrologicznych",
+    ),
+    "title_chmi_meteo_now": Text(
+        "ČHMÚ — current metadata of meteorological stations",
+        "ČHMÚ — bieżące metadane stacji meteorologicznych",
     ),
 }

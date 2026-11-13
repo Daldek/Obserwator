@@ -20,7 +20,10 @@ from obserwator._parsing.chmi import iter_stations, parse_listing
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
 from obserwator.datasets import (
+    _CHMI_METEO_NOW_FILE,
     ProviderDescriptor,
+    _station_files,
+    get_dataset,
     get_provider,
     providers,
     station_source_files,
@@ -163,14 +166,15 @@ def _live_sources(
 ) -> list[_LiveSource]:
     """Live station list of each provider and family, in search order."""
     # The current ČHMÚ metadata, as the first source of its catalog (§7.2).
-    from obserwator.store.catalog import _CHMI_HYDRO_NOW, _CHMI_METEO_NOW_DIR
-
     sources: list[_LiveSource] = []
     for owner in owners:
         if owner.id == "CHMI":
-            hydro = _LiveSource(owner, "hydro", owner.base_url + _CHMI_HYDRO_NOW)
+            hydro = _LiveSource(
+                owner, "hydro", _station_files("cz.chmi.hydro_now")[0].url
+            )
+            meteo_now = get_dataset("cz.chmi.meteo_now")
             meteo = _LiveSource(
-                owner, "meteo", owner.base_url + _CHMI_METEO_NOW_DIR, listing=True
+                owner, "meteo", f"{owner.base_url}{meteo_now.server_dir}/", listing=True
             )
         else:
             hydro_list, meteo_list = station_source_files(provider=owner.id)
@@ -202,8 +206,6 @@ def _identity(source: _LiveSource) -> tuple[Mapping[str, str] | None, str]:
 
 def _newest(source: _LiveSource, content: bytes) -> str:
     """URL of the newest ``meta1-<YYYYMMDD>.json`` in the listing of ``source``."""
-    from obserwator.store.catalog import _CHMI_METEO_NOW_FILE
-
     names = sorted(
         entry.name
         for entry in parse_listing(content, url=source.url)

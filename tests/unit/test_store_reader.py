@@ -43,11 +43,13 @@ from obserwator.store import (
     store_info,
     summarize_series,
     sync_pmaxtp,
+    sync_store,
     write_archive,
 )
 from obserwator.store.reader import _reference_signal
 from obserwator.store.types import Observation, SeriesSelection
 from tests.contract.support import schema_errors
+from tests.unit.test_store_catalog import IMGW_SOURCES
 
 # ``obserwator.datasets`` as a module: the package attribute is the ``datasets`` function.
 DATASETS_MODULE = importlib.import_module("obserwator.datasets")
@@ -156,12 +158,14 @@ def store_archives(root, dataset, years, months=None, *, signal=SIGNAL):
 
 
 def record_catalog_sources(router):
+    """Recorded station sources of the IMGW-PIB catalog and the PMAXTP cell."""
     headers = {"ETag": '"list-v1"', "Last-Modified": SIGNAL[1]}
     for archive in station_source_files():
         body = (FIXTURES / "archives" / archive.server_path).read_bytes()
         router.get(archive.url).mock(
             return_value=httpx.Response(200, content=body, headers=headers)
         )
+        router.head(archive.url).mock(return_value=httpx.Response(200, headers=headers))
     for case in ("hydro_current", "meteo_current"):
         router.get(RECORDINGS[case]["url"]).mock(
             return_value=httpx.Response(200, json=RECORDINGS[case]["json"])
@@ -216,6 +220,7 @@ def complete(tmp_path_factory):
     }
     with respx.mock(assert_all_called=False) as router:
         record_catalog_sources(router)
+        sync_store(root, datasets=IMGW_SOURCES)
         catalog = build_catalog(root)
         cell = sync_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01)
     set_read_only(root, True)
@@ -273,10 +278,12 @@ def test_every_reader_works_on_read_only_store_without_writes_or_network(
         DAILY_2024,
         "archive:pl.imgw.hydro_stations:lista_stacji_hydro.csv",
         "archive:pl.imgw.meteo_stations:wykaz_stacji.csv",
+        "archive:pl.imgw.hydro_now:hydro",
+        "archive:pl.imgw.meteo_now:meteo",
     } <= set(slots)
-    assert (
-        len(entries) == 13
-    )  # 2 daily + 1 monthly + 3 semi-annual + 2 station lists, 3 series, catalog, cell
+    # 2 daily + 1 monthly + 3 semi-annual archives, 4 station sources, 3 series,
+    # catalog, cell
+    assert len(entries) == 15
     assert [entry.slot for entry in iter_store(root, kind="series")] == [
         SERIES_DAILY,
         "series:pl.imgw.hydro_monthly",
@@ -1209,24 +1216,17 @@ def test_reference_signal_is_the_newest_observation_of_the_current_version(
 
 
 def test_registers_change_no_version_choice_of_series_or_catalog(tmp_path):
-    def catalog_sources(router):
-        record_catalog_sources(router)
-        headers = {"ETag": '"list-v1"', "Last-Modified": SIGNAL[1]}
-        for archive in station_source_files():
-            router.head(archive.url).mock(
-                return_value=httpx.Response(200, headers=headers)
-            )
-
     outcomes = {}
     for name in ("plain", "observed"):
         root = init_store(tmp_path / name).root
         store_archives(root, DAILY, [2024])
         with respx.mock(assert_all_called=False) as router:
-            catalog_sources(router)
+            record_catalog_sources(router)
+            sync_store(root, datasets=IMGW_SOURCES)
             build_catalog(root)
             if name == "observed":
                 # Observations of no current version are history, never the
-                # reference signal of check_catalog (spec 2026-10-18 §3.2).
+                # version a catalog source is read from (spec 2026-10-18 §3.2).
                 for sidecar in list(root.glob("archives/versions/**/*.meta.json")):
                     observe(
                         sidecar.with_name(sidecar.name.removesuffix(".meta.json")),
@@ -1237,14 +1237,7 @@ def test_registers_change_no_version_choice_of_series_or_catalog(tmp_path):
             catalog = build_catalog(root)
         series = build_series(root, dataset=DAILY)
         outcomes[name] = (
-            [
-                (
-                    item.archive.server_path,
-                    item.status,
-                    item.local_path and item.local_path.relative_to(root),
-                )
-                for item in plan.items
-            ],
+            [(action.status, action.detail) for action in plan.actions],
             catalog.status,
             catalog.version.read_bytes(),
             series.status,

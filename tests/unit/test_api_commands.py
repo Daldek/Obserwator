@@ -558,9 +558,7 @@ def test_api_checked_plan_syncs_and_a_stale_item_makes_the_envelope_partial(
     plan = checked["result"]
     imgw.publish(H2024, V2, OLD)  # the server changed after the check
 
-    response = client.post(
-        "/api/v1/store/sync", json={"plan": plan, "series": False}, headers=writable
-    )
+    response = client.post("/api/v1/store/sync", json={"plan": plan}, headers=writable)
 
     assert schema_errors(plan, "obserwator-plan/1") == []
     assert plan["root"] == "."
@@ -613,13 +611,13 @@ def test_api_list_limit_defaults_to_and_is_capped_by_the_server_maximum(
 
     default = client.get("/api/v1/datasets/list").json()
     last = client.get(
-        "/api/v1/datasets/list", params={"limit": 3, "cursor": page_cursor(16)}
+        "/api/v1/datasets/list", params={"limit": 3, "cursor": page_cursor(20)}
     )
     above = client.get("/api/v1/datasets/list", params={"limit": 4})
     zero = client.get("/api/v1/datasets/list", params={"limit": 0})
 
     assert len(default["result"]) == 3
-    assert (default["page"]["total"], default["page"]["truncated"]) == (17, True)
+    assert (default["page"]["total"], default["page"]["truncated"]) == (21, True)
     assert len(last.json()["result"]) == 1
     assert problem(above, 400, "validation_error")["details"] == {
         "option": "limit",
@@ -630,15 +628,16 @@ def test_api_list_limit_defaults_to_and_is_capped_by_the_server_maximum(
 
 
 def test_api_list_next_cursor_answers_the_next_page(client):
-    first = client.get("/api/v1/datasets/list", params={"limit": 10}).json()
+    first = client.get("/api/v1/datasets/list", params={"limit": 11}).json()
     second = client.get(
         "/api/v1/datasets/list",
-        params={"limit": 10, "cursor": first["page"]["next_cursor"]},
+        params={"limit": 11, "cursor": first["page"]["next_cursor"]},
     ).json()
-    whole = client.get("/api/v1/datasets/list", params={"limit": 20}).json()
+    whole = client.get("/api/v1/datasets/list", params={"limit": 30}).json()
 
     assert first["page"]["truncated"] is True
-    assert second["page"] == {"total": 17, "next_cursor": None, "truncated": False}
+    assert len(second["result"]) == 10
+    assert second["page"] == {"total": 21, "next_cursor": None, "truncated": False}
     assert first["result"] + second["result"] == whole["result"]
 
 

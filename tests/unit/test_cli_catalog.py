@@ -346,7 +346,7 @@ def test_cli_catalog_passes_the_given_option_text_to_the_dispatcher(
     [
         (
             *("store", "sync", "-r/data/obserwator", f"--datasets={DAILY}"),
-            *("-y", "2023", "-y", "2024,2025", "--no-series", "--force", "--check"),
+            *("-y", "2023", "-y", "2024,2025", "--force", "--check"),
             "--",
         ),
         ("store", "info", "--root", "/a", "-r", "/b"),
@@ -610,7 +610,7 @@ def test_cli_catalog_prints_each_distinct_notice_once(monkeypatch, tmp_path):
         ):
             received.append(Notice(level, code, text))
             on_notice(received[-1])
-        return SyncReport((), (), cancelled=False)
+        return SyncReport((), cancelled=False)
 
     monkeypatch.setattr(store, "sync_store", sync_store)
     result = invoke("store", "sync", "-r", tmp_path, "-d", DAILY, "-y", 2024, "--json")
@@ -634,7 +634,7 @@ def test_cli_catalog_stderr_lines_follow_obserwator_lang_while_the_envelope_is_e
     def sync_store(root, /, *, on_notice, on_progress, **kwargs):
         on_progress(Progress(1, 1, "archive", "new", message("catalog.no_version")))
         on_notice(Notice("warning", "other", message("catalog.no_version")))
-        return SyncReport((), (), cancelled=False)
+        return SyncReport((), cancelled=False)
 
     monkeypatch.setattr(store, "sync_store", sync_store)
 
@@ -734,7 +734,7 @@ def test_cli_without_json_prints_a_partial_outcome_failed_items_first_and_exits_
     imgw.router.get(H2024.url).mock(return_value=httpx.Response(500))
 
     result = invoke(
-        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024", "--no-series"),
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
         *lang,
     )
 
@@ -934,7 +934,7 @@ def test_cli_catalog_error_leaves_stdout_empty_and_ends_stderr_with_json(
         (("datasets", "list", "--colour", "red"), "colour"),
         (("store", "check", "-r", "/r", "-d", DAILY, "-y", 2024, "--check"), "check"),
         (("datasets", "files", "-d", DAILY, "--years"), "years"),
-        (("store", "sync", "--series=tak"), "series"),
+        (("store", "sync", "--force=tak"), "force"),
         (("stor",), None),
         (("store",), None),
         ((), None),
@@ -994,7 +994,7 @@ def test_cli_catalog_sync_with_failed_items_prints_the_envelope_and_exits_10_or_
     for archive in failing:
         imgw.router.get(archive.url).mock(return_value=httpx.Response(500))
     result = invoke(
-        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024", "--no-series"),
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
         "--json",
     )
     assert (

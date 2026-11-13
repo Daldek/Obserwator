@@ -1,4 +1,8 @@
-"""Offline scenarios of the ČHMÚ station catalog (spec 2026-10-18 §7; recorded HTTP only)."""
+"""Offline scenarios of the ČHMÚ station catalog (spec 2026-10-18 §7, ADR-015).
+
+The station sources come into the store by ``store sync`` from recorded HTTP
+answers only; the catalog is then built and checked without any request.
+"""
 
 import hashlib
 import json
@@ -13,12 +17,19 @@ from obserwator._version import __version__
 from obserwator.attribution import attribution
 from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
-    ObserwatorConnectionError,
     ObserwatorDataError,
+    ObserwatorStoreError,
     ObserwatorValidationError,
 )
 from obserwator.fetch import DownloadResult
-from obserwator.store import init_store, read_meta, write_archive
+from obserwator.messages import message
+from obserwator.store import (
+    check_store,
+    init_store,
+    read_meta,
+    sync_store,
+    write_archive,
+)
 from obserwator.store.catalog import (
     CZECHIA_BORDER_RESOURCE,
     _evaluate,
@@ -26,7 +37,7 @@ from obserwator.store.catalog import (
     check_catalog,
 )
 from tests.contract.support import schema_errors
-from tests.unit.test_store_catalog import mock_sources
+from tests.unit.test_store_catalog import sync_sources as sync_imgw_sources
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
 ARCHIVES = FIXTURES / "archives"
@@ -45,6 +56,14 @@ SOURCES = (
     "meteo_stations_head",
     "meteo_stations_get",
 )
+# The station sources of the ČHMÚ catalog, which store sync puts into the store.
+SOURCE_DATASETS = (
+    "cz.chmi.hydro_stations",
+    "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
+)
+LISTS = SOURCE_DATASETS[:2]
 # The same sources after a regeneration of the envelopes (scenario 7 of §13.2).
 REGENERATED = (
     "hydro_now_regenerated_get",
@@ -101,17 +120,34 @@ def serve(router, *cases, **bodies):
     return routes
 
 
-def build(store, *cases, user=None, on_notice=None, cancel=None, **bodies):
-    """ČHMÚ catalog of ``store`` built against the recorded sources (default: all)."""
+def sync_sources(store, *cases, datasets=SOURCE_DATASETS, on_notice=None, **bodies):
+    """``store sync`` of the ČHMÚ station sources answered by the recorded cases (default: all)."""
     with respx.mock(assert_all_called=False) as router:
         serve(router, *(cases or SOURCES), **bodies)
-        return build_catalog(
-            store,
-            provider="CHMI",
-            user_locations=user,
-            on_notice=on_notice,
-            cancel=cancel,
-        )
+        return sync_store(store, datasets=list(datasets), on_notice=on_notice)
+
+
+def offline_build(store, **options):
+    """ČHMÚ catalog of ``store`` built from its stored sources; any request would fail."""
+    with respx.mock(assert_all_mocked=True) as offline:
+        report = build_catalog(store, provider="CHMI", **options)
+    assert not offline.calls
+    return report
+
+
+def offline_check(store, **options):
+    """``check_catalog`` of the ČHMÚ catalog; any request would fail."""
+    with respx.mock(assert_all_mocked=True) as offline:
+        plan = check_catalog(store, provider="CHMI", **options)
+    assert not offline.calls
+    return plan
+
+
+def build(store, *cases, user=None, on_notice=None, cancel=None, **bodies):
+    """Sync the recorded sources (default: all), then build the ČHMÚ catalog offline."""
+    synced = sync_sources(store, *cases, **bodies)
+    assert [item.error for item in synced.items if item.status == "failed"] == []
+    return offline_build(store, user_locations=user, on_notice=on_notice, cancel=cancel)
 
 
 def features(report):
@@ -384,25 +420,32 @@ def test_meteo_fields_come_from_now_and_the_latest_historical_period(store):
     ) == ("chmi_meteo_stations", "Fiktivní Ves-Horní", False, 318.5)
 
 
-def test_new_envelopes_keep_the_catalog_and_only_observe_the_list(store):
+def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(store):
     first = build(store)
     notices = []
     with respx.mock(assert_all_called=False) as router:
         routes = serve(router, *REGENERATED)
-        second = build_catalog(store, provider="CHMI", on_notice=notices.append)
-    assert (second.status, second.version) == ("unchanged", first.version)
+        synced = sync_store(
+            store, datasets=list(SOURCE_DATASETS), on_notice=notices.append
+        )
+    assert [item.status for item in synced.items] == ["unchanged"] * 5
     assert routes["hydro_stations_regenerated_get"].call_count == 1
     slot = store.root / LIST_SLOT
     assert len([path for path in slot.iterdir() if path.name != "observations"]) == 1
     (observation,) = (slot / "observations").iterdir()
-    (unchanged,) = [n for n in notices if n.code == "content_unchanged"]
-    assert "archive:cz.chmi.hydro_stations:meta1.json" in unchanged.message
+    unchanged = [n.message for n in notices if n.code == "content_unchanged"]
+    assert any(
+        "archive:cz.chmi.hydro_stations:meta1.json" in text for text in unchanged
+    )
     assert not [n for n in notices if n.code == "license_terms"]
+    second = offline_build(store)
+    assert (second.status, second.version) == ("unchanged", first.version)
+    assert [action.status for action in offline_check(store).actions] == ["current"] * 7
 
     with respx.mock(assert_all_called=False) as router:
         routes = serve(router, *REGENERATED)
-        plan = check_catalog(store, provider="CHMI")
-        third = build_catalog(store, provider="CHMI")
+        plan = check_store(store, datasets=list(LISTS))
+        again = sync_store(store, datasets=list(LISTS))
         assert routes["hydro_stations_regenerated_get"].call_count == 0
     hydro, meteo = plan.items
     assert (hydro.status, hydro.local_observation) == (
@@ -410,6 +453,8 @@ def test_new_envelopes_keep_the_catalog_and_only_observe_the_list(store):
         observation.relative_to(store.root),
     )
     assert (meteo.status, meteo.local_observation) == ("current", None)
+    assert [item.status for item in again.items] == ["unchanged", "unchanged"]
+    third = offline_build(store)
     assert (third.status, third.version) == ("unchanged", first.version)
 
 
@@ -453,10 +498,9 @@ def test_sidecar_records_both_sums_of_every_source_and_the_chmi_license(tmp_path
     assert entries["chmi_meteo_now"]["url"] == (
         f"{BASE_URL}meteorology/climate/now/metadata/meta1-20261018.json"
     )
-    for source in ("chmi_hydro_stations", "chmi_meteo_stations"):
-        version = tmp_path / "a" / entries[source]["file"]
-        stored = read_meta(version)
-        assert (entries[source]["sha256"], entries[source]["content_sha256"]) == (
+    for entry in entries.values():
+        stored = read_meta(tmp_path / "a" / entry["file"])
+        assert (entry["sha256"], entry["content_sha256"]) == (
             stored.sha256,
             stored.content_sha256,
         )
@@ -548,7 +592,8 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
                 ),
             )
         with respx.mock(assert_all_called=False) as router:
-            mock_sources(router)
+            sync_imgw_sources(store, router)
+        with respx.mock(assert_all_mocked=True):
             report = build_catalog(store, user_locations=user)
             plan = check_catalog(store, user_locations=user)
         meta = sidecar(report)
@@ -562,7 +607,6 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
                 ],
                 (meta["dataset"], meta["country"], meta["provider"], meta["license"]),
                 report.problems,
-                [item.status for item in plan.items],
                 plan.actions,
             )
         )
@@ -572,69 +616,124 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
     assert not any("0-203-1" in problem for problem in problems)
 
 
-def test_check_catalog_uses_head_only_and_writes_nothing(store):
-    notices = []
-    with respx.mock(assert_all_called=False) as router:
-        routes = serve(router, *SOURCES)
-        plan = check_catalog(store, provider="CHMI", on_notice=notices.append)
-        assert [(item.archive.dataset, item.status) for item in plan.items] == [
-            ("cz.chmi.hydro_stations", "missing"),
-            ("cz.chmi.meteo_stations", "missing"),
-        ]
-        assert [action.status for action in plan.actions] == [
-            "unverifiable",
-            "unverifiable",
-            "unverifiable",
-            "missing",
-            "missing",
-        ]
-        assert [n.code for n in notices] == ["source_unverifiable"] * 3
-        assert not (store.root / "archives").exists()
-        assert not any(
-            route.called for case, route in routes.items() if case.endswith("_get")
-        )
-        assert not routes["meteo_now_listing"].called
-        build_catalog(store, provider="CHMI")
-        before = tree(store.root)
-        calls = {case: route.call_count for case, route in routes.items()}
+def test_catalog_builds_and_checks_with_the_network_off(store):
+    sync_sources(store)
+    with respx.mock(assert_all_mocked=True) as offline:
+        report = build_catalog(store, provider="CHMI")
         plan = check_catalog(store, provider="CHMI")
-        assert {case: route.call_count for case, route in routes.items()} == calls | {
-            "hydro_stations_head": calls["hydro_stations_head"] + 1,
-            "meteo_stations_head": calls["meteo_stations_head"] + 1,
-        }
+    assert not offline.calls
+    assert (report.status, report.station_count) == ("new", len(CODES))
+    assert plan.items == ()
+    assert [action.status for action in plan.actions] == ["current"] * 7
+    assert [action.detail.split(":", 1)[0] for action in plan.actions[:5]] == [
+        "source chmi_hydro_stations",
+        "source chmi_meteo_stations",
+        "source chmi_hydro_now",
+        "source chmi_hydro_meta3",
+        "source chmi_meteo_now",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("synced", "missing"),
+    [
+        ((), list(SOURCE_DATASETS)),
+        (
+            ("cz.chmi.hydro_stations", "cz.chmi.hydro_now"),
+            ["cz.chmi.meteo_stations", "cz.chmi.meteo_now"],
+        ),
+        (SOURCE_DATASETS[:3], ["cz.chmi.meteo_now"]),
+    ],
+    ids=["empty", "meteo", "meteo-now"],
+)
+def test_missing_source_is_not_found_naming_it_and_writes_nothing(
+    store, synced, missing
+):
+    if synced:
+        sync_sources(store, datasets=synced)
+    before = tree(store.root)
+    with pytest.raises(ObserwatorStoreError) as error:
+        offline_build(store)
+    assert error.value.code == "not_found"
+    assert error.value.details == {"reason": "missing_source", "datasets": missing}
+    assert error.value.hint == message(
+        "catalog.hint_sync_sources", root=store.root, datasets=",".join(missing)
+    )
     assert tree(store.root) == before
-    assert [item.status for item in plan.items] == ["current", "current"]
-    assert [action.status for action in plan.actions][3:] == ["current", "unverifiable"]
-
-    with respx.mock(assert_all_called=False) as router:
-        serve(router, "hydro_stations_regenerated_head", "meteo_stations_head")
-        changed = check_catalog(store, provider="CHMI")
-    assert [item.status for item in changed.items] == ["newer", "current"]
-    assert changed.actions[-1].status == "newer"
+    assert not (store.root / "stations").exists()
 
 
-def test_broken_observation_of_a_list_fails_its_check_and_the_build(store):
-    build(store)
+def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
+    notices = []
+    empty = offline_check(store, on_notice=notices.append)
+    assert empty.items == ()
+    assert [action.status for action in empty.actions] == ["missing"] * 7
+    assert [n.code for n in notices] == ["source_missing"] * 5
+    assert notices[-1].message == message(
+        "catalog.source_not_stored",
+        source="chmi_meteo_now",
+        dataset="cz.chmi.meteo_now",
+    )
+    assert not (store.root / "archives").exists()
+
+    sync_sources(store)
+    # Stored sources without a catalog: the build would make the first version.
+    assert [action.status for action in offline_check(store).actions] == ["missing"] * 7
+    offline_build(store)
+    before = tree(store.root)
+    assert [action.status for action in offline_check(store).actions] == ["current"] * 7
+    assert tree(store.root) == before
+
+    # meta3 has no signal: the sync downloads it and keeps the changed bytes.
+    changed_meta3 = body("hydro_meta3_get").replace(b"712.35", b"712.36")
+    (meta3,) = [
+        item
+        for item in sync_sources(store, hydro_meta3_get=changed_meta3).items
+        if item.status == "new"
+    ]
+    assert meta3.slot == "archive:cz.chmi.hydro_now:meta3.json"
+    assert [action.status for action in offline_check(store).actions] == [
+        "current",
+        "current",
+        "current",
+        "newer",
+        "current",
+        "current",
+        "newer",
+    ]
+
+
+def test_broken_observation_of_a_list_fails_its_sync_not_the_offline_build(store):
+    first = build(store)
     register = store.root / LIST_SLOT / "observations"
     register.mkdir()
     (register / "2026-10-19_00000000.json").write_text("{zepsuty", encoding="utf-8")
     with respx.mock(assert_all_called=False) as router:
         serve(router, *SOURCES)
-        hydro, meteo = check_catalog(store, provider="CHMI").items
-        with pytest.raises(ObserwatorDataError) as error:
-            build_catalog(store, provider="CHMI")
+        hydro, meteo = check_store(store, datasets=list(LISTS)).items
+        synced = sync_store(store, datasets=list(LISTS))
     assert hydro.status == "check_failed" and "corrupt observation" in hydro.error
     assert meteo.status == "current"
-    assert error.value.code == "data_error"
+    assert [item.status for item in synced.items] == ["failed", "unchanged"]
+    assert "corrupt observation" in synced.items[0].error
+    # The build reads the current stored version, not the observations.
+    report = offline_build(store)
+    assert (report.status, report.version) == ("unchanged", first.version)
 
 
 @pytest.mark.parametrize(
-    ("change", "error", "reason"),
+    ("change", "dataset", "code", "reason"),
     [
-        ({"hydro_now_get": None}, ObserwatorConnectionError, "HTTP error 503"),
+        (
+            {"hydro_now_get": None},
+            "cz.chmi.hydro_now",
+            "source_unavailable",
+            "HTTP 503",
+        ),
         (
             {"hydro_meta3_get": b'{"zaznamID":"a","zaznamID":"b"}'},
-            ObserwatorDataError,
+            "cz.chmi.hydro_now",
+            "data_error",
             "a repeated key",
         ),
         (
@@ -645,12 +744,51 @@ def test_broken_observation_of_a_list_fails_its_check_and_the_build(store):
                     if b"meta1-" not in line
                 )
             },
-            ObserwatorDataError,
-            "no file meta1-<YYYYMMDD>.json",
+            "cz.chmi.meteo_now",
+            "data_error",
+            message("sync.no_file_in_listing"),
         ),
+    ],
+    ids=["http-503", "repeated-key", "listing-without-meta1"],
+)
+def test_failed_source_sync_leaves_the_build_a_missing_source(
+    store, change, dataset, code, reason
+):
+    cases = [case for case in SOURCES if change.get(case, b"") is not None]
+    if "hydro_now_get" not in cases:
+        cases.append("hydro_now_outage")
+    bodies = {case: content for case, content in change.items() if content is not None}
+    synced = sync_sources(store, *cases, **bodies)
+    (failed,) = [item for item in synced.items if item.status == "failed"]
+    assert failed.error_code == code
+    assert reason in failed.error
+    with pytest.raises(ObserwatorStoreError) as raised:
+        offline_build(store)
+    assert raised.value.code == "not_found"
+    assert raised.value.details == {"reason": "missing_source", "datasets": [dataset]}
+    assert not (store.root / "stations").exists()
+
+
+def test_failed_source_sync_keeps_the_stored_version_for_the_build(store):
+    first = build(store)
+    outage = [case for case in SOURCES if case != "hydro_now_get"]
+    synced = sync_sources(store, *outage, "hydro_now_outage")
+    assert [(item.slot, item.error_code) for item in synced.items] == [
+        ("archive:cz.chmi.hydro_stations:meta1.json", None),
+        ("archive:cz.chmi.meteo_stations:meta1.json", None),
+        ("archive:cz.chmi.hydro_now:meta1.json", "source_unavailable"),
+        ("archive:cz.chmi.hydro_now:meta3.json", None),
+        ("archive:cz.chmi.meteo_now:meta1-20261018.json", None),
+    ]
+    report = offline_build(store)
+    assert (report.status, report.version) == ("unchanged", first.version)
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
         (
             {"hydro_now_get": body("hydro_now_get").replace(b'"CM"', b'"MM"')},
-            ObserwatorDataError,
             "SPAH_UNIT: unknown unit 'MM'",
         ),
         (
@@ -659,40 +797,63 @@ def test_broken_observation_of_a_list_fails_its_check_and_the_build(store):
                     b'"0-203-0-90001"', b'"0-203-1-900001"'
                 )
             },
-            ObserwatorDataError,
             "both the hydro and the meteo family: 0-203-1-900001",
         ),
     ],
-    ids=["http-503", "repeated-key", "listing-without-meta1", "unit", "two-families"],
+    ids=["unit", "two-families"],
 )
-def test_source_errors_publish_no_catalog(store, change, error, reason):
-    cases = [case for case in SOURCES if change.get(case, b"") is not None]
-    if "hydro_now_get" not in cases:
-        cases.append("hydro_now_outage")
-    bodies = {case: content for case, content in change.items() if content is not None}
-    with pytest.raises(error, match=reason) as raised:
-        build(store, *cases, **bodies)
-    assert raised.value.code == (
-        "source_unavailable" if error is ObserwatorConnectionError else "data_error"
-    )
+def test_invalid_stored_source_fails_the_build_and_publishes_no_catalog(
+    store, change, reason
+):
+    synced = sync_sources(store, **change)
+    assert [item.status for item in synced.items] == ["new"] * 5
+    with pytest.raises(ObserwatorDataError, match=reason) as raised:
+        offline_build(store)
+    assert raised.value.code == "data_error"
     assert not (store.root / "stations").exists()
 
 
-def test_newest_meteo_now_file_is_read_and_cancel_publishes_nothing(store):
+def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothing(
+    store,
+):
+    older = b"\n".join(
+        line
+        for line in body("meteo_now_listing").split(b"\n")
+        if b"meta1-20261018" not in line
+    )
+    with respx.mock(assert_all_called=False) as router:
+        routes = serve(
+            router, *SOURCES, "meteo_now_previous_get", meteo_now_listing=older
+        )
+        sync_store(store, datasets=["cz.chmi.meteo_now"])
+        assert routes["meteo_now_previous_get"].called
+        assert not routes["meteo_now_get"].called
     with respx.mock(assert_all_called=False) as router:
         routes = serve(router, *SOURCES, "meteo_now_previous_get")
-        polls = iter([False] * 5 + [True])
-        report = build_catalog(store, provider="CHMI", cancel=lambda: next(polls))
+        sync_store(store, datasets=list(SOURCE_DATASETS))
         assert routes["meteo_now_get"].called
         assert not routes["meteo_now_previous_get"].called
         request = routes["meteo_now_get"].calls.last.request
         assert request.headers["User-Agent"] == f"obserwator/{__version__}"
-    assert (report.status, report.version, report.provider) == (
+
+    polls = iter([False, False, True])
+    cancelled = offline_build(store, cancel=lambda: next(polls))
+    assert (cancelled.status, cancelled.version, cancelled.provider) == (
         "cancelled",
         None,
         "CHMI",
     )
     assert not (store.root / "stations").exists()
+
+    (entry,) = [
+        entry
+        for entry in sidecar(offline_build(store))["extra"]["catalog"]
+        if entry["source"] == "chmi_meteo_now"
+    ]
+    assert entry["url"] == (
+        f"{BASE_URL}meteorology/climate/now/metadata/meta1-20261018.json"
+    )
+    assert entry["file"].endswith("/meta1-20261018.json")
 
 
 def test_provider_is_validated_and_key_prefix_names_it(store):
@@ -700,8 +861,8 @@ def test_provider_is_validated_and_key_prefix_names_it(store):
         with pytest.raises(ObserwatorValidationError) as error:
             call(store, provider="SHMU")
         assert error.value.details["allowed"] == ["IMGW-PIB", "CHMI"]
-    with respx.mock(assert_all_called=False) as router:
-        serve(router, *SOURCES)
+    sync_sources(store)
+    with respx.mock(assert_all_mocked=True):
         assert build_catalog(store, provider="cz.chmi").provider == "CHMI"
 
 

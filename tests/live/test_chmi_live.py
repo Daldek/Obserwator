@@ -46,6 +46,7 @@ import pytest
 
 from obserwator import (
     build_catalog,
+    build_series,
     check_store,
     current_version,
     init_store,
@@ -221,12 +222,13 @@ EXPECTED: dict[tuple[str, int], Callable[[Mapping[str, Any]], bool]] = {
         _statuses(d) == ["current"] * 4
         and d["result"]["requests"] == {"made": 2, "planned": 0}
     ),
+    # A sync writes raw data only (ADR-015): no series in its report.
     ("store sync", 0): lambda d: (
         _statuses(d) == ["new", "new", "unchanged"]  # 2026 unpublished
-        and _statuses(d, "series") == ["new"]
+        and "series" not in d["result"]
     ),
     ("store sync", 1): lambda d: (
-        _statuses(d) == ["new"] * 4 and _statuses(d, "series") == ["new"]
+        _statuses(d) == ["new"] * 4 and "series" not in d["result"]
     ),
     ("store catalog", 0): lambda d: (
         d["result"]["provider"] == "CHMI"
@@ -441,7 +443,24 @@ class ChmiLive(Live):
                 # The unpublished 2026 file of the hydro plan stays "unchanged".
                 statuses = {item.status for item in synced.items}
                 assert statuses <= {"new", "unchanged"}, synced
-            catalog = _patiently(lambda: build_catalog(root, provider="CHMI"))
+            # A sync writes raw data only (ADR-015): the series are built on their
+            # own, and the catalog reads the station sources a sync stores.
+            for dataset in (HYDRO, METEO):
+                built = build_series(root, dataset=dataset)
+                assert built.status == "new", built
+            sources = _patiently(
+                lambda: sync_store(
+                    root,
+                    datasets=[
+                        "cz.chmi.hydro_stations",
+                        "cz.chmi.meteo_stations",
+                        "cz.chmi.hydro_now",
+                        "cz.chmi.meteo_now",
+                    ],
+                )
+            )
+            assert {item.status for item in sources.items} == {"new"}, sources
+            catalog = build_catalog(root, provider="CHMI")
             assert (catalog.status, catalog.provider) == ("new", "CHMI"), catalog
             self.save("full", root)
             self.values = {
@@ -683,7 +702,8 @@ def test_seeded_store_scans_clean_with_the_chmi_license_everywhere(chmi):
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
     assert {entry.provider for entry in entries} == {"CHMI"}
     sidecars = sorted(full.rglob("*.meta.json"))
-    assert len(sidecars) == 6 + 2 + 2 + 1  # files, station lists, series, catalog
+    # files, station lists, station metadata (meta1, meta3, meteo meta1), series, catalog
+    assert len(sidecars) == 6 + 2 + 3 + 2 + 1
     for sidecar in sidecars:
         meta = json.loads(sidecar.read_text(encoding="utf-8"))
         assert (meta["country"], meta["provider"]) == ("CZ", "CHMI"), sidecar

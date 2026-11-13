@@ -18,11 +18,17 @@ from typing import Any, cast
 import pytest
 import respx
 
-from obserwator import init_store, run_command, sync_pmaxtp
+from obserwator import init_store, run_command, sync_pmaxtp, sync_store
 from obserwator.commands import command_schema, data_commands
 from obserwator.testing import build_fixture_store
 from tests.contract.support import H2024, NEW, V3, FakeImgw, snapshot, stamps
-from tests.contract.test_interface_contract import CASES, Case, resolved, rooted
+from tests.contract.test_interface_contract import (
+    CASES,
+    IMGW_SOURCES,
+    Case,
+    resolved,
+    rooted,
+)
 
 SPECS = {spec.name: spec for spec in data_commands()}
 # MCP tool names (AGI-5.2): the project prefix and at most 48 characters of [a-z0-9_].
@@ -49,7 +55,8 @@ EFFECTS = {
     "store scan": ("none", False, {}),
     "store check": ("none", True, {"plan": "replace"}),
     "store sync": ("add", True, {"output_dir": "add", "force": "replace"}),
-    "store catalog": ("add", True, {}),
+    # Offline: the catalog reads the station sources a store sync stored (ADR-015).
+    "store catalog": ("add", False, {}),
     "store export": ("none", False, {"output": "add", "force": "replace"}),
     "stations export": ("none", False, {"output": "add", "force": "replace"}),
     "series build": ("add", False, {}),
@@ -118,6 +125,13 @@ def case_root(case: Case, target: Path, served: Path, fixture: Path) -> Path | N
     """A fresh store of the case at ``target`` (``None`` for a case without root)."""
     if case.store is None:
         return None
+    if case.store == "sources":
+        # Empty with the IMGW-PIB station sources synced from the recordings.
+        init_store(target)
+        with respx.mock(assert_all_called=False) as router:
+            FakeImgw(router).publish_catalog_sources()
+            sync_store(target, datasets=IMGW_SOURCES)
+        return target
     if case.store == "empty":
         return init_store(target).root
     shutil.copytree(served if case.store == "served" else fixture, target)

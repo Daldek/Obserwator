@@ -27,6 +27,28 @@
       "archive": "dane_meteorologiczne/wykaz_stacji.csv"
     },
     {
+      "case": "hydro_stations_head",
+      "method": "HEAD",
+      "path": "dane_hydrologiczne/lista_stacji_hydro.csv",
+      "status": 200,
+      "headers": {
+        "ETag": "\"hydro-list-v1\"",
+        "Last-Modified": "Sat, 17 Oct 2026 12:00:00 GMT",
+        "Content-Length": "118"
+      }
+    },
+    {
+      "case": "meteo_stations_head",
+      "method": "HEAD",
+      "path": "dane_meteorologiczne/wykaz_stacji.csv",
+      "status": 200,
+      "headers": {
+        "ETag": "\"meteo-list-v1\"",
+        "Last-Modified": "Sat, 17 Oct 2026 12:00:00 GMT",
+        "Content-Length": "56"
+      }
+    },
+    {
       "case": "meteo_1995_get",
       "method": "GET",
       "path": "dane_meteorologiczne/dobowe/opad/1991_1995/1995_o.zip",

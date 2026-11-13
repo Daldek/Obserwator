@@ -15,6 +15,7 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
 )
 from obserwator.fetch import DownloadResult
+from obserwator.messages import message
 from obserwator.parsers import (
     parse_chmi_hydro_daily,
     parse_chmi_meteo_daily,
@@ -32,7 +33,7 @@ from obserwator.store import (
 )
 from obserwator.store.catalog import build_catalog
 from obserwator.testing import build_fixture_store
-from tests.unit.test_store_catalog import mock_sources
+from tests.unit.test_store_catalog import sync_sources as sync_imgw_sources
 from tests.unit.test_store_catalog_chmi import (
     ARCHIVES,
     CODES,
@@ -40,7 +41,7 @@ from tests.unit.test_store_catalog_chmi import (
     REGENERATED,
     body,
     build,
-    serve,
+    sync_sources,
 )
 from tests.unit.test_store_reader import DAILY, store_archives
 
@@ -60,15 +61,15 @@ def write_chmi(root, archive):
 
 def imgw_catalog(root):
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_imgw_sources(root, router)
+    with respx.mock(assert_all_mocked=True):
         return build_catalog(root)
 
 
 def observe_regenerated_list(root):
-    """Scenario 7: the regenerated historical meta1 is observed, not stored."""
-    with respx.mock(assert_all_called=False) as router:
-        serve(router, *REGENERATED)
-        return build_catalog(root, provider="CHMI")
+    """Scenario 7: the sync observes the regenerated historical meta1, not stores it."""
+    synced = sync_sources(root, *REGENERATED)
+    assert {item.status for item in synced.items} == {"unchanged"}
 
 
 def test_store_info_lists_the_providers_of_the_registry(tmp_path):
@@ -102,6 +103,7 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     assert [(entry.kind, entry.slot) for entry in chmi if entry.kind != "archive"] == [
         ("problem", "archive:cz.chmi.hydro_daily:H_0-203-1-900001_DQ_2023.json"),
         ("observation", "archive:cz.chmi.hydro_stations:meta1.json"),
+        ("observation", "archive:cz.chmi.hydro_now:meta1.json"),
         ("problem", None),
         ("catalog", "catalog:cz.chmi.stations"),
     ]
@@ -288,6 +290,20 @@ def test_read_archive_normalizes_chmi_versions(tmp_path):
     ).version
     with pytest.raises(ObserwatorValidationError, match="provider='CHMI'"):
         read_archive(stored_list)
+    # Station metadata of the now files have no records: the catalog reads them.
+    for slot in (
+        "archive:cz.chmi.hydro_now:meta3.json",
+        "archive:cz.chmi.meteo_now:meta1-20261018.json",
+    ):
+        now = current_version(root, slot=slot)
+        with pytest.raises(ObserwatorValidationError) as error:
+            read_archive(now.version)
+        assert error.value.code == "validation_error"
+        assert str(error.value) == message(
+            "reader.version_station_metadata",
+            main=now.version,
+            dataset=now.meta.dataset,
+        )
 
     sidecar = Path(f"{write_chmi(root, HYDRO_2023).path}.meta.json")
     meta = json.loads(sidecar.read_text(encoding="utf-8"))

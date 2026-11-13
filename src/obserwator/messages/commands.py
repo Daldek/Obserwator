@@ -249,9 +249,10 @@ MESSAGES = {
     ),
     "datasets_help": Text(
         "Comma-separated store datasets: key, slug or legacy alias; datasets of one "
-        "kind: pl.imgw.* or cz.chmi.*",
+        "kind: pl.imgw.* or cz.chmi.*; station sources (*_stations, *_now) alone",
         "Zbiory magazynu rozdzielone przecinkami: klucz, slug albo alias legacy; "
-        "zbiory jednego rodzaju: pl.imgw.* albo cz.chmi.*",
+        "zbiory jednego rodzaju: pl.imgw.* albo cz.chmi.*; źródła stacji "
+        "(*_stations, *_now) osobno",
     ),
     "family_help": Text(
         "Kind: hydro or meteo; none = both families",
@@ -515,9 +516,12 @@ MESSAGES = {
     ),
     "store_check_description": Text(
         "Check the freshness of the dataset archives without downloading data. "
-        "Sources: listing and HEAD (IMGW-PIB), the server listing alone (ČHMÚ).",
+        "Sources: listing and HEAD (IMGW-PIB), the server listing alone (ČHMÚ); "
+        "station lists by HEAD, station metadata without a signal are always "
+        "downloaded by store sync.",
         "Sprawdź aktualność archiwów zbiorów bez pobierania danych. Źródła: listing "
-        "i HEAD (IMGW-PIB), sam listing serwera (ČHMÚ).",
+        "i HEAD (IMGW-PIB), sam listing serwera (ČHMÚ); listy stacji przez HEAD, "
+        "metadane stacji bez sygnału store sync pobiera zawsze.",
     ),
     "store_check_rule_1": Text(
         "plan written only outside the store, in an existing directory",
@@ -525,19 +529,23 @@ MESSAGES = {
     ),
     "store_sync_description": Text(
         "Download new or missing archives into the store, by plan or by datasets and "
-        "stations. With --output-dir it writes the selected archives as plain files "
-        "(no plan, no series).",
+        "stations. It writes raw data only (archives, station lists, station "
+        "metadata); series build and store catalog build from them. With "
+        "--output-dir it writes the selected archives as plain files (no plan).",
         "Pobierz nowe lub brakujące archiwa do magazynu według planu albo wyboru "
-        "zbiorów i stacji. Z --output-dir zapisuje wybrane archiwa jako zwykłe pliki "
-        "(bez planu i szeregów).",
+        "zbiorów i stacji. Zapisuje wyłącznie dane surowe (archiwa, listy i "
+        "metadane stacji); series build i store catalog budują z nich. Z "
+        "--output-dir zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
     ),
     "store_sync_rule_1": Text(
         "plan excludes datasets, years, months and stations",
         "plan wyklucza datasets, years, months i stations",
     ),
     "store_catalog_description": Text(
-        "Build the versioned station catalog stations.geojson of one provider.",
-        "Zbuduj wersjonowany katalog stacji stations.geojson jednego dostawcy.",
+        "Build the versioned station catalog stations.geojson of one provider. "
+        "Offline: from the station lists and metadata that store sync stored.",
+        "Zbuduj wersjonowany katalog stacji stations.geojson jednego dostawcy. "
+        "Offline: z list i metadanych stacji zapisanych przez store sync.",
     ),
     "store_export_description": Text(
         "Export the records of one archive version as CSV or JSONL (offline, SHA-256 "
@@ -679,11 +687,6 @@ MESSAGES = {
         "years, months and stations)",
         "Plik planu obserwator-plan/1 z komendy store check (zamiast datasets, years, "
         "months i stations)",
-    ),
-    "store_sync_series_help": Text(
-        "Build the series of the datasets after the synchronization (--no-series "
-        "disables it)",
-        "Buduj szeregi zbiorów po synchronizacji (--no-series wyłącza)",
     ),
     "store_catalog_provider_help": Text(
         "Catalog provider: IMGW-PIB or CHMI (ČHMÚ); one catalog version of one "

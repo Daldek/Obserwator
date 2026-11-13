@@ -34,7 +34,9 @@ from obserwator import (
     run_command,
     store,
     sync_pmaxtp,
+    sync_store,
 )
+from obserwator.datasets import get_dataset
 from obserwator.exceptions import describe_os_error
 from obserwator.messages import localize
 from obserwator.store.types import page_cursor
@@ -94,12 +96,16 @@ class Case:
     Options of one run of a command (JSON form, without ``root``).
 
     ``store``: ``None`` = no root; ``"served"`` = the shared read-only store;
-    ``"empty"`` and ``"fixture"`` = a fresh store for each interface (writes).
+    ``"empty"``, ``"sources"`` and ``"fixture"`` = a fresh store for each
+    interface (writes).
     """
 
     options: dict[str, object]
     store: str | None = None
 
+
+# Kinds of ``Case.store`` that are a fresh store written by the command.
+WRITTEN = ("empty", "sources", "fixture")
 
 CASES: dict[str, list[Case]] = {
     "datasets list": [Case({"kind": "hydro", "limit": 2, "cursor": page_cursor(1)})],
@@ -140,7 +146,7 @@ CASES: dict[str, list[Case]] = {
     ],
     "store check": [Case({"datasets": [DAILY], "years": "2024"}, "served")],
     "store sync": [Case({"datasets": ["hydro/dobowe"], "years": [2024]}, "empty")],
-    "store catalog": [Case({}, "empty")],
+    "store catalog": [Case({}, "sources")],
     "store export": [
         Case({"version": ARCHIVE}, "served"),
         Case({"version": ARCHIVE, "format": "jsonl"}, "served"),
@@ -231,14 +237,28 @@ def resolved(options: dict[str, object], root: Path | None) -> dict[str, object]
     return result
 
 
+# IMGW-PIB station sources the offline catalog reads from the store (ADR-015).
+IMGW_SOURCES = [
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+]
+
+
 def fresh_store(kind: str, root: Path, fixture_root: Path) -> None:
-    """A new store at ``root``: initialised empty or copied from the fixture store."""
+    """
+    A new store at ``root``: initialised empty, empty with the IMGW-PIB station
+    sources synced from the recorded answers, or copied from the fixture store.
+    """
     if root.exists():
         shutil.rmtree(root)
-    if kind == "empty":
-        init_store(root)
-    else:
+    if kind == "fixture":
         shutil.copytree(fixture_root, root)
+        return
+    init_store(root)
+    if kind == "sources":
+        sync_store(root, datasets=IMGW_SOURCES)
 
 
 def answer(interface, command, options, root, *, cli, rest, headers=None, check=False):
@@ -317,7 +337,7 @@ def test_every_rest_command_answers_alike_in_python_cli_and_rest(
     relative_reference_dir,
 ):
     for case in CASES[command]:
-        writes = case.store in ("empty", "fixture")
+        writes = case.store in WRITTEN
         if writes:
             root = tmp_path / "store"
         else:
@@ -375,6 +395,7 @@ def test_every_write_is_planned_alike_by_check_in_python_cli_and_rest(
     (case,) = CASES[command]
     root = tmp_path / "store"
     fresh_store(case.store, root, fixture_root)
+    start = len(recorded.router.calls)  # after the sync of a "sources" store
     monkeypatch.setattr(server, "root", root)  # writes stay disabled
     before = stamps(root)
 
@@ -387,7 +408,7 @@ def test_every_write_is_planned_alike_by_check_in_python_cli_and_rest(
     assert_alike(command, python, printed, answered, root)
     assert answered.json()["result"]["root"] == "."
     assert stamps(root) == before
-    assert recorded.downloads() == []
+    assert recorded.downloads(start) == []
 
 
 # --------------------------------------------------------------------------
@@ -487,8 +508,11 @@ READERS = {
     "series": ("series summary", {"limit": 50}),
     "pmaxtp": ("pmaxtp read", {"ind_x": 751, "ind_y": 317}),
 }
-# Station lists are read by stations find, not exported as records.
-STATION_LISTS = ("pl.imgw.hydro_stations", "pl.imgw.meteo_stations")
+
+
+def _station_source(slot: str) -> bool:
+    """Station sources are read by stations find and the catalog, not as records."""
+    return get_dataset(slot.split(":")[1]).time_unit == "station_list"
 
 
 def test_versions_answered_by_rest_work_as_obserwator_version_with_root(
@@ -499,7 +523,7 @@ def test_versions_answered_by_rest_work_as_obserwator_version_with_root(
     for kind, (command, extra) in READERS.items():
         scanned = rest.get("/api/v1/store/scan", params={"kind": kind}).json()
         for entry in scanned["result"]:
-            if entry["slot"].split(":")[1] in STATION_LISTS:
+            if _station_source(entry["slot"]):
                 continue
             options = {"version": entry["version"], **extra}
 

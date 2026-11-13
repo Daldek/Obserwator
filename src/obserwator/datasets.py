@@ -66,6 +66,8 @@ _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
 )
 # Folder of a country archive: a year or a five-year range (IMGW-PIB layout).
 _FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
+# Site of IMGW-PIB's public data: the current-data API (``IMGW_API_URL``) lies below it.
+_IMGW_SITE = "https://danepubliczne.imgw.pl/"
 
 
 @dataclass(frozen=True)
@@ -234,6 +236,16 @@ class DatasetDescriptor:
         dataset's files; None when only the bytes identify the content.
     volatile_fields : tuple of str, optional
         Volatile fields of ``content_form``; empty without a form.
+    base_url : str or None, optional
+        Base URL of the dataset's server paths when it is not the provider's
+        ``base_url`` (the current-data API of IMGW-PIB, archived as the station
+        locations of its catalog); None for the provider's.
+    kept_fields : tuple of str, optional
+        Fields of each station that the store keeps of an answer that also
+        carries operational data (IMGW-PIB's current-data API: measurements,
+        their times, warning and alarm levels): the stored file holds the
+        stations with these fields only, never the rest (ADR-015 D5); empty
+        keeps the provider's bytes verbatim.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -258,6 +270,8 @@ class DatasetDescriptor:
     measurement_fields: tuple[Literal["quality", "source_flag"], ...] = ()
     content_form: str | None = None
     volatile_fields: tuple[str, ...] = ()
+    base_url: str | None = None
+    kept_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -517,6 +531,46 @@ _DATASETS = (
         legacy_alias=None,
         in_store=True,
     ),
+    # The current-data API answers, archived as the station locations of the
+    # IMGW-PIB catalog (ADR-015 D2): no file name of their own and no HTTP signal.
+    # They also carry operational data, which are never archived: the store keeps
+    # each station's code, name, river and coordinates only (ADR-015 D5).
+    DatasetDescriptor(
+        key="pl.imgw.hydro_now",
+        slug="hydro_now",
+        kind="hydro",
+        title=message("datasets.title_hydro_now"),
+        server_dir="api/data",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_IMGW_SITE,
+        kept_fields=("id_stacji", "stacja", "rzeka", "lon", "lat"),
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.meteo_now",
+        slug="meteo_now",
+        kind="meteo",
+        title=message("datasets.title_meteo_now"),
+        server_dir="api/data",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_IMGW_SITE,
+        kept_fields=("kod_stacji", "nazwa_stacji", "lon", "lat"),
+    ),
     DatasetDescriptor(
         key="pl.imgw.pmaxtp",
         slug="pmaxtp",
@@ -694,6 +748,47 @@ _DATASETS = (
         year_type="none",
         first_year=None,
         update_signal="http",
+        license=_CHMI_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMI",
+        content_form=_CHMI_JSON,
+        volatile_fields=_CHMI_VOLATILE,
+    ),
+    # The ``now`` metadata of the stations (spec 2026-10-18 §7.2), archived for the
+    # ČHMÚ catalog (ADR-015 D2): their envelopes are regenerated hourly or daily, so
+    # they have no stable HTTP signal; the daily meteo file is found in its listing.
+    DatasetDescriptor(
+        key="cz.chmi.hydro_now",
+        slug="chmi_hydro_now",
+        kind="hydro",
+        title=message("datasets.title_chmi_hydro_now"),
+        server_dir="hydrology/now/metadata",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_CHMI_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMI",
+        content_form=_CHMI_JSON,
+        volatile_fields=_CHMI_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key="cz.chmi.meteo_now",
+        slug="chmi_meteo_now",
+        kind="meteo",
+        title=message("datasets.title_chmi_meteo_now"),
+        server_dir="meteorology/climate/now/metadata",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="listing",
         license=_CHMI_LICENSE,
         legacy_alias=None,
         in_store=True,
@@ -1170,7 +1265,7 @@ def _archive(
     return ArchiveFile(
         descriptor.key,
         path,
-        get_provider(descriptor.provider).base_url + path,
+        (descriptor.base_url or get_provider(descriptor.provider).base_url) + path,
         year,
         month,
         param,
@@ -1476,13 +1571,58 @@ def _station_archives(
     )
 
 
-# Station list file of each station-list dataset.
-_STATION_LIST_FILES = {
-    "pl.imgw.hydro_stations": "lista_stacji_hydro.csv",
-    "pl.imgw.meteo_stations": "wykaz_stacji.csv",
-    "cz.chmi.hydro_stations": "meta1.json",
-    "cz.chmi.meteo_stations": "meta1.json",
-}
+# Files of each station-source dataset (ADR-015): the provider's station lists and
+# the station metadata its catalog is built from, with their fixed names; the
+# daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmi.meteo_now`` is the newest of its listing.
+_STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "pl.imgw.hydro_stations": ("lista_stacji_hydro.csv",),
+        "pl.imgw.meteo_stations": ("wykaz_stacji.csv",),
+        "pl.imgw.hydro_now": ("hydro",),
+        "pl.imgw.meteo_now": ("meteo",),
+        "cz.chmi.hydro_stations": ("meta1.json",),
+        "cz.chmi.meteo_stations": ("meta1.json",),
+        "cz.chmi.hydro_now": ("meta1.json", "meta3.json"),
+        "cz.chmi.meteo_now": (),
+    }
+)
+_CHMI_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
+# Station-source datasets of each provider's catalog: the hydro and meteo lists,
+# then the hydro and meteo station metadata.
+_CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
+    {
+        "IMGW-PIB": (
+            "pl.imgw.hydro_stations",
+            "pl.imgw.meteo_stations",
+            "pl.imgw.hydro_now",
+            "pl.imgw.meteo_now",
+        ),
+        "CHMI": (
+            "cz.chmi.hydro_stations",
+            "cz.chmi.meteo_stations",
+            "cz.chmi.hydro_now",
+            "cz.chmi.meteo_now",
+        ),
+    }
+)
+
+
+def _station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | None:
+    """A file of a station-source dataset by its name; None when it is no file of it."""
+    if name in _STATION_FILES.get(descriptor.key, ()) or (
+        descriptor.key == "cz.chmi.meteo_now" and _CHMI_METEO_NOW_FILE.fullmatch(name)
+    ):
+        return _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
+    return None
+
+
+def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
+    """The files with a fixed name of a station-source dataset (none for ``cz.chmi.meteo_now``)."""
+    descriptor = get_dataset(dataset)
+    return tuple(
+        _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
+        for name in _STATION_FILES[descriptor.key]
+    )
 
 
 def station_source_files(
@@ -1509,21 +1649,8 @@ def station_source_files(
     ObserwatorValidationError
         If ``provider`` names no provider.
     """
-    owner = get_provider(provider).id
-    hydro, meteo = (
-        next(
-            item
-            for item in _DATASETS
-            if item.provider == owner
-            and item.time_unit == "station_list"
-            and item.kind == kind
-        )
-        for kind in ("hydro", "meteo")
-    )
-    return (
-        _archive(hydro, f"{hydro.server_dir}/{_STATION_LIST_FILES[hydro.key]}", None),
-        _archive(meteo, f"{meteo.server_dir}/{_STATION_LIST_FILES[meteo.key]}", None),
-    )
+    hydro, meteo, _, _ = _CATALOG_SOURCES[get_provider(provider).id]
+    return _station_files(hydro)[0], _station_files(meteo)[0]
 
 
 def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
@@ -1554,14 +1681,9 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
     descriptor = get_dataset(dataset)
     directory, _, name = server_path.rpartition("/")
     if descriptor.time_unit == "station_list":
-        return next(
-            (
-                item
-                for item in station_source_files(provider=descriptor.provider)
-                if item.dataset == descriptor.key and item.server_path == server_path
-            ),
-            None,
-        )
+        if directory != descriptor.server_dir:
+            return None
+        return _station_file(descriptor, name)
     if descriptor.server_dir is None:
         return None
     if descriptor.archive_scope == "station_year":

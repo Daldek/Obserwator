@@ -60,10 +60,27 @@ _SCENARIO = (
     "new_bytes_get",
     "meteo_get",
     "meteo_1995_get",
+    "hydro_stations_head",
+    "hydro_stations_head",
     "hydro_stations_get",
+    "meteo_stations_head",
+    "meteo_stations_head",
     "meteo_stations_get",
     "hydro_current",
     "meteo_current",
+)
+# Station sources of each provider's catalog, stored by store sync (ADR-015).
+_IMGW_SOURCES = (
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+)
+_CHMI_SOURCES = (
+    "cz.chmi.hydro_stations",
+    "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
 )
 _CHMI_HYDRO = "cz.chmi.hydro_daily"
 _CHMI_METEO = "cz.chmi.meteo_daily"
@@ -278,7 +295,8 @@ def _add_chmi(handle: StoreHandle) -> None:
     ČHMÚ part of ``complete_pl_cz``, replayed from ``chmi_builder_recordings.json``.
 
     Each step is one `sync_store` (listing, then HEAD and GET of every new or
-    changed file, then the dataset's series); the ČHMÚ catalog is built last.
+    changed file), then `build_series` of the step's dataset; the station
+    sources are synchronized and the ČHMÚ catalog is built last.
     """
     with _recorded_http(None, recordings=_CHMI_RECORDINGS):
         for step, selectors, items, built in _CHMI_STEPS:
@@ -288,11 +306,14 @@ def _add_chmi(handle: StoreHandle) -> None:
                 ", ".join(sorted(item.status for item in report.items)),
                 ", ".join(sorted(items)),
             )
-            _expect(
-                f"{step}: series",
-                ", ".join(series.status for series in report.series),
-                built,
-            )
+            series = build_series(handle, dataset=selectors["datasets"][0])
+            _expect(f"{step}: series", series.status, built)
+        sources = sync_store(handle, datasets=_CHMI_SOURCES)
+        _expect(
+            "ČHMÚ station sources",
+            ", ".join(sorted({item.status for item in sources.items})),
+            "new",
+        )
         catalog = build_catalog(handle, provider="CHMI")
         _expect("ČHMÚ station catalog", catalog.status, "new")
 
@@ -404,6 +425,12 @@ def build_fixture_store(
             response=download_meteo_data("dobowe", "opad", 1995),
         )
         _expect("1995_o", late.status, "new")
+        sources = sync_store(handle, datasets=_IMGW_SOURCES)
+        _expect(
+            "station sources",
+            ", ".join(sorted({item.status for item in sources.items})),
+            "new",
+        )
         with _without_reference_data():
             catalog = build_catalog(handle)
         _expect("station catalog", catalog.status, "new")

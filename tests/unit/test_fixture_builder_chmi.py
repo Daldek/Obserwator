@@ -143,7 +143,8 @@ def test_chmi_series_and_catalog_are_current_and_the_scan_is_clean(store):
     assert Counter(
         (entry.kind, entry.provider) for entry in entries if entry.provider == "CHMI"
     ) == {
-        ("archive", "CHMI"): 14,
+        # 12 measurement files, 2 station lists, 3 station metadata (``now``).
+        ("archive", "CHMI"): 17,
         ("observation", "CHMI"): 1,
         ("series", "CHMI"): 3,
         ("catalog", "CHMI"): 1,

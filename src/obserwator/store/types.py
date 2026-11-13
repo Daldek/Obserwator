@@ -648,25 +648,25 @@ class SyncReport:
     """
     Report of a store synchronisation.
 
+    A sync writes only raw data (ADR-015), so the report has no series:
+    ``obserwator-sync-report/2`` drops the ``series`` of ``/1``.
+
     Attributes
     ----------
     items : tuple of OperationResult
         Per-archive outcomes.
-    series : tuple of SeriesReport
-        Outcomes of the series builds triggered by the sync.
     cancelled : bool
         Whether the sync was cancelled.
     files : tuple of FileResult, optional
         The files of the run as ``files[]`` (DEV-19.19): in store mode the
-        archive and series versions with their sidecar size and SHA-256 and
-        their status (``new``, ``unchanged``, ``relabeled``); in plain mode the
-        files written (``written``, ``replaced``).
+        archive versions with their sidecar size and SHA-256 and their status
+        (``new``, ``unchanged``, ``relabeled``); in plain mode the files
+        written (``written``, ``replaced``).
     """
 
-    SCHEMA: ClassVar[str] = "obserwator-sync-report/1"
+    SCHEMA: ClassVar[str] = "obserwator-sync-report/2"
 
     items: tuple[OperationResult, ...]
-    series: tuple[SeriesReport, ...]
     cancelled: bool
     files: tuple[FileResult, ...] = ()
 

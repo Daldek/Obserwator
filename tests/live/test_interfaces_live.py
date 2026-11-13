@@ -74,6 +74,7 @@ from obserwator import (
     ObserwatorError,
     __version__,
     build_catalog,
+    build_series,
     current_version,
     init_store,
     run_command,
@@ -171,7 +172,8 @@ class Case:
     Options of one run of a command (JSON form, without ``root``).
 
     ``store``: snapshot restored as the store root before every interface —
-    ``"empty"``, ``"synced"`` (one hydro archive and its series), ``"full"``
+    ``"empty"``, ``"synced"`` (one hydro archive, its series and the station
+    sources of the catalog), ``"full"``
     (plus the station catalog, a PMAXTP cell and a meteo archive without
     series), ``"absent"`` (no directory) or ``"plain"`` (a directory that is
     no store); ``None`` = no root. ``clean``: entries of the working directory
@@ -616,9 +618,24 @@ class Live:
                 lambda: sync_store(root, datasets=[DAILY], years=[YEAR], months=[MONTH])
             )
             assert [item.status for item in synced.items] == ["new"], synced
-            assert [series.status for series in synced.series] == ["new"], synced
+            # A sync writes raw data only (ADR-015): the series is built on its own,
+            # and the catalog reads the station sources a sync stores.
+            series = build_series(root, dataset=DAILY)
+            assert series.status == "new", series
+            sources = _patiently(
+                lambda: sync_store(
+                    root,
+                    datasets=[
+                        "pl.imgw.hydro_stations",
+                        "pl.imgw.meteo_stations",
+                        "pl.imgw.hydro_now",
+                        "pl.imgw.meteo_now",
+                    ],
+                )
+            )
+            assert {item.status for item in sources.items} == {"new"}, sources
             self.save("synced", root)
-            catalog = _patiently(lambda: build_catalog(root))
+            catalog = build_catalog(root)
             assert catalog.status == "new", catalog
             cell = _patiently(
                 lambda: sync_pmaxtp(root, latitude=LATITUDE, longitude=LONGITUDE)
@@ -626,7 +643,7 @@ class Live:
             assert cell.status == "new", cell
             precip = _patiently(
                 lambda: sync_store(
-                    root, datasets=[PRECIP], years=[YEAR], months=[MONTH], series=False
+                    root, datasets=[PRECIP], years=[YEAR], months=[MONTH]
                 )
             )
             assert [item.status for item in precip.items] == ["new"], precip

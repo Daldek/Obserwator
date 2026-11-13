@@ -17,8 +17,8 @@ import respx
 from obserwator.attribution import attribution
 from obserwator.datasets import archive_files, station_source_files
 from obserwator.exceptions import (
-    ObserwatorConnectionError,
     ObserwatorDataError,
+    ObserwatorStoreError,
     ObserwatorValidationError,
 )
 from obserwator.fetch import DownloadResult
@@ -27,6 +27,7 @@ from obserwator.store import (
     catalog,
     init_store,
     read_station_list,
+    sync_store,
     write_archive,
 )
 from obserwator.store.catalog import build_catalog, check_catalog
@@ -42,6 +43,13 @@ HYDRO_LIST, METEO_LIST = station_source_files()
 HYDRO_CSV = (FIXTURES / "archives" / HYDRO_LIST.server_path).read_bytes()
 METEO_CSV = (FIXTURES / "archives" / METEO_LIST.server_path).read_bytes()
 LIST_HEADERS = {"ETag": '"list-v1"', "Last-Modified": "Sat, 17 Oct 2026 12:00:00 GMT"}
+# The station sources of the IMGW-PIB catalog, which store sync puts into the store.
+IMGW_SOURCES = (
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+)
 PROPERTIES = {
     "station_code",
     "kind",
@@ -74,7 +82,7 @@ def mock_sources(
     meteo_api=None,
     list_headers=LIST_HEADERS,
 ):
-    """Register recorded station sources; anything else (e.g. hydro-back) is unmocked."""
+    """Register recorded station sources (list GET/HEAD, current-data API GET)."""
     routes = {}
     for name, archive, body in (
         ("hydro", HYDRO_LIST, hydro_csv),
@@ -96,10 +104,24 @@ def mock_sources(
                 200, json=entry["json"] if override is None else override
             )
         )
-    routes["hydro_back"] = router.route(host="hydro-back.imgw.pl").mock(
-        return_value=httpx.Response(500)
-    )
     return routes
+
+
+def sync_sources(store, router, **overrides):
+    """Put the recorded station sources into the store as ``store sync`` does."""
+    routes = mock_sources(router, **overrides)
+    report = sync_store(store, datasets=IMGW_SOURCES)
+    assert [item.status for item in report.items if item.status == "failed"] == []
+    return routes
+
+
+def source_actions(plan):
+    """Status of each station-source action of a catalog plan, by source name."""
+    return {
+        action.detail.split(":", 1)[0].removeprefix("source "): action.status
+        for action in plan.actions
+        if action.detail.startswith("source ")
+    }
 
 
 def features(report):
@@ -122,31 +144,41 @@ def store(tmp_path):
     return init_store(tmp_path / "store")
 
 
-def test_lists_are_archived_first_and_all_codes_are_kept(store):
+def sync_statuses(report):
+    """Status of each item of a sync report, by dataset key."""
+    return {item.slot.split(":")[1]: item.status for item in report.items}
+
+
+def test_failed_source_fails_its_sync_item_and_all_codes_are_kept(store):
     meteo_with_history = METEO_CSV + cp1250('"250180460","ADAMOWICE","95414"')
     with respx.mock(assert_all_called=False) as router:
         routes = mock_sources(router, meteo_csv=meteo_with_history)
         routes["meteo_api"].mock(side_effect=httpx.ConnectError("brak sieci"))
-        with pytest.raises(ObserwatorConnectionError):
+        failed = sync_store(store, datasets=IMGW_SOURCES)
+        # Only the item of the unreachable source fails; the others are stored.
+        assert sync_statuses(failed) == {
+            "pl.imgw.hydro_stations": "new",
+            "pl.imgw.meteo_stations": "new",
+            "pl.imgw.hydro_now": "new",
+            "pl.imgw.meteo_now": "failed",
+        }
+        (item,) = [i for i in failed.items if i.status == "failed"]
+        assert item.error_code == "source_unavailable"
+        with pytest.raises(ObserwatorStoreError) as error:
             build_catalog(store)
-        # Both station lists were committed as archive versions before the API failure.
-        for archive in (HYDRO_LIST, METEO_LIST):
-            stored = list(
-                (store.root / "archives/versions").glob(
-                    f"{archive.server_path.rsplit('.', 1)[0]}/*/*.csv"
-                )
-            )
-            assert len(stored) == 1
+        assert error.value.details["datasets"] == ["pl.imgw.meteo_now"]
         assert not (store.root / "stations").exists()
 
         routes["meteo_api"].mock(
             return_value=httpx.Response(200, json=RECORDINGS["meteo_current"]["json"])
         )
+        again = sync_store(store, datasets=IMGW_SOURCES)
+        assert sync_statuses(again)["pl.imgw.meteo_now"] == "new"
+        # The stored lists are current: they are not downloaded again.
+        assert routes["hydro_get"].call_count == 1
+        calls = router.calls.call_count
         report = build_catalog(store)
-        assert (
-            routes["hydro_get"].call_count == 1
-        )  # stored lists are reused, not downloaded again
-        assert not routes["hydro_back"].called
+        assert router.calls.call_count == calls  # the build makes no request
 
     found = features(report)
     assert list(found) == sorted(found)
@@ -175,10 +207,9 @@ def stored_lists(store, archive):
     return sorted((store.root / "archives/versions").glob(f"{stem}/*/*.csv"))
 
 
-def test_changed_station_list_is_archived_before_the_catalog_is_built(store):
-    notices = []
+def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store):
     with respx.mock(assert_all_called=False) as router:
-        routes = mock_sources(router)
+        routes = sync_sources(store, router)
         first = build_catalog(store)
         newer_csv = HYDRO_CSV + cp1250('"150000030","NOWA STACJA","Rzeka (1)","00020"')
         newer = {"ETag": '"list-v2"', "Last-Modified": "Mon, 19 Oct 2026 12:00:00 GMT"}
@@ -188,18 +219,34 @@ def test_changed_station_list_is_archived_before_the_catalog_is_built(store):
         )
         # The meteo list exposes no comparable signal: downloaded, deduplicated by SHA.
         routes["meteo_head"].mock(return_value=httpx.Response(200))
-        assert [item.status for item in check_catalog(store).items] == [
-            "newer",
-            "unverifiable",
+        # New measurements with the same station metadata store no new version.
+        measured = [
+            {**row, "stan_wody": "231"} for row in RECORDINGS["hydro_current"]["json"]
         ]
-        second = build_catalog(store, on_notice=notices.append)
-        routes["meteo_head"].mock(
-            return_value=httpx.Response(200, headers=LIST_HEADERS)
-        )
+        routes["hydro_api"].mock(return_value=httpx.Response(200, json=measured))
+        # The catalog compares the store only: the server's new list is unseen.
+        assert set(source_actions(check_catalog(store)).values()) == {"current"}
+        synced = sync_store(store, datasets=IMGW_SOURCES)
+        assert sync_statuses(synced) == {
+            "pl.imgw.hydro_stations": "new",
+            "pl.imgw.meteo_stations": "unchanged",
+            "pl.imgw.hydro_now": "unchanged",
+            "pl.imgw.meteo_now": "unchanged",
+        }
+        stale = check_catalog(store)
+        second = build_catalog(store)
         plan = check_catalog(store)
+    assert source_actions(stale) == {
+        "hydro_stations": "newer",
+        "meteo_stations": "current",
+        "api_hydro": "current",
+        "api_meteo": "current",
+    }
+    assert stale.actions[-1].status == "newer"
     assert second.status == "new"
     assert "150000030" in features(second) and "150000030" not in features(first)
-    assert [item.status for item in plan.items] == ["current", "current"]
+    assert set(source_actions(plan).values()) == {"current"}
+    assert plan.actions[-1].status == "current" and plan.items == ()
     hydro_versions = stored_lists(store, HYDRO_LIST)
     assert len(hydro_versions) == 2 and hydro_versions[-1].read_bytes() == newer_csv
     assert len(stored_lists(store, METEO_LIST)) == 1
@@ -210,9 +257,6 @@ def test_changed_station_list_is_archived_before_the_catalog_is_built(store):
     assert hydro_source["sha256"] == hashlib.sha256(newer_csv).hexdigest()
     assert hydro_source["file"].startswith(
         "archives/versions/dane_hydrologiczne/lista_stacji_hydro/2026-10-19_"
-    )
-    assert any(
-        n.code == "source_unverifiable" and "wykaz_stacji" in n.message for n in notices
     )
 
 
@@ -229,7 +273,7 @@ def test_code_only_in_static_file_is_kept_as_hydro_station(
         encoding="utf-8",
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         report = build_catalog(store, user_locations=user)
     found = features(report)
     historical = found["150000099"]
@@ -250,7 +294,7 @@ def test_user_file_source_column_is_optional(store, tmp_path):
         encoding="utf-8",
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         report = build_catalog(store, user_locations=user)
     located = features(report)["149190312"]
     assert located["geometry"]["coordinates"] == [19.9512, 50.0512]
@@ -275,7 +319,7 @@ def test_user_file_source_column_is_optional(store, tmp_path):
     ],
     ids=["static_id_x_y", "user_lon_lat"],
 )
-def test_old_location_headers_are_rejected_before_any_download(
+def test_old_location_headers_are_rejected_before_the_sources_are_read(
     store, tmp_path, isolated_reference_dir, static_text, user_text, option, hint
 ):
     if static_text is not None:
@@ -327,7 +371,7 @@ def test_code_only_in_series_index_is_kept_as_historical_station(
     store, isolated_reference_dir
 ):
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         empty = build_catalog(store)
         version = put_monthly(store, ["149190310", "150000097"], '"m1"')
         assert series_action(check_catalog(store)) == "newer"
@@ -377,7 +421,7 @@ def put_meteo(store, dataset):
 def test_meteo_kind_comes_from_the_climate_and_precipitation_series(store):
     meteo_csv = METEO_CSV + cp1250('"250180460","ADAMOWICE","95414"')
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, meteo_csv=meteo_csv)
+        sync_sources(store, router, meteo_csv=meteo_csv)
         before = build_catalog(store)
         put_meteo(store, "pl.imgw.meteo_precip_daily")  # 123750000, 123760000
         assert series_action(check_catalog(store)) == "newer"
@@ -444,7 +488,7 @@ def test_location_precedence_rejections_and_reasons(
     )
     notices = []
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, hydro_csv=hydro_csv, hydro_api=hydro_api)
+        sync_sources(store, router, hydro_csv=hydro_csv, hydro_api=hydro_api)
         report = build_catalog(store, user_locations=user, on_notice=notices.append)
     found = features(report)
 
@@ -488,7 +532,7 @@ def test_location_precedence_rejections_and_reasons(
 def test_missing_static_file_is_reported_and_recorded(store, isolated_reference_dir):
     notices = []
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         report = build_catalog(store, on_notice=notices.append)
     assert report.status == "new"
     expected = (isolated_reference_dir / "hydro_stations_locations.csv").as_posix()
@@ -552,7 +596,7 @@ def test_border_points_are_checked_against_polygon(store, tmp_path):
         encoding="utf-8",
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, hydro_csv=hydro_csv, hydro_api=[])
+        sync_sources(store, router, hydro_csv=hydro_csv, hydro_api=[])
         report = build_catalog(store, user_locations=user)
     found = features(report)
     for code, (_, _, inside) in BORDER_POINTS.items():
@@ -587,7 +631,7 @@ def test_uncertainty_follows_published_decimals(store, tmp_path):
         encoding="utf-8",
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, hydro_csv=hydro_csv)
+        sync_sources(store, router, hydro_csv=hydro_csv)
         found = features(build_catalog(store, user_locations=user))
     assert found["149190312"]["properties"]["location_uncertainty_m"] == 150.0
     assert found["150000010"]["properties"]["location_uncertainty_m"] == pytest.approx(
@@ -605,7 +649,7 @@ def test_hydrographic_code_text_prefix_and_river_order(store):
         '" 150150200","SOSNÓWKA","Sośniak (16288832)","01286"',
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, hydro_csv=hydro_csv)
+        sync_sources(store, router, hydro_csv=hydro_csv)
         found = features(build_catalog(store))
     raba = found["149190310"]["properties"]
     assert raba["hydrographic_code"] == "213"
@@ -633,7 +677,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(store, isolated_referenc
         "station_code,latitude,longitude\n149190312,50.0512,19.9512\n", encoding="utf-8"
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         report = build_catalog(store)
     raw = report.version.read_bytes()
     document = json.loads(raw)
@@ -709,7 +753,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(store, isolated_referenc
 
 def test_identical_content_next_day_is_unchanged(store, tmp_path, monkeypatch):
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         first = build_catalog(store)
         sidecar = first.version.with_name("stations.geojson.meta.json").read_bytes()
 
@@ -738,46 +782,112 @@ def test_identical_content_next_day_is_unchanged(store, tmp_path, monkeypatch):
     assert len(list((store.root / "stations/versions").iterdir())) == 2
 
 
-def test_check_catalog_uses_head_only_and_writes_nothing(store, tmp_path):
+def test_check_catalog_is_offline_and_writes_nothing(store, tmp_path):
+    notices = []
+    before = tree(store.root)
+    with respx.mock(assert_all_mocked=True) as offline:  # any request fails the test
+        plan = check_catalog(store, on_notice=notices.append)
+        assert not offline.calls
+    assert plan.items == ()
+    assert source_actions(plan) == dict.fromkeys(
+        ("hydro_stations", "meteo_stations", "api_hydro", "api_meteo"), "missing"
+    )
+    assert plan.actions[-1].status == "missing"
+    assert [n.code for n in notices] == ["source_missing"] * 4
+    assert tree(store.root) == before
+
     with respx.mock(assert_all_called=False) as router:
-        routes = mock_sources(router)
+        sync_sources(store, router)
+    # Stored sources without a catalog: the build is due.
+    plan = check_catalog(store)
+    assert set(source_actions(plan).values()) == {"missing"}
+    assert plan.actions[-1].status == "missing"
+    build_catalog(store)
+    before = tree(store.root)
+
+    user = tmp_path / "u.csv"
+    user.write_text(
+        "station_code,latitude,longitude,source\n149190312,50.0512,19.9512,a\n",
+        encoding="utf-8",
+    )
+    with respx.mock(assert_all_mocked=True) as offline:
         plan = check_catalog(store)
-        assert [item.status for item in plan.items] == ["missing", "missing"]
-        assert plan.actions[-1].status == "missing"
-        assert (
-            not (store.root / ".incoming").exists()
-            and not (store.root / "archives").exists()
-        )
-        build_catalog(store)
-        get_calls = {name: route.call_count for name, route in routes.items()}
-        before = tree(store.root)
+        with_user = check_catalog(store, user_locations=user)
+        assert not offline.calls
+    assert set(source_actions(plan).values()) == {"current"}
+    assert plan.actions[-1].status == "current"
+    assert set(source_actions(with_user).values()) == {"current"}
+    assert any(a.status == "newer" and "user" in a.detail for a in with_user.actions)
+    assert with_user.actions[-1].status == "newer"
+    assert tree(store.root) == before
 
+
+SOURCE_DATASETS = {
+    "hydro_stations": "pl.imgw.hydro_stations",
+    "meteo_stations": "pl.imgw.meteo_stations",
+    "api_hydro": "pl.imgw.hydro_now",
+    "api_meteo": "pl.imgw.meteo_now",
+}
+
+
+def test_catalog_builds_and_checks_with_the_network_off(store):
+    with respx.mock(assert_all_called=False) as router:
+        mock_sources(router)
+        synced = sync_store(store, datasets=IMGW_SOURCES)
+    stored = {
+        item.slot.split(":")[1]: item.version.relative_to(store.root).as_posix()
+        for item in synced.items
+    }
+    with respx.mock(assert_all_mocked=True) as offline:  # no route: any request fails
+        report = build_catalog(store)
         plan = check_catalog(store)
-        assert [item.status for item in plan.items] == ["current", "current"]
-        api_actions = [a for a in plan.actions if "api/data" in a.detail]
-        assert [a.status for a in api_actions] == ["unverifiable", "unverifiable"]
-        assert plan.actions[-1].status == "unverifiable"
+        assert not offline.calls
+    assert report.status == "new" and report.station_count == 6
+    assert set(source_actions(plan).values()) == {"current"}
+    meta = json.loads(
+        report.version.with_name("stations.geojson.meta.json").read_text("utf-8")
+    )
+    files = {
+        entry["source"]: entry["file"]
+        for entry in meta["extra"]["catalog"]
+        if entry["source"] in SOURCE_DATASETS
+    }
+    assert files == {
+        source: stored[dataset] for source, dataset in SOURCE_DATASETS.items()
+    }
+    assert files["api_hydro"].startswith("archives/versions/api/data/hydro/")
+    # The stored API answer is station metadata: the kept fields only.
+    stations = json.loads((store.root / files["api_hydro"]).read_bytes())
+    assert {key for row in stations for key in row} <= {
+        "id_stacji",
+        "stacja",
+        "rzeka",
+        "lon",
+        "lat",
+    }
 
-        routes["hydro_head"].mock(
-            return_value=httpx.Response(200, headers={"ETag": '"list-v2"'})
-        )
-        routes["meteo_head"].mock(return_value=httpx.Response(200))
-        user = tmp_path / "u.csv"
-        user.write_text(
-            "station_code,latitude,longitude,source\n149190312,50.0512,19.9512,a\n",
-            encoding="utf-8",
-        )
-        plan = check_catalog(store, user_locations=user)
-        assert [item.status for item in plan.items] == ["newer", "unverifiable"]
-        assert any(a.status == "newer" and "user" in a.detail for a in plan.actions)
-        assert plan.actions[-1].status == "newer"
 
-        routes["hydro_head"].mock(side_effect=httpx.ConnectError("brak sieci"))
-        assert check_catalog(store).items[0].status == "check_failed"
-        for name, route in routes.items():
-            if not name.endswith("_head"):
-                assert route.call_count == get_calls[name], name  # no GET during check
-        assert not routes["hydro_back"].called
+@pytest.mark.parametrize(
+    "missing",
+    [("pl.imgw.hydro_now",), ("pl.imgw.hydro_stations", "pl.imgw.meteo_now")],
+    ids=["hydro_now", "list_and_meteo_now"],
+)
+def test_build_without_a_stored_source_names_it_and_writes_nothing(store, missing):
+    with respx.mock(assert_all_called=False) as router:
+        mock_sources(router)
+        sync_store(store, datasets=[key for key in IMGW_SOURCES if key not in missing])
+    before = tree(store.root)
+    with respx.mock(assert_all_mocked=True) as offline:
+        with pytest.raises(ObserwatorStoreError) as error:
+            build_catalog(store)
+        assert not offline.calls
+    assert error.value.code == "not_found"
+    assert error.value.details == {
+        "reason": "missing_source",
+        "datasets": list(missing),
+    }
+    assert error.value.hint is not None
+    assert "store sync" in error.value.hint and ",".join(missing) in error.value.hint
     assert tree(store.root) == before
 
 
@@ -793,7 +903,7 @@ def test_check_catalog_tracks_static_file_presence(store, isolated_reference_dir
         return action
 
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         build_catalog(store)
         absent = static_action()
         assert absent.status == "current" and "missing file" in absent.detail
@@ -814,7 +924,7 @@ def test_code_in_both_families_is_a_data_error(store):
         {"kod_stacji": "149190310", "nazwa_stacji": "X", "lat": None, "lon": None},
     ]
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, meteo_api=meteo_api)
+        sync_sources(store, router, meteo_api=meteo_api)
         with pytest.raises(ObserwatorDataError, match="149190310"):
             build_catalog(store)
     assert not (store.root / "stations").exists()
@@ -826,7 +936,7 @@ def test_code_listed_twice_is_reported_and_kept_once(store):
         '"250199990","STACJA TESTOWA","94660"',
     )
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router, meteo_csv=meteo)
+        sync_sources(store, router, meteo_csv=meteo)
         report = build_catalog(store)
     assert report.status == "new"
     (problem,) = [p for p in report.problems if "250199990" in p]
@@ -844,9 +954,11 @@ def test_code_listed_twice_is_reported_and_kept_once(store):
 
 
 def test_cancel_leaves_no_catalog_version(store):
-    calls = iter([False, False, False, False, True])
+    # Polled before the sources, after them and after the assembly: the last
+    # poll before the version is published cancels the build.
+    calls = iter([False, False, True])
     with respx.mock(assert_all_called=False) as router:
-        mock_sources(router)
+        sync_sources(store, router)
         report = build_catalog(store, cancel=lambda: next(calls, True))
     assert report.status == "cancelled" and report.version is None
     assert not (store.root / "stations").exists()

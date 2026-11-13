@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
@@ -24,6 +24,8 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     _parse_stations,
+    _station_file,
+    _station_files,
     archive_files,
     get_dataset,
     get_provider,
@@ -62,7 +64,6 @@ from obserwator.store.series import (
     _series_descriptor,
     _series_state,
     _Version,
-    build_series,
 )
 from obserwator.store.types import (
     Cancel,
@@ -75,7 +76,6 @@ from obserwator.store.types import (
     PlanItem,
     Progress,
     ProgressHook,
-    SeriesReport,
     StoreHandle,
     StorePlan,
     SyncReport,
@@ -172,7 +172,7 @@ def _failure_code(error: str | None) -> ErrorCode:
 def _source(archive: ArchiveFile) -> str:
     """Provider name in the messages about an archive's server."""
     descriptor = get_dataset(archive.dataset)
-    if descriptor.archive_scope == "country":
+    if descriptor.provider == "IMGW-PIB":
         return "IMGW"
     return get_provider(descriptor.provider).short_name
 
@@ -615,11 +615,6 @@ def _check_listed(
 
 def _descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor]:
     """Measurement series datasets of the request, without repetitions."""
-    if isinstance(datasets, str):
-        raise ObserwatorValidationError(
-            message("sync.parameter_datasets_must_list_dataset"),
-            details={"option": "datasets", "value": datasets},
-        )
     found: dict[str, DatasetDescriptor] = {}
     for dataset in dict.fromkeys(datasets):
         descriptor = _series_descriptor(dataset)
@@ -629,6 +624,37 @@ def _descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor]:
             message("sync.choose_least_one_dataset"), details={"option": "datasets"}
         )
     return list(found.values())
+
+
+def _source_descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor] | None:
+    """
+    The station-source datasets of a request, or None when it names none of them.
+
+    Station sources are the station lists and the station metadata of the
+    catalogs (``time_unit`` ``station_list``, ADR-015); a request holds either
+    only them or only measurement datasets.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``datasets`` is a string, names an unknown dataset, or mixes station
+        sources with measurement datasets.
+    """
+    if isinstance(datasets, str):
+        raise ObserwatorValidationError(
+            message("sync.parameter_datasets_must_list_dataset"),
+            details={"option": "datasets", "value": datasets},
+        )
+    named = [get_dataset(dataset) for dataset in dict.fromkeys(datasets)]
+    sources = {d.key: d for d in named if d.time_unit == "station_list"}
+    if not sources:
+        return None
+    if len(sources) != len({d.key for d in named}):
+        raise ObserwatorValidationError(
+            message("sync.station_sources_alone"),
+            details={"option": "datasets", "value": [d.key for d in named]},
+        )
+    return list(sources.values())
 
 
 def _country_archives(
@@ -724,9 +750,35 @@ def _selection(
     tuple
         The datasets without repetitions, then for per-station datasets
         (ČHMÚ) the station codes and the candidates of each dataset (see
-        `_station_request`) with no archives, or for country datasets
-        (IMGW-PIB) no codes, no candidates and the archives.
+        `_station_request`) with no archives, for country datasets
+        (IMGW-PIB) no codes, no candidates and the archives, or for station
+        sources (lists and station metadata, ADR-015) no codes, no candidates
+        and their files with a fixed name.
     """
+    if not isinstance(datasets, str):
+        datasets = tuple(datasets)
+    sources = _source_descriptors(datasets)
+    if sources is not None:
+        for name, given in (
+            ("years", years),
+            ("months", months),
+            ("stations", stations),
+        ):
+            if given is not None:
+                raise ObserwatorValidationError(
+                    message("sync.option_not_for_station_sources", option=name),
+                    details={
+                        "option": name,
+                        "value": None,
+                        "reason": "station_sources",
+                    },
+                )
+        return (
+            sources,
+            (),
+            {},
+            [file for d in sources for file in _station_files(d.key)],
+        )
     descriptors = _descriptors(datasets)
     per_station = {descriptor.archive_scope != "country" for descriptor in descriptors}
     if len(per_station) > 1:
@@ -882,7 +934,8 @@ def check_store(
             refused.to_json(_plan_target(refused.root, plan))
         return refused
     path = _root(root)
-    listed = descriptors[0].archive_scope != "country"
+    sources = descriptors[0].time_unit == "station_list"
+    listed = sources or descriptors[0].archive_scope != "country"
     target = _plan_target(path, plan) if plan is not None else None
     made = 0
 
@@ -896,7 +949,16 @@ def check_store(
         headers=_IDENTIFY if listed else None,
         event_hooks={"request": [count]},
     ) as client:
-        if listed:
+        if sources:
+            items, actions, cancelled = _check_sources(
+                client,
+                path,
+                descriptors,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
+        elif listed:
             items, actions, cancelled = _check_listed(
                 client,
                 path,
@@ -922,7 +984,7 @@ def check_store(
         root=path,
         checked_at=datetime.now(UTC),
         items=tuple(items),
-        series_state=_series_states(path, descriptors, items),
+        series_state={} if sources else _series_states(path, descriptors, items),
         actions=tuple(actions),
         cancelled=cancelled,
         requests={
@@ -1004,6 +1066,132 @@ def _check_one(
     )
 
 
+def _check_sources(
+    client: httpx.Client,
+    root: Path,
+    descriptors: list[DatasetDescriptor],
+    *,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[list[PlanItem], list[PlanAction], bool]:
+    """
+    Check the station sources of the catalogs (ADR-015) against their slots.
+
+    A station list is checked with ``HEAD`` against the reference signal of its
+    slot (the newest observation of the current version, else its own
+    ``extra.http``). The station metadata without a stable signal (the current-
+    data API answers of IMGW-PIB, the hydro ``now`` metadata of ČHMÚ) are
+    ``unverifiable`` without a request, so a sync downloads them and the
+    store compares the bytes (or the canonical content). The newest daily
+    ČHMÚ meteo ``now`` file is named by its directory listing: ``current``
+    when the store holds it, else ``missing``; an unreadable listing is a
+    ``check_failed`` action.
+    """
+    targets: list[ArchiveFile] = []
+    actions: list[PlanAction] = []
+    for descriptor in descriptors:
+        targets.extend(_station_files(descriptor.key))
+        if descriptor.update_signal != "listing":
+            continue
+        listing_url = (
+            f"{get_provider(descriptor.provider).base_url}{descriptor.server_dir}/"
+        )
+        listing = _read_listing(
+            client, listing_url, source=get_provider(descriptor.provider).short_name
+        )
+        newest = sorted(
+            name for name in listing.entries if _station_file(descriptor, name)
+        )
+        if listing.error is not None or not newest:
+            actions.append(
+                PlanAction(
+                    _SYNC,
+                    "check_failed",
+                    message(
+                        "sync.station_source_listing",
+                        key=descriptor.key,
+                        error=listing.error or message("sync.no_file_in_listing"),
+                    ),
+                )
+            )
+            continue
+        archive = _station_file(descriptor, newest[-1])
+        assert archive is not None
+        targets.append(archive)
+    items: list[PlanItem] = []
+    cancelled = False
+    for index, archive in enumerate(targets, start=1):
+        cancelled = cancelled or (cancel is not None and cancel())
+        if cancelled:
+            items.append(_item(archive, "unverifiable", error=CANCELLED))
+            continue
+        items.append(_check_source(client, root, archive))
+        _announce(
+            items[-1],
+            index,
+            len(targets),
+            on_progress=on_progress,
+            on_notice=on_notice,
+        )
+    return items, actions, cancelled
+
+
+def _check_source(client: httpx.Client, root: Path, archive: ArchiveFile) -> PlanItem:
+    """Plan item of one station source (see `_check_sources`)."""
+    descriptor = get_dataset(archive.dataset)
+    try:
+        local = _current_version(root, archive)
+        reference = (
+            _reference_signal(root, slot=_archive_slot(archive))
+            if local is not None
+            else None
+        )
+    except ObserwatorDataError as exc:
+        return _item(archive, "check_failed", error=reason(exc))
+    if descriptor.update_signal == "none":
+        return _item(
+            archive,
+            "unverifiable",
+            local=local,
+            error=message("sync.station_source_no_signal"),
+        )
+    if descriptor.update_signal == "listing":
+        return _item(archive, "missing" if local is None else "current", local=local)
+    try:
+        signal = _head(client, archive)
+    except httpx.HTTPError as exc:
+        source = get_provider(descriptor.provider).short_name
+        return _item(
+            archive, "check_failed", local=local, error=_http_error(exc, source=source)
+        )
+    if signal is None:
+        return _item(archive, "unverifiable", local=local, error=UNPUBLISHED)
+    if local is None:
+        return _item(archive, "missing", signal=signal)
+    observation = reference.observation if reference is not None else None
+    stored: dict[str, object] = (
+        {"etag": reference.etag, "last_modified": reference.last_modified}
+        if reference is not None and observation is not None
+        else dict(local.http)
+    )
+    status = _compare(stored, signal)
+    item = _item(
+        archive,
+        status,
+        local=local,
+        signal=signal,
+        error=NO_SIGNAL if status == "unverifiable" else None,
+    )
+    # The observation giving the reference signal, as the ČHMÚ listing items name it.
+    return replace(
+        item,
+        local_observation=observation.relative_to(root)
+        if observation is not None
+        else None,
+    )
+
+
 def _download(
     archive: ArchiveFile, /, *, client: httpx.Client | None = None
 ) -> DownloadResult:
@@ -1021,7 +1209,7 @@ def _download(
         If an IMGW-PIB archive is no ZIP or a header is invalid.
     """
     descriptor = get_dataset(archive.dataset)
-    if descriptor.archive_scope != "country":
+    if descriptor.archive_scope != "country" or descriptor.time_unit == "station_list":
         source = get_provider(descriptor.provider).short_name
         if client is not None:
             return _archive_response(client, archive.url, source=source, zipped=False)
@@ -1097,7 +1285,6 @@ def sync_store(
     months: MonthsArg | None = None,
     stations: Iterable[str] | None = None,
     plan: StorePlan | PathArg | None = None,
-    series: bool | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -1105,27 +1292,32 @@ def sync_store(
     """
     Download the archives that a plan marks as new or missing, or write them as plain files.
 
+    Downloads write only raw data (ADR-015): the archives, the station lists
+    and the station metadata of the catalogs. Series and catalogs are built
+    from the store afterwards by ``series build`` and ``store catalog``.
+
     Without ``plan`` the plan is built by :func:`check_store` from the given
     selectors; ``plan`` and the selectors are mutually exclusive. Before each
     download an HTTP ``HEAD`` re-validates the item: when the ETag or
     Last-Modified (IMGW-PIB), or the Last-Modified minute or Content-Length
     against the listing (ČHMÚ), differs from the plan, or the file is gone,
-    the item ends as ``stale_plan`` and is not downloaded. ``check_failed``
-    items are never downloaded. An ``unverifiable`` item is downloaded (then
-    deduplicated by SHA-256) only in a sync without a supplied plan; from a
-    supplied plan it stays ``unchanged`` with a ``source_unverifiable``
-    warning. An unpublished item (``"not published"``) stays ``unchanged``
-    and does not block the series. Failures of single archives are reported
-    per slot, not raised.
+    the item ends as ``stale_plan`` and is not downloaded; station metadata
+    without a signal are downloaded and compared after the download.
+    ``check_failed`` items are never downloaded. An ``unverifiable`` item is
+    downloaded (then deduplicated by SHA-256) only in a sync without a
+    supplied plan; from a supplied plan it stays ``unchanged`` with a
+    ``source_unverifiable`` warning. An unpublished item (``"not published"``)
+    stays ``unchanged``. Failures of single archives are reported per slot,
+    not raised.
 
     With ``output_dir`` (plain mode, DEV-19.1) the selected archives are
     written as ordinary files ``<output_dir>/<server_path>`` like
     ``datasets download`` does: there is no local version to compare with, so
-    every selected file is fetched, an existing target without ``force`` is a
-    ``conflict`` that lists every path before the first request, and no series
-    is built (a plan and ``series`` act on versions, DEV-19.17). ČHMÚ station
-    files need ``years`` in plain mode, because the years of a store sync come
-    from the server listing.
+    every selected file is fetched and an existing target without ``force`` is a
+    ``conflict`` that lists every path before the first request (a plan acts on
+    versions, DEV-19.17). ČHMÚ station files need ``years`` in plain mode,
+    because the years of a store sync come from the server listing; the
+    station sources of the catalogs are stored only in a store.
 
     Parameters
     ----------
@@ -1153,21 +1345,16 @@ def sync_store(
     plan : StorePlan, str, os.PathLike or None, optional
         Plan from :func:`check_store`, or the path of its ``obserwator-plan/1`` JSON file.
         Must refer to the same store root. Store mode only.
-    series : bool or None, optional
-        Rebuild the series of every dataset in the plan with :func:`build_series`
-        once all its archives synchronized successfully. None (default) means
-        ``True`` in store mode; any value is a ``validation_error`` in plain
-        mode.
     on_progress : ProgressHook or None, optional
         Called after each archive with its operation status; also forwarded to
-        :func:`check_store` and :func:`build_series`.
+        :func:`check_store`.
     on_notice : NoticeHook or None, optional
         Receives warnings and errors (``stale_plan``, ``source_unverifiable``,
         ``archive_failed``) and notices of the writer (e.g.
-        ``content_unchanged``) and the series builder.
+        ``content_unchanged``).
     cancel : Cancel or None, optional
         Polled before each archive; once it returns ``True`` the remaining items
-        and series end as ``cancelled``.
+        end as ``cancelled``.
 
     Returns
     -------
@@ -1175,11 +1362,9 @@ def sync_store(
         One :class:`OperationResult` per plan item (``new``, ``relabeled``,
         ``unchanged``, ``failed``, ``stale_plan`` or
         ``cancelled``), then one ``failed`` result without a slot for every
-        ``check_failed`` station action of the plan (a ČHMÚ listing that could
-        not be read), one :class:`SeriesReport` per dataset when ``series`` is
-        true (``failed`` or ``cancelled`` without building when the dataset
-        has incomplete inputs), the overall cancellation flag and ``files``:
-        the versions with their size, SHA-256 and status (store mode) or the
+        ``check_failed`` action of the plan (a ČHMÚ listing that could
+        not be read), the overall cancellation flag and ``files``: the
+        versions with their size, SHA-256 and status (store mode) or the
         files written, ``written`` or ``replaced`` (plain mode). A plain file
         written is an item ``new``; an unpublished ČHMÚ candidate is
         ``unchanged``.
@@ -1190,9 +1375,10 @@ def sync_store(
         If both ``plan`` and selectors are given, ``datasets`` is missing
         without a plan, the plan refers to another store, or the selectors are
         invalid (see :func:`check_store`); if both ``output_dir`` and ``root``
-        are given (``details["reason"]="exclusive_options"``); if ``plan`` or
-        ``series`` is given with ``output_dir``
-        (``details["reason"]="store_only_option"``).
+        are given (``details["reason"]="exclusive_options"``); if ``plan`` is
+        given with ``output_dir`` (``details["reason"]="store_only_option"``)
+        or station sources are synchronized as plain files
+        (``details["reason"]="store_only_dataset"``).
     ObserwatorError
         ``conflict`` in plain mode before any request (``output_exists``,
         ``duplicate_output_name``, ``output_in_store``; ``details["paths"]`` is
@@ -1217,14 +1403,12 @@ def sync_store(
             months=months,
             stations=stations,
             plan=plan,
-            series=series,
             on_progress=on_progress,
             on_notice=on_notice,
             cancel=cancel,
         )
     refuse_root(target.path)
     path = _root(target.path)
-    build = True if series is None else series
     if plan is not None and any(
         option is not None for option in (datasets, years, months, stations)
     ):
@@ -1260,11 +1444,16 @@ def sync_store(
 
     results: list[OperationResult] = []
     stop = False
-    listed = any(item.signal == "listing" for item in plan.items)
+    # ČHMÚ requests name obserwator/<version> (spec 2026-10-18 §4.5), also those
+    # of its station sources, which have no listing signal.
+    identify = any(
+        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMI"
+        for item in plan.items
+    )
     with httpx.Client(
         timeout=DEFAULT_TIMEOUT,
         follow_redirects=True,
-        headers=_IDENTIFY if listed else None,
+        headers=_IDENTIFY if identify else None,
     ) as client:
         for index, item in enumerate(plan.items, start=1):
             stop = stop or cancelled()
@@ -1304,57 +1493,14 @@ def sync_store(
         if action.command == _SYNC and action.status == "check_failed"
     ]
 
-    reports: list[SeriesReport] = []
-    if build:
-        for dataset in dict.fromkeys(item.archive.dataset for item in plan.items):
-            outcome = [
-                result
-                for item, result in zip(plan.items, results, strict=True)
-                if item.archive.dataset == dataset
-            ]
-            blocking = [
-                str(result.slot) for result in outcome if result.status not in _DONE
-            ]
-            if stop or any(result.status == "cancelled" for result in outcome):
-                reports.append(SeriesReport("cancelled", None, 0, (), (CANCELLED,)))
-            elif blocking:
-                reports.append(
-                    SeriesReport(
-                        "failed",
-                        None,
-                        0,
-                        (),
-                        (
-                            message(
-                                "sync.series_skipped",
-                                dataset=dataset,
-                                blocking=", ".join(blocking),
-                            ),
-                        ),
-                    )
-                )
-            else:
-                try:
-                    reports.append(
-                        build_series(
-                            path,
-                            dataset=dataset,
-                            on_progress=on_progress,
-                            on_notice=on_notice,
-                            cancel=cancel,
-                        )
-                    )
-                except ObserwatorError as exc:
-                    reports.append(SeriesReport("failed", None, 0, (), (reason(exc),)))
     was_cancelled = stop or any(result.status == "cancelled" for result in results)
     files = tuple(
         version_file(result.version, cast(_VersionStatus, result.status))
         for result in results
         if result.version is not None and result.status in _DONE
-    ) + tuple(file for report in reports for file in report.files)
+    )
     return SyncReport(
         items=(*results, *unchecked),
-        series=tuple(reports),
         cancelled=was_cancelled,
         files=files,
     )
@@ -1372,11 +1518,17 @@ def _plain_archives(
     Raises
     ------
     ObserwatorValidationError
-        If the selectors are invalid (see `_selection`), or a ČHMÚ dataset of
-        station-year files has no ``years``: the store reads them from the
-        server listing, which a plain write does not use.
+        If the selectors are invalid (see `_selection`), name station sources
+        (stored only, ``details.reason`` ``store_only_dataset``), or a ČHMÚ
+        dataset of station-year files has no ``years``: the store reads them
+        from the server listing, which a plain write does not use.
     """
     descriptors, _, candidates, archives = _selection(datasets, years, months, stations)
+    if descriptors[0].time_unit == "station_list":
+        raise ObserwatorValidationError(
+            message("sync.station_sources_store_only"),
+            details={"option": "datasets", "reason": "store_only_dataset"},
+        )
     if not candidates:
         return archives
     unnamed = [d.key for d in descriptors if candidates[d.key] is None]
@@ -1418,7 +1570,6 @@ def _sync_plain(
     months: MonthsArg | None,
     stations: Iterable[str] | None,
     plan: StorePlan | PathArg | None,
-    series: bool | None,
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
@@ -1429,21 +1580,20 @@ def _sync_plain(
     Raises
     ------
     ObserwatorValidationError
-        If ``plan`` or ``series`` is given (they act on versions), ``datasets``
-        is missing or the selectors are invalid.
+        If ``plan`` is given (it acts on versions), ``datasets`` is missing,
+        the selectors are invalid or name station sources (stored only).
     ObserwatorError
         ``conflict`` before the first request (see ``download_archives``).
     """
-    for name, given in (("plan", plan), ("series", series)):
-        if given is not None:
-            raise ObserwatorValidationError(
-                message("sync.store_only_option", name=name),
-                details={
-                    "option": name,
-                    "value": str(given),
-                    "reason": "store_only_option",
-                },
-            )
+    if plan is not None:
+        raise ObserwatorValidationError(
+            message("sync.store_only_option", name="plan"),
+            details={
+                "option": "plan",
+                "value": str(plan),
+                "reason": "store_only_option",
+            },
+        )
     if datasets is None:
         raise ObserwatorValidationError(
             message("sync.without_plan_parameter_datasets_required"),
@@ -1461,7 +1611,6 @@ def _sync_plain(
     )
     return SyncReport(
         items=tuple(_plain_result(item) for item in items),
-        series=(),
         cancelled=any(item.status == "cancelled" for item in items),
         files=tuple(written),
     )
@@ -1478,6 +1627,11 @@ def _sync_one(
     on_notice: NoticeHook | None,
 ) -> OperationResult:
     local = root / item.local_path if item.local_path is not None else None
+    descriptor = get_dataset(item.archive.dataset)
+    # Station metadata without an HTTP signal are compared after the download.
+    unsigned = descriptor.time_unit == "station_list" and (
+        descriptor.update_signal != "http"
+    )
     if item.status == "current" and not force:
         return _result(item, "unchanged", version=local)
     if item.status == "check_failed":
@@ -1503,7 +1657,7 @@ def _sync_one(
                     )
                 )
             return _result(item, "unchanged", version=local, error=item.error)
-        if on_notice is not None:
+        if on_notice is not None and descriptor.update_signal != "none":
             on_notice(
                 Notice(
                     "warning",
@@ -1515,20 +1669,21 @@ def _sync_one(
                     ),
                 )
             )
-    try:
-        signal = _head(client, item.archive)
-    except httpx.HTTPError as exc:
-        return _result(
-            item,
-            "failed",
-            error=_http_error(exc, source=_source(item.archive)),
-            error_code="source_unavailable",
-        )
-    if _stale(item, signal):
-        text = message("sync.stale_plan", server_path=item.archive.server_path)
-        if on_notice is not None:
-            on_notice(Notice("warning", "stale_plan", text))
-        return _result(item, "stale_plan", version=local, error=text)
+    if not unsigned:
+        try:
+            signal = _head(client, item.archive)
+        except httpx.HTTPError as exc:
+            return _result(
+                item,
+                "failed",
+                error=_http_error(exc, source=_source(item.archive)),
+                error_code="source_unavailable",
+            )
+        if _stale(item, signal):
+            text = message("sync.stale_plan", server_path=item.archive.server_path)
+            if on_notice is not None:
+                on_notice(Notice("warning", "stale_plan", text))
+            return _result(item, "stale_plan", version=local, error=text)
     try:
         response = _download(item.archive, client=client)
         written = write_archive(

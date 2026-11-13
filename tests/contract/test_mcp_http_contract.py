@@ -24,6 +24,7 @@ from tests.contract.test_interface_contract import (
     CASES,
     ROUTES,
     SCENARIOS,
+    WRITTEN,
     Setting,
     fresh_store,
     recorded,  # noqa: F401 (fixture)
@@ -118,7 +119,7 @@ async def test_every_rest_case_is_the_answer_of_its_mcp_tool(
     tool = ROUTES[command]["operation_id"]
     async with connected(app) as client:
         for case in CASES[command]:
-            writes = case.store in ("empty", "fixture")
+            writes = case.store in WRITTEN
             if writes:
                 root = tmp_path / "store"
             else:

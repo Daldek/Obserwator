@@ -4,7 +4,7 @@
 
 ## Czym jest Obserwator
 
-Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego magazynu (zwykły katalog; wersje są niezmienne, tożsamość to SHA-256) albo jako zwykłe pliki, a z magazynu offline czyta się szeregi stacji.
+Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego magazynu (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi i katalogi stacji powstają z magazynu i czyta się je offline.
 
 Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, lokalnych kopii i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
 
@@ -27,11 +27,11 @@ Ta sama komenda w każdym interfejsie: CLI `obserwator <grupa> <komenda> --opcja
 
 - **REST:** korzeń magazynu ustawia serwer (`OBSERWATOR_ROOT`), `version` jest względna do niego, opcji lokalnych nie ma; zapis (POST bez `?check=true`) wymaga włączenia na serwerze i nagłówka `X-API-Key`.
 - **MCP:** `obserwator mcp` (stdio) startuje bez zapisu — komendy zapisujące zwracają plan (`check` stałe `true`); zapis włącza użytkownik (`--allow-writes`), a i wtedy `check` jest domyślnie `true`. `/mcp` serwera REST (`OBSERWATOR_MCP_ENABLED=true`) tylko czyta i planuje.
-- **Język:** wynik maszynowy jest po angielsku (koperta `--json`, linie błędów, MCP, REST, domyślny przewodnik). Polski tylko na prośbę: `--lang pl` (`commands list|schema|guide`; w pozostałych komendach język podsumowania CLI bez `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
+- **Język:** wynik maszynowy jest po angielsku; polski na prośbę: `--lang pl` (`commands list|schema|guide`, w innych komendach podsumowanie CLI bez `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
 ## Koperta, statusy i błędy
 
-Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}` (każdy raz, np. `license_terms`). Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Strumienie bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST daje załącznik (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
+Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}`. Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Strumienie bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST daje załącznik (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
 
 <!-- obserwator:statuses -->
 
@@ -68,8 +68,8 @@ Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcz
 2. Kody wyjścia 10 i 11 to nie awaria programu — czytaj kopertę (`items[].status`, `error_code`).
 3. Nie uruchamiaj zapisu (`store sync`, `series build`, `datasets download`) bez planu i zgody użytkownika.
 4. Nie zgaduj stacji ani zbioru: przy kilku trafieniach `stations find` zapytaj; obecność stacji w zbiorze sprawdź `series summary`.
-5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — magazyn jest tylko przyrostowy.
-6. Nie pobieraj „na zapas”: zawężaj `years`, `months` i `stations`; nie mieszaj dostawców w jednym wywołaniu ze `stations`.
+5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu — jest tylko przyrostowy.
+6. Nie pobieraj „na zapas”: zawężaj `years`, `months` i `stations`.
 7. Długie listy czytaj stronami (`limit`, `cursor` = `page.next_cursor`); używaj `series read` albo `series export --output`, nie CSV w kontekście.
 8. Nie odpytuj `current …` w pętli — to API na żywo; zachowaj wynik.
 9. Pokazuj linie `attribution` i `terms_notice` dosłownie z danymi i w tym, co z nich zrobisz (także komunikat `license_terms`).

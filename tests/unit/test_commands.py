@@ -165,11 +165,13 @@ VALID: dict[str, list[dict[str, object]]] = {
             "years": ["2023-2025"],
             "months": [1],
             "plan": "/tmp/plan 1.json",
-        }
+        },
+        {"root": ROOT, "datasets": ["pl.imgw.hydro_stations", "cz.chmi.meteo_now"]},
     ],
     "store sync": [
-        {"root": ROOT, "plan": "/tmp/plan.json", "series": False},
+        {"root": ROOT, "plan": "/tmp/plan.json", "force": True},
         {"root": ROOT, "datasets": [DAILY], "years": [2024]},
+        {"root": ROOT, "datasets": ["pl.imgw.hydro_now", "pl.imgw.meteo_stations"]},
     ],
     "store catalog": [{"root": ROOT, "user_locations": "/tmp/moje położenia.csv"}],
     "store export": [
@@ -489,17 +491,27 @@ def test_format_command_writes_the_run_flags_last_and_refuses_another_flag_of_a_
 
 
 def test_format_command_quotes_and_writes_bools_as_flags():
-    words = f"--root {quoted('/s')} --plan {quoted('/p.json')}"
+    words = f"--root {quoted('/s')} --no-series --output {quoted('/o.csv')}"
     assert (
         format_command("store info", options={"root": "/a b/s"})
         == f"obserwator store info --root {quoted('/a b/s')}"
     )
+    # A default-true flag is written only when false, as its --no- form.
+    assert (
+        format_command(
+            "stations export",
+            options={"root": "/s", "output": "/o.csv", "series": True},
+        )
+        == f"obserwator stations export --root {quoted('/s')} --output {quoted('/o.csv')}"
+    )
     assert format_command(
-        "store sync", options={"root": "/s", "plan": "/p.json", "series": True}
-    ) == (f"obserwator store sync {words}")
+        "stations export", options={"root": "/s", "output": "/o.csv", "series": False}
+    ) == (f"obserwator stations export {words}")
     assert format_command(
-        "store sync", options={"root": "/s", "plan": "/p.json", "series": False}
-    ) == (f"obserwator store sync {words} --no-series")
+        "store sync", options={"root": "/s", "plan": "/p.json", "force": True}
+    ) == (
+        f"obserwator store sync --root {quoted('/s')} --force --plan {quoted('/p.json')}"
+    )
     assert (
         format_command("current hydro-states", options={"main_only": "true"})
         == "obserwator current hydro-states --main-only"
@@ -551,13 +563,14 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
         "store export", options={"version": "archives/versions/x", "root": "store"}
     )
     assert exported["version"] == tmp_path / "store" / "archives" / "versions" / "x"
+    stations = {"root": "s", "output": "o.csv"}
     assert validate_command(
-        "store sync", options={"root": "s", "plan": "p.json", "series": True}
-    ) == {"root": tmp_path / "s", "plan": tmp_path / "p.json"}
+        "stations export", options={**stations, "series": True}
+    ) == {"root": tmp_path / "s", "output": tmp_path / "o.csv"}
     assert (
-        validate_command(
-            "store sync", options={"root": "s", "plan": "p.json", "series": "false"}
-        )["series"]
+        validate_command("stations export", options={**stations, "series": "false"})[
+            "series"
+        ]
         is False
     )
 
@@ -579,7 +592,8 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
             "years",
         ),
         ("store sync", {"root": "/s", "plan": "p.json", "months": 1}, "months"),
-        ("store sync", {"root": "/s", "plan": "p.json", "series": "nie"}, "series"),
+        ("stations export", {"root": "/s", "series": "nie"}, "series"),
+        ("store sync", {"root": "/s", "plan": "p.json", "series": False}, "series"),
         ("stations find", {"root": "/s"}, "root"),
         ("stations find", {"query": "   "}, "query"),
         ("pmaxtp fetch", {"latitude": "abc", "longitude": 21.0}, "latitude"),
@@ -765,12 +779,7 @@ def test_store_sync_with_failed_items_is_partial_or_failed(
         imgw.router.get(archive.url).mock(return_value=httpx.Response(500))
     result = run_command(
         "store sync",
-        options={
-            "root": root,
-            "datasets": DAILY,
-            "years": [2023, 2024],
-            "series": False,
-        },
+        options={"root": root, "datasets": DAILY, "years": [2023, 2024]},
     )
     assert result.status == status
     assert sum(item.status == "failed" for item in result.result.items) == len(failing)

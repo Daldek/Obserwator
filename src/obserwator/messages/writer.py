@@ -156,4 +156,12 @@ MESSAGES = {
         "The sidecar {sidecar} has no readable size_bytes and sha256",
         "Sidecar {sidecar} nie ma czytelnych pól size_bytes i sha256",
     ),
+    "station_answer_not_json": Text(
+        "The answer {url} is not valid JSON: {exc}",
+        "Odpowiedź {url} nie jest poprawnym JSON-em: {exc}",
+    ),
+    "station_answer_not_list": Text(
+        "The answer {url} is not a JSON list of stations (objects)",
+        "Odpowiedź {url} nie jest listą stacji JSON (obiektów)",
+    ),
 }

@@ -772,6 +772,33 @@ release have the same bytes as without the ČHMÚ provider.
 
 ### Changed
 
+- **Breaking — `store sync` writes raw data only; the station sources are archived and the
+  catalogs are built offline (ADR-015, Nogat ECO-059, plan 2026-11-12 step R1):**
+  - `sync_store`/`store sync` lose `series` (`--series/--no-series`); `SyncReport` has no `series`
+    and is `obserwator-sync-report/2` (`items`, `cancelled`, `files`, archive versions only). Build
+    the series with `build_series`/`series build` after a sync. Migration: drop `series=…`, read
+    `report.items`/`report.files`, call `series build --dataset <key>` for each synced dataset.
+  - Four new store datasets, the station metadata of the catalogs: `pl.imgw.hydro_now`,
+    `pl.imgw.meteo_now` (IMGW-PIB's current-data API `api/data/hydro|meteo`;
+    `DatasetDescriptor.base_url`) and `cz.chmi.hydro_now`, `cz.chmi.meteo_now` (ČHMÚ
+    `now/metadata`); the registry has 21 datasets. `store check` and `store sync --datasets` take
+    the eight station sources (lists and metadata) in a call of their own (no `years`, `months`,
+    `stations`; store only): lists by HEAD, the `now` metadata without a signal always downloaded
+    and compared by bytes or canonical content, the ČHMÚ meteo file by its listing.
+  - Operational data are never archived (the author's decision of 2026-11-13, Nogat DEV-20.8):
+    of an IMGW-PIB current-data answer the store keeps a derived JSON list of each station's code,
+    name, river and coordinates (`DatasetDescriptor.kept_fields`, sidecar `extra.kept_fields`),
+    never the measurements, their times or the warning and alarm levels; the sync lines are S and P
+    for these files.
+  - `build_catalog`/`check_catalog` (`store catalog`) make no request: they read the stored station
+    sources, and a missing one is `not_found` (`details.reason="missing_source"`,
+    `details.datasets`, a hint with the `store sync --datasets` line); `check_catalog` returns no
+    items and one action per source (`current`, `newer`, `missing`); `store catalog` is no longer a
+    network command. Migration: run `store sync --datasets` of the provider's four station sources
+    before `store catalog`.
+  - `command_for_version` of a station list or station metadata gives `store sync --datasets
+    <key>`; `read_archive` of a `now` version is a `validation_error`. The fixture stores hold the
+    station sources; the contract schemas accept every major version of a result document.
 - **Breaking — projects move to Archiwista (ADR-008, Nogat ECO-054, ECO-020):** Obserwator keeps no
   projects any more; Archiwista owns them (`archiwista-project/1`) and pins store versions by the
   `sha256` and `content_sha256` that the store already records. Removed without aliases: the

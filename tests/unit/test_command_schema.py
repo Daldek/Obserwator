@@ -43,6 +43,8 @@ SERIES_KEYS = [
     for d in datasets()
     if d.in_store and d.time_unit in ("day", "month", "half_year")
 ]
+# Station lists and current-data sources: synced as data, never series (ADR-015).
+STATION_SOURCE_KEYS = [d.key for d in datasets() if d.time_unit == "station_list"]
 
 
 def test_catalog_document_lists_every_command_with_groups_errors_and_exit_codes():
@@ -145,7 +147,9 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
     }
     check = input_schema("store check")
     assert check["required"] == ["datasets"]
-    assert check["properties"]["datasets"]["items"] == {"enum": SERIES_KEYS}
+    assert check["properties"]["datasets"]["items"] == {
+        "enum": [*SERIES_KEYS, *STATION_SOURCE_KEYS]
+    }
     assert check["properties"]["years"]["items"] == {
         "anyOf": [
             {"type": "integer", "minimum": 1, "maximum": 9999},
@@ -166,11 +170,11 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         {"required": ["plan"]},
         {"required": ["datasets"]},
     ]
-    assert store_sync["properties"]["series"]["default"] is True
-    assert store_sync["x-obserwator"]["cli"]["flags"]["series"] == [
-        "--series",
-        "--no-series",
-    ]
+    # A sync writes raw data only: no series option, and a false flag has no --no-.
+    assert "series" not in store_sync["properties"]
+    assert store_sync["properties"]["datasets"] == check["properties"]["datasets"]
+    assert store_sync["properties"]["force"]["default"] is False
+    assert store_sync["x-obserwator"]["cli"]["flags"]["force"] == ["--force"]
     read = input_schema("series read")
     assert read["properties"]["start"]["format"] == "date"
     assert read["oneOf"] == [

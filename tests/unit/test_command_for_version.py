@@ -57,12 +57,17 @@ ARCHIVES = {
         {"datasets": [CZ_METEO], "stations": [CZ_ELEMENTS]},
     ),
 }
-# Station lists and catalogs → the provider of their store catalog.
-CATALOG_SOURCES = {
-    "imgw_station_list": ("archive", "pl.imgw.hydro_stations", "IMGW-PIB"),
-    "chmi_station_list": ("archive", "cz.chmi.meteo_stations", "CHMI"),
-    "imgw_catalog": ("catalog", "pl.imgw.stations", "IMGW-PIB"),
-    "chmi_catalog": ("catalog", "cz.chmi.stations", "CHMI"),
+# Station lists and current-data sources: their own store sync (ADR-015).
+STATION_SOURCES = {
+    "imgw_station_list": "pl.imgw.hydro_stations",
+    "chmi_station_list": "cz.chmi.meteo_stations",
+    "imgw_api_answer": "pl.imgw.hydro_now",
+    "chmi_meteo_now": "cz.chmi.meteo_now",
+}
+# Catalogs → the provider of their store catalog.
+CATALOGS = {
+    "imgw_catalog": ("pl.imgw.stations", "IMGW-PIB"),
+    "chmi_catalog": ("cz.chmi.stations", "CHMI"),
 }
 
 
@@ -149,12 +154,42 @@ def test_archive_version_gives_the_store_sync_of_its_file(case, root, offline):
         assert files == {server_path}
 
 
-@pytest.mark.parametrize("case", CATALOG_SOURCES, ids=list(CATALOG_SOURCES))
-def test_station_list_and_catalog_give_the_store_catalog_of_their_provider(
+@pytest.mark.parametrize("case", STATION_SOURCES, ids=list(STATION_SOURCES))
+def test_station_source_version_gives_the_store_sync_of_its_dataset(
     case, root, offline
 ):
-    kind, dataset, provider = CATALOG_SOURCES[case]
-    relative = version(root, kind, dataset)
+    dataset = STATION_SOURCES[case]
+    relative = version(root, "archive", dataset)
+    server_path = json.loads(sidecar(root, relative).read_text(encoding="utf-8"))[
+        "request"
+    ]["server_path"]
+
+    call = command_for_version(relative, root=root)
+
+    assert call == CommandCall(
+        "store sync", {"root": str(root), "datasets": [dataset]}, {}
+    )
+    round_trips(call)
+    plan = check_command(call.command, options=call.options).result
+    if dataset == "cz.chmi.meteo_now":
+        # Only the listing names the newest file: offline, the check fails.
+        assert plan.items == ()
+        assert [action.status for action in plan.actions] == ["check_failed"]
+        assert dataset in plan.actions[0].detail
+    else:
+        assert {item.archive.server_path for item in plan.items} == {server_path}
+    if dataset == "pl.imgw.hydro_now":
+        # An API answer has no signal: unverifiable without any request.
+        assert [item.status for item in plan.items] == ["unverifiable"]
+        assert not offline.calls
+
+
+@pytest.mark.parametrize("case", CATALOGS, ids=list(CATALOGS))
+def test_catalog_version_gives_the_offline_store_catalog_of_its_provider(
+    case, root, offline
+):
+    dataset, provider = CATALOGS[case]
+    relative = version(root, "catalog", dataset)
 
     call = command_for_version(relative, root=root)
 
@@ -162,12 +197,27 @@ def test_station_list_and_catalog_give_the_store_catalog_of_their_provider(
         "store catalog", {"root": str(root), "provider": provider}, {}
     )
     round_trips(call)
-    lists = {
-        entry.meta.request["server_path"]
+    stored = {
+        entry.version.relative_to(root).as_posix()
         for entry in iter_store(root, kind="archive", provider=provider)
-        if entry.meta is not None and entry.meta.dataset_key.endswith("_stations")
+        if entry.meta is not None
+        and entry.meta.dataset_key.endswith(("_stations", "_now"))
     }
-    assert planned(call) == lists
+    # The sidecar names the stored file of every station source, API answers too.
+    named = {
+        source["file"]
+        for source in json.loads(sidecar(root, relative).read_text(encoding="utf-8"))[
+            "extra"
+        ]["catalog"]
+        if source["file"].startswith("archives/")
+    }
+    assert named == stored
+    plan = check_command(call.command, options=call.options).result
+    assert not offline.calls
+    assert plan.items == ()
+    sources = plan.actions[: len(stored)]
+    assert [action.status for action in sources] == ["current"] * len(stored)
+    assert all(any(path in action.detail for action in sources) for path in stored)
 
 
 @pytest.mark.parametrize("dataset", [HYDRO, CZ_HYDRO])

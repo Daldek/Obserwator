@@ -190,7 +190,7 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
 ## 8. Versioned Store Layer
 
 ### Layers
-1. **Source archives** — IMGW-PIB ZIP/CSV and ČHMÚ JSON/CSV bytes 1:1 under their server path (station lists are archives too).
+1. **Source archives** — IMGW-PIB ZIP/CSV and ČHMÚ JSON/CSV bytes 1:1 under their server path; the station sources of the catalogs are archives too (station lists, ČHMÚ `now` metadata). The one exception: of IMGW-PIB's current-data API answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`) the store keeps a derived file with each station's code, name, river and coordinates, because operational data are never archived (ADR-015 D5).
 2. **Derived products** — Parquet series per dataset/station (`obserwator-series/1`), `stations.geojson` catalog per provider, PMAXTP `cell.json` (`obserwator-pmaxtp/1`).
 3. A rebuildable local index is out of scope; no `.db` file is ever part of the store.
 
@@ -232,10 +232,10 @@ Every writing command has one of two ways of writing, with the same names in Pyt
 
 ### Flow
 ```
-check_store  ── IMGW-PIB: listing + HEAD; ČHMÚ: one directory listing (no HEAD/GET) ──▶ StorePlan (obserwator-plan/1, saved outside the store)
-sync_store   ── HEAD again; changed → stale_plan; GET only new/missing ──▶ archive versions (ČHMÚ: content_unchanged + observation)
+check_store  ── IMGW-PIB: listing + HEAD; ČHMÚ: one directory listing (no HEAD/GET); station sources: lists by HEAD, `now` metadata unverifiable ──▶ StorePlan (obserwator-plan/1, saved outside the store)
+sync_store   ── HEAD again; changed → stale_plan; GET only new/missing ──▶ archive versions only (ČHMÚ: content_unchanged + observation; ADR-015)
 build_series ── current archive versions → Parquet snapshot (`unchanged` if the current series version has the same inputs); ČHMÚ: per-station periods
-build_catalog── one provider: station lists (re-validated with HEAD; changed/unverifiable lists archived via write_archive first) + public metadata (+ static/user locations, series indexes) → stations.geojson
+build_catalog── one provider, offline: the stored station sources (lists and `now` metadata; missing → not_found) + static/user locations + series indexes → stations.geojson
 read_*       ── offline, read-only; problems reported as StoreEntry(kind="problem"), observations as kind="observation"
 ```
 

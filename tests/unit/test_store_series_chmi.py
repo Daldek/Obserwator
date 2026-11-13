@@ -1,8 +1,9 @@
 """build_series of ČHMÚ per-station files: known periods, meteo fields, reuse.
 
 Spec 2026-10-18 §6.1-§6.3 (calendar, per-station periods, Parquet columns and
-``series.json``) and the §13.2 scenarios (1)-(3) and (8) of ``sync_store``
-with ``series=True``, replayed from ``chmi_recordings.json`` with respx.
+``series.json``) and the §13.2 scenarios (1)-(3) and (8): ``sync_store`` writes
+the archives, ``build_series`` builds from them; replayed from
+``chmi_recordings.json`` with respx.
 Synthetic files only; codes 0-203-1-9… and 0-203-0-9… are not published by
 ČHMÚ.
 """
@@ -369,7 +370,7 @@ def test_quality_outside_the_parquet_range_fails_without_a_version(root):
     assert series_versions(root, "chmi_meteo_daily") == []
 
 
-def test_sync_reuses_the_series_after_mass_republication(root, server):
+def test_build_reuses_the_series_after_mass_republication(root, server):
     serve(
         server,
         "hydro_listing",
@@ -382,7 +383,7 @@ def test_sync_reuses_the_series_after_mass_republication(root, server):
     )
     first = sync_store(root, datasets=[HYDRO], stations=[S1, S2])
     assert [item.status for item in first.items] == ["new"] * 4
-    (created,) = first.series
+    created = build_series(root, dataset=HYDRO)
     assert (created.status, created.stations) == ("new", 2)
     names = ("h900001_2023", "h900001_2024", "h900002_2004", "h900002_2006")
     serve(
@@ -399,17 +400,17 @@ def test_sync_reuses_the_series_after_mass_republication(root, server):
 
     assert [item.status for item in report.items] == ["relabeled"] * 4
     # Same (slot, SHA-256) pairs: the series is reused, no version is added.
-    (reused,) = report.series
-    assert (reused.status, reused.version) == ("unchanged", created.version)
-    assert series_versions(root, "chmi_hydro_daily") == [created.version.parent.name]
     plan = check_store(root, datasets=[HYDRO], stations=[S1, S2])
     assert plan.series_state == {"chmi_hydro_daily": "current"}
+    reused = build_series(root, dataset=HYDRO)
+    assert (reused.status, reused.version) == ("unchanged", created.version)
+    assert series_versions(root, "chmi_hydro_daily") == [created.version.parent.name]
 
 
-def test_sync_reuses_the_series_after_reserialization(root, server):
+def test_build_reuses_the_series_after_reserialization(root, server):
     serve(server, "hydro_listing", *FIRST)
-    first = sync_store(root, datasets=[HYDRO], stations=[S1])
-    (created,) = first.series
+    sync_store(root, datasets=[HYDRO], stations=[S1])
+    created = build_series(root, dataset=HYDRO)
     assert created.status == "new"
     serve(
         server,
@@ -423,14 +424,15 @@ def test_sync_reuses_the_series_after_reserialization(root, server):
 
     assert [item.status for item in report.items] == ["unchanged", "unchanged"]
     assert "content_unchanged" in {notice.code for notice in notices}
-    (reused,) = report.series
+    reused = build_series(root, dataset=HYDRO)
     assert (reused.status, reused.version) == ("unchanged", created.version)
     assert series_versions(root, "chmi_hydro_daily") == [created.version.parent.name]
 
 
-def test_sync_builds_a_new_series_version_after_a_correction(root, server):
+def test_build_after_a_correction_writes_a_new_series_version(root, server):
     serve(server, "hydro_listing", *FIRST)
-    (old,) = sync_store(root, datasets=[HYDRO], stations=[S1]).series
+    sync_store(root, datasets=[HYDRO], stations=[S1])
+    old = build_series(root, dataset=HYDRO)
     old_bytes = old.version.read_bytes()
     serve(
         server,
@@ -442,14 +444,15 @@ def test_sync_builds_a_new_series_version_after_a_correction(root, server):
     report = sync_store(root, datasets=[HYDRO], stations=[S1])
 
     assert [item.status for item in report.items] == ["unchanged", "new"]
-    (new,) = report.series
+    assert current_version(root, slot=f"series:{HYDRO}").version == old.version
+    new = build_series(root, dataset=HYDRO)
     assert new.status == "new" and new.version != old.version
     assert old.version.read_bytes() == old_bytes
     assert new.version.read_bytes() != old_bytes
     assert current_version(root, slot=f"series:{HYDRO}").version == new.version
 
 
-def test_sync_of_meteo_builds_once_and_rebuilds_after_new_csv_bytes(root, server):
+def test_meteo_series_is_built_once_and_rebuilt_after_new_csv_bytes(root, server):
     serve(server, "precipitation_listing", "temperature_listing")
     serve(
         server,
@@ -468,12 +471,10 @@ def test_sync_of_meteo_builds_once_and_rebuilds_after_new_csv_bytes(root, server
         *["unchanged"] * 3,
         *["new"] * 4,
     ]
-    (created,) = first.series
+    created = build_series(root, dataset=METEO)
     assert (created.status, created.stations) == ("new", 2)
-    assert (
-        sync_store(root, datasets=[METEO], stations=[FULL, RAIN]).series[0].status
-        == "unchanged"
-    )
+    sync_store(root, datasets=[METEO], stations=[FULL, RAIN])
+    assert build_series(root, dataset=METEO).status == "unchanged"
     serve(
         server,
         "precipitation_listing_corrected",
@@ -481,9 +482,9 @@ def test_sync_of_meteo_builds_once_and_rebuilds_after_new_csv_bytes(root, server
         "m90001_SRA_corrected_get",
     )
 
-    report = sync_store(root, datasets=[METEO], stations=[FULL])
+    sync_store(root, datasets=[METEO], stations=[FULL])
 
-    (rebuilt,) = report.series
+    rebuilt = build_series(root, dataset=METEO)
     assert rebuilt.status == "new" and rebuilt.version != created.version
     rows = {row["date"]: row for row in station_table(rebuilt, FULL).to_pylist()}
     assert rows[date(2023, 10, 21)]["P_value"] == 2.6

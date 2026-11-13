@@ -115,9 +115,9 @@ def test_fresh_builds_are_identical_under_frozen_clock(tmp_path, monkeypatch):
     first = tree(build_fixture_store(tmp_path / "a").root)
     second = tree(build_fixture_store(tmp_path / "b").root)
     assert first == second
-    assert (
-        sum(name.endswith(".meta.json") for name in first) == 11
-    )  # 7 archives, 3 series, catalog
+    # 9 archives (5 measurement files, 2 station lists, 2 station metadata of the
+    # current-data API), 3 series, the catalog.
+    assert sum(name.endswith(".meta.json") for name in first) == 13
 
 
 def test_local_reference_data_does_not_leak_into_fixture_catalog(

@@ -157,6 +157,11 @@ _SERIES_DATASETS = tuple(
     for d in datasets()
     if d.in_store and d.time_unit in ("day", "month", "half_year")
 )
+# What ``store check`` and ``store sync`` download: the measurement archives and
+# the station sources of the catalogs (station lists and metadata, ADR-015).
+_SYNC_DATASETS = _SERIES_DATASETS + tuple(
+    d.key for d in datasets() if d.in_store and d.time_unit == "station_list"
+)
 _PROVIDERS = tuple(provider.id for provider in providers())
 # Groups reading the sources of one provider only (spec 2026-10-18 §9.3).
 _GROUP_PROVIDERS = {"current": "IMGW-PIB", "pmaxtp": "IMGW-PIB"}
@@ -333,7 +338,7 @@ _DATASETS = _option(
     "datasets",
     "list",
     message("commands.datasets_help"),
-    choices=_SERIES_DATASETS,
+    choices=_SYNC_DATASETS,
     items="choice",
     aliases=("-d",),
 )
@@ -939,13 +944,6 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
-            _option(
-                "series",
-                "bool",
-                message("commands.store_sync_series_help"),
-                default=True,
-                store_only=True,
-            ),
         ),
         function="sync_store",
         check="check_store",
@@ -983,7 +981,6 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         method="POST",
         result_type="CatalogReport",
         writes="add",
-        network=True,
     ),
     _command(
         "store export",
@@ -2381,8 +2378,8 @@ def _archive_call(
     if request.get("server_path", server_path) != server_path:
         _mismatch(relative, "request.server_path", request["server_path"], server_path)
     if descriptor.time_unit == "station_list":
-        # Station lists are downloaded by the catalog of their provider.
-        return "store catalog", {"provider": descriptor.provider}
+        # Station lists and metadata are downloaded by store sync (ADR-015).
+        return "store sync", {"datasets": [key]}
     unselected = message(
         "commands.version_command_unselected",
         version=relative,
@@ -2628,11 +2625,10 @@ def _status(result: object) -> Status:
         return _outcome(result.cancelled, failures, len(states) - failures)
     if isinstance(result, SyncReport):
         items = [item.status for item in result.items]
-        series = [report.status for report in result.series]
         return _outcome(
             result.cancelled,
-            sum(s in ("failed", "stale_plan") for s in items) + series.count("failed"),
-            sum(s in _DONE for s in (*items, *series)),
+            sum(s in ("failed", "stale_plan") for s in items),
+            sum(s in _DONE for s in items),
         )
     if isinstance(result, DownloadReport):
         # A ČHMÚ candidate the source does not publish is a successful item.
@@ -2691,15 +2687,22 @@ def _download_lines(options: Options, result: object) -> Attribution:
 
 
 def _sync_lines(options: Options, result: object) -> Attribution:
-    """Lines of the archives of a sync (verbatim), processed once series exist."""
+    """
+    Lines of the archives of a sync: verbatim files, processed station metadata.
+
+    A sync writes raw data only (ADR-015): the provider's files verbatim, except
+    the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
+    which are processed data.
+    """
     report = cast(SyncReport, result)
     keys = [
         slot.split(":")[1]
         for item in report.items
         if (slot := item.slot) is not None and slot.startswith("archive:")
     ]
-    built = any(series.version is not None for series in report.series)
-    return _of_datasets(keys, processed=built)
+    kept = [key for key in keys if get_dataset(key).kept_fields]
+    verbatim = [key for key in keys if key not in kept]
+    return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
 
 
 def _catalog_lines(options: Options, result: object) -> Attribution:

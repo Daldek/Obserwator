@@ -80,10 +80,6 @@ MESSAGES = {
         "station {code}: {error}",
         "stacja {code}: {error}",
     ),
-    "series_skipped": Text(
-        "Skipped building the series {dataset}: incomplete inputs {blocking}",
-        "Pominięto budowę szeregu {dataset}: niekompletne wejścia {blocking}",
-    ),
     "skipped_sync_from_plan": Text(
         "{server_path}: {error}; skipped while syncing from the plan",
         "{server_path}: {error}; pominięto przy synchronizacji z planu",
@@ -119,5 +115,37 @@ MESSAGES = {
         "root, not with output_dir",
         "Opcja {name} działa na wersjach magazynu: jest ważna tylko z root, nie z "
         "output_dir",
+    ),
+    "station_sources_alone": Text(
+        "Station sources (station lists and station metadata, *_stations and *_now) "
+        "are synchronized in a call of their own, without measurement datasets",
+        "Źródła stacji (listy i metadane stacji, *_stations i *_now) synchronizuje "
+        "osobne wywołanie, bez zbiorów pomiarowych",
+    ),
+    "option_not_for_station_sources": Text(
+        "The option {option} does not apply to station sources: each is one file of "
+        "the whole country",
+        "Opcja {option} nie dotyczy źródeł stacji: każde jest jednym plikiem całego "
+        "kraju",
+    ),
+    "station_sources_store_only": Text(
+        "Station sources are stored only in a store, where store catalog reads them; "
+        "give root, not output_dir",
+        "Źródła stacji zapisuje się tylko w magazynie, gdzie czyta je store catalog; "
+        "podaj root, nie output_dir",
+    ),
+    "station_source_no_signal": Text(
+        "no stable freshness signal: the answer or its envelope is regenerated, so "
+        "store sync downloads it and compares the content",
+        "brak stabilnego sygnału aktualności: odpowiedź lub jej koperta jest "
+        "generowana na nowo, więc store sync ją pobiera i porównuje treść",
+    ),
+    "station_source_listing": Text(
+        "{key}: {error} (the listing does not name the newest file)",
+        "{key}: {error} (listing nie wskazuje najnowszego pliku)",
+    ),
+    "no_file_in_listing": Text(
+        "no file of the dataset in the listing",
+        "brak pliku zbioru w listingu",
     ),
 }

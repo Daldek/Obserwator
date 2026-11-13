@@ -15,9 +15,8 @@ from obserwator.exceptions import (
 )
 from obserwator.fetch import DownloadResult
 from obserwator.store import init_store, write_archive
-from obserwator.store import sync as sync_module
 from obserwator.store.sync import check_store, sync_store
-from obserwator.store.types import SeriesReport, StorePlan
+from obserwator.store.types import StorePlan
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
@@ -208,7 +207,7 @@ def test_changed_header_after_check_is_stale_plan_without_get(root, server, tmp_
     route.mock(return_value=httpx.Response(200, headers=V2))
     notices = []
 
-    report = sync_store(root, plan=plan_path, series=False, on_notice=notices.append)
+    report = sync_store(root, plan=plan_path, on_notice=notices.append)
 
     assert [item.status for item in report.items] == ["stale_plan"]
     assert report.items[0].slot == "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
@@ -223,19 +222,19 @@ def test_new_hash_is_new_version_same_hash_new_signal_is_relabeled(root, server)
     signal = head(server, H2024, V1)
     download = get(server, H2024, V1, data(H2024))
 
-    first = sync_store(root, datasets=[HYDRO], years=[2024], series=False)
+    first = sync_store(root, datasets=[HYDRO], years=[2024])
     assert [item.status for item in first.items] == ["new"]
     assert first.items[0].version.read_bytes() == data(H2024)
 
     download.reset()
-    again = sync_store(root, datasets=[HYDRO], years=[2024], series=False)
+    again = sync_store(root, datasets=[HYDRO], years=[2024])
     assert [item.status for item in again.items] == ["unchanged"]
     assert again.items[0].version == first.items[0].version
     assert not download.called
 
     signal.mock(return_value=httpx.Response(200, headers=V2))
     download.mock(return_value=httpx.Response(200, headers=V2, content=data(H2024)))
-    relabeled = sync_store(root, datasets=[HYDRO], years=[2024], series=False)
+    relabeled = sync_store(root, datasets=[HYDRO], years=[2024])
     assert [item.status for item in relabeled.items] == ["relabeled"]
     assert relabeled.items[0].version != first.items[0].version
     assert relabeled.items[0].version.read_bytes() == data(H2024)
@@ -243,7 +242,7 @@ def test_new_hash_is_new_version_same_hash_new_signal_is_relabeled(root, server)
     changed = (FIXTURES / RECORDINGS["new_bytes_get"]["variant"]).read_bytes()
     signal.mock(return_value=httpx.Response(200, headers=V3))
     download.mock(return_value=httpx.Response(200, headers=V3, content=changed))
-    created = sync_store(root, datasets=[HYDRO], years=[2024], series=False)
+    created = sync_store(root, datasets=[HYDRO], years=[2024])
     assert [item.status for item in created.items] == ["new"]
     assert created.items[0].version.read_bytes() == changed
     slot = root / "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
@@ -265,7 +264,7 @@ def test_unverifiable_and_failed_items_are_not_downloaded_from_plan(
     plan = check_store(root, datasets=[HYDRO], years="2022-2023", months="1")
     assert [item.status for item in plan.items] == ["unverifiable", "check_failed"]
 
-    from_plan = sync_store(root, plan=plan, series=False)
+    from_plan = sync_store(root, plan=plan)
     assert [item.status for item in from_plan.items] == ["unchanged", "failed"]
     assert [item.error_code for item in from_plan.items] == [
         None,
@@ -283,7 +282,6 @@ def test_unverifiable_and_failed_items_are_not_downloaded_from_plan(
         datasets=[HYDRO],
         years=[2022, 2023],
         months=[1],
-        series=False,
         on_notice=notices.append,
     )
     # Deliberate sync without a plan downloads the unverifiable file and deduplicates by SHA.
@@ -292,13 +290,7 @@ def test_unverifiable_and_failed_items_are_not_downloaded_from_plan(
     assert "source_unverifiable" in {notice.code for notice in notices}
 
 
-def test_cancel_reports_completed_items_without_partial_version(
-    root, server, monkeypatch
-):
-    built = []
-    monkeypatch.setattr(
-        sync_module, "build_series", lambda *args, **kwargs: built.append(kwargs)
-    )
+def test_cancel_reports_completed_items_without_partial_version(root, server):
     for archive in (H2023, H2024):
         listing(
             server,
@@ -318,8 +310,7 @@ def test_cancel_reports_completed_items_without_partial_version(
     assert [item.status for item in report.items] == ["new", "cancelled"]
     assert report.items[0].version.is_file()
     assert not second_slot.exists()
-    assert [entry.status for entry in report.series] == ["cancelled"]
-    assert built == []
+    assert [Path(entry.path) for entry in report.files] == [report.items[0].version]
     assert list((root / ".incoming").iterdir()) == []
 
 
@@ -332,7 +323,6 @@ def test_cancel_during_write_leaves_no_version(root, server):
         root,
         datasets=[HYDRO],
         years=[2024],
-        series=False,
         cancel=lambda: download.called,
     )
 
@@ -342,14 +332,7 @@ def test_cancel_during_write_leaves_no_version(root, server):
     assert not any((root / ".incoming").glob("*"))
 
 
-def test_series_is_built_only_from_complete_inputs(root, server, monkeypatch):
-    built = []
-
-    def fake_build(store, /, **kwargs):
-        built.append((store, kwargs["dataset"]))
-        return SeriesReport("new", None, 1, (), ())
-
-    monkeypatch.setattr(sync_module, "build_series", fake_build)
+def test_failed_download_fails_only_its_item_and_a_retry_writes_it(root, server):
     for archive in (H2023, H2024):
         listing(
             server,
@@ -364,17 +347,13 @@ def test_series_is_built_only_from_complete_inputs(root, server, monkeypatch):
     assert [item.status for item in partial.items] == ["failed", "new"]
     assert "503" in partial.items[0].error
     assert [item.error_code for item in partial.items] == ["source_unavailable", None]
-    assert built == []
-    assert (
-        partial.series[0].status == "failed"
-        and "codz_2023" in partial.series[0].problems[0]
-    )
+    assert [Path(entry.path) for entry in partial.files] == [partial.items[1].version]
+    assert not (root / "archives/versions/dane_hydrologiczne/dobowe/2023").exists()
 
     broken.mock(return_value=httpx.Response(200, headers=V1, content=data(H2023)))
     complete = sync_store(root, datasets=[HYDRO], years=[2023, 2024])
     assert [item.status for item in complete.items] == ["new", "unchanged"]
-    assert built == [(root, HYDRO)]
-    assert [entry.status for entry in complete.series] == ["new"]
+    assert complete.items[0].version.read_bytes() == data(H2023)
 
 
 def test_selector_validation(root, tmp_path):

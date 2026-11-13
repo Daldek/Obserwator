@@ -30,7 +30,9 @@ from tests.contract.support import (
     NEW,
     OLD,
     PRECIP,
+    PROCESSED,
     RABA,
+    SOURCE,
     V1,
     V2,
     V3,
@@ -47,6 +49,13 @@ from tests.contract.support import (
 )
 
 EXIT_CODES = command_schema()["exit_codes"]
+# IMGW-PIB station sources the offline catalog reads from the store (ADR-015).
+IMGW_SOURCES = [
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+]
 
 
 def scenario(work: Path, imgw, run) -> list[dict[str, Any]]:
@@ -61,9 +70,10 @@ def scenario(work: Path, imgw, run) -> list[dict[str, Any]]:
     steps.append(run("store check", {**selection, "plan": work / "fresh.json"}))
     steps.append(run("store sync", {"root": store, "plan": work / "fresh.json"}))
     imgw.publish(H2024, V3, NEW)
-    steps.append(run("store sync", {**selection, "series": False}))
-    steps.append(run("series build", {"root": store, "dataset": DAILY}))
+    steps.append(run("store sync", selection))
     imgw.publish_catalog_sources()
+    steps.append(run("store sync", {"root": store, "datasets": IMGW_SOURCES}))
+    steps.append(run("series build", {"root": store, "dataset": DAILY}))
     steps.append(run("store catalog", {"root": store}))
     steps.append(
         run(
@@ -125,19 +135,28 @@ def test_obserwator_scenario_prints_the_envelopes_of_run_command_and_writes_alik
     def statuses(step):
         return [item["status"] for item in step["result"]["items"]]
 
-    check, stale, fresh, synced, newer = returned[1:6]
+    check, stale, fresh, synced, newer, sources = returned[1:7]
     assert statuses(check) == statuses(fresh) == ["missing"]
     # The plan file is the plan of the envelope (one obserwator-plan/1 document).
     assert load(work / "fresh.json") == fresh["result"]
     assert schema_errors(fresh["result"], "obserwator-plan/1") == []
     assert statuses(stale) == ["stale_plan"]
     assert stale["status"] == "failed"  # no item done: exit code 11
-    assert stale["result"]["series"][0]["status"] == "failed"
+    assert stale["result"]["files"] == []
+    # A sync writes raw data only: the report lists the archive versions, no series.
+    for step in (synced, newer, sources):
+        assert step["result"]["schema"] == "obserwator-sync-report/2"
+        assert "series" not in step["result"]
+        assert [file["path"] for file in step["result"]["files"]] == [
+            item["version"] for item in step["result"]["items"]
+        ]
     assert statuses(synced) == statuses(newer) == ["new"]
-    assert [s["status"] for s in synced["result"]["series"]] == ["new"]
-    assert newer["result"]["series"] == []
-    assert [returned[i]["result"]["status"] for i in (6, 7, 9)] == ["new"] * 3
-    assert returned[8]["result"] == {
+    assert statuses(sources) == ["new"] * 4
+    # The stored current-data answers are processed: the line P joins the line S.
+    assert synced["attribution"] == [SOURCE]
+    assert sources["attribution"] == [SOURCE, PROCESSED]
+    assert [returned[i]["result"]["status"] for i in (7, 8, 10)] == ["new"] * 3
+    assert returned[9]["result"] == {
         "schema": "obserwator-output/1",
         "output": str(work / "raba.csv"),
         "files": [
@@ -149,13 +168,14 @@ def test_obserwator_scenario_prints_the_envelopes_of_run_command_and_writes_alik
             }
         ],
     }
-    assert statuses(returned[11]) == ["downloaded"]
+    assert statuses(returned[12]) == ["downloaded"]
     assert (
-        returned[11]["result"]["items"][0]["slot"]
+        returned[12]["result"]["items"][0]["slot"]
         == f"archive:{DAILY}:2024/codz_2024.zip"
     )
-    # 4 archive versions (2 × codz_2024, 2 station lists), 2 series, catalog, cell
-    assert sum(path.endswith(".meta.json") for path in tree) == 8
+    # 6 archive versions (2 × codz_2024, 2 station lists, 2 current-data answers),
+    # the series built once, the catalog and the PMAXTP cell.
+    assert sum(path.endswith(".meta.json") for path in tree) == 9
 
 
 def test_installed_obserwator_prints_the_envelopes_of_run_command_offline(

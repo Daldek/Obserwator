@@ -251,9 +251,13 @@ class FakeImgw:
             if call.request.method == method
         ]
 
-    def downloads(self) -> list[str]:
-        """Archive bodies fetched with GET (listings and live API excluded)."""
-        return [url for url in self.requests("GET") if url.endswith((".zip", ".csv"))]
+    def downloads(self, start: int = 0) -> list[str]:
+        """Archive bodies fetched with GET from call ``start`` on (no listings, API)."""
+        return [
+            url
+            for method, url in self.traffic(start)
+            if method == "GET" and url.endswith((".zip", ".csv"))
+        ]
 
 
 # --------------------------------------------------------------------------

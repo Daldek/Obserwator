@@ -84,6 +84,12 @@ ARCHIVE_SLOT = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SLOT_DIR = Path("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024")
 # <label>_<sha8>: a date label (series may add "+<8 hex>") and the SHA prefix.
 VERSION_DIR = re.compile(r"\d{4}-\d{2}-\d{2}(\+[0-9a-f]{8})?_[0-9a-f]{8}")
+IMGW_SOURCES = [
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+]
 
 
 def contract_of(main: Path) -> str:
@@ -210,7 +216,9 @@ def test_fixture_store_files_conform_to_section_11_and_checksum_chains(fixture_r
         schema_errors(load(root / "obserwator-store.json"), "obserwator-store/1") == []
     )
     sidecars = sorted(root.rglob("*.meta.json"))
-    assert len(sidecars) == 11  # 7 archives, 3 series, 1 catalog
+    # 9 archives (codz_2024 x3, two precipitation files, 4 station sources),
+    # 3 series, 1 catalog.
+    assert len(sidecars) == 13
     metas = {sidecar: assert_sidecar_contract(root, sidecar) for sidecar in sidecars}
 
     for sidecar, meta in metas.items():
@@ -455,7 +463,7 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
                 ("unknown_schema", broken_slots.get(name)),
             }
             versions = [entry for entry in entries if entry.kind != "problem"]
-            assert len(versions) == 11 - (name == "corrupt")
+            assert len(versions) == 13 - (name == "corrupt")
             for entry in versions:
                 assert read_meta(entry.version) == entry.meta
             for slot in sorted({entry.slot for entry in versions}):
@@ -532,14 +540,13 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert StorePlan.from_json(plan_file) == plan
     assert stamps(root) == untouched
 
-    # Stale: IMGW republished after the check → no GET, no write, series not built.
+    # Stale: IMGW republished after the check → no GET, no write.
     imgw.publish(H2024, V2, OLD)
     notices = []
     report = sync_store(root, plan=plan_file, on_notice=notices.append)
     (stale,) = report.items
     assert (stale.status, stale.version) == ("stale_plan", None)
     assert "stale_plan" in {notice.code for notice in notices}
-    assert [series.status for series in report.series] == ["failed"]
     assert imgw.downloads() == [] and stamps(root) == untouched
 
     # Sync from a fresh plan: one GET, a version named after Last-Modified and SHA.
@@ -548,18 +555,19 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert created.status == "new"
     assert created.version == root / SLOT_DIR / f"2026-10-18_{old8}" / "codz_2024.zip"
     assert sha256(created.version) == sha256(OLD)
-    (first,) = report.series
+    assert not (root / "series").exists()  # a sync writes raw data only
+    first = build_series(root, dataset=DAILY)
     assert first.status == "new" and first.source_files == (created.version,)
     assert imgw.downloads() == [H2024.url]
 
-    # Newer bytes: the plan flags the series; sync without series leaves it outdated.
+    # Newer bytes: the plan flags the series; the sync leaves it outdated.
     imgw.publish(H2024, V3, NEW)
     plan = check_store(root, datasets=[DAILY], years=[2024])
     assert [item.status for item in plan.items] == ["newer"]
     assert plan.series_state == {"hydro_daily": "outdated"}
-    report = sync_store(root, plan=plan, series=False)
+    report = sync_store(root, plan=plan)
     (newer,) = report.items
-    assert newer.status == "new" and report.series == ()
+    assert newer.status == "new"
     assert newer.version == root / SLOT_DIR / f"2026-10-19_{new8}" / "codz_2024.zip"
     assert check_series(root, dataset=DAILY).series_state == {"hydro_daily": "outdated"}
     series = build_series(root, dataset=DAILY)
@@ -605,8 +613,11 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
             else:
                 assert measurement == source.measurements[variable]
 
-    # Catalog: lists archived first, HEAD-only check, identical rebuild unchanged.
+    # Catalog: built offline from the station sources a sync stored first.
     imgw.publish_catalog_sources()
+    sources = sync_store(root, datasets=IMGW_SOURCES)
+    assert [item.status for item in sources.items] == ["new"] * 4
+    requests = len(imgw.router.calls)
     catalog = build_catalog(root)
     assert catalog.status == "new" and catalog.without_location > 0
     features = read_catalog(catalog.version)
@@ -623,12 +634,16 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert lists == {
         "archive:pl.imgw.hydro_stations:lista_stacji_hydro.csv",
         "archive:pl.imgw.meteo_stations:wykaz_stacji.csv",
+        "archive:pl.imgw.hydro_now:hydro",
+        "archive:pl.imgw.meteo_now:meteo",
     }
-    untouched, gets = stamps(root), len(imgw.requests("GET"))
+    untouched = stamps(root)
     catalog_plan = check_catalog(root)
-    assert stamps(root) == untouched and len(imgw.requests("GET")) == gets
-    assert {item.status for item in catalog_plan.items} == {"current"}
+    assert stamps(root) == untouched
+    assert catalog_plan.items == ()
+    assert {action.status for action in catalog_plan.actions} == {"current"}
     assert build_catalog(root).status == "unchanged"
+    assert len(imgw.router.calls) == requests  # build and check request nothing
 
     # CSV: one header row with units, both formulas once, every day of the series,
     # the lines of ADR-012 in the trailing columns.
@@ -663,14 +678,14 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     ]
     assert all(row["year"] == "2024" for row in table)  # hydrological year XI–X
 
-    # Relabel: same bytes under a new signal → new version, series reused untouched.
+    # Relabel: same bytes under a new signal → new version, the series is reused.
     imgw.publish(H2024, V4, NEW)
     series_files = stamps(series.version.parent)
     report = sync_store(root, datasets=[DAILY], years=[2024])
     (relabeled,) = report.items
     assert relabeled.status == "relabeled"
     assert relabeled.version == root / SLOT_DIR / f"2026-10-20_{new8}" / "codz_2024.zip"
-    (reused,) = report.series
+    reused = build_series(root, dataset=DAILY)
     assert (reused.status, reused.version) == ("unchanged", series.version)
     assert stamps(series.version.parent) == series_files
 
@@ -709,7 +724,7 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
 
     report = sync_store(root, plan=tmp_path / "plan.json")
     assert [result.status for result in report.items] == ["new", "cancelled"]
-    assert report.cancelled and [s.status for s in report.series] == ["cancelled"]
+    assert report.cancelled
     assert imgw.downloads() == [H2023.url]
 
     other = init_store(tmp_path / "other").root
@@ -722,12 +737,12 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
     assert [result.status for result in report.items] == ["new", "cancelled"]
     assert report.cancelled and report.items[1].version is None
     assert not (other / SLOT_DIR).exists() or not any((other / SLOT_DIR).iterdir())
-    assert [s.status for s in report.series] == ["cancelled"]
     assert list((other / "series").glob("versions/*/*")) == []
 
+    imgw.publish_catalog_sources()
+    sync_store(root, datasets=IMGW_SOURCES)
     before = snapshot(root)
     assert build_series(root, dataset=DAILY, cancel=lambda: True).status == "cancelled"
-    imgw.publish_catalog_sources()
     assert build_catalog(root, cancel=lambda: True).status == "cancelled"
     assert snapshot(root) == before
     series = build_series(root, dataset=DAILY)

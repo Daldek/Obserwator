@@ -90,15 +90,15 @@ MESSAGES = {
         "przerwano (Ctrl+C, anulowanie żądania); `result` częściowy albo `null`",
     ),
     "rule_learn_commands": Text(
-        "**Learn the commands:** `obserwator commands list --json` (a one-sentence summary "
-        "of each), then `obserwator commands schema --command … --json` or `obserwator "
+        "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
+        "commands schema --command … --json` or `obserwator "
         "<group> <command> --schema --json`; REST `GET /api/v1/commands/list` and "
         "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
         "Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules "
         "they do not express are in `rules`, effects in `effects` (`writes`, `network`, "
         "`idempotent`).",
-        "**Poznaj komendy:** `obserwator commands list --json` (spis z opisem jednego "
-        "zdania), potem `obserwator commands schema --command … --json` albo `obserwator "
+        "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
+        "commands schema --command … --json` albo `obserwator "
         "<grupa> <komenda> --schema --json`; REST `GET /api/v1/commands/list` i `/schema`; "
         "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
         "`options` (`name`, `type`, `required`, `flags`, `enum`); reguły, których nie "
@@ -164,15 +164,19 @@ MESSAGES = {
         "plan: liczba plików i bajtów; archiwa obejmują cały kraj, więc podaj "
         "użytkownikowi rozmiar.",
     ),
-    "flow_precipitation_sync": Text(
-        "after the user agrees; the station series are built as well.",
-        "po zgodzie użytkownika; szeregi stacji budują się same.",
+    "flow_after_consent": Text(
+        "after the user agrees.",
+        "po zgodzie użytkownika.",
+    ),
+    "flow_series_build": Text(
+        "the station series of the dataset (`store sync` stores raw archives only).",
+        "szeregi stacji zbioru (`store sync` zapisuje tylko surowe archiwa).",
     ),
     "flow_precipitation_summary": Text(
-        "the station is missing → repeat steps 3–5 with "
+        "the station is missing → repeat steps 3–6 with "
         "`pl.imgw.meteo_climate_daily`; missing from both → tell the user, do not "
         "substitute another station.",
-        "brak stacji → powtórz kroki 3–5 z `pl.imgw.meteo_climate_daily`; brak w obu "
+        "brak stacji → powtórz kroki 3–6 z `pl.imgw.meteo_climate_daily`; brak w obu "
         "→ powiedz to użytkownikowi, nie podstawiaj innej stacji.",
     ),
     "flow_czech_discharge_title": Text(
@@ -186,10 +190,6 @@ MESSAGES = {
     "flow_czech_discharge_plan": Text(
         "plan: the station files by year.",
         "plan: pliki stacji po latach.",
-    ),
-    "flow_czech_discharge_sync": Text(
-        "after the user agrees.",
-        "po zgodzie użytkownika.",
     ),
     "flow_next_pages": Text(
         "next pages: `--cursor` = `page.next_cursor`.",
@@ -223,14 +223,14 @@ MESSAGES = {
         "flagi logiczne ({switches}) nie mają wartości i włączają swoją opcję.",
     ),
     "flags_output": Text(
-        "- Output of the CLI: `--json` (every command) prints the envelope as one JSON "
-        "line on stdout — parse only that; without it stdout carries a short summary for "
-        "a person in the language of `--lang` (`pl`, `en`). The data lines of the "
-        "exports and `commands guide` without `--output` are the same in both modes.",
-        "- Wyjście CLI: `--json` (każda komenda) wypisuje kopertę jako jedną linię JSON "
-        "na stdout — parsuj tylko je; bez niego stdout niesie krótkie podsumowanie dla "
-        "człowieka w języku `--lang` (`pl`, `en`). Linie danych eksportów i `commands "
-        "guide` bez `--output` są takie same w obu trybach.",
+        "- CLI output: `--json` prints the envelope as one JSON line on stdout — parse "
+        "only that; without it, a summary for a person in the `--lang` language. "
+        "Exports and `commands guide` without `--output` print the same data lines in "
+        "both modes.",
+        "- Wyjście CLI: `--json` wypisuje kopertę jako jedną linię JSON na stdout — "
+        "parsuj tylko je; bez niego podsumowanie dla człowieka w języku `--lang`. "
+        "Eksporty i `commands guide` bez `--output` wypisują te same linie danych w obu "
+        "trybach.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` "

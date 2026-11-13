@@ -53,6 +53,7 @@ from tests.contract.test_interface_contract import (
     POST_COMMANDS,
     ROUTES,
     SCENARIOS,
+    WRITTEN,
     Setting,
     fresh_store,
     recorded,  # noqa: F401 (fixture)
@@ -141,7 +142,7 @@ def test_every_rest_command_answers_alike_in_mcp_python_and_cli(
     relative_reference_dir,  # noqa: F811
 ):
     for case in CASES[command]:
-        writes = case.store in ("empty", "fixture")
+        writes = case.store in WRITTEN
         if writes:
             root = tmp_path / "store"
         else:
@@ -190,6 +191,7 @@ def test_without_writes_a_write_is_its_plan_of_check_in_python_and_cli(
     (case,) = CASES[command]
     root = tmp_path / "store"
     fresh_store(case.store, root, fixture_root)
+    start = len(recorded.router.calls)  # after the sync of a "sources" store
     given = rooted(case.options, root)
     before = stamps(root)
 
@@ -200,7 +202,7 @@ def test_without_writes_a_write_is_its_plan_of_check_in_python_and_cli(
     assert answered.structured_content["check"] is True
     assert_envelope(answered, python, printed, root)
     assert stamps(root) == before
-    assert recorded.downloads() == []
+    assert recorded.downloads(start) == []
 
 
 # --------------------------------------------------------------------------

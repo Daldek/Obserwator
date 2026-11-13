@@ -432,6 +432,12 @@ MESSAGES = {
         "{main} jest wersją listy stacji {dataset}; listy stacji czyta "
         "read_station_list(root, kind={kind!r}{option})",
     ),
+    "version_station_metadata": Text(
+        "{main} is a version of the station metadata {dataset}; the station catalog "
+        "reads it (obserwator store catalog), it has no records",
+        "{main} jest wersją metadanych stacji {dataset}; czyta ją katalog stacji "
+        "(obserwator store catalog), nie ma rekordów",
+    ),
     "file_does_not_match_request": Text(
         "The file {name} does not match request.server_path {server_path} of the "
         "sidecar",

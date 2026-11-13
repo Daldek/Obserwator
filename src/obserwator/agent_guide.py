@@ -175,7 +175,12 @@ _FLOWS: tuple[_Flow, ...] = (
             ),
             _Step(None, {}, "agent_guide.flow_precipitation_choose_dataset"),
             _Step("store check", _PRECIP_STORE, "agent_guide.flow_precipitation_plan"),
-            _Step("store sync", _PRECIP_STORE, "agent_guide.flow_precipitation_sync"),
+            _Step("store sync", _PRECIP_STORE, "agent_guide.flow_after_consent"),
+            _Step(
+                "series build",
+                {"root": _STORE, "dataset": _PRECIP},
+                "agent_guide.flow_series_build",
+            ),
             _Step(
                 "series summary",
                 {"root": _STORE, "dataset": _PRECIP, "stations": [_STATION]},
@@ -197,7 +202,12 @@ _FLOWS: tuple[_Flow, ...] = (
                 "agent_guide.flow_czech_discharge_find_station",
             ),
             _Step("store check", _CHMI_STORE, "agent_guide.flow_czech_discharge_plan"),
-            _Step("store sync", _CHMI_STORE, "agent_guide.flow_czech_discharge_sync"),
+            _Step("store sync", _CHMI_STORE, "agent_guide.flow_after_consent"),
+            _Step(
+                "series build",
+                {"root": _STORE, "dataset": _CHMI_HYDRO},
+                "agent_guide.flow_series_build",
+            ),
             _Step(
                 "series read",
                 {
@@ -387,6 +397,7 @@ def _commands(
     return "\n\n".join(
         f"**{message(_EFFECTS[name], lang=lang)}**\n\n" + "\n".join(lines)
         for name, lines in classes.items()
+        if lines
     )
 
 

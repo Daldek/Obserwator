@@ -70,7 +70,7 @@ def test_frozen_contracts():
         StoreEntry("problem", "archive:abc", None, None, "missing", "Brak"),
         VersionResult("new", Path("/tmp/zip"), "a" * 64, "2026-10-17"),
         SeriesReport("unchanged", None, 0, (), ()),
-        SyncReport((), (), False),
+        SyncReport((), False),
         CatalogReport("unchanged", None, 0, 0, 0, ()),
         Page(2, None, False),
         DownloadItem(
@@ -352,7 +352,10 @@ def test_result_documents_lead_with_their_schema_also_when_nested(tmp_path):
     station = StationListEntry("meteo", "123750000", "Warszawa", short_code="375")
     state = HydroState(station_code="150160180", name="Kraków")
     series = SeriesReport("unchanged", None, 0, (), ())
-    report = SyncReport((), (series,), False)
+    item = OperationResult(
+        "archive:pl.imgw.hydro_daily:2024/codz_2024.zip", "new", None, None
+    )
+    report = SyncReport((item,), False)
     plan = _plan(tmp_path)
 
     def document(result):
@@ -367,9 +370,11 @@ def test_result_documents_lead_with_their_schema_also_when_nested(tmp_path):
     ]
     synced = document(report)
     assert list(synced)[0] == "schema"
-    assert synced["schema"] == "obserwator-sync-report/1"
-    assert list(synced["series"][0])[0] == "schema"
-    assert synced["series"][0]["schema"] == "obserwator-series-report/1"
+    assert synced["schema"] == "obserwator-sync-report/2"
+    assert set(synced) == {"schema", "items", "cancelled", "files"}
+    (built,) = document((series,))
+    assert list(built)[0] == "schema"
+    assert built["schema"] == "obserwator-series-report/1"
     assert document(plan)["schema"] == "obserwator-plan/1"
 
 

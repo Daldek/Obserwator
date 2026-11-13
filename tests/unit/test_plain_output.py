@@ -311,7 +311,6 @@ def test_a_plain_sync_writes_the_selected_archives_without_a_freshness_check(
     assert outcome.status == "ok"
     assert [item.status for item in outcome.result.items] == ["new"] * 3
     assert [file.status for file in outcome.result.files] == ["written"] * (3 + 1)
-    assert outcome.result.series == ()
     assert names(tmp_path / "out") == sorted(
         ["ATTRIBUTION.txt", *(a.server_path for a in FILES)]
     )
@@ -328,27 +327,21 @@ def test_a_plain_sync_writes_the_selected_archives_without_a_freshness_check(
     assert {action.action for action in plan.result.actions} == {"conflict"}
 
 
-@pytest.mark.parametrize("option", ["plan", "series"])
-def test_options_that_act_on_versions_name_root_when_given_with_output_dir(
-    option, tmp_path
-):
-    values = {"plan": tmp_path / "plan.json", "series": False}
-    options = {"datasets": SEMIANNUAL, "years": 2024, "output_dir": tmp_path / "out"}
-    options[option] = values[option]
-    if option == "plan":
-        del options["datasets"], options["years"]
+def test_a_plan_acts_on_versions_and_names_root_when_given_with_output_dir(tmp_path):
+    plan = tmp_path / "plan.json"
+    options = {"plan": plan, "output_dir": tmp_path / "out"}
 
     with pytest.raises(ObserwatorValidationError) as error:
         validate_command("store sync", options=options)
     assert error.value.details["reason"] == "store_only_option"
-    assert error.value.details["option"] == option
+    assert error.value.details["option"] == "plan"
 
     with pytest.raises(ObserwatorValidationError) as direct:
         sync_store(
             output_dir=tmp_path / "out",
             datasets=[SEMIANNUAL],
             years=2024,
-            **{option: values[option]},
+            plan=plan,
         )
     assert direct.value.details["reason"] == "store_only_option"
     assert not (tmp_path / "out").exists()
@@ -429,9 +422,7 @@ def test_a_store_sync_without_a_target_uses_the_default_root(home, respx_mock):
     for archive in FILES:
         imgw.publish(archive, V1, (ARCHIVES / archive.server_path).read_bytes())
 
-    outcome = run_command(
-        "store sync", options={"datasets": SEMIANNUAL, "years": 2024, "series": False}
-    )
+    outcome = run_command("store sync", options={"datasets": SEMIANNUAL, "years": 2024})
 
     assert outcome.status == "ok"
     assert {file.status for file in outcome.result.files} == {"new"}
