@@ -690,37 +690,45 @@ def _hydro() -> list[AnalysisDefinition]:
                 *_YEARS,
             ),
         ),
-        _define(
-            "low_flow_sequences.Q",
-            "hydro",
-            "analyses.title_low_flow_sequences",
-            "stats low-flow-sequences",
-            (_daily("Q"),),
-            options={
-                "parameter": "Q",
-                "threshold_method": "mean_annual_minimum",
-                "min_duration_days": 5,
-                "max_gap_days": 4,
-            },
-            overridable=(
-                AnalysisOption(
-                    "threshold_method",
-                    "string",
-                    enum=("mean_annual_minimum", "exceedance", "value"),
-                ),
-                AnalysisOption("threshold", "number", exclusive_minimum=0.0),
-                AnalysisOption(
-                    "exceedance_percent",
-                    "number",
-                    exclusive_minimum=0.0,
-                    exclusive_maximum=100.0,
-                ),
-                AnalysisOption("min_duration_days", "integer", minimum=1, maximum=90),
-                AnalysisOption("max_gap_days", "integer", minimum=0, maximum=30),
-                *_YEARS,
-            ),
-        ),
     ]
+    for variable, title in (
+        ("Q", "analyses.title_low_flow_sequences"),
+        ("H", "analyses.title_low_flow_sequences_h"),
+    ):
+        found.append(
+            _define(
+                f"low_flow_sequences.{variable}",
+                "hydro",
+                title,
+                "stats low-flow-sequences",
+                (_daily(variable),),
+                options={
+                    "parameter": variable,
+                    "threshold_method": "mean_annual_minimum",
+                    "min_duration_days": 5,
+                    "max_gap_days": 4,
+                },
+                overridable=(
+                    AnalysisOption(
+                        "threshold_method",
+                        "string",
+                        enum=("mean_annual_minimum", "exceedance", "value"),
+                    ),
+                    AnalysisOption("threshold", "number", exclusive_minimum=0.0),
+                    AnalysisOption(
+                        "exceedance_percent",
+                        "number",
+                        exclusive_minimum=0.0,
+                        exclusive_maximum=100.0,
+                    ),
+                    AnalysisOption(
+                        "min_duration_days", "integer", minimum=1, maximum=90
+                    ),
+                    AnalysisOption("max_gap_days", "integer", minimum=0, maximum=30),
+                    *_YEARS,
+                ),
+            )
+        )
     for variable, title, bins in (
         ("H", "analyses.title_duration_h", {"bin_method": "width", "bin_width": 10}),
         ("Q", "analyses.title_duration_q", {"bin_method": "log", "bin_count": 40}),
@@ -803,19 +811,24 @@ def _hydro() -> list[AnalysisDefinition]:
             overridable=_YEARS,
         )
     )
-    for statistic, title in (
-        ("max", "analyses.title_seasonality_max"),
-        ("min", "analyses.title_seasonality_min"),
+    for variable, statistic, title in (
+        ("Q", "max", "analyses.title_seasonality_max"),
+        ("Q", "min", "analyses.title_seasonality_min"),
+        ("H", "max", "analyses.title_seasonality_h_max"),
+        ("H", "min", "analyses.title_seasonality_h_min"),
     ):
         found.append(
             _define(
-                f"seasonality.Q.{statistic}",
+                f"seasonality.{variable}.{statistic}",
                 "hydro",
                 title,
                 "stats seasonality",
                 (
-                    _half_years("Q"),
-                    _daily("Q", columns={"value_column": "Q", "parameter": "Q"}),
+                    _half_years(variable),
+                    _daily(
+                        variable,
+                        columns={"value_column": variable, "parameter": variable},
+                    ),
                 ),
                 options={"statistic": statistic},
                 overridable=_YEARS,

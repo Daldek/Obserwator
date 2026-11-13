@@ -1,4 +1,4 @@
-"""REST adapter generated from the command catalog (spec §13.5, §13.6, §13.10)."""
+"""REST adapter generated from the command catalog (spec §13.5, §13.6, §13.10, ADR-017)."""
 
 import functools
 import importlib
@@ -15,6 +15,7 @@ import respx
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
+from obserwator.api.errors import hide_server_paths
 from obserwator.api.main import app
 from obserwator.commands import (
     check_command,
@@ -28,7 +29,6 @@ from obserwator.messages import localize
 from obserwator.stations import HYDRO_MAP_API_URL
 from obserwator.store import current_version, init_store
 from obserwator.store.types import page_cursor
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     DAILY,
     H2023,
@@ -66,56 +66,57 @@ METEO_WARNINGS = [
     }
 ]
 MAP = {"stations": [{"id": RABA, "n": "RABA GÓRNA", "la": 49.61, "lo": 20.05}]}
-# Read commands (GET): command, query, whether the server inserts its root.
+# Read commands (GET): command, query, the kind of the root the server inserts.
 GET_CASES = [
-    ("datasets list", {"kind": "hydro", "limit": "2", "cursor": page_cursor(1)}, False),
+    ("datasets list", {"kind": "hydro", "limit": "2", "cursor": page_cursor(1)}, None),
     (
         "datasets files",
         {"dataset": "hydro/dobowe", "years": ["2022-2023", "2024"], "months": "1,2"},
-        False,
+        None,
     ),
     (
         "stations find",
         {"kind": "hydro", "query": "raba", "provider": "IMGW-PIB"},
-        False,
+        None,
     ),
-    ("stations find", {"source": "store", "query": "1491"}, True),
-    ("current hydro", {}, False),
-    ("current meteo", {}, False),
-    ("current synop", {"station_name": "raba"}, False),
-    ("current warnings", {"kind": "meteo"}, False),
-    ("current hydro-states", {"main_only": "true"}, False),
-    ("pmaxtp fetch", {"latitude": "52.23", "longitude": "21.01"}, False),
-    ("pmaxtp url", {"latitude": "52.23", "longitude": "21.01", "method": "AMP"}, False),
+    ("stations find", {"source": "store", "query": "1491"}, "data"),
+    ("current hydro", {}, None),
+    ("current meteo", {}, None),
+    ("current synop", {"station_name": "raba"}, None),
+    ("current warnings", {"kind": "meteo"}, None),
+    ("current hydro-states", {"main_only": "true"}, None),
+    ("pmaxtp fetch", {"latitude": "52.23", "longitude": "21.01"}, None),
+    ("pmaxtp url", {"latitude": "52.23", "longitude": "21.01", "method": "AMP"}, None),
     (
         "pmaxtp check",
         {"latitude": "52.23", "longitude": "21.01", "ind_x": "751", "ind_y": "317"},
-        True,
+        "raw",
     ),
-    ("store info", {}, True),
-    ("store scan", {"kind": "series"}, True),
-    ("store check", {"datasets": DAILY, "years": "2024"}, True),
+    ("store info", {}, "data"),
+    ("store scan", {"kind": "series"}, "data"),
+    ("store check", {"datasets": DAILY, "years": "2024"}, "raw"),
     (
         "series select",
         {"dataset": "hydro/dobowe", "stations": RABA, "years": "2024"},
-        True,
+        "data",
     ),
     (
         "series read",
         {"dataset": DAILY, "station": RABA, "variables": "H,Q", "start": "2024-01-01"},
-        True,
+        "data",
     ),
-    ("series read", {"version": SERIES, "station": RABA, "limit": "1"}, True),
-    ("series summary", {"version": SERIES, "stations": RABA}, True),
-    ("commands schema", {"command": "stations find"}, False),
+    ("series read", {"version": SERIES, "station": RABA, "limit": "1"}, "data"),
+    ("series summary", {"version": SERIES, "stations": RABA}, "data"),
+    ("commands schema", {"command": "stations find"}, None),
 ]
-# Write commands (POST): command, body, store the command runs on.
+# Write commands (POST): command, body, the kind of the root the command writes:
+# an empty raw root, or a copy of the fixture data root (its raw root read-only).
 POST_CASES = [
-    ("pmaxtp sync", {"latitude": 52.23, "longitude": 21.01}, "empty"),
-    ("store sync", {"datasets": ["hydro/dobowe"], "years": [2024]}, "empty"),
-    ("store catalog", {}, "fixture"),
-    ("series build", {"dataset": PRECIP}, "fixture"),
-    ("analyses build", {"stations": [RABA]}, "fixture"),
+    ("pmaxtp sync", {"latitude": 52.23, "longitude": 21.01}, "raw"),
+    ("store sync", {"datasets": ["hydro/dobowe"], "years": [2024]}, "raw"),
+    ("store catalog", {}, "data"),
+    ("series build", {"dataset": PRECIP}, "data"),
+    ("analyses build", {"stations": [RABA]}, "data"),
 ]
 
 
@@ -163,9 +164,10 @@ def raising(monkeypatch, module, name, error):
 
 @pytest.fixture(autouse=True)
 def server(monkeypatch):
-    """Unconfigured server: no store root, writes disabled, default page size."""
+    """Unconfigured server: no roots, writes disabled, default page size."""
     for name, value in (
         ("root", None),
+        ("raw_root", None),
         ("store_writes_enabled", False),
         ("store_write_token", None),
         ("user_locations_dir", None),
@@ -179,14 +181,11 @@ def client():
     return TestClient(app)
 
 
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("rest") / "store").root
-
-
 @pytest.fixture
-def served(monkeypatch, fixture_root):
+def served(monkeypatch, fixture_root, fixture_raw_root):
+    """The fixture roots served as OBSERWATOR_ROOT and OBSERWATOR_RAW_ROOT: the data root."""
     monkeypatch.setattr(settings, "root", fixture_root)
+    monkeypatch.setattr(settings, "raw_root", fixture_raw_root)
     return fixture_root
 
 
@@ -241,9 +240,10 @@ def hydrolog(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture
-def empty_root(monkeypatch, tmp_path):
-    root = init_store(tmp_path / "store").root
-    monkeypatch.setattr(settings, "root", root)
+def empty_raw_root(monkeypatch, tmp_path):
+    """An empty raw root served as OBSERWATOR_RAW_ROOT; no data root."""
+    root = init_store(tmp_path / "raw").root
+    monkeypatch.setattr(settings, "raw_root", root)
     return root
 
 
@@ -254,10 +254,26 @@ def relative_reference_dir(monkeypatch):
 
 
 def store_copy(kind, fixture_root, target):
-    if kind == "empty":
+    """An empty raw root, or a copy of the fixture data root, at ``target``."""
+    if kind == "raw":
         return init_store(target).root
     shutil.copytree(fixture_root, target)
     return target
+
+
+def write_roots(monkeypatch, command, kind, root, raw_root):
+    """
+    Serve ``root`` as the root of ``kind`` (and ``raw_root`` as the raw root of a
+    data command); the root options Python gives the same command.
+    """
+    if kind == "raw":
+        monkeypatch.setattr(settings, "raw_root", root)
+    else:
+        monkeypatch.setattr(settings, "root", root)
+        monkeypatch.setattr(settings, "raw_root", raw_root)
+    if "raw_root" in input_schema(command)["properties"]:
+        return {"root": root, "raw_root": raw_root}
+    return {"root": root}
 
 
 def relative(entry, root):
@@ -445,20 +461,21 @@ def test_api_problem_title_detail_and_hint_follow_accept_language(client):
 
 @pytest.mark.parametrize(("command", "query", "rooted"), GET_CASES)
 def test_api_get_route_answers_the_run_command_envelope(
-    client, served, live, frozen, command, query, rooted
+    client, served, fixture_raw_root, live, frozen, command, query, rooted
 ):
     series = relative(current_version(served, slot=f"series:{DAILY}"), served)
     query = {key: series if value == SERIES else value for key, value in query.items()}
     options = dict(query)
+    root = fixture_raw_root if rooted == "raw" else served
     if rooted:
-        options["root"] = served
+        options["root"] = root
     if input_schema(command)["x-obserwator"]["result"] == "list":
         options.setdefault("limit", 1000)
 
     response = client.get(path_of(command), params=query)
 
     assert response.status_code == 200, response.text
-    expected = run_command(command, options=options).to_json(root=served, server=True)
+    expected = run_command(command, options=options).to_json(root=root, server=True)
     assert response.json() == expected
     assert str(served.parent) not in response.text
     assert str(Path.cwd()) not in response.text
@@ -470,6 +487,7 @@ def test_api_post_route_answers_the_run_command_envelope(
     monkeypatch,
     tmp_path,
     fixture_root,
+    fixture_raw_root,
     imgw,
     frozen,
     hydrolog,
@@ -484,19 +502,21 @@ def test_api_post_route_answers_the_run_command_envelope(
     imgw.publish_pmaxtp("pmaxtp_pot_first")
     rest_root = store_copy(kind, fixture_root, tmp_path / "rest")
     python_root = store_copy(kind, fixture_root, tmp_path / "python")
-    monkeypatch.setattr(settings, "root", rest_root)
+    options = write_roots(monkeypatch, command, kind, rest_root, fixture_raw_root)
 
     response = client.post(path_of(command), json=body, headers=writable)
 
     assert response.status_code == 200, response.text
-    expected = run_command(command, options={**body, "root": python_root})
-    assert response.json() == expected.to_json(root=python_root, server=True)
+    expected = run_command(command, options={**body, **options, "root": python_root})
+    assert response.json() == hide_server_paths(
+        expected.to_json(root=python_root, server=True)
+    )
     assert response.json()["status"] == "ok"
     assert str(tmp_path) not in response.text
 
 
 def test_api_pmaxtp_read_takes_the_version_returned_by_pmaxtp_sync(
-    client, empty_root, imgw, writable
+    client, empty_raw_root, imgw, writable
 ):
     imgw.publish_pmaxtp("pmaxtp_pot_first")
     synced = client.post(
@@ -514,8 +534,8 @@ def test_api_pmaxtp_read_takes_the_version_returned_by_pmaxtp_sync(
     assert synced["version"].startswith("pmaxtp/versions/POT/751_317/")
     assert current.json() == pinned.json()
     assert pinned.json() == run_command(
-        "pmaxtp read", options={**query, "root": empty_root}
-    ).to_json(root=empty_root, server=True)
+        "pmaxtp read", options={**query, "root": empty_raw_root}
+    ).to_json(root=empty_raw_root, server=True)
     assert pinned.json()["result"]["data"] == synced["result"]["data"]
 
 
@@ -525,6 +545,7 @@ def test_api_check_true_plans_every_write_without_token_or_writes(
     monkeypatch,
     tmp_path,
     fixture_root,
+    fixture_raw_root,
     imgw,
     frozen,
     hydrolog,
@@ -536,20 +557,22 @@ def test_api_check_true_plans_every_write_without_token_or_writes(
     imgw.publish(H2024, V1, OLD)
     imgw.publish_catalog_sources()
     root = store_copy(kind, fixture_root, tmp_path / "store")
-    monkeypatch.setattr(settings, "root", root)
-    before = stamps(root)
+    options = write_roots(monkeypatch, command, kind, root, fixture_raw_root)
+    before = stamps(tmp_path), stamps(fixture_raw_root)
 
     response = client.post(f"{path_of(command)}?check=true", json=body)
 
     assert response.status_code == 200, response.text
     document = response.json()
     assert document["check"] is True
-    assert document == check_command(command, options={**body, "root": root}).to_json(
-        root=root, server=True
+    assert document == hide_server_paths(
+        check_command(command, options={**body, **options}).to_json(
+            root=root, server=True
+        )
     )
     assert document["result"]["root"] == "."
     assert schema_errors(document["result"], "obserwator-plan/1") == []
-    assert stamps(root) == before
+    assert (stamps(tmp_path), stamps(fixture_raw_root)) == before
     assert imgw.downloads() == []
 
 
@@ -559,7 +582,7 @@ def test_api_check_true_plans_every_write_without_token_or_writes(
 
 
 def test_api_checked_plan_syncs_and_a_stale_item_makes_the_envelope_partial(
-    client, empty_root, imgw, writable
+    client, empty_raw_root, imgw, writable
 ):
     imgw.publish(H2023, V1, archive_bytes(H2023))
     imgw.publish(H2024, V1, OLD)
@@ -580,7 +603,7 @@ def test_api_checked_plan_syncs_and_a_stale_item_makes_the_envelope_partial(
         (f"archive:{DAILY}:2023/codz_2023.zip", "new"),
         (f"archive:{DAILY}:2024/codz_2024.zip", "stale_plan"),
     ]
-    assert (empty_root / body["result"]["items"][0]["version"]).is_file()
+    assert (empty_raw_root / body["result"]["items"][0]["version"]).is_file()
     assert "license_terms" in {notice["code"] for notice in body["notices"]}
     assert H2024.url not in imgw.downloads()
 
@@ -588,7 +611,7 @@ def test_api_checked_plan_syncs_and_a_stale_item_makes_the_envelope_partial(
 @pytest.mark.parametrize(
     ("plan", "fragment"),
     [
-        ({"schema": "obserwator-plan/1", "root": "/elsewhere"}, "another store"),
+        ({"schema": "obserwator-plan/1", "root": "/elsewhere"}, "another root"),
         (
             {"schema": "obserwator-plan/9", "root": "."},
             "Invalid obserwator-plan/1 plan",
@@ -600,14 +623,14 @@ def test_api_checked_plan_syncs_and_a_stale_item_makes_the_envelope_partial(
     ],
 )
 def test_api_sync_rejects_a_foreign_or_invalid_plan(
-    client, empty_root, writable, plan, fragment
+    client, empty_raw_root, writable, plan, fragment
 ):
     response = client.post("/api/v1/store/sync", json={"plan": plan}, headers=writable)
 
     body = problem(response, 400, "validation_error")
     assert body["details"]["option"] == "plan"
     assert fragment in body["detail"]
-    assert list(Path(empty_root).rglob("*.zip")) == []
+    assert list(Path(empty_raw_root).rglob("*.zip")) == []
 
 
 # --------------------------------------------------------------------------
@@ -668,17 +691,19 @@ def test_api_malformed_cursor_is_400_naming_the_cursor(client, cursor):
     ],
 )
 def test_api_exports_stream_the_cli_lines_with_status_and_notice_headers(
-    client, served, command, fmt, media_type
+    client, served, fixture_raw_root, command, fmt, media_type
 ):
+    root = served
     if command == "store export":
+        root = fixture_raw_root
         slot = f"archive:{DAILY}:2024/codz_2024.zip"
-        query = {"version": relative(current_version(served, slot=slot), served)}
+        query = {"version": relative(current_version(root, slot=slot), root)}
         filename = f"codz_2024.{fmt}"
     else:
         query = {"dataset": DAILY, "station": RABA}
         filename = f"{RABA}.csv"
     query["format"] = fmt
-    expected = run_command(command, options={**query, "root": served})
+    expected = run_command(command, options={**query, "root": root})
     lines = "".join(expected.result)
 
     response = client.get(path_of(command), params=query)
@@ -700,18 +725,19 @@ def test_api_exports_stream_the_cli_lines_with_status_and_notice_headers(
 
 
 def test_api_texts_of_a_command_answer_follow_accept_language(
-    client, served, live, frozen
+    client, served, fixture_raw_root, live, frozen
 ):
+    raw = fixture_raw_root
     query = {"latitude": "52.23", "longitude": "21.01", "ind_x": "751", "ind_y": "317"}
-    expected = run_command("pmaxtp check", options={**query, "root": served})
+    expected = run_command("pmaxtp check", options={**query, "root": raw})
 
     english = client.get("/api/v1/pmaxtp/check", params=query)
     polish = client.get(
         "/api/v1/pmaxtp/check", params=query, headers={"Accept-Language": "pl"}
     )
 
-    assert english.json() == expected.to_json(root=served, server=True)
-    assert polish.json() == expected.to_json(root=served, server=True, lang="pl")
+    assert english.json() == expected.to_json(root=raw, server=True)
+    assert polish.json() == expected.to_json(root=raw, server=True, lang="pl")
     assert polish.json() != english.json()
     for response, lang in ((english, "en"), (polish, "pl")):
         assert response.headers["content-language"] == lang
@@ -719,11 +745,12 @@ def test_api_texts_of_a_command_answer_follow_accept_language(
 
 
 def test_api_stream_notices_follow_accept_language_and_the_data_does_not(
-    client, served
+    client, served, fixture_raw_root
 ):
+    raw = fixture_raw_root
     slot = f"archive:{DAILY}:2024/codz_2024.zip"
-    query = {"version": relative(current_version(served, slot=slot), served)}
-    expected = run_command("store export", options={**query, "root": served})
+    query = {"version": relative(current_version(raw, slot=slot), raw)}
+    expected = run_command("store export", options={**query, "root": raw})
     lines = "".join(expected.result)
 
     english = client.get(path_of("store export"), params=query)
@@ -795,47 +822,76 @@ def test_api_unknown_route_and_wrong_method_are_problem_documents(client):
 
 
 @pytest.mark.parametrize(
-    ("root", "reason"), [(None, "not_configured"), ("relative/store", "root_invalid")]
+    ("value", "reason"), [(None, "not_configured"), ("relative/store", "root_invalid")]
 )
 @pytest.mark.parametrize(
-    ("method", "command", "query"),
+    ("method", "command", "query", "missing"),
     [
-        ("GET", "store info", {}),
-        ("GET", "series summary", {"dataset": DAILY}),
-        ("GET", "stations find", {"source": "store"}),
-        ("POST", "series build", {"check": "true"}),
+        ("GET", "store info", {}, "root"),
+        ("GET", "store scan", {}, "root"),
+        ("GET", "series summary", {"dataset": DAILY}, "root"),
+        ("GET", "stations find", {"source": "store"}, "root"),
+        ("GET", "analyses list", {}, "root"),
+        ("GET", "store check", {"datasets": DAILY, "years": "2024"}, "raw_root"),
+        ("GET", "pmaxtp read", {"ind_x": "751", "ind_y": "317"}, "raw_root"),
+        ("POST", "series build", {"check": "true"}, "root"),
+        ("POST", "series build", {"check": "true"}, "raw_root"),
+        ("POST", "store catalog", {"check": "true"}, "raw_root"),
+        ("POST", "store sync", {"check": "true"}, "raw_root"),
     ],
 )
-def test_api_store_commands_without_a_valid_root_are_503(
-    client, monkeypatch, root, reason, method, command, query
+def test_api_store_commands_without_a_valid_root_are_503_naming_its_variable(
+    client, monkeypatch, tmp_path, value, reason, method, command, query, missing
 ):
-    monkeypatch.setattr(settings, "root", None if root is None else Path(root))
-
-    response = client.request(
-        method, path_of(command), params=query, json={"dataset": DAILY}
+    # The other root is a valid root of its kind, so only the missing one is named.
+    monkeypatch.setattr(
+        settings, "root", init_store(tmp_path / "data", kind="data").root
     )
+    monkeypatch.setattr(settings, "raw_root", init_store(tmp_path / "raw").root)
+    monkeypatch.setattr(settings, missing, None if value is None else Path(value))
+    body = {"dataset": DAILY} if command == "series build" else {}
+    if command == "store sync":
+        body = {"datasets": [DAILY], "years": [2024]}
 
-    body = problem(response, 503, "store_unavailable")
-    assert body["details"] == {"reason": reason}
-    assert "OBSERWATOR_ROOT" in body["detail"]
+    response = client.request(method, path_of(command), params=query, json=body)
+
+    document = problem(response, 503, "store_unavailable")
+    assert document["details"] == {"reason": reason}
+    variable = {"root": "OBSERWATOR_ROOT", "raw_root": "OBSERWATOR_RAW_ROOT"}[missing]
+    other = {"root": "OBSERWATOR_RAW_ROOT", "raw_root": "OBSERWATOR_ROOT"}[missing]
+    assert variable in document["detail"]
+    assert other not in document["detail"]
 
 
 def test_api_unsupported_root_is_described_only_by_store_info_and_scan(
     client, monkeypatch, tmp_path
 ):
-    monkeypatch.setattr(settings, "root", tmp_path)
+    for name in ("root", "raw_root"):
+        (tmp_path / name).mkdir()
+        monkeypatch.setattr(settings, name, tmp_path / name)
 
     info = client.get("/api/v1/store/info")
     scan = client.get("/api/v1/store/scan")
     check = client.get("/api/v1/store/check", params={"datasets": DAILY, "years": 2024})
+    summary = client.get("/api/v1/series/summary", params={"dataset": DAILY})
 
     assert info.status_code == scan.status_code == 200
     assert info.json()["result"]["supported"] is False
     assert info.json()["result"]["root"] == "."
-    assert problem(check, 503, "store_unavailable")["details"] == {
-        "reason": "unsupported"
-    }
-    assert str(tmp_path) not in info.text + check.text
+    for refused in (check, summary):
+        assert problem(refused, 503, "store_unavailable")["details"] == {
+            "reason": "unsupported"
+        }
+    assert str(tmp_path) not in info.text + check.text + summary.text
+
+
+def test_api_store_info_and_scan_describe_the_data_root(client, served):
+    info = client.get("/api/v1/store/info").json()["result"]
+    scan = client.get("/api/v1/store/scan").json()["result"]
+
+    assert (info["root"], info["store_schema"]) == (".", "obserwator-data/1")
+    kinds = {entry["kind"] for entry in scan}
+    assert kinds and kinds <= {"series", "catalog", "analyses"}
 
 
 def test_api_stations_find_needs_the_root_only_for_the_store_source(client, live):
@@ -969,8 +1025,10 @@ def test_api_version_is_confined_to_the_versions_directory_of_the_command(
     }
 
 
-def test_api_version_through_a_symlink_is_rejected(client, monkeypatch, tmp_path):
-    root = build_fixture_store(tmp_path / "store").root
+def test_api_version_through_a_symlink_is_rejected(
+    client, monkeypatch, tmp_path, fixture_root
+):
+    root = Path(shutil.copytree(fixture_root, tmp_path / "data"))
     outside = tmp_path / "outside"
     outside.mkdir()
     (root / "series" / "versions" / "linked").symlink_to(outside)
@@ -1050,7 +1108,7 @@ def test_api_no_route_takes_a_place_to_write_from_a_request(
 ):
     # DEV-19.3: root, output_dir, output (and force, plan) are server or local
     # options; even a client that holds the write token cannot choose a place.
-    before = stamps(served)
+    before = stamps(served.parent)  # the data root and the raw root
 
     if method == "GET":
         response = client.get(path_of(command), params={option: "x"})
@@ -1065,7 +1123,7 @@ def test_api_no_route_takes_a_place_to_write_from_a_request(
         errors = problem(response, 400, "validation_error")["details"]["errors"]
         assert {error["option"] for error in errors} == {option}
 
-    assert stamps(served) == before
+    assert stamps(served.parent) == before
 
 
 @pytest.mark.parametrize(
@@ -1077,10 +1135,11 @@ def test_api_a_write_without_a_configured_root_never_goes_to_the_default_root(
     (tmp_path / "nogat.toml").write_text("", encoding="utf-8")
     monkeypatch.setenv("NOGAT_CONFIG", str(tmp_path / "nogat.toml"))
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
     monkeypatch.setenv("OBSERWATOR_DATA_DIR", str(tmp_path / "data"))
-    assert (
-        store_root().root == tmp_path / "data" / "obserwator"
-    )  # where the CLI would write
+    # where the CLI would write
+    assert store_root().root == tmp_path / "data" / "obserwator"
+    assert store_root(kind="raw").root == tmp_path / "data" / "obserwator-raw"
 
     response = client.post(path_of(command), json=body, headers=writable)
 
@@ -1089,24 +1148,46 @@ def test_api_a_write_without_a_configured_root_never_goes_to_the_default_root(
     assert not (tmp_path / "data").exists()
 
 
-def test_api_a_write_goes_to_the_configured_root_and_not_to_the_default_root(
-    client, writable, empty_root, imgw, monkeypatch, tmp_path
+@pytest.mark.parametrize("command", ["pmaxtp sync", "series build", "store catalog"])
+def test_api_a_write_goes_to_the_configured_roots_and_not_to_the_default_roots(
+    client,
+    writable,
+    empty_raw_root,
+    fixture_root,
+    fixture_raw_root,
+    imgw,
+    monkeypatch,
+    tmp_path,
+    command,
 ):
     (tmp_path / "nogat.toml").write_text("", encoding="utf-8")
     monkeypatch.setenv("NOGAT_CONFIG", str(tmp_path / "nogat.toml"))
+    monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
     monkeypatch.setenv("OBSERWATOR_DATA_DIR", str(tmp_path / "data"))
     imgw.publish_pmaxtp("pmaxtp_pot_first")
+    body = {"latitude": 52.23, "longitude": 21.01}
+    written = empty_raw_root
+    if command != "pmaxtp sync":
+        # A build writes the data root and reads the server's raw root, which
+        # the default raw root (missing) would not give.
+        written = Path(shutil.copytree(fixture_root, tmp_path / "served"))
+        monkeypatch.setattr(settings, "root", written)
+        monkeypatch.setattr(settings, "raw_root", fixture_raw_root)
+        body = {"dataset": PRECIP} if command == "series build" else {}
+    before = stamps(fixture_raw_root)
 
-    response = client.post(
-        "/api/v1/pmaxtp/sync",
-        json={"latitude": 52.23, "longitude": 21.01},
-        headers=writable,
-    )
+    response = client.post(path_of(command), json=body, headers=writable)
 
     assert response.status_code == 200, response.text
-    assert response.json()["result"]["status"] == "new"
-    assert (empty_root / "pmaxtp").is_dir()
+    assert response.json()["status"] == "ok"
+    assert response.json()["result"]["status"] == (
+        "unchanged" if command == "store catalog" else "new"
+    )
+    tree = {"pmaxtp sync": "pmaxtp", "series build": "series"}.get(command, "stations")
+    assert (written / tree).is_dir()
     assert not (tmp_path / "data").exists()
+    assert stamps(fixture_raw_root) == before
 
 
 def test_api_catalog_user_locations_come_only_from_the_server_directory(
@@ -1149,11 +1230,19 @@ def test_api_catalog_user_locations_come_only_from_the_server_directory(
 
 
 def test_api_answers_hide_server_directories_in_texts(
-    client, imgw, writable, monkeypatch, tmp_path, fixture_root, isolated_reference_dir
+    client,
+    imgw,
+    writable,
+    monkeypatch,
+    tmp_path,
+    fixture_root,
+    fixture_raw_root,
+    isolated_reference_dir,
 ):
     imgw.publish_catalog_sources()
-    root = store_copy("fixture", fixture_root, tmp_path / "store")
+    root = store_copy("data", fixture_root, tmp_path / "store")
     monkeypatch.setattr(settings, "root", root)
+    monkeypatch.setattr(settings, "raw_root", fixture_raw_root)
 
     response = client.post("/api/v1/store/catalog", json={}, headers=writable)
     missing = client.get(

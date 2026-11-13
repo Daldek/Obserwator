@@ -5,9 +5,10 @@ The arguments of a tool are the options of its catalog command; only
 `validate_command` normalizes them. stdio (modes ``read`` and ``write``): the
 ``check`` argument chooses `check_command` over `run_command`, a list command
 without ``limit`` gets the default page (a larger ``limit`` than
-``OBSERWATOR_API_MAX_LIMIT`` is refused), a command without ``root`` gets
-the default store root (`validate_command`), a path outside the ``--allow-dir``
-directories and a write without any are ``forbidden`` (DEV-19.3, AGI-5.8) and a
+``OBSERWATOR_API_MAX_LIMIT`` is refused), a command without ``root`` gets the
+default root of its kind and a build without ``raw_root`` the default raw root
+(`validate_command`), a path outside the ``--allow-dir`` directories (``root`` and
+``raw_root`` with their defaults included) and a write without any are ``forbidden`` (DEV-19.3, AGI-5.8) and a
 command with ``lang`` English. The command runs in a worker thread: progress is
 sent as ``notifications/progress`` (only to a request that asked for it) and a
 cancellation of the request reaches the command through ``cancel``; the thread
@@ -226,7 +227,8 @@ def _confine(
 
     Without a directory a writing command, or a command given a writing option
     (``output`` of an export), may only plan; with directories every path
-    option, the default root included, must lie inside one of them.
+    option, the default ``root`` and ``raw_root`` included, must lie inside one
+    of them.
     """
     spec = tool.command
     if not allow_dirs:

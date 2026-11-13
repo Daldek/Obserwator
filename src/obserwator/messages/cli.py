@@ -270,9 +270,9 @@ MESSAGES = {
     ),
     "config_show_help": Text(
         "Show every setting with its value and source, the credentials (present "
-        "or missing) and the store root with its size.",
+        "or missing) and the data and raw roots with their sizes.",
         "Pokaż każde ustawienie z wartością i źródłem, dane uwierzytelniające "
-        "(ustawione albo brak) oraz katalog magazynu z rozmiarem.",
+        "(ustawione albo brak) oraz katalog danych i katalog surowy z rozmiarami.",
     ),
     "config_json_help": Text(
         "Print one obserwator-config/1 JSON document (no prose)",
@@ -292,10 +292,18 @@ MESSAGES = {
     ),
     "config_credential_present": Text("present", "ustawiony"),
     "config_credential_missing": Text("missing", "brak"),
-    "config_store_unset": Text("Store: not set", "Magazyn: nie ustawiono"),
+    "config_store_unset": Text("Data root: not set", "Katalog danych: nie ustawiono"),
+    "config_raw_store_unset": Text(
+        "Raw root: not set", "Katalog surowy: nie ustawiono"
+    ),
     "config_store_no_directory": Text("no directory", "brak katalogu"),
     "config_store": Text(
-        "Store: {root}  [{origin}]  {size}", "Magazyn: {root}  [{origin}]  {size}"
+        "Data root: {root}  [{origin}]  {size}",
+        "Katalog danych: {root}  [{origin}]  {size}",
+    ),
+    "config_raw_store": Text(
+        "Raw root: {root}  [{origin}]  {size}",
+        "Katalog surowy: {root}  [{origin}]  {size}",
     ),
     "mcp_allow_dir_help": Text(
         "Directory the MCP server may read and write (repeatable); without one a "

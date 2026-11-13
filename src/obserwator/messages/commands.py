@@ -121,13 +121,9 @@ MESSAGES = {
         "Archive files of the dataset {dataset} (offline, no download): {count}",
         "Pliki archiwów zbioru {dataset} (offline, bez pobierania): {count}",
     ),
-    "read_station_lists": Text(
-        "Read the station lists of the store {root}",
-        "Odczyt list stacji z magazynu {root}",
-    ),
-    "not_obserwator_store": Text(
-        "The directory {root} is not an Obserwator store",
-        "Katalog {root} nie jest magazynem Obserwatora",
+    "read_station_catalogs": Text(
+        "Read the current station catalogs of the data root {root}",
+        "Odczyt bieżących katalogów stacji z katalogu danych {root}",
     ),
     "read_cell": Text(
         "Read the cell {cell} from {found}",
@@ -138,8 +134,8 @@ MESSAGES = {
         "Brak zapisanej komórki PMAXTP {cell}",
     ),
     "store_exists": Text(
-        "The Obserwator store already exists: {root}",
-        "Magazyn Obserwatora już istnieje: {root}",
+        "The root already exists: {root} ({marker})",
+        "Katalog już istnieje: {root} ({marker})",
     ),
     "read_only_operation": Text(
         "Read-only operation: {root}",
@@ -232,10 +228,48 @@ MESSAGES = {
         "Przewodnik {format} ({language}) → {target}",
     ),
     "root_help": Text(
-        "Store root; default: $OBSERWATOR_ROOT, then root in nogat.toml (section obserwator), "
-        "else <data_dir>/obserwator",
-        "Korzeń magazynu; domyślnie: $OBSERWATOR_ROOT, potem root w nogat.toml (sekcja obserwator), "
-        "inaczej <data_dir>/obserwator",
+        "Data root (series, station catalogs, analyses); default: $OBSERWATOR_ROOT, "
+        "then root in nogat.toml (section obserwator), else <data_dir>/obserwator",
+        "Katalog danych (szeregi, katalogi stacji, analizy); domyślnie: "
+        "$OBSERWATOR_ROOT, potem root w nogat.toml (sekcja obserwator), inaczej "
+        "<data_dir>/obserwator",
+    ),
+    "raw_store_help": Text(
+        "Raw root (downloaded archives, station sources, PMAXTP cells); default: "
+        "$OBSERWATOR_RAW_ROOT, then raw_root in nogat.toml (section obserwator), "
+        "else <data_dir>/obserwator-raw",
+        "Katalog surowy (pobrane archiwa, źródła stacji, komórki PMAXTP); domyślnie: "
+        "$OBSERWATOR_RAW_ROOT, potem raw_root w nogat.toml (sekcja obserwator), "
+        "inaczej <data_dir>/obserwator-raw",
+    ),
+    "raw_root_help": Text(
+        "Raw root the build reads and never writes; default: $OBSERWATOR_RAW_ROOT, "
+        "then raw_root in nogat.toml (section obserwator), else "
+        "<data_dir>/obserwator-raw",
+        "Katalog surowy, który budowa czyta i nigdy nie zapisuje; domyślnie: "
+        "$OBSERWATOR_RAW_ROOT, potem raw_root w nogat.toml (sekcja obserwator), "
+        "inaczej <data_dir>/obserwator-raw",
+    ),
+    "any_root_help": Text(
+        "Raw or data root, by its marker; default: the data root ($OBSERWATOR_ROOT, "
+        "then root in nogat.toml (section obserwator), else <data_dir>/obserwator)",
+        "Katalog surowy albo danych, według znacznika; domyślnie katalog danych "
+        "($OBSERWATOR_ROOT, potem root w nogat.toml (sekcja obserwator), inaczej "
+        "<data_dir>/obserwator)",
+    ),
+    "store_init_root_help": Text(
+        "Directory of the new root; default: the default root of --kind "
+        "($OBSERWATOR_RAW_ROOT or $OBSERWATOR_ROOT, else <data_dir>/obserwator-raw "
+        "or <data_dir>/obserwator)",
+        "Katalog do utworzenia; domyślnie: domyślny katalog rodzaju --kind "
+        "($OBSERWATOR_RAW_ROOT albo $OBSERWATOR_ROOT, inaczej "
+        "<data_dir>/obserwator-raw albo <data_dir>/obserwator)",
+    ),
+    "store_init_kind_help": Text(
+        "Root kind: raw (obserwator-store.json: archives, station sources, PMAXTP) "
+        "or data (obserwator-data.json: series, catalogs, analyses)",
+        "Rodzaj katalogu: raw (obserwator-store.json: archiwa, źródła stacji, PMAXTP) "
+        "albo data (obserwator-data.json: szeregi, katalogi, analizy)",
     ),
     "archive_dataset_help": Text(
         "Archive dataset: key, slug or legacy alias, e.g. pl.imgw.hydro_daily, "
@@ -361,9 +395,9 @@ MESSAGES = {
         "względna do root (zamiast dataset)",
     ),
     "series_root_help": Text(
-        "Store directory: base of a relative version or store of the current version "
-        "of the dataset (with dataset)",
-        "Katalog magazynu: podstawa względnej wersji albo magazyn bieżącej wersji "
+        "Data root: base of a relative version or root of the current version of "
+        "the dataset (with dataset)",
+        "Katalog danych: podstawa względnej wersji albo katalog bieżącej wersji "
         "zbioru (z dataset)",
     ),
     "output_help": Text(
@@ -416,11 +450,11 @@ MESSAGES = {
     ),
     "datasets_download_description": Text(
         "Download the source files of a dataset as plain files (--output-dir) or "
-        "into the store (--root). Plain files are named like the provider's server "
-        "paths; an existing one needs --force.",
-        "Pobierz pliki źródłowe zbioru: zwykłe (--output-dir) albo do magazynu "
-        "(--root). Zwykłe pliki mają nazwy jak ścieżki serwera dostawcy; istniejący "
-        "plik wymaga --force.",
+        "into the raw root (--root). Plain files are named like the provider's "
+        "server paths; an existing one needs --force.",
+        "Pobierz pliki źródłowe zbioru: zwykłe (--output-dir) albo do katalogu "
+        "surowego (--root). Zwykłe pliki mają nazwy jak ścieżki serwera dostawcy; "
+        "istniejący plik wymaga --force.",
     ),
     "datasets_providers_description": Text(
         "List the data providers: identifiers, countries, licenses, station code "
@@ -451,10 +485,10 @@ MESSAGES = {
         "root jest wymagany przy source=store i niedozwolony przy source=live",
     ),
     "stations_find_rule_2": Text(
-        "source=store without provider skips the providers without a saved station "
-        "list; with an explicit provider a missing list is a not_found error",
-        "source=store bez provider pomija dostawców bez zapisanej listy stacji; przy "
-        "jawnym provider brak listy to błąd not_found",
+        "source=store without provider skips the providers without a station "
+        "catalog; with an explicit provider a missing catalog is a not_found error",
+        "source=store bez provider pomija dostawców bez katalogu stacji; przy jawnym "
+        "provider brak katalogu to błąd not_found",
     ),
     "current_hydro_description": Text(
         "Fetch current hydrological data from the IMGW API.",
@@ -487,32 +521,38 @@ MESSAGES = {
         "Zbuduj adres URL API PMAXTP dla punktu. Offline, bez pobierania.",
     ),
     "pmaxtp_check_description": Text(
-        "Check the PMAXTP cell in the store without downloading data.",
-        "Sprawdź komórkę PMAXTP w magazynie bez pobierania danych.",
+        "Check the PMAXTP cell in the raw root without downloading data.",
+        "Sprawdź komórkę PMAXTP w katalogu surowym bez pobierania.",
     ),
     "pmaxtp_sync_description": Text(
-        "Download the PMAXTP cell of a point as a store version or, with "
+        "Download the PMAXTP cell of a point into the raw root or, with "
         "--output-dir, as plain files. The plain files are cell.json and "
         "response.json.",
-        "Pobierz komórkę PMAXTP punktu do magazynu albo, z --output-dir, jako "
-        "zwykłe pliki. Zwykłe pliki to cell.json i response.json.",
+        "Pobierz komórkę PMAXTP punktu do katalogu surowego albo, z --output-dir, "
+        "jako zwykłe pliki. Zwykłe pliki to cell.json i response.json.",
     ),
     "pmaxtp_read_description": Text(
-        "Read a saved PMAXTP cell from the store. It works offline.",
-        "Odczytaj zapisaną komórkę PMAXTP z magazynu. Działa offline.",
+        "Read a saved PMAXTP cell from the raw root. It works offline.",
+        "Odczytaj komórkę PMAXTP z katalogu surowego. Działa offline.",
     ),
     "store_init_description": Text(
-        "Create an empty Obserwator store (obserwator-store.json marker) in the given directory.",
-        "Utwórz pusty magazyn Obserwatora (znacznik obserwator-store.json) we wskazanym katalogu.",
+        "Create a raw root or, with --kind data, a data root. Its marker is "
+        "obserwator-store.json or obserwator-data.json; the trees of its kind already "
+        "in the directory (a split store) are verified first.",
+        "Utwórz katalog surowy lub, z --kind data, katalog danych. Jego znacznik to "
+        "obserwator-store.json albo obserwator-data.json; drzewa jego rodzaju obecne "
+        "już w katalogu (podzielony magazyn) są najpierw sprawdzane.",
     ),
     "store_info_description": Text(
-        "Show the state of an Obserwator store and the supported contracts. Offline, "
+        "Show the state of a raw or data root and the supported contracts. Offline, "
         "without writing.",
-        "Pokaż stan magazynu Obserwatora i obsługiwane kontrakty. Offline, bez zapisu.",
+        "Pokaż stan katalogu surowego lub danych i obsługiwane kontrakty. Offline, "
+        "bez zapisu.",
     ),
     "store_scan_description": Text(
-        "List the versions and problems of an Obserwator store. Offline, without writing.",
-        "Wypisz wersje i problemy magazynu Obserwatora. Offline, bez zapisu.",
+        "List the versions and problems of a raw or data root. Offline, without "
+        "writing.",
+        "Wypisz wersje i problemy katalogu surowego lub danych. Offline, bez zapisu.",
     ),
     "store_check_description": Text(
         "Check the freshness of the dataset archives without downloading data. "
@@ -528,12 +568,12 @@ MESSAGES = {
         "plan zapisywany wyłącznie poza magazynem, w istniejącym katalogu",
     ),
     "store_sync_description": Text(
-        "Download new or missing archives into the store, by plan or by datasets and "
-        "stations. It writes raw data only (archives, station lists, station "
+        "Download new or missing archives into the raw root, by plan or by datasets "
+        "and stations. It writes raw data only (archives, station lists, station "
         "metadata); series build and store catalog build from them. With "
         "--output-dir it writes the selected archives as plain files (no plan).",
-        "Pobierz nowe lub brakujące archiwa do magazynu według planu albo wyboru "
-        "zbiorów i stacji. Zapisuje wyłącznie dane surowe (archiwa, listy i "
+        "Pobierz nowe lub brakujące archiwa do katalogu surowego według planu albo "
+        "wyboru zbiorów i stacji. Zapisuje wyłącznie dane surowe (archiwa, listy i "
         "metadane stacji); series build i store catalog budują z nich. Z "
         "--output-dir zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
     ),
@@ -542,10 +582,12 @@ MESSAGES = {
         "plan wyklucza datasets, years, months i stations",
     ),
     "store_catalog_description": Text(
-        "Build the versioned station catalog stations.geojson of one provider. "
-        "Offline: from the station lists and metadata that store sync stored.",
-        "Zbuduj wersjonowany katalog stacji stations.geojson jednego dostawcy. "
-        "Offline: z list i metadanych stacji zapisanych przez store sync.",
+        "Build the station catalog stations.geojson of one provider. Offline: from "
+        "the station lists and metadata that store sync stored in the raw root; the "
+        "catalog goes into the data root.",
+        "Zbuduj katalog stacji stations.geojson jednego dostawcy. Offline: z list i "
+        "metadanych stacji zapisanych przez store sync w katalogu surowym; katalog "
+        "trafia do katalogu danych.",
     ),
     "store_export_description": Text(
         "Export the records of one archive version as CSV or JSONL. Offline, SHA-256 "
@@ -554,9 +596,10 @@ MESSAGES = {
         "weryfikacją SHA-256.",
     ),
     "series_build_description": Text(
-        "Build the Parquet series of a dataset from the current archive versions of "
-        "the store.",
-        "Zbuduj szereg Parquet zbioru z bieżących wersji archiwów magazynu.",
+        "Build the Parquet series of a dataset from the current archives of the raw "
+        "root. The series go into the data root.",
+        "Zbuduj szereg Parquet zbioru z bieżących archiwów katalogu surowego. Szeregi "
+        "trafiają do katalogu danych.",
     ),
     "series_select_description": Text(
         "Select stations, variables and years of the current series. Nothing is written.",
@@ -573,8 +616,8 @@ MESSAGES = {
         "identyfikator WIGOS)",
     ),
     "series_read_description": Text(
-        "Read the values and flags of one station's series from the store.",
-        "Odczytaj wartości i flagi szeregu jednej stacji z magazynu.",
+        "Read the values and flags of one station's series from the data root.",
+        "Odczytaj wartości i flagi szeregu stacji z katalogu danych.",
     ),
     "series_summary_description": Text(
         "Show the coverage of stations and variables of a series from series.json. It "
@@ -658,14 +701,15 @@ MESSAGES = {
         "Fragment nazwy lub rzeki albo prefiks kodu",
     ),
     "stations_find_source_help": Text(
-        "live: the providers' station lists, live; store: station lists and catalogs "
-        "saved in the store",
-        "live: listy stacji dostawców na żywo; store: listy i katalogi stacji "
-        "zapisane w magazynie",
+        "live: the providers' station lists, live; store: the current station "
+        "catalogs of the data root",
+        "live: listy stacji dostawców na żywo; store: bieżące katalogi stacji "
+        "katalogu danych",
     ),
     "stations_find_root_help": Text(
-        "Store directory (required with source=store)",
-        "Katalog magazynu (wymagany przy source=store)",
+        "Data root whose current catalogs are read (with source=store)",
+        "Katalog danych, którego bieżące katalogi stacji są czytane (przy "
+        "source=store)",
     ),
     "stations_find_provider_help": Text(
         "Station provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",
@@ -706,10 +750,10 @@ MESSAGES = {
         "root (domyślnie bieżąca)",
     ),
     "store_scan_kind_help": Text(
-        "Entry kind: archive, series, catalog, pmaxtp, observation or problem; none "
-        "= all",
-        "Rodzaj wpisów: archive, series, catalog, pmaxtp, observation albo problem; "
-        "brak = wszystkie",
+        "Entry kind: archive, series, catalog, pmaxtp, analyses, observation or "
+        "problem; none = all",
+        "Rodzaj wpisów: archive, series, catalog, pmaxtp, analyses, observation albo "
+        "problem; brak = wszystkie",
     ),
     "store_scan_provider_help": Text(
         "Entry provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers (problems "
@@ -742,8 +786,8 @@ MESSAGES = {
         "albo względna do root",
     ),
     "store_export_root_help": Text(
-        "Store directory: base of the version",
-        "Katalog magazynu: podstawa wersji",
+        "Raw root: base of the version",
+        "Katalog surowy: podstawa wersji",
     ),
     "store_export_format_help": Text(
         "Result format: csv or jsonl",
@@ -970,20 +1014,25 @@ MESSAGES = {
     ),
     # command_for_version
     "version_outside_root": Text(
-        "The version {version} lies outside the store {root}: give its path relative "
+        "The version {version} lies outside the root {root}: give its path relative "
         "to the root",
-        "Wersja {version} leży poza magazynem {root}: podaj jej ścieżkę względem "
-        "korzenia",
+        "Wersja {version} leży poza katalogiem {root}: podaj jej ścieżkę względem "
+        "niego",
+    ),
+    "version_in_no_root": Text(
+        "The version {version} lies in no raw or data root: give its root (root)",
+        "Wersja {version} nie leży w żadnym katalogu surowym ani danych: podaj jej "
+        "katalog (root)",
     ),
     "not_a_version": Text(
-        "{version} is no version of the store: give the version directory, its main "
+        "{version} is no version of a root: give the version directory, its main "
         "file or its sidecar, relative to the root, as iter_store names them",
-        "{version} nie jest wersją magazynu: podaj katalog wersji, jej plik główny "
+        "{version} nie jest wersją katalogu: podaj katalog wersji, jej plik główny "
         "albo sidecar względem korzenia, tak jak nazywa je iter_store",
     ),
     "version_not_found": Text(
-        "The store {root} has no version {version}",
-        "Magazyn {root} nie ma wersji {version}",
+        "The root {root} has no version {version}",
+        "Katalog {root} nie ma wersji {version}",
     ),
     "version_meta_mismatch": Text(
         "The sidecar of {version} does not describe it: {field} is {value!r}, the "
@@ -1031,6 +1080,22 @@ MESSAGES = {
     "meaning_kind_archive": Text(
         "Stored version of a source archive", "Zapisana wersja archiwum źródłowego"
     ),
+    "meaning_kind_raw": Text(
+        "Raw root: downloaded archives, station sources and PMAXTP cells "
+        "(obserwator-store.json)",
+        "Katalog surowy: pobrane archiwa, źródła stacji i komórki PMAXTP "
+        "(obserwator-store.json)",
+    ),
+    "meaning_kind_data": Text(
+        "Data root: series, station catalogs and analyses built from a raw root "
+        "(obserwator-data.json)",
+        "Katalog danych: szeregi, katalogi stacji i analizy zbudowane z katalogu "
+        "surowego (obserwator-data.json)",
+    ),
+    "meaning_kind_analyses": Text(
+        "Stored version of the analyses of a provider's stations",
+        "Zapisana wersja analiz stacji dostawcy",
+    ),
     "meaning_kind_series": Text(
         "Stored version of a normalized series",
         "Zapisana wersja znormalizowanej serii",
@@ -1057,8 +1122,8 @@ MESSAGES = {
         "Listy stacji dostawców, czytane na bieżąco",
     ),
     "meaning_source_store": Text(
-        "Station lists and catalogs saved in the store",
-        "Listy stacji i katalogi zapisane w magazynie",
+        "The current station catalogs of the data root",
+        "Bieżące katalogi stacji katalogu danych",
     ),
     "meaning_method_pot": Text(
         "Peaks over threshold", "Metoda przewyższeń progu (POT)"

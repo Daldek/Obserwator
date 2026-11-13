@@ -1,4 +1,4 @@
-"""The store marker, the first write and the nested-store check (DEV-19.12 to DEV-19.14)."""
+"""The root markers, the first write and the nested-store check (DEV-19.12 to DEV-19.14, ADR-017)."""
 
 import json
 from datetime import UTC, datetime
@@ -8,6 +8,7 @@ import pytest
 
 from obserwator._version import __version__
 from obserwator.commands import check_command, run_command
+from obserwator.config import settings
 from obserwator.datasets import archive_files
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -32,10 +33,19 @@ FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
 ARCHIVE = archive_files("pl.imgw.hydro_daily", years=[2024])[0]
 DATA = (FIXTURES / "archives" / ARCHIVE.server_path).read_bytes()
 MARKER = "obserwator-store.json"
+DATA_MARKER = "obserwator-data.json"
+# A version of each kind of root, readable whatever the root holds.
+ARCHIVE_SLOT = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 
 
-def marker(root):
-    return json.loads((root / MARKER).read_text(encoding="utf-8"))
+@pytest.fixture(autouse=True)
+def default_raw_root(tmp_path, monkeypatch):
+    """Keep the default raw root of ``series build`` and ``store catalog`` in the test."""
+    monkeypatch.setattr(settings, "raw_root", tmp_path / "default-raw")
+
+
+def marker(root, name=MARKER):
+    return json.loads((root / name).read_text(encoding="utf-8"))
 
 
 def response():
@@ -59,6 +69,73 @@ def test_the_marker_has_the_minimum_fields_of_the_convention(tmp_path):
         "producer_version": __version__,
         "created_by": f"obserwator {__version__}",
     }
+
+
+def test_the_data_marker_has_the_fields_of_the_store_marker(tmp_path):
+    handle = init_store(
+        tmp_path / "d", kind="data", created_at=datetime(2026, 10, 24, 8, 0, tzinfo=UTC)
+    )
+
+    assert (handle.kind, handle.schema) == ("data", "obserwator-data/1")
+    assert marker(tmp_path / "d", DATA_MARKER) == {
+        "schema": "obserwator-data/1",
+        "tool": "obserwator",
+        "created_at": "2026-10-24T08:00:00Z",
+        "producer_version": __version__,
+        "created_by": f"obserwator {__version__}",
+    }
+    assert not (tmp_path / "d" / MARKER).exists()
+    info = store_info(tmp_path / "d")
+    assert (info.supported, info.store_schema, info.problems) == (
+        True,
+        "obserwator-data/1",
+        (),
+    )
+
+
+def test_open_store_without_a_kind_opens_a_root_of_either_kind(tmp_path):
+    init_store(tmp_path / "raw")
+    init_store(tmp_path / "data", kind="data")
+
+    raw, data = open_store(tmp_path / "raw"), open_store(tmp_path / "data")
+
+    assert (raw.kind, raw.schema) == ("raw", "obserwator-store/1")
+    assert (data.kind, data.schema) == ("data", "obserwator-data/1")
+    assert open_store(tmp_path / "data", kind="data") == data
+
+
+@pytest.mark.parametrize(("made", "wanted"), [("raw", "data"), ("data", "raw")])
+def test_a_root_of_the_other_kind_is_refused_as_a_wrong_root(tmp_path, made, wanted):
+    root = init_store(tmp_path / "r", kind=made).root
+    before = sorted(path.name for path in root.iterdir())
+
+    for call in (init_store, prepare_store, lenient_store, open_store):
+        with pytest.raises(ObserwatorStoreError) as error:
+            call(root, kind=wanted)
+        assert error.value.code == "store_unavailable", call.__name__
+        assert error.value.details == {"reason": "wrong_root", "kind": wanted}
+        assert "--root" in error.value.hint and "Splitting a store" in error.value.hint
+    # Nothing is written: the root keeps its one marker.
+    assert sorted(path.name for path in root.iterdir()) == before
+
+
+def test_a_directory_with_both_markers_is_no_root_and_is_never_written(tmp_path):
+    root = tmp_path / "both"
+    root.mkdir()
+    (root / MARKER).write_text('{"schema": "obserwator-store/1"}', encoding="utf-8")
+    (root / DATA_MARKER).write_text('{"schema": "obserwator-data/1"}', encoding="utf-8")
+
+    info = store_info(root)
+    assert (info.supported, info.problem_codes) == (False, ("conflicting_markers",))
+    assert [(entry.kind, entry.problem_code) for entry in iter_store(root)] == [
+        ("problem", "conflicting_markers")
+    ]
+    for kind in ("raw", "data"):
+        for call in (init_store, prepare_store, open_store):
+            with pytest.raises(ObserwatorStoreConflictError) as error:
+                call(root, kind=kind)
+            assert error.value.details["reason"] == "nested_store"
+    assert sorted(path.name for path in root.iterdir()) == [DATA_MARKER, MARKER]
 
 
 def test_the_marker_always_has_a_creation_time(tmp_path):
@@ -172,7 +249,7 @@ def test_a_marker_the_reader_supports_opens_for_the_writer_too(tmp_path, text):
     assert (info.supported, info.problems, info.problem_codes) == (True, (), ())
     assert open_store(root).root == root
     assert list(iter_store(root)) == []
-    assert current_version(root, slot="catalog:pl.imgw.stations") is None
+    assert current_version(root, slot=ARCHIVE_SLOT) is None
 
 
 @pytest.mark.parametrize(("text", "code"), REFUSED.values(), ids=REFUSED)
@@ -195,7 +272,7 @@ def test_a_marker_the_reader_refuses_is_refused_by_the_writer_too(tmp_path, text
         "store_unavailable" if code == "unsupported_store" else "data_error"
     )
     with pytest.raises(ObserwatorStoreError):
-        current_version(root, slot="catalog:pl.imgw.stations")
+        current_version(root, slot=ARCHIVE_SLOT)
 
 
 def test_a_root_that_is_no_store_has_the_code_of_what_is_missing(tmp_path):
@@ -256,8 +333,8 @@ def test_a_plan_opens_a_new_root_without_creating_anything(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def layout(root, schema="obserwator-meta/1"):
-    version = root / "archives" / "versions" / "d" / "a" / "2026-10-17_aaaaaaaa"
+def layout(root, schema="obserwator-meta/1", tree="archives"):
+    version = root / tree / "versions" / "d" / "a" / "2026-10-17_aaaaaaaa"
     version.mkdir(parents=True)
     (version / "a.zip").write_bytes(b"x")
     (version / "a.zip.meta.json").write_text(
@@ -323,16 +400,17 @@ def test_a_kartograf_layout_is_not_an_obserwator_layout(tmp_path):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["obserwator-store.json", "kartograf-store.json"])
+@pytest.mark.parametrize("name", [MARKER, DATA_MARKER, "kartograf-store.json"])
 def test_a_store_does_not_nest_in_a_store_of_any_tool(tmp_path, name):
     (tmp_path / "outer" / "inner").mkdir(parents=True)
     (tmp_path / "outer" / name).write_text('{"schema": "x/1"}', encoding="utf-8")
 
-    for call in (prepare_store, init_store):
-        with pytest.raises(ObserwatorStoreConflictError) as error:
-            call(tmp_path / "outer" / "inner")
-        assert error.value.details["reason"] == "nested_store"
-        assert name in error.value.detail
+    for kind in ("raw", "data"):
+        for call in (prepare_store, init_store):
+            with pytest.raises(ObserwatorStoreConflictError) as error:
+                call(tmp_path / "outer" / "inner", kind=kind)
+            assert error.value.details["reason"] == "nested_store"
+            assert name in error.value.detail
 
 
 def test_the_root_of_another_tool_is_not_an_obserwator_store(tmp_path):
@@ -347,15 +425,16 @@ def test_the_root_of_another_tool_is_not_an_obserwator_store(tmp_path):
     assert "kartograf-store.json" in error.value.detail
 
 
-@pytest.mark.parametrize("name", ["obserwator-store.json", "kartograf-store.json"])
+@pytest.mark.parametrize("name", [MARKER, DATA_MARKER, "kartograf-store.json"])
 def test_a_root_does_not_contain_a_store_of_any_tool(tmp_path, name):
     (tmp_path / "outer" / "inner").mkdir(parents=True)
     (tmp_path / "outer" / "inner" / name).write_text("{}", encoding="utf-8")
 
-    for call in (prepare_store, init_store):
-        with pytest.raises(ObserwatorStoreConflictError) as error:
-            call(tmp_path / "outer")
-        assert error.value.details["reason"] == "nested_store"
+    for kind in ("raw", "data"):
+        for call in (prepare_store, init_store):
+            with pytest.raises(ObserwatorStoreConflictError) as error:
+                call(tmp_path / "outer", kind=kind)
+            assert error.value.details["reason"] == "nested_store"
 
 
 def test_an_existing_store_may_hold_its_own_trees(tmp_path):
@@ -406,6 +485,8 @@ STORE_WRITES = {
     "series build": {"dataset": DAILY},
     "store catalog": {},
 }
+# The commands whose root is a data root (ADR-017); the others write a raw root.
+DATA_WRITES = {"series build", "store catalog"}
 
 
 def nested_root(tmp_path, where):
@@ -537,13 +618,13 @@ def test_the_run_refuses_the_busy_root_that_its_plan_lists_as_a_conflict(
 def test_the_plan_of_a_store_write_with_a_layout_and_no_marker_raises_store_unavailable(
     tmp_path,
 ):
-    layout(tmp_path / "s")
+    layout(tmp_path / "raw")
+    layout(tmp_path / "data", tree="series")
 
     for command in sorted(set(STORE_WRITES) - {"store init"}):
+        root = tmp_path / ("data" if command in DATA_WRITES else "raw")
         with pytest.raises(ObserwatorStoreError) as error:
-            check_command(
-                command, options={"root": tmp_path / "s", **STORE_WRITES[command]}
-            )
+            check_command(command, options={"root": root, **STORE_WRITES[command]})
         assert (error.value.code, error.value.details["reason"]) == (
             "store_unavailable",
             "no_marker",
@@ -554,7 +635,10 @@ def test_the_plan_of_a_store_write_with_a_layout_and_no_marker_raises_store_unav
 def test_the_plan_of_a_store_write_with_an_unreadable_marker_raises_data_error(
     tmp_path, command
 ):
-    root = root_with_marker(tmp_path, "{")
+    root = tmp_path / "s"
+    root.mkdir()
+    name = DATA_MARKER if command in DATA_WRITES else MARKER
+    (root / name).write_text("{", encoding="utf-8")
 
     with pytest.raises(ObserwatorDataError) as error:
         check_command(command, options={"root": root, **STORE_WRITES[command]})

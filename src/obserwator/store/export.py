@@ -531,7 +531,7 @@ def export_archive(
         Archive version directory, its main file or its sidecar; absolute or
         relative to ``root`` (to the working directory without ``root``).
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root, the base of a relative ``version``.
+        Raw root (ADR-017), the base of a relative ``version``.
     format : {"csv", "jsonl"}, optional
         Output format.
     output : str, os.PathLike or None, optional
@@ -588,7 +588,7 @@ def export_archive(
     _format(format, _ARCHIVE_FORMATS)
     source = Path(version).expanduser()
     if root is not None:
-        source = _open(root) / source
+        source = _open(root, kind="raw") / source
     records = read_archive(source)
     descriptor = get_dataset(read_meta(_archive_main(source)).dataset)
     target = _target(output, force=force)
@@ -923,8 +923,8 @@ def export_series(
         or relative to ``root`` (to the working directory without ``root``).
         Mutually exclusive with ``dataset``.
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root: the base of a relative ``version``, or with ``dataset``
-        the store whose current series version is exported.
+        Data root (ADR-017): the base of a relative ``version``, or with
+        ``dataset`` the root whose current series version is exported.
     dataset : str or None, optional
         Series dataset (key, slug or legacy alias) whose current version in
         ``root`` is exported.
@@ -1113,12 +1113,12 @@ def export_series(
 
 def _data_root(root: RootArg | None) -> Path:
     """
-    The opened root whose catalogs and series a stations export reads.
+    The opened data root whose catalogs and series a stations export reads.
 
-    ``None`` is the default root (`obserwator.store_root`, DEV-19.2). The one
-    place where a stations export opens its root.
+    ``None`` is the default data root (`obserwator.store_root`, DEV-19.2,
+    ADR-017). The one place where a stations export opens its root.
     """
-    return _open(store_root().root if root is None else root)
+    return _open(store_root(kind="data").root if root is None else root, kind="data")
 
 
 @dataclass(frozen=True)
@@ -1489,8 +1489,8 @@ def export_stations(
     Parameters
     ----------
     root : str, os.PathLike, StoreHandle or None, optional
-        Store whose current catalogs and series are read; None is the default
-        root (`obserwator.store_root`).
+        Data root whose current catalogs and series are read (ADR-017); None
+        is the default data root (`obserwator.store_root`).
     provider : str or None, optional
         Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMI"``,
         ``"cz.chmi"``); None exports every provider with a catalog.

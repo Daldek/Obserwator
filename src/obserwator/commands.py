@@ -73,6 +73,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import LANGS, Lang, localize, message, reason
 from obserwator.models import StationListEntry
+from obserwator.output import DATA_MARKER, STORE_MARKER
 from obserwator.store import analyses as _analyses
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
@@ -99,6 +100,7 @@ from obserwator.store.types import (
     PMaXTPStoreResult,
     PMaXTPUrl,
     ProgressHook,
+    RootKind,
     SeriesReport,
     StorePlan,
     SyncReport,
@@ -130,7 +132,9 @@ Rule = Callable[[Options], None]
 
 # Prefix of the operation ids: REST ``operationId`` and MCP tool names (ECO-018).
 _TOOL = "obserwator"
-_STORE_MARKER = "obserwator-store.json"
+# The marker of each root kind (ADR-017 D1): the raw root keeps the downloaded
+# sources, the data root what is built from them.
+_MARKERS: Mapping[RootKind, str] = {"raw": STORE_MARKER, "data": DATA_MARKER}
 _DIALECT = "https://json-schema.org/draft/2020-12/schema"
 _RANGE = "^[0-9]{1,4}-[0-9]{1,4}$"
 _STATION = STATION_CODE_PATTERN
@@ -268,6 +272,13 @@ def _option(
     )
 
 
+# The kind of the root of every command with a root option (ADR-017 D4), filled
+# by `_command`: the raw root keeps the downloaded sources (archives, station
+# sources, PMAXTP cells), the data root what is built from them (series,
+# catalogs, analyses).
+_ROOT_KINDS: dict[str, RootKind] = {}
+
+
 def _command(
     name: str,
     description: str,
@@ -275,6 +286,7 @@ def _command(
     *,
     function: str,
     result_type: str,
+    root: RootKind | None = None,
     check: str | None = None,
     result: Literal["object", "list", "stream"] = "object",
     method: Literal["GET", "POST"] | None = None,
@@ -291,13 +303,19 @@ def _command(
     """
     Catalog entry; ``rules`` are the catalog messages of one rule each.
 
-    ``one_of`` is a pair of alternative option groups (the refusal names both).
+    ``one_of`` is a pair of alternative option groups (the refusal names both);
+    ``root`` is the kind of the root option, given exactly when there is one.
     """
+    given = tuple(options)
     if len(one_of) not in (0, 2):
         raise ValueError(f"one_of of {name} must be a pair of option groups")
+    if (root is None) == any(option.name == "root" for option in given):
+        raise ValueError(f"{name} needs a root kind exactly when it has a root option")
+    if root is not None:
+        _ROOT_KINDS[name] = root
     if store_only:
         rules = (*rules, message("commands.store_only_rule"))
-    listed = (*options, _LIMIT, _CURSOR) if result == "list" else tuple(options)
+    listed = (*given, _LIMIT, _CURSOR) if result == "list" else given
     command = DataCommand(
         name,
         description,
@@ -319,11 +337,22 @@ def _command(
     return command, result_type
 
 
+# The root of a data command, of a raw command, of a command reading either kind
+# (by its marker) and the raw root a build reads.
 _ROOT = _option(
     "root",
     "path",
     message("commands.root_help"),
     aliases=("-r",),
+    rest="server",
+    path_role="root",
+)
+_RAW_STORE = replace(_ROOT, help=message("commands.raw_store_help"))
+_ANY_ROOT = replace(_ROOT, help=message("commands.any_root_help"))
+_RAW_ROOT = _option(
+    "raw_root",
+    "path",
+    message("commands.raw_root_help"),
     rest="server",
     path_role="root",
 )
@@ -614,12 +643,13 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _PARAMS,
             _ARCHIVE_STATIONS,
             _OUTPUT_DIR,
-            _ROOT,
+            _RAW_STORE,
             _FORCE,
         ),
         function="download_archives",
-        check="check_command",
         result_type="DownloadReport",
+        root="raw",
+        check="check_command",
         rules=_ARCHIVE_RULES,
         exclusive=_TARGETS,
         # New plain files or store versions; --force replaces existing plain files.
@@ -667,10 +697,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="find_stations",
+        result_type="StationListEntry",
+        root="data",
         check="check_command",
         result="list",
         method="GET",
-        result_type="StationListEntry",
         rules=(
             message("commands.stations_find_rule_1"),
             message("commands.stations_find_rule_2"),
@@ -704,11 +735,12 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _EXPORT_FORCE,
         ),
         function="export_stations",
+        result_type="str",
+        root="data",
         check="check_command",
         result="stream",
         method="GET",
         requires=_NEEDS_OUTPUT,
-        result_type="str",
         rules=(_OUTPUT_RULE,),
     ),
     _command(
@@ -822,17 +854,18 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
     _command(
         "pmaxtp check",
         message("commands.pmaxtp_check_description"),
-        (_ROOT, _LATITUDE, _LONGITUDE, _METHOD, _IND_X, _IND_Y),
+        (_RAW_STORE, _LATITUDE, _LONGITUDE, _METHOD, _IND_X, _IND_Y),
         function="check_pmaxtp",
+        result_type="StorePlan",
+        root="raw",
         method="GET",
         requires=_CELL_PAIR,
-        result_type="StorePlan",
     ),
     _command(
         "pmaxtp sync",
         message("commands.pmaxtp_sync_description"),
         (
-            _ROOT,
+            _RAW_STORE,
             _OUTPUT_DIR,
             _FORCE,
             _LATITUDE,
@@ -842,11 +875,12 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _IND_Y,
         ),
         function="sync_pmaxtp",
+        result_type="PMaXTPStoreResult",
+        root="raw",
         check="check_pmaxtp",
         method="POST",
         requires=_CELL_PAIR,
         exclusive=_TARGETS,
-        result_type="PMaXTPStoreResult",
         writes="add",
         network=True,
     ),
@@ -854,7 +888,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         "pmaxtp read",
         message("commands.pmaxtp_read_description"),
         (
-            _ROOT,
+            _RAW_STORE,
             replace(
                 _IND_X,
                 required=True,
@@ -874,32 +908,46 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="read_pmaxtp",
-        method="GET",
         result_type="PMaXTPResult",
+        root="raw",
+        method="GET",
     ),
     _command(
         "store init",
         message("commands.store_init_description"),
-        (_ROOT,),
+        (
+            replace(_ROOT, help=message("commands.store_init_root_help")),
+            _option(
+                "kind",
+                "choice",
+                message("commands.store_init_kind_help"),
+                choices=("raw", "data"),
+                default="raw",
+                aliases=("-k",),
+            ),
+        ),
         function="init_store",
+        result_type="StoreHandle",
+        # The kind of the default root follows --kind (`_root_kind`).
+        root="raw",
         store_only=True,
         check="check_command",
-        result_type="StoreHandle",
         writes="add",
     ),
     _command(
         "store info",
         message("commands.store_info_description"),
-        (_ROOT,),
+        (_ANY_ROOT,),
         function="store_info",
-        method="GET",
         result_type="StoreInfo",
+        root="data",
+        method="GET",
     ),
     _command(
         "store scan",
         message("commands.store_scan_description"),
         (
-            _ROOT,
+            _ANY_ROOT,
             _option(
                 "kind",
                 "choice",
@@ -909,6 +957,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
                     "series",
                     "catalog",
                     "pmaxtp",
+                    "analyses",
                     "observation",
                     "problem",
                 ),
@@ -920,15 +969,16 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="iter_store",
+        result_type="StoreEntry",
+        root="data",
         result="list",
         method="GET",
-        result_type="StoreEntry",
     ),
     _command(
         "store check",
         message("commands.store_check_description"),
         (
-            _ROOT,
+            _RAW_STORE,
             replace(_DATASETS, required=True),
             _STORE_YEARS,
             _MONTHS,
@@ -936,8 +986,9 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _PLAN_FILE,
         ),
         function="check_store",
-        method="GET",
         result_type="StorePlan",
+        root="raw",
+        method="GET",
         rules=(
             *_STORE_RULES,
             message("commands.store_check_rule_1"),
@@ -949,7 +1000,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         "store sync",
         message("commands.store_sync_description"),
         (
-            _ROOT,
+            _RAW_STORE,
             _OUTPUT_DIR,
             _FORCE,
             _option(
@@ -965,11 +1016,12 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _ARCHIVE_STATIONS,
         ),
         function="sync_store",
+        result_type="SyncReport",
+        root="raw",
         check="check_store",
         method="POST",
         one_of=(("plan",), ("datasets",)),
         exclusive=_TARGETS,
-        result_type="SyncReport",
         rules=(
             message("commands.store_sync_rule_1"),
             *_STORE_RULES,
@@ -982,6 +1034,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         message("commands.store_catalog_description"),
         (
             _ROOT,
+            _RAW_ROOT,
             replace(
                 _PROVIDER,
                 help=message("commands.store_catalog_provider_help"),
@@ -995,10 +1048,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="build_catalog",
+        result_type="CatalogReport",
+        root="data",
         store_only=True,
         check="check_catalog",
         method="POST",
-        result_type="CatalogReport",
         writes="add",
     ),
     _command(
@@ -1013,7 +1067,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
                 path_role="input",
             ),
             replace(
-                _ROOT,
+                _RAW_STORE,
                 required=False,
                 help=message("commands.store_export_root_help"),
             ),
@@ -1029,22 +1083,24 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _EXPORT_FORCE,
         ),
         function="export_archive",
+        result_type="str",
+        root="raw",
         check="check_command",
         result="stream",
         method="GET",
         requires=_NEEDS_OUTPUT,
-        result_type="str",
         rules=(_OUTPUT_RULE,),
     ),
     _command(
         "series build",
         message("commands.series_build_description"),
-        (_ROOT, replace(_SERIES_DATASET, required=True)),
+        (_ROOT, _RAW_ROOT, replace(_SERIES_DATASET, required=True)),
         function="build_series",
+        result_type="SeriesReport",
+        root="data",
         store_only=True,
         check="check_series",
         method="POST",
-        result_type="SeriesReport",
         writes="add",
     ),
     _command(
@@ -1062,8 +1118,9 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _YEAR_TYPE,
         ),
         function="select_series",
-        method="GET",
         result_type="SeriesSelection",
+        root="data",
+        method="GET",
         rules=(
             _VARIABLES_RULE,
             _HALF_YEAR_RULE,
@@ -1084,10 +1141,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _END,
         ),
         function="read_series",
+        result_type="NormalizedRecord",
+        root="data",
         result="list",
         method="GET",
         one_of=_VERSION_OR_DATASET,
-        result_type="NormalizedRecord",
         rules=(*_SERIES_RULES, _START_RULE),
     ),
     _command(
@@ -1104,10 +1162,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _VARIABLES,
         ),
         function="summarize_series",
+        result_type="StationCoverage",
+        root="data",
         result="list",
         method="GET",
         one_of=_VERSION_OR_DATASET,
-        result_type="StationCoverage",
         rules=_SERIES_RULES,
     ),
     _command(
@@ -1134,12 +1193,13 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _EXPORT_FORCE,
         ),
         function="export_series",
+        result_type="str",
+        root="data",
         check="check_command",
         result="stream",
         method="GET",
         one_of=_VERSION_OR_DATASET,
         requires=_NEEDS_OUTPUT,
-        result_type="str",
         rules=(
             *_SERIES_RULES,
             _START_RULE,
@@ -1163,10 +1223,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="build_analyses",
+        result_type="AnalysesReport",
+        root="data",
         store_only=True,
         check="check_analyses",
         method="POST",
-        result_type="AnalysesReport",
         rules=(message("commands.analyses_rule_program"),),
         writes="add",
     ),
@@ -1175,9 +1236,10 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         message("commands.analyses_list_description"),
         (_ANALYSES_VERSION, _ANALYSES_ROOT, _ANALYSES_STATION),
         function="list_analyses",
+        result_type="AnalysisSummary",
+        root="data",
         result="list",
         method="GET",
-        result_type="AnalysisSummary",
         rules=_ANALYSES_RULES,
     ),
     _command(
@@ -1196,8 +1258,9 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             ),
         ),
         function="read_analysis",
-        method="GET",
         result_type="AnalysisResult",
+        root="data",
+        method="GET",
         rules=_ANALYSES_RULES,
     ),
     _command(
@@ -1226,11 +1289,12 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _EXPORT_FORCE,
         ),
         function="export_analyses",
+        result_type="str",
+        root="data",
         check="check_command",
         result="stream",
         method="GET",
         requires=_NEEDS_OUTPUT,
-        result_type="str",
         rules=(*_ANALYSES_RULES, _OUTPUT_RULE),
     ),
 )
@@ -1645,13 +1709,18 @@ def _absolutize(options: Options) -> None:
 
 
 def _store_of(path: Path) -> Path | None:
-    """Root of the Obserwator store containing ``path`` (or being it), if any."""
-    resolved = path.resolve()
+    """
+    The root of either kind containing ``path`` (or being it), if any.
+
+    The nearest of ``path`` and its ancestors, as given (absolute, links not
+    followed), with the marker of a raw or a data root (ADR-017 D1).
+    """
+    given = path.absolute()
     return next(
         (
             candidate
-            for candidate in (resolved, *resolved.parents)
-            if (candidate / _STORE_MARKER).is_file()
+            for candidate in (given, *given.parents)
+            if any((candidate / marker).is_file() for marker in _MARKERS.values())
         ),
         None,
     )
@@ -1807,6 +1876,19 @@ _RULES: dict[str, Rule] = {
 }
 
 
+def _root_kind(spec: DataCommand, options: Mapping[str, object]) -> RootKind:
+    """
+    The kind of the root ``spec`` works on (ADR-017 D4).
+
+    ``store init`` creates the kind of its ``kind`` option; ``store info`` and
+    ``store scan`` read a root of either kind and default to the data root.
+    """
+    kind = _ROOT_KINDS[spec.name]
+    if spec.name == "store init":
+        return cast(RootKind, options.get("kind", kind))
+    return kind
+
+
 def _validate(command: object, options: object) -> Options:
     """Validate ``options`` of ``command`` (see `validate_command`)."""
     spec = _spec(command)
@@ -1870,14 +1952,18 @@ def _validate(command: object, options: object) -> Options:
         and "root" not in result
         and "version" not in result
     ):
-        # The store of a command without --root is the default root (DEV-19.2),
-        # under the conditions of env_root_when (a live search has no store).
+        # The root of a command without --root is the default root of its kind
+        # (DEV-19.2, ADR-017 D5), under the conditions of env_root_when (a live
+        # search has no root).
         defaults = {option.name: option.default for option in spec.options}
         if all(
             str(result.get(name, defaults.get(name))).strip() == value
             for name, value in spec.env_root_when.items()
         ):
-            result["root"] = store_root().root
+            result["root"] = store_root(kind=_root_kind(spec, result)).root
+    if "raw_root" in known and "raw_root" not in result:
+        # The raw root a build reads: the default raw root (ADR-017 D5).
+        result["raw_root"] = store_root(kind="raw").root
     present = set(result)
     for option in spec.options:
         if option.required and option.name not in present:
@@ -1934,7 +2020,12 @@ def validate_command(
     ``"2020-2023"``, ``"2020,2022"``, ``[2020, "2022-2023"]``) and ``months``
     becomes a sorted tuple of numbers, other lists become tuples without
     duplicates, and paths become absolute (``version`` against ``root``,
-    others against the working directory).
+    others against the working directory). A command that names no ``root``
+    (nor ``version`` or ``output_dir``) gets the default root of its kind
+    (`config.store_root`): the raw root of a command on downloaded sources,
+    the data root of one on what is built from them (``store info`` and
+    ``store scan`` too; ``store init`` by ``kind``); a build without
+    ``raw_root`` reads the default raw root (ADR-017 D4, D5).
     ``None`` values and ``bool`` values equal to their default are omitted,
     so formatting the result with `format_command` and validating it again
     yields identical options. Coordinates are checked by the library
@@ -2386,10 +2477,36 @@ def _missing_field(relative: str, field: str) -> NoReturn:
     )
 
 
-def _version_path(base: Path, version: PathArg) -> tuple[str, Path]:
-    """The text of ``version`` relative to the root and its path, checked."""
+# The tree of a version below its root gives the kind of the root (ADR-017 D6).
+_TREE_KINDS: Mapping[str, RootKind] = {
+    "archives": "raw",
+    "pmaxtp": "raw",
+    "series": "data",
+    "stations": "data",
+    "analyses": "data",
+}
+# The analyses slot of each provider: ``analyses/versions/<key prefix>/``.
+_ANALYSES_PREFIXES = frozenset(provider.key_prefix for provider in providers())
+
+
+def _version_root(version: PathArg, root: PathArg | None) -> tuple[Path, str, Path]:
+    """
+    The root of ``version``, the version relative to it and its path, checked.
+
+    The tree of the version below its root gives the kind of the root (ADR-017
+    D6): a relative version lies in ``root``, else in the default root of that
+    kind; an absolute one lies in ``root``, else in its nearest ancestor with
+    the marker of a raw or a data root. A root of the other kind is refused.
+    """
     given = Path(version).expanduser()
+    base = None if root is None else Path(root).expanduser().absolute()
     if given.is_absolute():
+        base = base or _store_of(given)
+        if base is None:
+            raise ObserwatorValidationError(
+                message("commands.version_in_no_root", version=given),
+                details={"option": "version", "value": str(given)},
+            )
         try:
             given = given.relative_to(base)
         except ValueError:
@@ -2398,7 +2515,13 @@ def _version_path(base: Path, version: PathArg) -> tuple[str, Path]:
                 details={"option": "version", "value": str(given)},
             ) from None
     relative = given.as_posix()
-    return relative, _writer._validate_slot(base, relative)
+    kind = _TREE_KINDS.get(given.parts[0]) if given.parts else None
+    if kind is None:
+        _not_a_version(relative)
+    opened = _reader._open(
+        store_root(kind=kind).root if base is None else base, kind=kind
+    )
+    return opened, relative, _writer._validate_slot(opened, relative)
 
 
 def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, str]:
@@ -2407,14 +2530,14 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
 
     ``path`` is the version directory, its main file, its sidecar, an
     attachment (the PMAXTP ``response.json``) or a station file of a series
-    version (``stations/<code>.parquet``); only the layout of the store places
-    it, the data file itself need not exist.
+    version (``stations/<code>.parquet``) or of an analyses version
+    (``stations/<code>.json``, ``stations/<code>/<analysis>.json``); only the
+    layout of the store places it, the data file itself need not exist.
     """
     parts = PurePosixPath(relative).parts
-    station_file = (
-        parts[:2] == ("series", "versions")
-        and len(parts) == 6
-        and parts[4] == "stations"
+    station_file = parts[4:5] == ("stations",) and (
+        (parts[:2] == ("series", "versions") and len(parts) == 6)
+        or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
     )
     given: str | None = None
     if path.is_dir():
@@ -2422,7 +2545,7 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     elif path.name.endswith(_reader._SIDECAR):
         directory, given = path.parent, path.name.removesuffix(_reader._SIDECAR)
     elif station_file:
-        directory = path.parent.parent
+        directory = path.parents[len(parts) - 5]
     else:
         directory, given = path.parent, path.name
     if not directory.is_dir() or not _reader._VERSION_DIR.match(directory.name):
@@ -2452,6 +2575,12 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     ):
         slot = f"pmaxtp:{_reader._PMAXTP_KEY}:{where[2]}/{where[3]}"
         name, attachments = CELL_FILE, (RESPONSE_FILE,)
+    elif (
+        where[:2] == ("analyses", "versions")
+        and len(where) == 4
+        and where[2] in _ANALYSES_PREFIXES
+    ):
+        slot, name = f"analyses:{where[2]}.analyses", _reader.ANALYSES_FILE
     else:
         _not_a_version(relative)
     if given is not None and given not in (name, *attachments):
@@ -2477,7 +2606,7 @@ def _version_meta(base: Path, relative: str, sidecar: Path) -> Meta:
 def _archive_call(
     relative: str, meta: Meta, key: str, server_path: str
 ) -> tuple[str, Options]:
-    """``store sync`` of an archive version, or ``store catalog`` of a station list."""
+    """``store sync`` of an archive version or of a station source (ADR-015)."""
     descriptor = get_dataset(key)
     request = meta.request
     if request.get("server_path", server_path) != server_path:
@@ -2568,17 +2697,19 @@ def command_for_version(
     version: str | os.PathLike[str],
     *,
     root: str | os.PathLike[str] | None = None,
+    raw_root: str | os.PathLike[str] | None = None,
 ) -> CommandCall:
     """
-    Give the data command that fetches a stored version again, from its metadata.
+    Give the data command that fetches or builds a stored version again.
 
     Offline and read-only: the version's sidecar (``obserwator-meta/1``) and the
-    layout of the store give the call of the command that selects this data
-    in the store (ECO-054, ADR-008). The call has the shape `parse_command`
-    returns, so `format_command`, `check_command` and `run_command` take it:
-    it is the call `parse_command` reads from the canonical line of
-    `format_command`, with ``root`` the absolute root of the store (a store
-    command always names its root, ADR-007 D2) and no ``run`` flags.
+    layout of its root give the call of the command that selects this data
+    (ECO-054, ADR-008). The call has the shape `parse_command` returns, so
+    `format_command`, `check_command` and `run_command` take it: it is the
+    call `parse_command` reads from the canonical line of `format_command`,
+    with ``root`` the absolute root of the version (a store command always
+    names its root, ADR-007 D2), ``raw_root`` the absolute raw root of a
+    build of the data root, and no ``run`` flags.
 
     ======================================  ========================================
     Version                                 Command
@@ -2590,17 +2721,23 @@ def command_for_version(
                                             <code> --years <year>``
     ČHMÚ meteorological archive             ``store sync --datasets <key> --stations
                                             <code>``
-    station list (both providers)           ``store catalog --provider <provider>``
-    station catalog                         ``store catalog --provider <provider>``
-    series version (or its station file)    ``series build --dataset <key>``
+    station source (list or metadata)       ``store sync --datasets <key>``
     PMAXTP cell                             ``pmaxtp sync --latitude --longitude
                                             --method --ind-x --ind-y``
+    station catalog                         ``store catalog --raw-root <raw>
+                                            --provider <provider>``
+    series version (or its station file)    ``series build --raw-root <raw>
+                                            --dataset <key>``
+    analyses version (or a station file)    ``analyses build``
     ======================================  ========================================
 
-    The call is the narrowest one that selects the version's file; it may
-    select files beside it that the same options cover (the ``H``, ``Q`` and
-    ``T`` files of a half-year, every element of a ČHMÚ meteorological
-    station), each with its own plan item. A version whose metadata does not
+    The tree of the version gives the kind of its root (ADR-017 D6):
+    ``archives/`` and ``pmaxtp/`` lie in a raw root, ``series/``,
+    ``stations/`` and ``analyses/`` in a data root. The call is the narrowest
+    one that selects the version's file; it may select files beside it that
+    the same options cover (the ``H``, ``Q`` and ``T`` files of a half-year,
+    every element of a ČHMÚ meteorological station, the analyses of every
+    provider), each with its own plan item. A version whose metadata does not
     give the call is refused, never guessed: a catalog built with a user's
     coordinates file (only its name is recorded), a sidecar without a field
     the call needs, or a file that ``store sync`` does not select.
@@ -2610,10 +2747,16 @@ def command_for_version(
     version : str or os.PathLike
         A stored version: its directory, its main file (``StoreEntry.version``),
         its sidecar, the PMAXTP ``response.json`` or a station file of a
-        series version; relative to ``root`` (an absolute path must lie in
-        it). The main file need not exist: the sidecar gives the call.
+        series or an analyses version. A relative path lies in ``root``, else
+        in the default root of its kind (`config.store_root`); an absolute one
+        lies in ``root``, else in its nearest ancestor with the marker of a
+        raw or a data root. The main file need not exist: the sidecar gives
+        the call.
     root : str, os.PathLike or None, optional
-        Store root; ``None`` takes the default root (`store_root`).
+        The root of the version, raw or data by its tree.
+    raw_root : str, os.PathLike or None, optional
+        The raw root that the call of a series or catalog version reads;
+        ``None`` takes the default raw root. Other calls do not take it.
 
     Returns
     -------
@@ -2630,23 +2773,24 @@ def command_for_version(
         metadata does not give the call; the text says how to pin the version
         instead.
     ObserwatorStoreError
-        Code ``not_found`` (``details.version``) when the store has no such
+        Code ``not_found`` (``details.version``) when the root has no such
         version or its sidecar is missing; ``store_unavailable`` when the root
-        is not a supported store; ``validation_error`` when a path component
-        is a symbolic link.
+        is not a supported root of the version's kind (``details.reason`` is
+        ``wrong_root`` for a root of the other kind); ``validation_error``
+        when a path component is a symbolic link.
     ObserwatorValidationError
-        If ``version`` lies outside the root, contains ``..`` or names
-        something that is no version (``details.option="version"``).
+        If ``version`` lies outside the root or in no root, contains ``..``
+        or names something that is no version (``details.option="version"``).
     ObserwatorDataError
         If the sidecar is invalid or contradicts the layout (``details.version``,
         ``details.field``); code ``io_error`` if it cannot be read.
     """
-    base = _reader._open(store_root().root if root is None else root)
-    relative, path = _version_path(base, version)
+    base, relative, path = _version_root(version, root)
     slot, directory, name = _locate_version(base, relative, path)
     meta = _version_meta(base, relative, directory / f"{name}{_reader._SIDECAR}")
     kind, key = slot.split(":")[:2]
-    if meta.dataset_key != key:
+    # Analyses are no dataset of the registry: their sidecar names the slot's key.
+    if (meta.dataset if kind == "analyses" else meta.dataset_key) != key:
         _mismatch(relative, "dataset", meta.dataset, key)
     if kind == "archive":
         server_path = slot.removeprefix(f"archive:{key}:")
@@ -2660,10 +2804,18 @@ def command_for_version(
         command, options = "series build", {"dataset": key}
     elif kind == "catalog":
         command, options = _catalog_call(relative, meta, key)
+    elif kind == "analyses":
+        # One build computes the analyses of every provider (ADR-016).
+        command, options = "analyses build", {}
     else:
         command, options = _pmaxtp_call(relative, meta, slot)
+    given: Options = {"root": base, **options}
+    if raw_root is not None and any(
+        option.name == "raw_root" for option in _BY_NAME[command].options
+    ):
+        given["raw_root"] = Path(raw_root).expanduser().absolute()
     try:
-        line = format_command(command, options={"root": base, **options})
+        line = format_command(command, options=given)
     except ObserwatorValidationError as exc:
         field = str(exc.details.get("option"))
         _invalid_request(relative, f"request.{field}", options.get(field))
@@ -3111,12 +3263,13 @@ def _check_download(options: Options, hooks: Hooks) -> StorePlan:
             ),
         )
     root = cast(Path, options["root"])
-    refused = _writer.root_conflict_plan("datasets download", root)
+    refused = _writer.root_conflict_plan("datasets download", root, kind="raw")
     if refused is not None:
         return refused
     # A root with the layout and no marker (store_unavailable) is no conflict: it raises.
     stored = (
-        _writer.lenient_store(root).root.is_dir() and (root / _STORE_MARKER).is_file()
+        _writer.lenient_store(root, kind="raw").root.is_dir()
+        and (root / STORE_MARKER).is_file()
     )
     actions = []
     try:
@@ -3155,21 +3308,17 @@ def _check_stations(options: Options, hooks: Hooks) -> StorePlan:
     if not isinstance(root, Path):
         owners = _stations._owners(options.get("provider"))
         return _live("stations find", _stations._live_urls(kinds, owners))
-    info = _store.store_info(root)
-    action = (
-        PlanAction(
+    # A search of the store reads the current catalogs of the data root.
+    try:
+        _reader._open(root, kind="data")
+    except ObserwatorError as exc:
+        action = PlanAction("stations find", "check_failed", reason(exc))
+    else:
+        action = PlanAction(
             "stations find",
             "current",
-            message("commands.read_station_lists", root=root),
+            message("commands.read_station_catalogs", root=root),
         )
-        if info.supported
-        else PlanAction(
-            "stations find",
-            "check_failed",
-            "; ".join(info.problems)
-            or message("commands.not_obserwator_store", root=root),
-        )
-    )
     return _plan(root, [action])
 
 
@@ -3236,26 +3385,35 @@ def _check_pmaxtp_read(options: Options, hooks: Hooks) -> StorePlan:
 
 def _check_store_init(options: Options, hooks: Hooks) -> StorePlan:
     root = cast(Path, options["root"])
-    refused = _writer.root_conflict_plan("store init", root)
+    kind = _root_kind(_BY_NAME["store init"], options)
+    marker = _MARKERS[kind]
+    refused = _writer.root_conflict_plan("store init", root, kind=kind)
     if refused is not None:
         return refused
     info = _store.store_info(root)
     if info.supported:
-        action = PlanAction(
-            "store init", "current", message("commands.store_exists", root=root)
-        )
+        # A root of the other kind is refused by init (``wrong_root``).
+        try:
+            _writer.lenient_store(root, kind=kind)
+        except ObserwatorError as exc:
+            action = PlanAction("store init", "check_failed", reason(exc))
+        else:
+            action = PlanAction(
+                "store init",
+                "current",
+                message("commands.store_exists", marker=marker, root=root),
+            )
     elif not root.exists() or (root.is_dir() and not _writer._foreign_content(root)):
         action = PlanAction(
             "store init",
             "missing",
-            message(
-                "commands.marker_will_be_created", store_marker=_STORE_MARKER, root=root
-            ),
+            message("commands.marker_will_be_created", store_marker=marker, root=root),
         )
-    elif root.is_dir() and _writer._has_layout(root):
-        # The layout of a store without its marker: init verifies it first (DEV-19.13).
+    elif root.is_dir() and _writer._has_layout(root, kind=kind):
+        # The trees of a root without its marker (a split store): init verifies
+        # them first (DEV-19.13, ADR-017 D8).
         try:
-            _writer._verify_layout(root)
+            _writer._verify_layout(root, kind=kind)
         except ObserwatorError as exc:
             action = PlanAction("store init", "check_failed", reason(exc))
         else:
@@ -3263,9 +3421,7 @@ def _check_store_init(options: Options, hooks: Hooks) -> StorePlan:
                 "store init",
                 "missing",
                 message(
-                    "commands.marker_will_be_created",
-                    store_marker=_STORE_MARKER,
-                    root=root,
+                    "commands.marker_will_be_created", store_marker=marker, root=root
                 ),
             )
     else:
@@ -3785,10 +3941,13 @@ _WRITES_ORDER: tuple[Writes, ...] = ("none", "add", "replace")
 _MEANINGS = {
     ("kind", "hydro"): message("commands.meaning_kind_hydro"),
     ("kind", "meteo"): message("commands.meaning_kind_meteo"),
+    ("kind", "raw"): message("commands.meaning_kind_raw"),
+    ("kind", "data"): message("commands.meaning_kind_data"),
     ("kind", "archive"): message("commands.meaning_kind_archive"),
     ("kind", "series"): message("commands.meaning_kind_series"),
     ("kind", "catalog"): message("commands.meaning_kind_catalog"),
     ("kind", "pmaxtp"): message("commands.meaning_kind_pmaxtp"),
+    ("kind", "analyses"): message("commands.meaning_kind_analyses"),
     ("kind", "observation"): message("commands.meaning_kind_observation"),
     ("kind", "problem"): message("commands.meaning_kind_problem"),
     ("params", "H"): message("commands.meaning_params_h"),

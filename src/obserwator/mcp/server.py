@@ -7,7 +7,7 @@ validator. Modes (spec §6.3): ``read`` (default of ``obserwator mcp``) offers e
 command, writing ones only as a plan, ``write`` (``obserwator mcp --allow-writes``)
 plans by default and writes with ``check: false``, ``http`` (``/mcp`` of ``obserwator
 server``) offers the REST routes, POST ones only as a plan. The tool list is
-fixed for the server: the mode, the default store root and the ``--allow-dir``
+fixed for the server: the mode, the default data and raw roots and the ``--allow-dir``
 directories are read once when the server is created. Everything the server says is English (AGI-9.2): the tool descriptions,
 the instructions and the error documents. The instructions are the rules of the
 agent guide with the lines of the mode.
@@ -66,17 +66,21 @@ def create_server(*, mode: Mode = "read", allow_dirs: Sequence[Path] = ()) -> Se
         POST routes only planning.
     allow_dirs : sequence of pathlib.Path, optional
         The directories the server may read and write (``--allow-dir``): every
-        path option and the default root must lie inside one, and a writing
-        command without any directory only plans (DEV-19.3).
+        path option, ``root`` and ``raw_root`` with their defaults included,
+        must lie inside one, and a writing command without any directory only
+        plans (DEV-19.3).
 
     Returns
     -------
     mcp.server.Server
         Low-level SDK server with the tools of the mode in catalog order. In
-        ``read`` and ``write`` an absent ``root`` is the default store root
-        (``OBSERWATOR_ROOT``, ``[obserwator] root`` or ``<data_dir>/obserwator``, read now) under
-        the command's ``env_root_when``, relative paths are relative to the
-        current working directory.
+        ``read`` and ``write`` an absent ``root`` is the default root of the
+        command's kind (``OBSERWATOR_ROOT`` for the data root,
+        ``OBSERWATOR_RAW_ROOT`` for the raw root, their ``nogat.toml`` keys or
+        ``<data_dir>/obserwator`` and ``<data_dir>/obserwator-raw``, read now)
+        under the command's ``env_root_when``, an absent ``raw_root`` the
+        default raw root, and relative paths are relative to the current
+        working directory.
 
     Raises
     ------
@@ -85,9 +89,10 @@ def create_server(*, mode: Mode = "read", allow_dirs: Sequence[Path] = ()) -> Se
     """
     _choice("mode", mode, MODES)
     if mode == "http":
-        workdir, store = None, settings.root
+        workdir, data, raw = None, settings.root, settings.raw_root
     else:
-        workdir, store = Path.cwd(), store_root().root
+        workdir = Path.cwd()
+        data, raw = store_root(kind="data").root, store_root(kind="raw").root
     confined = tuple(Path(item).expanduser().resolve() for item in allow_dirs)
     tools = catalog_tools(mode=mode)
     listing = types.ListToolsResult(tools=[tool.definition for tool in tools.values()])
@@ -116,7 +121,7 @@ def create_server(*, mode: Mode = "read", allow_dirs: Sequence[Path] = ()) -> Se
         "obserwator",
         version=__version__,
         title="Obserwator",
-        instructions=_instructions(mode=mode, workdir=workdir, root=store),
+        instructions=_instructions(mode=mode, workdir=workdir, root=data, raw_root=raw),
         on_list_tools=list_tools,
         on_call_tool=call,
     )

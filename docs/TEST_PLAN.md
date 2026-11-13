@@ -35,6 +35,15 @@ Installed in `.venv`: pytest 9.0, pytest-cov 7.0, pytest-asyncio 1.3 (`asyncio_m
 > Data output is covered by `tests/unit/test_output.py`, `test_plain_output.py`, `test_default_root.py`,
 > `test_store_marker.py`, `test_cli_interrupt.py` (SIGINT and SIGTERM of real commands) and the REST and MCP write refusals in
 > `test_api_commands.py` and `test_mcp_calls.py`. State: 2409 tests (2329 offline, 80 live; `docs/TESTING.md`).
+>
+> **Update 2026-11-13 (ADR-017):** the store has two roots, a raw root (`obserwator-store.json`: archives, station sources,
+> PMAXTP) and a data root (`obserwator-data.json`: series, catalogs, analyses); descriptions below that name one store
+> root describe the state before. `build_fixture_store(root, *, data_root, variant=…)` builds both and returns
+> `FixtureRoots(raw, data)`; the session fixtures of `tests/conftest.py` are `fixture_roots`, `fixture_root` (the data root)
+> and `fixture_raw_root` (the raw root), those of `tests/contract/conftest.py` `served_roots`, `served_root`,
+> `served_raw_root` and `served` (both settings of the REST server). `tests/unit/test_store_split.py` covers the documented
+> split of a combined store, the refusal of a root of the other kind, builds that leave a read-only raw root untouched and
+> the analyses as entries and slots of the data root.
 
 Base commands:
 
@@ -201,7 +210,7 @@ def test_fetch_hydro_current_maps_http_500_to_connection_error(respx_mock):
 | `hydro_daily_zip` | function | `make_zip` with 2-3 daily rows for 2023 (UTF-8 BOM, `;`), including the missing-value codes `9999` and `99.9` |
 | `hydro_monthly_zip`, `hydro_semi_annual_zip` | function | likewise |
 | `isolated_data_dir` (**exists**, autouse) | function | `monkeypatch.setattr(settings, "data_dir", tmp_path_factory.mktemp("data"))` for every test; returns the directory. Replaces the planned `tmp_data_dir` (CLI `list stations`, `reference_data`, the static station catalog file) |
-| store fixtures (**exist**) | – | `imgwtools.testing.build_fixture_store(root, variant=…)` (variants `complete`, `corrupt`, `unknown_schema`) and the recordings/archives in `tests/fixtures/store/`; local `store`/`root`/`fixture_root` in the files `test_store_*.py`, `test_commands.py`, `test_project.py`, `test_cli_store_project.py` |
+| store fixtures (**exist**) | – | `obserwator.testing.build_fixture_store(root, *, data_root, variant=…)` → `FixtureRoots(raw, data)` (variants `complete`, `complete_pl_cz`, `corrupt`, `unknown_schema`; ADR-017) and the recordings/archives in `tests/fixtures/store/`; session fixtures `fixture_roots`, `fixture_root` (data root) and `fixture_raw_root` (raw root) in `tests/conftest.py`, `served_roots`, `served_root`, `served_raw_root`, `served` in `tests/contract/conftest.py`; files such as `test_store_*.py` build roots of their own in `tmp_path` |
 | `api_client` | module | `fastapi.testclient.TestClient(imgwtools.api.main.app)` – the import is safe (the `web/static` directory exists) |
 | `cli` | module | `typer.testing.CliRunner()`; tests call `cli.invoke(app, [...])` on `imgwtools.cli.main.app` |
 | `hydro_api_url` etc. | – | not needed; use the constants `IMGW_API_URL`, `IMGW_PMAXTP_URL`, `HYDRO_STATIONS_CSV_URL`, `HYDRO_MAP_API_URL` from the code |
@@ -363,6 +372,7 @@ Public tests must not require importing Kartograf or the network.
 | `test_station_sources.py` | ADR-015: a sync writes no series (`build_series` afterwards), the station sources of both providers (lists by `HEAD`, `now` metadata without a request, the ČHMÚ meteo file by its listing), not mixed with measurement datasets, no selectors, store only; an archived `now` version holds no measurement field or value (derived IMGW-PIB station metadata, `extra.kept_fields`), changed measurements give `unchanged` |
 | `test_store_series.py` | `check_series` offline, daily/monthly/semi-annual snapshots (29 Feb, hydrological year, `accumulated`), `reused` without a Parquet writer, no pyarrow → `IMGWStoreDependencyError`, importing the core without pyarrow |
 | `test_store_catalog.py` | the catalog reads the synced station sources offline (no request; `missing_source` names the missing datasets), location precedence API → static (`isolated_data_dir`) → user, Poland outline without GIS, RFC 7946, `unchanged` for identical content, `check_catalog` offline, `meteo_kind` from the current climate and precipitation series |
+| `test_store_split.py` | ADR-017: the documented split of a store holding both kinds (hard-linked trees, `init_store` of each kind) gives two roots without problems and with the same current versions; such a store is refused as a data root (`wrong_root`) and scans as a raw root with `unknown_entry` trees; `build_series` and `build_catalog` leave a read-only raw root untouched; the analyses are `analyses` entries and `current_version` slots of the data root only |
 | `test_store_pmaxtp.py` | cell key from the response, the same cell without a new version, AMP separately, invalid indices/empty data without a write, offline read |
 | `test_store_reader.py` | reading a read-only directory without network or writes, date ranges consistent with the parser, scan problems, unknown `imgw-store/2` reported, validation of `Meta` fields |
 | `test_series_export.py` | CSV: header with units, attribution formulas once, every day, `year_type`, semi-annual columns, atomic write via `.part` |

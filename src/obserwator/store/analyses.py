@@ -84,6 +84,9 @@ from obserwator.store.export import (
     export_series,
 )
 from obserwator.store.reader import (
+    ANALYSES_DIR,
+    ANALYSES_FILE,
+    ANALYSES_SCHEMA,
     _open,
     current_version,
     read_catalog,
@@ -117,12 +120,9 @@ from obserwator.store.writer import (
     version_file,
 )
 
-ANALYSES_SCHEMA: Final = "obserwator-analyses/1"
 STATION_SCHEMA: Final = "obserwator-station-analyses/1"
 EXPORT_SCHEMA: Final = "obserwator-analyses-export/1"
-ANALYSES_FILE: Final = "analyses.json"
 _SIDECAR = f"{ANALYSES_FILE}.meta.json"
-_SLOT = "analyses/versions"
 _SCRATCH_PREFIX = "obserwator-analyses-"
 _COMMAND = "analyses build"
 _RESULT = "hydrolog-result/1"
@@ -348,17 +348,19 @@ class AnalysesReport:
 
 def _data_root(root: RootArg | None) -> Path:
     """
-    The data root of the analyses: ``root``, else the default root (DEV-19.2).
+    The data root of the analyses: ``root``, else the default data root (DEV-19.2).
 
-    Until the data root has its own marker (Nogat O1) it is an
-    ``obserwator-store/1`` store holding the series and catalogs.
+    It holds the series and catalogs the analyses read and the analyses
+    (ADR-017); a raw root or a store not yet split is ``wrong_root``.
     """
-    return _open(root if root is not None else store_root().root)
+    return _open(
+        root if root is not None else store_root(kind="data").root, kind="data"
+    )
 
 
 def _write_root(root: RootArg | None) -> PathArg | StoreHandle:
-    """The root a build refuses or writes: ``root``, else the default root."""
-    return root if root is not None else store_root().root
+    """The data root a build refuses or writes: ``root``, else the default data root."""
+    return root if root is not None else store_root(kind="data").root
 
 
 @dataclass(frozen=True)
@@ -873,7 +875,7 @@ class _Version:
 
 
 def _slot(root: Path, provider: ProviderDescriptor) -> Path:
-    return _validate_slot(root, f"{_SLOT}/{provider.key_prefix}")
+    return _validate_slot(root, f"{ANALYSES_DIR}/{provider.key_prefix}")
 
 
 def _broken(path: Path, detail: str) -> ObserwatorDataError:
@@ -921,26 +923,17 @@ def _meta(directory: Path, provider: ProviderDescriptor) -> Meta:
 
 def _current(root: Path, provider: ProviderDescriptor) -> _Version | None:
     """
-    The current analyses version of a provider: the newest ``downloaded_at``, then path.
+    The current analyses version of a provider (`current_version` of its slot).
 
-    A directory without the sidecar is an interrupted publication, not a
-    version; a broken version is an error (an older one is never chosen
+    The newest ``downloaded_at``, then path, as for every derived version; a
+    directory without the sidecar is an interrupted publication, not a
+    version, and a broken version is an error (an older one is never chosen
     instead).
     """
-    slot = _slot(root, provider)
-    if not slot.is_dir():
+    entry = current_version(root, slot=f"analyses:{provider.key_prefix}.analyses")
+    if entry is None or entry.version is None or entry.meta is None:
         return None
-    best: tuple[datetime, str, Path, Meta] | None = None
-    for directory in sorted(slot.iterdir()):
-        if directory.is_symlink() or not directory.is_dir():
-            raise _broken(directory, message("analyses.unknown_entry"))
-        if not (directory / _SIDECAR).exists():
-            continue
-        meta = _meta(directory, provider)
-        key = (meta.downloaded_at, directory.as_posix(), directory, meta)
-        if best is None or key[:2] > best[:2]:
-            best = key
-    return None if best is None else _load(best[2], best[3])
+    return _load(entry.version.parent, entry.meta)
 
 
 def _version_at(root: RootArg | None, version: PathArg) -> Path:
@@ -1328,7 +1321,9 @@ def _publish(
     _fsync_dir(staging)
     parent = _slot(root, provider)
     parent.mkdir(parents=True, exist_ok=True)
-    target = _validate_slot(root, f"{_SLOT}/{provider.key_prefix}/{label}_{sha[:8]}")
+    target = _validate_slot(
+        root, f"{ANALYSES_DIR}/{provider.key_prefix}/{label}_{sha[:8]}"
+    )
     try:
         _publish_dir(staging, target, _SIDECAR)
     except FileExistsError as exc:
@@ -1536,7 +1531,7 @@ def build_analyses(
     """
     count = _workers(workers)
     selected = _selection(stations)
-    refuse_root(_write_root(root))
+    refuse_root(_write_root(root), kind="data")
     path = _data_root(root)
     hydrolog = open_hydrolog()
     if cancel is not None and cancel():
@@ -1628,7 +1623,7 @@ def check_analyses(
     """
     _workers(workers)
     selected = _selection(stations)
-    refused = root_conflict_plan(_COMMAND, _write_root(root))
+    refused = root_conflict_plan(_COMMAND, _write_root(root), kind="data")
     if refused is not None:
         return refused
     path = _data_root(root)

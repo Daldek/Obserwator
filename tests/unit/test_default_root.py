@@ -20,8 +20,8 @@ from tests.contract.support import DAILY, H2024, NEW, V3, FakeImgw
 
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch, tmp_path):
-    """No OBSERWATOR_ROOT, an empty nogat.toml and a data directory of the test."""
-    for name in ("OBSERWATOR_ROOT", "NOGAT_DATA_DIR"):
+    """No OBSERWATOR_ROOT/OBSERWATOR_RAW_ROOT, an empty nogat.toml and a data directory."""
+    for name in ("OBSERWATOR_ROOT", "OBSERWATOR_RAW_ROOT", "NOGAT_DATA_DIR"):
         monkeypatch.delenv(name, raising=False)
     (tmp_path / "nogat.toml").write_text("", encoding="utf-8")
     monkeypatch.setenv("NOGAT_CONFIG", str(tmp_path / "nogat.toml"))
@@ -41,7 +41,9 @@ def root_line(root):
 
 
 # --------------------------------------------------------------------------
-# Resolution: --root > OBSERWATOR_ROOT > [obserwator] root > <data_dir>/obserwator
+# Resolution of the data root: --root > OBSERWATOR_ROOT > [obserwator] root >
+# <data_dir>/obserwator; of the raw root: --raw-root/--root > OBSERWATOR_RAW_ROOT >
+# [obserwator] raw_root > <data_dir>/obserwator-raw (ADR-017 D5)
 # --------------------------------------------------------------------------
 
 
@@ -78,6 +80,22 @@ def test_a_relative_root_is_resolved_against_the_working_directory(
     assert store_root().root == tmp_path / "relative" / "store"
 
 
+def test_the_raw_root_has_its_own_variable_key_and_directory(monkeypatch, tmp_path):
+    assert store_root(kind="raw").root == tmp_path / "data" / "obserwator-raw"
+
+    config_file(
+        monkeypatch, tmp_path, f"[obserwator]\nraw_root = '{tmp_path / 'raw-file'}'\n"
+    )
+    assert store_root(kind="raw").root == tmp_path / "raw-file"
+    assert store_root().root == tmp_path / "data" / "obserwator"
+
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw-env"))
+    assert store_root(kind="raw").root == tmp_path / "raw-env"
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "data-env"))
+    assert store_root().root == tmp_path / "data-env"
+    assert store_root(kind="raw").root == tmp_path / "raw-env"
+
+
 def test_the_public_store_root_names_the_root_its_source_and_the_marker(
     monkeypatch, tmp_path
 ):
@@ -87,11 +105,14 @@ def test_the_public_store_root_names_the_root_its_source_and_the_marker(
 
     config_file(monkeypatch, tmp_path, root_line(tmp_path / "from-file"))
     (tmp_path / "from-file").mkdir()
-    (tmp_path / "from-file" / "obserwator-store.json").write_text(
-        "{}", encoding="utf-8"
-    )
+    (tmp_path / "from-file" / "obserwator-data.json").write_text("{}", encoding="utf-8")
     assert obserwator.store_root() == obserwator.StoreRoot(
         tmp_path / "from-file", "file", "[obserwator]", True
+    )
+    # the marker of a raw root does not mark a data root, and the reverse
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "from-file"))
+    assert obserwator.store_root(kind="raw") == obserwator.StoreRoot(
+        tmp_path / "from-file", "env", "OBSERWATOR_RAW_ROOT", False
     )
 
     monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "from-env"))
@@ -105,6 +126,12 @@ def test_the_public_store_root_names_the_root_its_source_and_the_marker(
         "env",
         "OBSERWATOR_ROOT",
     )
+    raw = environment_report()["raw_store"]
+    assert (raw["root"], raw["source"], raw["name"]) == (
+        str(tmp_path / "from-file"),
+        "env",
+        "OBSERWATOR_RAW_ROOT",
+    )
 
 
 def test_the_marker_of_another_tool_is_not_the_marker_of_obserwator(
@@ -114,6 +141,7 @@ def test_the_marker_of_another_tool_is_not_the_marker_of_obserwator(
     (tmp_path / "kartograf-store.json").write_text("{}", encoding="utf-8")
 
     assert obserwator.store_root().marker_exists is False
+    assert obserwator.store_root(kind="raw").marker_exists is False
 
 
 def test_the_public_store_root_does_not_walk_the_tree(monkeypatch, tmp_path):
@@ -163,6 +191,21 @@ def test_config_show_reports_the_root_and_where_it_comes_from(
     }
 
 
+def test_config_show_reports_the_raw_root_beside_the_data_root(monkeypatch, tmp_path):
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw"))
+
+    report = environment_report()
+
+    assert report["store"]["root"] == str(tmp_path / "data" / "obserwator")
+    assert report["raw_store"] == {
+        "root": str(tmp_path / "raw"),
+        "source": "env",
+        "name": "OBSERWATOR_RAW_ROOT",
+        "exists": False,
+        "size_bytes": None,
+    }
+
+
 # --------------------------------------------------------------------------
 # validate_command fills the root in
 # --------------------------------------------------------------------------
@@ -178,6 +221,37 @@ def test_root_given_beats_the_default(tmp_path):
     options = validate_command("store info", options={"root": tmp_path / "mine"})
 
     assert options["root"] == tmp_path / "mine"
+
+
+@pytest.mark.parametrize(
+    ("command", "options", "expected"),
+    [
+        ("store init", {}, {"root": "obserwator-raw"}),
+        ("store init", {"kind": "data"}, {"root": "obserwator"}),
+        ("store scan", {}, {"root": "obserwator"}),
+        (
+            "store check",
+            {"datasets": [DAILY], "years": "2024"},
+            {"root": "obserwator-raw"},
+        ),
+        ("analyses build", {}, {"root": "obserwator"}),
+        ("store catalog", {}, {"root": "obserwator", "raw_root": "obserwator-raw"}),
+        (
+            "series build",
+            {"dataset": "pl.imgw.hydro_daily"},
+            {"root": "obserwator", "raw_root": "obserwator-raw"},
+        ),
+    ],
+)
+def test_each_command_gets_the_default_root_of_its_kind(
+    tmp_path, command, options, expected
+):
+    filled = validate_command(command, options=options)
+
+    assert {name: filled[name] for name in expected} == {
+        name: tmp_path / "data" / directory for name, directory in expected.items()
+    }
+    assert ("raw_root" in filled) == ("raw_root" in expected)
 
 
 def test_a_live_station_search_has_no_store_but_a_store_search_has(tmp_path):
@@ -403,7 +477,7 @@ async def test_a_write_to_the_default_root_outside_the_allowed_directories_is_fo
     assert document["code"] == "forbidden"
     assert document["details"]["reason"] == "outside_allowed_dirs"
     assert document["details"]["option"] == "root"
-    assert document["details"]["value"] == str(tmp_path / "data" / "obserwator")
+    assert document["details"]["value"] == str(tmp_path / "data" / "obserwator-raw")
     assert not (tmp_path / "data").exists()
 
 

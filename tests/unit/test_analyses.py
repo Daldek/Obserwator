@@ -40,6 +40,7 @@ from obserwator import (
     export_analyses,
     export_series,
     get_dataset,
+    iter_store,
     list_analyses,
     read_analysis,
     read_meta,
@@ -47,7 +48,6 @@ from obserwator import (
 )
 from obserwator._hydrolog import program_words
 from obserwator.attribution import Attribution, attribution
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     BEZ_Q,
     DAILY,
@@ -89,16 +89,8 @@ FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    """``complete_pl_cz``, where the fake's answers were recorded; never written."""
-    return build_fixture_store(
-        tmp_path_factory.mktemp("analyses") / "store", variant="complete_pl_cz"
-    ).root
-
-
-@pytest.fixture(scope="module")
 def built(tmp_path_factory, fixture_root):
-    """The fixture store with the analyses of every station; never written."""
+    """The fixture data root with the analyses of every station; never written."""
     root = tmp_path_factory.mktemp("built") / "store"
     shutil.copytree(fixture_root, root)
     with pytest.MonkeyPatch.context() as patch:
@@ -440,7 +432,7 @@ def test_a_rebuild_carries_every_station_until_hydrologs_version_changes(
 
 
 def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_others(
-    tmp_path, built, batches
+    tmp_path, built, fixture_raw_root, batches
 ):
     root = copy(built, tmp_path / "store")
     (old,) = slot(root, "IMGW-PIB").iterdir()
@@ -452,7 +444,7 @@ def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_othe
 
     before = precipitation()
     # The late 1995 archive of the fixture joins the precipitation series.
-    assert build_series(root, dataset=PRECIP).status == "new"
+    assert build_series(root, raw_root=fixture_raw_root, dataset=PRECIP).status == "new"
     after = precipitation()
     changed = {
         code
@@ -795,6 +787,96 @@ def test_an_unknown_station_or_analysis_is_refused(built, fixture_root):
         build_analyses(fixture_root, stations=[RABA, "149999999"])
     assert outside.value.details == {"option": "stations", "value": ["149999999"]}
     assert stamps(fixture_root) == before
+
+
+# --------------------------------------------------------------------------
+# The analyses in the data root (ADR-017)
+# --------------------------------------------------------------------------
+
+
+def test_analyses_versions_are_entries_of_their_slot_and_the_newest_is_current(
+    tmp_path, built, monkeypatch
+):
+    root = copy(built, tmp_path / "store")
+    slots = {
+        provider: f"analyses:{prefix}.analyses" for provider, prefix in SLOTS.items()
+    }
+
+    def entries():
+        return {
+            (entry.slot, entry.provider, entry.version, entry.meta.dataset)
+            for entry in iter_store(root, kind="analyses")
+        }
+
+    first = {
+        (slots[provider], provider, version / "analyses.json", f"{prefix}.analyses")
+        for provider, prefix in SLOTS.items()
+        for version in slot(root, provider).iterdir()
+    }
+    assert entries() == first and len(first) == 2
+    for name, _, version, _ in first:
+        assert current_version(root, slot=name).version == version
+
+    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
+    upgraded = build_analyses(root)
+
+    newer = {
+        (
+            slots[item.provider],
+            item.provider,
+            item.version,
+            f"{SLOTS[item.provider]}.analyses",
+        )
+        for item in upgraded.providers
+    }
+    assert entries() == first | newer and len(newer) == 2
+    for name, _, version, _ in newer:
+        assert current_version(root, slot=name).version == version
+    assert list(iter_store(root, kind="problem")) == []
+
+
+def test_a_broken_analyses_version_is_refused_not_passed_over(
+    tmp_path, built, monkeypatch
+):
+    root = copy(built, tmp_path / "store")
+    (older,) = slot(root, "IMGW-PIB").iterdir()
+    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
+    assert build_analyses(root).status == "new"
+    (newer,) = set(slot(root, "IMGW-PIB").iterdir()) - {older}
+    (newer / "analyses.json.meta.json").write_text("{", encoding="utf-8")
+    before = snapshot(root / "analyses")
+
+    for call in (
+        lambda: current_version(root, slot="analyses:pl.imgw.analyses"),
+        lambda: list_analyses(root=root, station=RABA),
+        lambda: read_analysis(root=root, station=RABA, analysis="characteristic.Q"),
+        lambda: check_analyses(root),
+        lambda: build_analyses(root),
+    ):
+        with pytest.raises(ObserwatorDataError) as error:
+            call()
+        assert error.value.code == "data_error"
+    assert snapshot(root / "analyses") == before
+
+
+def test_a_raw_root_is_the_wrong_root_of_the_analyses(fixture_raw_root):
+    before = stamps(fixture_raw_root)
+
+    for call in (
+        lambda: build_analyses(fixture_raw_root),
+        lambda: list_analyses(root=fixture_raw_root, station=RABA),
+        lambda: current_version(fixture_raw_root, slot="analyses:pl.imgw.analyses"),
+    ):
+        with pytest.raises(ObserwatorStoreError) as error:
+            call()
+        details = error.value.details
+        assert (error.value.code, details["reason"], details["kind"]) == (
+            "store_unavailable",
+            "wrong_root",
+            "data",
+        )
+    assert list(iter_store(fixture_raw_root, kind="analyses")) == []
+    assert stamps(fixture_raw_root) == before
 
 
 # --------------------------------------------------------------------------

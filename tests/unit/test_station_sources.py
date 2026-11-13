@@ -19,7 +19,7 @@ import respx
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.store import init_store, iter_store
-from obserwator.store.series import build_series
+from obserwator.store.series import build_series, check_series
 from obserwator.store.sync import check_store, sync_store
 from tests.unit.test_store_sync import H2024, V1, data, get, head, listing
 
@@ -280,25 +280,30 @@ def root(tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_a_sync_writes_no_series_and_build_series_builds_it_afterwards(root, server):
+def test_a_sync_writes_no_series_and_build_series_builds_it_afterwards(
+    root, server, tmp_path
+):
     listing(server, "dane_hydrologiczne/dobowe/2024", "codz_2024.zip")
     head(server, H2024, V1)
     get(server, H2024, V1, data(H2024))
+    target = init_store(tmp_path / "data", kind="data").root
 
     report = sync_store(root, datasets=[H2024.dataset], years=[2024])
 
     assert [item.status for item in report.items] == ["new"]
     assert [Path(file.path) for file in report.files] == [report.items[0].version]
     assert not (root / "series").exists()
-    plan = check_store(root, datasets=[H2024.dataset], years=[2024])
-    assert plan.series_state == {"hydro_daily": "missing"}
+    assert list(iter_store(target)) == []
+    series = check_series(target, raw_root=root, dataset=H2024.dataset)
+    assert series.series_state == {"hydro_daily": "missing"}
 
-    built = build_series(root, dataset=H2024.dataset)
+    built = build_series(target, raw_root=root, dataset=H2024.dataset)
 
     assert built.status == "new"
     assert built.source_files == (report.items[0].version,)
-    plan = check_store(root, datasets=[H2024.dataset], years=[2024])
-    assert plan.series_state == {"hydro_daily": "current"}
+    assert built.version.is_relative_to(target)
+    series = check_series(target, raw_root=root, dataset=H2024.dataset)
+    assert series.series_state == {"hydro_daily": "current"}
 
 
 # --------------------------------------------------------------------------

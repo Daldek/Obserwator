@@ -258,7 +258,6 @@ def test_check_reads_one_listing_and_compares_it_with_the_store(root, server):
         (4, 4, "missing"),
     ]
     assert plan.requests == {"made": 1, "planned": 6}
-    assert plan.series_state == {"chmi_hydro_daily": "missing"}
     assert not plan.cancelled
 
 

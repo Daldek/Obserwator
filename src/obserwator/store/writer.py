@@ -17,6 +17,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any, Literal, cast
 
 from obserwator._version import __version__
@@ -38,7 +39,13 @@ from obserwator.exceptions import (
 )
 from obserwator.fetch import DownloadResult
 from obserwator.messages import message, reason
-from obserwator.output import STORE_MARKERS, FileResult, store_below
+from obserwator.output import (
+    DATA_MARKER,
+    STORE_MARKER,
+    STORE_MARKERS,
+    FileResult,
+    store_below,
+)
 from obserwator.store.content import CONTENT_FORMS, content_sha256
 from obserwator.store.types import (
     Cancel,
@@ -49,23 +56,43 @@ from obserwator.store.types import (
     PlanAction,
     Progress,
     ProgressHook,
+    RootKind,
     StoreHandle,
     StorePlan,
     VersionResult,
 )
 
-_MARKER = "obserwator-store.json"
+# Marker file of each kind of root (ADR-017 D1).
+_MARKERS: Mapping[RootKind, str] = MappingProxyType(
+    {"raw": STORE_MARKER, "data": DATA_MARKER}
+)
+# Schema of the marker of each kind of root.
+_SCHEMAS: Mapping[RootKind, Literal["obserwator-store/1", "obserwator-data/1"]] = (
+    MappingProxyType({"raw": "obserwator-store/1", "data": "obserwator-data/1"})
+)
 _ATTRIBUTION_CODE = "license_terms"
 _CONTENT_CODE = "content_unchanged"
-# Trees directly under a store root written only by Obserwator; the reader reports
-# anything unexpected there, so the Kartograf probe does not walk into them.
-_MANAGED_TREES = frozenset({"archives", "series", "stations", "pmaxtp", ".incoming"})
 _NESTED = {"reason": "nested_store"}
 _NOT_EMPTY = {"reason": "not_empty"}
 # Server state kept in the default root: not store content (DEV-19.13).
 _STATE_FILES = frozenset({"api_keys.json"})
-# Trees whose presence is the layout of an Obserwator store (without its staging directory).
-_LAYOUT_TREES = frozenset({"archives", "series", "stations", "pmaxtp"})
+# Trees of each kind of root, written only by Obserwator: their presence is the layout
+# of such a root (without its staging directory ``.incoming``), and the Kartograf
+# probe does not walk into them below a marked root.
+_LAYOUT_TREES: Mapping[RootKind, frozenset[str]] = MappingProxyType(
+    {
+        "raw": frozenset({"archives", "pmaxtp"}),
+        "data": frozenset({"series", "stations", "analyses"}),
+    }
+)
+# Message of a root of the other kind, by the kind a function needs (ADR-017 D3).
+_WRONG_ROOT: Mapping[RootKind, str] = MappingProxyType(
+    {"raw": "writer.wrong_root_raw", "data": "writer.wrong_root_data"}
+)
+# Hint for a missing root, by the kind a function needs.
+_MISSING_ROOT: Mapping[RootKind, str] = MappingProxyType(
+    {"raw": "errors.hint_missing_raw_root", "data": "errors.hint_missing_data_root"}
+)
 OBSERVATION_SCHEMA = "obserwator-observation/1"
 # Observation register of an archive slot, beside its version directories.
 _OBSERVATIONS = "observations"
@@ -363,14 +390,65 @@ def _marker(path: Path) -> str | None:
         ) from exc
 
 
+def _other(kind: RootKind) -> RootKind:
+    """The other kind of root."""
+    return "data" if kind == "raw" else "raw"
+
+
+def _both_markers(path: Path) -> bool:
+    """Whether a directory holds the markers of both kinds of root (always refused)."""
+    return all((path / name).is_file() for name in _MARKERS.values())
+
+
+def _holds_other(path: Path, kind: RootKind) -> bool:
+    """Whether a directory is a root of the other kind: its marker and not the own one."""
+    return (path / _MARKERS[_other(kind)]).is_file() and not (
+        path / _MARKERS[kind]
+    ).exists()
+
+
+def _wrong_root(path: Path, kind: RootKind) -> ObserwatorStoreError:
+    """
+    A root of the other kind where a function needs one of ``kind`` (ADR-017 D3).
+
+    The message names the marker found and the one expected (a store not yet
+    split holds the marker of a raw root); the hint names ``--root``,
+    ``--raw-root`` and the split of a combined store.
+    """
+    return ObserwatorStoreError(
+        message(
+            _WRONG_ROOT[kind],
+            path=path,
+            found=_MARKERS[_other(kind)],
+            expected=_MARKERS[kind],
+        ),
+        details={"reason": "wrong_root", "kind": kind},
+        hint=message("errors.hint_wrong_root"),
+    )
+
+
+def _check_kind(path: Path, kind: RootKind) -> None:
+    """Refuse a root of the other kind (``store_unavailable``, ``wrong_root``)."""
+    if _holds_other(path, kind):
+        raise _wrong_root(path, kind)
+
+
+def _missing_hint(path: Path, kind: RootKind | None) -> str:
+    """Hint for a root that does not exist: how to create one of the kind needed."""
+    if kind is None:
+        return message("errors.hint_missing_store", path=path)
+    return message(_MISSING_ROOT[kind], path=path)
+
+
 def _nested_problem(path: Path) -> str | None:
     """
     Say why a root would nest a store in another store (DEV-19.14), or None.
 
     The check looks at the marker file names of every tool (``STORE_MARKERS``),
     so it needs nothing from Kartograf: in the ancestors of the root, at the
-    root (the marker of another tool) and below it, where the managed trees of
-    this store are not entered.
+    root (the marker of another tool, or the markers of both kinds of
+    Obserwator root) and below it, where the trees of the kind of the marker
+    the root holds are not entered.
     """
     for ancestor in path.parents:
         for name in STORE_MARKERS:
@@ -379,14 +457,29 @@ def _nested_problem(path: Path) -> str | None:
                     "writer.store_inside_another_store", ancestor=ancestor, marker=name
                 )
     foreign = next(
-        (name for name in STORE_MARKERS if name != _MARKER and (path / name).is_file()),
+        (
+            name
+            for name in STORE_MARKERS
+            if name not in _MARKERS.values() and (path / name).is_file()
+        ),
         None,
     )
     if foreign is not None:
         return message("writer.root_holds_another_store", path=path, marker=foreign)
-    below = store_below(
-        path, skip=_MANAGED_TREES if (path / _MARKER).is_file() else frozenset()
+    if _both_markers(path):
+        return message(
+            "writer.root_holds_both_markers",
+            path=path,
+            raw=STORE_MARKER,
+            data=DATA_MARKER,
+        )
+    skip = frozenset(
+        name
+        for kind, marker in _MARKERS.items()
+        if (path / marker).is_file()
+        for name in (*_LAYOUT_TREES[kind], ".incoming")
     )
+    below = store_below(path, skip=skip)
     if below is not None:
         found = next(name for name in STORE_MARKERS if (below / name).is_file())
         return message("writer.store_below_the_root", folder=below, marker=found)
@@ -400,27 +493,33 @@ def _check_nested(path: Path) -> None:
         raise ObserwatorStoreConflictError(problem, details=_NESTED)
 
 
-def _refusal(path: Path) -> tuple[Literal["nested_store", "not_empty"], str] | None:
+def _refusal(
+    path: Path, kind: RootKind
+) -> tuple[Literal["nested_store", "not_empty"], str] | None:
     """
-    Say why a write turns a root away with ``conflict``, or None (DEV-19.10).
+    Say why a write turns a root of ``kind`` away with ``conflict``, or None (DEV-19.10).
 
     Two roots are refused: one that would nest a store in another store
-    (``nested_store``) and one that holds other files and is no store
-    (``not_empty``: no marker, no layout of a store, something else inside, or
-    no directory at all). The layout of a store without its marker is no
-    ``conflict`` (``store_unavailable``, ``no_marker``).
+    (``nested_store``, also a directory with the markers of both kinds) and
+    one that holds other files and is no root (``not_empty``: no marker, no
+    layout of a root of ``kind``, something else inside, or no directory at
+    all). The layout of a root without its marker is no ``conflict``
+    (``store_unavailable``, ``no_marker``), and neither is a root of the
+    other kind (``store_unavailable``, ``wrong_root``).
 
     Raises
     ------
     ObserwatorDataError
         If the marker of the root is unreadable.
     """
+    if _holds_other(path, kind):
+        return None
     problem = _nested_problem(path)
     if problem is not None:
         return "nested_store", problem
     if (
-        _marker(path / _MARKER) is None
-        and not _has_layout(path)
+        _marker(path / _MARKERS[kind]) is None
+        and not _has_layout(path, kind=kind)
         and path.exists()
         and (not path.is_dir() or _foreign_content(path))
     ):
@@ -430,14 +529,16 @@ def _refusal(path: Path) -> tuple[Literal["nested_store", "not_empty"], str] | N
     return None
 
 
-def refuse_root(root: PathArg | StoreHandle) -> Path:
+def refuse_root(root: PathArg | StoreHandle, *, kind: RootKind = "raw") -> Path:
     """
-    Refuse a root that a write turns away with ``conflict`` (DEV-19.10, DEV-19.14).
+    Refuse a root that a write turns away (DEV-19.10, DEV-19.14, ADR-017 D3).
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Root directory or an open handle.
+    kind : {"raw", "data"}, optional
+        Kind of root the write needs, ``"raw"`` by default.
 
     Returns
     -------
@@ -449,40 +550,49 @@ def refuse_root(root: PathArg | StoreHandle) -> Path:
     ObserwatorValidationError
         If the root path contains ``..``.
     ObserwatorStoreError
-        If the root path contains a symbolic link.
+        If the root path contains a symbolic link, or the root is one of the
+        other kind (code ``store_unavailable``, ``details.reason``
+        ``wrong_root``, ``details.kind`` the kind needed).
     ObserwatorDataError
         If the marker of the root is unreadable (``details.reason``
         ``invalid_marker``).
     ObserwatorStoreConflictError
-        If the root nests a store (``details.reason`` ``nested_store``) or
-        holds other files and is no store (``not_empty``).
+        If the root nests a store or holds the markers of both kinds
+        (``details.reason`` ``nested_store``) or holds other files and is no
+        root (``not_empty``).
     """
     path = _safe_root(root.root if isinstance(root, StoreHandle) else root)
-    refusal = _refusal(path)
+    _check_kind(path, kind)
+    refusal = _refusal(path, kind)
     if refusal is not None:
         raise ObserwatorStoreConflictError(refusal[1], details={"reason": refusal[0]})
     return path
 
 
-def root_conflict_plan(command: str, root: PathArg | StoreHandle) -> StorePlan | None:
+def root_conflict_plan(
+    command: str, root: PathArg | StoreHandle, *, kind: RootKind = "raw"
+) -> StorePlan | None:
     """
     Plan the refusal of a root that a write turns away with ``conflict``, or None.
 
-    The run of every command that writes a store refuses such a root
+    The run of every command that writes a root refuses such a root
     (`refuse_root`); the plan shows the same refusal as one ``conflict`` action
     for the root instead of failing, like a plain plan does for an output
     directory in a store (DEV-19.10, DEV-19.14). It is a successful result and
     nothing else is checked, so no request is made. A root that is no
-    ``conflict`` is not handled here: the layout of a store without its marker
-    (``store_unavailable``, ``no_marker``) is raised by the caller's own check
-    and an unreadable marker is raised here.
+    ``conflict`` is not handled here: the layout of a root without its marker
+    (``store_unavailable``, ``no_marker``) and a root of the other kind
+    (``store_unavailable``, ``wrong_root``) are raised by the caller's own
+    check and an unreadable marker is raised here.
 
     Parameters
     ----------
     command : str
         Name of the command the action refers to, e.g. ``"series build"``.
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Root directory or an open handle.
+    kind : {"raw", "data"}, optional
+        Kind of root the command writes, ``"raw"`` by default.
 
     Returns
     -------
@@ -501,7 +611,7 @@ def root_conflict_plan(command: str, root: PathArg | StoreHandle) -> StorePlan |
         ``invalid_marker``).
     """
     path = _safe_root(root.root if isinstance(root, StoreHandle) else root)
-    refusal = _refusal(path)
+    refusal = _refusal(path, kind)
     if refusal is None:
         return None
     action = PlanAction(
@@ -515,9 +625,9 @@ def root_conflict_plan(command: str, root: PathArg | StoreHandle) -> StorePlan |
     return StorePlan("obserwator-plan/1", path, datetime.now(UTC), (), {}, (action,))
 
 
-def _has_layout(path: Path) -> bool:
-    """Whether the root holds a tree of an Obserwator store (with or without a marker)."""
-    return any((path / name).is_dir() for name in _LAYOUT_TREES)
+def _has_layout(path: Path, *, kind: RootKind = "raw") -> bool:
+    """Whether the root holds a tree of a root of ``kind`` (with or without a marker)."""
+    return any((path / name).is_dir() for name in _LAYOUT_TREES[kind])
 
 
 def _foreign_content(path: Path) -> bool:
@@ -525,22 +635,46 @@ def _foreign_content(path: Path) -> bool:
     return any(entry.name not in _STATE_FILES for entry in path.iterdir())
 
 
-def _unmarked(path: Path) -> ObserwatorStoreError:
-    """The layout of a store without its marker: ``obserwator store init`` verifies it."""
-    return ObserwatorStoreError(
-        message("writer.layout_without_marker", path=path),
-        details={"reason": "no_marker"},
+def _unmarked_message(path: Path, kind: RootKind) -> str:
+    """Text of the layout of a root of ``kind`` without its marker (writer and reader)."""
+    command = (
+        f"obserwator store init --root {path}"
+        if kind == "raw"
+        else f"obserwator store init --kind data --root {path}"
+    )
+    return message(
+        "writer.layout_without_marker",
+        path=path,
+        marker=_MARKERS[kind],
+        command=command,
     )
 
 
-def _verify_layout(path: Path) -> None:
-    """Verify the layout of a root without a marker before one is written (DEV-19.13)."""
+def _unmarked(path: Path, kind: RootKind) -> ObserwatorStoreError:
+    """The layout of a root without its marker: ``obserwator store init`` verifies it."""
+    return ObserwatorStoreError(
+        _unmarked_message(path, kind),
+        details={"reason": "no_marker"},
+        hint=None if kind == "raw" else message("errors.hint_no_marker_data"),
+    )
+
+
+def _verify_layout(path: Path, *, kind: RootKind = "raw") -> None:
+    """
+    Verify the layout of a root of ``kind`` without a marker before one is written.
+
+    Every sidecar of the trees of the kind is ``obserwator-meta/1`` and nothing
+    but those trees, the staging directory and the state files of the server
+    lies in the root (DEV-19.13); a tree of the other kind is foreign too, so
+    a store holding both kinds is split first (ADR-017 D8).
+    """
     problems: list[str] = []
-    known = _LAYOUT_TREES | _STATE_FILES | {".incoming"}
+    trees = _LAYOUT_TREES[kind]
+    known = trees | _STATE_FILES | {".incoming"}
     for entry in sorted(path.iterdir()):
         if entry.name not in known:
             problems.append(message("writer.unexpected_root_entry", name=entry.name))
-    for name in sorted(_LAYOUT_TREES):
+    for name in sorted(trees):
         tree = path / name
         if tree.is_symlink() or (tree.exists() and not tree.is_dir()):
             problems.append(message("writer.layout_tree_not_directory", name=name))
@@ -591,25 +725,38 @@ def _validate_slot(root: Path, relative: str) -> Path:
     return result
 
 
-def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> StoreHandle:
+def init_store(
+    root: PathArg,
+    /,
+    *,
+    kind: RootKind = "raw",
+    created_at: datetime | None = None,
+) -> StoreHandle:
     """
-    Write the marker of a store: ``obserwator store init`` (DEV-19.13).
+    Write the marker of a root: ``obserwator store init`` (DEV-19.13, ADR-017).
 
     A new, missing or empty root (the state file ``api_keys.json`` of the
-    server does not count) gets the marker ``obserwator-store.json`` with the fields
+    server does not count) gets the marker of its kind with the fields
     ``schema``, ``tool``, ``created_at``, ``producer_version`` and
-    ``created_by``. A root that has the layout of a store (``archives/``,
-    ``series/``, ``stations/`` or ``pmaxtp/``) but no marker is verified first
-    (every sidecar is ``obserwator-meta/1``, nothing foreign lies beside the trees)
-    and then marked. The marker is published atomically by a hard link and
-    never replaces a competing marker; like every write to the store, this
-    needs a file system with hard links. If the root already holds a marker
-    (including one created concurrently), the existing store is opened.
+    ``created_by``: ``obserwator-store.json`` (``obserwator-store/1``) of a raw
+    root, ``obserwator-data.json`` (``obserwator-data/1``) of a data root. A
+    root that has the layout of its kind (``archives/`` or ``pmaxtp/`` of a
+    raw root; ``series/``, ``stations/`` or ``analyses/`` of a data root) but
+    no marker is verified first (every sidecar is ``obserwator-meta/1``,
+    nothing foreign lies beside the trees, a tree of the other kind
+    included) and then marked: the last step of splitting a store that holds
+    both kinds (ADR-017 D8). The marker is published atomically by a hard link
+    and never replaces a competing marker; like every write to a root, this
+    needs a file system with hard links. If the root already holds the marker
+    of its kind (including one created concurrently), the existing root is
+    opened.
 
     Parameters
     ----------
     root : str or os.PathLike
-        Store root directory; created (with parents) if it does not exist.
+        Root directory; created (with parents) if it does not exist.
+    kind : {"raw", "data"}, optional
+        Kind of the root, ``"raw"`` by default.
     created_at : datetime.datetime or None, optional
         Timezone-aware creation time recorded in the marker as UTC; the
         current time by default.
@@ -617,7 +764,7 @@ def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> Store
     Returns
     -------
     StoreHandle
-        Handle of the created or already existing store.
+        Handle of the created or already existing root.
 
     Raises
     ------
@@ -625,31 +772,36 @@ def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> Store
         If the root path contains ``..`` or ``created_at`` is naive.
     ObserwatorStoreError
         If the root path contains a symbolic link (code ``validation_error``),
-        a relevant marker is unreadable or the existing marker is not a
-        supported store (code ``store_unavailable``).
+        a relevant marker is unreadable, the existing marker is not a
+        supported one or the root is one of the other kind (code
+        ``store_unavailable``; ``details.reason`` ``wrong_root``,
+        ``details.kind`` the kind asked for).
     ObserwatorDataError
-        If the layout of a root without a marker is not that of an Obserwator store
-        (``details.reason`` ``invalid_layout``, ``details.problems``).
+        If the layout of a root without a marker is not that of an Obserwator
+        root of ``kind`` (``details.reason`` ``invalid_layout``,
+        ``details.problems``).
     ObserwatorStoreConflictError
         If the directory holds other files and no layout, it is nested in or
-        contains another store (``details.reason`` ``nested_store``) or the file
-        system cannot create the hard link used to publish the marker (e.g.
-        FAT, exFAT, some NAS or FUSE file systems, the macOS SMB client;
-        ``details.reason`` ``not_atomic``); code ``conflict``.
+        contains another store or holds the markers of both kinds
+        (``details.reason`` ``nested_store``) or the file system cannot create
+        the hard link used to publish the marker (e.g. FAT, exFAT, some NAS or
+        FUSE file systems, the macOS SMB client; ``details.reason``
+        ``not_atomic``); code ``conflict``.
     """
     path = _safe_root(root)
+    _check_kind(path, kind)
     _check_nested(path)
-    marker = path / _MARKER
+    marker = path / _MARKERS[kind]
     if marker.exists():
-        return open_store(path)
+        return open_store(path, kind=kind)
     if path.exists():
         if not path.is_dir():
             raise ObserwatorStoreConflictError(
                 message("writer.directory_not_empty_obserwator_store", path=path),
                 details=_NOT_EMPTY,
             )
-        if _has_layout(path):
-            _verify_layout(path)
+        if _has_layout(path, kind=kind):
+            _verify_layout(path, kind=kind)
         elif _foreign_content(path):
             raise ObserwatorStoreConflictError(
                 message("writer.directory_not_empty_obserwator_store", path=path),
@@ -657,13 +809,13 @@ def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> Store
             )
     path.mkdir(parents=True, exist_ok=True)
     payload: dict[str, str] = {
-        "schema": "obserwator-store/1",
+        "schema": _SCHEMAS[kind],
         "tool": "obserwator",
         "created_at": _utc(created_at or datetime.now(UTC)),
         "producer_version": __version__,
         "created_by": f"obserwator {__version__}",
     }
-    temporary = path / f".{_MARKER}.{uuid.uuid4().hex}.tmp"
+    temporary = path / f".{marker.name}.{uuid.uuid4().hex}.tmp"
     try:
         _write_json(temporary, payload)
         try:
@@ -671,7 +823,7 @@ def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> Store
                 temporary, marker
             )  # exclusive publication; never replace a competing marker
         except FileExistsError:
-            return open_store(path)
+            return open_store(path, kind=kind)
         except OSError as exc:
             raise ObserwatorStoreConflictError(
                 message(
@@ -684,48 +836,80 @@ def init_store(root: PathArg, /, *, created_at: datetime | None = None) -> Store
         _fsync_dir(path)
     finally:
         temporary.unlink(missing_ok=True)
-    return StoreHandle(path, "obserwator-store/1")
+    return StoreHandle(path, _SCHEMAS[kind])
 
 
-def open_store(root: PathArg, /) -> StoreHandle:
+def _kind_of(path: Path) -> RootKind:
+    """The kind of a root by its marker, else by its layout; ``raw`` without either."""
+    if (path / DATA_MARKER).exists():
+        return "data"
+    if (path / STORE_MARKER).exists():
+        return "raw"
+    data_only = _has_layout(path, kind="data") and not _has_layout(path, kind="raw")
+    return "data" if data_only else "raw"
+
+
+def open_store(root: PathArg, /, *, kind: RootKind | None = None) -> StoreHandle:
     """
-    Open a known store without creating files or changing its contents.
+    Open a known root without creating files or changing its contents.
 
     Parameters
     ----------
     root : str or os.PathLike
-        Store root directory containing an ``obserwator-store/1`` marker.
+        Root directory with the marker of a raw root (``obserwator-store.json``,
+        ``obserwator-store/1``) or of a data root (``obserwator-data.json``,
+        ``obserwator-data/1``).
+    kind : {"raw", "data"} or None, optional
+        Kind of root required; None opens either kind, told by its marker.
 
     Returns
     -------
     StoreHandle
-        Handle of the opened store.
+        Handle of the opened root; ``StoreHandle.kind`` tells its kind.
 
     Raises
     ------
     ObserwatorValidationError
         If the root path contains ``..``.
     ObserwatorStoreError
-        If the root path contains a symbolic link or the marker is missing,
-        unreadable or of an unsupported schema.
+        If the root path contains a symbolic link, the marker is missing,
+        unreadable or of an unsupported schema, or the root is one of the
+        other kind than ``kind`` (code ``store_unavailable``,
+        ``details.reason`` ``wrong_root``, ``details.kind`` the kind asked
+        for).
+    ObserwatorStoreConflictError
+        If the directory holds the markers of both kinds (``details.reason``
+        ``nested_store``).
     """
     path = _safe_root(root)
-    if _marker(path / _MARKER) is None and _has_layout(path):
-        raise _unmarked(path)
-    if _marker(path / _MARKER) != "obserwator-store/1":
+    if _both_markers(path):
+        raise ObserwatorStoreConflictError(
+            message(
+                "writer.root_holds_both_markers",
+                path=path,
+                raw=STORE_MARKER,
+                data=DATA_MARKER,
+            ),
+            details=_NESTED,
+        )
+    if kind is not None:
+        _check_kind(path, kind)
+    chosen = _kind_of(path) if kind is None else kind
+    schema = _marker(path / _MARKERS[chosen])
+    if schema is None and _has_layout(path, kind=chosen):
+        raise _unmarked(path, chosen)
+    if schema != _SCHEMAS[chosen]:
         raise ObserwatorStoreError(
             message("writer.no_marker_unsupported_obserwator_store", path=path),
             details={"reason": "unsupported"},
-            hint=None
-            if path.exists()
-            else message("errors.hint_missing_store", path=path),
+            hint=None if path.exists() else _missing_hint(path, kind),
         )
-    return StoreHandle(path, "obserwator-store/1")
+    return StoreHandle(path, _SCHEMAS[chosen])
 
 
 def _complete_marker(handle: StoreHandle) -> None:
     """Add the fields of DEV-19.12 that an older marker lacks (a root file, not a version)."""
-    marker = handle.root / _MARKER
+    marker = handle.root / _MARKERS[handle.kind]
     payload = json.loads(marker.read_text(encoding="utf-8"))
     wanted = {
         "tool": "obserwator",
@@ -735,7 +919,7 @@ def _complete_marker(handle: StoreHandle) -> None:
     missing = {key: value for key, value in wanted.items() if key not in payload}
     if not missing:
         return
-    temporary = marker.with_name(f".{_MARKER}.{uuid.uuid4().hex}.tmp")
+    temporary = marker.with_name(f".{marker.name}.{uuid.uuid4().hex}.tmp")
     try:
         _write_json(temporary, {**payload, **missing})
         os.replace(temporary, marker)
@@ -744,76 +928,93 @@ def _complete_marker(handle: StoreHandle) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def prepare_store(root: PathArg | StoreHandle) -> StoreHandle:
+def prepare_store(
+    root: PathArg | StoreHandle, *, kind: RootKind = "raw"
+) -> StoreHandle:
     """
-    Open the store at ``root`` for a write; the first write creates the marker.
+    Open the root at ``root`` for a write; the first write creates the marker.
 
-    The root must not nest a store. A root with a marker is opened (an older
-    marker gains the fields of DEV-19.12); a new or empty root gets its marker
-    now, as `init_store` writes it (DEV-19.13); a root with the layout of a
-    store and no marker is ``store_unavailable``, and ``obserwator store init``
-    verifies it.
+    The root must not nest a store and must not be a root of the other kind.
+    A root with the marker of ``kind`` is opened (an older marker gains the
+    fields of DEV-19.12); a new or empty root gets its marker now, as
+    `init_store` writes it (DEV-19.13); a root with the layout of ``kind`` and
+    no marker is ``store_unavailable``, and ``obserwator store init`` verifies
+    it.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Root directory or an open handle.
+    kind : {"raw", "data"}, optional
+        Kind of root the write needs, ``"raw"`` by default.
 
     Returns
     -------
     StoreHandle
-        Handle of the store, which exists and has its marker.
+        Handle of the root, which exists and has its marker.
 
     Raises
     ------
     ObserwatorStoreError
-        If the layout has no marker (``details.reason`` ``no_marker``) or the
-        marker is not a supported store.
+        If the layout has no marker (``details.reason`` ``no_marker``), the
+        marker is not a supported one or the root is one of the other kind
+        (``details.reason`` ``wrong_root``).
     ObserwatorStoreConflictError
-        If the root nests a store or holds foreign files and no layout.
+        If the root nests a store, holds the markers of both kinds or holds
+        foreign files and no layout.
     """
     path = _safe_root(root.root if isinstance(root, StoreHandle) else root)
+    _check_kind(path, kind)
     _check_nested(path)
-    if (path / _MARKER).exists():
-        handle = open_store(path)
+    if (path / _MARKERS[kind]).exists():
+        handle = open_store(path, kind=kind)
         _complete_marker(handle)
         return handle
-    if _has_layout(path):
-        raise _unmarked(path)
-    return init_store(path)
+    if _has_layout(path, kind=kind):
+        raise _unmarked(path, kind)
+    return init_store(path, kind=kind)
 
 
-def lenient_store(root: PathArg | StoreHandle) -> StoreHandle:
+def lenient_store(
+    root: PathArg | StoreHandle, *, kind: RootKind = "raw"
+) -> StoreHandle:
     """
-    Open the store at ``root`` for a plan or a read of derived data; nothing is created.
+    Open the root at ``root`` for a plan or a read of derived data; nothing is created.
 
-    A missing or empty root is an empty store (every file of a plan is new); a
-    root with a layout and no marker is ``store_unavailable`` with the hint to
-    run ``obserwator store init``.
+    A missing or empty root is an empty root of ``kind`` (every file of a plan
+    is new); a root with the layout of ``kind`` and no marker is
+    ``store_unavailable`` with the hint to run ``obserwator store init``, and
+    so is a root of the other kind (``wrong_root``).
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Root directory or an open handle.
+    kind : {"raw", "data"}, optional
+        Kind of root needed, ``"raw"`` by default.
 
     Returns
     -------
     StoreHandle
-        Handle of the store, which need not exist yet.
+        Handle of the root, which need not exist yet.
 
     Raises
     ------
     ObserwatorStoreError
-        If the root is another kind of directory or its marker is unsupported.
+        If the root is another kind of directory, a root of the other kind
+        (``details.reason`` ``wrong_root``) or its marker is unsupported.
+    ObserwatorStoreConflictError
+        If the directory holds the markers of both kinds.
     """
     path = _safe_root(root.root if isinstance(root, StoreHandle) else root)
-    if (path / _MARKER).exists():
-        return open_store(path)
-    if _has_layout(path):
-        raise _unmarked(path)
+    _check_kind(path, kind)
+    if (path / _MARKERS[kind]).exists():
+        return open_store(path, kind=kind)
+    if _has_layout(path, kind=kind):
+        raise _unmarked(path, kind)
     if path.exists() and (not path.is_dir() or _foreign_content(path)):
-        return open_store(path)  # raises: not an Obserwator store
-    return StoreHandle(path, "obserwator-store/1")
+        return open_store(path, kind=kind)  # raises: not an Obserwator root
+    return StoreHandle(path, _SCHEMAS[kind])
 
 
 def _utc(moment: datetime) -> str:
@@ -1345,7 +1546,7 @@ def write_archive(
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Raw root directory or an open handle of one (ADR-017).
     archive : ArchiveFile
         Archive descriptor; its ``server_path`` must lie in the dataset's
         server directory and end with ``.zip`` or ``.csv`` (IMGW-PIB) or
@@ -1386,8 +1587,9 @@ def write_archive(
         (nothing is written), or an observation of the current version is
         broken.
     ObserwatorStoreError
-        If the root is not a supported store (code ``store_unavailable``) or a
-        path contains a symbolic link (code ``validation_error``).
+        If the root is not a supported raw root (code ``store_unavailable``;
+        ``details.reason`` ``wrong_root`` for a data root) or a path contains a
+        symbolic link (code ``validation_error``).
     ObserwatorStoreConflictError
         If the store overlaps another Obserwator or a Kartograf store, an existing
         version in the slot is corrupted (including a sidecar without
@@ -1397,7 +1599,7 @@ def write_archive(
     ObserwatorCancelledError
         If ``cancel`` returns ``True`` before publication.
     """
-    handle = prepare_store(root)
+    handle = prepare_store(root, kind="raw")
     path = handle.root
     descriptor = get_dataset(archive.dataset)
     provider = get_provider(descriptor.provider)

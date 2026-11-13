@@ -55,7 +55,14 @@ def zipped(name, lines):
     return buffer.getvalue()
 
 
+def raw_root_of(root):
+    """The raw root beside the data root ``root`` (see the ``root`` fixture)."""
+    return root.with_name("raw")
+
+
 def store(root, dataset, years, months=None, *, content=None):
+    """Write the archives into the raw root and build the series in ``root``."""
+    raw_root = raw_root_of(root)
     for archive in archive_files(dataset, years=years, months=months):
         data = content[archive.server_path] if content else None
         if data is None:
@@ -64,11 +71,11 @@ def store(root, dataset, years, months=None, *, content=None):
                 continue
             data = source.read_bytes()
         write_archive(
-            root,
+            raw_root,
             archive=archive,
             response=DownloadResult(data, archive.url, None, None, len(data)),
         )
-    return build_series(root, dataset=dataset).version
+    return build_series(root, raw_root=raw_root, dataset=dataset).version
 
 
 def rows(report):
@@ -80,7 +87,9 @@ def rows(report):
 
 @pytest.fixture
 def root(tmp_path):
-    return init_store(tmp_path / "store").root
+    """The data root ``store/data``; its raw root is ``store/raw`` beside it."""
+    init_store(tmp_path / "store" / "raw")
+    return init_store(tmp_path / "store" / "data", kind="data").root
 
 
 @pytest.fixture

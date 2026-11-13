@@ -660,6 +660,10 @@ class StationListEntry:
     """
     One station of a provider station list (hydrological or meteorological).
 
+    A live search (`find_stations`) gives the rows of the providers' lists; a
+    search of the store gives the stations of the current station catalogs of
+    a data root (ADR-017), which hold the same fields except ``short_code``.
+
     Attributes
     ----------
     kind : {"hydro", "meteo"}
@@ -681,12 +685,13 @@ class StationListEntry:
         hydrological meaning; None for ČHMÚ.
     short_code : str or None
         Meteo only: third column of the IMGW list (short station number),
-        kept as text without surrounding whitespace; None for ČHMÚ.
+        kept as text without surrounding whitespace; None for ČHMÚ and for a
+        station of a catalog.
     latitude : float or None
-        Latitude (WGS84): for IMGW-PIB from the stored station catalog (None
-        for live lists, stations without a location or a store without a
-        catalog); for ČHMÚ as published in the station metadata, without
-        validation against the country border.
+        Latitude (WGS84): of a station of a catalog its location (None for a
+        station without one); of a live list, None for IMGW-PIB and for
+        ČHMÚ as published in the station metadata, without validation
+        against the country border.
     longitude : float or None
         Longitude (WGS84), as ``latitude``.
     provider : str, optional

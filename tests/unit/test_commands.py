@@ -40,7 +40,6 @@ from obserwator.store.types import (
     StorePlan,
     page_cursor,
 )
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     H2023,
     H2024,
@@ -382,11 +381,6 @@ def returning(monkeypatch, module, name, value):
     monkeypatch.setattr(module, name, fake)
 
 
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("commands") / "store").root
-
-
 @pytest.fixture
 def imgw():
     with respx.mock(assert_all_called=False) as router:
@@ -682,12 +676,12 @@ def test_validate_command_rejects_invalid_options_naming_the_option(
 
 
 def test_an_output_in_a_store_passes_validation_so_that_the_plan_can_list_the_conflict(
-    fixture_root,
+    fixture_raw_root,
 ):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
-    target = fixture_root / "x.csv"
+    target = fixture_raw_root / "x.csv"
 
     options = validate_command(
         "store export", options={"version": version, "output": target}
@@ -706,9 +700,11 @@ def test_an_output_in_a_store_passes_validation_so_that_the_plan_can_list_the_co
     assert not target.exists()
 
 
-def test_an_output_that_is_a_directory_is_rejected_offline(fixture_root, tmp_path):
+def test_an_output_that_is_a_directory_is_rejected_offline(
+    fixture_root, fixture_raw_root, tmp_path
+):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     for command, options in (
         ("store export", {"version": version, "output": tmp_path}),
@@ -728,12 +724,12 @@ def test_an_output_that_is_a_directory_is_rejected_offline(fixture_root, tmp_pat
         assert error.value.details["option"] == "output"
 
 
-def test_list_commands_page_after_counting_the_function_items(fixture_root):
-    every = tuple(store.iter_store(fixture_root))
+def test_list_commands_page_after_counting_the_function_items(fixture_raw_root):
+    every = tuple(store.iter_store(fixture_raw_root))
     assert len(every) > 3
 
     def scan(**paging):
-        return run_command("store scan", options={"root": fixture_root, **paging})
+        return run_command("store scan", options={"root": fixture_raw_root, **paging})
 
     first = scan(limit=2, cursor=page_cursor(1))
     assert first.result == every[1:3]
@@ -964,14 +960,15 @@ def test_cancelled_error_gives_cancelled_envelope_with_notices_before_it(monkeyp
 
 
 def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
-    tmp_path, fixture_root, monkeypatch
+    tmp_path, fixture_root, fixture_raw_root, monkeypatch
 ):
-    root = tmp_path / "store"
+    root, raw = tmp_path / "data", tmp_path / "raw"
     shutil.copytree(fixture_root, root)
+    shutil.copytree(fixture_raw_root, raw)
     use_fake_hydrolog(monkeypatch)
     store.build_analyses(root)  # the analyses the reading commands plan to read
     version = store.current_version(
-        root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        raw, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     point = {"latitude": 52.23, "longitude": 21.01}
     options = {
@@ -992,22 +989,22 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         "current hydro-states": {"main_only": True},
         "pmaxtp fetch": point,
         "pmaxtp url": point,
-        "pmaxtp check": {"root": root, **point},
-        "pmaxtp sync": {"root": root, **point},
-        "pmaxtp read": {"root": root, "ind_x": 751, "ind_y": 317},
-        "store init": {"root": tmp_path / "new"},
+        "pmaxtp check": {"root": raw, **point},
+        "pmaxtp sync": {"root": raw, **point},
+        "pmaxtp read": {"root": raw, "ind_x": 751, "ind_y": 317},
+        "store init": {"root": tmp_path / "new", "kind": "data"},
         "store info": {"root": root},
         "store scan": {"root": root, "limit": 1},
         "store check": {
-            "root": root,
+            "root": raw,
             "datasets": DAILY,
             "years": 2024,
             "plan": tmp_path / "plan.json",
         },
-        "store sync": {"root": root, "datasets": DAILY, "years": 2024},
-        "store catalog": {"root": root},
+        "store sync": {"root": raw, "datasets": DAILY, "years": 2024},
+        "store catalog": {"root": root, "raw_root": raw},
         "store export": {"version": version, "output": tmp_path / "archive.csv"},
-        "series build": {"root": root, "dataset": DAILY},
+        "series build": {"root": root, "raw_root": raw, "dataset": DAILY},
         "series select": {"root": root, "dataset": DAILY, "stations": RABA},
         "series read": {"root": root, "dataset": DAILY, "station": RABA},
         "series summary": {"root": root, "dataset": DAILY},
@@ -1104,15 +1101,15 @@ def test_check_of_datasets_download_plans_each_target_as_write_replace_or_confli
 
 
 def test_check_of_an_export_plans_its_one_file_as_write_replace_or_conflict(
-    tmp_path, fixture_root
+    tmp_path, fixture_root, fixture_raw_root
 ):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     new, existing, inside = (
         tmp_path / "new.csv",
         tmp_path / "old.csv",
-        fixture_root / "x.csv",
+        fixture_raw_root / "x.csv",
     )
     existing.write_text("old", encoding="utf-8")
 
@@ -1148,11 +1145,11 @@ def test_check_of_an_export_plans_its_one_file_as_write_replace_or_conflict(
 
 
 def test_check_of_datasets_download_into_the_store_says_what_it_holds(
-    tmp_path, fixture_root
+    tmp_path, fixture_raw_root
 ):
     held = check_command(
         "datasets download",
-        options={"dataset": DAILY, "years": 2024, "root": fixture_root},
+        options={"dataset": DAILY, "years": 2024, "root": fixture_raw_root},
     )
     fresh = check_command(
         "datasets download",
@@ -1167,13 +1164,13 @@ def test_check_of_datasets_download_into_the_store_says_what_it_holds(
 
 
 def test_check_of_store_sync_with_a_plan_returns_it_for_the_same_store(
-    tmp_path, fixture_root
+    tmp_path, fixture_raw_root
 ):
-    saved = StorePlan("obserwator-plan/1", fixture_root, FROZEN_AT, (), {}).to_json(
+    saved = StorePlan("obserwator-plan/1", fixture_raw_root, FROZEN_AT, (), {}).to_json(
         tmp_path / "plan.json"
     )
     plan = check_command(
-        "store sync", options={"root": fixture_root, "plan": saved}
+        "store sync", options={"root": fixture_raw_root, "plan": saved}
     ).result
     assert plan == StorePlan.from_json(saved)
     with pytest.raises(ObserwatorValidationError) as error:

@@ -138,13 +138,15 @@ async def test_find_stations_invalid_options_are_validation_errors(
 
 
 # --------------------------------------------------------------------------
-# find_stations, stored lists
+# find_stations, stored catalogs
 # --------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
 def fixture_store(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("fixture") / "store").root
+    """The data root of the ``complete`` fixture: an IMGW-PIB catalog only."""
+    base = tmp_path_factory.mktemp("fixture")
+    return build_fixture_store(base / "raw", data_root=base / "data").data.root
 
 
 async def test_find_stations_store_reads_catalog_coordinates_offline(fixture_store):
@@ -166,6 +168,16 @@ async def test_find_stations_store_reads_catalog_coordinates_offline(fixture_sto
     assert [s.kind for s in stations] == sorted(
         (s.kind for s in stations), key=("hydro", "meteo").index
     )
+    # The entry carries what the catalog feature knows; a catalog has no short code.
+    (raba,) = [s for s in stations if s.station_code == "149190310"]
+    assert (
+        raba.name,
+        raba.river,
+        raba.hydrographic_code,
+        raba.river_order,
+        raba.short_code,
+        raba.provider,
+    ) == ("Raba Górna", "Raba", "213", 12, None, "IMGW-PIB")
 
 
 def test_find_stations_store_filters_like_live(fixture_store):
@@ -178,10 +190,39 @@ def test_find_stations_store_filters_like_live(fixture_store):
     assert [(s.station_code, s.latitude) for s in stations] == [("149190312", None)]
 
 
-def test_find_stations_store_without_lists_is_store_error(tmp_path):
-    root = init_store(tmp_path / "store").root
-    with pytest.raises(ObserwatorStoreError, match="has no station list"):
+def test_find_stations_store_skips_a_provider_without_a_catalog_unless_named(
+    fixture_store,
+):
+    assert {s.provider for s in find_stations(source="store", root=fixture_store)} == {
+        "IMGW-PIB"
+    }
+    with pytest.raises(ObserwatorStoreError) as error:
+        find_stations(source="store", root=fixture_store, provider="CHMI")
+    assert error.value.code == "not_found"
+    assert "store catalog --provider CHMI" in error.value.hint
+
+
+def test_find_stations_store_reads_the_catalog_of_every_provider(fixture_root):
+    stations = find_stations(source="store", root=fixture_root)
+    chmi = find_stations(source="store", root=fixture_root, provider="CHMI")
+
+    assert {s.provider for s in stations} == {"IMGW-PIB", "CHMI"}
+    assert chmi == tuple(s for s in stations if s.provider == "CHMI")
+
+
+def test_find_stations_store_without_catalogs_is_not_found(tmp_path):
+    root = init_store(tmp_path / "data", kind="data").root
+    with pytest.raises(ObserwatorStoreError) as error:
         find_stations(source="store", root=root)
+    assert error.value.code == "not_found"
+    assert "store catalog" in error.value.hint
+
+
+def test_find_stations_store_refuses_a_raw_root(tmp_path):
+    root = init_store(tmp_path / "raw").root
+    with pytest.raises(ObserwatorStoreError) as error:
+        find_stations(source="store", root=root)
+    assert error.value.details == {"reason": "wrong_root", "kind": "data"}
 
 
 # --------------------------------------------------------------------------

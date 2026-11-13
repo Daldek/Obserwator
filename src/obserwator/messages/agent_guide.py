@@ -169,8 +169,8 @@ MESSAGES = {
         "po zgodzie użytkownika.",
     ),
     "flow_series_build": Text(
-        "the station series (`store sync` keeps raw data only).",
-        "szeregi stacji (`store sync` zapisuje tylko surowe dane).",
+        "the station series in the data root.",
+        "szeregi stacji w katalogu danych.",
     ),
     "flow_precipitation_summary": Text(
         "the station is missing → repeat steps 3–6 with "
@@ -231,12 +231,16 @@ MESSAGES = {
         "`--output` wypisuje swoje linie danych w obu trybach.",
     ),
     "flags_environment": Text(
-        "- Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` "
-        "(CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help, of "
-        "the progress lines and the default `--lang` (`pl`, `en`).",
-        "- Środowisko: `OBSERWATOR_ROOT` — domyślne `--root`, inaczej "
-        "`<data_dir>/obserwator` (CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — język pomocy "
-        "CLI, linii postępu i domyślny `--lang` (`pl`, `en`).",
+        "- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else "
+        "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default "
+        "`--raw-root` and `--root` of {raw}, else `<data_dir>/obserwator-raw` (CLI, "
+        "MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help, of the "
+        "progress lines and the default `--lang` (`pl`, `en`).",
+        "- Środowisko: `OBSERWATOR_ROOT` — katalog danych, domyślne `--root`, inaczej "
+        "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — katalog surowy, domyślne "
+        "`--raw-root` i `--root` {raw}, inaczej `<data_dir>/obserwator-raw` "
+        "(CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — język pomocy CLI, linii "
+        "postępu i domyślny `--lang` (`pl`, `en`).",
     ),
     "flags_root_when": Text(
         "{command} — only with {conditions}",

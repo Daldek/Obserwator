@@ -1,4 +1,4 @@
-"""Public offline fixture store builder (obserwator.testing)."""
+"""Public offline fixture roots builder (obserwator.testing)."""
 
 import hashlib
 import json
@@ -9,7 +9,11 @@ from typing import Any
 
 import pytest
 
-from obserwator.exceptions import ObserwatorStoreError, ObserwatorValidationError
+from obserwator.exceptions import (
+    ObserwatorStoreConflictError,
+    ObserwatorStoreError,
+    ObserwatorValidationError,
+)
 from obserwator.store import catalog, check_series, series, writer
 from obserwator.testing import build_fixture_store, fixture_files
 
@@ -44,9 +48,22 @@ def tree(root: Path) -> dict[str, str]:
 
 
 def test_complete_store_holds_recorded_versions_series_and_catalog(tmp_path):
-    handle = build_fixture_store(tmp_path / "store")
-    root = handle.root
-    assert handle.schema == "obserwator-store/1"
+    roots = build_fixture_store(tmp_path / "raw", data_root=tmp_path / "data")
+    root, data = roots.raw.root, roots.data.root
+    assert (roots.raw.kind, roots.raw.schema) == ("raw", "obserwator-store/1")
+    assert (roots.data.kind, roots.data.schema) == ("data", "obserwator-data/1")
+    # Each root holds the trees of its kind only (ADR-017).
+    assert {path.name for path in root.iterdir() if path.is_dir()} <= {
+        "archives",
+        "pmaxtp",
+        ".incoming",
+    }
+    assert {path.name for path in data.iterdir() if path.is_dir()} <= {
+        "series",
+        "stations",
+        "analyses",
+        ".incoming",
+    }
 
     hydro = sidecars(root, HYDRO_SLOT, "codz_2024.zip")
     assert [
@@ -66,20 +83,20 @@ def test_complete_store_holds_recorded_versions_series_and_catalog(tmp_path):
         ).hexdigest()
     )
 
-    hydro_series = sidecars(root, "series/versions/hydro_daily", "series.json")
+    hydro_series = sidecars(data, "series/versions/hydro_daily", "series.json")
     inputs = [
         {source["sha256"] for source in meta["extra"]["source_files"]}
         for meta in hydro_series.values()
     ]
     assert inputs == [{old["sha256"]}, {newer["sha256"]}]
-    assert check_series(handle, dataset="pl.imgw.hydro_daily").series_state == {
-        "hydro_daily": "current"
-    }
-    assert check_series(handle, dataset="pl.imgw.meteo_precip_daily").series_state == {
-        "meteo_precip_daily": "outdated"
-    }
+    hydro = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
+    assert hydro.series_state == {"hydro_daily": "current"}
+    precip = check_series(
+        roots.data, raw_root=roots.raw, dataset="pl.imgw.meteo_precip_daily"
+    )
+    assert precip.series_state == {"meteo_precip_daily": "outdated"}
 
-    (geojson,) = (root / "stations" / "versions").glob("*/stations.geojson")
+    (geojson,) = (data / "stations" / "versions").glob("*/stations.geojson")
     features = {
         f["properties"]["station_code"]: f
         for f in json.loads(geojson.read_text(encoding="utf-8"))["features"]
@@ -112,12 +129,14 @@ def test_fresh_builds_are_identical_under_frozen_clock(tmp_path, monkeypatch):
 
     for module in (writer, series, catalog):
         monkeypatch.setattr(module, "datetime", Frozen)
-    first = tree(build_fixture_store(tmp_path / "a").root)
-    second = tree(build_fixture_store(tmp_path / "b").root)
-    assert first == second
+    first = build_fixture_store(tmp_path / "a", data_root=tmp_path / "a-data")
+    second = build_fixture_store(tmp_path / "b", data_root=tmp_path / "b-data")
+    raw, data = tree(first.raw.root), tree(first.data.root)
+    assert (raw, data) == (tree(second.raw.root), tree(second.data.root))
     # 9 archives (5 measurement files, 2 station lists, 2 station metadata of the
-    # current-data API), 3 series, the catalog.
-    assert sum(name.endswith(".meta.json") for name in first) == 13
+    # current-data API) in the raw root; 3 series and the catalog in the data root.
+    assert sum(name.endswith(".meta.json") for name in raw) == 9
+    assert sum(name.endswith(".meta.json") for name in data) == 4
 
 
 def test_local_reference_data_does_not_leak_into_fixture_catalog(
@@ -128,8 +147,8 @@ def test_local_reference_data_does_not_leak_into_fixture_catalog(
         "station_code,latitude,longitude\n149190312,50.0512,19.9512\n",
         encoding="utf-8",
     )
-    root = build_fixture_store(tmp_path / "store").root
-    (geojson,) = (root / "stations" / "versions").glob("*/stations.geojson")
+    data = build_fixture_store(tmp_path / "raw", data_root=tmp_path / "data").data
+    (geojson,) = (data.root / "stations" / "versions").glob("*/stations.geojson")
     features = {
         f["id"]: f for f in json.loads(geojson.read_text(encoding="utf-8"))["features"]
     }
@@ -144,13 +163,15 @@ def test_local_reference_data_does_not_leak_into_fixture_catalog(
 
 
 def test_corrupt_variant_truncates_old_archive_sidecar(tmp_path):
-    handle = build_fixture_store(tmp_path / "store", variant="corrupt")
+    roots = build_fixture_store(
+        tmp_path / "raw", data_root=tmp_path / "data", variant="corrupt"
+    )
     broken = (
-        handle.root / HYDRO_SLOT / "2026-10-17_688646cd" / "codz_2024.zip.meta.json"
+        roots.raw.root / HYDRO_SLOT / "2026-10-17_688646cd" / "codz_2024.zip.meta.json"
     )
     with pytest.raises(json.JSONDecodeError):
         json.loads(broken.read_text(encoding="utf-8"))
-    plan = check_series(handle, dataset="pl.imgw.hydro_daily")
+    plan = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
     assert plan.series_state == {"hydro_daily": "outdated"}
     assert any(
         action.status == "check_failed" and "2026-10-17_688646cd" in action.detail
@@ -159,8 +180,11 @@ def test_corrupt_variant_truncates_old_archive_sidecar(tmp_path):
 
 
 def test_unknown_schema_variant_adds_unparsed_series_version(tmp_path):
-    handle = build_fixture_store(tmp_path / "store", variant="unknown_schema")
-    (unknown,) = (handle.root / "series/versions/hydro_daily").glob("2026-10-20_*")
+    roots = build_fixture_store(
+        tmp_path / "raw", data_root=tmp_path / "data", variant="unknown_schema"
+    )
+    versions = roots.data.root / "series/versions/hydro_daily"
+    (unknown,) = versions.glob("2026-10-20_*")
     meta = json.loads((unknown / "series.json.meta.json").read_text(encoding="utf-8"))
     assert meta["schema"] == "obserwator-meta/2"
     assert (
@@ -171,19 +195,23 @@ def test_unknown_schema_variant_adds_unparsed_series_version(tmp_path):
         meta["sha256"]
         == hashlib.sha256((unknown / "series.json").read_bytes()).hexdigest()
     )
-    assert check_series(handle, dataset="pl.imgw.hydro_daily").series_state == {
-        "hydro_daily": "current"
-    }
+    plan = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
+    assert plan.series_state == {"hydro_daily": "current"}
 
 
-def test_rejects_unknown_variant_and_non_empty_root(tmp_path):
+def test_rejects_unknown_variant_and_non_empty_or_nested_roots(tmp_path):
     with pytest.raises(ObserwatorValidationError, match="Unknown fixture variant"):
-        build_fixture_store(tmp_path / "x", variant="partial")
-    assert not (tmp_path / "x").exists()
+        build_fixture_store(tmp_path / "x", data_root=tmp_path / "y", variant="partial")
+    assert not (tmp_path / "x").exists() and not (tmp_path / "y").exists()
     (tmp_path / "busy").mkdir()
     (tmp_path / "busy" / "file.txt").write_text("x")
-    with pytest.raises(ObserwatorStoreError, match="needs an empty directory"):
-        build_fixture_store(tmp_path / "busy")
+    for raw, data in (("busy", "free"), ("free", "busy")):
+        with pytest.raises(ObserwatorStoreError, match="needs an empty directory"):
+            build_fixture_store(tmp_path / raw, data_root=tmp_path / data)
+        assert not (tmp_path / "free").exists()
+    with pytest.raises(ObserwatorStoreConflictError) as error:
+        build_fixture_store(tmp_path / "outer", data_root=tmp_path / "outer" / "data")
+    assert error.value.details["reason"] == "nested_store"
 
 
 def test_packaged_fixtures_match_test_fixture_tree():

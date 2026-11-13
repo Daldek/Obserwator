@@ -94,6 +94,7 @@ SPEC_FUNCTIONS = (
 SPEC_TYPES = (
     "PathArg",
     "RootArg",
+    "RootKind",
     "Progress",
     "Notice",
     "ProgressHook",

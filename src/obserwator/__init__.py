@@ -185,6 +185,7 @@ from obserwator.store import (
     ProgressHook,
     ProviderAnalyses,
     RootArg,
+    RootKind,
     SeriesIndex,
     SeriesReport,
     StationCoverage,
@@ -256,7 +257,7 @@ from obserwator.urls import (
 __all__ = [
     # Version
     "__version__",
-    # The default store root without reading the store (DEV-19.2)
+    # The default root of a kind, data or raw, without reading it (DEV-19.2, ADR-017)
     "store_root",
     "StoreRoot",
     # Exceptions
@@ -350,6 +351,7 @@ __all__ = [
     # Store types
     "PathArg",
     "RootArg",
+    "RootKind",
     "Progress",
     "Notice",
     "ProgressHook",

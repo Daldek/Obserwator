@@ -246,12 +246,23 @@ def test_config_show_json_gives_every_key_its_source_and_the_store_size(
         "exists": True,
         "size_bytes": 107,
     }
+    assert report["raw_store"] == {
+        "root": str(Settings().data_dir / "obserwator-raw"),
+        "source": "default",
+        "name": None,
+        "exists": False,
+        "size_bytes": None,
+    }
 
 
-def test_config_show_without_json_is_text_and_a_missing_store_has_no_size(monkeypatch):
+def test_config_show_without_json_is_text_and_a_missing_store_has_no_size(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv(
         "OBSERWATOR_LANG", "en"
     )  # help and text follow the CLI language at import
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "data-root"))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw-root"))
 
     result = RUNNER.invoke(cli_main.app, ["config", "show"])
 
@@ -260,4 +271,10 @@ def test_config_show_without_json_is_text_and_a_missing_store_has_no_size(monkey
         "data_dir = " in result.stdout
         and "OBSERWATOR_STORE_WRITE_TOKEN" in result.stdout
     )
-    assert environment_report()["store"]["size_bytes"] is None
+    roots = [line for line in result.stdout.splitlines() if not line.startswith(" ")]
+    (data_line,) = (line for line in roots if str(tmp_path / "data-root") in line)
+    (raw_line,) = (line for line in roots if str(tmp_path / "raw-root") in line)
+    assert "OBSERWATOR_ROOT" in data_line and "OBSERWATOR_RAW_ROOT" in raw_line
+    report = environment_report()
+    assert report["store"]["size_bytes"] is None
+    assert report["raw_store"]["size_bytes"] is None

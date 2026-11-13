@@ -8,19 +8,21 @@ Marked ``live``; the gate leaves them out and ``-m live`` runs them::
 A small selection only: one hydrological station (``0-203-1-001000``,
 Špindlerův Mlýn) with the years 2024-2026 (2026 is not published yet) and one
 climate station (``0-203-0-11799``, four small CSV files). The run reuses the
-machinery of ``test_interfaces_live``: a fresh temporary store restored from
-snapshots before every interface, ``run_command``, the installed ``obserwator`` and
+machinery of ``test_interfaces_live``: fresh temporary raw and data roots
+(ADR-017) restored from snapshots before every interface, ``run_command``, the
+installed ``obserwator`` and
 the REST API of ``obserwator server`` (writes enabled by a test token), answers
 compared after the same tolerance rules, and ``obserwator mcp`` for the reads that
 ask the source (not for the hydro check, whose listing weighs 5.3 MB).
 
 The seed reads each server listing once: the hydro check (1 listing) and the
-meteo check (2 listings) are saved as plans, the store is synchronized from
+meteo check (2 listings) are saved as plans, the raw root is synchronized from
 these plans (HEAD and GET of each file, no listing), and the ČHMÚ catalog is
-built from the live metadata. The cases then check (the hydro listing once per
-interface), synchronize an empty store from the hydro plan and from the meteo
-listings, rebuild the catalog, read series, export, search stations live and in
-the store and download flat files (2026 → ``not_published``).
+built in the data root from the live metadata. The cases then check (the hydro
+listing once per interface), synchronize an empty raw root from the hydro plan
+and from the meteo listings, rebuild the catalog, read series, export, search
+stations live and in the data root and download flat files (2026 →
+``not_published``).
 
 Every httpx request of the run — Python in this process, the CLI, the REST
 server and ``obserwator mcp`` in theirs (a ``sitecustomize`` on ``PYTHONPATH``) — is
@@ -60,7 +62,6 @@ from tests.contract.support import obserwator_executable
 from tests.live.test_interfaces_live import (
     CALL_TIMEOUT,
     DATA_DIR,
-    ROOT,
     ROOTED,
     TOKEN,
     WORK,
@@ -93,7 +94,7 @@ HYDRO_SELECTION = {
 ARCHIVE_SLOT = f"archive:{HYDRO}:H_{STATION}_DQ_{PUBLISHED[-1]}.json"
 METEO_SLOT = f"archive:{METEO}:precipitation/dly-{METEO_STATION}-SRA.csv"
 PRECIPITATION = "meteorology/climate/historical_csv/data/daily/precipitation/"
-# Placeholders resolved after seeding (versions relative to the root).
+# Placeholders resolved after seeding (versions relative to the root of their kind).
 ARCHIVE, METEO_ARCHIVE, SERIES = "<archive>", "<meteo>", "<series>"
 # Environment variable naming the request log of the subprocesses.
 JOURNAL_ENV = "LIVE_HTTP_JOURNAL"
@@ -409,15 +410,16 @@ class ChmiLive(Live):
         self.answers: dict[str, Any] = {}
 
     def seed(self) -> None:
-        """Snapshots of the store, each listing read once."""
-        root = self.root
+        """Snapshots of the two roots, each listing read once."""
+        raw, data = self.roots.raw, self.roots.data
         mark = self.journal.mark()
         with self.local():
-            init_store(root)
-            self.save("empty", root)
+            init_store(raw)
+            init_store(data, kind="data")
+            self.save("empty")
             hydro = _patiently(
                 lambda: check_store(
-                    root,
+                    raw,
                     datasets=[HYDRO],
                     stations=[STATION],
                     years=YEARS,
@@ -430,7 +432,7 @@ class ChmiLive(Live):
             ], hydro
             meteo = _patiently(
                 lambda: check_store(
-                    root,
+                    raw,
                     datasets=[METEO],
                     stations=[METEO_STATION],
                     plan=self.work / METEO_PLAN,
@@ -439,18 +441,19 @@ class ChmiLive(Live):
             assert [item.status for item in meteo.items] == ["missing"] * 4, meteo
             self.plans = (hydro, meteo)
             for plan in (hydro, meteo):
-                synced = _patiently(functools.partial(sync_store, root, plan=plan))
+                synced = _patiently(functools.partial(sync_store, raw, plan=plan))
                 # The unpublished 2026 file of the hydro plan stays "unchanged".
                 statuses = {item.status for item in synced.items}
                 assert statuses <= {"new", "unchanged"}, synced
             # A sync writes raw data only (ADR-015): the series are built on their
-            # own, and the catalog reads the station sources a sync stores.
+            # own in the data root, and the catalog reads the station sources a
+            # sync stores in the raw root (ADR-017).
             for dataset in (HYDRO, METEO):
-                built = build_series(root, dataset=dataset)
+                built = build_series(data, raw_root=raw, dataset=dataset)
                 assert built.status == "new", built
             sources = _patiently(
                 lambda: sync_store(
-                    root,
+                    raw,
                     datasets=[
                         "cz.chmi.hydro_stations",
                         "cz.chmi.meteo_stations",
@@ -460,11 +463,10 @@ class ChmiLive(Live):
                 )
             )
             assert {item.status for item in sources.items} == {"new"}, sources
-            catalog = build_catalog(root, provider="CHMI")
+            catalog = build_catalog(data, raw_root=raw, provider="CHMI")
             assert (catalog.status, catalog.provider) == ("new", "CHMI"), catalog
-            self.save("full", root)
+            self.save("full")
             self.values = {
-                ROOT: str(root),
                 ARCHIVE: self.version(ARCHIVE_SLOT),
                 METEO_ARCHIVE: self.version(METEO_SLOT),
                 SERIES: self.version(f"series:{HYDRO}"),
@@ -472,9 +474,10 @@ class ChmiLive(Live):
         self.seeded = self.journal.since(mark)
 
     def version(self, slot: str) -> str:
-        entry = current_version(self.root, slot=slot)
+        root = self.roots.of_slot(slot)
+        entry = current_version(root, slot=slot)
         assert entry is not None and entry.version is not None, slot
-        return entry.version.relative_to(self.root).as_posix()
+        return entry.version.relative_to(root).as_posix()
 
     def call(self, interface: str, command: str, options: Mapping[str, object]) -> Any:
         """The answer of one interface; its ČHMÚ requests are kept per case."""
@@ -555,7 +558,7 @@ class ChmiLive(Live):
 
 @pytest.fixture(scope="module")
 def chmi(tmp_path_factory) -> Iterator[ChmiLive]:
-    """Fresh temporary store seeded from ČHMÚ, ``obserwator server`` and the request log."""
+    """Fresh temporary roots seeded from ČHMÚ, ``obserwator server`` and the request log."""
     started = datetime.now(UTC)
     base = tmp_path_factory.mktemp("chmi-live")
     work = base / "praca"
@@ -576,7 +579,8 @@ def chmi(tmp_path_factory) -> Iterator[ChmiLive]:
         JOURNAL_ENV: str(journal.path),
     }
     served = env | {
-        "OBSERWATOR_ROOT": str(base / "magazyn"),
+        "OBSERWATOR_ROOT": str(base / "dane"),
+        "OBSERWATOR_RAW_ROOT": str(base / "surowe"),
         "OBSERWATOR_STORE_WRITES_ENABLED": "true",
         "OBSERWATOR_STORE_WRITE_TOKEN": TOKEN,
     }
@@ -652,7 +656,8 @@ def test_every_chmi_case_answers_alike_live_in_python_obserwator_and_rest(
             continue
         if answer.envelope is not None:
             rooted = case.store is not None and command in ROOTED
-            document = answer.envelope.to_json(root=chmi.root if rooted else None)
+            root = chmi.root_of(command, case.options) if rooted else None
+            document = answer.envelope.to_json(root=root)
             if not expected(document):
                 found[f"{index}:oczekiwane"] = [json.dumps(document)[:3000]]
     assert found == {}
@@ -671,7 +676,7 @@ def test_listing_rows_match_the_http_headers_of_the_files(chmi):
         item for plan in chmi.plans for item in plan.items if item.status == "missing"
     ]
     assert len(listed) == 6
-    full = chmi.seeds / "full"
+    full = chmi.seeds / "full" / chmi.roots.raw.name  # the archives: the raw root
     with httpx.Client(headers=_IDENTIFY, timeout=60, trust_env=False) as client:
         directory = client.head(f"{BASE_URL}{PRECIPITATION}")
         assert directory.status_code == 200
@@ -696,13 +701,15 @@ def test_listing_rows_match_the_http_headers_of_the_files(chmi):
             )
 
 
-def test_seeded_store_scans_clean_with_the_chmi_license_everywhere(chmi):
+def test_seeded_roots_scan_clean_with_the_chmi_license_everywhere(chmi):
     full = chmi.seeds / "full"
-    entries = list(iter_store(full))
+    roots = [full / chmi.roots.raw.name, full / chmi.roots.data.name]
+    entries = [entry for root in roots for entry in iter_store(root)]
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
     assert {entry.provider for entry in entries} == {"CHMI"}
     sidecars = sorted(full.rglob("*.meta.json"))
-    # files, station lists, station metadata (meta1, meta3, meteo meta1), series, catalog
+    # Raw: files, station lists, station metadata (meta1, meta3, meteo meta1);
+    # data: the series and the catalog.
     assert len(sidecars) == 6 + 2 + 3 + 2 + 1
     for sidecar in sidecars:
         meta = json.loads(sidecar.read_text(encoding="utf-8"))

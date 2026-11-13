@@ -31,7 +31,6 @@ from obserwator.datasets import archive_files
 from obserwator.fetch import DownloadResult
 from obserwator.store import build_catalog, build_series, write_archive
 from obserwator.store.export import _number
-from obserwator.testing import build_fixture_store
 from tests.contract.support import trailing_lines
 from tests.unit.test_store_catalog import sync_sources
 
@@ -134,15 +133,11 @@ def cell(value):
 
 
 @pytest.fixture(scope="module")
-def pl_cz(tmp_path_factory):
-    store = tmp_path_factory.mktemp("exports") / "store"
-    return build_fixture_store(store, variant="complete_pl_cz").root
-
-
-@pytest.fixture(scope="module")
 def other(tmp_path_factory):
-    """Half-year, monthly and climate series of the fixture archives."""
-    root = init_store(tmp_path_factory.mktemp("exports_other") / "store").root
+    """Half-year, monthly and climate series of the fixture archives (a data root)."""
+    base = tmp_path_factory.mktemp("exports_other")
+    raw_root = init_store(base / "raw").root
+    root = init_store(base / "data", kind="data").root
     for dataset, years, months in (
         ("pl.imgw.hydro_semiannual", [2024], None),
         ("pl.imgw.hydro_monthly", [2024], None),
@@ -153,14 +148,14 @@ def other(tmp_path_factory):
             if source.exists():
                 data = source.read_bytes()
                 response = DownloadResult(data, archive.url, None, None, len(data))
-                write_archive(root, archive=archive, response=response)
-        build_series(root, dataset=dataset)
+                write_archive(raw_root, archive=archive, response=response)
+        build_series(root, raw_root=raw_root, dataset=dataset)
     return root
 
 
 @pytest.fixture
-def stores(pl_cz, other):
-    return {"pl_cz": pl_cz, "other": other}
+def stores(fixture_root, other):
+    return {"pl_cz": fixture_root, "other": other}
 
 
 # --------------------------------------------------------------------------
@@ -227,8 +222,13 @@ def test_series_json_and_parquet_hold_the_values_and_flags_of_the_csv(
     assert {key: json.loads(metadata[key]) for key in lines.fields()} == lines.fields()
 
 
-def test_parquet_needs_output_in_the_function_and_the_catalog(pl_cz, tmp_path):
-    options = {"root": pl_cz, "dataset": DAILY, "station": RABA, "format": "parquet"}
+def test_parquet_needs_output_in_the_function_and_the_catalog(fixture_root, tmp_path):
+    options = {
+        "root": fixture_root,
+        "dataset": DAILY,
+        "station": RABA,
+        "format": "parquet",
+    }
 
     with pytest.raises(ObserwatorValidationError) as function:
         export_series(**options)
@@ -240,9 +240,16 @@ def test_parquet_needs_output_in_the_function_and_the_catalog(pl_cz, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_json_lines_equal_the_file_and_follow_the_chosen_variables(pl_cz, tmp_path):
+def test_json_lines_equal_the_file_and_follow_the_chosen_variables(
+    fixture_root, tmp_path
+):
     progress = []
-    options = {"root": pl_cz, "dataset": DAILY, "station": RABA, "format": "json"}
+    options = {
+        "root": fixture_root,
+        "dataset": DAILY,
+        "station": RABA,
+        "format": "json",
+    }
     lines = text(export_series(**options, variables=["Q", "H"]))
 
     report = export_series(
@@ -265,12 +272,14 @@ def test_json_lines_equal_the_file_and_follow_the_chosen_variables(pl_cz, tmp_pa
 # --------------------------------------------------------------------------
 
 
-def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(pl_cz):
-    document = json.loads(text(export_stations(pl_cz)))
+def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
+    fixture_root,
+):
+    document = json.loads(text(export_stations(fixture_root)))
 
     assert rfc7946_problems(document) == []
     assert schema_errors(document, "obserwator-stations-export-1") == []
-    stations = read_catalog(root=pl_cz)
+    stations = read_catalog(root=fixture_root)
     assert [(f["properties"]["provider"], f["id"]) for f in document["features"]] == [
         (station.provider, station.station_code) for station in stations
     ]
@@ -297,8 +306,8 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(p
     ] == [
         (
             provider,
-            current_version(pl_cz, slot=f"catalog:{key}")
-            .version.parent.relative_to(pl_cz)
+            current_version(fixture_root, slot=f"catalog:{key}")
+            .version.parent.relative_to(fixture_root)
             .as_posix(),
             license_id,
             terms,
@@ -314,15 +323,17 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(p
     ]
 
 
-def test_the_series_of_a_station_are_read_from_the_series_indexes(pl_cz):
-    document = json.loads(text(export_stations(pl_cz)))
+def test_the_series_of_a_station_are_read_from_the_series_indexes(fixture_root):
+    document = json.loads(text(export_stations(fixture_root)))
 
     expected: dict[str, dict[str, dict[str, object]]] = {}
     for entry in document["series"]:
-        version = current_version(pl_cz, slot=f"series:{entry['dataset']}").version
-        assert entry["version"] == version.parent.relative_to(pl_cz).as_posix()
+        version = current_version(
+            fixture_root, slot=f"series:{entry['dataset']}"
+        ).version
+        assert entry["version"] == version.parent.relative_to(fixture_root).as_posix()
         names = list(get_dataset(entry["dataset"]).variables)
-        for item in summarize_series(root=pl_cz, dataset=entry["dataset"]):
+        for item in summarize_series(root=fixture_root, dataset=entry["dataset"]):
             held = expected.setdefault(item.station_code, {}).setdefault(
                 entry["dataset"], {"first": None, "last": None, "variables": []}
             )
@@ -352,9 +363,11 @@ def test_the_series_of_a_station_are_read_from_the_series_indexes(pl_cz):
     assert raba["properties"]["series"][DAILY]["variables"] == ["H", "Q", "T"]
 
 
-def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(pl_cz):
-    document = json.loads(text(export_stations(pl_cz)))
-    rows = table(export_stations(pl_cz, format="csv"))
+def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
+    fixture_root,
+):
+    document = json.loads(text(export_stations(fixture_root)))
+    rows = table(export_stations(fixture_root, format="csv"))
 
     assert list(rows[0])[:4] == ["station_code", "name", "kind", "provider"]
     assert list(rows[0])[-7:] == [
@@ -390,12 +403,14 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(pl_cz):
         assert not any(row["attribution_source"] for row in block[1:])
 
 
-def test_kind_provider_and_series_narrow_what_is_read(pl_cz):
-    hydro = json.loads(text(export_stations(pl_cz, kind="hydro")))
-    chmi = json.loads(text(export_stations(pl_cz, provider="cz.chmi", series=False)))
+def test_kind_provider_and_series_narrow_what_is_read(fixture_root):
+    hydro = json.loads(text(export_stations(fixture_root, kind="hydro")))
+    chmi = json.loads(
+        text(export_stations(fixture_root, provider="cz.chmi", series=False))
+    )
     header = next(
         csv.reader(
-            io.StringIO(text(export_stations(pl_cz, series=False, format="csv")))
+            io.StringIO(text(export_stations(fixture_root, series=False, format="csv")))
         )
     )
 
@@ -414,13 +429,14 @@ def test_kind_provider_and_series_narrow_what_is_read(pl_cz):
 def test_a_location_of_the_hydro_imgw_pl_map_adds_its_lines(
     tmp_path, isolated_reference_dir
 ):
-    store = init_store(tmp_path / "store")
+    raw_root = init_store(tmp_path / "raw")
+    store = init_store(tmp_path / "data", kind="data")
     (isolated_reference_dir / "hydro_stations_locations.csv").write_text(
         "station_code,latitude,longitude\n149190312,50.0512,19.9512\n", encoding="utf-8"
     )
     with respx.mock(assert_all_called=False) as router:
-        sync_sources(store, router)
-        build_catalog(store)
+        sync_sources(raw_root, router)
+        build_catalog(store, raw_root=raw_root.root)
 
     document = json.loads(text(export_stations(store, series=False)))
     envelope = run_command("stations export", options={"root": store.root})
@@ -436,9 +452,9 @@ def test_a_location_of_the_hydro_imgw_pl_map_adds_its_lines(
 
 
 def test_the_file_equals_the_lines_and_the_default_root_is_the_store_root(
-    pl_cz, tmp_path, monkeypatch
+    fixture_root, tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(pl_cz))
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(fixture_root))
     progress, notices = [], []
     lines = text(export_stations(format="csv"))
 
@@ -450,14 +466,16 @@ def test_the_file_equals_the_lines_and_the_default_root_is_the_store_root(
     )
 
     assert report.output.read_bytes() == lines.encode("utf-8")
-    stations = len(read_catalog(root=pl_cz))
+    stations = len(read_catalog(root=fixture_root))
     assert (progress[-1].current, progress[-1].total) == (stations, stations)
     assert [notice.code for notice in notices] == ["license_terms", "license_terms"]
     with pytest.raises(ObserwatorError) as conflict:
-        export_stations(pl_cz, output=report.output)
+        export_stations(fixture_root, output=report.output)
     assert conflict.value.code == "conflict"
     with pytest.raises(ObserwatorCancelledError):
-        export_stations(pl_cz, output=report.output, force=True, cancel=lambda: True)
+        export_stations(
+            fixture_root, output=report.output, force=True, cancel=lambda: True
+        )
     assert report.output.read_bytes() == lines.encode("utf-8")
 
 
@@ -470,14 +488,14 @@ def test_the_file_equals_the_lines_and_the_default_root_is_the_store_root(
         ({"force": True}, "output"),
     ],
 )
-def test_wrong_options_are_refused_before_reading(pl_cz, options, option):
+def test_wrong_options_are_refused_before_reading(fixture_root, options, option):
     with pytest.raises(ObserwatorValidationError) as error:
-        export_stations(pl_cz, **options)
+        export_stations(fixture_root, **options)
     assert error.value.details["option"] == option
 
 
 def test_a_store_without_a_catalog_is_not_found(tmp_path):
-    root = init_store(tmp_path / "store").root
+    root = init_store(tmp_path / "store", kind="data").root
 
     for provider in (None, "CHMI"):
         with pytest.raises(ObserwatorStoreError) as error:

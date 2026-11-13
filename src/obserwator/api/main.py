@@ -68,8 +68,12 @@ API of the public data of IMGW-PIB and ČHMÚ, generated from the Obserwator com
 
 By default the data is NOT kept on the server: the API gives direct links to the
 IMGW-PIB and ČHMÚ servers and reads the current data live. The store commands work
-only on the store the administrator names in `OBSERWATOR_ROOT` (without it 503
-`store_unavailable`). Writing (POST without `?check=true`) is off by default (403
+only on the roots the administrator names: `OBSERWATOR_RAW_ROOT`, the raw root of the
+downloaded sources (`store check|sync|export`, `pmaxtp check|sync|read`), and
+`OBSERWATOR_ROOT`, the data root of what is built from them (series, station
+catalogs, analyses, `store info|scan`); `series build` and `store catalog` read the
+raw root and write the data root. A command whose root is not configured answers 503
+`store_unavailable`. Writing (POST without `?check=true`) is off by default (403
 `forbidden`): it needs `OBSERWATOR_STORE_WRITES_ENABLED=true`, `OBSERWATOR_STORE_WRITE_TOKEN`
 and the header `X-API-Key`; `?check=true` returns the plan `obserwator-plan/1` without
 writing and without a token.

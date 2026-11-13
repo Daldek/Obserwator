@@ -107,6 +107,36 @@ MESSAGES = {
         "Utwórz magazyn: obserwator store init --root {path}, albo podaj --root "
         "istniejącego magazynu",
     ),
+    "hint_no_marker_data": Text(
+        "Run obserwator store init --kind data with the same --root: it verifies the "
+        "layout and writes the marker",
+        "Uruchom obserwator store init --kind data z tym samym --root: sprawdzi układ i "
+        "zapisze znacznik",
+    ),
+    "hint_missing_raw_root": Text(
+        "Fill the raw root with obserwator store sync --root {path} (obserwator store "
+        "init --root {path} creates it empty), or give the --root (--raw-root of a "
+        "build) of an existing raw root",
+        "Wypełnij katalog surowy: obserwator store sync --root {path} (pusty tworzy "
+        "obserwator store init --root {path}) albo podaj --root (--raw-root budowania) "
+        "istniejącego katalogu surowego",
+    ),
+    "hint_missing_data_root": Text(
+        "Create the data root with obserwator store init --kind data --root {path} "
+        "(series build and store catalog create it too), or give --root of an "
+        "existing data root",
+        "Utwórz katalog danych: obserwator store init --kind data --root {path} "
+        "(tworzą go też series build i store catalog) albo podaj --root istniejącego "
+        "katalogu danych",
+    ),
+    "hint_wrong_root": Text(
+        "Give a root of the right kind: --root, and --raw-root for the raw root that "
+        "series build and store catalog read; a store holding both kinds is split once "
+        '(USAGE, "Splitting a store")',
+        "Podaj katalog właściwego rodzaju: --root oraz --raw-root dla katalogu surowego, "
+        "który czytają series build i store catalog; magazyn z obydwoma rodzajami "
+        'rozdziela się raz (USAGE, "Splitting a store")',
+    ),
     "hint_writes_disabled": Text(
         "Call with check: true for the plan; a write needs the server started with "
         "obserwator mcp --allow-writes",

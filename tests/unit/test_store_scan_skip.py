@@ -36,15 +36,19 @@ def skipped(entry):
 
 
 @pytest.fixture(scope="module")
-def store(tmp_path_factory):
-    """Versions of every kind of both providers, an observation register and a PMAXTP cell."""
-    root = build_fixture_store(
-        tmp_path_factory.mktemp("skip") / "store", variant="complete_pl_cz"
-    ).root
+def roots(tmp_path_factory):
+    """
+    Versions of every kind of both providers, an observation register and a PMAXTP
+    cell: the raw root and the data root, in that order.
+    """
+    base = tmp_path_factory.mktemp("skip")
+    fixture = build_fixture_store(
+        base / "raw", data_root=base / "data", variant="complete_pl_cz"
+    )
     with respx.mock(assert_all_called=False) as router:
         record_catalog_sources(router)
-        sync_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01)
-    return root
+        sync_pmaxtp(fixture.raw, method="POT", latitude=52.23, longitude=21.01)
+    return fixture.raw.root, fixture.data.root
 
 
 class Seen:
@@ -78,49 +82,59 @@ def spy(monkeypatch):
 
 
 def test_a_scan_gives_the_known_versions_back_without_listing_or_reading_them(
-    store, spy
+    roots, spy
 ):
-    full = list(iter_store(store))
-    known = known_versions(store, full)
-    assert {entry.kind for entry in full if entry.meta} == {
+    scans = {root: list(iter_store(root)) for root in roots}
+    versions = [entry for full in scans.values() for entry in full if entry.meta]
+    assert {entry.kind for entry in versions} == {
         "archive",
         "series",
         "catalog",
         "pmaxtp",
     }
-    assert {entry.provider for entry in full if entry.meta} == {"IMGW-PIB", "CHMI"}
-    directories = {store / directory for directory in known}
-    # A scan reads each version: its directory is listed and its sidecar loaded.
-    assert directories <= spy.listed and spy.read
-    spy.clear()
+    assert {entry.provider for entry in versions} == {"IMGW-PIB", "CHMI"}
+    for root, full in scans.items():
+        known = known_versions(root, full)
+        directories = {root / directory for directory in known}
+        spy.clear()
+        list(iter_store(root))
+        # A scan reads each version: its directory is listed and its sidecar loaded.
+        assert directories <= spy.listed and spy.read
+        spy.clear()
 
-    incremental = list(iter_store(store, skip_versions=known))
+        incremental = list(iter_store(root, skip_versions=known))
 
-    assert incremental == [skipped(entry) for entry in full]
-    assert not directories & spy.listed
-    # Only an observation reads the sidecar of the version it names (the content fields).
-    observations = [entry for entry in full if entry.kind == "observation"]
-    assert observations
-    assert {sidecar.parent for sidecar in spy.read} == {
-        entry.version.parent.parent / entry.observation.same_content_as
-        for entry in observations
-    }
+        assert incremental == [skipped(entry) for entry in full]
+        assert not directories & spy.listed
+        # Only an observation reads the sidecar of the version it names (the content
+        # fields); observations are in the raw root.
+        observations = [entry for entry in full if entry.kind == "observation"]
+        assert bool(observations) is (root == roots[0])
+        assert {sidecar.parent for sidecar in spy.read} == {
+            entry.version.parent.parent / entry.observation.same_content_as
+            for entry in observations
+        }
 
 
-def test_a_known_version_that_broke_since_is_not_seen_but_the_rest_is(tmp_path, store):
-    root = tmp_path / "store"
-    shutil.copytree(store, root)
-    known = known_versions(root, iter_store(root))
-    broken = next(e for e in iter_store(root, kind="archive") if e.slot == DAILY_2024)
-    gone = next(iter_store(root, kind="series", provider="CHMI"))
+def test_a_known_version_that_broke_since_is_not_seen_but_the_rest_is(tmp_path, roots):
+    raw, data = tmp_path / "raw", tmp_path / "data"
+    shutil.copytree(roots[0], raw)
+    shutil.copytree(roots[1], data)
+    known = {root: known_versions(root, iter_store(root)) for root in (raw, data)}
+    broken = next(e for e in iter_store(raw, kind="archive") if e.slot == DAILY_2024)
+    gone = next(iter_store(data, kind="series", provider="CHMI"))
     Path(f"{broken.version}.meta.json").write_text("{broken", encoding="utf-8")
     shutil.rmtree(gone.version.parent)
-    unfinished = root / "stations" / "versions" / "2026-01-01_deadbeef"
+    unfinished = data / "stations" / "versions" / "2026-01-01_deadbeef"
     unfinished.mkdir()
-    (new,) = store_archives(root, DAILY, [2023])
+    (new,) = store_archives(raw, DAILY, [2023])
 
-    full = list(iter_store(root))
-    incremental = list(iter_store(root, skip_versions=known))
+    full = [entry for root in (raw, data) for entry in iter_store(root)]
+    incremental = [
+        entry
+        for root in (raw, data)
+        for entry in iter_store(root, skip_versions=known[root])
+    ]
 
     by_path = {entry.version: entry for entry in incremental}
     # The scan that knows a version does not look at it; a full scan reports it.
@@ -167,39 +181,54 @@ def test_an_observation_is_checked_against_the_version_it_names_though_it_is_ski
     ]
 
 
-def test_the_filters_apply_to_the_versions_that_are_skipped(store):
-    known = known_versions(store, iter_store(store))
-    everything = list(iter_store(store, skip_versions=known))
+@pytest.mark.parametrize(
+    ("which", "filters"),
+    [
+        (0, {"kind": "archive"}),
+        (0, {"kind": "pmaxtp"}),
+        (0, {"provider": "CHMI"}),
+        (1, {"kind": "series"}),
+        (1, {"kind": "catalog"}),
+        (1, {"provider": "CHMI"}),
+    ],
+)
+def test_the_filters_apply_to_the_versions_that_are_skipped(roots, which, filters):
+    root = roots[which]
+    known = known_versions(root, iter_store(root))
+    everything = list(iter_store(root, skip_versions=known))
 
-    for filters in ({"kind": "series"}, {"provider": "CHMI"}, {"kind": "catalog"}):
-        wanted = list(iter_store(store, skip_versions=known, **filters))
-        assert wanted == [
-            entry
-            for entry in everything
-            if entry.kind == filters.get("kind", entry.kind)
-            and entry.provider in (filters.get("provider", entry.provider), None)
-        ]
-        assert any(entry.skipped for entry in wanted)
+    wanted = list(iter_store(root, skip_versions=known, **filters))
+    assert wanted == [
+        entry
+        for entry in everything
+        if entry.kind == filters.get("kind", entry.kind)
+        and entry.provider in (filters.get("provider", entry.provider), None)
+    ]
+    assert any(entry.skipped for entry in wanted)
 
 
-def test_what_names_no_version_of_the_store_is_read_as_unknown(store):
-    full = list(iter_store(store))
-    version = next(entry for entry in full if entry.slot == DAILY_2024 and entry.meta)
-    known = {
-        "archives/versions": ("x.zip",),
-        "archives/versions/dane_hydrologiczne/dobowe/2024": ("codz_2024.zip",),
-        "series/versions/hydro_daily/2026-01-01_deadbeef": ("series.json",),
-        "elsewhere/2026-01-01_deadbeef": ("codz_2024.zip",),
-        # a version whose names lack its main file: the caller is not sure of it
-        version.version.parent.relative_to(store).as_posix(): ("another.zip",),
-    }
+def test_what_names_no_version_of_the_store_is_read_as_unknown(roots):
+    for root, slot in zip(
+        roots, (DAILY_2024, "series:pl.imgw.hydro_daily"), strict=True
+    ):
+        full = list(iter_store(root))
+        version = next(entry for entry in full if entry.slot == slot and entry.meta)
+        known = {
+            "archives/versions": ("x.zip",),
+            "archives/versions/dane_hydrologiczne/dobowe/2024": ("codz_2024.zip",),
+            "series/versions/hydro_daily/2026-01-01_deadbeef": ("series.json",),
+            "elsewhere/2026-01-01_deadbeef": ("codz_2024.zip",),
+            # a version whose names lack its main file: the caller is not sure of it
+            version.version.parent.relative_to(root).as_posix(): ("another.zip",),
+        }
 
-    assert list(iter_store(store, skip_versions=known)) == full
+        assert list(iter_store(root, skip_versions=known)) == full
 
 
 @pytest.mark.parametrize("known", [None, {}], ids=["none", "empty"])
-def test_nothing_known_is_a_full_scan(store, known):
-    assert list(iter_store(store, skip_versions=known)) == list(iter_store(store))
+def test_nothing_known_is_a_full_scan(roots, known):
+    for root in roots:
+        assert list(iter_store(root, skip_versions=known)) == list(iter_store(root))
 
 
 @pytest.mark.parametrize(

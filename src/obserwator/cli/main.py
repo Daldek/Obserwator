@@ -8,10 +8,11 @@ by `obserwator.cli._dispatch` (spec §13.10); ``obserwator version``, ``obserwat
 
     obserwator datasets download -d hydro/dobowe -y 2023 -m 1
     obserwator stations find -k hydro -q raba --limit 20
-    obserwator store sync --root /dane/obserwator -d pl.imgw.hydro_daily -y 2024
+    obserwator store sync --root /dane/obserwator-raw -d pl.imgw.hydro_daily -y 2024
+    obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw -d hydro_daily
     obserwator series summary --root /dane/obserwator -d pl.imgw.hydro_daily -s 149190310
     obserwator commands schema --command "store sync"
-    obserwator mcp --allow-writes --allow-dir /dane/obserwator
+    obserwator mcp --allow-writes --allow-dir /dane
     obserwator admin create --name "User1"
 
 ``obserwator mcp`` serves the catalog to AI agents over MCP on stdin and stdout

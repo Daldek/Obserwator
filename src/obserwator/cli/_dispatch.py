@@ -788,8 +788,12 @@ def register_catalog(app: typer.Typer, /) -> None:
     every catalog command of that group. Command help is the catalog
     description in the language of ``OBSERWATOR_LANG``; options are the catalog
     flags and aliases (required ones in the "Opcje wymagane" panel, in
-    English "Required options"), ``--root`` defaults to the store root of
-    ``OBSERWATOR_ROOT``, ``[obserwator] root`` or ``<data_dir>/obserwator`` (only under ``env_root_when`` of the command),
+    English "Required options"), ``--root`` defaults to the root of the
+    command's kind: the data root (``OBSERWATOR_ROOT``, ``[obserwator] root`` or
+    ``<data_dir>/obserwator``) or the raw root of a command on downloaded sources
+    (``OBSERWATOR_RAW_ROOT``, ``[obserwator] raw_root`` or
+    ``<data_dir>/obserwator-raw``, also the default ``--raw-root`` of a build),
+    only under ``env_root_when`` of the command,
     list options take comma-separated values or
     a repeated flag, ``--check`` exists only for commands with a check twin,
     ``--json`` and ``--schema`` for every command and ``--lang`` (the

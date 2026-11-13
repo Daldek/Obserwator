@@ -26,7 +26,6 @@ import pytest
 
 from obserwator import current_version
 from obserwator.datasets import archive_files
-from obserwator.testing import build_fixture_store
 from tests.unit.interrupt_driver import DATASET, payload
 
 pytestmark = pytest.mark.skipif(
@@ -52,7 +51,7 @@ class Command:
         env = {
             key: value
             for key, value in os.environ.items()
-            if key not in ("OBSERWATOR_ROOT", "OBSERWATOR_LANG")
+            if key not in ("OBSERWATOR_ROOT", "OBSERWATOR_RAW_ROOT", "OBSERWATOR_LANG")
         }
         env |= {
             "OBSERWATOR_LANG": "en",
@@ -144,11 +143,6 @@ def start(tmp_path):
         command.process.wait()
 
 
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("interrupt") / "store").root
-
-
 @pytest.mark.parametrize("how", list(EXIT))
 def test_an_interrupted_plain_download_leaves_no_staging_and_no_partial_target(
     start, tmp_path, how
@@ -197,9 +191,9 @@ def test_an_interrupted_plain_download_leaves_no_staging_and_no_partial_target(
 
 @pytest.mark.parametrize("how", list(EXIT))
 def test_an_interrupted_export_leaves_no_staging_and_the_old_file(
-    start, tmp_path, fixture_root, how
+    start, tmp_path, fixture_raw_root, how
 ):
-    version = current_version(fixture_root, slot=ARCHIVE_SLOT).version
+    version = current_version(fixture_raw_root, slot=ARCHIVE_SLOT).version
     target = tmp_path / "out" / "hydro.csv"
     target.parent.mkdir()
     target.write_bytes(OLD)

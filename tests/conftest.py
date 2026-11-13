@@ -19,6 +19,34 @@ def isolated_reference_dir(tmp_path_factory, monkeypatch):
     return data_dir
 
 
+@pytest.fixture(scope="session")
+def fixture_roots(tmp_path_factory):
+    """
+    The ``complete_pl_cz`` roots of ``obserwator.testing``, built once per session.
+
+    The raw root and the data root built from it (ADR-017); never written, a
+    test copies them to mutate.
+    """
+    from obserwator.testing import build_fixture_store
+
+    base = tmp_path_factory.mktemp("fixture")
+    return build_fixture_store(
+        base / "raw", data_root=base / "data", variant="complete_pl_cz"
+    )
+
+
+@pytest.fixture(scope="session")
+def fixture_root(fixture_roots):
+    """The data root of the fixture roots (series, station catalogs): a ``Path``."""
+    return fixture_roots.data.root
+
+
+@pytest.fixture(scope="session")
+def fixture_raw_root(fixture_roots):
+    """The raw root of the fixture roots (archives, station sources): a ``Path``."""
+    return fixture_roots.raw.root
+
+
 # Sample PMAXTP API response
 @pytest.fixture
 def pmaxtp_api_response():

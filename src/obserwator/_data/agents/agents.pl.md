@@ -4,7 +4,7 @@
 
 ## Czym jest Obserwator
 
-Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego magazynu (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi i katalogi stacji powstają z magazynu i czyta się je offline.
+Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego katalogu surowego (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi, katalogi stacji i analizy powstają z niego w katalogu danych i czyta się je offline.
 
 Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, lokalnych kopii i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
 
@@ -25,7 +25,7 @@ Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, l
 
 Ta sama komenda w każdym interfejsie: CLI `obserwator <grupa> <komenda> --opcja wartość --json` (flaga = `--` + nazwa opcji z `-` zamiast `_`); Python `run_command("<grupa> <komenda>", options={...})`; REST `/api/v1/<grupa>/<komenda>` (GET: parametry zapytania, POST: ciało JSON); narzędzie MCP `obserwator_<grupa>_<komenda>`.
 
-- **REST:** korzeń magazynu ustawia serwer (`OBSERWATOR_ROOT`), `version` jest względna do niego, opcji lokalnych nie ma; zapis (POST bez `?check=true`) wymaga włączenia na serwerze i nagłówka `X-API-Key`.
+- **REST:** katalogi ustawia serwer (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`), `version` jest względna do katalogu komendy, opcji lokalnych nie ma; zapis (POST bez `?check=true`) wymaga włączenia na serwerze i nagłówka `X-API-Key`.
 - **MCP:** `obserwator mcp` (stdio) startuje bez zapisu — komendy zapisujące zwracają plan (`check` stałe `true`); zapis włącza użytkownik (`--allow-writes`), a i wtedy `check` jest domyślnie `true`. `/mcp` serwera REST (`OBSERWATOR_MCP_ENABLED=true`) tylko czyta i planuje.
 - **Język:** wynik maszynowy jest po angielsku; polski na prośbę: `--lang pl` (`commands list|schema|guide`, w innych komendach podsumowanie CLI bez `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
@@ -73,6 +73,6 @@ Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcz
 7. Długie listy czytaj stronami (`limit`, `cursor` = `page.next_cursor`); używaj `series read` albo `series export --output`, nie CSV w kontekście.
 8. Nie odpytuj `current …` w pętli — to API na żywo; zachowaj wynik.
 9. Pokazuj linie `attribution` i `terms_notice` dosłownie z danymi i w tym, co z nich zrobisz (także komunikat `license_terms`).
-10. `version` wskazuj wyłącznie pod `*/versions/` magazynu, bez `..`; w REST i MCP przez HTTP — względnie do magazynu serwera.
+10. `version` wskazuj tylko pod `*/versions/` katalogu, bez `..`; w REST i MCP przez HTTP — względnie do katalogu serwera.
 
 Rozwijasz to repozytorium? Przeczytaj CLAUDE.md.

@@ -8,14 +8,17 @@ Marked ``live``; the gate leaves them out and ``-m live`` runs them::
 Every catalog command runs on a small selection (one month of one year, one
 station, one PMAXTP cell, ``limit``) through ``run_command``, the installed
 ``obserwator`` and the REST API of ``obserwator server`` started on a free localhost port
-with store writes enabled by a test token. The store is a fresh temporary
-directory restored from snapshots before every interface, so each interface
-starts from the same state; requests to IMGW run one at a time. Local commands
-(no REST route) run through Python and ``obserwator``, and REST must answer them 404.
+with store writes enabled by a test token. The raw root and the data root
+(ADR-017) are fresh temporary directories restored from snapshots before every
+interface, so each interface starts from the same state; a command gets the root
+of its kind (``series build`` and ``store catalog`` also ``raw_root``), the server
+both (``OBSERWATOR_ROOT``, ``OBSERWATOR_RAW_ROOT``); requests to IMGW run one at a
+time. Local commands (no REST route) run through Python and ``obserwator``, and
+REST must answer them 404.
 
 Compared with the Python envelope (CLI: ``to_json(root)``, REST:
 ``to_json(root, server=True)``): status and exit code, every key, slot and
-path, byte-identical streams with their notices, and the tree of the store and
+path, byte-identical streams with their notices, and the trees of both roots and
 of the other written directories after the command (a read leaves them
 byte-identical). Python converts its envelope in another working directory
 than the CLI and the server, so a path resolved against the working directory
@@ -108,6 +111,7 @@ from tests.contract.support import (
     snapshot,
     unversioned,
 )
+from tests.contract.test_interface_contract import Roots
 
 pytestmark = pytest.mark.live
 
@@ -165,18 +169,12 @@ SYNOP = "12375"  # WARSZAWA-OKĘCIE
 LATITUDE, LONGITUDE = 50.06, 19.94  # Kraków
 ARCHIVE_SLOT = f"archive:{DAILY}:{YEAR}/codz_{YEAR}_{MONTH:02d}.zip"
 SERIES_SLOT = f"series:{DAILY}"
-# Store snapshots built from IMGW by the session (Case.store).
+# Snapshots of the two roots built from IMGW by the session (Case.store).
 SEEDS = ("empty", "synced", "full", "analysed")
-# Placeholders resolved after seeding: a working-directory path, the store root,
-# versions relative to the root and the indices of the stored PMAXTP cell.
+# Placeholders resolved after seeding: a working-directory path, versions relative
+# to the root of their kind and the indices of the stored PMAXTP cell.
 WORK = "<work>/"
-ROOT, ARCHIVE, SERIES, CELL_X, CELL_Y = (
-    "<root>",
-    "<archive>",
-    "<series>",
-    "<x>",
-    "<y>",
-)
+ARCHIVE, SERIES, CELL_X, CELL_Y = "<archive>", "<series>", "<x>", "<y>"
 ABSENT = "<brak klucza>"
 _MOMENT = "checked_at"
 _SHOWN = 12
@@ -185,14 +183,14 @@ _SHOWN = 12
 @dataclass(frozen=True)
 class Case:
     """
-    Options of one run of a command (JSON form, without ``root``).
+    Options of one run of a command (JSON form, without ``root`` and ``raw_root``).
 
-    ``store``: snapshot restored as the store root before every interface —
+    ``store``: snapshot restored as the two roots before every interface —
     ``"empty"``, ``"synced"`` (one hydro archive, its series and the station
     sources of the catalog), ``"full"``
     (plus the station catalog, a PMAXTP cell and a meteo archive without
     series), ``"analysed"`` (plus the stored analyses of ``STATION``),
-    ``"absent"`` (no directory) or ``"plain"`` (a directory that is no store);
+    ``"absent"`` (no directories) or ``"plain"`` (directories that are no roots);
     ``None`` = no root. ``clean``: entries of the working directory removed
     before every interface. ``live``: current data, compared by structure.
     """
@@ -272,6 +270,8 @@ CASES: dict[str, list[Case]] = {
         Case({"kind": "hydro", "query": "kłodzko", "limit": 3}),
         Case({"source": "store", "query": "kłodzko", "limit": 3}, "full"),
     ],
+    # The station catalog of the data root: a stream, no request to IMGW.
+    "stations export": [Case({"format": "csv", "kind": "hydro"}, "full")],
     "current hydro": [Case({"station": STATION, "limit": 1}, live=True)],
     "current meteo": [Case({"limit": 3, "cursor": page_cursor(1)}, live=True)],
     "current synop": [Case({"station": SYNOP, "limit": 1}, live=True)],
@@ -286,11 +286,10 @@ CASES: dict[str, list[Case]] = {
         Case({"latitude": LATITUDE, "longitude": LONGITUDE, "method": "POT"}, "synced")
     ],
     "pmaxtp read": [Case({"ind_x": CELL_X, "ind_y": CELL_Y}, "full")],
-    "store init": [Case({}, "absent")],
+    "store init": [Case({}, "absent"), Case({"kind": "data"}, "absent")],
     "store info": [Case({}, "full")],
-    "store scan": [
-        Case({"kind": "archive", "limit": 3, "cursor": page_cursor(1)}, "full")
-    ],
+    # The data root of "full": the series of DAILY and the station catalog.
+    "store scan": [Case({"limit": 1, "cursor": page_cursor(1)}, "full")],
     "store check": [
         Case({"datasets": [DAILY], "years": str(YEAR), "months": [MONTH]}, "full")
     ],
@@ -602,14 +601,14 @@ def _server(base: Path, work: Path, env: Mapping[str, str]) -> Iterator[str]:
 
 
 class Live:
-    """Fresh store, its snapshots and the three interfaces of one live run."""
+    """Fresh roots, their snapshots and the three interfaces of one live run."""
 
     def __init__(
         self, base: Path, work: Path, env: Mapping[str, str], client: httpx.Client
     ) -> None:
         self.base = base
         self.work = work
-        self.root = base / "magazyn"
+        self.roots = Roots(data=base / "dane", raw=base / "surowe")
         self.seeds = base / "wzorce"
         self.env = dict(env)
         self.client = client
@@ -625,29 +624,33 @@ class Live:
             patch.chdir(self.work)
             patch.setattr(settings, "reference_dir", Path(DATA_DIR))
             patch.delenv("OBSERWATOR_ROOT", raising=False)
+            patch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
             patch.setenv("OBSERWATOR_HYDROLOG_COMMAND", HYDROLOG)
             yield
 
-    def save(self, name: str, source: Path) -> None:
-        shutil.copytree(source, self.seeds / name, symlinks=True)
+    def save(self, name: str) -> None:
+        for root in (self.roots.data, self.roots.raw):
+            shutil.copytree(root, self.seeds / name / root.name, symlinks=True)
 
     def seed(self) -> None:
-        """Snapshots of the store, built once from IMGW."""
-        root = self.root
+        """Snapshots of the two roots, built once from IMGW."""
+        raw, data = self.roots.raw, self.roots.data
         with self.local():
-            init_store(root)
-            self.save("empty", root)
+            init_store(raw)
+            init_store(data, kind="data")
+            self.save("empty")
             synced = _patiently(
-                lambda: sync_store(root, datasets=[DAILY], years=[YEAR], months=[MONTH])
+                lambda: sync_store(raw, datasets=[DAILY], years=[YEAR], months=[MONTH])
             )
             assert [item.status for item in synced.items] == ["new"], synced
-            # A sync writes raw data only (ADR-015): the series is built on its own,
-            # and the catalog reads the station sources a sync stores.
-            series = build_series(root, dataset=DAILY)
+            # A sync writes raw data only (ADR-015): the series is built on its own
+            # in the data root, and the catalog reads the station sources a sync
+            # stores in the raw root (ADR-017).
+            series = build_series(data, raw_root=raw, dataset=DAILY)
             assert series.status == "new", series
             sources = _patiently(
                 lambda: sync_store(
-                    root,
+                    raw,
                     datasets=[
                         "pl.imgw.hydro_stations",
                         "pl.imgw.meteo_stations",
@@ -657,27 +660,24 @@ class Live:
                 )
             )
             assert {item.status for item in sources.items} == {"new"}, sources
-            self.save("synced", root)
-            catalog = build_catalog(root)
+            self.save("synced")
+            catalog = build_catalog(data, raw_root=raw)
             assert catalog.status == "new", catalog
             cell = _patiently(
-                lambda: sync_pmaxtp(root, latitude=LATITUDE, longitude=LONGITUDE)
+                lambda: sync_pmaxtp(raw, latitude=LATITUDE, longitude=LONGITUDE)
             )
             assert cell.status == "new", cell
             precip = _patiently(
-                lambda: sync_store(
-                    root, datasets=[PRECIP], years=[YEAR], months=[MONTH]
-                )
+                lambda: sync_store(raw, datasets=[PRECIP], years=[YEAR], months=[MONTH])
             )
             assert [item.status for item in precip.items] == ["new"], precip
-            self.save("full", root)
-            analysed = build_analyses(root, stations=[STATION])
+            self.save("full")
+            analysed = build_analyses(data, stations=[STATION])
             assert analysed.status == "new", analysed
-            self.save("analysed", root)
+            self.save("analysed")
             self.values = {
-                ROOT: str(root),
-                ARCHIVE: current_path(root, ARCHIVE_SLOT).relative_to(root).as_posix(),
-                SERIES: current_path(root, SERIES_SLOT).relative_to(root).as_posix(),
+                ARCHIVE: current_path(raw, ARCHIVE_SLOT).relative_to(raw).as_posix(),
+                SERIES: current_path(data, SERIES_SLOT).relative_to(data).as_posix(),
                 CELL_X: cell.ind_x,
                 CELL_Y: cell.ind_y,
             }
@@ -695,24 +695,44 @@ class Live:
             return {key: self.resolve(item) for key, item in value.items()}
         return value
 
+    def root_of(self, command: str, options: Mapping[str, object]) -> Path:
+        """The root ``command`` works on (``store init`` by its ``kind``)."""
+        if command == "store init":
+            return self.roots.data if options.get("kind") == "data" else self.roots.raw
+        return self.roots.root(command)
+
+    def rooted(self, command: str, options: Mapping[str, object]) -> dict[str, object]:
+        """``options`` with the root of the command's kind and, for a build, ``raw_root``."""
+        local: dict[str, object] = {
+            "root": str(self.root_of(command, options)),
+            **options,
+        }
+        if (raw_root := self.roots.raw_root(command)) is not None:
+            local["raw_root"] = str(raw_root)
+        return local
+
     def restore(self, case: Case | Failure) -> None:
-        """Bring the store and cleaned directories to the case's start."""
+        """Bring the roots and cleaned directories to the case's start."""
         clean = case.clean if isinstance(case, Case) else ()
         for name in clean:
             _remove(self.work / name)
         if case.store is None:
             return
-        _remove(self.root)
-        if case.store == "plain":
-            self.root.mkdir()
-        elif case.store != "absent":
-            shutil.copytree(self.seeds / case.store, self.root, symlinks=True)
+        for root in (self.roots.data, self.roots.raw):
+            _remove(root)
+            if case.store == "plain":
+                root.mkdir()
+            elif case.store != "absent":
+                seed = self.seeds / case.store / root.name
+                shutil.copytree(seed, root, symlinks=True)
 
     def trees(self, case: Case) -> dict[str, dict[str, str | None]]:
         """Snapshots of the directories a case can write."""
         places = {name: self.work / name for name in case.clean}
         if case.store is not None:
-            places["magazyn"] = self.root
+            places.update(
+                {root.name: root for root in (self.roots.data, self.roots.raw)}
+            )
         return {name: snapshot(path) for name, path in places.items() if path.exists()}
 
     # --- interfaces -------------------------------------------------------------
@@ -799,8 +819,8 @@ class Live:
         options = self.resolve(case.options)
         assert isinstance(options, dict)
         rooted = case.store is not None and command in ROOTED
-        local = {"root": str(self.root), **options} if rooted else options
-        root = self.root if rooted else None
+        local = self.rooted(command, options) if rooted else options
+        root = self.root_of(command, options) if rooted else None
         served = SPECS[command]["rest"] is not None
         self.restore(case)
         before = self.trees(case)
@@ -853,10 +873,10 @@ class Live:
         options = self.resolve(case.options)
         assert isinstance(options, dict)
         rooted = case.store is not None and command in ROOTED
-        local = {"root": str(self.root), **options} if rooted else dict(options)
+        local = self.rooted(command, options) if rooted else dict(options)
         if SPECS[command]["result"] == "list" and "limit" not in local:
             local["limit"] = MCP_PAGE  # the page a tool takes without limit
-        root = self.root if rooted else None
+        root = self.root_of(command, options) if rooted else None
         self.restore(case)
         before = self.trees(case)
 
@@ -910,7 +930,7 @@ class Live:
 
     def unresolved(self, answer: PythonAnswer, root: Path | None) -> list[str]:
         """
-        Slots of a Python answer without a version in the store it left (§13.7).
+        Slots of a Python answer without a version in the root of their kind (§13.7).
 
         A result with ``version: null`` (an unpublished ČHMÚ file) names its
         slot without a version and is skipped.
@@ -921,7 +941,7 @@ class Live:
         document = answer.envelope.to_json(root=root)
         for slot in sorted(set(slots(document)) - set(unversioned(document))):
             try:
-                entry = current_version(self.root, slot=slot)
+                entry = current_version(self.roots.of_slot(slot), slot=slot)
             except ObserwatorError as exc:
                 missing.append(f"slot {slot}: {exc.code}")
             else:
@@ -1039,7 +1059,7 @@ class Live:
         spec = ERROR_CODES[failure.code]
         options = self.resolve(failure.options)
         assert isinstance(options, dict)
-        local = {"root": str(self.root), **options} if failure.store else options
+        local = self.rooted(failure.command, options) if failure.store else options
         self.restore(failure)
 
         def run() -> Round:
@@ -1159,7 +1179,8 @@ def live(tmp_path_factory) -> Iterator[Live]:
     env["OBSERWATOR_REFERENCE_DIR"] = DATA_DIR
     env["OBSERWATOR_HYDROLOG_COMMAND"] = HYDROLOG
     served = env | {
-        "OBSERWATOR_ROOT": str(base / "magazyn"),
+        "OBSERWATOR_ROOT": str(base / "dane"),
+        "OBSERWATOR_RAW_ROOT": str(base / "surowe"),
         "OBSERWATOR_STORE_WRITES_ENABLED": "true",
         "OBSERWATOR_STORE_WRITE_TOKEN": TOKEN,
     }

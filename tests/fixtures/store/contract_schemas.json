@@ -32,6 +32,37 @@
       },
       "additionalProperties": true
     },
+    "obserwator-data/1": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": [
+        "schema",
+        "tool",
+        "created_at",
+        "producer_version"
+      ],
+      "properties": {
+        "schema": {
+          "const": "obserwator-data/1"
+        },
+        "tool": {
+          "const": "obserwator"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producer_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_by": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
     "obserwator-meta/1": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
@@ -1189,6 +1220,13 @@
       "schema": "obserwator-store/1",
       "tool": "obserwator",
       "created_at": "2026-10-17T12:00:00Z",
+      "producer_version": "3.0.0",
+      "created_by": "obserwator 3.0.0"
+    },
+    "obserwator-data/1": {
+      "schema": "obserwator-data/1",
+      "tool": "obserwator",
+      "created_at": "2026-11-13T12:00:00Z",
       "producer_version": "3.0.0",
       "created_by": "obserwator 3.0.0"
     },

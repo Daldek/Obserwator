@@ -146,7 +146,8 @@ def test_check_store_reports_all_statuses_with_listing_and_head_only(root, serve
         .local_path.as_posix()
         .startswith("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/")
     )
-    assert plan.series_state == {"hydro_daily": "missing"}
+    # Series live in a data root: the plan of a raw root states none (ADR-017).
+    assert plan.series_state == {}
     assert not plan.cancelled
     assert all(not route.called for route in gets)
     assert tree(root) == before
@@ -180,7 +181,6 @@ def test_plan_json_round_trip_including_cancellation(root, server, tmp_path):
     target = tmp_path / "full.json"
     full = check_store(root, datasets=["hydro/dobowe"], years="2024", plan=target)
     assert StorePlan.from_json(target) == full
-    assert full.series_state == {"hydro_daily": "missing"}
     assert [item.archive.dataset for item in full.items] == [HYDRO]
 
 

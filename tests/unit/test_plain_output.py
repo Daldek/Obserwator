@@ -51,8 +51,8 @@ def names(directory: Path) -> list[str]:
 
 @pytest.fixture
 def home(monkeypatch, tmp_path):
-    """No OBSERWATOR_ROOT, an empty nogat.toml and a data directory of the test."""
-    for name in ("OBSERWATOR_ROOT", "NOGAT_DATA_DIR"):
+    """No OBSERWATOR_ROOT/_RAW_ROOT, an empty nogat.toml and a data directory of the test."""
+    for name in ("OBSERWATOR_ROOT", "OBSERWATOR_RAW_ROOT", "NOGAT_DATA_DIR"):
         monkeypatch.delenv(name, raising=False)
     (tmp_path / "nogat.toml").write_text("", encoding="utf-8")
     monkeypatch.setenv("NOGAT_CONFIG", str(tmp_path / "nogat.toml"))
@@ -248,13 +248,15 @@ def test_without_a_target_the_download_goes_to_the_store_of_the_default_root(
         "datasets download", options={"dataset": SEMIANNUAL, "years": 2024}
     )
 
-    root = home / "data" / "obserwator"
+    # Archives go to the default raw root, never to the data root (ADR-017).
+    root = home / "data" / "obserwator-raw"
     assert outcome.status == "ok"
     assert (outcome.result.mode, outcome.result.root) == ("store", root)
     assert (root / "obserwator-store.json").is_file()
     assert {file.status for file in outcome.result.files} == {"new"}
     assert all(file.path.is_relative_to(root) for file in outcome.result.files)
-    assert not (home / "data").joinpath("obserwator", ".obserwator-incoming").exists()
+    assert not (root / ".obserwator-incoming").exists()
+    assert not (home / "data" / "obserwator").exists()
 
 
 def test_a_store_download_reports_versions_and_never_overwrites(respx_mock, tmp_path):
@@ -397,13 +399,19 @@ def test_a_plain_pmaxtp_sync_writes_the_cell_and_the_raw_answer(respx_mock, tmp_
 
 def test_the_store_reports_list_their_versions_as_files(respx_mock, tmp_path):
     FakeImgw(respx_mock).publish_pmaxtp("pmaxtp_pot_first")
-    root = build_fixture_store(tmp_path / "store").root
+    roots = build_fixture_store(tmp_path / "raw", data_root=tmp_path / "data")
+    root = roots.raw.root
     point = {"latitude": 52.23, "longitude": 21.01}
 
     first = sync_pmaxtp(root, **point)
     again = sync_pmaxtp(root, **point)
     series = run_command(
-        "series build", options={"root": root, "dataset": "pl.imgw.hydro_daily"}
+        "series build",
+        options={
+            "root": roots.data.root,
+            "raw_root": root,
+            "dataset": "pl.imgw.hydro_daily",
+        },
     )
 
     assert [f.status for f in first.files] == ["new"]
@@ -417,7 +425,7 @@ def test_the_store_reports_list_their_versions_as_files(respx_mock, tmp_path):
 
 
 def test_a_store_sync_without_a_target_uses_the_default_root(home, respx_mock):
-    init_store(home / "data" / "obserwator")
+    root = init_store(home / "data" / "obserwator-raw").root
     imgw = FakeImgw(respx_mock)
     for archive in FILES:
         imgw.publish(archive, V1, (ARCHIVES / archive.server_path).read_bytes())
@@ -426,7 +434,4 @@ def test_a_store_sync_without_a_target_uses_the_default_root(home, respx_mock):
 
     assert outcome.status == "ok"
     assert {file.status for file in outcome.result.files} == {"new"}
-    assert all(
-        file.path.is_relative_to(home / "data" / "obserwator")
-        for file in outcome.result.files
-    )
+    assert all(file.path.is_relative_to(root) for file in outcome.result.files)

@@ -19,6 +19,10 @@ MESSAGES = {
         "The store directory root is allowed only with source=store",
         "Katalog magazynu root jest dozwolony tylko przy source=store",
     ),
+    "no_station_catalog": Text(
+        "The data root holds no station catalog of {providers}",
+        "Katalog danych nie zawiera katalogu stacji dostawców: {providers}",
+    ),
     "station_search_phrase_must_not": Text(
         "The station search phrase must not be empty",
         "Fraza wyszukiwania stacji nie może być pusta",

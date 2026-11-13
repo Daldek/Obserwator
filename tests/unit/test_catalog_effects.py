@@ -1,12 +1,13 @@
 """Effects declared by the catalog (spec 2026-10-19 §3.2, §9): network, writes, twins.
 
 Every contract case (``CASES`` of ``tests/contract/test_interface_contract.py``)
-runs through ``run_command``: a command declaring ``network=False`` sends no
-request, a command declaring ``writes="none"`` leaves the store and the working
-directory as they were, a command declaring ``writes="add"`` keeps every
-existing file, and every option declaring a write creates (or replaces) its
-file. The declarations are the §3.2 table, published in the catalog
-(``effects`` and the ``writes`` of an option).
+runs through ``run_command`` on the root of its command's kind (ADR-017): a
+command declaring ``network=False`` sends no request, a command declaring
+``writes="none"`` leaves both roots and the working directory as they were, a
+command declaring ``writes="add"`` keeps every existing file of both roots (a
+build never writes into the raw root it reads), and every option declaring a
+write creates (or replaces) its file. The declarations are the §3.2 table,
+published in the catalog (``effects`` and the ``writes`` of an option).
 """
 
 import re
@@ -20,7 +21,7 @@ import respx
 
 from obserwator import init_store, run_command, sync_pmaxtp, sync_store
 from obserwator.commands import command_schema, data_commands
-from obserwator.testing import build_fixture_store
+from obserwator.testing import FixtureRoots
 from tests.contract.support import (
     H2024,
     NEW,
@@ -32,11 +33,13 @@ from tests.contract.support import (
     use_fake_hydrolog,
 )
 from tests.contract.test_interface_contract import (
+    BUILDS,
     CASES,
     IMGW_SOURCES,
     Case,
+    Roots,
+    placed,
     resolved,
-    rooted,
 )
 
 SPECS = {spec.name: spec for spec in data_commands()}
@@ -100,20 +103,17 @@ LOCAL_WRITES = {
 
 
 @pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("effects") / "store").root
-
-
-@pytest.fixture(scope="module")
-def served_root(tmp_path_factory, fixture_root):
-    """The fixture store plus a PMAXTP cell and analyses, as served to the contract cases."""
-    root = tmp_path_factory.mktemp("served") / "store"
-    shutil.copytree(fixture_root, root)
+def served_roots(tmp_path_factory, fixture_roots):
+    """The fixture roots plus a PMAXTP cell and analyses, as served to the contract cases."""
+    base = tmp_path_factory.mktemp("served")
+    roots = Roots(base / "data", base / "raw")
+    shutil.copytree(fixture_roots.data.root, roots.data)
+    shutil.copytree(fixture_roots.raw.root, roots.raw)
     with respx.mock(assert_all_called=False) as router:
         FakeImgw(router).publish_pmaxtp("pmaxtp_pot_first")
-        sync_pmaxtp(root, latitude=52.23, longitude=21.01)
-    build_served_analyses(root)
-    return root
+        sync_pmaxtp(roots.raw, latitude=52.23, longitude=21.01)
+    build_served_analyses(roots.data)
+    return roots
 
 
 @pytest.fixture(autouse=True)
@@ -143,26 +143,37 @@ def recorded():
         yield imgw
 
 
-def case_root(case: Case, target: Path, served: Path, fixture: Path) -> Path | None:
-    """A fresh store of the case at ``target`` (``None`` for a case without root)."""
+def case_roots(
+    case: Case, target: Path, served: Roots, fixture: FixtureRoots
+) -> Roots | None:
+    """Fresh roots of the case under ``target`` (``None`` for a case without root)."""
     if case.store is None:
         return None
+    roots = Roots(target / "data", target / "raw")
+    if case.store in ("sources", "empty"):
+        init_store(roots.data, kind="data")
+        init_store(roots.raw)
     if case.store == "sources":
         # Empty with the IMGW-PIB station sources synced from the recordings.
-        init_store(target)
         with respx.mock(assert_all_called=False) as router:
             FakeImgw(router).publish_catalog_sources()
-            sync_store(target, datasets=IMGW_SOURCES)
-        return target
-    if case.store == "empty":
-        return init_store(target).root
-    shutil.copytree(served if case.store == "served" else fixture, target)
-    return target
+            sync_store(roots.raw, datasets=IMGW_SOURCES)
+    if case.store in ("served", "fixture"):
+        copied = (
+            served
+            if case.store == "served"
+            else Roots(fixture.data.root, fixture.raw.root)
+        )
+        shutil.copytree(copied.data, roots.data)
+        shutil.copytree(copied.raw, roots.raw)
+    return roots
 
 
-def run(command: str, options: dict[str, object], root: Path | None) -> str:
+def run(command: str, options: dict[str, object], roots: Roots | None) -> str:
     """Run a case through Python, reading a stream to its end; return the status."""
-    outcome = run_command(command, options=rooted(resolved(options, root), root))
+    root = None if roots is None else roots.root(command)
+    given = placed(command, resolved(options, root), roots)
+    outcome = run_command(command, options=given)
     if SPECS[command].result == "stream" and "output" not in options:
         "".join(cast(Iterable[str], outcome.result))
     return outcome.status
@@ -232,43 +243,47 @@ def test_every_write_can_be_planned_by_a_check_twin():
 
 @pytest.mark.parametrize(("command", "case"), cases_of(lambda spec: not spec.network))
 def test_offline_commands_send_no_request(
-    command, case, tmp_path, served_root, fixture_root, workdir
+    command, case, tmp_path, served_roots, fixture_roots, workdir
 ):
-    root = case_root(case, tmp_path / "store", served_root, fixture_root)
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
     with respx.mock(assert_all_called=False) as router:
         anything = router.route().respond(503)
-        status = run(command, case.options, root)
+        status = run(command, case.options, roots)
     assert status == "ok"
     assert anything.call_count == 0
 
 
 @pytest.mark.parametrize(("command", "case"), cases_of(lambda s: s.writes == "none"))
-def test_reading_commands_leave_the_store_and_working_directory_unchanged(
-    command, case, tmp_path, served_root, fixture_root, workdir, recorded
+def test_reading_commands_leave_the_roots_and_working_directory_unchanged(
+    command, case, tmp_path, served_roots, fixture_roots, workdir, recorded
 ):
-    root = case_root(case, tmp_path / "store", served_root, fixture_root)
-    trees = [workdir, *([root] if root is not None else [])]
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    trees = [workdir, *([roots.data, roots.raw] if roots is not None else [])]
     before = [(snapshot(tree), stamps(tree)) for tree in trees]
 
-    assert run(command, case.options, root) == "ok"
+    assert run(command, case.options, roots) == "ok"
 
     assert [(snapshot(tree), stamps(tree)) for tree in trees] == before
 
 
 @pytest.mark.parametrize(("command", "case"), cases_of(lambda s: s.writes == "add"))
 def test_adding_commands_keep_every_existing_file(
-    command, case, tmp_path, served_root, fixture_root, workdir, recorded
+    command, case, tmp_path, served_roots, fixture_roots, workdir, recorded
 ):
-    root = case_root(case, tmp_path / "store", served_root, fixture_root)
-    assert root is not None
-    files = {path: digest for path, digest in snapshot(root).items() if digest}
-    touched = {path: stamp for path, stamp in stamps(root).items() if path in files}
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    assert roots is not None
+    base = tmp_path / "roots"  # both roots
+    files = {path: digest for path, digest in snapshot(base).items() if digest}
+    touched = {path: stamp for path, stamp in stamps(base).items() if path in files}
+    raw = stamps(roots.raw)
 
-    assert run(command, case.options, root) == "ok"
+    assert run(command, case.options, roots) == "ok"
 
-    after, times = snapshot(root), stamps(root)
+    after, times = snapshot(base), stamps(base)
     assert {path: after.get(path) for path in files} == files
     assert {path: times.get(path) for path in touched} == touched
+    if command in BUILDS:  # a build reads the raw root and never writes there
+        assert stamps(roots.raw) == raw
 
 
 def test_every_writing_option_has_a_case():
@@ -287,9 +302,9 @@ def test_every_writing_option_has_a_case():
     [pytest.param(*row, id=f"{row[0]} {row[2]}") for row in writing_cases()],
 )
 def test_a_writing_option_writes_its_file(
-    command, case, option, existing, tmp_path, served_root, fixture_root, recorded
+    command, case, option, existing, tmp_path, served_roots, fixture_roots, recorded
 ):
-    root = case_root(case, tmp_path / "store", served_root, fixture_root)
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
     target = tmp_path / "out" / f"{option}.txt"
     target.parent.mkdir()
     options = {**case.options, option: target}
@@ -298,7 +313,7 @@ def test_a_writing_option_writes_its_file(
     if existing:  # "replace": an existing file is overwritten
         target.write_text("stara treść\n", encoding="utf-8")
 
-    assert run(command, options, root) == "ok"
+    assert run(command, options, roots) == "ok"
 
     assert target.is_file()
     assert target.read_text(encoding="utf-8") != "stara treść\n"

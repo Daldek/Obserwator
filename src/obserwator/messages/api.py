@@ -3,9 +3,9 @@
 from obserwator.messages import Text
 
 MESSAGES = {
-    "server_sets_option_obserwator_root": Text(
-        "The server sets the option {name} (OBSERWATOR_ROOT); remove it from the request",
-        "Opcję {name} ustawia serwer (OBSERWATOR_ROOT); usuń ją z żądania",
+    "server_sets_option": Text(
+        "The server sets the option {name} ({variable}); remove it from the request",
+        "Opcję {name} ustawia serwer ({variable}); usuń ją z żądania",
     ),
     "option_command_available_only_locally": Text(
         "The option {name} of the command {name_2} is available only locally (CLI "
@@ -43,19 +43,19 @@ MESSAGES = {
         "A missing or invalid X-API-Key header",
         "Brak lub niepoprawny nagłówek X-API-Key",
     ),
-    "store_not_configured_set_obserwator": Text(
-        "The store is not configured: set OBSERWATOR_ROOT to the absolute path of "
-        "the store on the server",
-        "Magazyn nie jest skonfigurowany: ustaw OBSERWATOR_ROOT na bezwzględną "
-        "ścieżkę magazynu na serwerze",
+    "root_not_configured": Text(
+        "The root is not configured: set {variable} to the absolute path of the "
+        "root on the server",
+        "Katalog nie jest skonfigurowany: ustaw {variable} na bezwzględną ścieżkę "
+        "katalogu na serwerze",
     ),
-    "obserwator_root_must_absolute": Text(
-        "OBSERWATOR_ROOT must be an absolute path",
-        "OBSERWATOR_ROOT musi być ścieżką bezwzględną",
+    "root_must_be_absolute": Text(
+        "{variable} must be an absolute path",
+        "{variable} musi być ścieżką bezwzględną",
     ),
-    "invalid_obserwator_root": Text(
-        "Invalid OBSERWATOR_ROOT: {detail}",
-        "Niepoprawny OBSERWATOR_ROOT: {detail}",
+    "invalid_root": Text(
+        "Invalid {variable}: {detail}",
+        "Niepoprawny {variable}: {detail}",
     ),
     "version_must_path_relative_store": Text(
         "The version must be a path relative to the store, without '..', '\\' and "
@@ -94,14 +94,14 @@ MESSAGES = {
         "No location file: {name}",
         "Brak pliku położeń: {name}",
     ),
-    "temporary_directory_server_lies_obserwator": Text(
-        "The temporary directory of the server lies in the OBSERWATOR_ROOT store; "
-        "change TMPDIR",
-        "Katalog tymczasowy serwera leży w magazynie OBSERWATOR_ROOT; zmień TMPDIR",
+    "temporary_directory_in_root": Text(
+        "The temporary directory of the server lies in the root {variable}; change "
+        "TMPDIR",
+        "Katalog tymczasowy serwera leży w katalogu {variable}; zmień TMPDIR",
     ),
-    "plan_concerns_another_store_than": Text(
-        'The plan concerns another store than OBSERWATOR_ROOT (root must be ".")',
-        'Plan dotyczy innego magazynu niż OBSERWATOR_ROOT (root musi być ".")',
+    "plan_concerns_another_root": Text(
+        'The plan concerns another root than {variable} (root must be ".")',
+        'Plan dotyczy innego katalogu niż {variable} (root musi być ".")',
     ),
     "invalid_obserwator_plan_1_plan": Text(
         "Invalid obserwator-plan/1 plan: {detail}",
@@ -116,9 +116,9 @@ MESSAGES = {
         "cancellation on",
         "Operację przerwano bez raportu; REST nie przekazuje anulowania",
     ),
-    "store_unavailable": Text(
-        "The store at OBSERWATOR_ROOT is unavailable: {problems}",
-        "Magazyn pod OBSERWATOR_ROOT jest niedostępny: {problems}",
+    "root_unavailable": Text(
+        "The root at {variable} is unavailable: {problems}",
+        "Katalog pod {variable} jest niedostępny: {problems}",
     ),
     "invalid_parameters_or_body": Text(
         "Invalid parameters or request body",

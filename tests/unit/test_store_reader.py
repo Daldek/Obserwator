@@ -209,23 +209,30 @@ def parser_records(dataset, server_path):
 
 @pytest.fixture(scope="module")
 def complete(tmp_path_factory):
-    """A store with archives, three series, a catalog and a PMAXTP cell, then made read-only."""
-    root = init_store(tmp_path_factory.mktemp("reader") / "store").root
-    store_archives(root, DAILY, [2023, 2024])
-    store_archives(root, "pl.imgw.hydro_monthly", [2024])
-    store_archives(root, HALF, [2024])
+    """
+    A raw root (archives, station sources, a PMAXTP cell) and the data root of three
+    series and a catalog built from it, both then made read-only.
+    """
+    base = tmp_path_factory.mktemp("reader")
+    raw = init_store(base / "store").root
+    data = init_store(base / "data", kind="data").root
+    store_archives(raw, DAILY, [2023, 2024])
+    store_archives(raw, "pl.imgw.hydro_monthly", [2024])
+    store_archives(raw, HALF, [2024])
     reports = {
-        dataset: build_series(root, dataset=dataset)
+        dataset: build_series(data, raw_root=raw, dataset=dataset)
         for dataset in (DAILY, "pl.imgw.hydro_monthly", HALF)
     }
     with respx.mock(assert_all_called=False) as router:
         record_catalog_sources(router)
-        sync_store(root, datasets=IMGW_SOURCES)
-        catalog = build_catalog(root)
-        cell = sync_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01)
-    set_read_only(root, True)
-    yield root, reports, catalog, cell
-    set_read_only(root, False)
+        sync_store(raw, datasets=IMGW_SOURCES)
+        catalog = build_catalog(data, raw_root=raw)
+        cell = sync_pmaxtp(raw, method="POT", latitude=52.23, longitude=21.01)
+    for root in (raw, data):
+        set_read_only(root, True)
+    yield raw, data, reports, catalog, cell
+    for root in (raw, data):
+        set_read_only(root, False)
 
 
 @pytest.fixture
@@ -239,71 +246,84 @@ def offline(monkeypatch):
 
 @pytest.fixture
 def root(tmp_path):
+    """An empty raw root."""
     return init_store(tmp_path / "store").root
+
+
+@pytest.fixture
+def data(tmp_path):
+    """An empty data root beside ``root``."""
+    return init_store(tmp_path / "data", kind="data").root
 
 
 def test_every_reader_works_on_read_only_store_without_writes_or_network(
     complete, offline
 ):
-    root, reports, catalog, cell = complete
-    before = tree(root)
+    raw, data, reports, catalog, cell = complete
+    before = tree(raw), tree(data)
 
-    info = store_info(root)
-    assert (info.exists, info.store_schema, info.supported, info.problems) == (
-        True,
-        "obserwator-store/1",
-        True,
-        (),
-    )
-    assert (
-        info.contracts["series"] == "obserwator-series/1"
-        and info.contracts["pmaxtp"] == "obserwator-pmaxtp/1"
-    )
+    for root, schema in ((raw, "obserwator-store/1"), (data, "obserwator-data/1")):
+        info = store_info(root)
+        assert (info.exists, info.store_schema, info.supported, info.problems) == (
+            True,
+            schema,
+            True,
+            (),
+        )
+        assert (
+            info.contracts["series"] == "obserwator-series/1"
+            and info.contracts["pmaxtp"] == "obserwator-pmaxtp/1"
+        )
 
-    entries = list(iter_store(root))
+    raw_entries = list(iter_store(raw))
+    data_entries = list(iter_store(data))
+    entries = raw_entries + data_entries
     assert [entry for entry in entries if entry.kind == "problem"] == []
     slots = {entry.slot: entry for entry in entries}
-    assert {entry.kind for entry in entries} == {
-        "archive",
-        "series",
-        "catalog",
-        "pmaxtp",
-    }
+    assert {entry.kind for entry in raw_entries} == {"archive", "pmaxtp"}
+    assert {entry.kind for entry in data_entries} == {"series", "catalog"}
     assert {
-        SERIES_DAILY,
-        "series:pl.imgw.hydro_monthly",
-        "series:pl.imgw.hydro_semiannual",
-        "catalog:pl.imgw.stations",
         CELL_SLOT,
         DAILY_2024,
         "archive:pl.imgw.hydro_stations:lista_stacji_hydro.csv",
         "archive:pl.imgw.meteo_stations:wykaz_stacji.csv",
         "archive:pl.imgw.hydro_now:hydro",
         "archive:pl.imgw.meteo_now:meteo",
-    } <= set(slots)
-    # 2 daily + 1 monthly + 3 semi-annual archives, 4 station sources, 3 series,
-    # catalog, cell
-    assert len(entries) == 15
-    assert [entry.slot for entry in iter_store(root, kind="series")] == [
+    } <= {entry.slot for entry in raw_entries}
+    assert {entry.slot for entry in data_entries} == {
+        SERIES_DAILY,
+        "series:pl.imgw.hydro_monthly",
+        "series:pl.imgw.hydro_semiannual",
+        "catalog:pl.imgw.stations",
+    }
+    # 2 daily + 1 monthly + 3 semi-annual archives, 4 station sources, cell;
+    # 3 series, catalog
+    assert (len(raw_entries), len(data_entries)) == (11, 4)
+    assert [entry.slot for entry in iter_store(data, kind="series")] == [
         SERIES_DAILY,
         "series:pl.imgw.hydro_monthly",
         "series:pl.imgw.hydro_semiannual",
     ]
+    # An entry kind of the other root kind is not there: nothing, no error.
+    assert list(iter_store(raw, kind="series")) == []
+    assert list(iter_store(data, kind="archive")) == []
     # Every scanned slot names its own (single, hence current) version.
-    for slot, entry in slots.items():
-        assert current_version(root, slot=slot) == entry
+    for entry in raw_entries:
+        assert current_version(raw, slot=entry.slot) == entry
+    for entry in data_entries:
+        assert current_version(data, slot=entry.slot) == entry
 
-    assert current_version(root, slot=SERIES_DAILY).version == reports[DAILY].version
+    assert current_version(data, slot=SERIES_DAILY).version == reports[DAILY].version
     assert (
-        current_version(root, slot="catalog:pl.imgw.stations").version
+        current_version(data, slot="catalog:pl.imgw.stations").version
         == catalog.version
     )
-    pmaxtp_entry = current_version(root, slot=CELL_SLOT)
+    pmaxtp_entry = current_version(raw, slot=CELL_SLOT)
     assert (
         pmaxtp_entry.version == cell.version
         and pmaxtp_entry.meta.dataset == "pl.imgw.pmaxtp"
     )
-    archive_entry = current_version(root, slot=DAILY_2024)
+    archive_entry = current_version(raw, slot=DAILY_2024)
     assert archive_entry == slots[DAILY_2024]
     assert (
         read_meta(archive_entry.version)
@@ -327,20 +347,47 @@ def test_every_reader_works_on_read_only_store_without_writes_or_network(
     assert len(records) == index.stations[STATION].rows
 
     # read_pmaxtp (T14) interoperates with the version returned by current_version.
-    stored = read_pmaxtp(root, method="POT", ind_x=751, ind_y=317)
+    stored = read_pmaxtp(raw, method="POT", ind_x=751, ind_y=317)
     assert (
         read_pmaxtp(
-            root, method="POT", ind_x=751, ind_y=317, version=pmaxtp_entry.version
+            raw, method="POT", ind_x=751, ind_y=317, version=pmaxtp_entry.version
         )
         == stored
     )
     assert stored.data.get_precipitation(15, 50) == 13.34
 
-    assert tree(root) == before
+    assert (tree(raw), tree(data)) == before
+
+
+@pytest.mark.parametrize(
+    "slot, kind",
+    [(SERIES_DAILY, "data"), ("catalog:pl.imgw.stations", "data"), (DAILY_2024, "raw")],
+)
+def test_a_slot_in_a_root_of_the_other_kind_is_a_wrong_root(complete, slot, kind):
+    raw, data, *_ = complete
+    other = raw if kind == "data" else data
+    with pytest.raises(ObserwatorStoreError) as error:
+        current_version(other, slot=slot)
+    assert error.value.code == "store_unavailable"
+    assert error.value.details["reason"] == "wrong_root"
+    assert error.value.details["kind"] == kind
+
+
+def test_readers_of_one_root_kind_refuse_the_other(complete):
+    raw, data, *_ = complete
+    for call, kind in (
+        (lambda: read_series(root=raw, dataset=DAILY, station=STATION), "data"),
+        (lambda: summarize_series(root=raw, dataset=DAILY), "data"),
+        (lambda: read_station_list(data, kind="hydro"), "raw"),
+        (lambda: read_pmaxtp(data, method="POT", ind_x=751, ind_y=317), "raw"),
+    ):
+        with pytest.raises(ObserwatorStoreError) as error:
+            call()
+        assert error.value.details == {"reason": "wrong_root", "kind": kind}
 
 
 def test_series_range_matches_parser_records(complete, offline):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     parsed = {
         r.date: r
         for r in parser_records(DAILY, "dane_hydrologiczne/dobowe/2024/codz_2024.zip")
@@ -401,7 +448,7 @@ def test_series_range_matches_parser_records(complete, offline):
 
 
 def test_half_year_filter_uses_period_start_and_keeps_extrema(complete, offline):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     summer = list(
         read_series(
             reports[HALF].version,
@@ -433,7 +480,7 @@ def test_half_year_filter_uses_period_start_and_keeps_extrema(complete, offline)
 
 
 def test_series_index_needs_no_pyarrow_but_series_does(complete, monkeypatch):
-    _, reports, _, _ = complete
+    _, _, reports, _, _ = complete
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
     index = read_series_index(reports[DAILY].version.parent)
@@ -444,9 +491,9 @@ def test_series_index_needs_no_pyarrow_but_series_does(complete, monkeypatch):
         read_series(reports[DAILY].version, station=STATION, variables=["H"])
 
 
-def test_series_validation_and_tampered_parquet(root):
+def test_series_validation_and_tampered_parquet(root, data):
     store_archives(root, DAILY, [2024])
-    version = build_series(root, dataset=DAILY).version
+    version = build_series(data, raw_root=root, dataset=DAILY).version
     for kwargs in (
         {"station": "000000000", "variables": ["H"]},
         {"station": STATION, "variables": ["Tmax"]},
@@ -479,9 +526,9 @@ def test_series_validation_and_tampered_parquet(root):
         read_series_index(version)
 
 
-def test_unknown_series_schema_is_a_scan_problem_not_a_version(root, offline):
+def test_unknown_series_schema_is_a_scan_problem_not_a_version(root, data, offline):
     store_archives(root, DAILY, [2024])
-    version = build_series(root, dataset=DAILY).version
+    version = build_series(data, raw_root=root, dataset=DAILY).version
     sidecar = json.loads(Path(f"{version}.meta.json").read_text(encoding="utf-8"))
     later = version.parent.with_name(f"2099-01-01_{sidecar['sha256'][:8]}")
     shutil.copytree(version.parent, later)
@@ -494,16 +541,16 @@ def test_unknown_series_schema_is_a_scan_problem_not_a_version(root, offline):
 
     problems = {
         (entry.version, entry.problem_code)
-        for entry in iter_store(root, kind="problem")
+        for entry in iter_store(data, kind="problem")
     }
     assert problems == {(later, "unknown_schema")}
-    assert [entry.version for entry in iter_store(root, kind="series")] == [version]
+    assert [entry.version for entry in iter_store(data, kind="series")] == [version]
     with pytest.raises(ObserwatorDataError, match="an unsupported series schema"):
-        current_version(root, slot=SERIES_DAILY)
+        current_version(data, slot=SERIES_DAILY)
 
 
 def test_catalog_is_verified_against_sidecar(complete, tmp_path):
-    _, _, catalog, _ = complete
+    _, _, _, catalog, _ = complete
     copy = tmp_path / "copy"
     shutil.copytree(catalog.version.parent, copy)
     (copy / "stations.geojson").chmod(0o644)
@@ -585,7 +632,7 @@ def test_scan_reports_problems_and_tolerates_additional_fields(root, offline):
     assert tree(root) == before
 
 
-def test_current_version_follows_last_modified_rule(root):
+def test_current_version_follows_last_modified_rule(root, data):
     (archive,) = archive_files(DAILY, years=[2024])
     changed = (FIXTURES / "variants" / "codz_2024_changed.zip").read_bytes()
     newer = write_archive(
@@ -606,7 +653,7 @@ def test_current_version_follows_last_modified_rule(root):
         and entry.version == newer.path
         and entry.meta.sha256 == newer.sha256
     )
-    assert current_version(root, slot=SERIES_DAILY) is None
+    assert current_version(data, slot=SERIES_DAILY) is None
     assert (
         current_version(root, slot="archive:pl.imgw.hydro_daily:2030/codz_2030.zip")
         is None
@@ -638,11 +685,13 @@ def test_current_version_follows_last_modified_rule(root):
         "foo",
     ],
 )
-def test_current_version_rejects_slots_outside_the_grammar(root, slot):
+def test_current_version_rejects_slots_outside_the_grammar(root, data, slot):
+    # A series or catalog slot names a version of a data root.
+    kind_root = data if slot.startswith(("series:", "catalog:")) else root
     with pytest.raises(
         ObserwatorValidationError, match="expected archive:<key>"
     ) as error:
-        current_version(root, slot=slot)
+        current_version(kind_root, slot=slot)
     assert error.value.code == "validation_error"
     assert error.value.details == {"option": "slot", "value": slot}
 
@@ -755,7 +804,7 @@ def test_a_sidecar_without_its_producer_or_version_is_refused_not_filled_in(
 
 
 def test_read_series_resolves_version_or_current_series(complete, offline):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     version = reports[DAILY].version
     expected = list(read_series(version, station=STATION))
     assert {name for record in expected for name in record.measurements} == {
@@ -790,7 +839,7 @@ def test_read_series_resolves_version_or_current_series(complete, offline):
     ],
 )
 def test_series_readers_need_version_or_root_with_dataset(complete, given, kwargs):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     args = (reports[DAILY].version,) if given else ()
     options = {**kwargs, **({"root": root} if kwargs.get("root") else {})}
     with pytest.raises(ObserwatorValidationError):
@@ -799,11 +848,11 @@ def test_series_readers_need_version_or_root_with_dataset(complete, given, kwarg
         summarize_series(*args, **options)
 
 
-def test_missing_series_or_station_list_is_not_found(root):
+def test_missing_series_or_station_list_is_not_found(root, data):
     for call in (
-        lambda: read_series(root=root, dataset=DAILY, station=STATION),
-        lambda: summarize_series(root=root, dataset=DAILY),
-        lambda: select_series(root, dataset=DAILY, stations=[STATION]),
+        lambda: read_series(root=data, dataset=DAILY, station=STATION),
+        lambda: summarize_series(root=data, dataset=DAILY),
+        lambda: select_series(data, dataset=DAILY, stations=[STATION]),
         lambda: read_station_list(root, kind="hydro"),
     ):
         with pytest.raises(ObserwatorStoreError) as error:
@@ -812,7 +861,7 @@ def test_missing_series_or_station_list_is_not_found(root):
 
 
 def test_summarize_series_equals_index_without_pyarrow(complete, monkeypatch):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
     index = read_series_index(reports[HALF].version)
@@ -862,7 +911,7 @@ def test_summarize_series_equals_index_without_pyarrow(complete, monkeypatch):
 
 
 def test_select_series_matches_series_select_semantics(complete, offline):
-    root, reports, _, _ = complete
+    _, root, reports, _, _ = complete
     index = read_series_index(reports[DAILY].version)
     hydrological = {start.year + (start.month >= 11) for start, _ in index.periods} | {
         end.year + (end.month >= 11) for _, end in index.periods
@@ -1034,11 +1083,12 @@ def test_read_meta_gives_no_dataset_key_for_an_unknown_well_formed_key(root, off
 
 
 def test_series_index_reads_wigos_station_codes_without_pyarrow(
-    root, tmp_path, monkeypatch
+    root, data, tmp_path, monkeypatch
 ):
     store_archives(root, DAILY, [2024])
     moved = tmp_path / "moved"
-    shutil.copytree(build_series(root, dataset=DAILY).version.parent, moved)
+    built = build_series(data, raw_root=root, dataset=DAILY)
+    shutil.copytree(built.version.parent, moved)
     original = json.loads((moved / "series.json").read_text(encoding="utf-8"))
     sidecar = json.loads((moved / "series.json.meta.json").read_text(encoding="utf-8"))
     monkeypatch.setitem(sys.modules, "pyarrow", None)
@@ -1051,14 +1101,14 @@ def test_series_index_reads_wigos_station_codes_without_pyarrow(
         entry["file"] = f"stations/{code}.parquet"
         document["stations"][code] = entry
         shutil.copy(moved / "stations" / f"{STATION}.parquet", moved / entry["file"])
-        data = json.dumps(document).encode("utf-8")
-        (moved / "series.json").write_bytes(data)
+        text = json.dumps(document).encode("utf-8")
+        (moved / "series.json").write_bytes(text)
         (moved / "series.json.meta.json").write_text(
             json.dumps(
                 {
                     **sidecar,
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                    "size_bytes": len(data),
+                    "sha256": hashlib.sha256(text).hexdigest(),
+                    "size_bytes": len(text),
                 }
             ),
             encoding="utf-8",
@@ -1148,20 +1198,22 @@ def test_observation_register_reports_each_broken_element(root, tmp_path, offlin
 
 
 def test_observations_outside_an_archive_slot_register_are_unknown_entries(
-    root, offline
+    root, data, offline
 ):
     (written,) = store_archives(root, DAILY, [2024])
-    misplaced = [
-        written.path.parent.parent.parent / "observations",  # no versions beside it
-        root / "stations" / "versions" / "observations",  # catalog slot
-    ]
-    for directory in misplaced:
+    # No versions beside it (raw root); a catalog slot (data root).
+    misplaced = {
+        root: written.path.parent.parent.parent / "observations",
+        data: data / "stations" / "versions" / "observations",
+    }
+    for directory in misplaced.values():
         directory.mkdir(parents=True)
         (directory / "2026-10-19_00000000.json").write_text("{}", encoding="utf-8")
-    assert sorted(
-        (entry.version, entry.slot, entry.problem_code)
-        for entry in iter_store(root, kind="problem")
-    ) == sorted((directory, None, "unknown_entry") for directory in misplaced)
+    for base, directory in misplaced.items():
+        assert [
+            (entry.version, entry.slot, entry.problem_code)
+            for entry in iter_store(base, kind="problem")
+        ] == [(directory, None, "unknown_entry")]
 
 
 def test_reference_signal_is_the_newest_observation_of_the_current_version(
@@ -1219,11 +1271,12 @@ def test_registers_change_no_version_choice_of_series_or_catalog(tmp_path):
     outcomes = {}
     for name in ("plain", "observed"):
         root = init_store(tmp_path / name).root
+        data = init_store(tmp_path / f"{name}-data", kind="data").root
         store_archives(root, DAILY, [2024])
         with respx.mock(assert_all_called=False) as router:
             record_catalog_sources(router)
             sync_store(root, datasets=IMGW_SOURCES)
-            build_catalog(root)
+            build_catalog(data, raw_root=root)
             if name == "observed":
                 # Observations of no current version are history, never the
                 # version a catalog source is read from (spec 2026-10-18 §3.2).
@@ -1233,16 +1286,16 @@ def test_registers_change_no_version_choice_of_series_or_catalog(tmp_path):
                         same_content_as="2000-01-01_00000000",
                         **CONTENT,
                     )
-            plan = check_catalog(root)
-            catalog = build_catalog(root)
-        series = build_series(root, dataset=DAILY)
+            plan = check_catalog(data, raw_root=root)
+            catalog = build_catalog(data, raw_root=root)
+        series = build_series(data, raw_root=root, dataset=DAILY)
         outcomes[name] = (
             [(action.status, action.detail) for action in plan.actions],
             catalog.status,
             catalog.version.read_bytes(),
             series.status,
             series.version.read_bytes(),
-            check_series(root, dataset=DAILY).series_state,
+            check_series(data, raw_root=root, dataset=DAILY).series_state,
         )
     assert outcomes["observed"] == outcomes["plain"]
     assert outcomes["plain"][1] == "unchanged" and outcomes["plain"][3] == "new"

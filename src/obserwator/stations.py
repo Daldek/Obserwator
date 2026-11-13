@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
@@ -45,6 +45,7 @@ from obserwator.models import HydroState, StationListEntry
 
 if TYPE_CHECKING:
     from obserwator.store.catalog import RootArg
+    from obserwator.store.types import StationFeature
 
 HYDRO_MAP_API_URL = "https://hydro-back.imgw.pl/map/stations/hydrologic"
 _MAP_HEADERS = {
@@ -252,33 +253,31 @@ async def _read_live_async(
     return _parsed(source, response.content, url)
 
 
-def _located(
-    root: RootArg, owner: ProviderDescriptor, entries: list[StationListEntry]
-) -> list[StationListEntry]:
-    """Entries located by the provider's current station catalog, when it has one."""
-    from obserwator.store import read_catalog
+def _text(value: object) -> str | None:
+    """A catalog property that is a non-empty text, else None."""
+    return value if isinstance(value, str) and value else None
 
-    try:
-        features = read_catalog(root=root, provider=owner.id)
-    except ObserwatorStoreError as exc:
-        if exc.code != "not_found":
-            raise
-        return entries  # without a catalog the coordinates of the list stay
-    points = {feature.station_code: feature.geometry for feature in features}
-    located: list[StationListEntry] = []
-    for entry in entries:
-        if entry.station_code not in points:
-            located.append(entry)
-            continue
-        point = points[entry.station_code]
-        located.append(
-            replace(
-                entry,
-                longitude=None if point is None else point[0],
-                latitude=None if point is None else point[1],
-            )
-        )
-    return located
+
+def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
+    """The search entry of a catalog station; None for a station of no family."""
+    properties = feature.properties
+    kind = properties.get("kind")
+    if kind not in _KINDS:
+        return None
+    order = properties.get("river_order")
+    return StationListEntry(
+        kind=kind,
+        station_code=feature.station_code,
+        name=_text(properties.get("name")) or "",
+        river=_text(properties.get("river")),
+        hydrographic_code=_text(properties.get("hydrographic_code")),
+        river_order=order
+        if isinstance(order, int) and not isinstance(order, bool)
+        else None,
+        latitude=None if feature.geometry is None else feature.geometry[1],
+        longitude=None if feature.geometry is None else feature.geometry[0],
+        provider=feature.provider,
+    )
 
 
 def _stored(
@@ -289,36 +288,38 @@ def _stored(
     explicit: bool,
 ) -> list[StationListEntry]:
     """
-    Stored station lists of the providers, located by their current catalogs.
+    Stations of the current station catalogs of the providers in a data root (ADR-017).
 
-    A provider without any stored list is skipped unless it was named
-    (``explicit``); a provider holding only some of the lists, or a store
-    without the lists of all searched providers, is ``not_found``.
+    A provider without a catalog is skipped unless it was named (``explicit``:
+    ``not_found`` of `read_catalog`); a data root without the catalog of any
+    searched provider is ``not_found`` with the ``store catalog`` hint.
     """
-    from obserwator.store import read_station_list
+    from obserwator.store import read_catalog
 
     found: list[StationListEntry] = []
-    absent: ObserwatorStoreError | None = None
     read = False
     for owner in owners:
-        entries: list[StationListEntry] = []
-        missing: list[ObserwatorStoreError] = []
-        for family in kinds:
-            try:
-                entries.extend(read_station_list(root, kind=family, provider=owner.id))
-            except ObserwatorStoreError as exc:
-                if exc.code != "not_found":
-                    raise
-                missing.append(exc)
-        if missing and (explicit or len(missing) < len(kinds)):
-            raise missing[0]
-        if missing:
-            absent = absent or missing[0]
+        try:
+            features = read_catalog(root=root, provider=owner.id)
+        except ObserwatorStoreError as exc:
+            if exc.code != "not_found" or explicit:
+                raise
             continue
         read = True
-        found.extend(_located(root, owner, entries))
-    if not read and absent is not None:
-        raise absent
+        for feature in features:
+            entry = _catalog_entry(feature)
+            if entry is not None and entry.kind in kinds:
+                found.append(entry)
+    if not read:
+        raise ObserwatorStoreError(
+            message(
+                "stations.no_station_catalog",
+                providers=", ".join(owner.short_name for owner in owners),
+            ),
+            code="not_found",
+            details={"option": "root"},
+            hint=message("errors.hint_store_catalog", provider=owners[0].id),
+        )
     return found
 
 
@@ -349,14 +350,15 @@ def find_stations(
         the ČHMÚ metadata ``hydrology/now/metadata/meta1.json`` and the
         newest ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
         (its directory listing, then the file). ``"store"`` reads the
-        current stored lists offline.
+        current station catalogs of a data root offline (ADR-017), which
+        ``store catalog`` builds from the stored lists.
     root : str, os.PathLike or StoreHandle, optional
-        Store root; required with ``source="store"`` and not allowed with
+        Data root; required with ``source="store"`` and not allowed with
         ``source="live"``.
     provider : str or None, optional
         Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMI"``,
         ``"cz.chmi"``); None searches every provider and, with
-        ``source="store"``, skips providers without stored lists.
+        ``source="store"``, skips providers without a station catalog.
     timeout : float, optional
         Request timeout in seconds (live source).
 
@@ -365,13 +367,14 @@ def find_stations(
     tuple of StationListEntry
         Matching stations ordered by provider (registry order), family
         (hydro, meteo), normalized name and code, each with its
-        ``provider``; a code listed twice on the IMGW-PIB meteo list is
+        ``provider``; a code listed twice on the live IMGW-PIB meteo list is
         returned for each row. Live ČHMÚ entries carry the coordinates
         published in the metadata, without validation against the country
         border; live IMGW-PIB lists have no coordinates. With
-        ``source="store"`` the coordinates come from the provider's current
-        station catalog (None for stations with ``geometry: null``); without
-        a catalog the stored list keeps its own (none for IMGW-PIB).
+        ``source="store"`` every station of a catalog is one entry with its
+        code, family, name, river, hydrographic code and river order, the
+        coordinates of its geometry (None for stations with ``geometry:
+        null``) and ``short_code`` None.
 
     Raises
     ------
@@ -384,9 +387,11 @@ def find_stations(
         error (``details`` ``url``, ``reason`` and, for HTTP errors,
         ``status``).
     ObserwatorStoreError
-        If the root is not a supported store, holds no station list of any
-        searched provider, or lacks a list of a named ``provider`` (code
-        ``not_found``).
+        If the root is not a supported data root (code
+        ``store_unavailable``; ``details.reason`` ``wrong_root`` for a raw
+        root), holds no station catalog of any searched provider, or lacks
+        the catalog of a named ``provider`` (code ``not_found``, with the
+        ``store catalog`` hint).
     ObserwatorDataError
         If a live list or listing, or a stored list or catalog, is malformed
         or does not match its sidecar.

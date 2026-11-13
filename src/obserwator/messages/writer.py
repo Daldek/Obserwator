@@ -129,11 +129,29 @@ MESSAGES = {
         "The directory {path} is the store of another tool: it holds {marker}",
         "Katalog {path} jest magazynem innego narzędzia: zawiera {marker}",
     ),
+    "root_holds_both_markers": Text(
+        "The directory {path} holds the markers of both a raw root ({raw}) and a data "
+        "root ({data}); a root is of one kind",
+        "Katalog {path} zawiera znaczniki katalogu surowego ({raw}) i katalogu danych "
+        "({data}); katalog jest jednego rodzaju",
+    ),
+    "wrong_root_raw": Text(
+        "{path} holds {found}, the marker of a data root; this needs a raw root "
+        "(the marker {expected})",
+        "{path} zawiera {found}, znacznik katalogu danych; potrzebny jest katalog "
+        "surowy (znacznik {expected})",
+    ),
+    "wrong_root_data": Text(
+        "{path} holds {found}, the marker of a raw root (or of a store not yet split); "
+        "this needs a data root (the marker {expected})",
+        "{path} zawiera {found}, znacznik katalogu surowego (albo magazynu jeszcze "
+        "nierozdzielonego); potrzebny jest katalog danych (znacznik {expected})",
+    ),
     "layout_without_marker": Text(
-        "{path} has the layout of an Obserwator store but no obserwator-store.json marker; run "
-        "obserwator store init --root {path} to verify the layout and write the marker",
-        "{path} ma układ magazynu Obserwatora, ale nie ma znacznika obserwator-store.json; "
-        "uruchom obserwator store init --root {path}, aby sprawdzić układ i zapisać znacznik",
+        "{path} has the layout of an Obserwator root but no {marker} marker; run "
+        "{command} to verify the layout and write the marker",
+        "{path} ma układ katalogu Obserwatora, ale nie ma znacznika {marker}; "
+        "uruchom {command}, aby sprawdzić układ i zapisać znacznik",
     ),
     "layout_not_obserwator_store": Text(
         "The layout of {path} is not that of an Obserwator store ({count} problems; see "

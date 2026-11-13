@@ -11,7 +11,9 @@ description), ``x-obserwator`` and the ``x-obserwator-*`` keywords, and without 
 the mode does not offer (``read``: writing options; ``http``: options outside
 REST, the others as the REST route takes them); ``required``,
 ``dependentRequired`` and ``oneOf`` keep only the offered options. A stdio
-server makes ``root`` optional (it defaults to the store root), list commands page by
+server makes ``root`` optional (it defaults to the server's root of the
+command's kind: the data root, or the raw root of a command on downloaded
+sources) and ``raw_root`` defaults to its raw root; list commands page by
 ``limit`` (50 by default, at most ``OBSERWATOR_API_MAX_LIMIT``), ``lang`` defaults to
 ``en`` and commands with a check twin take a ``check`` argument, fixed to
 ``true`` for a writing command of a server without writes. The annotations (all
@@ -31,7 +33,7 @@ from typing import Any, Literal, cast
 import mcp.types as types
 
 from obserwator.agent_guide import _PAGE_SIZE
-from obserwator.commands import _input_schemas, data_commands
+from obserwator.commands import _input_schemas, _root_kind, data_commands
 from obserwator.config import settings
 from obserwator.store.types import CommandOption, DataCommand
 
@@ -47,7 +49,11 @@ _NO_WRITES = "The MCP server runs without writes: a call returns the obserwator-
 _WRITES = "check=true by default (a plan); writing requires check=false."
 _CHECK = "Only the obserwator-plan/1 plan, without writing or downloading"
 _FIXED_CHECK = f"{_CHECK} (server without writes)"
-_SERVER_ROOT = "the MCP server's store"
+# The default roots of a stdio server by kind (ADR-017 D4, D5).
+_SERVER_ROOTS = {
+    "data": "the MCP server's data root",
+    "raw": "the MCP server's raw root",
+}
 
 
 @dataclass(frozen=True)
@@ -136,11 +142,16 @@ def _rest_properties(
 
 
 def _root_text(spec: DataCommand) -> str:
-    """Note on ``root`` of a stdio server: the default store root."""
+    """Note on ``root`` of a stdio server: the default root of the command's kind."""
+    if spec.name == "store init":
+        return (
+            f"default: {_SERVER_ROOTS['raw']}, with kind=data {_SERVER_ROOTS['data']}"
+        )
+    default = _SERVER_ROOTS[_root_kind(spec, {})]
     if not spec.env_root_when:
-        return f"default: {_SERVER_ROOT}"
+        return f"default: {default}"
     condition = ", ".join(f"{key}={value}" for key, value in spec.env_root_when.items())
-    return f"default with {condition}: {_SERVER_ROOT}"
+    return f"default with {condition}: {default}"
 
 
 def _check_kind(spec: DataCommand, mode: Mode) -> tuple[bool | None, bool]:
@@ -183,6 +194,11 @@ def _tool(
         description = properties["root"]["description"]
         properties["root"]["description"] = f"{description}; {_root_text(spec)}"
         dropped.add("root")  # given by the server when absent (spec §3.5)
+    if mode != "http" and "raw_root" in properties:
+        description = properties["raw_root"]["description"]
+        properties["raw_root"]["description"] = (
+            f"{description}; default: {_SERVER_ROOTS['raw']}"
+        )
     limit: tuple[int, int] | None = None
     if spec.result == "list":
         maximum = settings.api_max_limit

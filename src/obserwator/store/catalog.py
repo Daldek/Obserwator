@@ -60,7 +60,7 @@ from obserwator.exceptions import (
 from obserwator.fetch import DEFAULT_TIMEOUT
 from obserwator.messages import message, reason
 from obserwator.models import StationListEntry
-from obserwator.store.series import _current_series, _series_versions
+from obserwator.store.series import _current_series, _raw, _series_versions
 from obserwator.store.types import (
     Cancel,
     CatalogReport,
@@ -84,6 +84,7 @@ from obserwator.store.writer import (
     _write_json,
     lenient_store,
     prepare_store,
+    refuse_root,
     root_conflict_plan,
     version_file,
 )
@@ -225,10 +226,6 @@ def _publish_version(
     finally:
         if staging.exists():
             shutil.rmtree(staging)
-
-
-def _handle(root: RootArg) -> StoreHandle:
-    return lenient_store(root)
 
 
 def _cancelled(cancel: Cancel | None) -> bool:
@@ -1424,6 +1421,7 @@ def check_catalog(
     root: RootArg,
     /,
     *,
+    raw_root: RootArg,
     provider: str = "IMGW-PIB",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
@@ -1435,18 +1433,20 @@ def check_catalog(
 
     Nothing is requested, downloaded or written (ADR-015): whether the station
     sources are fresh is the business of ``store check``. Each station source
-    the build reads from the store (the two station lists and the station
+    the build reads from the raw root (the two station lists and the station
     metadata that ``store sync`` stores) is compared by the SHA-256 of its
     current version with the one recorded in the provider's current catalog
-    sidecar. Location files are compared by SHA-256 with the entries recorded
-    in that sidecar; the station codes of the provider's current series
-    indexes and the ``meteo_kind`` they give are compared with its current
-    catalog.
+    sidecar in the data root. Location files are compared by SHA-256 with the
+    entries recorded in that sidecar; the station codes of the provider's
+    current series indexes in the data root and the ``meteo_kind`` they give
+    are compared with its current catalog.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the catalog would be written to (ADR-017); it need not exist.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose station sources the build reads; only read.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
         ``"IMGW-PIB"`` by default.
@@ -1486,8 +1486,10 @@ def check_catalog(
         If ``provider`` names no provider, or a location file exists but
         cannot be read.
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store or a version path contains a
-        symbolic link.
+        If ``root`` is no data root that may be written, ``raw_root`` is
+        missing or no raw root (code ``store_unavailable``; ``details.reason``
+        ``wrong_root`` for a root of the other kind) or a version path
+        contains a symbolic link.
     ObserwatorStoreConflictError
         If a stored source or catalog version is corrupted.
     ObserwatorDataError
@@ -1496,11 +1498,12 @@ def check_catalog(
     """
     owner = get_provider(provider)
     user = _user_file(user_locations)
-    refused = root_conflict_plan("store catalog", root)
+    refused = root_conflict_plan("store catalog", root, kind="data")
     if refused is not None:
         return refused
-    handle = _handle(root)
-    catalog = _current_catalog(handle.root, owner.id)
+    base = lenient_store(root, kind="data").root
+    raw = _raw(raw_root)
+    catalog = _current_catalog(base, owner.id)
     recorded = {
         entry.get("source"): entry.get("sha256")
         for entry in (catalog[1]["extra"].get("catalog", []) if catalog else [])
@@ -1508,16 +1511,14 @@ def check_catalog(
     }
     actions: list[PlanAction] = []
     sources = list(
-        zip(_catalog_sources(handle.root, owner), _source_datasets(owner), strict=True)
+        zip(_catalog_sources(raw, owner), _source_datasets(owner), strict=True)
     )
     total = len(sources) + 2
     cancelled = False
     for index, ((source, archive), key) in enumerate(sources, start=1):
         cancelled = cancelled or _cancelled(cancel)
         stored = (
-            None
-            if cancelled or archive is None
-            else _current_archive(handle.root, archive)
+            None if cancelled or archive is None else _current_archive(raw, archive)
         )
         status: Literal["current", "newer", "missing", "unverifiable"]
         if cancelled:
@@ -1538,7 +1539,7 @@ def check_catalog(
             detail = message(
                 "catalog.source_detail",
                 source=source,
-                file=path.relative_to(handle.root).as_posix(),
+                file=path.relative_to(raw).as_posix(),
             )
         actions.append(PlanAction("store catalog", status, detail))
         if on_progress is not None:
@@ -1575,7 +1576,7 @@ def check_catalog(
                 message("catalog.location_file_detail", source=source, detail=found),
             )
         )
-    series, _, meteo_kinds = _series_codes(handle.root, [], provider=owner)
+    series, _, meteo_kinds = _series_codes(base, [], provider=owner)
     series_codes = series["hydro"] | series["meteo"]
     if catalog is None:
         series_status: Literal["current", "newer", "missing"] = "missing"
@@ -1621,7 +1622,7 @@ def check_catalog(
             message(
                 "catalog.station_catalog_version",
                 version=(
-                    catalog[0].relative_to(handle.root).as_posix()
+                    catalog[0].relative_to(base).as_posix()
                     if catalog
                     else message("catalog.no_version")
                 ),
@@ -1640,7 +1641,7 @@ def check_catalog(
         )
     return StorePlan(
         schema="obserwator-plan/1",
-        root=handle.root,
+        root=base,
         checked_at=datetime.now(UTC),
         items=(),
         series_state={},
@@ -1724,7 +1725,7 @@ def _catalog_notices(
 class _Build:
     """Common state of one catalog build: roots, provider, user file and hooks."""
 
-    handle: StoreHandle
+    root: Path
     raw: Path
     provider: ProviderDescriptor
     user: tuple[Path, bytes] | None
@@ -1797,7 +1798,7 @@ class _Build:
             current one.
         """
         provider = self.provider
-        root = self.handle.root
+        root = self.root
         sha = hashlib.sha256(data).hexdigest()
         current = _current_catalog(root, provider.id)
         if current is not None and current[1]["sha256"] == sha:
@@ -1833,6 +1834,8 @@ class _Build:
                 "catalog": sources,
             },
         }
+        # The first write of a new data root creates its marker (DEV-19.13).
+        prepare_store(root, kind="data")
         path, created = _publish_version(
             root,
             slot=_CATALOG_DIRS[provider.id],
@@ -1873,6 +1876,7 @@ def build_catalog(
     root: RootArg,
     /,
     *,
+    raw_root: RootArg,
     provider: str = "IMGW-PIB",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
@@ -1884,10 +1888,14 @@ def build_catalog(
 
     The build makes no request (ADR-015): it reads the current versions of the
     provider's station lists and station metadata that ``store sync``
-    downloaded into the store (``store sync --datasets`` of the station-source
-    datasets), the current series indexes and the location files. Identical
-    content (same SHA-256 of the canonical GeoJSON, whatever the envelopes of
-    the sources) yields ``unchanged`` without a new version.
+    downloaded into the raw root (``store sync --datasets`` of the
+    station-source datasets), the current series indexes of the data root and
+    the location files, and writes the catalog into the data root (ADR-017).
+    The raw root is only read: no marker, staging directory or cleanup there,
+    so a read-only raw root works; the data root gets its marker with its
+    first version. Identical content (same SHA-256 of the canonical GeoJSON,
+    whatever the envelopes of the sources) yields ``unchanged`` without a new
+    version.
 
     IMGW-PIB (``stations/versions/<label>_<sha8>/``): every code of the lists,
     the stored answers of the current hydro and meteo data API
@@ -1923,12 +1931,16 @@ def build_catalog(
     The user CSV ``station_code,latitude,longitude[,source]`` may hold codes of
     both providers: codes of the other provider are skipped, codes of no
     provider are problems. Every series index read is recorded in the sidecar
-    as a ``series`` source.
+    as a ``series`` source; the ``file`` of a station source is relative to
+    the raw root, that of a series index to the data root.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the catalog is written to; created with its marker when it
+        is new or empty.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose station sources are read; never written.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
         ``"IMGW-PIB"`` by default.
@@ -1966,25 +1978,30 @@ def build_catalog(
         ``id,X,Y`` format must be regenerated with
         ``python -m obserwator.reference_data``); raised before the sources are read.
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store or collides with a Kartograf
-        store; ``not_found`` (``details.reason`` ``missing_source``,
-        ``details.datasets``) when the store lacks a station source, with the
-        ``store sync`` that downloads it as the hint.
+        Code ``store_unavailable`` if ``root`` is no supported data root or
+        collides with a Kartograf store, or ``raw_root`` is missing or no raw
+        root (``details.reason`` ``wrong_root`` for a root of the other kind);
+        ``not_found`` (``details.reason`` ``missing_source``,
+        ``details.datasets``) when the raw root lacks a station source, with
+        the ``store sync`` that downloads it as the hint.
     ObserwatorDataError
         If a source is not valid (an API answer that is not a JSON list of
         objects, a ČHMÚ metadata file that cannot be read, an unknown
         threshold unit), a current series index is unreadable, or a station
         code appears in both the hydro and meteo families.
     ObserwatorStoreConflictError
-        If a stored version is corrupted or the new version cannot be published
+        If ``root`` nests a store or holds other files and is no store, a
+        stored version is corrupted or the new version cannot be published
         atomically.
     """
     owner = get_provider(provider)
-    handle = prepare_store(root)
+    refuse_root(root, kind="data")
+    base = lenient_store(root, kind="data").root
+    raw = _raw(raw_root)
     user = _user_file(user_locations)
     build = _Build(
-        handle,
-        handle.root,
+        base,
+        raw,
         owner,
         user,
         6 if owner.id == "IMGW-PIB" else 7,
@@ -1997,7 +2014,7 @@ def build_catalog(
 
 def _build_imgw(build: _Build) -> CatalogReport:
     """IMGW-PIB catalog from the station lists, public APIs and location files."""
-    handle, owner, user = build.handle, build.provider, build.user
+    owner, user = build.provider, build.user
     # Location files are validated before any download, so a bad header writes nothing.
     static_path, static_bytes = _static_file()
     static, static_problems = (
@@ -2078,7 +2095,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
             )
         )
     series, series_sources, meteo_kinds = _series_codes(
-        handle.root, problems, provider=owner
+        build.root, problems, provider=owner
     )
     sources.extend(series_sources)
     data, count, without, used, series_only = _catalog_bytes(
@@ -2117,7 +2134,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
 
 def _build_chmi(build: _Build) -> CatalogReport:
     """ČHMÚ catalog from the stored now and historical metadata files and the user file."""
-    handle, owner, user = build.handle, build.provider, build.user
+    owner, user = build.provider, build.user
     # The user file is validated before the sources are read, so a bad header writes nothing.
     user_rows, user_problems = (
         _read_locations(user[1], user=True, provider=owner)
@@ -2186,7 +2203,7 @@ def _build_chmi(build: _Build) -> CatalogReport:
             | {"available": True}
         )
     # ČHMÚ publishes no station class: meteo_kind stays null (spec 2026-10-18 §7.3).
-    series, series_sources, _ = _series_codes(handle.root, problems, provider=owner)
+    series, series_sources, _ = _series_codes(build.root, problems, provider=owner)
     records.extend(series_sources)
     data, count, without, used, series_only, conflicts = _chmi_catalog_bytes(
         families=families,

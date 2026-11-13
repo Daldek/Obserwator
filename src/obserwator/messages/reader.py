@@ -8,8 +8,8 @@ MESSAGES = {
         "Katalog magazynu nie istnieje: {path}",
     ),
     "no_marker_not_obserwator_store": Text(
-        "No marker {marker}: {path} is not an Obserwator store",
-        "Brak znacznika {marker}: {path} nie jest magazynem Obserwatora",
+        "No marker {raw} or {data}: {path} is not an Obserwator store",
+        "Brak znacznika {raw} ani {data}: {path} nie jest magazynem Obserwatora",
     ),
     "unreadable_marker": Text(
         "An unreadable marker {marker}: {exc}",
@@ -187,6 +187,18 @@ MESSAGES = {
         "an unsupported series schema {series_schema}",
         "nieobsługiwany schemat szeregu {series_schema}",
     ),
+    "sidecar_not_analyses_of_slot": Text(
+        "the sidecar is not that of an analyses version of the slot {slot}",
+        "sidecar nie należy do wersji analiz slotu {slot}",
+    ),
+    "field_extra_analyses_schema_must": Text(
+        "the field extra.analyses_schema must be a text",
+        "pole extra.analyses_schema musi być tekstem",
+    ),
+    "unsupported_analyses_schema": Text(
+        "an unsupported analyses schema {analyses_schema}",
+        "nieobsługiwany schemat analiz {analyses_schema}",
+    ),
     "version": Text(
         "Version {relative}: {exc}",
         "Wersja {relative}: {exc}",
@@ -259,10 +271,12 @@ MESSAGES = {
         "Obserwacja {relative}: {exc}",
     ),
     "archive_key_path_series_key": Text(
-        "archive:<key>:<path>, series:<key>, catalog:<catalog key> ({values}) or "
-        "pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>",
+        "archive:<key>:<path>, series:<key>, catalog:<catalog key> ({values}), "
+        "pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY> or analyses:<provider key "
+        "prefix>.analyses ({analyses})",
         "archive:<klucz>:<ścieżka>, series:<klucz>, catalog:<klucz katalogu> "
-        "({values}) albo pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>",
+        "({values}), pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY> albo "
+        "analyses:<prefiks klucza dostawcy>.analyses ({analyses})",
     ),
     "symbolic_link_store": Text(
         "A symbolic link in the store: {relative}",
@@ -405,10 +419,8 @@ MESSAGES = {
         "Nieznany rodzaj listy stacji: {kind!r}; dozwolone hydro, meteo",
     ),
     "store_has_no_station_list": Text(
-        "The store has no station list {dataset}; building the station catalog "
-        "writes it ({hint})",
-        "Magazyn nie zawiera listy stacji {dataset}; zapisuje ją budowa katalogu "
-        "stacji ({hint})",
+        "The raw root has no station list {dataset}",
+        "Katalog surowy nie zawiera listy stacji {dataset}",
     ),
     "version_belongs_dataset_not": Text(
         "The version {version} belongs to the dataset {dataset}, not {dataset_2}",
@@ -627,11 +639,5 @@ MESSAGES = {
         "(IMGW-PIB) or a WIGOS identifier",
         "Nieprawidłowe kody stacji {codes}; oczekiwano co najmniej jednego kodu "
         "z 9 cyfr (IMGW-PIB) albo identyfikatora WIGOS",
-    ),
-    "layout_without_marker": Text(
-        "{path} has the layout of an Obserwator store but no obserwator-store.json marker; run "
-        "obserwator store init --root {path} to verify the layout and write the marker",
-        "{path} ma układ magazynu Obserwatora, ale nie ma znacznika obserwator-store.json; "
-        "uruchom obserwator store init --root {path}, aby sprawdzić układ i zapisać znacznik",
     ),
 }

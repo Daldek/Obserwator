@@ -57,12 +57,8 @@ from obserwator.messages.sync import MESSAGES
 from obserwator.output import resolve_target
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
-    SeriesState,
     _current_version,
-    _root,
-    _scan_inputs,
     _series_descriptor,
-    _series_state,
     _Version,
 )
 from obserwator.store.types import (
@@ -81,6 +77,7 @@ from obserwator.store.types import (
     SyncReport,
 )
 from obserwator.store.writer import (
+    lenient_store,
     refuse_root,
     root_conflict_plan,
     version_file,
@@ -795,25 +792,6 @@ def _selection(
     return descriptors, (), {}, _country_archives(descriptors, years, months, stations)
 
 
-def _series_states(
-    root: Path, descriptors: list[DatasetDescriptor], items: list[PlanItem]
-) -> dict[str, SeriesState]:
-    """Series state of every dataset; ``current`` turns ``outdated`` with pending items."""
-    states: dict[str, SeriesState] = {}
-    for descriptor in descriptors:
-        inputs, problems = _scan_inputs(root, descriptor)
-        state = _series_state(root, descriptor, inputs, reliable=not problems)
-        pending = any(
-            item.archive.dataset == descriptor.key
-            and item.status in ("newer", "missing")
-            for item in items
-        )
-        states[descriptor.slug] = (
-            "outdated" if state == "current" and pending else state
-        )
-    return states
-
-
 def _plan_target(root: Path, plan: PathArg) -> Path:
     """Plan file to write: outside the store, in an existing directory."""
     target = Path(plan).expanduser().absolute()
@@ -860,7 +838,7 @@ def check_store(
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Raw root (ADR-017) or an open handle of one.
     datasets : Iterable[str]
         Dataset keys, slugs or legacy aliases of measurement series datasets,
         either all IMGW-PIB or all ČHMÚ. A bare string is rejected.
@@ -906,17 +884,18 @@ def check_store(
         dataset, station, year, element. A ČHMÚ station without any file of a
         dataset is one ``store sync`` action (``unverifiable``, or
         ``check_failed`` when the listing of its years cannot be read).
-        ``series_state`` holds the local state of each dataset's series keyed
-        by slug, with ``current`` turned into ``outdated`` when the plan has
-        ``newer``/``missing`` items for that dataset. ``requests`` counts the
-        requests made by the check (``"made"``) and the HEAD and GET of every
-        ``newer`` and ``missing`` item (``"planned"``).
+        ``series_state`` is empty: the series lie in the data root, whose
+        state ``series build --check`` (`check_series`) reports (ADR-017).
+        ``requests`` counts the requests made by the check (``"made"``) and
+        the HEAD and GET of every ``newer`` and ``missing`` item
+        (``"planned"``).
 
     Raises
     ------
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store or a store path contains a
-        symbolic link.
+        If ``root`` is not a supported raw root (code ``store_unavailable``;
+        ``details.reason`` ``wrong_root`` for a data root) or a root path
+        contains a symbolic link.
     ObserwatorValidationError
         If ``datasets`` is a string or empty, a dataset is unknown or does not
         produce measurement series, IMGW-PIB and ČHMÚ datasets are mixed or
@@ -928,12 +907,12 @@ def check_store(
     descriptors, codes, candidates, archives = _selection(
         datasets, years, months, stations
     )
-    refused = root_conflict_plan("store sync", root)
+    refused = root_conflict_plan("store sync", root, kind="raw")
     if refused is not None:
         if plan is not None:
             refused.to_json(_plan_target(refused.root, plan))
         return refused
-    path = _root(root)
+    path = lenient_store(root, kind="raw").root
     sources = descriptors[0].time_unit == "station_list"
     listed = sources or descriptors[0].archive_scope != "country"
     target = _plan_target(path, plan) if plan is not None else None
@@ -984,7 +963,7 @@ def check_store(
         root=path,
         checked_at=datetime.now(UTC),
         items=tuple(items),
-        series_state={} if sources else _series_states(path, descriptors, items),
+        series_state={},
         actions=tuple(actions),
         cancelled=cancelled,
         requests={
@@ -1322,9 +1301,9 @@ def sync_store(
     Parameters
     ----------
     root : str, os.PathLike, StoreHandle or None, optional
-        Root of an existing Obserwator store; None (with no ``output_dir``) is the
-        store at the default root (``OBSERWATOR_ROOT``, ``[obserwator] root`` of
-        ``nogat.toml`` or ``<data_dir>/obserwator``).
+        Raw root (ADR-017); None (with no ``output_dir``) is the default raw
+        root (``OBSERWATOR_RAW_ROOT``, ``[obserwator] raw_root`` of
+        ``nogat.toml`` or ``<data_dir>/obserwator-raw``).
     output_dir : str, os.PathLike or None, optional
         Plain mode: directory of the files, created when missing. Excludes
         ``root``.
@@ -1407,8 +1386,8 @@ def sync_store(
             on_notice=on_notice,
             cancel=cancel,
         )
-    refuse_root(target.path)
-    path = _root(target.path)
+    refuse_root(target.path, kind="raw")
+    path = lenient_store(target.path, kind="raw").root
     if plan is not None and any(
         option is not None for option in (datasets, years, months, stations)
     ):

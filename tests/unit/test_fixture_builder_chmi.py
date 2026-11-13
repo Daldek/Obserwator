@@ -1,9 +1,10 @@
 """build_fixture_store(variant="complete_pl_cz"): the IMGW-PIB fixture plus ČHMÚ.
 
 Spec 2026-10-18 §13.3: ČHMÚ archives in versions (first, ``relabeled``,
-corrected), a slot with the observation of scenario (8), the series of both
-ČHMÚ datasets and the ČHMÚ catalog, built offline from
-``chmi_builder_recordings.json``. Synthetic files, fictional station codes.
+corrected), a slot with the observation of scenario (8) in the raw root, the
+series of both ČHMÚ datasets and the ČHMÚ catalog in the data root (ADR-017),
+built offline from ``chmi_builder_recordings.json``. Synthetic files,
+fictional station codes.
 """
 
 import hashlib
@@ -36,13 +37,26 @@ def refuse(*args, **kwargs):
 
 
 @pytest.fixture(scope="module")
-def store(tmp_path_factory):
+def roots(tmp_path_factory):
+    base = tmp_path_factory.mktemp("pl_cz")
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(socket.socket, "connect", refuse)
         patch.setattr(socket, "create_connection", refuse)
         return build_fixture_store(
-            tmp_path_factory.mktemp("pl_cz") / "store", variant="complete_pl_cz"
-        ).root
+            base / "store", data_root=base / "data", variant="complete_pl_cz"
+        )
+
+
+@pytest.fixture(scope="module")
+def store(roots):
+    """The raw root: archives and observations."""
+    return roots.raw.root
+
+
+@pytest.fixture(scope="module")
+def data(roots):
+    """The data root: series and catalogs."""
+    return roots.data.root
 
 
 def sidecars(root, slot, name):
@@ -55,9 +69,13 @@ def sidecars(root, slot, name):
     }
 
 
-def tree(root):
+def tree(roots):
+    """Files of both fixture roots, by kind of root and relative path."""
     return {
-        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        f"{kind}/{path.relative_to(root).as_posix()}": hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        for kind, root in (("raw", roots.raw.root), ("data", roots.data.root))
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
@@ -112,33 +130,31 @@ def test_reserialized_file_is_one_observation_beside_its_only_version(store):
     assert entry.version.parent.name == version
 
 
-def test_chmi_series_and_catalog_are_current_and_the_scan_is_clean(store):
-    assert check_series(store, dataset=HYDRO).series_state == {
+def test_chmi_series_and_catalog_are_current_and_the_scan_is_clean(store, data):
+    assert check_series(data, raw_root=store, dataset=HYDRO).series_state == {
         "chmi_hydro_daily": "current"
     }
-    assert check_series(store, dataset=METEO).series_state == {
+    assert check_series(data, raw_root=store, dataset=METEO).series_state == {
         "chmi_meteo_daily": "current"
     }
-    hydro_series = sidecars(store, "series/versions/chmi_hydro_daily", "series.json")
+    hydro_series = sidecars(data, "series/versions/chmi_hydro_daily", "series.json")
     assert len(hydro_series) == 2  # before and after the correction of 900001 2024
     current = max(hydro_series.values(), key=lambda meta: meta["downloaded_at"])
     inputs = {source["name"]: source for source in current["extra"]["source_files"]}
-    assert (
-        inputs["H_0-203-1-900001_DQ_2024.json"]["file"]
-        .split("/")[-2]
-        .startswith("2026-05-21_")
-    )
+    corrected = inputs["H_0-203-1-900001_DQ_2024.json"]["file"]
+    assert corrected.split("/")[-2].startswith("2026-05-21_")
+    assert (store / corrected).is_file()  # source files name the raw root
     assert all("content_sha256" in source for source in inputs.values())
 
     stations = {
-        feature.station_code for feature in read_catalog(root=store, provider="CHMI")
+        feature.station_code for feature in read_catalog(root=data, provider="CHMI")
     }
     assert {"0-203-1-900001", "0-203-1-900002", "0-203-0-90001"} <= stations
-    assert {feature.provider for feature in read_catalog(root=store)} == {
+    assert {feature.provider for feature in read_catalog(root=data)} == {
         "IMGW-PIB",
         "CHMI",
     }
-    entries = list(iter_store(store))
+    entries = [*iter_store(store), *iter_store(data)]
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
     assert Counter(
         (entry.kind, entry.provider) for entry in entries if entry.provider == "CHMI"
@@ -161,17 +177,27 @@ def test_imgw_part_equals_the_complete_fixture_and_builds_are_identical(
 
     for module in (writer, series, catalog):
         monkeypatch.setattr(module, "datetime", Frozen)
-    complete = tree(build_fixture_store(tmp_path / "complete").root)
-    first = tree(build_fixture_store(tmp_path / "a", variant="complete_pl_cz").root)
-    second = tree(build_fixture_store(tmp_path / "b", variant="complete_pl_cz").root)
+    complete = tree(
+        build_fixture_store(tmp_path / "complete", data_root=tmp_path / "complete-data")
+    )
+    first = tree(
+        build_fixture_store(
+            tmp_path / "a", data_root=tmp_path / "a-data", variant="complete_pl_cz"
+        )
+    )
+    second = tree(
+        build_fixture_store(
+            tmp_path / "b", data_root=tmp_path / "b-data", variant="complete_pl_cz"
+        )
+    )
 
     assert first == second
     assert {name: first[name] for name in complete} == complete
     chmi = (
-        "archives/versions/hydrology/",
-        "archives/versions/meteorology/",
-        "series/versions/chmi_",
-        "stations/versions/chmi_stations/",
+        "raw/archives/versions/hydrology/",
+        "raw/archives/versions/meteorology/",
+        "data/series/versions/chmi_",
+        "data/stations/versions/chmi_stations/",
     )
     assert all(name.startswith(chmi) for name in set(first) - set(complete))
 

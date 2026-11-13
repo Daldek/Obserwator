@@ -190,21 +190,20 @@ def test_a_command_entry_maps_the_declarations_to_commands_1():
     (entry,) = command_schema("stations find")["commands"]
     options = {option["name"]: option for option in entry["options"]}
 
-    assert options["source"] == {
+    source = dict(options["source"])
+    enum = source.pop("enum")
+    assert source == {
         "name": "source",
         "type": "string",
         "required": False,
         "default": "live",
-        "enum": [
-            {"value": "live", "meaning": "The providers' station lists, read live"},
-            {
-                "value": "store",
-                "meaning": "Station lists and catalogs saved in the store",
-            },
-        ],
         "description": options["source"]["description"],
         "flags": ["--source"],
     }
+    assert [(item["value"], bool(item["meaning"])) for item in enum] == [
+        ("live", True),
+        ("store", True),
+    ]
     assert options["root"]["path_role"] == "root"
     assert entry["result"] == {
         "schema": "obserwator-result/1",

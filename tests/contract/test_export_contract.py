@@ -13,18 +13,11 @@ import anyio
 import pytest
 
 from obserwator import ObserwatorValidationError, run_command
-from obserwator.testing import build_fixture_store
 from tests.contract.support import ANYWHERE
 
 MCP = importlib.util.find_spec("mcp") is not None
 METEO, STATION = "cz.chmi.meteo_daily", "0-203-0-90001"
 REFUSAL = {"option": "output", "reason": "output_required"}
-
-
-@pytest.fixture(scope="module")
-def pl_cz(tmp_path_factory):
-    store = tmp_path_factory.mktemp("parquet") / "store"
-    return build_fixture_store(store, variant="complete_pl_cz").root
 
 
 def options(root, **extra) -> dict[str, Any]:
@@ -63,21 +56,23 @@ def mcp_call(
 
 
 def test_parquet_is_one_file_in_python_cli_mcp_and_a_rest_attachment(
-    pl_cz, tmp_path, cli, rest, server, monkeypatch
+    fixture_root, tmp_path, cli, rest, server, monkeypatch
 ):
-    python = run_command("series export", options=options(pl_cz, output=tmp_path / "p"))
+    python = run_command(
+        "series export", options=options(fixture_root, output=tmp_path / "p")
+    )
     data = (tmp_path / "p").read_bytes()
     printed = cli(
         "series",
         "export",
         *[
             word
-            for name, value in options(pl_cz, output=tmp_path / "c").items()
+            for name, value in options(fixture_root, output=tmp_path / "c").items()
             for word in (f"--{name}", str(value))
         ],
         "--json",
     )
-    monkeypatch.setattr(server, "root", pl_cz)
+    monkeypatch.setattr(server, "root", fixture_root)
     answered = rest.get(
         "/api/v1/series/export",
         params={"dataset": METEO, "station": STATION, "format": "parquet"},
@@ -87,7 +82,7 @@ def test_parquet_is_one_file_in_python_cli_mcp_and_a_rest_attachment(
     assert (tmp_path / "c").read_bytes() == data
     if MCP:
         result = mcp_call(
-            {**options(pl_cz, output=str(tmp_path / "m")), "check": False}
+            {**options(fixture_root, output=str(tmp_path / "m")), "check": False}
         )
         assert result.is_error is False, result.content[0].text
         assert (tmp_path / "m").read_bytes() == data
@@ -104,15 +99,15 @@ def test_parquet_is_one_file_in_python_cli_mcp_and_a_rest_attachment(
     assert not list(tmp_path.glob("**/.obserwator-incoming"))
 
 
-def test_parquet_without_output_is_one_validation_error_everywhere(pl_cz, cli):
+def test_parquet_without_output_is_one_validation_error_everywhere(fixture_root, cli):
     with pytest.raises(ObserwatorValidationError) as python:
-        run_command("series export", options=options(pl_cz))
+        run_command("series export", options=options(fixture_root))
     printed = cli(
         "series",
         "export",
         *[
             word
-            for name, value in options(pl_cz).items()
+            for name, value in options(fixture_root).items()
             for word in (f"--{name}", value)
         ],
         "--json",
@@ -126,7 +121,10 @@ def test_parquet_without_output_is_one_validation_error_everywhere(pl_cz, cli):
         REFUSAL,
     )
     if MCP:
-        for mode, given in (("read", options(pl_cz)), ("http", options(pl_cz))):
+        for mode, given in (
+            ("read", options(fixture_root)),
+            ("http", options(fixture_root)),
+        ):
             if mode == "http":
                 del given["root"]  # the server's root over HTTP
             result = mcp_call(given, mode=mode)

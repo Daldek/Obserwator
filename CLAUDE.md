@@ -4,11 +4,11 @@ Instructions for Claude Code (claude.ai/code) working in this repository. Refere
 
 ## 1. Project
 
-Obserwator (`obserwator` on PyPI, v3.0.0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and Web GUI for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store of the source archives. Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the Web GUI calls public functions only. Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Obserwator (`obserwator` on PyPI, v3.0.0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and Web GUI for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the Web GUI calls public functions only. Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 2. Critical rules
 
-- Write only where the user says: `--output-dir` (plain files), `--root`, `OBSERWATOR_ROOT` or the default store `<data_dir>/obserwator` (DEV-19.2, ADR-007); a server writes only to its configured `OBSERWATOR_ROOT`, never to the default. No database.
+- Write only where the user says: `--output-dir` (plain files) or `--root`; without `--root`, downloads go to the raw root (`OBSERWATOR_RAW_ROOT`, default `<data_dir>/obserwator-raw`) and the series, catalogs and analyses to the data root (`OBSERWATOR_ROOT`, default `<data_dir>/obserwator`) (DEV-19.2, ADR-007, ADR-017). A build reads the raw root (`--raw-root`) and never writes it; a function needing one kind of root refuses the other (`wrong_root`). A server writes only to its configured `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, never to a default. No database.
 - Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`.
 - Never edit `AGENTS.md` and `llms.txt` by hand: they are derived from the catalog. A change of catalog texts, of the dataset/provider/error registries or of the templates in `src/obserwator/_data/agents/` regenerates both in the same change (commands in section 3); `tests/unit/test_agent_guide.py` compares the bytes.
 - Keep the contract Python = CLI = REST = MCP (`tests/contract/`); one option name per parameter, one envelope `obserwator-result/1`, one error registry `ERROR_CODES`.
@@ -48,7 +48,7 @@ src/obserwator/
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006)
 ├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
 ├── _data/                # borders, agents/ templates, packaged fixtures
-├── store/                # versioned store: writer, sync, series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
+├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
@@ -68,7 +68,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..012, ADR-016) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..012, ADR-014..017) | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
@@ -87,7 +87,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 
 ## 7. Cross-project context
 
-Obserwator is a tool of the Nogat ecosystem; its entry (interfaces, provided contracts `obserwator-store/1`, `obserwator-meta/1`, ..., data sources) is `Obserwator` in [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml). Hydrolog has no package dependency on it (it reads the CSV of `obserwator series export`); Hydrograf and Hydraulik call `fetch_pmaxtp`; Kartograf is a neighbour. Store consumers: **Archiwista** (public read API only; IMGW-PIB and ČHMÚ through the same adapter, `provider` fields, read-only `kind="observation"` entries; it owns the projects that pin store versions, `archiwista-project/1`, ADR-008) and **Retman** (command catalog: `command_schema` — English by default, `lang="pl"` for Polish — `x-obserwator.writes`/`network`, `validate_command`, `format_command`, `check_command`, `run_command`). What a consumer changes for the data output (ADR-007): [docs/CHANGELOG.md](docs/CHANGELOG.md), "Migration guide: data output". Cross-project analysis: [docs/HISTORY.md](docs/HISTORY.md).
+Obserwator is a tool of the Nogat ecosystem; its entry (interfaces, provided contracts `obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, ..., data sources) is `Obserwator` in [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml). Hydrolog has no package dependency on it (it reads the CSV of `obserwator series export`); Hydrograf and Hydraulik call `fetch_pmaxtp`; Kartograf is a neighbour. Store consumers: **Archiwista** (public read API only; IMGW-PIB and ČHMÚ through the same adapter, `provider` fields, read-only `kind="observation"` entries; it owns the projects that pin store versions, `archiwista-project/1`, ADR-008, and in Nogat keeps the raw root) and **Retman** (command catalog: `command_schema` — English by default, `lang="pl"` for Polish — `x-obserwator.writes`/`network`, `validate_command`, `format_command`, `check_command`, `run_command`). What a consumer changes for the data output (ADR-007): [docs/CHANGELOG.md](docs/CHANGELOG.md), "Migration guide: data output"; for the two roots (ADR-017): its entry "the data root" and [docs/USAGE.md](docs/USAGE.md) "Splitting a store". Cross-project analysis: [docs/HISTORY.md](docs/HISTORY.md).
 
 ## Deviations
 

@@ -34,7 +34,6 @@ from obserwator.store import (
     read_series,
     sync_pmaxtp,
 )
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     ANYWHERE,
     DAILY,
@@ -51,13 +50,6 @@ ARCHIVES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
 POINT = {"latitude": 52.23, "longitude": 21.01}
 IMGW = attribution("imgw")
 CHMI = attribution("chmi")
-
-
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    """The IMGW-PIB and ČHMÚ fixture store, built with the current lines."""
-    root = tmp_path_factory.mktemp("attribution") / "store"
-    return build_fixture_store(root, variant="complete_pl_cz").root
 
 
 def series_of(root: Path, dataset: str) -> Path:
@@ -197,11 +189,12 @@ def test_csv_of_series_export_has_one_line_per_cell_and_joins_the_rest_into_one_
 
 
 def test_store_export_carries_the_lines_in_csv_columns_and_the_first_jsonl_object(
-    fixture_root,
+    fixture_raw_root,
 ):
     (archive,) = archive_files(DAILY, years=2024)
     version = current_version(
-        fixture_root, slot=f"archive:{DAILY}:{archive.server_path.split('/', 2)[-1]}"
+        fixture_raw_root,
+        slot=f"archive:{DAILY}:{archive.server_path.split('/', 2)[-1]}",
     ).version
 
     rows = table_of(export_archive(version))

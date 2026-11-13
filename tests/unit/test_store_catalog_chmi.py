@@ -1,7 +1,8 @@
 """Offline scenarios of the ČHMÚ station catalog (spec 2026-10-18 §7, ADR-015).
 
-The station sources come into the store by ``store sync`` from recorded HTTP
-answers only; the catalog is then built and checked without any request.
+The station sources come into the raw root by ``store sync`` from recorded HTTP
+answers only; the catalog is then built into the data root and checked without
+any request (ADR-017).
 """
 
 import hashlib
@@ -24,6 +25,7 @@ from obserwator.exceptions import (
 from obserwator.fetch import DownloadResult
 from obserwator.messages import message
 from obserwator.store import (
+    StoreHandle,
     check_store,
     init_store,
     read_meta,
@@ -127,10 +129,18 @@ def sync_sources(store, *cases, datasets=SOURCE_DATASETS, on_notice=None, **bodi
         return sync_store(store, datasets=list(datasets), on_notice=on_notice)
 
 
+def data_root(store):
+    """The data root the catalog of the raw root ``store`` is built into (ADR-017)."""
+    raw = store.root if isinstance(store, StoreHandle) else Path(store)
+    return raw.parent / f"{raw.name}-data"
+
+
 def offline_build(store, **options):
-    """ČHMÚ catalog of ``store`` built from its stored sources; any request would fail."""
+    """ČHMÚ catalog built from the sources of the raw root ``store``; any request would fail."""
     with respx.mock(assert_all_mocked=True) as offline:
-        report = build_catalog(store, provider="CHMI", **options)
+        report = build_catalog(
+            data_root(store), raw_root=store, provider="CHMI", **options
+        )
     assert not offline.calls
     return report
 
@@ -138,7 +148,9 @@ def offline_build(store, **options):
 def offline_check(store, **options):
     """``check_catalog`` of the ČHMÚ catalog; any request would fail."""
     with respx.mock(assert_all_mocked=True) as offline:
-        plan = check_catalog(store, provider="CHMI", **options)
+        plan = check_catalog(
+            data_root(store), raw_root=store, provider="CHMI", **options
+        )
     assert not offline.calls
     return plan
 
@@ -165,6 +177,8 @@ def sidecar(report):
 
 def plant_series(root, dataset, codes):
     """A minimal current series version of ``dataset`` whose index names ``codes``."""
+    if not (root / "obserwator-data.json").exists():
+        init_store(root, kind="data")
     data = (
         json.dumps(
             {
@@ -224,10 +238,10 @@ def test_every_station_of_the_sources_is_kept_also_without_location(store):
         7,
     )
     assert (report.without_location, report.from_series) == (1, 0)
-    assert (
-        report.version.parent.parent == store.root / "stations/versions/chmi_stations"
+    assert report.version.parent.parent == (
+        data_root(store) / "stations/versions/chmi_stations"
     )
-    assert not list((store.root / "stations/versions").glob("*/stations.geojson"))
+    assert not list((data_root(store) / "stations/versions").glob("*/stations.geojson"))
     assert schema_errors(document, "stations.geojson") == []
     kinds = {code: feature["properties"]["kind"] for code, feature in found.items()}
     assert kinds == {code: "meteo" if "-0-" in code else "hydro" for code in CODES}
@@ -309,7 +323,7 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
 
 
 def test_rejected_points_never_block_a_lower_source_and_reasons_are_kept(store):
-    plant_series(store.root, "cz.chmi.hydro_daily", ["0-203-1-900005"])
+    plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
     notices = []
     report = build(store, on_notice=notices.append)
     found = features(report)
@@ -525,7 +539,7 @@ def test_sidecar_records_both_sums_of_every_source_and_the_chmi_license(tmp_path
 def test_user_file_locates_chmi_codes_and_skips_codes_of_the_other_provider(
     store, tmp_path
 ):
-    plant_series(store.root, "cz.chmi.hydro_daily", ["0-203-1-900005"])
+    plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
     user = tmp_path / "polozenia.csv"
     user.write_text(
         "station_code,latitude,longitude,source\n"
@@ -575,7 +589,7 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
         store = init_store(tmp_path / name)
         if name == "mixed":
             build(store)
-            plant_series(store.root, "cz.chmi.hydro_daily", ["0-203-1-900005"])
+            plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
             (archive,) = archive_files(
                 "cz.chmi.hydro_daily", stations=["0-203-1-900001"], years=[2023]
             )
@@ -594,12 +608,14 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
         with respx.mock(assert_all_called=False) as router:
             sync_imgw_sources(store, router)
         with respx.mock(assert_all_mocked=True):
-            report = build_catalog(store, user_locations=user)
-            plan = check_catalog(store, user_locations=user)
+            report = build_catalog(
+                data_root(store), raw_root=store, user_locations=user
+            )
+            plan = check_catalog(data_root(store), raw_root=store, user_locations=user)
         meta = sidecar(report)
         outcomes.append(
             (
-                report.version.relative_to(store.root),
+                report.version.relative_to(data_root(store)),
                 report.version.read_bytes(),
                 [
                     {key: value for key, value in entry.items() if key != "fetched_at"}
@@ -618,11 +634,14 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
 
 def test_catalog_builds_and_checks_with_the_network_off(store):
     sync_sources(store)
+    raw = tree(store.root)
     with respx.mock(assert_all_mocked=True) as offline:
-        report = build_catalog(store, provider="CHMI")
-        plan = check_catalog(store, provider="CHMI")
+        report = build_catalog(data_root(store), raw_root=store, provider="CHMI")
+        plan = check_catalog(data_root(store), raw_root=store, provider="CHMI")
     assert not offline.calls
     assert (report.status, report.station_count) == ("new", len(CODES))
+    assert report.version.is_relative_to(data_root(store))
+    assert tree(store.root) == raw  # the build only reads the raw root
     assert plan.items == ()
     assert [action.status for action in plan.actions] == ["current"] * 7
     assert [action.detail.split(":", 1)[0] for action in plan.actions[:5]] == [
@@ -660,7 +679,7 @@ def test_missing_source_is_not_found_naming_it_and_writes_nothing(
         "catalog.hint_sync_sources", root=store.root, datasets=",".join(missing)
     )
     assert tree(store.root) == before
-    assert not (store.root / "stations").exists()
+    assert not (data_root(store) / "stations").exists()
 
 
 def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
@@ -680,9 +699,9 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
     # Stored sources without a catalog: the build would make the first version.
     assert [action.status for action in offline_check(store).actions] == ["missing"] * 7
     offline_build(store)
-    before = tree(store.root)
+    before = tree(store.root), tree(data_root(store))
     assert [action.status for action in offline_check(store).actions] == ["current"] * 7
-    assert tree(store.root) == before
+    assert (tree(store.root), tree(data_root(store))) == before
 
     # meta3 has no signal: the sync downloads it and keeps the changed bytes.
     changed_meta3 = body("hydro_meta3_get").replace(b"712.35", b"712.36")
@@ -766,7 +785,7 @@ def test_failed_source_sync_leaves_the_build_a_missing_source(
         offline_build(store)
     assert raised.value.code == "not_found"
     assert raised.value.details == {"reason": "missing_source", "datasets": [dataset]}
-    assert not (store.root / "stations").exists()
+    assert not (data_root(store) / "stations").exists()
 
 
 def test_failed_source_sync_keeps_the_stored_version_for_the_build(store):
@@ -810,7 +829,7 @@ def test_invalid_stored_source_fails_the_build_and_publishes_no_catalog(
     with pytest.raises(ObserwatorDataError, match=reason) as raised:
         offline_build(store)
     assert raised.value.code == "data_error"
-    assert not (store.root / "stations").exists()
+    assert not (data_root(store) / "stations").exists()
 
 
 def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothing(
@@ -843,7 +862,7 @@ def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothi
         None,
         "CHMI",
     )
-    assert not (store.root / "stations").exists()
+    assert not (data_root(store) / "stations").exists()
 
     (entry,) = [
         entry
@@ -859,11 +878,12 @@ def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothi
 def test_provider_is_validated_and_key_prefix_names_it(store):
     for call in (build_catalog, check_catalog):
         with pytest.raises(ObserwatorValidationError) as error:
-            call(store, provider="SHMU")
+            call(data_root(store), raw_root=store, provider="SHMU")
         assert error.value.details["allowed"] == ["IMGW-PIB", "CHMI"]
     sync_sources(store)
     with respx.mock(assert_all_mocked=True):
-        assert build_catalog(store, provider="cz.chmi").provider == "CHMI"
+        built = build_catalog(data_root(store), raw_root=store, provider="cz.chmi")
+    assert built.provider == "CHMI"
 
 
 def test_czech_outline_validates_points_of_czechia_only():

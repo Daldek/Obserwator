@@ -171,10 +171,6 @@ MESSAGES = {
         "the sidecar names no analyses version of the provider",
         "plik metadanych nie opisuje wersji analiz tego dostawcy",
     ),
-    "unknown_entry": Text(
-        "an unknown entry of an analyses slot",
-        "nieznany element gniazda analiz",
-    ),
     "export_progress": Text(
         "Analyses of the station {station}",
         "Analizy stacji {station}",
@@ -298,6 +294,9 @@ MESSAGES = {
     "title_low_flow_sequences": Text(
         "Low-flow periods below SNQ", "Niżówki poniżej SNQ"
     ),
+    "title_low_flow_sequences_h": Text(
+        "Low-water periods below SNW", "Niżówki stanów poniżej SNW"
+    ),
     "title_duration_h": Text(
         "Duration curve and classes of water levels",
         "Krzywa czasu trwania i klasy stanów wody",
@@ -339,6 +338,14 @@ MESSAGES = {
     ),
     "title_seasonality_min": Text(
         "Seasonality of the annual minima", "Sezonowość minimów rocznych"
+    ),
+    "title_seasonality_h_max": Text(
+        "Seasonality of the annual maximum water levels",
+        "Sezonowość maksymalnych rocznych stanów wody",
+    ),
+    "title_seasonality_h_min": Text(
+        "Seasonality of the annual minimum water levels",
+        "Sezonowość minimalnych rocznych stanów wody",
     ),
     "title_harmonics_t": Text(
         "Annual cycle of water temperature (harmonics)",

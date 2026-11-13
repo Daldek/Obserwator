@@ -67,6 +67,7 @@ from obserwator.store.writer import (
     _validate_slot,
     _write_json,
     lenient_store,
+    prepare_store,
     refuse_root,
     root_conflict_plan,
     version_file,
@@ -111,8 +112,23 @@ class _Input:
     version: _Version
 
 
-def _root(root: PathArg | StoreHandle) -> Path:
-    return lenient_store(root).root
+def _raw(raw_root: PathArg | StoreHandle) -> Path:
+    """
+    The raw root a build reads: opened with the reader's helper, so nothing is written.
+
+    No marker is created or completed and no staging directory is made or
+    cleaned there, so a read-only raw root works (ADR-017 D4).
+
+    Raises
+    ------
+    ObserwatorStoreError
+        Code ``store_unavailable``: the raw root is missing (with the hint of
+        ``store sync`` and ``store init``), no supported root, or a data root
+        (``details.reason`` ``wrong_root``).
+    """
+    from obserwator.store.reader import _open  # the reader imports this module
+
+    return _open(raw_root, kind="raw")
 
 
 def _series_descriptor(dataset: str) -> DatasetDescriptor:
@@ -414,6 +430,7 @@ def check_series(
     root: PathArg | StoreHandle,
     /,
     *,
+    raw_root: PathArg | StoreHandle,
     dataset: str,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -422,12 +439,14 @@ def check_series(
     """
     Report offline what :func:`build_series` would read and the series state.
 
-    Reads only local sidecars; no network access and no writes.
+    Reads only local sidecars of both roots; no network access and no writes.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the series would be written to (ADR-017); it need not exist.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose current archive versions the build reads; only read.
     dataset : str
         Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
         dataset.
@@ -442,28 +461,31 @@ def check_series(
     Returns
     -------
     StorePlan
-        Plan whose items are the current input archive versions (status
-        ``current``, HTTP signals copied from their sidecars, the station of
-        a per-station file in ``station_code``), whose
-        ``series_state`` maps the dataset slug to ``current``, ``outdated`` or
-        ``missing``, and whose ``series build`` actions carry the series status
-        (``current``, ``newer`` for an outdated series, or ``missing``), one
-        ``check_failed`` action per unreadable slot and a ``missing`` action when
-        the store holds no archive of the dataset.
+        Plan of the data root whose items are the current input archive
+        versions (status ``current``, ``local_path`` relative to the raw root,
+        HTTP signals copied from their sidecars, the station of a per-station
+        file in ``station_code``), whose ``series_state`` maps the dataset slug
+        to ``current``, ``outdated`` or ``missing``, and whose ``series build``
+        actions carry the series status (``current``, ``newer`` for an
+        outdated series, or ``missing``), one ``check_failed`` action per
+        unreadable slot and a ``missing`` action when the raw root holds no
+        archive of the dataset.
 
     Raises
     ------
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store.
+        Code ``store_unavailable`` if ``root`` is no data root that may be
+        written or ``raw_root`` is missing or no raw root (``details.reason``
+        ``wrong_root`` for a root of the other kind).
     ObserwatorValidationError
         If ``dataset`` is unknown or does not produce measurement series.
     """
     descriptor = _series_descriptor(dataset)
-    refused = root_conflict_plan("series build", root)
+    refused = root_conflict_plan("series build", root, kind="data")
     if refused is not None:
         return refused
-    path = _root(root)
-    inputs, problems = _scan_inputs(path, descriptor)
+    path = lenient_store(root, kind="data").root
+    inputs, problems = _scan_inputs(_raw(raw_root), descriptor)
     items: list[PlanItem] = []
     cancelled = False
     for index, item in enumerate(inputs, start=1):
@@ -973,6 +995,7 @@ def build_series(
     root: PathArg | StoreHandle,
     /,
     *,
+    raw_root: PathArg | StoreHandle,
     dataset: str,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -981,15 +1004,18 @@ def build_series(
     """
     Snapshot every station of the current archive versions as one series version.
 
-    Reads exactly the current version of every archive slot of the dataset and
-    writes one Parquet file per station plus ``series.json`` (``obserwator-series/1``),
-    published atomically as a new version. When the current series version (the
+    Reads exactly the current version of every archive slot of the dataset in
+    the raw root and writes one Parquet file per station plus ``series.json``
+    (``obserwator-series/1``) into the data root, published atomically as a new
+    version (ADR-017). The raw root is only read: no marker, staging directory
+    or cleanup there, so a read-only raw root works; the data root gets its
+    marker with its first version. When the current series version (the
     newest build) was built from the same input manifest (slot and full SHA-256
     of every input) it is returned as ``unchanged`` without invoking the Parquet
     writer. An older version with that manifest (inputs reverted to earlier
     content) is never reused: a new version is built and becomes current. Parsed
     records are validated and spilled per station to compressed temporary files
-    outside the store (``tempfile``), then every station is assembled, written
+    outside the roots (``tempfile``), then every station is assembled, written
     and covered alone, so memory stays bounded by one station and a queue of
     parsed records, not by the dataset. An unreadable input or conflicting
     values fail the whole build; an incomplete snapshot is never published.
@@ -1002,13 +1028,17 @@ def build_series(
     ``periods`` are the union of the station periods. Meteorological stations
     get the ``<V>_quality`` and ``<V>_source_flag`` Parquet columns, inputs of
     a dataset with a canonical form carry ``content_sha256`` and
-    ``content_form`` in ``extra.source_files``, and the sidecar names the
-    provider of the dataset with its processed-data attribution.
+    ``content_form`` in ``extra.source_files`` (whose ``file`` is relative to
+    the raw root), and the sidecar names the provider of the dataset with its
+    processed-data attribution.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the series version is written to; created with its marker
+        when it is new or empty.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose current archive versions are read; never written.
     dataset : str
         Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
         dataset.
@@ -1029,13 +1059,17 @@ def build_series(
     SeriesReport
         Status ``new``, ``unchanged``, ``cancelled`` or ``failed``; ``version`` is
         the path of ``series.json``, ``source_files`` the absolute paths of the input
-        archive versions (for ``unchanged``, the inputs recorded in the existing
-        current version's sidecar) and ``problems`` the reasons of a failure.
+        archive versions in the raw root (for ``unchanged``, the inputs recorded
+        in the existing current version's sidecar) and ``problems`` the reasons
+        of a failure.
 
     Raises
     ------
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store (``store_unavailable``).
+        Code ``store_unavailable`` if ``root`` is no supported data root or
+        ``raw_root`` is missing or no raw root (``details.reason``
+        ``wrong_root`` for a root of the other kind, e.g. a store not yet
+        split used as the data root).
     ObserwatorValidationError
         If ``dataset`` is unknown or does not produce measurement series.
     ObserwatorStoreDependencyError
@@ -1046,8 +1080,9 @@ def build_series(
         published atomically or its directory collides with a different
         version.
     """
-    refuse_root(root)
-    path = _root(root)
+    refuse_root(root, kind="data")
+    path = lenient_store(root, kind="data").root
+    raw = _raw(raw_root)
     descriptor = _series_descriptor(dataset)
     pa, pq = _pyarrow()
 
@@ -1056,7 +1091,7 @@ def build_series(
 
     if cancelled():
         return _report("cancelled")
-    inputs, problems = _scan_inputs(path, descriptor)
+    inputs, problems = _scan_inputs(raw, descriptor)
     sources = [item.version.file for item in inputs]
     if problems:
         for problem in problems:
@@ -1073,7 +1108,7 @@ def build_series(
     if current is not None and _reusable(current, manifest, descriptor):
         series = json.loads(current.path.read_text(encoding="utf-8"))
         recorded = [
-            path / PurePosixPath(source["file"])
+            raw / PurePosixPath(source["file"])
             for source in current.meta["extra"]["source_files"]
         ]
         if on_progress is not None:
@@ -1147,6 +1182,8 @@ def build_series(
             return _report("failed", sources=sources, problems=[reason(exc)])
         station_periods = {code: _merge_spans(items) for code, items in spans.items()}
 
+        # The first write of a new data root creates its marker (DEV-19.13).
+        prepare_store(path, kind="data")
         incoming = path / ".incoming"
         incoming.mkdir(exist_ok=True)
         _cleanup(incoming, on_notice=on_notice)

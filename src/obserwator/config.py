@@ -15,7 +15,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import (
@@ -31,7 +31,10 @@ from obserwator import _environment as environment
 from obserwator._version import __version__
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import LANGS, Lang, message
-from obserwator.output import STORE_MARKER
+from obserwator.output import DATA_MARKER, STORE_MARKER
+
+if TYPE_CHECKING:
+    from obserwator.store.types import RootKind
 
 __all__ = [
     "Settings",
@@ -117,8 +120,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # Directories (DEV-18.2): stores live in <data_dir>/obserwator, caches in
-    # <cache_dir>/obserwator. Neither is the working directory. The reference data of
+    # Directories (DEV-18.2): stores live in <data_dir>/obserwator (the data root) and
+    # <data_dir>/obserwator-raw (the raw root), caches in <cache_dir>/obserwator.
+    # Neither is the working directory. The reference data of
     # IMGW-PIB (hydro_stations_locations.csv, desc/) is fetched again at will,
     # so it lives in the cache, and the state of the REST server (API keys) in
     # the data directory of the tool.
@@ -138,14 +142,19 @@ class Settings(BaseSettings):
     # Rate limiting (requests per hour, 0 = unlimited)
     rate_limit: int = 100
 
-    # The store root of the REST server (OBSERWATOR_ROOT, [obserwator] root; DEV-19.2): a
-    # server writes only there, never to the default <data_dir>/obserwator, and the
-    # catalog routes of commands with a store root answer 503 store_unavailable
-    # without it. The CLI, the library and the MCP server use `store_root`.
+    # The data root of the REST server (OBSERWATOR_ROOT, [obserwator] root; DEV-19.2,
+    # ADR-017): series, station catalogs and analyses. A server writes only to its
+    # configured roots, never to the default <data_dir>/obserwator, and the catalog
+    # routes of commands with a root answer 503 store_unavailable without the root
+    # of their kind. The CLI, the library and the MCP server use `store_root`.
     # Writes (POST without ?check=true) need both flags below and the X-API-Key
     # header; the token is compared in constant time and is a credential:
     # environment only.
     root: Path | None = None
+    # The raw root (OBSERWATOR_RAW_ROOT, [obserwator] raw_root; ADR-017): the
+    # downloaded archives, station sources and PMAXTP cells; the default of the CLI,
+    # the library and the MCP server is <data_dir>/obserwator-raw.
+    raw_root: Path | None = None
     store_writes_enabled: bool = False
     store_write_token: SecretStr | None = None
     # Server directory with user station-location CSVs offered to the catalog
@@ -229,34 +238,48 @@ def human_language() -> Lang | None:
     return value if value in LANGS else None
 
 
-def _root_of(current: Settings) -> Path:
-    """The root of ``current``: the setting, else ``<data_dir>/obserwator`` (DEV-19.2)."""
-    chosen = (
-        current.root
-        if current.root is not None
-        else current.data_dir / environment.TOOL
-    )
+# Directory of the default root of each kind below <data_dir> (DEV-19.2, ADR-017 D5).
+_DEFAULT_DIRS = {"data": environment.TOOL, "raw": f"{environment.TOOL}-raw"}
+# Setting of the root of each kind.
+_ROOT_KEYS = {"data": "root", "raw": "raw_root"}
+# Marker of each kind of root.
+_ROOT_MARKERS = {"data": DATA_MARKER, "raw": STORE_MARKER}
+
+
+def _root_of(current: Settings, kind: "RootKind" = "data") -> Path:
+    """
+    The root of ``kind`` of ``current``: the setting, else its directory in ``data_dir``.
+
+    The data root is ``root``, else ``<data_dir>/obserwator``; the raw root is
+    ``raw_root``, else ``<data_dir>/obserwator-raw`` (DEV-19.2, ADR-017 D5).
+    """
+    setting: Path | None = getattr(current, _ROOT_KEYS[kind])
+    chosen = setting if setting is not None else current.data_dir / _DEFAULT_DIRS[kind]
     return chosen.expanduser().absolute()
 
 
 @dataclass(frozen=True)
 class StoreRoot:
     """
-    The default store root, resolved without reading the store (DEV-19.2).
+    The default root of one kind, resolved without reading it (DEV-19.2, ADR-017).
 
     Attributes
     ----------
     root : pathlib.Path
-        Absolute root: ``OBSERWATOR_ROOT``, the same key in ``.env``, ``[obserwator] root`` of
-        ``nogat.toml``, else ``<data_dir>/obserwator``; ``~`` expanded. The store need
-        not exist yet.
+        Absolute root. The data root: ``OBSERWATOR_ROOT``, the same key in
+        ``.env``, ``[obserwator] root`` of ``nogat.toml``, else
+        ``<data_dir>/obserwator``; the raw root: ``OBSERWATOR_RAW_ROOT``, the
+        same key in ``.env``, ``[obserwator] raw_root``, else
+        ``<data_dir>/obserwator-raw``; ``~`` expanded. The root need not exist
+        yet.
     source : {"default", "env", "dotenv", "file"}
         The layer that gave ``root``.
     name : str or None
         The variable or the table that gave it; ``None`` for the default.
     marker_exists : bool
-        Whether ``obserwator-store.json`` is a file in the root. The directory may be
-        missing; then the marker does not exist either.
+        Whether the marker of the kind (``obserwator-data.json`` of a data
+        root, ``obserwator-store.json`` of a raw root) is a file in the root.
+        The directory may be missing; then the marker does not exist either.
     """
 
     root: Path
@@ -265,17 +288,25 @@ class StoreRoot:
     marker_exists: bool
 
 
-def store_root() -> StoreRoot:
+def store_root(*, kind: "RootKind" = "data") -> StoreRoot:
     """
-    Return the default store root, its source and whether its marker exists.
+    Return the default root of a kind, its source and whether its marker exists.
 
     The read-only accessor of the default root that every Nogat producer
     exposes alike (DEV-19.2). The root is the one of a command without
-    ``--root`` and of ``obserwator config show``, read now so that a later change of
-    the environment counts; it looks for one file, the marker, and never
-    creates, lists or measures anything, so the cost does not grow with the
-    store (``environment_report`` measures the size). A server writes to
-    ``Settings.root`` only.
+    ``--root`` (``--raw-root`` of a build for the raw root) and of
+    ``obserwator config show``, read now so that a later change of the
+    environment counts; it looks for one file, the marker, and never creates,
+    lists or measures anything, so the cost does not grow with the root
+    (``environment_report`` measures the size). A server writes to
+    ``Settings.root`` and ``Settings.raw_root`` only.
+
+    Parameters
+    ----------
+    kind : {"data", "raw"}, optional
+        Kind of root (ADR-017): ``"data"`` (series, station catalogs,
+        analyses; the default) or ``"raw"`` (archives, station sources,
+        PMAXTP cells).
 
     Returns
     -------
@@ -283,14 +314,14 @@ def store_root() -> StoreRoot:
         ``root``, ``source`` (``default``, ``env``, ``dotenv`` or ``file``),
         ``name`` (the variable or the table) and ``marker_exists``.
     """
-    root = _root_of(Settings())
-    origin = _origin("root", _layers())
+    root = _root_of(Settings(), kind)
+    origin = _origin(_ROOT_KEYS[kind], _layers())
     name = origin["name"]
     return StoreRoot(
         root,
         str(origin["source"]),
         None if name is None else str(name),
-        (root / STORE_MARKER).is_file(),
+        (root / _ROOT_MARKERS[kind]).is_file(),
     )
 
 
@@ -400,8 +431,9 @@ def environment_report() -> dict[str, object]:
         the credentials: ``value``, ``source`` ``default``, ``env``, ``dotenv``
         or ``file`` and ``name``, the variable or the table), ``credentials``
         (each credential variable ``present`` or ``missing``; the value is never
-        given) and ``store`` (the store root, its source, whether it exists and
-        its size in bytes; hard-linked files counted once).
+        given), ``store`` (the data root, its source, whether it exists and
+        its size in bytes; hard-linked files counted once) and ``raw_store``
+        (the same of the raw root, ADR-017).
     """
     current = Settings()
     file = environment.config_file()
@@ -423,7 +455,16 @@ def environment_report() -> dict[str, object]:
         for key in file.sections.get(environment.TOOL, {})
         if key not in Settings.model_fields or key in environment.CREDENTIAL_KEYS
     ]
-    root = _root_of(current)
+
+    def described(kind: "RootKind") -> dict[str, object]:
+        root = _root_of(current, kind)
+        return {
+            "root": str(root),
+            **_origin(_ROOT_KEYS[kind], layers),
+            "exists": root.is_dir(),
+            "size_bytes": _tree_size(root) if root.is_dir() else None,
+        }
+
     return {
         "schema": "obserwator-config/1",
         "tool": "obserwator",
@@ -437,10 +478,6 @@ def environment_report() -> dict[str, object]:
         },
         "keys": keys,
         "credentials": credentials,
-        "store": {
-            "root": str(root),
-            **_origin("root", layers),
-            "exists": root.is_dir(),
-            "size_bytes": _tree_size(root) if root.is_dir() else None,
-        },
+        "store": described("data"),
+        "raw_store": described("raw"),
     }

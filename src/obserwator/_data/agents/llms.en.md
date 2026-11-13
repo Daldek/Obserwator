@@ -1,6 +1,6 @@
 # Obserwator
 
-> Python library, CLI, REST API and MCP server for public hydrological and meteorological data: a versioned store of archives and station series, current data and PMAXTP. <!-- obserwator:summary -->
+> Python library, CLI, REST API and MCP server for public hydrological and meteorological data: a versioned raw root of archives and a data root of station series, catalogs and analyses, current data and PMAXTP. <!-- obserwator:summary -->
 
 <!-- obserwator:rules -->
 

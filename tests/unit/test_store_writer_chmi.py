@@ -512,7 +512,8 @@ def test_new_envelope_of_a_station_list_is_unchanged_with_an_observation(root):
 
 
 def test_imgw_sidecars_carry_no_chmi_fields(tmp_path):
-    root = build_fixture_store(tmp_path / "store").root
+    roots = build_fixture_store(tmp_path / "store", data_root=tmp_path / "data")
+    raw, data = roots.raw.root, roots.data.root
     recording = next(
         item
         for item in json.loads(
@@ -524,20 +525,18 @@ def test_imgw_sidecars_carry_no_chmi_fields(tmp_path):
         router.get(recording["url"]).mock(
             return_value=httpx.Response(200, json=recording["json"])
         )
-        sync_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01)
-    sidecars = sorted(root.rglob("*.meta.json"))
-    assert {path.relative_to(root).parts[0] for path in sidecars} == {
-        "archives",
-        "series",
-        "stations",
-        "pmaxtp",
+        sync_pmaxtp(raw, method="POT", latitude=52.23, longitude=21.01)
+    trees = {
+        root: {path.relative_to(root).parts[0] for path in root.rglob("*.meta.json")}
+        for root in (raw, data)
     }
-    for path in sidecars:
+    assert trees == {raw: {"archives", "pmaxtp"}, data: {"series", "stations"}}
+    for path in sorted([*raw.rglob("*.meta.json"), *data.rglob("*.meta.json")]):
         meta = json.loads(path.read_text(encoding="utf-8"))
         assert (meta["country"], meta["provider"]) == ("PL", "IMGW-PIB"), path
         assert set(meta["license"]) == {"id", "attribution", "url"}, path
         assert "content_sha256" not in meta and "content_form" not in meta, path
-        if path.relative_to(root).parts[0] == "archives":
+        if path.is_relative_to(raw / "archives"):
             assert set(meta["request"]) == {"server_path", "year", "month"}
             assert set(meta["extra"]["period"]) == {
                 "year",
