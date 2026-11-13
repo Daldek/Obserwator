@@ -17,7 +17,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Single command catalog, CLI and REST (ADR-002) | done (3.0.0) | CLI and REST generated from the catalog |
 | ČHMÚ provider (ADR-003) | done (3.0.0) | questions to ČHMÚ and Archiwista confirmations: open (below) |
 | AI agent support, MCP server (ADR-004) | done (3.0.0) | agent surfaces in English (ADR-006): done, entry in [HISTORY.md](HISTORY.md) |
-| Web GUI (HTMX + Jinja2) | done | Nogat's app menu from `[nogat] gui` of `nogat.toml` (ADR-011, Nogat plan 2026-11-12 step 7): done, merged into `develop` (`6d21a68`, 2026-11-12); the running `imgwtools-api` container (built 2026-08-02) is not rebuilt, its pages being in no public deployment; ČHMÚ data and GeoJSON layer: planned; the pages give way to the GUI hub of Nogat's stage 2 |
+| Web GUI (HTMX + Jinja2) | done | Nogat's app menu from `[nogat] gui` of `nogat.toml` (ADR-011, Nogat plan 2026-11-12 step 7): done, merged into `develop` (`6d21a68`, 2026-11-12); the running `imgwtools-api` container (built 2026-08-02) is not rebuilt, its pages being in no public deployment; the pages give way to a new GUI planned in [`docs/plans/2026-11-12-obserwator-gui.md`](plans/2026-11-12-obserwator-gui.md) (branch `plan/obserwator-gui`, approved 2026-11-13; prototype on `feat/gui-mockup`), the GUI part of Nogat's cross-project plan `2026-11-12-station-data-and-analyses.md` (branch `plan/station-data-and-analyses`, approved 2026-11-13, ECO-059) |
 | API key enforcement, per-key limits | planned | backlog in "Next" |
 | Compliance with Nogat standard 1.0 (`chore/nogat-2.1`, merged into `develop`) | in progress | done and to do: below and in "Next" |
 | Data output: plain mode, store, default root (ADR-007, DEV §19) | done (`develop`) | code, tests and documents finished; for consumers: [CHANGELOG "Migration guide: data output"](CHANGELOG.md) |
@@ -182,7 +182,7 @@ The response contains **16 durations × 27 probabilities** for each of the `ks`/
 
 Decisions waiting for the author (remove once resolved):
 
-None.
+- IMGW-PIB's terms for serving its series and analysis results on the public instance (Nogat plan `2026-11-12-station-data-and-analyses.md`, question 4, „do sprawdzenia”); until answered the public GUI stays behind Cloudflare Access.
 
 **For the author (outside the agent's reach):** branch/tag rulesets, Dependabot security updates, `SECURITY.md` and private vulnerability reporting (DEV-3.6, DEV-13.7); the CLA text. Done on 2026-11-03: the branches renamed `master`/`slave` → `main`/`develop` on GitHub (rename API; `main` is the default branch) and locally, with the links in the docs and `llms.*` (ECO-008); the history and author identities rewritten (phase 1).
 
@@ -194,4 +194,4 @@ Author's decisions of 2026-11-09.
 
 ---
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-13
