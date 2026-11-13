@@ -171,6 +171,11 @@ class Settings(BaseSettings):
     # `obserwator mcp` starts in the write mode (OBSERWATOR_MCP_ALLOW_WRITES; --allow-writes).
     mcp_allow_writes: bool = False
 
+    # Hydrolog's program of the analyses (ADR-016; OBSERWATOR_HYDROLOG_COMMAND,
+    # [obserwator] hydrolog_command): a command line, split as a shell splits it
+    # (shlex); unset runs `hydrolog` found on PATH. No command option chooses it.
+    hydrolog_command: str | None = None
+
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 

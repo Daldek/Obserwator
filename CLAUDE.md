@@ -41,14 +41,14 @@ Extras: `obserwator[cli|api|store|mcp|pandas|full]` (install lines in the README
 ```
 src/obserwator/
 ├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
-├── commands.py           # command catalog (31 commands), run_command, command_schema
+├── commands.py           # command catalog (35 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
 ├── coverage.py, exceptions.py (ERROR_CODES), testing.py, config.py, reference_data.py
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006)
 ├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
 ├── _data/                # borders, agents/ templates, packaged fixtures
-├── store/                # versioned store: writer, sync, series, catalog, pmaxtp, reader, export
+├── store/                # versioned store: writer, sync, series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
@@ -68,7 +68,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..011) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..012, ADR-016) | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |

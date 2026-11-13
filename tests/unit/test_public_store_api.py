@@ -18,9 +18,9 @@ import obserwator.stations
 import obserwator.store
 import obserwator.urls
 
-# Spec §2–10, §12 and §13.12 (and spec 2026-10-18 §9.1): every function, type and
-# exception a consumer may need; new functions take keyword-only options after the
-# first object.
+# Spec §2–10, §12 and §13.12 (and spec 2026-10-18 §9.1, ADR-016): every function,
+# type and exception a consumer may need; new functions take keyword-only options
+# after the first object.
 SPEC_FUNCTIONS = (
     "providers",
     "get_provider",
@@ -83,6 +83,13 @@ SPEC_FUNCTIONS = (
     "check_command",
     "run_command",
     "agent_guide",
+    "analysis_definitions",
+    "check_analyses",
+    "build_analyses",
+    "list_analyses",
+    "read_analysis",
+    "export_analyses",
+    "compute_analysis",
 )
 SPEC_TYPES = (
     "PathArg",
@@ -131,6 +138,16 @@ SPEC_TYPES = (
     "Page",
     "SeriesSelection",
     "ErrorSpec",
+    "AnalysesReport",
+    "ProviderAnalyses",
+    "AnalysisSource",
+    "AnalysisSummary",
+    "AnalysisResult",
+    "AnalysisDefinition",
+    "AnalysisVariant",
+    "AnalysisInput",
+    "AnalysisPick",
+    "AnalysisOption",
 )
 # Type aliases and constants.
 SPEC_VALUES = (

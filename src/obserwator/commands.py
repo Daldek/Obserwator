@@ -1,5 +1,5 @@
 """
-Catalog of the 31 data commands and the single dispatcher of public functions.
+Catalog of the 35 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -73,10 +73,12 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import LANGS, Lang, localize, message, reason
 from obserwator.models import StationListEntry
+from obserwator.store import analyses as _analyses
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
 from obserwator.store import sync as _sync
 from obserwator.store import writer as _writer
+from obserwator.store.analysis_registry import analysis_definitions, get_definition
 from obserwator.store.catalog import _NESTED_CATALOGS, CATALOG_FILE
 from obserwator.store.plain import plain_actions
 from obserwator.store.pmaxtp import CELL_FILE, RESPONSE_FILE
@@ -174,6 +176,7 @@ _GROUPS = {
     "pmaxtp": message("commands.group_pmaxtp"),
     "store": message("commands.group_store"),
     "series": message("commands.group_series"),
+    "analyses": message("commands.group_analyses"),
     "commands": message("commands.group_commands"),
 }
 _STORE_FUNCTIONS = (
@@ -195,6 +198,11 @@ _STORE_FUNCTIONS = (
     "summarize_series",
     "export_series",
     "export_stations",
+    "build_analyses",
+    "check_analyses",
+    "list_analyses",
+    "read_analysis",
+    "export_analyses",
 )
 # Public module of every function the catalog dispatches to (resolved per call).
 _MODULES = {
@@ -555,6 +563,17 @@ _SERIES_RULES = (
     message("commands.series_rule_1"),
     _VARIABLES_RULE,
 )
+# Stored analyses (ADR-016): the ids of the registry, a station decides the provider.
+_ANALYSIS_IDS = tuple(definition.id for definition in analysis_definitions())
+_ANALYSES_VERSION = _option(
+    "version",
+    "path",
+    message("commands.analyses_version_help"),
+    path_role="input",
+)
+_ANALYSES_ROOT = replace(_ROOT, help=message("commands.analyses_root_help"))
+_ANALYSES_STATION = replace(_STATION_OPTION, required=True)
+_ANALYSES_RULES = (message("commands.analyses_rule_station"),)
 
 _CATALOG: tuple[tuple[DataCommand, str], ...] = (
     _command(
@@ -1129,6 +1148,91 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             message("commands.series_export_rule_parquet"),
         ),
     ),
+    _command(
+        "analyses build",
+        message("commands.analyses_build_description"),
+        (
+            _ROOT,
+            replace(_STATIONS, help=message("commands.analyses_stations_help")),
+            _option(
+                "workers",
+                "int",
+                message("commands.workers_help"),
+                default=1,
+                minimum=1,
+            ),
+        ),
+        function="build_analyses",
+        store_only=True,
+        check="check_analyses",
+        method="POST",
+        result_type="AnalysesReport",
+        rules=(message("commands.analyses_rule_program"),),
+        writes="add",
+    ),
+    _command(
+        "analyses list",
+        message("commands.analyses_list_description"),
+        (_ANALYSES_VERSION, _ANALYSES_ROOT, _ANALYSES_STATION),
+        function="list_analyses",
+        result="list",
+        method="GET",
+        result_type="AnalysisSummary",
+        rules=_ANALYSES_RULES,
+    ),
+    _command(
+        "analyses read",
+        message("commands.analyses_read_description"),
+        (
+            _ANALYSES_VERSION,
+            _ANALYSES_ROOT,
+            _ANALYSES_STATION,
+            _option(
+                "analysis",
+                "choice",
+                message("commands.analysis_help"),
+                required=True,
+                choices=_ANALYSIS_IDS,
+            ),
+        ),
+        function="read_analysis",
+        method="GET",
+        result_type="AnalysisResult",
+        rules=_ANALYSES_RULES,
+    ),
+    _command(
+        "analyses export",
+        message("commands.analyses_export_description"),
+        (
+            _ANALYSES_VERSION,
+            _ANALYSES_ROOT,
+            _ANALYSES_STATION,
+            _option(
+                "analyses",
+                "list",
+                message("commands.analyses_ids_help"),
+                items="choice",
+                choices=_ANALYSIS_IDS,
+            ),
+            _option(
+                "format",
+                "choice",
+                message("commands.analyses_export_format_help"),
+                choices=("json", "csv"),
+                default="json",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_analyses",
+        check="check_command",
+        result="stream",
+        method="GET",
+        requires=_NEEDS_OUTPUT,
+        result_type="str",
+        rules=(*_ANALYSES_RULES, _OUTPUT_RULE),
+    ),
 )
 # The description commands close the catalog: commands schema names every command.
 _GUIDE = _command(
@@ -1698,6 +1802,7 @@ _RULES: dict[str, Rule] = {
     "series read": _rules_series,
     "series summary": _rules_series,
     "series export": _rules_series,
+    "analyses export": _rules_result_file,
     "commands guide": _rules_result_file,
 }
 
@@ -2640,6 +2745,13 @@ def _status(result: object) -> Status:
         )
     if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
         return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
+    if isinstance(result, _analyses.AnalysesReport):
+        providers_ = [item.status for item in result.providers]
+        return _outcome(
+            result.status == "cancelled",
+            providers_.count("failed") + int(result.status == "failed"),
+            sum(status in _DONE for status in providers_),
+        )
     return "ok"
 
 
@@ -2761,6 +2873,33 @@ def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
     return lambda options, result: lines
 
 
+def _analyses_build_lines(options: Options, result: object) -> Attribution:
+    """The lines of the analyses versions a build wrote or kept."""
+    lines = Attribution()
+    for item in cast(_analyses.AnalysesReport, result).providers:
+        if item.version is not None and item.status in _DONE:
+            document = json.loads(item.version.read_bytes())
+            lines |= Attribution(
+                tuple(document.get("attribution", ())),
+                tuple(document.get("terms_notice", ())),
+            )
+    return lines
+
+
+def _analyses_lines(options: Options, result: object) -> Attribution:
+    """The lines of the stored analyses a command returns or exports."""
+    if isinstance(result, _analyses.AnalysisResult):
+        return Attribution(result.attribution, result.terms_notice)
+    if isinstance(result, tuple):
+        lines = Attribution()
+        for summary in cast(tuple[_analyses.AnalysisSummary, ...], result):
+            lines |= Attribution(summary.attribution, summary.terms_notice)
+        return lines
+    return _analyses.export_lines(
+        options.get("version"), options.get("root"), str(options["station"])
+    )
+
+
 # The lines of the data a command returns, reads or writes (ADR-012); commands
 # without provider data (the registry, URLs, plans, the store state) have none.
 _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
@@ -2783,6 +2922,10 @@ _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "series read": _series_lines,
     "series summary": _series_lines,
     "series export": _series_lines,
+    "analyses build": _analyses_build_lines,
+    "analyses list": _analyses_lines,
+    "analyses read": _analyses_lines,
+    "analyses export": _analyses_lines,
 }
 
 
@@ -3304,6 +3447,58 @@ def _check_stations_export(options: Options, hooks: Hooks) -> StorePlan:
     return _plan(root, actions)
 
 
+def _check_analyses(command: str) -> Checker:
+    """Plan of reading or exporting stored analyses: the station's record is read."""
+
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        root, version = options.get("root"), options.get("version")
+        station = str(options["station"])
+        try:
+            summaries = _analyses.list_analyses(version, root=root, station=station)
+            if "analysis" in options and not any(
+                item.analysis == options["analysis"] for item in summaries
+            ):
+                _analyses.read_analysis(
+                    version, root=root, station=station, analysis=options["analysis"]
+                )
+        except ObserwatorError as exc:
+            missing = exc.code == "not_found" and command != "analyses export"
+            actions = [
+                PlanAction(
+                    command, "missing" if missing else "check_failed", reason(exc)
+                )
+            ]
+        else:
+            path = summaries[0].analyses_version if summaries else None
+            actions = (
+                _export_actions(
+                    command,
+                    message(
+                        "commands.export_station_analyses",
+                        station=station,
+                        format=options.get("format", "json"),
+                    ),
+                    options,
+                )
+                if command == "analyses export"
+                else [
+                    PlanAction(
+                        command,
+                        "current",
+                        message(
+                            "commands.read_station_analyses",
+                            station=station,
+                            path=path,
+                        ),
+                    )
+                ]
+            )
+        base = root if isinstance(root, Path) else _store_root(cast(Path, version))
+        return _plan(base, actions)
+
+    return check
+
+
 def _check_commands_guide(options: Options, hooks: Hooks) -> StorePlan:
     # The guide is rendered offline from the package; the plan names its target.
     format_, language = options.get("format", "agents"), options.get("lang", "en")
@@ -3356,6 +3551,10 @@ _CHECKS: dict[str, Checker] = {
     "series read": _check_series("series read"),
     "series summary": _check_series("series summary"),
     "series export": _check_series("series export"),
+    "analyses build": _twin("check_analyses"),
+    "analyses list": _check_analyses("analyses list"),
+    "analyses read": _check_analyses("analyses read"),
+    "analyses export": _check_analyses("analyses export"),
     "commands list": lambda options, hooks: _reading(
         "commands list", message("commands.command_list_description")
     ),
@@ -3600,8 +3799,8 @@ _MEANINGS = {
     ("method", "POT"): message("commands.meaning_method_pot"),
     ("method", "AMP"): message("commands.meaning_method_amp"),
     ("format", "csv"): message("commands.meaning_format_csv"),
-    ("format", "jsonl"): message("commands.meaning_format_jsonl"),
     ("format", "json"): message("commands.meaning_format_json"),
+    ("format", "jsonl"): message("commands.meaning_format_jsonl"),
     ("format", "parquet"): message("commands.meaning_format_parquet"),
     ("format", "geojson"): message("commands.meaning_format_geojson"),
     ("format", "agents"): message("commands.meaning_format_agents"),
@@ -3621,6 +3820,8 @@ def _meaning(option: CommandOption, value: str, lang: Lang) -> str:
         return get_provider(value).name
     if option.name == "command":
         return _summary(localize(_BY_NAME[value].description, lang))
+    if option.name in ("analysis", "analyses"):
+        return localize(message(get_definition(value).title), lang)
     return localize(_MEANINGS[option.name, value], lang)
 
 
@@ -3680,7 +3881,8 @@ def _errors(spec: DataCommand, writes: Writes) -> list[str]:
     the ``store`` extra or lack a version, and a run writing it can find it
     locked by another writer; a write can fail in the file system; a server
     refuses a write it does not allow and a path outside its allowed
-    directories.
+    directories. A build of the analyses runs Hydrolog's program, which can
+    fail or be stopped.
     """
     codes: set[str] = {"validation_error", "internal_error"}
     names = {option.name for option in spec.options}
@@ -3693,6 +3895,8 @@ def _errors(spec: DataCommand, writes: Writes) -> list[str]:
             codes.add("conflict")
     if writes != "none":
         codes |= {"io_error", "forbidden", "cancelled"}
+    if spec.function == "build_analyses":
+        codes.add("source_unavailable")
     if any(option.type == "path" for option in spec.options):
         codes.add("forbidden")
     return [code for code in ERROR_CODES if code in codes]

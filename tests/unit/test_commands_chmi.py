@@ -108,8 +108,8 @@ def chmi():
 # --------------------------------------------------------------------------
 
 
-def test_catalog_has_31_commands_and_datasets_providers_lists_both_providers():
-    assert len(data_commands()) == 31
+def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
+    assert len(data_commands()) == 35
 
     listed = run_command("datasets providers", options={})
     planned = check_command("datasets providers", options={})
@@ -173,7 +173,7 @@ def test_chmi_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
 
     groups = {command.name.split()[0] for command in view}
     assert not groups & {"current", "pmaxtp"}
-    assert len(view) == 21  # 31 without five current and five pmaxtp commands
+    assert len(view) == 25  # 35 without five current and five pmaxtp commands
     for command in view:
         for option in command.options:
             if option.name in ("dataset", "datasets"):

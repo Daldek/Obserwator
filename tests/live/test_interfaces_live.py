@@ -30,6 +30,12 @@ with the options of Python, ``root`` included: the structured content must be
 the Python envelope ``to_json(root)`` and the text content its JSON. Run it
 alone with ``-k obserwator_mcp``.
 
+The analyses commands (no request to IMGW) run the recorded Hydrolog of
+``tests/fixtures/hydrolog`` in every interface (``OBSERWATOR_HYDROLOG_COMMAND``): the
+seed stores the analyses of the station, which a build carries forward unchanged
+(a new version would differ in each interface by the moment of its build), and
+the read cases choose an analysis whose stored answer names no temporary file.
+
 Tolerated differences, because live sources change between the calls:
 
 - ``checked_at`` of plans: the moment of the check;
@@ -56,6 +62,7 @@ import platform
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -73,6 +80,7 @@ from obserwator import (
     ErrorCode,
     ObserwatorError,
     __version__,
+    build_analyses,
     build_catalog,
     build_series,
     current_version,
@@ -82,11 +90,14 @@ from obserwator import (
     sync_store,
 )
 from obserwator.config import settings
+from obserwator.messages import localize
 from obserwator.store.types import page_cursor
 from tests.contract.support import (
+    FAKE_HYDROLOG,
     canonical,
     cli_words,
     command_document,
+    command_line,
     current_path,
     envelope_errors,
     input_schemas,
@@ -136,7 +147,12 @@ WRITES = {
     "store sync",
     "store catalog",
     "series build",
+    "analyses build",
 }
+# Hydrolog's program of every interface: the recorded one (no installed Hydrolog).
+HYDROLOG = command_line(sys.executable, str(FAKE_HYDROLOG))
+# A stored analysis whose answer names no series file (only numbers of another).
+TREND = "mann_kendall.H.max"
 
 DAILY = "pl.imgw.hydro_daily"
 PRECIP = "pl.imgw.meteo_precip_daily"
@@ -150,7 +166,7 @@ LATITUDE, LONGITUDE = 50.06, 19.94  # Kraków
 ARCHIVE_SLOT = f"archive:{DAILY}:{YEAR}/codz_{YEAR}_{MONTH:02d}.zip"
 SERIES_SLOT = f"series:{DAILY}"
 # Store snapshots built from IMGW by the session (Case.store).
-SEEDS = ("empty", "synced", "full")
+SEEDS = ("empty", "synced", "full", "analysed")
 # Placeholders resolved after seeding: a working-directory path, the store root,
 # versions relative to the root and the indices of the stored PMAXTP cell.
 WORK = "<work>/"
@@ -175,10 +191,10 @@ class Case:
     ``"empty"``, ``"synced"`` (one hydro archive, its series and the station
     sources of the catalog), ``"full"``
     (plus the station catalog, a PMAXTP cell and a meteo archive without
-    series), ``"absent"`` (no directory) or ``"plain"`` (a directory that is
-    no store); ``None`` = no root. ``clean``: entries of the working directory
-    removed before every interface. ``live``: current data, compared by
-    structure.
+    series), ``"analysed"`` (plus the stored analyses of ``STATION``),
+    ``"absent"`` (no directory) or ``"plain"`` (a directory that is no store);
+    ``None`` = no root. ``clean``: entries of the working directory removed
+    before every interface. ``live``: current data, compared by structure.
     """
 
     options: dict[str, object]
@@ -318,6 +334,12 @@ CASES: dict[str, list[Case]] = {
             },
             "full",
         )
+    ],
+    "analyses build": [Case({"stations": [STATION]}, "analysed")],
+    "analyses list": [Case({"station": STATION, "limit": 5}, "analysed")],
+    "analyses read": [Case({"station": STATION, "analysis": TREND}, "analysed")],
+    "analyses export": [
+        Case({"station": STATION, "analyses": ["characteristic.H", TREND]}, "analysed")
     ],
     "commands list": [Case({}), Case({"lang": "en"})],
     "commands schema": [Case({"command": "store sync"})],
@@ -603,6 +625,7 @@ class Live:
             patch.chdir(self.work)
             patch.setattr(settings, "reference_dir", Path(DATA_DIR))
             patch.delenv("OBSERWATOR_ROOT", raising=False)
+            patch.setenv("OBSERWATOR_HYDROLOG_COMMAND", HYDROLOG)
             yield
 
     def save(self, name: str, source: Path) -> None:
@@ -648,6 +671,9 @@ class Live:
             )
             assert [item.status for item in precip.items] == ["new"], precip
             self.save("full", root)
+            analysed = build_analyses(root, stations=[STATION])
+            assert analysed.status == "new", analysed
+            self.save("analysed", root)
             self.values = {
                 ROOT: str(root),
                 ARCHIVE: current_path(root, ARCHIVE_SLOT).relative_to(root).as_posix(),
@@ -975,8 +1001,8 @@ class Live:
             problems["cli"].append(
                 f"strumień {len(printed.stdout)} B zamiast {len(data)} B Pythona"
             )
-        for notice in notices:
-            line = f"{LABELS[notice['level']]}: {notice['message']}"
+        for notice in notices:  # the CLI prints them in Polish (OBSERWATOR_LANG unset)
+            line = f"{LABELS[notice['level']]}: {localize(notice['message'], 'pl')}"
             if stderr.count(line) != 1:
                 problems["cli"].append(f"komunikat {notice['code']} nie raz na stderr")
         answered: httpx.Response = answers["rest"]
@@ -1131,6 +1157,7 @@ def live(tmp_path_factory) -> Iterator[Live]:
         if not key.startswith("OBSERWATOR_")
     }
     env["OBSERWATOR_REFERENCE_DIR"] = DATA_DIR
+    env["OBSERWATOR_HYDROLOG_COMMAND"] = HYDROLOG
     served = env | {
         "OBSERWATOR_ROOT": str(base / "magazyn"),
         "OBSERWATOR_STORE_WRITES_ENABLED": "true",

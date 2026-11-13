@@ -397,10 +397,10 @@ MESSAGES = {
         "Strona do odczytu: page.next_cursor poprzedniej strony (nieprzezroczysty)",
     ),
     "commands_guide_description": Text(
-        "Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or "
-        "English. It is rendered from the command catalog and the registries.",
-        "Wygeneruj przewodnik dla agentów AI: AGENTS.md albo llms.txt, po polsku "
-        "albo angielsku. Powstaje z katalogu komend i rejestrów.",
+        "Generate AGENTS.md or llms.txt for AI agents, in Polish or English. It is "
+        "rendered from the command catalog and the registries.",
+        "Wygeneruj AGENTS.md albo llms.txt dla agentów AI, po polsku albo angielsku. "
+        "Powstaje z katalogu komend i rejestrów.",
     ),
     "datasets_list_description": Text(
         "List the datasets of the registry: keys, providers, legacy aliases, "
@@ -409,10 +409,10 @@ MESSAGES = {
         "pierwszy rocznik.",
     ),
     "datasets_files_description": Text(
-        "List the source files of a dataset for given years or stations (offline, no "
-        "download).",
-        "Wypisz pliki źródłowe zbioru dla wybranych roczników albo stacji (offline, "
-        "bez pobierania).",
+        "List the source files of a dataset for given years or stations. Offline, no "
+        "download.",
+        "Wypisz pliki źródłowe zbioru dla wybranych roczników albo stacji. Offline, "
+        "bez pobierania.",
     ),
     "datasets_download_description": Text(
         "Download the source files of a dataset as plain files (--output-dir) or "
@@ -425,8 +425,8 @@ MESSAGES = {
     "datasets_providers_description": Text(
         "List the data providers: identifiers, countries, licenses, station code "
         "patterns, datasets.",
-        "Wypisz dostawców danych z rejestru: identyfikatory, kraje, licencje, wzorce "
-        "kodów stacji i zbiory.",
+        "Wypisz dostawców danych: identyfikatory, kraje, licencje, wzorce kodów stacji "
+        "i zbiory.",
     ),
     "stations_find_description": Text(
         "Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.",
@@ -479,12 +479,12 @@ MESSAGES = {
         "hydro.imgw.pl).",
     ),
     "pmaxtp_fetch_description": Text(
-        "Fetch the PMAXTP maximum precipitation of a point (live, without saving).",
-        "Pobierz opady maksymalne PMAXTP dla punktu (na żywo, bez zapisu).",
+        "Fetch the PMAXTP maximum precipitation of a point. Live, without saving.",
+        "Pobierz opady maksymalne PMAXTP dla punktu. Na żywo, bez zapisu.",
     ),
     "pmaxtp_url_description": Text(
-        "Build the PMAXTP API URL of a point (offline, without downloading).",
-        "Zbuduj adres URL API PMAXTP dla punktu (offline, bez pobierania).",
+        "Build the PMAXTP API URL of a point. Offline, without downloading.",
+        "Zbuduj adres URL API PMAXTP dla punktu. Offline, bez pobierania.",
     ),
     "pmaxtp_check_description": Text(
         "Check the PMAXTP cell in the store without downloading data.",
@@ -498,21 +498,21 @@ MESSAGES = {
         "zwykłe pliki. Zwykłe pliki to cell.json i response.json.",
     ),
     "pmaxtp_read_description": Text(
-        "Read a saved PMAXTP cell from the store (offline).",
-        "Odczytaj zapisaną komórkę PMAXTP z magazynu (offline).",
+        "Read a saved PMAXTP cell from the store. It works offline.",
+        "Odczytaj zapisaną komórkę PMAXTP z magazynu. Działa offline.",
     ),
     "store_init_description": Text(
         "Create an empty Obserwator store (obserwator-store.json marker) in the given directory.",
         "Utwórz pusty magazyn Obserwatora (znacznik obserwator-store.json) we wskazanym katalogu.",
     ),
     "store_info_description": Text(
-        "Show the state of an Obserwator store and the supported contracts (offline, "
-        "without writing).",
-        "Pokaż stan magazynu Obserwatora i obsługiwane kontrakty (offline, bez zapisu).",
+        "Show the state of an Obserwator store and the supported contracts. Offline, "
+        "without writing.",
+        "Pokaż stan magazynu Obserwatora i obsługiwane kontrakty. Offline, bez zapisu.",
     ),
     "store_scan_description": Text(
-        "List the versions and problems of an Obserwator store (offline, without writing).",
-        "Wypisz wersje i problemy magazynu Obserwatora (offline, bez zapisu).",
+        "List the versions and problems of an Obserwator store. Offline, without writing.",
+        "Wypisz wersje i problemy magazynu Obserwatora. Offline, bez zapisu.",
     ),
     "store_check_description": Text(
         "Check the freshness of the dataset archives without downloading data. "
@@ -548,10 +548,10 @@ MESSAGES = {
         "Offline: z list i metadanych stacji zapisanych przez store sync.",
     ),
     "store_export_description": Text(
-        "Export the records of one archive version as CSV or JSONL (offline, SHA-256 "
-        "verified).",
-        "Wyeksportuj rekordy jednej wersji archiwum jako CSV albo JSONL (offline, z "
-        "weryfikacją SHA-256).",
+        "Export the records of one archive version as CSV or JSONL. Offline, SHA-256 "
+        "verified.",
+        "Wyeksportuj rekordy jednej wersji archiwum jako CSV albo JSONL. Offline, z "
+        "weryfikacją SHA-256.",
     ),
     "series_build_description": Text(
         "Build the Parquet series of a dataset from the current archive versions of "
@@ -559,8 +559,8 @@ MESSAGES = {
         "Zbuduj szereg Parquet zbioru z bieżących wersji archiwów magazynu.",
     ),
     "series_select_description": Text(
-        "Select stations, variables and years of the current series (without writing).",
-        "Wybierz stacje, zmienne i lata z bieżącego szeregu (bez zapisu).",
+        "Select stations, variables and years of the current series. Nothing is written.",
+        "Wybierz stacje, zmienne i lata z bieżącego szeregu. Nic nie zapisuje.",
     ),
     "series_select_rule_1": Text(
         "stations and years only of the current series",
@@ -577,9 +577,10 @@ MESSAGES = {
         "Odczytaj wartości i flagi szeregu jednej stacji z magazynu.",
     ),
     "series_summary_description": Text(
-        "Show the coverage of stations and variables of a series from series.json "
-        "(without pyarrow).",
-        "Pokaż pokrycie stacji i zmiennych szeregu ze spisu series.json (bez pyarrow).",
+        "Show the coverage of stations and variables of a series from series.json. It "
+        "needs no pyarrow.",
+        "Pokaż pokrycie stacji i zmiennych szeregu ze spisu series.json. Nie wymaga "
+        "pyarrow.",
     ),
     "series_export_description": Text(
         "Export one station's series as CSV, JSON or Parquet with the provider's "
@@ -589,6 +590,40 @@ MESSAGES = {
     "series_export_rule_parquet": Text(
         "format=parquet needs output; REST answers every format as an attachment",
         "format=parquet wymaga output; REST zwraca każdy format jako załącznik",
+    ),
+    "analyses_build_description": Text(
+        "Compute and store the analyses of every station with Hydrolog. Stations "
+        "whose series, thresholds, Hydrolog version and registry are unchanged are "
+        "carried forward without a call.",
+        "Oblicz i zapisz analizy każdej stacji Hydrologiem. Stacje o niezmienionych "
+        "szeregach, progach, wersji Hydrologa i rejestrze przechodzą do nowej wersji "
+        "bez obliczeń.",
+    ),
+    "analyses_list_description": Text(
+        "List the stored analyses of a station. Each names its command, options, "
+        "status and versions.",
+        "Wypisz zapisane analizy stacji. Każda podaje polecenie, opcje, stan i wersje.",
+    ),
+    "analyses_read_description": Text(
+        "Read one stored analysis of a station. Hydrolog's result comes with its "
+        "provenance.",
+        "Odczytaj jedną zapisaną analizę stacji. Wynik Hydrologa ma swoje pochodzenie.",
+    ),
+    "analyses_export_description": Text(
+        "Export the stored analyses of a station as JSON or CSV. The file carries "
+        "the attribution.",
+        "Wyeksportuj zapisane analizy stacji jako JSON albo CSV. Plik niesie atrybucję.",
+    ),
+    "analyses_rule_program": Text(
+        "Hydrolog's program: the setting OBSERWATOR_HYDROLOG_COMMAND, else hydrolog "
+        "on PATH; no option chooses it",
+        "program Hydrolog: ustawienie OBSERWATOR_HYDROLOG_COMMAND, inaczej hydrolog "
+        "z PATH; żadna opcja go nie wybiera",
+    ),
+    "analyses_rule_station": Text(
+        "the station code names the provider: 9 digits IMGW-PIB, a WIGOS "
+        "identifier ČHMÚ",
+        "kod stacji wskazuje dostawcę: 9 cyfr IMGW-PIB, identyfikator WIGOS ČHMÚ",
     ),
     "commands_list_description": Text(
         "List the catalog commands: tool names, effects and routes. Start here, then "
@@ -728,6 +763,48 @@ MESSAGES = {
         "Export format: csv, json or parquet (parquet needs output)",
         "Format eksportu: csv, json albo parquet (parquet wymaga output)",
     ),
+    "analyses_version_help": Text(
+        "Analyses version: version directory, analyses.json or sidecar; absolute or "
+        "relative to root (default: the current version of the station's provider)",
+        "Wersja analiz: katalog wersji, analyses.json albo sidecar; bezwzględna albo "
+        "względna do root (domyślnie bieżąca wersja dostawcy stacji)",
+    ),
+    "analyses_root_help": Text(
+        "Data root: base of a relative version or the root whose current analyses "
+        "are read",
+        "Katalog danych: podstawa względnej wersji albo katalog, którego bieżące "
+        "analizy są czytane",
+    ),
+    "analyses_stations_help": Text(
+        "Compute only these stations (comma-separated codes); the others are carried "
+        "forward as they are",
+        "Oblicz tylko te stacje (kody rozdzielone przecinkami); pozostałe przechodzą "
+        "bez zmian",
+    ),
+    "workers_help": Text(
+        "Hydrolog processes run at a time",
+        "Liczba procesów Hydrologa uruchamianych naraz",
+    ),
+    "analysis_help": Text(
+        "Id of the analysis, e.g. flood_frequency.Q",
+        "Identyfikator analizy, np. flood_frequency.Q",
+    ),
+    "analyses_ids_help": Text(
+        "Ids of the analyses to export (default: every stored one)",
+        "Identyfikatory analiz do eksportu (domyślnie wszystkie zapisane)",
+    ),
+    "analyses_export_format_help": Text(
+        "Export format: json (one document) or csv (one row per value)",
+        "Format eksportu: json (jeden dokument) albo csv (wiersz na wartość)",
+    ),
+    "export_station_analyses": Text(
+        "the analyses of the station {station} as {format}",
+        "analizy stacji {station} jako {format}",
+    ),
+    "read_station_analyses": Text(
+        "Reads the analyses of the station {station} in {path}",
+        "Odczyt analiz stacji {station} w {path}",
+    ),
     "commands_schema_command_help": Text(
         "Name of a catalog command; none = the whole obserwator-commands/1 catalog",
         "Nazwa komendy katalogu; brak = cały katalog obserwator-commands/1",
@@ -768,6 +845,10 @@ MESSAGES = {
     "group_series": Text(
         "Station series",
         "Szeregi stacji",
+    ),
+    "group_analyses": Text(
+        "Analyses of the stations computed by Hydrolog",
+        "Analizy stacji obliczone przez Hydrologa",
     ),
     "group_commands": Text(
         "Description of the command catalog",
@@ -989,12 +1070,9 @@ MESSAGES = {
         "Comma-separated values with a header row",
         "Wartości rozdzielone przecinkami, z wierszem nagłówka",
     ),
+    "meaning_format_json": Text("One JSON document", "Jeden dokument JSON"),
     "meaning_format_jsonl": Text(
         "One JSON object per line", "Jeden obiekt JSON w każdym wierszu"
-    ),
-    "meaning_format_json": Text(
-        "One JSON document with the data as columns",
-        "Jeden dokument JSON z danymi jako kolumny",
     ),
     "meaning_format_parquet": Text(
         "A typed Parquet file (needs output)",

@@ -245,7 +245,13 @@ def test_rest_routes_cover_exactly_the_non_local_commands():
         for entry in commands
         if (entry["rest"] or {}).get("method") == "POST"
     ]
-    assert posts == ["pmaxtp sync", "store sync", "store catalog", "series build"]
+    assert posts == [
+        "pmaxtp sync",
+        "store sync",
+        "store catalog",
+        "series build",
+        "analyses build",
+    ]
 
 
 @pytest.mark.parametrize(("command", "options"), SAMPLES)

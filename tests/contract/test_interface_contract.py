@@ -36,11 +36,13 @@ from obserwator import (
     sync_pmaxtp,
     sync_store,
 )
+from obserwator.api.errors import hide_server_paths
 from obserwator.datasets import get_dataset
 from obserwator.exceptions import describe_os_error
 from obserwator.messages import localize
 from obserwator.store.types import page_cursor
 from tests.contract.support import (
+    BEZ_Q,
     DAILY,
     H2024,
     NEW,
@@ -48,9 +50,11 @@ from tests.contract.support import (
     RABA,
     V3,
     FakeImgw,
+    build_served_analyses,
     canonical,
     cli_words,
     command_document,
+    current_analyses,
     current_path,
     envelope_errors,
     in_json,
@@ -83,7 +87,7 @@ def line_of(notice):
 
 
 # Placeholders of versions relative to the root, resolved in the served store.
-ARCHIVE, SERIES = "<archive>", "<series>"
+ARCHIVE, SERIES, ANALYSES = "<archive>", "<series>", "<analyses>"
 PLACEHOLDERS = {
     ARCHIVE: f"archive:{PRECIP}:2001/2001_01_o.zip",
     SERIES: f"series:{DAILY}",
@@ -185,6 +189,38 @@ CASES: dict[str, list[Case]] = {
         Case({"format": "csv", "kind": "hydro"}, "served"),
         Case({"series": False}, "served"),
     ],
+    "analyses build": [Case({"stations": [RABA, BEZ_Q], "workers": 2}, "fixture")],
+    "analyses list": [
+        Case({"station": RABA}, "served"),
+        Case(
+            {
+                "version": ANALYSES,
+                "station": BEZ_Q,
+                "limit": 5,
+                "cursor": page_cursor(1),
+            },
+            "served",
+        ),
+    ],
+    "analyses read": [
+        Case({"station": RABA, "analysis": "characteristic.Q"}, "served"),
+        # Hydrolog's error document of a failed analysis (calculation_error).
+        Case(
+            {"version": ANALYSES, "station": RABA, "analysis": "homogeneity.Q"},
+            "served",
+        ),
+    ],
+    "analyses export": [
+        Case({"station": RABA}, "served"),
+        Case(
+            {
+                "station": BEZ_Q,
+                "analyses": ["daily.H", "characteristic.H"],
+                "format": "csv",
+            },
+            "served",
+        ),
+    ],
     "commands list": [Case({}), Case({"lang": "en"})],
     "commands schema": [
         Case({"command": "series export"}),
@@ -197,12 +233,13 @@ CASES: dict[str, list[Case]] = {
 
 @pytest.fixture(scope="module")
 def served_root(tmp_path_factory, fixture_root):
-    """Read-only store of the read commands: the fixture store plus a PMAXTP cell."""
+    """Read-only store of the read commands: the fixture store, a PMAXTP cell, analyses."""
     root = tmp_path_factory.mktemp("served") / "store"
     shutil.copytree(fixture_root, root)
     with respx.mock(assert_all_called=False) as router:
         FakeImgw(router).publish_pmaxtp("pmaxtp_pot_first")
         sync_pmaxtp(root, latitude=52.23, longitude=21.01)
+    build_served_analyses(root)
     return root
 
 
@@ -230,9 +267,13 @@ def resolved(options: dict[str, object], root: Path | None) -> dict[str, object]
     """Options with version placeholders replaced by versions relative to ``root``."""
     result = dict(options)
     for name, value in options.items():
-        if isinstance(value, str) and value in PLACEHOLDERS:
+        if isinstance(value, str) and value in (*PLACEHOLDERS, ANALYSES):
             assert root is not None
-            version = current_path(root, PLACEHOLDERS[value])
+            version = (
+                current_analyses(root)
+                if value == ANALYSES
+                else current_path(root, PLACEHOLDERS[value])
+            )
             result[name] = version.relative_to(root).as_posix()
     return result
 
@@ -301,7 +342,9 @@ def assert_alike(command, python, printed, answered, root):
             assert printed.stderr.count(line_of(notice)) == 1
         return
     local = python.to_json(root=root)
-    served = python.to_json(root=root, server=True)
+    # REST hides every server directory (T21): the root, and the temporary directory
+    # of the series files whose paths Hydrolog's stored envelopes echo.
+    served = hide_server_paths(python.to_json(root=root, server=True))
     assert envelope_errors(local) == []
     assert envelope_errors(served) == []
     assert printed.exit_code == EXIT_CODES[python.status], printed.output

@@ -69,7 +69,8 @@ catalog, effect metadata of the commands and an MCP server (ADR-004). Later work
 repository in line with the Nogat standard 1.0 (then the draft 2.1): the user environment
 (ADR-005), the message catalog and English machine output (ADR-006), data output in plain mode
 and in the store with a default root (ADR-007), and projects moved to Archiwista (ADR-008). The
-registry has 17 datasets of two providers, and the catalog 30 commands. Decisions:
+stations' analyses are computed by Hydrolog and stored as its answers (ADR-016). The registry has
+21 datasets of two providers, and the catalog 35 commands. Decisions:
 `docs/DECISIONS.md`; contracts:
 `docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
 §13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
@@ -290,6 +291,42 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   both documents in `schemas/`. IMGW-PIB variables carry the definitions of IMGW-PIB's format
   descriptions (`variable_notes`), also in the metadata of newly built IMGW-PIB series.
   MCP over HTTP answers a JSON or GeoJSON export as a stream (no longer taken for an envelope).
+- **Stored analyses computed by Hydrolog (ADR-016, Nogat ECO-059, plan 2026-11-12 step O2):**
+  every number of an analysis is Hydrolog's; Obserwator exports the series, runs Hydrolog's
+  catalog calls and keeps each answer line byte for byte with its provenance.
+  - Registry `analysis_definitions(kind=None)` of 84 analyses (56 hydrological, 28
+    meteorological; types `AnalysisDefinition`, `AnalysisVariant`, `AnalysisInput`,
+    `AnalysisPick`, `AnalysisOption`): one call of a Hydrolog command (23 commands) over the
+    whole record of a station, with its series files, the numbers it takes from another
+    analysis's result (a next round of calls), its overridable options and `locked`.
+  - `build_analyses(root=None, /, *, stations=None, workers=1, ...)` and `check_analyses`: the
+    series export into a scratch directory outside the root, `hydrolog commands batch` in a
+    separate process (up to 16 stations per process and round, `workers` processes at a time),
+    one version per provider `analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/`
+    (`analyses.json` `obserwator-analyses/1`, `stations/<code>.json`
+    `obserwator-station-analyses/1`, `stations/<code>/<id>.json` Hydrolog's line, the sidecar
+    published last); a station with the same station Parquet SHA-256s, catalog thresholds,
+    Hydrolog version and registry digest is carried forward by hard links without a call, a
+    provider without changes is `unchanged`; an analysis Hydrolog refuses is stored as `failed`
+    with its `hydrolog-error/1` document (`AnalysesReport`, `ProviderAnalyses`).
+  - Readers `list_analyses`, `read_analysis` (`AnalysisSummary`, `AnalysisResult`,
+    `AnalysisSource`) and `export_analyses` (`json`: `obserwator-analyses-export/1`; `csv`: one
+    row per value with its JSON Pointer and the attribution columns).
+  - `compute_analysis(root=None, /, *, station, analysis, options=None, timeout=30.0, cancel=None)`:
+    one analysis with a person's overridable options, computed on the fly and never stored
+    (Python only, for the GUI server; Obserwator's GUI plan D8).
+  - Catalog commands `analyses build|list|read|export` (CLI, REST `/api/v1/analyses/*`, MCP
+    `obserwator_analyses_*`): the catalog has 35 commands, REST 33 routes.
+  - Setting `hydrolog_command` (`OBSERWATOR_HYDROLOG_COMMAND`, `[obserwator] hydrolog_command`):
+    Hydrolog's program, else `hydrolog` on `PATH`; no command option chooses it. Without it
+    `missing_dependency` (`details.reason="hydrolog_missing"`); a failing or slow program
+    `source_unavailable` (`hydrolog_failed`, `timeout`).
+
+  Additive: new documents and a new directory; no existing contract changes. Until the data root
+  of Nogat step O1 the analyses live in the `obserwator-store/1` root, and `store scan` reports
+  `analyses/` as `unknown_entry`. Hydrolog's development builds all report `1.0.0.dev0`, so a
+  Hydrolog change within one development version does not trigger a recomputation. Pinned and
+  recorded against Hydrolog develop `14e8f06` (ADR-0033 names).
 - **`command_for_version(version, *, root=None)` (ADR-008, Nogat ECO-054, plan 2026-10-31 step 3):**
   the data command that fetches a stored version again, rebuilt offline and read-only from its
   sidecar (`obserwator-meta/1`) and the store layout, as the `CommandCall` that `parse_command` reads
@@ -337,7 +374,7 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
 - **Example calls in the catalog (AGI-2.2):** every command of `command_schema` has
   `examples` (Nogat `commands-1`), at least one `{call, result}`: a complete `obserwator` line
   with `--json` and an excerpt of the
-  `result` of its envelope (41 examples for the 30 commands, with `--check`, the ČHMÚ datasets
+  `result` of its envelope (50 examples for the 35 commands, with `--check`, the ČHMÚ datasets
   and plain `--output-dir` among them). Each call is the canonical line of `format_command`
   (AGI-2.1): `format_command` writes the call that `parse_command` reads from it as the same line,
   and `validate_command` accepts its options. A contract test holds this for every example (also
@@ -451,9 +488,10 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   `store_unavailable` (8/503), `io_error` (9/500), `cancelled` (130), `forbidden` (12/403),
   `unsupported` (15/422), `method_not_allowed` (405), `internal_error` (1/500). Every `ObserwatorError`
   has `code` and `details` (e.g. `option`, `allowed`, `reason`); new `ObserwatorCancelledError`.
-- **Command catalog** `obserwator.commands`: 30 commands in the groups `datasets`, `stations`,
-  `current`, `pmaxtp`, `store`, `series` and `commands` (27 of ADR-002, `datasets providers` of
-  ADR-003, `commands guide` of ADR-004 and `commands list` of AGI-5.9);
+- **Command catalog** `obserwator.commands`: 35 commands in the groups `datasets`, `stations`,
+  `current`, `pmaxtp`, `store`, `series`, `analyses` and `commands` (27 of ADR-002, `datasets
+  providers` of ADR-003, `commands guide` of ADR-004, `commands list` of AGI-5.9, `stations
+  export` of ADR-014 and the four `analyses` commands of ADR-016);
   `command_schema(command=None)` (the document `obserwator-commands/1`: per command a Nogat
   `commands-1` entry with the function, check twin, result type, options with CLI flags, REST
   route, rules, effects, errors and exit codes), `data_commands`, `validate_command`,
@@ -468,7 +506,7 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   registry, `--check` on the commands with a twin, `--schema` on every command, an optional
   `--root` (the default root, see Changed), lists comma-separated or as a repeated flag; Ctrl+C
   cancels between files (130).
-- **REST** generated from the catalog (`/api/v1/<group>/<command>`, 28 routes; `GET /api/v1`
+- **REST** generated from the catalog (`/api/v1/<group>/<command>`, 33 routes; `GET /api/v1`
   lists the routes): the same envelope as the CLI, `application/problem+json`, `?check=true` on
   `POST`, `limit` by default and at most `OBSERWATOR_API_MAX_LIMIT` (1000). The store commands work only
   on the server's absolute `OBSERWATOR_ROOT` (503 without it); a write needs
@@ -804,7 +842,7 @@ release have the same bytes as without the ČHMÚ provider.
   `sha256` and `content_sha256` that the store already records. Removed without aliases: the
   catalog group `project` and its eight commands `project init`, `project add`, `project remove`,
   `project set-store`, `project download`, `project check`, `project status` and `project verify`
-  (CLI, REST, MCP; the catalog has 30 commands and 41 example calls); the functions
+  (CLI, REST, MCP; the catalog then had 30 commands and 41 example calls); the functions
   `init_project`, `open_project`, `add_project_task`, `remove_project_task`, `set_project_store`,
   `download_project`, `check_project`, `get_project_status`, `verify_project` and the module
   `imgwtools.project`; the types `Project`, `ProjectFile`, `ProjectTask` and `ProjectReport`; the

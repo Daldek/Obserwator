@@ -46,6 +46,14 @@ _RABA_ITEM = {
     "river": "Raba",
     "provider": "IMGW-PIB",
 }
+_ANALYSES_VERSION = "analyses/versions/pl.imgw/2026-11-13_5d1e0a27/analyses.json"
+_RABA_ANALYSIS = {
+    "station": "149190310",
+    "analysis": "flood_frequency.Q",
+    "command": "stats flood-frequency",
+    "status": "ok",
+    "analyses_version": "2026-11-13_5d1e0a27",
+}
 
 
 def _page(item: Mapping[str, object], schema: str) -> list[dict[str, object]]:
@@ -514,6 +522,62 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             {
                 "output": "/data/raba.parquet",
                 "files": [{"path": "/data/raba.parquet", "status": "written"}],
+            },
+        ),
+    ),
+    "analyses build": (
+        Example(
+            "obserwator analyses build --root /data/obserwator --json",
+            {
+                "status": "new",
+                "hydrolog_version": "1.0.0",
+                "providers": [
+                    {
+                        "provider": "IMGW-PIB",
+                        "status": "new",
+                        "version": _ANALYSES_VERSION,
+                        "stations": 2,
+                        "computed": 2,
+                        "carried": 0,
+                    }
+                ],
+            },
+        ),
+        Example(
+            "obserwator analyses build --root /data/obserwator --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _ROOT,
+                "actions": [{"command": "analyses build", "status": "newer"}],
+            },
+        ),
+    ),
+    "analyses list": (
+        Example(
+            "obserwator analyses list --root /data/obserwator --station 149190310 --json",
+            _page(_RABA_ANALYSIS, "obserwator-analysis-summary/1"),
+        ),
+    ),
+    "analyses read": (
+        Example(
+            "obserwator analyses read --root /data/obserwator --station 149190310 "
+            "--analysis flood_frequency.Q --json",
+            {
+                **_RABA_ANALYSIS,
+                "envelope": {
+                    "schema": "hydrolog-result/1",
+                    "result": {"schema": "hydrolog-stats-flood-frequency/1"},
+                },
+            },
+        ),
+    ),
+    "analyses export": (
+        Example(
+            "obserwator analyses export --root /data/obserwator --station 149190310 "
+            "--format csv --output /data/raba-analyses.csv --json",
+            {
+                "output": "/data/raba-analyses.csv",
+                "files": [{"path": "/data/raba-analyses.csv", "status": "written"}],
             },
         ),
     ),

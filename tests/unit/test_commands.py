@@ -1,4 +1,4 @@
-"""Command catalog (spec §13.3, §13.6): 31 commands, validation, envelope, paging, checks."""
+"""Command catalog (spec §13.3, §13.6): 35 commands, validation, envelope, paging, checks."""
 
 import functools
 import importlib
@@ -50,6 +50,7 @@ from tests.contract.support import (
     FakeImgw,
     archive_bytes,
     stamps,
+    use_fake_hydrolog,
 )
 
 DAILY = "pl.imgw.hydro_daily"
@@ -85,6 +86,10 @@ SPEC_COMMANDS = [
     "series read",
     "series summary",
     "series export",
+    "analyses build",
+    "analyses list",
+    "analyses read",
+    "analyses export",
     "commands list",
     "commands schema",
     "commands guide",
@@ -230,6 +235,24 @@ VALID: dict[str, list[dict[str, object]]] = {
             "output": "/tmp/raba.parquet",
         },
     ],
+    "analyses build": [{"root": ROOT, "stations": [RABA], "workers": 2}],
+    "analyses list": [
+        {"root": ROOT, "station": RABA},
+        {"version": "analyses/versions/pl.imgw/v", "root": ROOT, "station": RABA},
+    ],
+    "analyses read": [
+        {"root": ROOT, "station": "0-203-1-001000", "analysis": "characteristic.Q"}
+    ],
+    "analyses export": [
+        {
+            "root": ROOT,
+            "station": RABA,
+            "analyses": ["flood_frequency.Q", "low_flow.Q"],
+            "format": "csv",
+            "output": "/tmp/analizy.csv",
+            "force": True,
+        }
+    ],
     "commands list": [{}, {"lang": "en"}],
     "commands schema": [{}, {"command": "stations find"}],
     "commands guide": [
@@ -324,6 +347,15 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
             "format",
         ),
         ({"root": ROOT, "dataset": DAILY, "station": RABA, "force": True}, "output"),
+    ],
+    "analyses build": [({"root": ROOT, "workers": 0}, "workers")],
+    "analyses read": [
+        ({"root": ROOT, "station": RABA, "analysis": "median.Q"}, "analysis"),
+        ({"root": ROOT, "analysis": "characteristic.Q"}, "station"),
+    ],
+    "analyses export": [
+        ({"root": ROOT, "station": RABA, "format": "xlsx"}, "format"),
+        ({"root": ROOT, "station": RABA, "analyses": ["x"]}, "analyses"),
     ],
     "commands list": [({"lang": "de"}, "lang")],
     "commands schema": [({"command": "store delete"}, "command")],
@@ -932,10 +964,12 @@ def test_cancelled_error_gives_cancelled_envelope_with_notices_before_it(monkeyp
 
 
 def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
-    tmp_path, fixture_root
+    tmp_path, fixture_root, monkeypatch
 ):
     root = tmp_path / "store"
     shutil.copytree(fixture_root, root)
+    use_fake_hydrolog(monkeypatch)
+    store.build_analyses(root)  # the analyses the reading commands plan to read
     version = store.current_version(
         root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
@@ -982,6 +1016,19 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
             "dataset": DAILY,
             "station": RABA,
             "output": tmp_path / "series.csv",
+        },
+        "analyses build": {"root": root, "workers": 2},
+        "analyses list": {"root": root, "station": RABA},
+        "analyses read": {
+            "root": root,
+            "station": RABA,
+            "analysis": "characteristic.Q",
+        },
+        "analyses export": {
+            "root": root,
+            "station": RABA,
+            "format": "csv",
+            "output": tmp_path / "analyses.csv",
         },
         "commands list": {"lang": "en"},
         "commands schema": {"command": "store sync"},

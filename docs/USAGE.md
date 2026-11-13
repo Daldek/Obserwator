@@ -236,6 +236,48 @@ for feature in read_catalog(root=demo, provider="CHMI"):
 - **Station catalog:** a separate version of the provider catalog (`build_catalog(store, provider="CHMI")`, `obserwator store catalog --provider CHMI`), built offline from the stored `now` and historical metadata (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, `cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`, downloaded by `store sync --datasets`) with a check against the Czech border outline; coordinates carry the published value (JSON does not keep trailing zeros, e.g. `50.6493690` → `50.649369`).
 - **License:** CC BY 4.0; sidecars, series, the catalog and exports carry the ČHMÚ attribution (processed forms — marked as changed), and the `license_terms` notice states the license terms.
 
+### Stored analyses (computed by Hydrolog)
+
+Every number of an analysis is Hydrolog's (ADR-016, Nogat ECO-059): `build_analyses` exports the current series of every station, runs the calls of the registry through Hydrolog's program and stores each answer byte for byte as a version of the root, one per provider (`analyses/versions/<pl.imgw|cz.chmi>/…`, see "Directory layout"); the readers return Hydrolog's answer with the series versions, options and Hydrolog version it came from. The program is the setting `hydrolog_command` (`OBSERWATOR_HYDROLOG_COMMAND`, `[obserwator] hydrolog_command`; a command line, e.g. `"/opt/hydrolog/.venv/bin/hydrolog"`); without it `hydrolog` on `PATH`; no command option chooses it. Without a program `build_analyses` and `compute_analysis` end with `missing_dependency` (`details.reason="hydrolog_missing"`); the readers need no Hydrolog.
+
+```python
+from obserwator import (
+    analysis_definitions,
+    build_analyses,
+    compute_analysis,
+    export_analyses,
+    list_analyses,
+    read_analysis,
+)
+
+# The registry: 84 analyses (56 hydro, 28 meteo), each one Hydrolog command over the whole record
+for definition in analysis_definitions("meteo")[:2]:
+    print(definition.id, definition.command, [option.name for option in definition.overridable])
+# precipitation.sums meteo precipitation ['first_year', 'last_year', 'year_type', ...]
+
+# 1. Compute and store every station (stations=[...] computes only these; workers = Hydrolog processes)
+report = build_analyses(store, workers=2)
+print(report.status, report.hydrolog_version, [(p.provider, p.status, p.computed, p.carried) for p in report.providers])
+
+# 2. Read: the analyses of a station (the code names the provider) and one of them
+for summary in list_analyses(root=store, station="149190310"):
+    print(summary.analysis, summary.command, summary.status, summary.analyses_version)
+result = read_analysis(root=store, station="149190310", analysis="characteristic.Q")
+print(result.envelope["result"]["schema"], result.inputs[0].series_version)  # hydrolog-stats-characteristic/1
+# a failed analysis: status "failed", error = Hydrolog's hydrolog-error/1 document, envelope None
+
+# 3. Export: json (one obserwator-analyses-export/1 document) or csv (one row per value, with the attribution)
+export_analyses(root=store, station="149190310", format="csv", output="raba-analyses.csv")
+
+# 4. A subset on the fly: Hydrolog computes it now, nothing is stored (stored=False)
+subset = compute_analysis(store, station="149190310", analysis="characteristic.Q", options={"first_year": 1990})
+```
+
+- **Carry-forward:** a station whose station Parquet files (SHA-256 per dataset), catalog thresholds, Hydrolog version and registry are unchanged is carried into the new version by hard links without a Hydrolog call; a provider with nothing to compute is `unchanged` and gets no new version. Hydrolog's development builds all report `1.0.0.dev0`, so a change of Hydrolog within one development version does not trigger a recomputation.
+- **Failures:** an analysis Hydrolog answers with an error is stored with `status="failed"` and Hydrolog's `hydrolog-error/1` document; one whose input number (a pick from another analysis) is missing is not stored.
+- **Options on the fly:** `compute_analysis` takes only the overridable options of the analysis or of an analysis it depends on (`analysis_definitions()` lists them with types and bounds), never a file or a column, minus `locked` (e.g. `durations_days` for `precipitation_quantiles.2d`, whose pick reads a position of that list); anything else is `validation_error`. `timeout` (30 s) bounds the whole computation (`source_unavailable`, `details.reason="timeout"`). It is a Python function only, not a catalog command, so REST and MCP never start Hydrolog on request.
+- **Spells:** the stored `spells.dry`/`spells.wet` list only spells of 10 days or more; their summaries count every spell.
+
 ### Command catalog
 
 Every CLI command and REST route can be called from Python with the same options; the result is a `CommandResult` (envelope `obserwator-result/1`), and list commands return the tuple of the page's items as `result` and a `Page` (`total`, `next_cursor`, `truncated`) as `page`; pass `next_cursor` as the `cursor` option for the next page.
@@ -365,6 +407,13 @@ obserwator series summary -d hydro/miesieczne -s 152210170
 obserwator series export -d hydro/miesieczne -s 152210170 --variables Q_mean --output q.csv
 obserwator pmaxtp sync --lat 52.23 --lon 21.01
 
+# Stored analyses computed by Hydrolog (OBSERWATOR_HYDROLOG_COMMAND or hydrolog on PATH)
+obserwator analyses build --check                     # stations to compute and to carry forward
+obserwator analyses build --workers 2                 # analyses/versions/<pl.imgw|cz.chmi>/…
+obserwator analyses list -s 149190310
+obserwator analyses read -s 149190310 --analysis characteristic.Q --json
+obserwator analyses export -s 149190310 --format csv --output raba-analyses.csv
+
 # ČHMÚ data (WIGOS station codes; -s/--stations required for cz.chmi.*)
 obserwator datasets providers
 obserwator datasets list --provider CHMI
@@ -423,6 +472,10 @@ Catalog commands (full list: `obserwator commands list`):
 | `obserwator series summary` | `summarize_series` | — | `GET /api/v1/series/summary` |
 | `obserwator series export` | `export_series` | `check_command` | `GET /api/v1/series/export` |
 | `obserwator stations export` | `export_stations` | `check_command` | `GET /api/v1/stations/export` |
+| `obserwator analyses build` | `build_analyses` | `check_analyses` | `POST /api/v1/analyses/build` |
+| `obserwator analyses list` | `list_analyses` | — | `GET /api/v1/analyses/list` |
+| `obserwator analyses read` | `read_analysis` | — | `GET /api/v1/analyses/read` |
+| `obserwator analyses export` | `export_analyses` | `check_command` | `GET /api/v1/analyses/export` |
 | `obserwator commands list` | `list_commands` | — | `GET /api/v1/commands/list` |
 | `obserwator commands schema` | `command_schema` | — | `GET /api/v1/commands/schema` |
 | `obserwator commands guide` | `agent_guide` | `check_command` | `GET /api/v1/commands/guide` |
@@ -522,6 +575,8 @@ curl -H "Accept-Language: pl" http://localhost:8000/llms.txt
 curl http://localhost:8000/api/v1/store/info
 curl "http://localhost:8000/api/v1/store/scan?kind=series"
 curl "http://localhost:8000/api/v1/series/summary?dataset=pl.imgw.hydro_monthly&stations=152210170"
+curl "http://localhost:8000/api/v1/analyses/read?station=149190310&analysis=characteristic.Q"
+curl "http://localhost:8000/api/v1/analyses/export?station=149190310&format=csv"
 
 # Writes (OBSERWATOR_STORE_WRITES_ENABLED=true, OBSERWATOR_STORE_WRITE_TOKEN and the X-API-Key header)
 curl -X POST "http://localhost:8000/api/v1/store/sync?check=true" \
@@ -570,9 +625,9 @@ The Web GUI supports IMGW-PIB datasets only (a form without a station field cann
 - Language: the MCP server always speaks English (tool descriptions, instructions, error documents; AGI-9.2), regardless of `OBSERWATOR_LANG`. There is no `--lang` option; an agent gets Polish text only on explicit request (the `lang: "pl"` argument of the `obserwator_commands_list`, `obserwator_commands_schema`, `obserwator_commands_guide` tools).
 - `root` as in the CLI: a tool argument or the server's `OBSERWATOR_ROOT`; without them the default root `<data_dir>/obserwator` (must lie within `--allow-dir`); relative paths are resolved from the server's working directory (given in the server instructions).
 
-Tool result: `structuredContent` = the `obserwator-result/1` envelope (the same bytes as CLI stdout with `--json`, also as text), `isError=false` also for `partial` and `failed`. Error: `isError=true` and the `obserwator-error/1` document of the CLI error line (with the tool's `command`, in English) as `structuredContent` and as text. List commands without `limit` return a page of 50 items (at most `OBSERWATOR_API_MAX_LIMIT`; next pages with `cursor` = `page.next_cursor`); streams (`store export`, `series export`, `commands guide` without `output`) — text up to 256 KiB with the envelope `result={schema: "obserwator-stream/1", format, bytes, lines}`, larger → `validation_error` (narrow the selection, read page by page with `series read` or write a file with the `output` option; writing requires `--allow-writes` and an `--allow-dir` directory). Progress is sent as `notifications/progress`; cancelling the request stops work between files. The list of 30 tools with descriptions is about 42 KB of schemas (read-only mode).
+Tool result: `structuredContent` = the `obserwator-result/1` envelope (the same bytes as CLI stdout with `--json`, also as text), `isError=false` also for `partial` and `failed`. Error: `isError=true` and the `obserwator-error/1` document of the CLI error line (with the tool's `command`, in English) as `structuredContent` and as text. List commands without `limit` return a page of 50 items (at most `OBSERWATOR_API_MAX_LIMIT`; next pages with `cursor` = `page.next_cursor`); streams (`store export`, `series export`, `analyses export`, `commands guide` without `output`) — text up to 256 KiB with the envelope `result={schema: "obserwator-stream/1", format, bytes, lines}`, larger → `validation_error` (narrow the selection, read page by page with `series read` or write a file with the `output` option; writing requires `--allow-writes` and an `--allow-dir` directory). Progress is sent as `notifications/progress`; cancelling the request stops work between files. The list of 35 tools with descriptions is about 53 KB of schemas (read-only mode).
 
-**MCP over HTTP.** `obserwator server` exposes `/mcp` (Streamable HTTP) with `OBSERWATOR_MCP_ENABLED=true`: the tools correspond to the 28 REST routes and are called as REST requests in the same process (with `Accept-Language: en`), so the server rules apply (store from `OBSERWATOR_ROOT`, `version` relative to the store, `OBSERWATOR_API_MAX_LIMIT`, hiding server directories); POST always with `?check=true` — over HTTP only reading and planning. The tools are in English, as in `obserwator mcp`; `OBSERWATOR_LANG` does not affect them. Allowed `Host` headers are listed in `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`); behind `nginx` add the public host name.
+**MCP over HTTP.** `obserwator server` exposes `/mcp` (Streamable HTTP) with `OBSERWATOR_MCP_ENABLED=true`: the tools correspond to the 33 REST routes and are called as REST requests in the same process (with `Accept-Language: en`), so the server rules apply (store from `OBSERWATOR_ROOT`, `version` relative to the store, `OBSERWATOR_API_MAX_LIMIT`, hiding server directories); POST always with `?check=true` — over HTTP only reading and planning. The tools are in English, as in `obserwator mcp`; `OBSERWATOR_LANG` does not affect them. Allowed `Host` headers are listed in `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`); behind `nginx` add the public host name.
 
 ```bash
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator obserwator server  # → http://127.0.0.1:8000/mcp
@@ -662,6 +717,7 @@ api_max_limit = 500
 | `OBSERWATOR_MCP_ENABLED` | `mcp_enabled` | `false` | `/mcp` in `obserwator server` (read and plan only) |
 | `OBSERWATOR_MCP_ALLOWED_HOSTS` | `mcp_allowed_hosts` | `127.0.0.1,localhost` | `Host` names served by `/mcp` |
 | `OBSERWATOR_MCP_ALLOW_WRITES` | `mcp_allow_writes` | `false` | `obserwator mcp` in write mode (`--allow-writes`, `--no-allow-writes`) |
+| `OBSERWATOR_HYDROLOG_COMMAND` | `hydrolog_command` | none (`hydrolog` on `PATH`) | Hydrolog's program for `analyses build` and `compute_analysis` (ADR-016): a command line split as a shell splits it, e.g. `/opt/hydrolog/.venv/bin/hydrolog`; no command option replaces it |
 
 `obserwator config show --json` prints one `obserwator-config/1` document: every key with its value and source (`default`, `env`, `dotenv`, `file` and the variable or table name), every credential variable as `present` or `missing` (without the value) and the store root with its source and size (hard-linked files counted once); without `--json` the same description as text.
 
@@ -681,6 +737,7 @@ The store is a plain directory explicitly specified by the user (`--root`, `init
   stations/versions/chmi_stations/<label>_<sha8>/stations.geojson[.meta.json]   # ČHMÚ catalog
   series/versions/<slug>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet
   pmaxtp/versions/<POT|AMP>/<indX>_<indY>/<label>_<sha8>/cell.json[.meta.json]
+  analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/analyses.json[.meta.json] + stations/<code>.json + stations/<code>/<id>.json   # Hydrolog's analyses (ADR-016)
   .incoming/                                            # staging; never a version
 ```
 
@@ -712,7 +769,7 @@ A write moves version files from the `.incoming/` staging area with hard links t
 
 ### Schemas
 
-`obserwator-store/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. Within `/1` only optional fields are added; an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
+`obserwator-store/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. The analyses (ADR-016) add `obserwator-analyses/1` (main file of a version), `obserwator-station-analyses/1` (a station's record), `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1` and `obserwator-analysis-definition/1`; the stored answers keep Hydrolog's `hydrolog-result/1` and `hydrolog-error/1`. Within `/1` only optional fields are added; an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
 
 ### Integrations
 
@@ -751,13 +808,15 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
 
 - Versioned store with a freshness plan, Parquet series, a GeoJSON station
   catalog, PMAXTP per cell and CSV/JSONL export.
-- A single catalog of 30 commands for Python, the CLI, REST and MCP (`command_schema`, `run_command`),
+- A single catalog of 35 commands for Python, the CLI, REST and MCP (`command_schema`, `run_command`),
   the `obserwator-result/1` envelope with pagination, the `ERROR_CODES` error code registry.
 - `find_stations`, `fetch_meteo_current`, `fetch_hydro_states`, `download_archives`,
-  `select_series`, `summarize_series`, `export_archive`; a registry of 17 datasets from two providers.
+  `select_series`, `summarize_series`, `export_archive`; a registry of 21 datasets from two providers.
 - ČHMÚ provider (Czechia): per-station daily hydrological and meteorological data,
   freshness from the listing, canonical content and an observation register, a station catalog with SPA thresholds,
   ČHMÚ quality and flags in series.
+- Stored analyses computed by Hydrolog (ADR-016): `analyses build|list|read|export`, `compute_analysis`
+  for a subset on the fly, a registry of 84 analyses (`analysis_definitions`), the setting `hydrolog_command`.
 - AI agents: `AGENTS.md`, `llms.txt`, `obserwator commands guide`, catalog descriptions in English
   (Polish on request: `--lang pl`, `Accept-Language`), command effect metadata, the `obserwator mcp` MCP server and `/mcp`.
 - Public test store builder `obserwator.testing.build_fixture_store` (also the PL + CZ variant).

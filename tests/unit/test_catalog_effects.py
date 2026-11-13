@@ -21,7 +21,16 @@ import respx
 from obserwator import init_store, run_command, sync_pmaxtp, sync_store
 from obserwator.commands import command_schema, data_commands
 from obserwator.testing import build_fixture_store
-from tests.contract.support import H2024, NEW, V3, FakeImgw, snapshot, stamps
+from tests.contract.support import (
+    H2024,
+    NEW,
+    V3,
+    FakeImgw,
+    build_served_analyses,
+    snapshot,
+    stamps,
+    use_fake_hydrolog,
+)
 from tests.contract.test_interface_contract import (
     CASES,
     IMGW_SOURCES,
@@ -64,6 +73,11 @@ EFFECTS = {
     "series read": ("none", False, {}),
     "series summary": ("none", False, {}),
     "series export": ("none", False, {"output": "add", "force": "replace"}),
+    # Hydrolog's program runs locally: no request.
+    "analyses build": ("add", False, {}),
+    "analyses list": ("none", False, {}),
+    "analyses read": ("none", False, {}),
+    "analyses export": ("none", False, {"output": "add", "force": "replace"}),
     "commands list": ("none", False, {}),
     "commands schema": ("none", False, {}),
     "commands guide": ("none", False, {"output": "add", "force": "replace"}),
@@ -80,6 +94,7 @@ LOCAL_WRITES = {
     ("store export", "force"),
     ("series export", "force"),
     ("stations export", "force"),
+    ("analyses export", "force"),
     ("commands guide", "force"),
 }
 
@@ -91,13 +106,20 @@ def fixture_root(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def served_root(tmp_path_factory, fixture_root):
-    """The fixture store plus a PMAXTP cell, as served to the contract cases."""
+    """The fixture store plus a PMAXTP cell and analyses, as served to the contract cases."""
     root = tmp_path_factory.mktemp("served") / "store"
     shutil.copytree(fixture_root, root)
     with respx.mock(assert_all_called=False) as router:
         FakeImgw(router).publish_pmaxtp("pmaxtp_pot_first")
         sync_pmaxtp(root, latitude=52.23, longitude=21.01)
+    build_served_analyses(root)
     return root
+
+
+@pytest.fixture(autouse=True)
+def hydrolog(monkeypatch):
+    """Hydrolog's program of the analyses commands is the recorded fake."""
+    use_fake_hydrolog(monkeypatch)
 
 
 @pytest.fixture

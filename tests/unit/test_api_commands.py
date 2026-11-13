@@ -46,6 +46,7 @@ from tests.contract.support import (
     input_schemas,
     schema_errors,
     stamps,
+    use_fake_hydrolog,
 )
 
 API = "https://danepubliczne.imgw.pl/api/data"
@@ -114,6 +115,7 @@ POST_CASES = [
     ("store sync", {"datasets": ["hydro/dobowe"], "years": [2024]}, "empty"),
     ("store catalog", {}, "fixture"),
     ("series build", {"dataset": PRECIP}, "fixture"),
+    ("analyses build", {"stations": [RABA]}, "fixture"),
 ]
 
 
@@ -226,9 +228,16 @@ def frozen(monkeypatch):
         "obserwator.store.catalog",
         "obserwator.store.sync",
         "obserwator.store.pmaxtp",
+        "obserwator.store.analyses",
         "obserwator.commands",
     ):
         monkeypatch.setattr(importlib.import_module(name), "datetime", Frozen)
+
+
+@pytest.fixture
+def hydrolog(monkeypatch, tmp_path_factory):
+    """Hydrolog's program is the recorded fake; its series files in one directory."""
+    use_fake_hydrolog(monkeypatch, tmp_path_factory.mktemp("hydrolog") / "scratch")
 
 
 @pytest.fixture
@@ -275,7 +284,7 @@ def test_api_routes_and_openapi_are_generated_from_the_catalog(client):
         for method, operation in operations.items()
     }
 
-    assert len(expected) == 29
+    assert len(expected) == 33
     assert served.keys() == expected.keys()
     assert [
         (route["method"], route["path"])
@@ -463,6 +472,7 @@ def test_api_post_route_answers_the_run_command_envelope(
     fixture_root,
     imgw,
     frozen,
+    hydrolog,
     relative_reference_dir,
     writable,
     command,
@@ -517,6 +527,7 @@ def test_api_check_true_plans_every_write_without_token_or_writes(
     fixture_root,
     imgw,
     frozen,
+    hydrolog,
     relative_reference_dir,
     command,
     body,

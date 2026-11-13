@@ -1,9 +1,30 @@
-"""Public versioned Obserwator store API: writer, reader, sync, series, catalog, PMAXTP.
+"""Public versioned Obserwator store API: writer, reader, sync, series, catalog, PMAXTP, analyses.
 
 Importing this package never imports ``pyarrow``; Parquet paths load it lazily
 and raise ``ObserwatorStoreDependencyError`` when the ``[store]`` extra is missing.
 """
 
+from obserwator.store.analyses import (
+    AnalysesReport,
+    AnalysisResult,
+    AnalysisSource,
+    AnalysisSummary,
+    ProviderAnalyses,
+    build_analyses,
+    check_analyses,
+    compute_analysis,
+    export_analyses,
+    list_analyses,
+    read_analysis,
+)
+from obserwator.store.analysis_registry import (
+    AnalysisDefinition,
+    AnalysisInput,
+    AnalysisOption,
+    AnalysisPick,
+    AnalysisVariant,
+    analysis_definitions,
+)
 from obserwator.store.catalog import RootArg, build_catalog, check_catalog
 from obserwator.store.export import export_archive, export_series, export_stations
 from obserwator.store.pmaxtp import check_pmaxtp, read_pmaxtp, sync_pmaxtp
@@ -51,6 +72,15 @@ from obserwator.store.writer import init_store, open_store, write_archive
 
 __all__ = [
     # Types
+    "AnalysesReport",
+    "AnalysisDefinition",
+    "AnalysisInput",
+    "AnalysisOption",
+    "AnalysisPick",
+    "AnalysisResult",
+    "AnalysisSource",
+    "AnalysisSummary",
+    "AnalysisVariant",
     "Cancel",
     "CatalogReport",
     "Meta",
@@ -73,22 +103,30 @@ __all__ = [
     "StoreHandle",
     "StoreInfo",
     "StorePlan",
+    "ProviderAnalyses",
     "SyncReport",
     "VersionResult",
     # Functions
+    "analysis_definitions",
+    "build_analyses",
     "build_catalog",
     "build_series",
+    "check_analyses",
     "check_catalog",
+    "compute_analysis",
     "check_pmaxtp",
     "check_series",
     "check_store",
     "current_version",
+    "export_analyses",
     "export_archive",
     "export_series",
     "export_stations",
     "init_store",
     "iter_store",
+    "list_analyses",
     "open_store",
+    "read_analysis",
     "read_archive",
     "read_catalog",
     "read_meta",

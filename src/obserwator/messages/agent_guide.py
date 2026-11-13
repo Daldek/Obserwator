@@ -169,8 +169,8 @@ MESSAGES = {
         "po zgodzie użytkownika.",
     ),
     "flow_series_build": Text(
-        "the station series of the dataset (`store sync` stores raw archives only).",
-        "szeregi stacji zbioru (`store sync` zapisuje tylko surowe archiwa).",
+        "the station series (`store sync` keeps raw data only).",
+        "szeregi stacji (`store sync` zapisuje tylko surowe dane).",
     ),
     "flow_precipitation_summary": Text(
         "the station is missing → repeat steps 3–6 with "
@@ -223,20 +223,18 @@ MESSAGES = {
         "flagi logiczne ({switches}) nie mają wartości i włączają swoją opcję.",
     ),
     "flags_output": Text(
-        "- CLI output: `--json` prints the envelope as one JSON line on stdout — parse "
-        "only that; without it, a summary for a person in the `--lang` language. "
-        "Exports and `commands guide` without `--output` print the same data lines in "
-        "both modes.",
-        "- Wyjście CLI: `--json` wypisuje kopertę jako jedną linię JSON na stdout — "
-        "parsuj tylko je; bez niego podsumowanie dla człowieka w języku `--lang`. "
-        "Eksporty i `commands guide` bez `--output` wypisują te same linie danych w obu "
-        "trybach.",
+        "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
+        "only that; without it, a summary for a person in the language of `--lang`. A "
+        "stream without `--output` prints its data lines in both modes.",
+        "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
+        "ją; bez niego podsumowanie dla człowieka w języku `--lang`. Strumień bez "
+        "`--output` wypisuje swoje linie danych w obu trybach.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` "
         "(CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help, of "
         "the progress lines and the default `--lang` (`pl`, `en`).",
-        "- Zmienne środowiskowe: `OBSERWATOR_ROOT` — domyślne `--root`, inaczej "
+        "- Środowisko: `OBSERWATOR_ROOT` — domyślne `--root`, inaczej "
         "`<data_dir>/obserwator` (CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — język pomocy "
         "CLI, linii postępu i domyślny `--lang` (`pl`, `en`).",
     ),

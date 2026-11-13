@@ -72,8 +72,8 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 
 Outside the store (`datasets files` and `datasets download` only): `pl.imgw.hydro_phenomena`, `pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`, `pl.imgw.meteo_climate_terms`.
 
-- `stations` (WIGOS identifiers): required for `cz.chmi.*`, not allowed for `pl.imgw.*` in `datasets files`, `datasets download`, `store check` and `store sync`; one call covers datasets of one kind (`pl.imgw.*` or `cz.chmi.*`).
-- `years`: required in `datasets files`, `datasets download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check` and `store sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations` (WIGOS identifiers): required for `cz.chmi.*`, not allowed for `pl.imgw.*` in `datasets files|download` and `store check|sync`; one call covers datasets of one kind (`pl.imgw.*` or `cz.chmi.*`).
+- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
@@ -82,22 +82,25 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 **Read — no network, no writes**
 
 - `datasets list` — List the datasets of the registry: keys, providers, legacy aliases, variables and first year.
-- `datasets files` — List the source files of a dataset for given years or stations (offline, no download).
+- `datasets files` — List the source files of a dataset for given years or stations.
 - `datasets providers` — List the data providers: identifiers, countries, licenses, station code patterns, datasets.
 - `stations export` — Export the stations of the current catalogs as GeoJSON or CSV. [`output`: write; `force`: overwrite]
-- `pmaxtp url` — Build the PMAXTP API URL of a point (offline, without downloading).
+- `pmaxtp url` — Build the PMAXTP API URL of a point.
 - `pmaxtp check` — Check the PMAXTP cell in the store without downloading data. [is a check]
-- `pmaxtp read` — Read a saved PMAXTP cell from the store (offline).
-- `store info` — Show the state of an Obserwator store and the supported contracts (offline, without writing).
-- `store scan` — List the versions and problems of an Obserwator store (offline, without writing).
-- `store export` — Export the records of one archive version as CSV or JSONL (offline, SHA-256 verified). [`output`: write; `force`: overwrite]
-- `series select` — Select stations, variables and years of the current series (without writing).
+- `pmaxtp read` — Read a saved PMAXTP cell from the store.
+- `store info` — Show the state of an Obserwator store and the supported contracts.
+- `store scan` — List the versions and problems of an Obserwator store.
+- `store export` — Export the records of one archive version as CSV or JSONL. [`output`: write; `force`: overwrite]
+- `series select` — Select stations, variables and years of the current series.
 - `series read` — Read the values and flags of one station's series from the store.
-- `series summary` — Show the coverage of stations and variables of a series from series.json (without pyarrow).
+- `series summary` — Show the coverage of stations and variables of a series from series.json.
 - `series export` — Export one station's series as CSV, JSON or Parquet with the provider's attribution. [`output`: write; `force`: overwrite]
+- `analyses list` — List the stored analyses of a station.
+- `analyses read` — Read one stored analysis of a station.
+- `analyses export` — Export the stored analyses of a station as JSON or CSV. [`output`: write; `force`: overwrite]
 - `commands list` — List the catalog commands: tool names, effects and routes.
 - `commands schema` — Describe a command or the whole catalog as obserwator-commands/1.
-- `commands guide` — Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or English. [`output`: write; `force`: overwrite]
+- `commands guide` — Generate AGENTS.md or llms.txt for AI agents, in Polish or English. [`output`: write; `force`: overwrite]
 
 **Network — connects to a source, writes nothing**
 
@@ -107,7 +110,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `current synop` — Fetch current synoptic data from the IMGW API.
 - `current warnings` — Fetch the current IMGW hydrological and meteorological warnings.
 - `current hydro-states` — Fetch the water states of hydrological stations with coordinates (hydro.imgw.pl map).
-- `pmaxtp fetch` — Fetch the PMAXTP maximum precipitation of a point (live, without saving).
+- `pmaxtp fetch` — Fetch the PMAXTP maximum precipitation of a point.
 - `store check` — Check the freshness of the dataset archives without downloading data. [`plan`: overwrite; is a check]
 
 **Write — new files, versions or tasks; `--check` first**
@@ -118,12 +121,13 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `store sync` — Download new or missing archives into the store, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
 - `store catalog` — Build the versioned station catalog stations.geojson of one provider.
 - `series build` — Build the Parquet series of a dataset from the current archive versions of the store.
+- `analyses build` — Compute and store the analyses of every station with Hydrolog.
 
 ## Flags and values
 
-- Lists (`--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
+- Lists (`--analyses`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
-- CLI output: `--json` prints the envelope as one JSON line on stdout — parse only that; without it, a summary for a person in the `--lang` language. Exports and `commands guide` without `--output` print the same data lines in both modes.
+- CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
 - Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
 
 ## Typical flows
@@ -136,7 +140,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 2. Choose the dataset: `pl.imgw.meteo_precip_daily` (precipitation stations, `P`) or `pl.imgw.meteo_climate_daily` (climate stations, `P` and temperatures) — the station list does not tell the network of a station.
 3. `obserwator store check --root /data/obserwator --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — plan: the number of files and bytes; the archives cover the whole country, so tell the user the size.
 4. `obserwator store sync --root /data/obserwator --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — after the user agrees.
-5. `obserwator series build --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --json` — the station series of the dataset (`store sync` stores raw archives only).
+5. `obserwator series build --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --json` — the station series (`store sync` keeps raw data only).
 6. `obserwator series summary --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --stations STATION_CODE --json` — the station is missing → repeat steps 3–6 with `pl.imgw.meteo_climate_daily`; missing from both → tell the user, do not substitute another station.
 7. `obserwator series read --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --station STATION_CODE --variables P --start 2010-01-01 --end 2020-12-31 --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
@@ -145,7 +149,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 1. `obserwator stations find --kind hydro --query spindleruv --provider CHMI --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
 2. `obserwator store check --root /data/obserwator --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
 3. `obserwator store sync --root /data/obserwator --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
-4. `obserwator series build --root /data/obserwator --dataset cz.chmi.hydro_daily --json` — the station series of the dataset (`store sync` stores raw archives only).
+4. `obserwator series build --root /data/obserwator --dataset cz.chmi.hydro_daily --json` — the station series (`store sync` keeps raw data only).
 5. `obserwator series read --root /data/obserwator --dataset cz.chmi.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
 ## What not to do

@@ -7,18 +7,18 @@ System consists of six main components:
 1. **Python Library** (v3.0.0)
    - `pip install obserwator` for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
-   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (17 descriptors: 13 `pl.imgw.*`, 4 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
-   - Command catalog (`obserwator.commands`): 30 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); Polish texts with an English variant, declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
+   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (21 descriptors: 15 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
+   - Command catalog (`obserwator.commands`): 35 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); Polish texts with an English variant, declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
 
 2. **Versioned Store** [Parquet: `obserwator[store]`]
    - Append-only, immutable versions of IMGW-PIB and ČHMÚ archives with provenance sidecars
-   - Derived products: Parquet station series, `stations.geojson` per provider, PMAXTP cells
+   - Derived products: Parquet station series, `stations.geojson` per provider, PMAXTP cells, and the stations' analyses computed by Hydrolog's program and stored as its answers (ADR-016; Obserwator computes no number)
    - Default root in the user data directory (`<data_dir>/obserwator`, or `--root`, `OBSERWATOR_ROOT`, `[obserwator] root`); readable offline, also from network shares
-   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
+   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support, ADR-016 stored analyses computed by Hydrolog); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
 
 3. **Backend (FastAPI)** [optional: `obserwator[api]`]
-   - Routes `/api/v1/<group>/<command>` generated from the command catalog (28 commands; local-only commands have no route)
+   - Routes `/api/v1/<group>/<command>` generated from the command catalog (33 commands; local-only commands have no route)
    - URL generation for IMGW-PIB and ČHMÚ downloads and live IMGW data
    - Store commands only with an explicit server-side `OBSERWATOR_ROOT`
    - Errors as `application/problem+json`; language negotiation (`Accept-Language`, English by default); `GET /llms.txt`; optional MCP endpoint `/mcp`; rate limiting via Nginx
@@ -35,7 +35,7 @@ System consists of six main components:
 
 6. **CLI** [optional: `obserwator[cli]`]
    - Local client using the library directly (never through the REST API)
-   - Groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands` generated from the command catalog; help in Polish or English (`OBSERWATOR_LANG`)
+   - Groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses`, `commands` generated from the command catalog; help in Polish or English (`OBSERWATOR_LANG`)
    - `obserwator mcp`, `obserwator server`, API key management (`obserwator admin`)
 
 ---
@@ -179,9 +179,9 @@ The CLI uses the library directly and downloads data straight from IMGW-PIB and 
 
 | Mode | Start | Tools | Writes |
 |---|---|---|---|
-| `read` (default) | `obserwator mcp` | 30 | none: writing commands have `check` fixed `true` (plan `obserwator-plan/1`), writing options (`output_dir`, `output`, `force`, `plan`) removed |
-| `write` | `obserwator mcp --allow-writes --allow-dir DIR` / `OBSERWATOR_MCP_ALLOW_WRITES=true` | 30 | `check` defaults to `true`; writes with `check: false`, only inside `--allow-dir` (an absent `root` is the default store, which must lie inside too) |
-| `http` | `obserwator server` + `OBSERWATOR_MCP_ENABLED=true` → `/mcp` | 28 (commands with a REST route) | none (REST rules: server root, `version` under `*/versions/`, hidden server paths) |
+| `read` (default) | `obserwator mcp` | 35 | none: writing commands have `check` fixed `true` (plan `obserwator-plan/1`), writing options (`output_dir`, `output`, `force`, `plan`) removed |
+| `write` | `obserwator mcp --allow-writes --allow-dir DIR` / `OBSERWATOR_MCP_ALLOW_WRITES=true` | 35 | `check` defaults to `true`; writes with `check: false`, only inside `--allow-dir` (an absent `root` is the default store, which must lie inside too) |
+| `http` | `obserwator server` + `OBSERWATOR_MCP_ENABLED=true` → `/mcp` | 33 (commands with a REST route) | none (REST rules: server root, `version` under `*/versions/`, hidden server paths) |
 
 Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` stdout bytes also as text), `isError=false` for every envelope; errors `isError=true` with the CLI's `obserwator-error/1` document (`OSError` → `io_error`, other exceptions → `internal_error`; refused write → `forbidden`, `details.reason="writes_disabled"`, `no_allowed_dir` or `outside_allowed_dirs`). Streams up to 256 KiB as text with `result={schema: "obserwator-stream/1", format, bytes, lines}`. The server speaks English only (AGI-9.2: tool descriptions, instructions, error documents; `OBSERWATOR_LANG` does not reach it), so the tool list does not depend on the connection or the user's setting; Polish text is only an explicit `lang: "pl"` argument of `obserwator_commands_list`, `obserwator_commands_schema` and `obserwator_commands_guide`.
 
@@ -191,7 +191,7 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
 
 ### Layers
 1. **Source archives** — IMGW-PIB ZIP/CSV and ČHMÚ JSON/CSV bytes 1:1 under their server path; the station sources of the catalogs are archives too (station lists, ČHMÚ `now` metadata). The one exception: of IMGW-PIB's current-data API answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`) the store keeps a derived file with each station's code, name, river and coordinates, because operational data are never archived (ADR-015 D5).
-2. **Derived products** — Parquet series per dataset/station (`obserwator-series/1`), `stations.geojson` catalog per provider, PMAXTP `cell.json` (`obserwator-pmaxtp/1`).
+2. **Derived products** — Parquet series per dataset/station (`obserwator-series/1`), `stations.geojson` catalog per provider, PMAXTP `cell.json` (`obserwator-pmaxtp/1`), analyses per provider (`obserwator-analyses/1`: Hydrolog's answer lines byte for byte with the series versions, options and Hydrolog version they came from; ADR-016).
 3. A rebuildable local index is out of scope; no `.db` file is ever part of the store.
 
 ### Layout
@@ -203,6 +203,7 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
   stations/versions/chmi_stations/<label>_<sha8>/stations.geojson + .meta.json   # ČHMÚ catalog
   series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet
   pmaxtp/versions/<POT|AMP>/<indX>_<indY>/<label>_<sha8>/cell.json + response.json + .meta.json
+  analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/<host>_<pid>_<token>/                       # staging; leftovers >24 h cleaned
 ```
 
@@ -354,10 +355,11 @@ Obserwator/
 │   ├── _jsonable.py      # Single JSON converter (envelope, relative paths)
 │   ├── _examples.py      # Example calls of the catalog (examples of command_schema)
 │   ├── reference_data.py # Fetch IMGW-PIB reference data into reference_dir (OBSERWATOR_REFERENCE_DIR)
-│   ├── config.py         # Settings
+│   ├── config.py         # Settings (incl. hydrolog_command)
+│   ├── _hydrolog.py      # Hydrolog's program: `commands batch` in a separate process (ADR-016)
 │   ├── _data/            # Poland and Czechia borders (Natural Earth), agents/ templates, packaged fixtures, recordings, contract schemas
 │   ├── _parsing/         # common.py, hydro.py, meteo.py, stations.py, chmi.py
-│   ├── store/            # types, writer, content, sync, series, catalog, pmaxtp, reader, export, plain (plan of a plain write)
+│   ├── store/            # types, writer, content, sync, series, catalog, pmaxtp, reader, export, plain (plan of a plain write), analyses and analysis_registry (ADR-016)
 │   ├── api/              # REST API [optional]
 │   │   ├── main.py       # FastAPI app (/health, /api/v1, /llms.txt, /mcp, web, static)
 │   │   ├── routes/commands.py  # Routes generated from the command catalog

@@ -104,7 +104,12 @@ _API_KEY = APIKeyHeader(
     auto_error=False,
 )
 # Store directory of the versions accepted by the version option of each group.
-_VERSION_DIRS = {"store": "archives", "series": "series", "pmaxtp": "pmaxtp"}
+_VERSION_DIRS = {
+    "store": "archives",
+    "series": "series",
+    "pmaxtp": "pmaxtp",
+    "analyses": "analyses",
+}
 # Commands answering diagnostically also for an unsupported store root.
 _DIAGNOSTIC = ("store info", "store scan")
 _MEDIA_TYPES = {
@@ -547,6 +552,8 @@ def _attachment(route: _Route, options: Mapping[str, object]) -> str:
         return f"{options['station']}.{format_}"
     if route.spec.name == "stations export":
         return f"stations.{format_}"
+    if route.spec.name == "analyses export":
+        return f"{options['station']}_analyses.{format_}"
     version = cast(Path, options["version"])
     name = version.name.removesuffix(".meta.json")
     stem = version.parent.name if version.is_dir() else PurePosixPath(name).stem
