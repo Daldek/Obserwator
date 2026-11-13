@@ -119,13 +119,8 @@ MESSAGES = {
         "Zbiór {key} wymaga opcji years: bez listingu serwera lata opublikowane nie "
         "są znane",
     ),
-    "provider_notice_imgw": Text(
-        "{terms} (In English: IMGW-PIB data may be used free of charge only for "
-        "private, non-profit purposes; business use, websites with advertising and "
-        "the purposes the terms list, such as water management planning under art. "
-        "317 of the Water Law, need an agreement with IMGW-PIB.)",
-        "{terms}",
-    ),
+    # The links to the IMGW-PIB terms only: no summary of them (Nogat DEV-20.7, ECO-065)
+    "provider_notice_imgw": Text("{terms}", "{terms}"),
     "provider_notice_chmi": Text(
         "The CC BY 4.0 licence permits copying, changes and commercial use provided "
         "that the author ČHMÚ is credited, the licence is given and the changes are "

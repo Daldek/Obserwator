@@ -12,6 +12,9 @@ refresh the copies from `std-1.0` at the tag when it does):
   `schemas/agent/`): the schemas of the result envelope, the error document and the
   command catalog. `tests/contract/nogat.py` validates Obserwator's documents
   against them.
+- `handoff-1.schema.json` (Nogat `schemas/exchange/`): the hand-off envelope
+  `nogat-handoff/1` the GUI builds; copied again from Nogat commit `b29eada`
+  (ECO-065: its examples carry RK alone).
 
 Do not edit these files; copy them again when the standard changes (DEV-15.6).
 On 2026-11-12 all four were byte for byte equal to Nogat commit `7786271`.

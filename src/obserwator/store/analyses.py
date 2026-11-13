@@ -41,7 +41,13 @@ from typing import Any, ClassVar, Final, Literal, cast, overload
 
 from obserwator._hydrolog import Call, Deadline, Hydrolog, open_hydrolog, program_words
 from obserwator._version import __version__
-from obserwator.attribution import Attribution, attribution, dataset_origin
+from obserwator.attribution import (
+    Attribution,
+    attribution,
+    carried,
+    dataset_origin,
+    provider_origin,
+)
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -654,11 +660,15 @@ class _Outcome:
         return None if self.ok or not isinstance(code, str) else code
 
     def lines(self) -> Attribution:
-        """The attribution lines of Hydrolog's envelope (none for an error)."""
-        return Attribution(
-            tuple(self.document.get("attribution") or ()),
-            tuple(self.document.get("terms_notice") or ()),
-        )
+        """
+        The lines of Hydrolog's envelope (none for an error), derived from its datasets.
+
+        Of the envelope's own lines only Hydrolog's stay (`carried`): a Hydrolog
+        before ECO-065 writes retired lines.
+        """
+        if not self.ok:
+            return Attribution()
+        return _document_lines(self.document, self.datasets)
 
 
 @dataclass(frozen=True)
@@ -1022,10 +1032,33 @@ def _line(version: _Version, entry: Mapping[str, Any]) -> bytes:
     return content
 
 
-def _record_lines(record: Mapping[str, Any]) -> Attribution:
-    return Attribution(
-        tuple(record.get("attribution") or ()), tuple(record.get("terms_notice") or ())
+def _document_lines(
+    document: Mapping[str, Any], datasets: Iterable[str]
+) -> Attribution:
+    """
+    The lines of a stored document with data of ``datasets``, derived from them.
+
+    Of the document's own lines only its producer's attribution lines the standard
+    does not derive stay (`carried`): a document written before ECO-065 holds
+    retired lines.
+    """
+    stored = Attribution(
+        tuple(document.get("attribution") or ()),
+        tuple(document.get("terms_notice") or ()),
     )
+    return carried(stored, *dict.fromkeys(dataset_origin(key) for key in datasets))
+
+
+def _record_lines(record: Mapping[str, Any]) -> Attribution:
+    """The lines of a station's stored analyses, derived from the datasets it read."""
+    datasets = [str(item["dataset"]) for item in record.get("inputs") or ()]
+    if not datasets:
+        stored = Attribution(
+            tuple(record.get("attribution") or ()),
+            tuple(record.get("terms_notice") or ()),
+        )
+        return carried(stored, provider_origin(str(record["provider"])))
+    return _document_lines(record, datasets)
 
 
 def _summary(
@@ -1713,6 +1746,21 @@ def list_analyses(
     return tuple(_summary(record, entry, found) for entry in record["results"])
 
 
+def _envelope(document: Mapping[str, Any], datasets: Iterable[str]) -> dict[str, Any]:
+    """
+    Hydrolog's envelope with its lines derived (`_document_lines`).
+
+    An envelope stored before ECO-065 holds retired lines; the rest stays as
+    Hydrolog wrote it.
+    """
+    rest = {
+        key: value
+        for key, value in document.items()
+        if key not in ("attribution", "terms_notice")
+    }
+    return {**rest, **_document_lines(document, datasets).fields()}
+
+
 def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisResult:
     ok = document.get("schema") == _RESULT
     return AnalysisResult(
@@ -1728,7 +1776,7 @@ def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisRe
         summary.stored,
         summary.status,
         summary.error_code,
-        document if ok else None,
+        _envelope(document, (item.dataset for item in summary.inputs)) if ok else None,
         None if ok else document,
         summary.attribution,
         summary.terms_notice,
@@ -1960,6 +2008,9 @@ def export_analyses(
         results = []
         for entry, document in zip(chosen, documents, strict=True):
             ok = document.get("schema") == _RESULT
+            found_lines = (
+                _document_lines(document, entry["datasets"]) if ok else Attribution()
+            )
             results.append(
                 {
                     "analysis": entry["analysis"],
@@ -1971,8 +2022,8 @@ def export_analyses(
                     "result": document.get("result") if ok else None,
                     "notices": document.get("notices", []) if ok else [],
                     "error": None if ok else document,
-                    "attribution": document.get("attribution", []) if ok else [],
-                    "terms_notice": document.get("terms_notice", []) if ok else [],
+                    "attribution": list(found_lines.attribution),
+                    "terms_notice": list(found_lines.terms_notice),
                 }
             )
         export = {

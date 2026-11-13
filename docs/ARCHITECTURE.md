@@ -139,7 +139,7 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 - **Preact 10.29.8 + htm 3.1.1** as ES modules without a build step, vendored byte for byte with their licences and SHA-256 (`gui/web/vendor/vendor.json`)
 - **MapLibre GL JS 6.14.0**, vendored with its module worker (a same-origin file) and the Noto Sans glyphs; the basemap is a TileJSON from settings (OpenFreeMap's by default) drawn in the GUI's own grey style, or offline the packaged borders of Poland and Czechia
 - **An own SVG chart module** (`gui/web/src/charts/`): linear, log, date, time and Gumbel-probability axes; lines, steps, areas, bands, bars, points and reference marks; long series decimated to the first, last, lowest and highest point per pixel column; zoom and a readout by pointer and keys
-- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 0.5.1 (`nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
+- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 0.6.0 (`nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
 - **Provider lines on screen** (DEV-20.5, ECO-064): one compact `<nogat-sources>` of the kit per view, across the page under the map and both panels, fed the union of the lines of what the list and the map show and of what the right panel shows (the station's header, its open cards and their results, the stations files or PMAXTP's tables), the basemap's credit after it; never per panel or card; on a phone the sheets stop above it. S, P, PS, PP and the short ČHMÚ line on screen, every line and the terms behind „Źródła i warunki”; a welcome window on the first visit with the same full content (`fillSources`). Files, images, hand-offs and the API keep the full lines
 - **Texts**: the area `gui` of the message catalog (`messages/gui/`, `Text(en, pl)`, ADR-006), served by `api/texts`; Polish by default, English through „PL | EN”
 
@@ -180,7 +180,7 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 ### Public Rules (Nogat DEV-15.7 to DEV-15.12)
 - `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory), the access log `logs/access-YYYY-MM-DD.jsonl` without addresses, kept 14 days; uvicorn's access log is off
 - `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl`; no admin routes (a deviation in `CLAUDE.md`)
-- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from kit 0.4.0; the page then shows „Regulamin” and the statement in every view
+- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from kit 0.6.0 (its source blocks link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
 
 ---
 

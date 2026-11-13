@@ -30,10 +30,9 @@ HEADINGS = {
     "imgw": "<h3>IMGW-PIB: dane publiczne</h3>",
     "imgw-hydro": "<h3>IMGW-PIB: serwis hydrologiczny</h3>",
     "pmaxtp": "<h3>IMGW-PIB: opady maksymalne PMAXTP</h3>",
-    "imgw-terms": "<h3>Warunki korzystania z danych IMGW-PIB</h3>",
     "chmi": "<h3>ČHMÚ</h3>",
     "gugik": "<h3>GUGiK</h3>",
-    "osm": "<h3>OpenStreetMap</h3>",
+    "osm": "<h3>OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)</h3>",
     "esri": "<h3>Esri World Imagery</h3>",
 }
 
@@ -82,7 +81,7 @@ def test_the_page_keeps_obserwators_blocks_and_fills_every_field(tmp_path):
 
     assert page is not None
     text = page.decode("utf-8")
-    for block in (*BLOCKS, "imgw-terms"):
+    for block in BLOCKS:
         assert HEADINGS[block] in text
     for block in ("gugik", "osm", "esri"):
         assert HEADINGS[block] not in text
@@ -150,17 +149,13 @@ def test_fill_drops_unlisted_blocks_with_their_markers():
     text = fill(TEMPLATE, values(), ["chmi"])
 
     assert HEADINGS["chmi"] in text
-    for block in ("imgw", "imgw-hydro", "pmaxtp", "imgw-terms", "gugik", "osm"):
+    for block in ("imgw", "imgw-hydro", "pmaxtp", "gugik", "osm"):
         assert HEADINGS[block] not in text
     assert "<!-- block" not in text and "<!-- /block" not in text
     assert "\n\n\n" not in text
 
 
-@pytest.mark.parametrize("listed", ["imgw", "imgw-hydro", "pmaxtp"])
-def test_any_imgw_block_brings_the_imgw_terms(listed):
-    assert HEADINGS["imgw-terms"] in fill(TEMPLATE, values(), [listed])
-
-
+# A name that is no block of the kit (``imgw-terms`` was a derived one before ECO-065)
 @pytest.mark.parametrize("listed", ["nope", "imgw-terms"])
 def test_fill_refuses_a_block_that_cannot_be_listed(listed):
     with pytest.raises(ValueError, match=listed):
