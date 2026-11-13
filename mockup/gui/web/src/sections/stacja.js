@@ -1,6 +1,7 @@
-// „Stacja” (plan D11): the catalog's properties of the station (location and its source and
-// uncertainty, elevation, gauge zero, river km, hydrographic code, year established; ČHMÚ's
-// SPA levels of a hydro station) and the coverage of each dataset and variable in the store.
+// „Informacje o stacji” (plan D11): the catalog's properties of the station (location and
+// its source and uncertainty, elevation, gauge zero, river km, hydrographic code, year
+// established; ČHMÚ's SPA levels of a hydro station) and the coverage of each dataset and
+// variable in the store.
 
 import { fmt, fmtDate, html, unit } from "../lib.js";
 import { KINDS, PERIODS, PROVIDERS, datasetTitle, variableInfo } from "../words.js";
@@ -109,5 +110,5 @@ function Stacja({ station }) {
   `;
 }
 
-/** The section „Stacja”. */
-export const STACJA = { id: "stacja", title: "Stacja", component: Stacja };
+/** The section „Informacje o stacji”. */
+export const STACJA = { id: "stacja", title: "Informacje o stacji", component: Stacja };

@@ -1,20 +1,28 @@
-// The map of the stations (plan D9): MapLibre GL JS 6 from vendor/ (its module worker is a
-// same-origin file, so the CSP keeps `worker-src 'self'`), set up as Archiwista's map views
-// are (Archiwista src/archiwista/web/src/maplibre.js, map/style.js): OpenFreeMap's vector
-// tiles drawn in the GUI's own grey style, place names in the packaged glyphs, Polish where
-// the tiles have them; when the basemap does not load, the borders of Poland and Czechia
-// from Obserwator's package (data/*.geojson) are the background.
+// The map (plan D9, D12): MapLibre GL JS 6 from vendor/ (its module worker is a same-origin
+// file, so the CSP keeps `worker-src 'self'`), set up as Archiwista's map views are
+// (Archiwista src/archiwista/web/src/maplibre.js, map/style.js): OpenFreeMap's vector tiles
+// drawn in the GUI's own grey style, place names in the packaged glyphs, Polish where the
+// tiles have them; when the basemap does not load, the borders of Poland and Czechia from
+// Obserwator's package (data/*.geojson) are the background.
 //
-// Every located station of the catalogs is a symbol: a circle for a hydrological station, a
-// square for a meteorological one (shape and colour), a solid outline for IMGW-PIB and a
-// dashed one for ČHMÚ, filled when the store holds its series and hollow when it is only in
-// the catalog, inactive ones faded; the selected one is ringed. A tooltip names the station;
-// a click selects it. The layer „Stan wody (IMGW-PIB)” colours IMGW-PIB's hydro stations by
-// the water state of the server's snapshot (api/current), today's /map page of Obserwator.
-// Colours come from css/map.css (tokens), read again when the theme changes.
+// The three views of main.js share it, each with only its own layer:
+// - „Stacje”: every located station of the catalogs in hydro.imgw.pl's symbols
+//   (symbols.js): a triangle for a hydrological station, a circle for a meteorological
+//   one, in the colours hydro.imgw.pl gives a station of each kind in its legend; a hollow
+//   centre when the station is only in the catalog, a dashed outline for ČHMÚ, inactive
+//   ones faded;
+// - „Pomiary bieżące”: only IMGW-PIB's current measurements (api/current through
+//   current.js), hydrological stations filled by their water state and meteorological ones
+//   by their precipitation, as hydro.imgw.pl fills them;
+// - „PMAXTP”: no station and no layer of the PMAXTP grid, only the point picked by a click.
+// The selected station is its symbol at 32 px, as on hydro.imgw.pl. A tooltip names the
+// station and its latest values; a click selects it. Colours come from css/map.css
+// (tokens), read again when the theme changes.
 
-import { api } from "./api.js";
-import { html, useEffect, useRef, useState } from "./lib.js";
+import { REFRESH_MS, clock, measuredAt } from "./current.js";
+import { fmt, html, useEffect, useRef, useState } from "./lib.js";
+import { PMAXTP_BOUNDS } from "./pmaxtp/state.js";
+import { HYDRO_STATES, KIND_COLORS, METEO_CLASSES, SHAPES, SYMBOL_PX, SymbolIcon, drawSymbol, hydroState, meteoClass } from "./symbols.js";
 import { isPhone } from "./ui/sheet.js";
 import { useDark } from "./ui/theme.js";
 import { KINDS, providerName } from "./words.js";
@@ -31,41 +39,11 @@ const HOME = [
   [24.3, 55.0],
 ];
 const EMPTY = { type: "FeatureCollection", features: [] };
-const ICON_PX = 16;
-const ICON_RATIO = 2;
-
-/** The water states of IMGW-PIB's map, grouped as the legend names them. */
-export const WATER_STATES = [
-  ["alarm", "alarmowy"],
-  ["warning", "ostrzegawczy"],
-  ["high", "wysoki"],
-  ["medium", "średni"],
-  ["low", "niski"],
-  ["unknown", "brak oceny stanu"],
-];
-const STATE_GROUP = {
-  alarm: "alarm",
-  warning: "warning",
-  high: "high",
-  medium: "medium",
-  normal: "medium",
-  low: "low",
-  below: "low",
-};
-
-/**
- * The legend's group of an IMGW-PIB water state and whether it is outdated.
- *
- * @param {string|null} state e.g. "lowOutdated", "no-water-state-data"
- * @returns {{group: string, outdated: boolean, label: string}}
- */
-export function waterState(state) {
-  const raw = String(state || "unknown");
-  const outdated = raw.endsWith("Outdated");
-  const group = STATE_GROUP[outdated ? raw.slice(0, -8) : raw] || "unknown";
-  const label = (WATER_STATES.find(([key]) => key === group) || [null, "brak oceny stanu"])[1];
-  return { group, outdated, label: outdated ? `${label} (nieaktualny)` : label };
-}
+/** The symbols are drawn at four times their size, so the selected one (2×) stays sharp. */
+const ICON_RATIO = 4;
+/** hydro.imgw.pl's 16 px from zoom 7 (where it opens), smaller over the whole of Poland and Czechia. */
+const ICON_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 0.6, 6, 0.8, 7, 1];
+const SELECTED_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 1.5, 7, 2];
 
 // --- colours from css/map.css ----------------------------------------------------------
 
@@ -80,9 +58,8 @@ function palette() {
   ];
   const out = {};
   for (const name of names) out[name] = cssColor(`--map-${name}`);
-  for (const name of ["hydro", "meteo", "ink", "hollow"]) out[`st-${name}`] = cssColor(`--st-${name}`);
-  for (const [key] of WATER_STATES) out[`ws-${key}`] = cssColor(`--ws-${key}`);
   out.accent = cssColor("--accent");
+  out.surface = cssColor("--surface");
   return out;
 }
 
@@ -233,74 +210,61 @@ async function addBorders(map, colors) {
   map.addLayer({ id: "borders-line", type: "line", source: "borders", paint: { "line-color": colors.border, "line-width": 1.4 }, metadata: { line: "border" } }, before);
 }
 
-// --- the station symbols ------------------------------------------------------------------
+// --- the symbols (symbols.js) ----------------------------------------------------------------
 
-/** The outline of a symbol in a square of `side`: a circle (hydro) or a square (meteo). */
-function shapePath(kind, side, data) {
-  const mid = side / 2;
-  if (kind === "meteo") {
-    const half = side * (data ? 0.3 : 0.25);
-    return `M${mid - half} ${mid - half}H${mid + half}V${mid + half}H${mid - half}Z`;
-  }
-  const r = side * (data ? 0.34 : 0.28);
-  return `M${mid - r} ${mid}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+/** The image of a station in the view „Stacje”. */
+function stationIcon(kind, provider, data) {
+  return `st-${kind === "meteo" ? "meteo" : "hydro"}-${provider === "CHMI" ? "chmi" : "imgw"}-${data ? 1 : 0}`;
 }
 
-/** Fill, outline and dashes of a station's symbol. */
-function symbolStyle(colors, kind, provider, data) {
-  const color = colors[`st-${kind === "meteo" ? "meteo" : "hydro"}`];
-  return {
-    fill: data ? color : colors["st-hollow"],
-    stroke: data ? colors["st-ink"] : color,
-    width: data ? 1.4 : 1.8,
-    dash: provider === "CHMI" ? [2.2, 1.6] : null,
-  };
-}
-
-/** The image name of a station. */
-function iconName(kind, provider, data) {
-  return `${kind === "meteo" ? "meteo" : "hydro"}-${provider === "CHMI" ? "chmi" : "imgw"}-${data ? 1 : 0}`;
-}
-
-/** Draw (or redraw for a theme) the eight images of the station symbols. */
-function drawStationImages(map, colors) {
-  const side = ICON_PX * ICON_RATIO;
-  const canvas = document.createElement("canvas");
-  canvas.width = side;
-  canvas.height = side;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+/** Every image the map draws: its name and look. */
+function looks() {
+  const out = [];
   for (const kind of ["hydro", "meteo"]) {
     for (const provider of ["IMGW-PIB", "CHMI"]) {
       for (const data of [true, false]) {
-        const style = symbolStyle(colors, kind, provider, data);
-        const path = new Path2D(shapePath(kind, side, data));
-        context.clearRect(0, 0, side, side);
-        context.fillStyle = style.fill;
-        context.fill(path);
-        context.lineWidth = style.width * ICON_RATIO;
-        context.strokeStyle = style.stroke;
-        context.setLineDash(style.dash ? style.dash.map((d) => d * ICON_RATIO) : []);
-        context.stroke(path);
-        const name = iconName(kind, provider, data);
-        const image = context.getImageData(0, 0, side, side);
-        if (map.hasImage(name)) map.updateImage(name, image);
-        else map.addImage(name, image, { pixelRatio: ICON_RATIO });
+        out.push({ name: stationIcon(kind, provider, data), shape: kind, color: KIND_COLORS[kind], hollow: !data, dashed: provider === "CHMI" });
       }
     }
+  }
+  for (const state of HYDRO_STATES) {
+    out.push({ name: `now-hydro-${state.key}-0`, shape: "hydro", color: state.color });
+    if (state.ageing) out.push({ name: `now-hydro-${state.key}-1`, shape: "hydro", color: state.color, hollow: true });
+  }
+  for (const entry of METEO_CLASSES) out.push({ name: `now-meteo-${entry.key}`, shape: "meteo", color: entry.color });
+  return out;
+}
+
+/** Draw (or redraw for a theme) every image: 16 px tall, at ICON_RATIO pixels per pixel. */
+function drawImages(map) {
+  const outline = cssColor("--imgw-outline");
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  for (const look of looks()) {
+    const box = SHAPES[look.shape];
+    const scale = (SYMBOL_PX / box.height) * ICON_RATIO;
+    canvas.width = Math.ceil(box.width * scale);
+    canvas.height = Math.ceil(box.height * scale);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    drawSymbol(context, { ...look, fill: cssColor(look.color), outline }, scale);
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    if (map.hasImage(look.name)) map.updateImage(look.name, image);
+    else map.addImage(look.name, image, { pixelRatio: ICON_RATIO });
   }
 }
 
 /**
- * A station's symbol as SVG, for the list and the legend: the map's drawing.
+ * A station's symbol in the view „Stacje” as SVG, for the list and the legend: the map's drawing.
  *
- * @param {{kind: string, provider: string, data: boolean, size?: number}} props
+ * @param {{kind: string, provider: string, data: boolean, active?: boolean, size?: number}} props
  */
-export function StationSymbol({ kind, provider, data, size = 14 }) {
-  const side = 16;
-  const cls = `st-sym ${kind === "meteo" ? "meteo" : "hydro"} ${provider === "CHMI" ? "chmi" : "imgw"} ${data ? "data" : "catalog"}`;
-  return html`<svg class=${cls} width=${size} height=${size} viewBox="0 0 16 16" aria-hidden="true">
-    <path d=${shapePath(kind, side, data)} />
-  </svg>`;
+export function StationSymbol({ kind, provider, data, active = true, size = 14 }) {
+  const shape = kind === "meteo" ? "meteo" : "hydro";
+  return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} dashed=${provider === "CHMI"} faded=${!active} size=${size} className="st-sym" />`;
+}
+
+function point(lon, lat, properties) {
+  return { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties };
 }
 
 function stationFeatures(stations) {
@@ -308,89 +272,89 @@ function stationFeatures(stations) {
   for (const station of stations) {
     if (station.lon === null || station.lat === null) continue;
     const data = station.datasets.length > 0;
-    features.push({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [station.lon, station.lat] },
-      properties: {
+    features.push(
+      point(station.lon, station.lat, {
         code: station.code,
-        icon: iconName(station.kind, station.provider, data),
-        data: data ? 1 : 0,
+        icon: stationIcon(station.kind, station.provider, data),
         active: station.active ? 1 : 0,
-      },
-    });
+        rank: (data ? 2 : 0) + (station.active ? 1 : 0),
+      }),
+    );
   }
   return { type: "FeatureCollection", features };
 }
 
-function stateFeatures(doc) {
+/** The drawing order of the current measurements: meteorological below, the gravest water states on top. */
+const HYDRO_RANK = { alarm: 9, warning: 8, high: 7, below: 6, medium: 5, low: 4, unknown: 3, "no-water-state-data": 2 };
+const METEO_RANK = { "high-precip": 1.6, precip: 1.4, "no-precip": 1.2, "no-precip-data": 1 };
+
+function currentFeatures(doc) {
+  if (!doc) return EMPTY;
   const features = [];
-  for (const item of doc.stations) {
-    if (item.lon === null || item.lat === null) continue;
-    const state = waterState(item.state);
-    features.push({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [item.lon, item.lat] },
-      properties: { code: item.code, group: state.group, outdated: state.outdated, label: state.label, name: item.name, river: item.river || "" },
-    });
+  for (const row of doc.meteo) {
+    const entry = meteoClass(row.p10);
+    features.push(point(row.lon, row.lat, { code: row.code, icon: `now-meteo-${entry.key}`, rank: METEO_RANK[entry.key] }));
+  }
+  for (const row of doc.hydro) {
+    const state = hydroState(row.state);
+    features.push(point(row.lon, row.lat, { code: row.code, icon: `now-hydro-${state.key}-${state.outdated ? 1 : 0}`, rank: HYDRO_RANK[state.key] - (state.outdated ? 0.5 : 0) }));
   }
   return { type: "FeatureCollection", features };
 }
 
-function stateColor(colors) {
-  const pairs = WATER_STATES.flatMap(([key]) => [key, colors[`ws-${key}`]]);
-  return ["match", ["get", "group"], ...pairs.slice(0, -2), colors["ws-unknown"]];
-}
+const NONE = ["==", ["get", "code"], ""];
+/** The layers of each view; every other layer of these is hidden. */
+const VIEW_LAYERS = {
+  stations: ["stations", "stations-selected"],
+  current: ["current", "current-selected"],
+  pmaxtp: ["pmaxtp-ring", "pmaxtp-dot"],
+};
 
-function addStationLayers(map, colors) {
-  drawStationImages(map, colors);
+function addLayers(map, colors) {
+  drawImages(map);
   map.addSource("stations", { type: "geojson", data: EMPTY });
-  map.addSource("states", { type: "geojson", data: EMPTY });
-  map.addLayer({
-    id: "stations",
+  map.addSource("current", { type: "geojson", data: EMPTY });
+  map.addSource("pmaxtp", { type: "geojson", data: EMPTY });
+  const symbols = (id, source, { size = ICON_SIZE, filter = null, paint = {} } = {}) => ({
+    id,
     type: "symbol",
-    source: "stations",
+    source,
+    ...(filter ? { filter } : {}),
     layout: {
+      visibility: "none",
       "icon-image": ["get", "icon"],
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
-      "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.68, 8, 0.95, 12, 1.25],
-      "symbol-sort-key": ["+", ["*", 2, ["get", "data"]], ["get", "active"]],
+      "icon-size": size,
+      "symbol-sort-key": ["get", "rank"],
     },
-    paint: { "icon-opacity": ["case", ["==", ["get", "active"], 1], 1, 0.55] },
+    paint,
+  });
+  map.addLayer(symbols("stations", "stations", { paint: { "icon-opacity": ["case", ["==", ["get", "active"], 1], 1, 0.5] } }));
+  map.addLayer(symbols("stations-selected", "stations", { size: SELECTED_SIZE, filter: NONE }));
+  map.addLayer(symbols("current", "current"));
+  map.addLayer(symbols("current-selected", "current", { size: SELECTED_SIZE, filter: NONE }));
+  map.addLayer({
+    id: "pmaxtp-ring",
+    type: "circle",
+    source: "pmaxtp",
+    layout: { visibility: "none" },
+    paint: { "circle-radius": 11, "circle-color": "rgba(0, 0, 0, 0)", "circle-stroke-color": colors.accent, "circle-stroke-width": 3 },
   });
   map.addLayer({
-    id: "states",
+    id: "pmaxtp-dot",
     type: "circle",
-    source: "states",
-    layout: { visibility: "none", "circle-sort-key": ["match", ["get", "group"], "alarm", 5, "warning", 4, "high", 3, "medium", 2, "low", 1, 0] },
-    paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.6, 8, 5.5, 12, 7.5],
-      "circle-color": stateColor(colors),
-      "circle-opacity": ["case", ["get", "outdated"], 0.45, 1],
-      "circle-stroke-color": colors["st-ink"],
-      "circle-stroke-width": 1,
-      "circle-stroke-opacity": ["case", ["get", "outdated"], 0.5, 1],
-    },
-  });
-  map.addLayer({
-    id: "selected",
-    type: "circle",
-    source: "stations",
-    filter: ["==", ["get", "code"], ""],
-    paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 9, 12, 13],
-      "circle-color": "rgba(0, 0, 0, 0)",
-      "circle-stroke-color": colors.accent,
-      "circle-stroke-width": 3,
-    },
+    source: "pmaxtp",
+    layout: { visibility: "none" },
+    paint: { "circle-radius": 3.5, "circle-color": colors.accent, "circle-stroke-color": colors.surface, "circle-stroke-width": 1.5 },
   });
 }
 
-function repaintStations(map, colors) {
-  drawStationImages(map, colors);
-  map.setPaintProperty("states", "circle-color", stateColor(colors));
-  map.setPaintProperty("states", "circle-stroke-color", colors["st-ink"]);
-  map.setPaintProperty("selected", "circle-stroke-color", colors.accent);
+function repaintLayers(map, colors) {
+  drawImages(map);
+  map.setPaintProperty("pmaxtp-ring", "circle-stroke-color", colors.accent);
+  map.setPaintProperty("pmaxtp-dot", "circle-color", colors.accent);
+  map.setPaintProperty("pmaxtp-dot", "circle-stroke-color", colors.surface);
 }
 
 const LOCALE = {
@@ -405,23 +369,27 @@ const LOCALE = {
  * The map.
  *
  * @param {{stations: object[], byCode: Map<string, object>, selected: string|null,
- *   fly: {code: string, n: number}|null, layer: "stations"|"states",
- *   onSelect: (code: string) => void}} props the stations drawn (already filtered), all
- *   stations by code (the tooltip), the selected one, a request to fly to a station, the
- *   layer shown and the selection's handler
+ *   fly: {code: string, n: number}|null, view: "stations"|"current"|"pmaxtp",
+ *   current: {doc: object|null, error: Error|null, loading: boolean},
+ *   pick: {lat: number, lon: number}|null, pickFly: {n: number}|null,
+ *   onSelect: (code: string) => void, onPick: (point: {lat: number, lon: number}) => void}} props
+ *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
+ *   the selected one, a request to fly to a station, the view, the current measurements
+ *   (current.js), the point picked for PMAXTP and a request to fly to it, the selection's
+ *   and the pick's handlers
  * @returns {object} the map with its legend
  */
-export function StationMap({ stations, byCode, selected, fly, layer, onSelect }) {
+export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
-  handlers.current = { onSelect, byCode, layer };
+  handlers.current = { onSelect, onPick, view };
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState(null);
   const [basemap, setBasemap] = useState(true);
   const [tip, setTip] = useState(null);
-  const [states, setStates] = useState({ doc: null, error: null, loading: false, at: 0 });
   const dark = useDark();
+  const rows = current.doc;
 
   useEffect(() => {
     let live = true;
@@ -461,19 +429,19 @@ export function StationMap({ stations, byCode, selected, fly, layer, onSelect })
         });
         map.once("load", () => {
           if (!live) return;
-          addStationLayers(map, colors);
+          addLayers(map, colors);
           if (!source) addBorders(map, colors).catch(() => {});
           const show = (event) => {
             const feature = event.features && event.features[0];
             if (!feature) return;
             map.getCanvas().style.cursor = "pointer";
-            setTip({ x: event.point.x, y: event.point.y, code: feature.properties.code, label: feature.layer.id === "states" ? feature.properties.label : null });
+            setTip({ x: event.point.x, y: event.point.y, code: feature.properties.code, layer: feature.layer.id.startsWith("current") ? "current" : "stations" });
           };
           const hide = () => {
-            map.getCanvas().style.cursor = "";
+            map.getCanvas().style.cursor = handlers.current.view === "pmaxtp" ? "crosshair" : "";
             setTip(null);
           };
-          for (const id of ["stations", "states"]) {
+          for (const id of [...VIEW_LAYERS.stations, ...VIEW_LAYERS.current]) {
             map.on("mousemove", id, show);
             map.on("mouseleave", id, hide);
             map.on("click", id, (event) => {
@@ -481,6 +449,10 @@ export function StationMap({ stations, byCode, selected, fly, layer, onSelect })
               if (feature) handlers.current.onSelect(feature.properties.code);
             });
           }
+          // „PMAXTP”: the stations are hidden, a click anywhere picks the point
+          map.on("click", (event) => {
+            if (handlers.current.view === "pmaxtp") handlers.current.onPick({ lat: event.lngLat.lat, lon: event.lngLat.lng });
+          });
           mapRef.current = map;
           setReady(true);
         });
@@ -495,18 +467,45 @@ export function StationMap({ stations, byCode, selected, fly, layer, onSelect })
     };
   }, []);
 
-  // The stations drawn
+  // The view: only its own layers are shown
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    for (const [name, ids] of Object.entries(VIEW_LAYERS)) {
+      for (const id of ids) map.setLayoutProperty(id, "visibility", name === view ? "visible" : "none");
+    }
+    map.getCanvas().style.cursor = view === "pmaxtp" ? "crosshair" : "";
+    setTip(null);
+  }, [ready, view]);
+
+  // The stations of „Stacje”
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
     map.getSource("stations").setData(stationFeatures(stations));
   }, [ready, stations]);
 
-  // The selected ring
+  // The points of „Pomiary bieżące”
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    map.setFilter("selected", ["==", ["get", "code"], selected || ""]);
+    map.getSource("current").setData(currentFeatures(rows));
+  }, [ready, rows]);
+
+  // The point of „PMAXTP”
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    map.getSource("pmaxtp").setData(pick ? { type: "FeatureCollection", features: [point(pick.lon, pick.lat, {})] } : EMPTY);
+  }, [ready, pick && pick.lat, pick && pick.lon]);
+
+  // The selected station, drawn at 32 px
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const filter = ["==", ["get", "code"], selected || ""];
+    map.setFilter("stations-selected", filter);
+    map.setFilter("current-selected", filter);
   }, [ready, selected]);
 
   // Fly to a station chosen from the list
@@ -518,91 +517,143 @@ export function StationMap({ stations, byCode, selected, fly, layer, onSelect })
     map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 9), duration: 900 });
   }, [ready, fly, byCode]);
 
+  // Fly to a PMAXTP point typed in the form
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || !pickFly || !pick) return;
+    map.flyTo({ center: [pick.lon, pick.lat], zoom: Math.max(map.getZoom(), 8), duration: 900 });
+  }, [ready, pickFly]);
+
   // The theme's colours
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
     const colors = palette();
     paintBasemap(map, colors, basemap);
-    repaintStations(map, colors);
+    repaintLayers(map, colors);
   }, [ready, dark]);
 
-  // The layer of water states: fetched when shown, again after ten minutes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!ready || !map) return;
-    const on = layer === "states";
-    map.setLayoutProperty("states", "visibility", on ? "visible" : "none");
-    map.setPaintProperty("stations", "icon-opacity", on ? 0.3 : ["case", ["==", ["get", "active"], 1], 1, 0.55]);
-    if (!on || states.loading || (states.doc && Date.now() - states.at < 600000)) return;
-    let live = true;
-    setStates((old) => ({ ...old, loading: true }));
-    api.get("api/current", { layer: "states" }, { memo: false }).then(
-      (doc) => {
-        if (!live) return;
-        map.getSource("states").setData(stateFeatures(doc));
-        setStates({ doc, error: null, loading: false, at: Date.now() });
-      },
-      (error) => live && setStates((old) => ({ ...old, error, loading: false, at: Date.now() })),
-    );
-    return () => {
-      live = false;
-    };
-  }, [ready, layer]);
-
-  const tipStation = tip ? byCode.get(tip.code) : null;
+  let tipBody = null;
+  if (tip && tip.layer === "current" && rows) {
+    const hydro = rows.hydro.find((row) => row.code === tip.code);
+    const meteo = hydro ? null : rows.meteo.find((row) => row.code === tip.code);
+    if (hydro) tipBody = html`<${HydroTip} row=${hydro} station=${byCode.get(tip.code)} />`;
+    else if (meteo) tipBody = html`<${MeteoTip} row=${meteo} station=${byCode.get(tip.code)} />`;
+  } else if (tip && byCode.get(tip.code)) {
+    tipBody = html`<${StationTip} station=${byCode.get(tip.code)} />`;
+  }
   return html`<div class="map-wrap">
     <div class="map" ref=${box} role="region" aria-label="Mapa stacji"></div>
     ${failure
       ? html`<div class="map-failure" role="status">
-          <strong>Ta przeglądarka nie rysuje mapy</strong> (MapLibre: ${failure.message || String(failure)}). Lista stacji i panel stacji działają dalej.
+          <strong>Ta przeglądarka nie rysuje mapy</strong> (MapLibre: ${failure.message || String(failure)}). Lista stacji, panel stacji i formularz PMAXTP działają dalej.
         </div>`
       : null}
-    ${tip && tipStation ? html`<${Tip} tip=${tip} station=${tipStation} />` : null}
-    <${Legend} layer=${layer} basemap=${basemap} states=${states} />
+    ${tipBody ? html`<div class="map-tip" style=${{ left: `${tip.x}px`, top: `${tip.y}px` }} role="tooltip">${tipBody}</div>` : null}
+    <${Legend} view=${view} basemap=${basemap} current=${current} />
   </div>`;
 }
 
-function Tip({ tip, station }) {
+function StationTip({ station }) {
   const years = station.first ? `${station.first}–${station.last}` : null;
-  return html`<div class="map-tip" style=${{ left: `${tip.x}px`, top: `${tip.y}px` }} role="tooltip">
+  return html`
     <strong>${station.name || station.code}</strong>
     ${station.river ? html`<span>${station.river}</span>` : null}
-    <span class="muted"><code>${station.code}</code> · ${providerName(station.provider)} · ${KINDS[station.kind] || station.kind}</span>
-    ${tip.label ? html`<span class="tip-state">Stan wody: ${tip.label}</span>` : null}
+    <span class="muted"><code>${station.code}</code> · ${providerName(station.provider)} · ${KINDS[station.kind] || station.kind}${station.active ? "" : " · nieczynna"}</span>
     <span class="muted">${years ? `szeregi ${years}` : "tylko w katalogu"}</span>
-  </div>`;
+  `;
 }
 
-function Legend({ layer, basemap, states }) {
+/** A value with its unit and the time of its measurement, or nothing without a value. */
+function Reading({ label, value, digits = 0, unit, at }) {
+  if (value === null || value === undefined) return null;
+  return html`<span class="tip-value">${label}: <strong>${fmt(value, digits)} ${unit}</strong>${at ? html` <span class="muted">${measuredAt(at)}</span>` : null}</span>`;
+}
+
+function HydroTip({ row, station }) {
+  const state = hydroState(row.state);
+  return html`
+    <strong>${(station && station.name) || row.name}</strong>
+    ${row.river ? html`<span>${row.river}</span>` : null}
+    <span class="muted"><code>${row.code}</code> · IMGW-PIB · hydrologiczna</span>
+    <span class="tip-class"><${SymbolIcon} shape="hydro" color=${state.color} hollow=${state.outdated} size=${13} />${state.label}${state.outdated ? " (stan z ostatnich 26 h)" : ""}</span>
+    <${Reading} label="Stan wody H" value=${row.h} unit="cm" at=${row.h_at} />
+    <${Reading} label="Przepływ Q" value=${row.q} digits=${row.q !== null && row.q < 10 ? 2 : 1} unit="m³/s" at=${row.q_at} />
+    <${Reading} label="Temperatura wody" value=${row.t} digits=${1} unit="°C" at=${row.t_at} />
+    ${row.h === null && row.q === null && row.t === null ? html`<span class="muted">IMGW-PIB nie podaje teraz pomiarów tej stacji.</span>` : null}
+  `;
+}
+
+function MeteoTip({ row, station }) {
+  const entry = meteoClass(row.p10);
+  return html`
+    <strong>${(station && station.name) || row.name}</strong>
+    <span class="muted"><code>${row.code}</code> · IMGW-PIB · meteorologiczna</span>
+    <span class="tip-class"><${SymbolIcon} shape="meteo" color=${entry.color} size=${13} />${entry.label}${entry.note ? ` (${entry.note})` : ""}</span>
+    <${Reading} label="Opad w 10 min" value=${row.p10} digits=${1} unit="mm" />
+    <${Reading} label="Temperatura powietrza" value=${row.t} digits=${1} unit="°C" at=${row.t_at} />
+    <${Reading} label="Wiatr (średni)" value=${row.wind} digits=${1} unit="m/s" />
+    <${Reading} label="Wilgotność względna" value=${row.rh} unit="%" />
+  `;
+}
+
+function StationsLegend() {
+  return html`<ul class="legend-list two">
+      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />hydrologiczna</li>
+      <li><${StationSymbol} kind="meteo" provider="IMGW-PIB" data=${true} />meteorologiczna</li>
+      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${false} />tylko w katalogu</li>
+      <li><${StationSymbol} kind="hydro" provider="CHMI" data=${true} />ČHMÚ (obrys przerywany)</li>
+      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} active=${false} />nieczynna (blado)</li>
+      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} size=${24} />wybrana</li>
+    </ul>
+    <p class="legend-note">Kształty i kolory stacji jak na mapie hydro.imgw.pl (IMGW-PIB); stan wody i opad pokazuje widok „Pomiary bieżące”.</p>`;
+}
+
+function CurrentLegend({ current }) {
+  const doc = current.doc;
+  const snapshots = doc ? Object.values(doc.snapshots) : [];
+  const times = snapshots.map((snap) => snap.fetched_at).filter(Boolean).sort();
+  const errors = [...new Set(snapshots.map((snap) => snap.error).filter(Boolean))];
+  return html`
+    <p class="legend-title">Stacje hydrologiczne: stan wody</p>
+    <ul class="legend-list">
+      ${HYDRO_STATES.map(
+        (state) => html`<li>
+          <${SymbolIcon} shape="hydro" color=${state.color} size=${13} />
+          ${state.ageing ? html`<${SymbolIcon} shape="hydro" color=${state.color} hollow=${true} size=${13} />` : html`<i class="legend-gap"></i>`}
+          ${state.label}
+        </li>`,
+      )}
+    </ul>
+    <p class="legend-note">Pełny: stan z pomiarów ostatnich 2 godzin; pusty środek: z ostatnich 26 godzin.</p>
+    <p class="legend-title">Stacje meteorologiczne: opad w 10 min</p>
+    <ul class="legend-list">
+      ${METEO_CLASSES.map((entry) => html`<li><${SymbolIcon} shape="meteo" color=${entry.color} size=${13} />${entry.label}${entry.key === "high-precip" ? " (≥ 3,2 mm)" : ""}</li>`)}
+    </ul>
+    <p class="legend-note">Symbole i kolory jak na hydro.imgw.pl, które klasyfikuje opad z 6 godzin; Obserwator ma tylko ostatnią sumę 10-minutową. Intensywny: co najmniej silny deszcz w skali Chomicza.</p>
+    <p class="legend-note">
+      ${current.loading && !doc ? "Pobieram pomiary bieżące z IMGW-PIB…" : null}
+      ${doc && times.length
+        ? `Migawka IMGW-PIB z ${clock(times[times.length - 1])}: ${fmt(doc.hydro.length)} stacji hydrologicznych, ${fmt(doc.meteo.length)} meteorologicznych; odświeżana co ${REFRESH_MS / 60000} min, niezapisywana.`
+        : null}
+      ${errors.map((error) => html`<br /><span class="bad-text">${error}</span>`)}
+      ${current.error ? html`<br /><span class="bad-text">${current.error.message}${doc ? " (pokazuję ostatnią migawkę)" : ""}</span>` : null}
+    </p>`;
+}
+
+function PmaxtpLegend() {
+  return html`<ul class="legend-list"><li><i class="pick-ring"></i>punkt PMAXTP</li></ul>
+    <p class="legend-note">Kliknij mapę w granicach PMAXTP (${fmt(PMAXTP_BOUNDS.lat[0])}–${fmt(PMAXTP_BOUNDS.lat[1])}° N, ${fmt(PMAXTP_BOUNDS.lon[0])}–${fmt(PMAXTP_BOUNDS.lon[1], 1)}° E). Mapa nie rysuje siatki PMAXTP.</p>`;
+}
+
+function Legend({ view, basemap, current }) {
   // On a phone the legend starts folded: the map is small
   const [open, setOpen] = useState(() => !isPhone());
-  const time = states.doc && states.doc.fetched_at ? new Date(states.doc.fetched_at) : null;
   return html`<div class=${`map-legend${open ? "" : " closed"}`}>
     <button type="button" class="legend-toggle" aria-expanded=${open} onClick=${() => setOpen(!open)}>Legenda</button>
     ${open
       ? html`<div class="legend-body">
-          ${layer === "states"
-            ? html`<ul class="legend-list">
-                  ${WATER_STATES.map(([key, label]) => html`<li><i class=${`ws-dot ${key}`}></i>${label}</li>`)}
-                  <li><i class="ws-dot medium old"></i>blado: pomiar nieaktualny</li>
-                </ul>
-                <p class="legend-note">
-                  ${states.loading ? "Pobieram stany wody z IMGW-PIB…" : null}
-                  ${time ? `Stany wody IMGW-PIB z ${time.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}` : null}
-                  ${states.doc && states.doc.error ? html`<br /><span class="bad-text">${states.doc.error}</span>` : null}
-                  ${states.error ? html`<span class="bad-text">${states.error.message}</span>` : null}
-                </p>`
-            : html`<ul class="legend-list two">
-                <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />hydrologiczna</li>
-                <li><${StationSymbol} kind="meteo" provider="IMGW-PIB" data=${true} />meteorologiczna</li>
-                <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />z szeregami</li>
-                <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${false} />tylko katalog</li>
-                <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />IMGW-PIB: obrys ciągły</li>
-                <li><${StationSymbol} kind="hydro" provider="CHMI" data=${true} />ČHMÚ: obrys przerywany</li>
-                <li><i class="sel-ring"></i>wybrana</li>
-                <li><i class="faded-dot"></i>blado: nieczynna</li>
-              </ul>`}
+          ${view === "current" ? html`<${CurrentLegend} current=${current} />` : view === "pmaxtp" ? html`<${PmaxtpLegend} />` : html`<${StationsLegend} />`}
           ${basemap ? null : html`<p class="legend-note">Podkład OpenFreeMap niedostępny: tło to granice Polski i Czech z pakietu Obserwatora.</p>`}
         </div>`
       : null}

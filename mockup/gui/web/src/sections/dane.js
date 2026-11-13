@@ -1,13 +1,13 @@
-// „Dane” (plan D11): a station's series as the store holds them. The dataset switch (the
-// station's series datasets), the variables, „rok hydrologiczny | kalendarzowy”, the range of
-// years, one chart per unit over the whole span (a missing value or a skipped day breaks the
-// line; days flagged „suma z kilku dni” are ticks at the bottom), „Tabela” paged, the units,
-// the series version and the provider's attribution. A daily series is decimated in the
-// browser for drawing (the chart module's `thinPoints`: per pixel column the first, lowest,
-// highest and last value and the first gap), so 27,000 days draw at once; the table and the
-// downloads keep every value. IMGW-PIB's half-year characteristics (winter, summer, the year)
-// are drawn by hydrological year as the min–max band and the mean, with the dates of the
-// extremes in the table.
+// „Dane pomiarowo-obserwacyjne” (plan D11): a station's series as the store holds them. The
+// dataset switch (the station's series datasets), the variables, „rok hydrologiczny |
+// kalendarzowy”, the range of years, one chart per unit over the whole span (a missing value
+// or a skipped day breaks the line; days flagged „suma z kilku dni” are ticks at the bottom),
+// „Tabela” paged, the units, the series version and the provider's attribution. A daily
+// series is decimated in the browser for drawing (the chart module's `thinPoints`: per pixel
+// column the first, lowest, highest and last value and the first gap), so 27,000 days draw
+// at once; the table and the downloads keep every value. IMGW-PIB's half-year
+// characteristics (winter, summer, the year) are drawn by hydrological year as the min–max
+// band and the mean, with the dates of the extremes in the table.
 
 import { thinPoints } from "../charts/series.js";
 import { api } from "../api.js";
@@ -390,7 +390,7 @@ function Dane({ station }) {
   const series = useSeries(station.code, key);
   const licence = useLicence(station.code, key);
   if (!entry) {
-    return html`<p class="muted">Brak szeregów w magazynie: nie ma czego narysować. Dane katalogowe są w sekcji „Stacja”.</p>`;
+    return html`<p class="muted">Brak szeregów w magazynie: nie ma czego narysować. Dane katalogowe są w sekcji „Informacje o stacji”.</p>`;
   }
   const data = series.data && series.data.dataset === key ? series.data : null;
   // "H_max@summer" and "H" alike as "H [cm]", once per base name
@@ -424,5 +424,5 @@ function Dane({ station }) {
   </div>`;
 }
 
-/** The section „Dane”. */
-export const DANE = { id: "dane", title: "Dane", component: Dane };
+/** The section „Dane pomiarowo-obserwacyjne”. */
+export const DANE = { id: "dane", title: "Dane pomiarowo-obserwacyjne", component: Dane };

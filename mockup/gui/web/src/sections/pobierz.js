@@ -14,8 +14,8 @@ function exportAddress(code, dataset, format) {
   return `api/export?${new URLSearchParams({ station: code, dataset, format })}`;
 }
 
-/** A command line with „Kopiuj”. */
-function Command({ line }) {
+/** A command line with „Kopiuj” (also the PMAXTP view's, pmaxtp/result.js). */
+export function Command({ line }) {
   const field = useRef(null);
   const [said, setSaid] = useState(null);
   const copy = async () => {
@@ -79,7 +79,7 @@ function DatasetFiles({ code, entry }) {
 
 function Pobierz({ station }) {
   if (!station.datasets.length) {
-    return html`<p class="note-box">Magazyn nie ma szeregów tej stacji: nie ma czego pobrać. Dane katalogowe są w sekcji „Stacja”.</p>`;
+    return html`<p class="note-box">Magazyn nie ma szeregów tej stacji: nie ma czego pobrać. Dane katalogowe są w sekcji „Informacje o stacji”.</p>`;
   }
   const hydro = station.properties.kind === "hydro";
   const has = (variable) =>

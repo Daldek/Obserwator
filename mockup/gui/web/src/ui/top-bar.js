@@ -1,8 +1,9 @@
 // The top bar (Nogat design/README.md, Layout; plan D15; after Hydrolog's GUI,
 // src/ui/top-bar.js): Obserwator's mark and name, the badge that says this is a mockup, the
-// selected station, Nogat's app menu „Aplikacje” (the kit's <nogat-app-menu>, the
-// deployment's [nogat] gui of nogat.toml from api/meta) and the theme switch Auto, Jasny,
-// Ciemny. Inside Nogat's shell ("?nogat=1") the shell's own bar replaces it.
+// view and what it shows (the selected station, or the PMAXTP point), Nogat's app menu
+// „Aplikacje” (the kit's <nogat-app-menu>, the deployment's [nogat] gui of nogat.toml from
+// api/meta) and the theme switch Auto, Jasny, Ciemny. Inside Nogat's shell ("?nogat=1") the
+// shell's own bar replaces it.
 
 import "../../nogat/nogat-app-menu.js";
 import { html, useEffect, useRef } from "../lib.js";
@@ -50,12 +51,13 @@ export function AppMenu({ apps }) {
 /**
  * The top bar.
  *
- * @param {{meta: object|null, station: {code: string, name?: string, river?: string}|null}} props
- *   the server's meta (its `gui`) and the selected station
+ * @param {{meta: object|null, station: {code: string, name?: string, river?: string}|null,
+ *   section?: string, context?: string|null}} props the server's meta (its `gui`), the
+ *   selected station, the view's name and, without a station, what the view shows
  * @returns {object} the bar
  */
-export function TopBar({ meta, station }) {
-  const name = station ? station.name || station.code : null;
+export function TopBar({ meta, station, section = "Stacje", context = null }) {
+  const name = station ? station.name || station.code : context;
   useEffect(() => {
     document.title = name ? `${name} — Obserwator (makieta)` : "Obserwator — makieta";
   }, [name]);
@@ -65,11 +67,11 @@ export function TopBar({ meta, station }) {
       <span class="name">Obserwator</span>
     </a>
     <span class="badge info mockup-badge" title=${MOCKUP_TITLE}><span class="label">${MOCKUP_BADGE}</span></span>
-    <nav class="crumbs" aria-label="Wybrana stacja">
-      <span class="crumb-section">Stacje</span>
-      ${station
+    <nav class="crumbs" aria-label=${station ? "Wybrana stacja" : section}>
+      <span class="crumb-section">${section}</span>
+      ${name
         ? html`<span class="sep" aria-hidden="true">/</span>
-            <strong class="crumb-context">${name}${station.river ? html`<span class="crumb-river"> · ${station.river}</span>` : null}</strong>`
+            <strong class="crumb-context">${name}${station && station.river ? html`<span class="crumb-river"> · ${station.river}</span>` : null}</strong>`
         : null}
     </nav>
     <div class="top-actions">

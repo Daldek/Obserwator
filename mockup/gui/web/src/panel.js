@@ -1,11 +1,12 @@
 // The right panel „Stacja” (plan D11): the station's header (name, river, code, provider,
-// kind, active or not), then its sections as an accordion: „Dane” first, then the
-// hydrological (HYDRO_SECTIONS) or meteorological (METEO_SECTIONS) ones by the station's
-// kind, then „Teraz”, „Pobierz” and „Stacja”. A registry entry is `{id, title, component,
-// available?}`: the panel draws the title as the card's header and, when open,
-// `component({station, meta})` inside; `available(station) === false` leaves the card out.
-// A station without series shows its catalog data and says the store holds none. A section
-// that throws is shown as an error in its card, the others go on.
+// kind, active or not), then its sections as an accordion, in the author's order of
+// 2026-11-13: „Informacje o stacji” and „Pomiary bieżące” at the top, then „Dane
+// pomiarowo-obserwacyjne”, then the hydrological (HYDRO_SECTIONS) or meteorological
+// (METEO_SECTIONS) analyses by the station's kind, then „Pobierz”. A registry entry is
+// `{id, title, component, available?}`: the panel draws the title as the card's header and,
+// when open, `component({station, meta})` inside; `available(station) === false` leaves the
+// card out. A station without series shows its catalog data and says the store holds none. A
+// section that throws is shown as an error in its card, the others go on.
 
 import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
@@ -22,7 +23,7 @@ import { DATASETS, KINDS, datasetTitle, providerName } from "./words.js";
 export function stationSections(station) {
   const own = station.properties.kind === "hydro" ? HYDRO_SECTIONS : station.properties.kind === "meteo" ? METEO_SECTIONS : [];
   const analyses = station.datasets.length ? own.filter((entry) => !entry.available || entry.available(station) !== false) : [];
-  return [DANE, ...analyses, TERAZ, POBIERZ, STACJA];
+  return [STACJA, TERAZ, DANE, ...analyses, POBIERZ];
 }
 
 /** A section's error, in its card: one broken section leaves the panel working. */
@@ -89,7 +90,8 @@ export function StationPanel({ code, meta, open, focus, onToggle }) {
     };
   }, [code]);
   useEffect(() => {
-    if (!state.station || !focus || focus === "dane") return;
+    // The address' section comes into view, unless it is the first card
+    if (!state.station || !focus || focus === stationSections(state.station)[0].id) return;
     const card = document.querySelector(`.acc-item[data-section="${CSS.escape(focus)}"]`);
     if (card) card.scrollIntoView({ block: "start" });
   }, [state.station]);
@@ -131,7 +133,7 @@ export function NoStation({ meta, stations }) {
   const count = (test) => stations.filter(test).length;
   const series = meta ? Object.entries(meta.series || {}) : [];
   return html`<div class="no-station">
-    <p class="hint-box">Wybierz stację na mapie albo z listy po lewej: tu pokażą się jej szeregi, analizy, wartości bieżące i pliki do pobrania.</p>
+    <p class="hint-box">Wybierz stację na mapie albo z listy po lewej: tu pokażą się informacje o niej, jej pomiary bieżące, dane pomiarowo-obserwacyjne, analizy i pliki do pobrania.</p>
     <h3 class="group-title">Katalog</h3>
     <table class="params compact">
       <tbody>

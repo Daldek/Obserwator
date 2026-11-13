@@ -5,6 +5,9 @@ Run: `OBSERWATOR_MOCKUP_ROOT=<store> uvicorn server.app:app --port 8060` from `m
 
 from __future__ import annotations
 
+import asyncio
+import csv
+import io
 import json
 import os
 import shlex
@@ -12,6 +15,7 @@ import shutil
 import tempfile
 import threading
 import time
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,7 +36,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import obserwator
 from obserwator import _environment as environment
-from obserwator.messages import message
+from obserwator.messages import localize, message
 from server import hydrolog_bridge
 from server.analyses import BadParam, Context, NoData, Params, registry
 from server.store import Store
@@ -236,13 +240,18 @@ async def analysis(request: Request) -> Response:
         return _error(422, exc.code, f"Hydrolog ({exc.command}): {exc.text}")
 
 
-# --- the shell: current IMGW-PIB data, hand-off to Hydrolog, downloads ------------------
+# --- the shell: current IMGW-PIB data, PMAXTP, hand-off to Hydrolog, downloads -----------
 #
-# `api/current` serves snapshots of IMGW-PIB's current data kept in memory only (plan D8);
-# `api/handoff` builds the hand-off of a hydrological station's series to Hydrolog's
-# statistics (D13, after Archiwista's `services/station_handoff.py`); `api/export` sends a
-# series as Obserwator's own CSV (`export_series`) or as a columnar JSON document and
-# `api/export/info` names the equivalent command line and the provider's licence (D14).
+# `api/current` serves snapshots of IMGW-PIB's current data kept in memory only (plan D8):
+# without `station`, the points of the view „Pomiary bieżące” (hydrological stations from
+# `current hydro-states` and `current hydro`, meteorological ones from `current meteo`);
+# with `station`, that station's values for its section „Pomiary bieżące”, with the
+# `current synop` report of a synoptic station. `api/pmaxtp` and `api/pmaxtp/file` serve
+# PMAXTP of a point from a 24-hour cache (D8, D12). `api/handoff` builds the hand-off of a
+# hydrological station's series to Hydrolog's statistics (D13, after Archiwista's
+# `services/station_handoff.py`); `api/export` sends a series as Obserwator's own CSV
+# (`export_series`) or as a columnar JSON document and `api/export/info` names the
+# equivalent command line and the provider's licence (D14).
 
 #: How long a snapshot of IMGW-PIB's current data is served before it is fetched again [s].
 CURRENT_TTL = 600.0
@@ -266,6 +275,7 @@ _CURRENT_SOURCES = {
     "states": obserwator.fetch_hydro_states,
     "hydro": obserwator.fetch_hydro_current,
     "meteo": obserwator.fetch_meteo_current,
+    "synop": obserwator.fetch_synop,
 }
 _SNAPSHOTS = {name: _Snapshot() for name in _CURRENT_SOURCES}
 
@@ -277,6 +287,11 @@ def _utc_now() -> str:
 def _hide_paths(text: str) -> str:
     """An error text without the server's paths (plan D6)."""
     return text.replace(str(ROOT), "<magazyn>").replace(tempfile.gettempdir(), "<tmp>")
+
+
+def _polish(exc: obserwator.ObserwatorError) -> str:
+    """The library's error in Polish where its catalog has the text, without paths."""
+    return _hide_paths(str(localize(exc.detail, "pl")))
 
 
 def _snapshot(name: str) -> _Snapshot:
@@ -298,7 +313,7 @@ def _snapshot(name: str) -> _Snapshot:
         try:
             records = _CURRENT_SOURCES[name]()
         except obserwator.ObserwatorError as exc:
-            snap.error = f"IMGW-PIB nie odpowiada: {_hide_paths(str(exc))}"
+            snap.error = f"IMGW-PIB nie odpowiada: {_polish(exc)}"
             return snap
         snap.items = {record.station_code: record.model_dump(mode="json") for record in records}
         snap.fetched_at = _utc_now()
@@ -307,50 +322,318 @@ def _snapshot(name: str) -> _Snapshot:
         return snap
 
 
-async def current(request: Request) -> Response:
-    """IMGW-PIB's current data: the water states of every hydro station, or one station's values."""
-    code = request.query_params.get("station")
-    if not code:
-        if request.query_params.get("layer", "states") != "states":
-            return _error(400, "validation_error", "Warstwa danych bieżących: states.")
-        snap = await run_in_threadpool(_snapshot, "states")
-        if snap.items is None:
-            return _error(503, "unavailable", snap.error or "Brak danych bieżących IMGW-PIB.")
-        rows = [
+async def _snapshots(*names: str) -> dict[str, _Snapshot]:
+    """Several sources at once, each through its own single flight."""
+    snaps = await asyncio.gather(*(run_in_threadpool(_snapshot, name) for name in names))
+    return dict(zip(names, snaps, strict=True))
+
+
+def _snapshot_times(snaps: dict[str, _Snapshot]) -> dict[str, dict[str, str | None]]:
+    return {name: {"fetched_at": snap.fetched_at, "error": snap.error} for name, snap in snaps.items()}
+
+
+def _fold(text: str) -> str:
+    """Upper case without diacritics, for comparing station names."""
+    decomposed = unicodedata.normalize("NFKD", text.upper().replace("Ł", "L"))
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _synop_indices() -> dict[str, str]:
+    """
+    The WMO index of each synoptic station of IMGW-PIB's catalog, by its nine-digit code.
+
+    `current synop` names stations by their WMO index `12NNN`; in IMGW-PIB's catalog a
+    synoptic station's code is `3PPLL0NNN` (Białystok 353230295 is 12295, Kraków-Balice
+    350190566 is 12566). A code is paired only when no other meteorological code of the
+    catalog ends in the same `0NNN`, and a report is shown only when its station's name
+    begins the catalog's name (`_synop_record`). On 2026-11-13 this paired 61 of the 62
+    stations of `current synop`; Platforma (12001) is not in the catalog.
+    """
+    endings: dict[str, list[str]] = {}
+    for code, feature in FEATURES.items():
+        if feature.provider == "IMGW-PIB" and feature.properties.get("kind") == "meteo":
+            if len(code) == 9 and code[0] == "3" and code[5] == "0":
+                endings.setdefault(code[6:], []).append(code)
+    return {codes[0]: f"12{ending}" for ending, codes in endings.items() if len(codes) == 1}
+
+
+SYNOP_INDICES = _synop_indices()
+
+
+def _synop_record(code: str, synop: _Snapshot) -> dict[str, Any] | None:
+    index = SYNOP_INDICES.get(code)
+    record = (synop.items or {}).get(index) if index else None
+    if record is None:
+        return None
+    first = _fold(record["station_name"]).replace("-", " ").split()[0]
+    return record if _fold(FEATURES[code].properties.get("name") or "").startswith(first) else None
+
+
+def _hydro_points(states: _Snapshot, hydro: _Snapshot) -> list[dict[str, Any]]:
+    """Every hydrological station of either snapshot: its water state and its latest values."""
+    by_state = states.items or {}
+    by_values = hydro.items or {}
+    rows = []
+    for code in dict.fromkeys([*by_state, *by_values]):
+        state = by_state.get(code) or {}
+        record = by_values.get(code) or {}
+        lat = state.get("latitude") if state.get("latitude") is not None else record.get("latitude")
+        lon = state.get("longitude") if state.get("longitude") is not None else record.get("longitude")
+        if lat is None or lon is None:
+            continue
+        rows.append(
             {
                 "code": code,
-                "name": item["name"],
-                "river": item["river"],
-                "lat": item["latitude"],
-                "lon": item["longitude"],
-                "state": item["water_state"],
+                "name": record.get("station_name") or state.get("name"),
+                "river": record.get("river") or state.get("river"),
+                "lat": lat,
+                "lon": lon,
+                "state": state.get("water_state"),
+                "h": record.get("water_level_cm"),
+                "h_at": record.get("water_level_date"),
+                "q": record.get("flow_m3s"),
+                "q_at": record.get("flow_date"),
+                "t": record.get("water_temp_c"),
+                "t_at": record.get("water_temp_date"),
             }
-            for code, item in snap.items.items()
-        ]
-        return _json({"layer": "states", "source": "IMGW-PIB", "fetched_at": snap.fetched_at, "error": snap.error, "stations": rows})
+        )
+    return rows
+
+
+def _meteo_points(meteo: _Snapshot) -> list[dict[str, Any]]:
+    """Every automatic meteorological station of the snapshot with its latest values."""
+    return [
+        {
+            "code": code,
+            "name": record["station_name"],
+            "lat": record["latitude"],
+            "lon": record["longitude"],
+            "p10": record["precipitation_10min_mm"],
+            "t": record["air_temp_c"],
+            "t_at": record["air_temp_date"],
+            "wind": record["wind_speed_ms"],
+            "rh": record["humidity_percent"],
+        }
+        for code, record in (meteo.items or {}).items()
+        if record["latitude"] is not None and record["longitude"] is not None
+    ]
+
+
+async def current(request: Request) -> Response:
+    """IMGW-PIB's current data: the points of „Pomiary bieżące”, or one station's values."""
+    code = request.query_params.get("station")
+    if not code:
+        snaps = await _snapshots("states", "hydro", "meteo")
+        if all(snap.items is None for snap in snaps.values()):
+            errors = "; ".join(dict.fromkeys(snap.error for snap in snaps.values() if snap.error))
+            return _error(503, "unavailable", errors or "Brak danych bieżących IMGW-PIB.")
+        return _json(
+            {
+                "source": "IMGW-PIB",
+                "snapshots": _snapshot_times(snaps),
+                "hydro": _hydro_points(snaps["states"], snaps["hydro"]),
+                "meteo": _meteo_points(snaps["meteo"]),
+            }
+        )
     feature = FEATURES.get(code)
     if feature is None:
         return _error(404, "not_found", "Nie ma takiej stacji w katalogu.")
     if feature.provider != "IMGW-PIB":
         return _error(404, "no_data", "Dane bieżące ČHMÚ nie są udostępniane.")
     kind = feature.properties.get("kind")
-    snap = await run_in_threadpool(_snapshot, "hydro" if kind == "hydro" else "meteo")
-    if snap.items is None:
-        return _error(503, "unavailable", snap.error or "Brak danych bieżących IMGW-PIB.")
+    if kind == "hydro":
+        snaps = await _snapshots("hydro", "states")
+        main = snaps["hydro"]
+    else:
+        snaps = await _snapshots("meteo", "synop") if code in SYNOP_INDICES else await _snapshots("meteo")
+        main = snaps["meteo"]
+    if main.items is None:
+        return _error(503, "unavailable", main.error or "Brak danych bieżących IMGW-PIB.")
     out: dict[str, Any] = {
         "station": code,
         "kind": kind,
         "source": "IMGW-PIB",
-        "fetched_at": snap.fetched_at,
-        "error": snap.error,
-        "record": snap.items.get(code),
+        "snapshots": _snapshot_times(snaps),
+        "record": main.items.get(code),
     }
     if kind == "hydro":
-        states = await run_in_threadpool(_snapshot, "states")
-        state = (states.items or {}).get(code)
+        state = (snaps["states"].items or {}).get(code)
         out["state"] = state["water_state"] if state else None
-        out["state_fetched_at"] = states.fetched_at
+    elif "synop" in snaps:
+        out["synop"] = _synop_record(code, snaps["synop"])
     return _json(out)
+
+
+#: How long PMAXTP of a point is served from memory [s] and how many points are kept (D8).
+PMAXTP_TTL = 86400.0
+PMAXTP_ENTRIES = 1000
+PMAXTP_METHODS = ("POT", "AMP")
+#: PMAXTP's own terms („Regulamin udostępniania danych projektu PMAXTP” on
+#: https://klimat.imgw.pl/opady-maksymalne, read on 2026-11-13): the source with the
+#: project's page and the monograph, and the mark of processed data, on every work or file.
+PMAXTP_TERMS = {
+    "source": (
+        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy "
+        "Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne"
+    ),
+    "processed": (
+        "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego "
+        "pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone"
+    ),
+    "monograph": (
+        "Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i "
+        "prawdopodobieństwie przewyższenia – Projekt PMAXTP, red. Bogdan Ozga-Zieliński, "
+        "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
+    ),
+    "monograph_url": "https://www.imgw.pl/sites/default/files/2022-12/imgw-pib-monografia_modele-probabilistyczne-opadow-maksymalnych.pdf",
+    "page": "https://klimat.imgw.pl/opady-maksymalne",
+}
+PMAXTP_TABLES = {
+    "ks": "kwantyle opadu maksymalnego",
+    "sg": "górne granice przedziału ufności kwantyli",
+    "rb": "błędy estymacji kwantyli",
+}
+
+_PMAXTP: OrderedDict[tuple[str, str, str], tuple[float, dict[str, Any]]] = OrderedDict()
+_PMAXTP_CACHE = threading.Lock()
+_PMAXTP_LIVE = threading.Lock()  # one live request to IMGW-PIB at a time
+
+
+def _pmaxtp_query(params: Any) -> tuple[str, float, float]:
+    """Method and point of a request, the point at the four decimals of IMGW-PIB's URL."""
+    method = params.get("method", "POT")
+    if method not in PMAXTP_METHODS:
+        raise BadParam("Metoda PMAXTP: POT albo AMP.")
+    try:
+        lat, lon = float(params.get("lat", "")), float(params.get("lon", ""))
+    except ValueError:
+        raise BadParam("Podaj szerokość i długość geograficzną w stopniach dziesiętnych.") from None
+    if not (np.isfinite(lat) and np.isfinite(lon)):
+        raise BadParam("Podaj szerokość i długość geograficzną w stopniach dziesiętnych.")
+    return method, round(lat, 4), round(lon, 4)
+
+
+def _sorted_keys(table: dict[str, Any]) -> list[str]:
+    return sorted(table, key=float)
+
+
+def _pmaxtp_doc(method: str, lat: float, lon: float) -> dict[str, Any]:
+    """
+    PMAXTP of a point (`fetch_pmaxtp`), served from memory for PMAXTP_TTL.
+
+    One live request to IMGW-PIB at a time; a request waiting for it finds the point
+    cached when an earlier one fetched it. Nothing is written anywhere.
+    """
+    key = (method, f"{lat:.4f}", f"{lon:.4f}")
+    with _PMAXTP_CACHE:
+        hit = _PMAXTP.get(key)
+        if hit and time.monotonic() - hit[0] < PMAXTP_TTL:
+            _PMAXTP.move_to_end(key)
+            return hit[1]
+    with _PMAXTP_LIVE:
+        with _PMAXTP_CACHE:
+            hit = _PMAXTP.get(key)
+            if hit and time.monotonic() - hit[0] < PMAXTP_TTL:
+                return hit[1]
+        result = obserwator.fetch_pmaxtp(lat, lon, method=method)
+        data = result.data.model_dump(mode="json")
+        options = {"latitude": lat, "longitude": lon, "method": method}
+        stem = f"pmaxtp_{method}_{key[1]}_{key[2]}"
+        doc = {
+            "schema": result.SCHEMA,
+            "method": method,
+            "latitude": lat,
+            "longitude": lon,
+            "durations": _sorted_keys(data["ks"]),
+            "probabilities": _sorted_keys(next(iter(data["ks"].values()))),
+            "data": data,
+            "unit": "mm",
+            "fetched_at": _utc_now(),
+            "source_url": obserwator.build_pmaxtp_url(lat, lon, method=method),
+            "command": obserwator.format_command("pmaxtp fetch", options=options),
+            "files": {"csv": f"{stem}.csv", "json": f"{stem}.json"},
+            "tables": PMAXTP_TABLES,
+            "terms": PMAXTP_TERMS,
+            "notice": str(message(_NOTICES["IMGW-PIB"], lang="pl")),
+        }
+    with _PMAXTP_CACHE:
+        _PMAXTP[key] = (time.monotonic(), doc)
+        _PMAXTP.move_to_end(key)
+        while len(_PMAXTP) > PMAXTP_ENTRIES:
+            _PMAXTP.popitem(last=False)
+    return doc
+
+
+def _pmaxtp_csv(doc: dict[str, Any]) -> str:
+    """
+    One header row, then a row per table and duration with a column per probability [%];
+    PMAXTP's attribution, processed mark and monograph only in the first data row, as
+    Obserwator's series CSV carries its attribution (UTF-8, comma, dot decimal, CRLF).
+    """
+    probabilities = doc["probabilities"]
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(
+        ["method", "latitude", "longitude", "table", "duration [min]", *(f"p={p}% [mm]" for p in probabilities), "attribution_source", "attribution_processed", "monograph"]
+    )
+    terms = doc["terms"]
+    tail = [terms["source"], terms["processed"], terms["monograph"]]
+    for table in ("ks", "sg", "rb"):
+        for duration in doc["durations"]:
+            row = doc["data"][table].get(duration, {})
+            writer.writerow([doc["method"], f"{doc['latitude']:.4f}", f"{doc['longitude']:.4f}", table, duration, *(row.get(p, "") for p in probabilities), *tail])
+            tail = ["", "", ""]
+    return out.getvalue()
+
+
+def _pmaxtp_file_document(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": "obserwator-pmaxtp-export/1",
+        "note": "Makieta: układ dokumentu z planu GUI Obserwatora (D12, D14); schemat jeszcze nie istnieje.",
+        "result": {key: doc[key] for key in ("schema", "method", "latitude", "longitude", "data")},
+        "tables": doc["tables"],
+        "units": {"ks": "mm", "sg": "mm", "rb": "mm", "duration": "min", "probability": "%"},
+        "fetched_at": doc["fetched_at"],
+        "source_url": doc["source_url"],
+        "terms": doc["terms"],
+        "notice": doc["notice"],
+    }
+
+
+async def _pmaxtp_answer(request: Request) -> dict[str, Any] | Response:
+    try:
+        method, lat, lon = _pmaxtp_query(request.query_params)
+        return await run_in_threadpool(_pmaxtp_doc, method, lat, lon)
+    except BadParam as exc:
+        return _error(400, "validation_error", str(exc))
+    except obserwator.ObserwatorValidationError as exc:
+        return _error(400, "validation_error", _polish(exc))
+    except obserwator.ObserwatorError as exc:
+        return _error(503, "unavailable", f"IMGW-PIB: {_polish(exc)}")
+
+
+async def pmaxtp(request: Request) -> Response:
+    """PMAXTP of a point: the three tables, their files and IMGW-PIB's own address of the answer."""
+    doc = await _pmaxtp_answer(request)
+    return doc if isinstance(doc, Response) else _json(doc)
+
+
+async def pmaxtp_file(request: Request) -> Response:
+    """PMAXTP of a point as a file packed by the server: CSV or JSON with PMAXTP's terms."""
+    fmt = request.query_params.get("format", "csv")
+    if fmt not in ("csv", "json"):
+        return _error(400, "validation_error", "Format: csv albo json.")
+    doc = await _pmaxtp_answer(request)
+    if isinstance(doc, Response):
+        return doc
+    if fmt == "json":
+        body = json.dumps(_clean(_pmaxtp_file_document(doc)), ensure_ascii=False, indent=1).encode()
+        media = "application/json"
+    else:
+        body = _pmaxtp_csv(doc).encode()
+        media = "text/csv; charset=utf-8"
+    name = doc["files"][fmt]
+    return Response(body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"})
 
 
 HANDOFF_SCHEMA = "nogat-handoff/1"
@@ -658,6 +941,8 @@ app = Starlette(
         Route("/api/series/{code}", series),
         Route("/api/analysis/{name}", analysis),
         Route("/api/current", current),
+        Route("/api/pmaxtp", pmaxtp),
+        Route("/api/pmaxtp/file", pmaxtp_file),
         Route("/api/handoff", handoff),
         Route("/api/export", export),
         Route("/api/export/info", export_info),

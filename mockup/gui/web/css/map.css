@@ -1,8 +1,8 @@
 /*
- * The map of the stations (src/map.js): the basemap's greys, the station symbols and the
- * water states in both themes, the tooltip, the legend (bottom left; zoom bottom right,
- * Nogat design/README.md) and the note shown without WebGL. map.js reads the --map-*,
- * --st-* and --ws-* colours when the map starts and again when the theme changes.
+ * The map (src/map.js): the basemap's greys in both themes, the station symbols of
+ * hydro.imgw.pl (src/symbols.js), the tooltip, the legend (bottom left; zoom bottom right,
+ * Nogat design/README.md) and the note shown without WebGL. map.js reads the --map-* and
+ * --imgw-* colours when the map starts and again when the theme changes.
  */
 
 :root {
@@ -23,18 +23,21 @@
   --map-place-3: #344054;
   --map-place-4: #667085;
   --map-border: #8a94a6;
-  /* Stations: kind by shape and colour, provider by outline, data by fill */
-  --st-hydro: #1d5fd1;
-  --st-meteo: #c25110;
-  --st-ink: #1f2937;
-  --st-hollow: #ffffff;
-  /* IMGW-PIB's water states */
-  --ws-alarm: #dc2626;
-  --ws-warning: #ea580c;
-  --ws-high: #d4a106;
-  --ws-medium: #16a34a;
-  --ws-low: #0284c7;
-  --ws-unknown: #98a2b3;
+  /* The station symbols: hydro.imgw.pl's colours (IMGW-PIB, version 2.1.13.1, read on
+     2026-11-13), its CSS variables --<class>-status-color and its icons' outline. They mean
+     the same in both themes, so only the outline changes in the dark one. */
+  --imgw-alarm: #ff0000;      /* --alarm-status-color: Powyżej stanu alarmowego */
+  --imgw-warning: #ffa500;    /* --warning-status-color: Powyżej stanu ostrzegawczego */
+  --imgw-high: #ffeb09;       /* --high-status-color: Strefa stanów wysokich */
+  --imgw-medium: #0a65c0;     /* --medium-status-color: Strefa stanów średnich; also „Stacje”'s hydrological station */
+  --imgw-low: #000000;        /* --low-status-color: Strefa stanów niskich */
+  --imgw-below: #791919;      /* --below-status-color: Poniżej minimum okresowego */
+  --imgw-no-data: #ceceff;    /* --no-water-state-data-status-color and --no-precip-data-status-color: Brak danych */
+  --imgw-unknown: #ffffff;    /* --unknown-status-color, --no-char-states-status-color: Brak stanów charakt. / umownych */
+  --imgw-high-precip: #ff0000; /* --high-precip-status-color: Opad intensywny */
+  --imgw-precip: #2b60bd;     /* --precip-status-color: Opad */
+  --imgw-no-precip: #289613;  /* --no-precip-status-color: Brak opadu; also „Stacje”'s meteorological station */
+  --imgw-outline: #777777;    /* its icons' stroke="#777" */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,16 +58,9 @@
     --map-place-3: #c9d1d9;
     --map-place-4: #8b949e;
     --map-border: #6e7781;
-    --st-hydro: #58a6ff;
-    --st-meteo: #f0883e;
-    --st-ink: #e6edf3;
-    --st-hollow: #0d1117;
-    --ws-alarm: #f85149;
-    --ws-warning: #f0883e;
-    --ws-high: #e3b341;
-    --ws-medium: #3fb950;
-    --ws-low: #39c5f3;
-    --ws-unknown: #6e7781;
+    /* Our own: hydro.imgw.pl has no dark theme; a lighter outline keeps the black and the
+       dark red symbols apart from the dark basemap */
+    --imgw-outline: #a8b1bd;
   }
 }
 
@@ -85,16 +81,7 @@
   --map-place-3: #c9d1d9;
   --map-place-4: #8b949e;
   --map-border: #6e7781;
-  --st-hydro: #58a6ff;
-  --st-meteo: #f0883e;
-  --st-ink: #e6edf3;
-  --st-hollow: #0d1117;
-  --ws-alarm: #f85149;
-  --ws-warning: #f0883e;
-  --ws-high: #e3b341;
-  --ws-medium: #3fb950;
-  --ws-low: #39c5f3;
-  --ws-unknown: #6e7781;
+  --imgw-outline: #a8b1bd;
 }
 
 .map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); }
@@ -114,14 +101,17 @@ html[data-theme="dark"] .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
 .map-wrap .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--surface); }
 .map-wrap .maplibregl-ctrl-attrib-button { background-color: transparent; }
 
-/* The station symbols in the list and the legend: map.js draws the same on the map */
-.st-sym { flex: none; overflow: visible; }
-.st-sym path { stroke-width: 1.4; }
-.st-sym.hydro.data path { fill: var(--st-hydro); stroke: var(--st-ink); }
-.st-sym.meteo.data path { fill: var(--st-meteo); stroke: var(--st-ink); }
-.st-sym.hydro.catalog path { fill: var(--st-hollow); stroke: var(--st-hydro); stroke-width: 1.8; }
-.st-sym.meteo.catalog path { fill: var(--st-hollow); stroke: var(--st-meteo); stroke-width: 1.8; }
-.st-sym.chmi path { stroke-dasharray: 2.2 1.6; }
+/* The station symbols in the list, the legend, the tooltip and the panel: src/symbols.js
+   draws the same on the map's canvas */
+.sym { flex: none; overflow: visible; vertical-align: middle; }
+.sym .body { fill: var(--sym-fill, var(--imgw-unknown)); }
+.sym .edge { fill: none; stroke: var(--imgw-outline); stroke-width: 2; stroke-linejoin: round; }
+.sym.dashed .edge { stroke-width: 2.6; stroke-dasharray: 5 3; }
+.sym.faded { opacity: 0.5; }
+
+/* The class of a station in its section „Pomiary bieżące” (src/sections/teraz.js) */
+.now-class { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 var(--space-2); }
+.now-class .muted { flex-basis: 100%; }
 
 /* Tooltip */
 .map-tip {
@@ -135,7 +125,8 @@ html[data-theme="dark"] .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
 .map-tip strong { font-size: var(--text-base); }
 .map-tip .muted { font-size: var(--text-xs); }
 .map-tip code { font-size: var(--text-xs); }
-.tip-state { font-weight: var(--weight-bold); }
+.tip-class { display: flex; align-items: center; gap: 6px; margin: 2px 0 1px; font-weight: var(--weight-bold); }
+.tip-value strong { font-variant-numeric: tabular-nums; }
 
 /* Legend, bottom left */
 .map-legend {
@@ -155,15 +146,10 @@ html[data-theme="dark"] .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
 .legend-list.two { grid-template-columns: repeat(2, max-content); }
 .legend-list li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .legend-note { margin: 6px 0 0; color: var(--text-3); line-height: 1.35; white-space: normal; }
-.ws-dot { width: 11px; height: 11px; flex: none; border-radius: 50%; border: 1px solid var(--st-ink); background: var(--ws-unknown); }
-.ws-dot.alarm { background: var(--ws-alarm); }
-.ws-dot.warning { background: var(--ws-warning); }
-.ws-dot.high { background: var(--ws-high); }
-.ws-dot.medium { background: var(--ws-medium); }
-.ws-dot.low { background: var(--ws-low); }
-.ws-dot.old { opacity: 0.45; }
-.sel-ring { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 3px solid var(--accent); }
-.faded-dot { width: 11px; height: 11px; flex: none; border-radius: 50%; border: 1px solid var(--st-ink); background: var(--st-hydro); opacity: 0.45; }
+.legend-title { margin: 6px 0 3px; font-weight: var(--weight-bold); color: var(--text-2); }
+.legend-title:first-child { margin-top: 0; }
+.legend-gap { display: inline-block; width: 15px; flex: none; }
+.pick-ring { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; }
 
 /* Without WebGL */
 .map-failure {
