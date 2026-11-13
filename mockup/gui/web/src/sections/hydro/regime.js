@@ -176,7 +176,7 @@ export function Regime({ station }) {
     { key: "ci", label: `PU ${fmt(data.monthly.confidence_level * 100, 0)} %`, format: (v) => `${fmtV(v[0], data.var)}–${fmtV(v[1], data.var)}` },
   ];
   const type = data && data.regime_type;
-  return html`<${Section} title="Reżim i sezonowość" info=${INFO} state=${state}>
+  return html`<${Section} title="Reżim dobowy i miesięczny (H10–H12)" info=${INFO} state=${state}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       ${variables.length > 1 && html`<${Option} label="Zmienna"><${VariableSeg} value=${data.var} variables=${["Q", "H", "T"].filter((v) => variables.includes(v))} onChange=${(v) => setOpt({ var: v })} /></${Option}>`}

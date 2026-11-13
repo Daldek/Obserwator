@@ -93,7 +93,7 @@ export function Duration({ station }) {
     ...(q ? [{ key: "q", label: "Q_p [m³/s]", format: (v) => fmtV(v, "Q") }] : []),
   ];
   const tableRows = data ? (h || q).table.map(([p], at) => ({ p, h: h ? h.table[at][1] : null, q: q ? q.table[at][1] : null })) : [];
-  return html`<${Section} title="Czas trwania i strefy" info=${INFO} state=${state}>
+  return html`<${Section} info=${INFO} state=${state}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       <${Option} label="Miesiąc"><${Select} value=${opt.month} label="Miesiąc hydrologiczny" options=${MONTHS} onChange=${(v) => setOpt({ month: +v })} /></${Option}>

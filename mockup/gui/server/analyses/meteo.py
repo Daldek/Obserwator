@@ -128,27 +128,22 @@ def _year_type(params: Params) -> str:
 
 
 def _reference(params: Params, years: np.ndarray) -> dict[str, Any]:
-    """The reference period: the one asked for, else 1991–2020 where the record covers it.
+    """The reference period: the one asked for, else the whole record (plan question 5).
 
-    „Covers” as WMO-No. 1203 (4.4.2) asks of a normal: values in at least 80 % of its
-    years; otherwise the whole record. `years` are the years with a value; `min` and `max`
-    bound the years a person may choose.
+    `years` are the years with a value; `min` and `max` bound the years a person may
+    choose. A chosen period is clamped to them, so one range serves the analyses of a card
+    whose records end in different years. The normal still needs values in 80 % of the
+    period's years (WMO-No. 1203, 4.4.2); the GUI recommends at least 30 years.
     """
     first, last = int(years.min()), int(years.max())
-    low, high = min(first, 1991), max(last, 2020)
-    lo = params.int("ref_from", None, low, high)
-    hi = params.int("ref_to", None, low, high)
-    if lo is None and hi is None:
-        standard = int(((years >= 1991) & (years <= 2020)).sum())
-        lo, hi = (1991, 2020) if standard >= proto.WMO_NORMAL_SHARE * 30 else (first, last)
-        default = True
-    else:
-        lo = first if lo is None else lo
-        hi = last if hi is None else hi
-        default = False
+    lo = params.int("ref_from", None, 1800, 2200)
+    hi = params.int("ref_to", None, 1800, 2200)
+    default = lo is None and hi is None
+    lo = first if lo is None else min(max(lo, first), last)
+    hi = last if hi is None else min(max(hi, first), last)
     if lo > hi:
         raise BadParam("ref_from: after ref_to")
-    return {"from": lo, "to": hi, "default": default, "min": low, "max": high}
+    return {"from": lo, "to": hi, "default": default, "min": first, "max": last}
 
 
 def _span(st: Prepared, variable: str) -> tuple[np.datetime64, np.datetime64]:
@@ -649,9 +644,20 @@ def precip_quantiles(ctx: Context, params: Params) -> dict[str, Any]:
     dataset = _choose(ctx, params, ("P",), P_SOURCES, "Stacja nie ma pomiarów opadu.")
     st = _prepared(ctx, dataset)
     found = _annual_maxima(st, days, year_type)
+    if len(found["values"]) == 0:
+        raise NoData(f"Żaden rok nie ma pełnego maksimum {days}-dniowego.")
+    ref = _reference(params, found["years"])
+    lo, hi = ref["from"], ref["to"]
+    keep = (found["years"] >= lo) & (found["years"] <= hi)
+    found = {
+        "years": found["years"][keep],
+        "values": found["values"][keep],
+        "end": found["end"][keep],
+        "incomplete": found["incomplete"][(found["incomplete"] >= lo) & (found["incomplete"] <= hi)],
+    }
     count = len(found["values"])
     if count < MIN_QUANTILE_YEARS:
-        raise NoData(f"Pełnych lat z maksimum {days}-dniowym jest {count}; kwantyle liczę od {MIN_QUANTILE_YEARS} lat.")
+        raise NoData(f"W latach {lo}–{hi} pełnych lat z maksimum {days}-dniowym jest {count}; kwantyle liczę od {MIN_QUANTILE_YEARS} lat.")
     maxima = [float(v) for v in found["values"]]
     options = {
         "values": maxima,
@@ -691,6 +697,7 @@ def precip_quantiles(ctx: Context, params: Params) -> dict[str, Any]:
             "days": days,
             "distribution": distribution,
             "fit_method": fit_method,
+            "reference": ref,
             "table_periods": list(TABLE_PERIODS),
             "maxima": [
                 {"year": int(y), "value": _r(v), "start": _date(st, int(e) - days + 1), "end": _date(st, int(e))}

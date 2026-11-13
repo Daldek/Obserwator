@@ -6,7 +6,7 @@ import { Chart, fmt, html, useMemo, useState } from "../../lib.js";
 import { Figures, Section, Seg, Table, YearRange, useAnalysis } from "../common.js";
 import { ClassLegend, DatasetSeg, MONTH_TICKS, Option, ROMAN, Source, byYear, classCls, datasetsWith, date, dayLabel, num, part, stationHas, useOptions, yearAxis, yearReadout } from "./util.js";
 
-const INFO_T = `Średnie miesięczne Tśr, Tmax i Tmin liczę, gdy w miesiącu brakuje mniej niż 11 dni i mniej niż 5 kolejnych (WMO-No. 1203, 2017, p. 4.4.1 a); średnia roczna to średnia dwunastu takich miesięcy. Normalna to średnia z okresu odniesienia (domyślnie 1991–2020, gdy stacja ma w nim co najmniej 80 % lat), liczona, gdy wartości ma co najmniej 80 % lat okresu (p. 4.4.2); anomalia to różnica od normalnej. Ekstrema bezwzględne biorą wszystkie dni z pomiarem (p. 4.4.1 b). Amplituda dobowa to średnia Tmax − Tmin dni z oboma pomiarami.`;
+const INFO_T = `Średnie miesięczne Tśr, Tmax i Tmin liczę, gdy w miesiącu brakuje mniej niż 11 dni i mniej niż 5 kolejnych (WMO-No. 1203, 2017, p. 4.4.1 a); średnia roczna to średnia dwunastu takich miesięcy. Normalna to średnia z okresu odniesienia (domyślnie cały zapis stacji; można go zawęzić, zalecany minimalny okres to 30 lat), liczona, gdy wartości ma co najmniej 80 % lat okresu (p. 4.4.2); anomalia to różnica od normalnej. Ekstrema bezwzględne biorą wszystkie dni z pomiarem (p. 4.4.1 b). Amplituda dobowa to średnia Tmax − Tmin dni z oboma pomiarami.`;
 
 const INFO_DAYS = `Dni charakterystyczne wg definicji ETCCDI (Zhang i in. 2011): z przymrozkiem Tmin < 0 °C (FD), mroźne Tmax < 0 °C (ID), gorące Tmax > 25 °C (SU), noce tropikalne Tmin > 20 °C (TR), oraz dni upalne Tmax > 30 °C. Liczba dni miesiąca to udział takich dni wśród dni z pomiarem razy liczba dni miesiąca, gdy brakuje mniej niż 11 dni i mniej niż 5 kolejnych (WMO-No. 1203, p. 4.4.1 d). Stopniodni wzrostu: Σ max(Tśr − 5 °C, 0); stopniodni grzania wg Eurostatu: Σ (18 °C − Tśr) w dniach z Tśr ≤ 15 °C; obie sumy z miesięcy bez braków.`;
 
@@ -58,7 +58,7 @@ function Temperature({ state }) {
       title: "Średnia roczna temperatura",
     };
   }, [data, view]);
-  if (!data) return html`<${Section} title="Temperatura powietrza" info=${INFO_T} state=${part(state, "means")} />`;
+  if (!data) return html`<${Section} title="Średnie, ekstrema i normalna" info=${INFO_T} state=${part(state, "means")} />`;
   const last = [...data.annual].reverse().find((r) => r.mean !== null);
   const ref = data.reference;
   const columns = [
@@ -78,7 +78,7 @@ function Temperature({ state }) {
     ...(data.variables.includes("Tmax") ? [{ key: "abs_max", label: "Maks. (data)", format: (v, r) => (v === null || v === undefined ? "–" : `${fmt(v, 1)} (${date(r.abs_max_date)})`) }] : []),
     ...(data.variables.includes("Tmin") ? [{ key: "abs_min", label: "Min. (data)", format: (v, r) => (v === null || v === undefined ? "–" : `${fmt(v, 1)} (${date(r.abs_min_date)})`) }] : []),
   ];
-  return html`<${Section} title="Temperatura powietrza" info=${INFO_T} state=${part(state, "means")}>
+  return html`<${Section} title="Średnie, ekstrema i normalna" info=${INFO_T} state=${part(state, "means")}>
     <${Source} data=${data} />
     <${Figures}
       items=${[

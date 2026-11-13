@@ -31,10 +31,11 @@ export function useAnalysis(name, code, params = {}) {
 }
 
 /**
- * A section of the panel: its title, an (i) explanation, the body, and below it where
- * the numbers come from.
+ * A part of a panel's card: its sub-title, an (i) explanation, the body, and below it where
+ * the numbers come from. The card's header already names the section, so `title` names this
+ * part only and is left out where the part is the whole card.
  *
- * @param {{title: string, info?: string, state?: {data, error, loading}, children}} props
+ * @param {{title?: string, info?: string, state?: {data, error, loading}, children}} props
  *   `state` from useAnalysis: while loading the body dims, an error replaces it, and the
  *   provenance of `state.data.computed_by` is shown under it
  */
@@ -42,10 +43,12 @@ export function Section({ title, info, state, children }) {
   const [open, setOpen] = useState(false);
   const data = state ? state.data : null;
   return html`<section class="ana">
-    <header class="ana-head">
-      <h3>${title}</h3>
-      ${info && html`<button type="button" class="info-btn" aria-expanded=${open} title="Objaśnienie" onClick=${() => setOpen(!open)}>i</button>`}
-    </header>
+    ${(title || info) &&
+    html`<header class="ana-head">
+      ${title && html`<h3>${title}</h3>`}
+      ${info && html`<button type="button" class="info-btn" aria-expanded=${open} title="Objaśnienie" aria-label="Objaśnienie" onClick=${() => setOpen(!open)}>i</button>`}
+      ${info && !title && html`<span class="muted small">Objaśnienie metod</span>`}
+    </header>`}
     ${open && html`<div class="ana-info">${info}</div>`}
     ${state && state.error
       ? html`<p class="ana-error">${state.error.message}</p>`
@@ -86,12 +89,18 @@ export function Seg({ value, options, onChange, label }) {
   </div>`;
 }
 
+/** The shortest period statistics should rest on, in years (plan question 5). */
+export const MIN_YEARS = 30;
+
 /**
- * The range of (hydrological) years an analysis uses; applied on „Przelicz”.
+ * The range of (hydrological) years an analysis uses; applied on „Przelicz”. Analyses start
+ * from the station's whole record (plan question 5). Where the range feeds statistics
+ * (`recommend`), it says that 30 years is the recommended minimum and warns, without
+ * refusing, of a range shorter than that.
  *
- * @param {{first: number, last: number, from: number, to: number, onApply: (from: number, to: number) => void, label?: string}} props
+ * @param {{first: number, last: number, from: number, to: number, onApply: (from: number, to: number) => void, label?: string, recommend?: boolean}} props
  */
-export function YearRange({ first, last, from, to, onApply, label = "Lata" }) {
+export function YearRange({ first, last, from, to, onApply, label = "Lata", recommend = true }) {
   const [a, setA] = useState(from);
   const [b, setB] = useState(to);
   useEffect(() => {
@@ -99,12 +108,27 @@ export function YearRange({ first, last, from, to, onApply, label = "Lata" }) {
     setB(to);
   }, [from, to]);
   const bad = !(a >= first && b <= last && a <= b);
+  const years = b - a + 1;
+  const record = last - first + 1;
+  const short = recommend && !bad && years < MIN_YEARS;
   return html`<form class="years" onSubmit=${(e) => (e.preventDefault(), !bad && onApply(a, b))}>
     <label>${label} <input type="number" min=${first} max=${last} value=${a} onInput=${(e) => setA(+e.target.value)} /></label>
     <span>–</span>
     <input type="number" aria-label="do roku" min=${first} max=${last} value=${b} onInput=${(e) => setB(+e.target.value)} />
     <button type="submit" disabled=${bad}>Przelicz</button>
+    ${recommend &&
+    html`<small class=${short ? "years-note warn" : "years-note"} role=${short ? "status" : null}>
+      Zalecany minimalny okres: ${MIN_YEARS} lat.
+      ${short && ` Okres ${a}–${b} ma ${years} ${yearsWord(years)}${years === record ? " (cały zapis stacji)" : ""}: wyniki są mniej pewne.`}
+    </small>`}
   </form>`;
+}
+
+/** „rok”, „lata” or „lat” after a count. */
+function yearsWord(n) {
+  if (n === 1) return "rok";
+  const tens = n % 100;
+  return n % 10 >= 2 && n % 10 <= 4 && (tens < 12 || tens > 14) ? "lata" : "lat";
 }
 
 /**

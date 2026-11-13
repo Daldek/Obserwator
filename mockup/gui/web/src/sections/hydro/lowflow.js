@@ -118,7 +118,7 @@ export function LowFlowPeriods({ station }) {
   const yearsWithEvents = data ? [...new Set(data.events.map((e) => e.year))].sort((a, b) => b - a) : [];
   const year = data && (yearsWithEvents.includes(opt.year) ? opt.year : data.largest ? data.largest.year : yearsWithEvents[0]);
   const sequences = data && data.computed_by.find((p) => p.command === "stats low-flow-sequences");
-  return html`<${Section} title="Niżówki" info=${INFO} state=${state}>
+  return html`<${Section} info=${INFO} state=${state}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       <div class="hy-options">

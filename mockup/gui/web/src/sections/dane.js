@@ -247,7 +247,7 @@ function Daily({ station, entry, data }) {
         ]}
       />
       <div class="years-row">
-        <${YearRange} first=${span[0]} last=${span[1]} from=${years[0]} to=${years[1]} onApply=${(a, b) => setRange([a, b])} />
+        <${YearRange} first=${span[0]} last=${span[1]} from=${years[0]} to=${years[1]} onApply=${(a, b) => setRange([a, b])} recommend=${false} />
         ${range ? html`<button type="button" class="btn sm ghost" onClick=${() => setRange(null)}>Cały okres</button>` : null}
       </div>
     </div>

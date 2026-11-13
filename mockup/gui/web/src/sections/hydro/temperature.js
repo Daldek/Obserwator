@@ -81,7 +81,7 @@ export function WaterTemperature({ station }) {
   ];
   const period = data && data.period;
   const [h1, h2] = period ? period.harmonics : [];
-  return html`<${Section} title="Temperatura wody" info=${INFO} state=${state}>
+  return html`<${Section} info=${INFO} state=${state}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       <${Figures}

@@ -1,11 +1,13 @@
 // „Stany charakterystyczne” (Nogat plan H1, H2, H3): first degree per year and half-year,
-// second degree by Hydrolog's `stats characteristic`, warning levels and days beyond them.
+// second degree by Hydrolog's `stats characteristic`, ČHMÚ thresholds where the catalog has
+// them, the characteristic levels of every station and days beyond them. IMGW-PIB's warning
+// and alarm levels are operational data, not archived (plan question 3), so they are not here.
 
 import { Chart, fmt, html, unit, useMemo } from "../../lib.js";
 import { Section, Seg, Table, useAnalysis } from "../common.js";
 import { Block, Handoff, Notices, Option, VARIABLES, VariableSeg, Years, date, digitsOf, fmtV, useOptions, withUnit } from "./util.js";
 
-const INFO = `Wartości charakterystyczne I stopnia to najmniejsza, średnia i największa wartość roku hydrologicznego (XI–X) i jego półroczy (XI–IV, V–X): NW, SW, WW dla stanów, NQ, SQ, WQ dla przepływów. Źródło „auto” bierze opublikowane przez IMGW-PIB charakterystyki półroczne (maksimum roczne to większe z półrocznych; mogą to być wartości chwilowe), a lata bez nich liczy z szeregu dobowego (prototyp, docelowo Hydrolog H1). Wartości II stopnia (WWQ…NNQ, WWW…NNW) liczy Hydrolog („stats characteristic”) z szeregu dobowego wybranych lat: największa (W), średnia (S), mediana (Z) i najmniejsza (N) z rocznych maksimów, średnich i minimów (metodyka IMGW-PIB); obok, mniejszą czcionką, te same wartości z półroczy IMGW-PIB do porównania (prototyp H2). Progi ČHMÚ (SPA 1–3, sucho, Q50) pochodzą z katalogu stacji; stany ostrzegawcze i alarmowe IMGW-PIB nie mają jeszcze otwartego źródła (pytanie 3 planu). Dni powyżej progu: wartość dobowa równa progowi lub wyższa (dla progu suszy i SNW/SNQ: niższa od progu); ciąg kończy dzień poniżej progu albo brak danych (prototyp H3).`;
+const INFO = `Wartości charakterystyczne I stopnia to najmniejsza, średnia i największa wartość roku hydrologicznego (XI–X) i jego półroczy (XI–IV, V–X): NW, SW, WW dla stanów, NQ, SQ, WQ dla przepływów. Źródło „auto” bierze opublikowane przez IMGW-PIB charakterystyki półroczne (maksimum roczne to większe z półrocznych; mogą to być wartości chwilowe), a lata bez nich liczy z szeregu dobowego (prototyp, docelowo Hydrolog H1). Wartości II stopnia (WWQ…NNQ, WWW…NNW) liczy Hydrolog („stats characteristic”) z szeregu dobowego wybranych lat: największa (W), średnia (S), mediana (Z) i najmniejsza (N) z rocznych maksimów, średnich i minimów (metodyka IMGW-PIB); obok, mniejszą czcionką, te same wartości z półroczy IMGW-PIB do porównania (prototyp H2). Domyślnie wszystkie lata zapisu stacji. Progi: dla stacji ČHMÚ progi z katalogu stacji (SPA 1–3, sucho, Q50), dla każdej stacji stany (przepływy) charakterystyczne SWW, SSW i SNW (SWQ, SSQ, SNQ) wybranych lat liczone przez Hydrologa. Dni powyżej progu: wartość dobowa równa progowi lub wyższa (dla progu suszy i SNW/SNQ: niższa od progu); ciąg kończy dzień poniżej progu albo brak danych (prototyp H3).`;
 
 const ROWS = [
   ["najw. (W)", 0, 4, 8],
@@ -107,7 +109,6 @@ function Levels({ state, code, variables, choice, setChoice }) {
   }, [data, levelId]);
   return html`<${Block} state=${state} title="Progi i dni powyżej (H3)">
     ${usable.length > 1 && html`<${Option} label="Zmienna"><${VariableSeg} value=${data ? data.var : choice.lv} variables=${usable} onChange=${(v) => setChoice({ lv: v, level: undefined })} /></${Option}>`}
-    ${data && data.imgw_levels && html`<p class="hy-note">Stany ostrzegawcze i alarmowe IMGW-PIB nie mają jeszcze otwartego źródła (pytanie 3 planu: IMGW-PIB pokazuje je na hydro.imgw.pl, poza danepubliczne.imgw.pl); zamiast nich wykres pokazuje stany charakterystyczne Hydrologa.</p>`}
     ${data && html`<ul class="hy-levels">${data.levels.map(
       (l) => html`<li class=${LEVEL_CLASS[l.id]}><i aria-hidden="true"></i>${l.label}: <strong>${withUnit(l.value, data.var, data.unit)}</strong> <small>${l.source}</small></li>`,
     )}</ul>`}
@@ -145,7 +146,7 @@ export function Characteristic({ station }) {
   const secondVar = data && (second.includes(opt.sv) ? opt.sv : second.includes("Q") ? "Q" : second[0]);
   const entry = data && secondVar ? data.second_degree[secondVar] : null;
   const hydrolog = data && data.computed_by.find((p) => p.engine === "hydrolog");
-  return html`<${Section} title="Stany charakterystyczne" info=${INFO} state=${main}>
+  return html`<${Section} info=${INFO} state=${main}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       <h4 class="hy-sub">II stopnia (H2)</h4>

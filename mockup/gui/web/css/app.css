@@ -343,6 +343,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 }
 .years button:hover { background: var(--accent-hover); }
 .years button:disabled { opacity: 0.5; cursor: not-allowed; }
+.years-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--text-3); line-height: 1.4; }
+.years-note.warn { padding: 2px var(--space-2); border-left: 3px solid var(--warn); border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-ink); }
 
 .table-wrap { overflow: auto; max-width: 100%; margin: 0 0 var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md); }
 .table-wrap > .link { margin: var(--space-1) var(--space-2) var(--space-2); }

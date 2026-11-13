@@ -68,7 +68,7 @@ export function Trendy({ station }) {
       <${DatasetSeg} data=${data} value=${opt.dataset} onChange=${(v) => setOpt({ dataset: v })} />
       ${data && html`<${YearRange} first=${data.range.first} last=${data.range.last} from=${data.range.from} to=${data.range.to} label="Lata" onApply=${(a, b) => setOpt({ from: a, to: b })} />`}
     </div>
-    <${Section} title="Trendy serii rocznych" info=${INFO} state=${state}>
+    <${Section} title="Serie roczne: test Manna–Kendalla i nachylenie Sena" info=${INFO} state=${state}>
       ${data &&
       html`
         <${Table} columns=${columns} rows=${rows} />

@@ -32,15 +32,18 @@ export function fold(text) {
 
 /**
  * The stations of `api/stations` with their folded names, in the list's order: those with
- * series first, then by name.
+ * series first; within each group named stations before those without a catalog name
+ * (IMGW-PIB rows whose name is their code, e.g. 151160270), then more series first, then by
+ * name (code).
  *
  * @param {object[]} stations
  * @returns {object[]}
  */
 export function prepareStations(stations) {
+  const hasSeries = (station) => (station.datasets.length > 0 ? 1 : 0);
   return stations
-    .map((station) => ({ ...station, foldedName: fold(station.name), foldedRiver: fold(station.river), foldedCode: station.code.toLowerCase() }))
-    .sort((a, b) => b.datasets.length - a.datasets.length || collator.compare(a.name || a.code, b.name || b.code));
+    .map((station) => ({ ...station, unnamed: !station.name || station.name === station.code, foldedName: fold(station.name), foldedRiver: fold(station.river), foldedCode: station.code.toLowerCase() }))
+    .sort((a, b) => hasSeries(b) - hasSeries(a) || a.unnamed - b.unnamed || b.datasets.length - a.datasets.length || collator.compare(a.name || a.code, b.name || b.code));
 }
 
 /** Whether the map shows a station under the filters (provider, kind, active). */

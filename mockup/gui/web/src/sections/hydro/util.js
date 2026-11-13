@@ -63,12 +63,13 @@ export function useOptions(initial, code) {
 /**
  * The year range of an analysis: shown once its result names the available years.
  *
- * @param {{data: object|null, onApply: (from: number, to: number) => void, label?: string}} props
+ * @param {{data: object|null, onApply: (from: number, to: number) => void, label?: string, recommend?: boolean}} props
+ *   `recommend` as YearRange: the 30-year note, on unless the range is not a statistical period
  */
-export function Years({ data, onApply, label = "Lata hydrologiczne" }) {
+export function Years({ data, onApply, label = "Lata hydrologiczne", recommend = true }) {
   if (!data || !data.years) return null;
   const { first, last, from, to } = data.years;
-  return html`<${YearRange} first=${first} last=${last} from=${from} to=${to} onApply=${onApply} label=${label} />`;
+  return html`<${YearRange} first=${first} last=${last} from=${from} to=${to} onApply=${onApply} label=${label} recommend=${recommend} />`;
 }
 
 /**

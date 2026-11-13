@@ -203,7 +203,12 @@ CHMI_LEVELS = (
 
 
 def levels(ctx: Context, params: Params) -> dict[str, Any]:
-    """Warning levels and the characteristic ones on the daily H (Q) chart, days and events beyond them (H3)."""
+    """ČHMÚ thresholds where the catalog has them and the characteristic levels of every
+    station on the daily H (Q) chart, days and events beyond them (H3).
+
+    IMGW-PIB's warning and alarm levels are operational data of hydro.imgw.pl, which are not
+    archived (plan question 3), so they are not drawn.
+    """
     daily = proto.load_daily(ctx)
     default = "H" if daily.has("H") else "Q"
     variable = params.choice("var", ("H", "Q"), default)
@@ -235,7 +240,6 @@ def levels(ctx: Context, params: Params) -> dict[str, Any]:
         "unit": daily.units.get(variable),
         "provider": ctx.station.get("provider"),
         "levels": found,
-        "imgw_levels": ctx.station.get("provider") == "IMGW-PIB",
         "line": proto.chart_line(daily.dates[block], daily.values[variable][block]),
         "year_list": list(range(a, b + 1)),
         "per_year": per_year,
@@ -1059,7 +1063,7 @@ def baseflow(ctx: Context, params: Params) -> dict[str, Any]:
 
 ANALYSES: dict[str, Analysis] = {
     "hydro_characteristic": Analysis(characteristic, "hydro", "Stany i przepływy charakterystyczne"),
-    "hydro_levels": Analysis(levels, "hydro", "Stany ostrzegawcze, progi i dni powyżej"),
+    "hydro_levels": Analysis(levels, "hydro", "Progi ČHMÚ, stany charakterystyczne i dni powyżej"),
     "hydro_rating_curve": Analysis(rating_curve, "hydro", "Krzywa natężenia przepływu"),
     "hydro_rating_periods": Analysis(rating_periods, "hydro", "Krzywe natężenia przepływu kolejnych okresów"),
     "hydro_flood_frequency": Analysis(flood_frequency, "hydro", "Przepływy maksymalne o danym prawdopodobieństwie"),

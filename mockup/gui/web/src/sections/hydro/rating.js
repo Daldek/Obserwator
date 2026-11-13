@@ -5,7 +5,7 @@ import { Chart, fmt, html, useMemo } from "../../lib.js";
 import { Figures, Section, Seg, Table, useAnalysis } from "../common.js";
 import { Block, Notices, Option, Years, useOptions } from "./util.js";
 
-const INFO = `Krzywa natężenia przepływu Q = a·(H − H₀)^b dopasowana przez Hydrolog („hydrometrics rating-curve”: nieliniowa metoda najmniejszych kwadratów, a ≥ 0, b ≥ 0, H₀ poniżej najniższego stanu; opcjonalnie odrzuca pary o resztach ponad 2 odchylenia standardowe i dopasowuje ponownie) do wszystkich par stan–przepływ z tego samego dnia w wybranych latach (domyślnie ostatnie 10); na wykresie punkty są przerzedzone do jednego na komórkę siatki. Przepływy dobowe są wyznaczane ze stanów krzywymi natężenia samych służb, więc pary z jednego roku leżą na krzywej obowiązującej w tym roku: rozrzut punktów i przesuwanie się krzywych w kolejnych okresach pokazuje zmiany krzywej (np. erozję lub zamulanie koryta, zmianę zera wodowskazu), a nie błąd pomiaru. H₀ jest w centymetrach, a w m³/s na cm^b. Krzywe kolejnych okresów (cały szereg, co najmniej 30 par w okresie) liczy Hydrolog osobno dla każdego okresu; tabela podaje przepływ przy medianie stanów i stan przy medianie przepływów całego szeregu. Opublikowana krzywa ČHMÚ (RC_{WIGOS}.json) nie jest jeszcze w magazynie (D10 planu).`;
+const INFO = `Krzywa natężenia przepływu Q = a·(H − H₀)^b dopasowana przez Hydrolog („hydrometrics rating-curve”: nieliniowa metoda najmniejszych kwadratów, a ≥ 0, b ≥ 0, H₀ poniżej najniższego stanu; opcjonalnie odrzuca pary o resztach ponad 2 odchylenia standardowe i dopasowuje ponownie) do wszystkich par stan–przepływ z tego samego dnia w wybranych latach; na wykresie punkty są przerzedzone do jednego na komórkę siatki. Domyślnie to ostatnie 10 lat, a nie cały zapis jak w pozostałych analizach: krzywa natężenia zmienia się w czasie, więc jedna krzywa dopasowana do wielu dekad nie opisuje dobrze żadnej z nich; z tego powodu nie dotyczy jej też zalecany minimalny okres 30 lat. Przepływy dobowe są wyznaczane ze stanów krzywymi natężenia samych służb, więc pary z jednego roku leżą na krzywej obowiązującej w tym roku: rozrzut punktów i przesuwanie się krzywych w kolejnych okresach pokazuje zmiany krzywej (np. erozję lub zamulanie koryta, zmianę zera wodowskazu), a nie błąd pomiaru. H₀ jest w centymetrach, a w m³/s na cm^b. Krzywe kolejnych okresów (cały szereg, co najmniej 30 par w okresie) liczy Hydrolog osobno dla każdego okresu; tabela podaje przepływ przy medianie stanów i stan przy medianie przepływów całego szeregu. Opublikowana krzywa ČHMÚ (RC_{WIGOS}.json) nie jest jeszcze w magazynie (D10 planu).`;
 
 const PALETTE = 8;
 
@@ -83,9 +83,10 @@ export function RatingCurve({ station }) {
       title: "Punkty H–Q i krzywa natężenia przepływu",
     };
   }, [data, opt.axis]);
-  return html`<${Section} title="Krzywa natężenia przepływu" info=${INFO} state=${state}>
+  return html`<${Section} title="Krzywa wybranych lat" info=${INFO} state=${state}>
     ${data && html`
-      <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
+      <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} recommend=${false} />
+      <p class="muted hy-caption">Domyślnie ostatnie 10 lat: krzywa natężenia zmienia się w czasie (zob. objaśnienie i kolejne okresy poniżej).</p>
       <div class="hy-options">
         <${Option} label="Odstające"><${Seg} value=${opt.outliers} label="Odstające" options=${[["0", "zostaw"], ["1", "odrzuć (2σ)"]]} onChange=${(v) => setOpt({ outliers: v })} /></${Option}>
         <${Option} label="Oś Q"><${Seg} value=${opt.axis} label="Oś Q" options=${[["linear", "liniowa"], ["log", "logarytmiczna"]]} onChange=${(v) => setOpt({ axis: v })} /></${Option}>

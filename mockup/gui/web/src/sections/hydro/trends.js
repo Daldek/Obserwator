@@ -179,7 +179,7 @@ export function Trends({ station }) {
     };
   }, [data, opt.pick]);
   const span = data || runoff.data || base.data;
-  return html`<${Section} title="Trendy i bilans" info=${INFO}>
+  return html`<${Section} info=${INFO}>
     <${Years} data=${span} onApply=${(from, to) => setOpt({ from, to })} />
     <${Block} state=${state} title="Trendy roczne (H16)">
       ${data && html`

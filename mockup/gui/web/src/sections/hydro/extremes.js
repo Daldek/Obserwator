@@ -153,7 +153,7 @@ export function Extremes({ station }) {
   const sourceOptions = data ? data.sources.map((s) => [s, s === "semiannual" ? "półrocza IMGW-PIB" : "szereg dobowy (jak Hydrolog z eksportu Obserwatora)"]) : [];
   const highest = data && data.maxima.length ? data.maxima.reduce((a, b) => (b.value > a.value ? b : a)) : null;
   const ff = data && data.computed_by.find((p) => p.command === "stats flood-frequency");
-  return html`<${Section} title="Przepływy maksymalne i minimalne" info=${INFO} state=${state}>
+  return html`<${Section} title="Przepływy maksymalne roczne (H5)" info=${INFO} state=${state}>
     ${data && html`
       <${Years} data=${data} onApply=${(from, to) => setOpt({ from, to })} />
       <div class="hy-options">
