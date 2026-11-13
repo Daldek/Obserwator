@@ -25,6 +25,15 @@ from obserwator.messages import (
 )
 
 SRC = Path(obserwator.__file__).parent
+# The page of the GUI names the entries of the area `gui` without the area (ADR-013):
+# t("shell.view_stations") is `gui.shell.view_stations`.
+WEB_SRC = SRC / "gui" / "web" / "src"
+# A key as a quoted JavaScript literal, which also names the plural forms of tn()
+# (`<key>.one` … `.other`); a template's prefix ending in a dot before its first
+# placeholder (a key chosen at run time, e.g. `sections.notice.${code}`).
+_JS_KEY = re.compile(r"""["'`]([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)["'`]""")
+_JS_PREFIX = re.compile(r"`([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*\.)\$\{")
+_PLURAL_FORMS = ("one", "few", "many", "other")
 # Polish diacritics or words that no English text uses (also for Polish text that
 # has no diacritics, such as "Nieczytelny znacznik").
 POLISH = re.compile(
@@ -103,6 +112,19 @@ def message_calls() -> Iterator[tuple[str, ast.Call]]:
                 yield name, node
 
 
+def page_uses() -> tuple[set[str], tuple[str, ...]]:
+    """The `gui` entries the page's JavaScript names: keys, and prefixes of run-time keys."""
+    keys: set[str] = set()
+    prefixes: set[str] = set()
+    for path in sorted(WEB_SRC.rglob("*.js")):
+        text = path.read_text(encoding="utf-8")
+        for key in _JS_KEY.findall(text):
+            keys.add(f"gui.{key}")
+            keys.update(f"gui.{key}.{form}" for form in _PLURAL_FORMS)
+        prefixes.update(f"gui.{prefix}" for prefix in _JS_PREFIX.findall(text))
+    return keys, tuple(sorted(prefixes))
+
+
 # --------------------------------------------------------------------------
 # The catalogs
 # --------------------------------------------------------------------------
@@ -163,7 +185,10 @@ def test_no_entry_is_unused_and_no_key_like_literal_is_misspelled():
     }
     known = {key for key, _ in entries()}
     areas = set(catalogs())
-    unused = sorted(known - literals)
+    keys, prefixes = page_uses()
+    unused = sorted(
+        key for key in known - literals - keys if not key.startswith(prefixes)
+    )
     misspelled = sorted(
         value
         for value in literals - known

@@ -1,0 +1,13 @@
+{
+  "name": "nogat-kit",
+  "version": "0.3.0",
+  "description": "Nogat's GUI kit (DEV-15.4 to DEV-15.7, ECO-058, ECO-061, ECO-062): plain files a GUI copies byte for byte and never edits. Change them in Nogat design/kit/ and copy again.",
+  "files": {
+    "nogat-app-menu.css": "2c096d012230f78f58353b354dff4976046ef883fe9006b778a43d5e75ccd9d6",
+    "nogat-app-menu.js": "3291fd51921792e1460311e15e94088cb4e537df1c3a3b8109b21ae8ec823f7a",
+    "nogat-handoff.js": "605cda9ff5e7766ab456d07c127bb96c0e7a41628afacb5160454b70eb767e77",
+    "nogat-terms.css": "495d71cc542c13a08833f32d14d2af20bc49b5c7d5d4c4d89e75e954de8e04af",
+    "nogat-terms.html": "fb454cb39f9736ffc7987f25fb5d0d609ab819eae2411a99abf5fc8a6c431924",
+    "nogat-terms.md": "aea37c064ce7fd7c333a6d16a6568e8a0ee5397780390a16930e5017aa688ee4"
+  }
+}

@@ -6,6 +6,27 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Web GUI: `obserwator gui serve` (ADR-013, GUI plan S1 and S2).** A Starlette app of its own
+  (extra `gui`: Starlette and uvicorn; entry point `nogat.gui` → `obserwator.gui:gui_module`;
+  `create_app`, `serve`) serves the page and a private API relative to it, GET and HEAD only:
+  `api/session`, `api/texts?lang=pl|en`, `api/stations`, `api/stations/{code}`,
+  `api/series/{dataset}/{code}`, `api/analyses/{code}`, `api/analysis/{code}/{id}`,
+  `api/current`, `api/current/{code}`, `api/pmaxtp`, `api/downloads/{code}`, `api/files/…`,
+  `api/handoff/{code}`, and `POST api/feedback`. It reads the root read-only (the current
+  versions again at most once a minute), keeps IMGW-PIB's current data 10 minutes and PMAXTP
+  points 24 hours in memory, never stores either, and runs Hydrolog's program
+  (`OBSERWATOR_HYDROLOG_COMMAND`) for an analysis on request: at most two processes of 30 s,
+  500 results in memory. Errors are `obserwator-error/1` in the page's language; every answer
+  carries the GUI plan's Content-Security-Policy (D16). A public deployment (`[nogat.operator]`
+  in `nogat.toml`) follows Nogat's terms: a rate limit per client address
+  (`OBSERWATOR_REQUEST_LIMIT` requests in `OBSERWATOR_REQUEST_WINDOW` s, `429` with
+  `Retry-After`), daily access logs without the address deleted after 14 days, daily totals in
+  `<data_dir>/obserwator/stats.jsonl`, `regulamin.html` from Nogat's kit 0.3.0, and „Zgłoś
+  uwagę” reports appended to `<data_dir>/obserwator/feedback.jsonl` (no admin routes). Texts are
+  the area `gui` of the message catalog. Settings: `OBSERWATOR_GUI_BASEMAP_URL` (empty: the
+  packaged borders only) and `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`. The page vendors Preact,
+  htm and MapLibre GL JS (Archiwista's bytes) and copies Nogat's kit and tokens byte for byte.
+
 - **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
   2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,
   `Attribution` with `attribution`, `terms_notice`, `|`, `fields()`, `from_lines()`), composes the

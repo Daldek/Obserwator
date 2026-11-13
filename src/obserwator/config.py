@@ -180,9 +180,20 @@ class Settings(BaseSettings):
     # `obserwator mcp` starts in the write mode (OBSERWATOR_MCP_ALLOW_WRITES; --allow-writes).
     mcp_allow_writes: bool = False
 
+    # The web GUI (obserwator gui serve, ADR-013). The basemap is a TileJSON address
+    # drawn by the GUI's own style (OBSERWATOR_GUI_BASEMAP_URL; empty: no basemap, the
+    # borders of Poland and Czechia only) with its credit line. The GUI limits the
+    # requests of each client address to request_limit in request_window seconds
+    # (Nogat DEV-15.9; static files are not counted).
+    gui_basemap_url: str = "https://tiles.openfreemap.org/planet"
+    gui_basemap_attribution: str = "OpenFreeMap © OpenMapTiles Data from OpenStreetMap"
+    request_limit: int = Field(default=300, ge=1)
+    request_window: int = Field(default=60, ge=1)
+
     # Hydrolog's program of the analyses (ADR-016; OBSERWATOR_HYDROLOG_COMMAND,
     # [obserwator] hydrolog_command): a command line, split as a shell splits it
     # (shlex); unset runs `hydrolog` found on PATH. No command option chooses it.
+    # `analyses build` stores its results; the GUI runs it for a person's choices.
     hydrolog_command: str | None = None
 
     # Logging

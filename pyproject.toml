@@ -69,13 +69,23 @@ mcp = [
     "mcp>=2.3,<3",
 ]
 
+# Web GUI (obserwator gui serve, entry point nogat.gui; ADR-013)
+gui = [
+    "obserwator[store]",
+    "starlette>=1.9,<2",
+    "uvicorn[standard]>=0.24",
+]
+
 # Full installation with all features
 full = [
-    "obserwator[api,cli,mcp,pandas,store]",
+    "obserwator[api,cli,gui,mcp,pandas,store]",
 ]
 
 [project.scripts]
 obserwator = "obserwator.cli.main:app"
+
+[project.entry-points."nogat.gui"]
+obserwator = "obserwator.gui:gui_module"
 
 [project.urls]
 Homepage = "https://github.com/Daldek/Obserwator"
@@ -152,6 +162,7 @@ asyncio_mode = "auto"
 addopts = "--strict-markers -m 'not live'"
 markers = [
     "live: real network services",
+    "e2e: the GUI in Chromium (Playwright); skipped without a browser",
     "slow: more than ~10 s or Docker",
     "db: needs a database",
     "hydrolog: needs Hydrolog's program (OBSERWATOR_HYDROLOG_COMMAND); skipped without it",
@@ -165,6 +176,7 @@ dev = [
     "jsonschema>=4.18",
     "mypy>=1.19",
     "pandas-stubs>=2.0",
+    "playwright>=1.64,<2",
     "pytest>=8",
     "pytest-asyncio>=0.21",
     "pytest-cov>=6",
