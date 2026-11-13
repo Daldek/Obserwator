@@ -1,7 +1,8 @@
 // „Pobierz” (plan D14): each series of the station as Obserwator's CSV (`export_series`,
-// api/export) or as one columnar JSON document, with the provider's attribution and licence
-// and the equivalent command line (`format_command` of `series export`, api/export/info); for
-// a hydrological station the hand-off of Q or H to Hydrolog (D13).
+// api/export) or as one columnar JSON document, with the equivalent command line
+// (`format_command` of `series export`, api/export/info); for a hydrological station the
+// hand-off of Q or H to Hydrolog (D13). Every file and hand-off carries the provider's lines
+// and terms (Nogat DEV §20), the same the panel draws under the card (part "series").
 
 import { copyText } from "../../nogat/nogat-handoff.js";
 import { api } from "../api.js";
@@ -36,15 +37,13 @@ export function Command({ line }) {
   </div>`;
 }
 
+/** ČHMÚ's licence page and disclaimer; IMGW-PIB's terms are a line under the card (RD). */
 function Licence({ licence }) {
-  return html`<div class="licence">
-    <p><strong>${licence.attribution}</strong>. ${licence.processed}.</p>
-    <p class="muted">
-      ${licence.notice}
-      ${" "}<a href=${licence.url} target="_blank" rel="noopener noreferrer">Warunki ${licence.licence === "CC-BY-4.0" ? "licencji CC BY 4.0" : licence.provider}</a>
-      ${licence.terms_url ? html`${" · "}<a href=${licence.terms_url} target="_blank" rel="noopener noreferrer">wyłączenie odpowiedzialności</a>` : null}
-    </p>
-  </div>`;
+  if (!licence.terms_url) return null;
+  return html`<p class="licence muted">
+    <a href=${licence.url} target="_blank" rel="noopener noreferrer">Warunki ${licence.licence === "CC-BY-4.0" ? "licencji CC BY 4.0" : licence.provider}</a>
+    ${" · "}<a href=${licence.terms_url} target="_blank" rel="noopener noreferrer">wyłączenie odpowiedzialności</a>
+  </p>`;
 }
 
 function DatasetFiles({ code, entry }) {
@@ -62,7 +61,7 @@ function DatasetFiles({ code, entry }) {
   const info = state.info;
   return html`<${Section}
     title=${datasetTitle(entry.dataset)}
-    info="CSV to plik polecenia obserwator series export: UTF-8, przecinek, kropka dziesiętna, wartości z flagami, atrybucja dostawcy w pierwszym wierszu danych. JSON to cały szereg w kolumnach z jednostkami, wersją szeregu i atrybucją (układ z planu GUI, D14)."
+    info="CSV to plik polecenia obserwator series export (UTF-8, przecinek, kropka dziesiętna, wartości z flagami, atrybucja dostawcy w pierwszym wierszu danych) z dwiema kolumnami dopisanymi przez makietę: attribution i terms_notice, po jednej linii w wierszu od pierwszego wiersza danych (standard Nogata DEV-20.5; biblioteka jeszcze ich nie pisze). JSON to cały szereg w kolumnach z jednostkami, wersją szeregu i polami attribution i terms_notice (układ z planu GUI, D14)."
     state=${{ data: null, error: state.error, loading: !info && !state.error }}
   >
     ${info
@@ -106,4 +105,4 @@ function Pobierz({ station }) {
 }
 
 /** The section „Pobierz”. */
-export const POBIERZ = { id: "pobierz", title: "Pobierz", component: Pobierz };
+export const POBIERZ = { id: "pobierz", title: "Pobierz", component: Pobierz, part: "series" };

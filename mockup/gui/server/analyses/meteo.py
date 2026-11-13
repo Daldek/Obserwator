@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from server import hydrolog_bridge
+from server import attribution, hydrolog_bridge
 from server.analyses import Analysis, BadParam, Context, NoData, Params
 from server.analyses import _meteo_proto as proto
 from server.store import iso
@@ -774,7 +774,8 @@ def _pmaxtp_of(ctx: Context, days: int) -> dict[str, Any]:
         "latitude": round(latitude, 4),
         "longitude": round(longitude, 4),
         "periods": list(TABLE_PERIODS),
-        "attribution": obserwator.get_provider("IMGW-PIB").license.attribution,
+        # PMAXTP's own lines replace IMGW-PIB's (server/attribution.py, DEV-20.2)
+        **attribution.fields("pmaxtp"),
     }
     for method in ("POT", "AMP"):
         found = _fetch_pmaxtp(latitude, longitude, method)

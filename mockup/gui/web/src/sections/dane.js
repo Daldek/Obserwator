@@ -2,12 +2,13 @@
 // dataset switch (the station's series datasets), the variables, „rok hydrologiczny |
 // kalendarzowy”, the range of years, one chart per unit over the whole span (a missing value
 // or a skipped day breaks the line; days flagged „suma z kilku dni” are ticks at the bottom),
-// „Tabela” paged, the units, the series version and the provider's attribution. A daily
-// series is decimated in the browser for drawing (the chart module's `thinPoints`: per pixel
-// column the first, lowest, highest and last value and the first gap), so 27,000 days draw
-// at once; the table and the downloads keep every value. IMGW-PIB's half-year
-// characteristics (winter, summer, the year) are drawn by hydrological year as the min–max
-// band and the mean, with the dates of the extremes in the table.
+// „Tabela” paged, the units and the series version; the panel draws the provider's lines
+// under the card (part "series"). A daily series is decimated in the browser for drawing
+// (the chart module's `thinPoints`: per pixel column the first, lowest, highest and last
+// value and the first gap), so 27,000 days draw at once; the table and the downloads keep
+// every value. IMGW-PIB's half-year characteristics (winter, summer, the year) are drawn by
+// hydrological year as the min–max band and the mean, with the dates of the extremes in the
+// table.
 
 import { thinPoints } from "../charts/series.js";
 import { api } from "../api.js";
@@ -38,24 +39,6 @@ function useSeries(code, dataset) {
     };
   }, [code, dataset]);
   return state;
-}
-
-/** The provider's licence of a dataset (api/export/info, shared with „Pobierz”). */
-function useLicence(code, dataset) {
-  const [licence, setLicence] = useState(null);
-  useEffect(() => {
-    if (!dataset) return undefined;
-    let live = true;
-    setLicence(null);
-    api.get("api/export/info", { station: code, dataset }).then(
-      (info) => live && setLicence(info.licence),
-      () => live && setLicence(null),
-    );
-    return () => {
-      live = false;
-    };
-  }, [code, dataset]);
-  return licence;
 }
 
 function dayOf(year, month, day) {
@@ -388,7 +371,6 @@ function Dane({ station }) {
   const entry = datasets.find((item) => item.dataset === dataset) || datasets[0] || null;
   const key = entry ? entry.dataset : null;
   const series = useSeries(station.code, key);
-  const licence = useLicence(station.code, key);
   if (!entry) {
     return html`<p class="muted">Brak szeregów w magazynie: nie ma czego narysować. Dane katalogowe są w sekcji „Informacje o stacji”.</p>`;
   }
@@ -412,9 +394,6 @@ function Dane({ station }) {
             Jednostki: ${[...units].map(([name, text]) => `${name} [${text}]`).join(" · ")}.
             Brak wartości przerywa linię wykresu.
           </p>
-          ${licence
-            ? html`<p class="attribution">${licence.attribution}. ${licence.processed}.</p>`
-            : html`<p class="attribution">${data.attribution}.</p>`}
           <div class="ana-prov">
             <span class="prov">szereg ${data.version}</span>
             <span class="prov">${data.year_type === "hydrological" ? "rok hydrologiczny XI–X" : "rok kalendarzowy"} w magazynie</span>
@@ -425,4 +404,4 @@ function Dane({ station }) {
 }
 
 /** The section „Dane pomiarowo-obserwacyjne”. */
-export const DANE = { id: "dane", title: "Dane pomiarowo-obserwacyjne", component: Dane };
+export const DANE = { id: "dane", title: "Dane pomiarowo-obserwacyjne", component: Dane, part: "series" };

@@ -412,7 +412,20 @@ pre.code {
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-xs); }
 .data-foot { margin: var(--space-3) 0 0; padding: var(--space-2) 0 0; border-top: 1px solid var(--line); font-size: var(--text-xs); color: var(--text-3); line-height: 1.45; }
 .data-foot p { margin: 0 0 4px; }
-.attribution { color: var(--text-2); }
+
+/* ---------- Provider attribution (src/attribution.js; Nogat DEV §20): visible, never folded ---------- */
+.attrib { font-size: var(--text-xs); line-height: 1.4; color: var(--text-2); }
+.attrib p { margin: 0; }
+.attrib .attrib-line { display: block; }
+.attrib .attrib-terms { margin-top: 4px; color: var(--text-3); }
+.attrib a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-2); overflow-wrap: anywhere; }
+.attrib a:hover { color: var(--text); }
+.attrib.inline .attrib-line { display: inline; }
+.attrib.inline .attrib-line + .attrib-line::before { content: " · "; color: var(--text-3); }
+.attrib.inline .attrib-terms { margin-top: 2px; }
+.sec-attrib { margin: var(--space-3) 0 0; padding: var(--space-2) 0 0; border-top: 1px solid var(--line); }
+/* The station list's lines: on a desktop the strip under the map carries them */
+.view-panel.left .panel-foot { display: none; }
 
 /* ---------- Without a station ---------- */
 .no-station .params th { width: 64%; }
@@ -470,6 +483,8 @@ pre.code {
   input[type="search"] { height: var(--control-touch); }
   .st-item { min-height: 44px; }
   .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The sheet covers the strip under the map: the list carries its own lines */
+  .view-panel.left .panel-foot { display: block; max-height: 24vh; overflow-y: auto; padding: 6px 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .view-panel { transition: none; }

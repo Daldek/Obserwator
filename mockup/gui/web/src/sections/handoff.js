@@ -4,7 +4,9 @@
 // przekazania” saves it as a file. Hydrolog's GUI opens it in „Statystyka przepływów”
 // („Wczytaj…”: „Wklej ze schowka” or the file). A section beside an analysis may add the
 // analysis' provenance and its numbers: they go to the envelope's `provenance.analysis` and
-// `result`, which Hydrolog shows beside its own (for comparison, never as input).
+// `result`, which Hydrolog shows beside its own (for comparison, never as input). The
+// envelope keeps the server's `attribution` and `terms_notice` (Nogat DEV-20.6, DEV-20.7);
+// with a result, a ČHMÚ series' processed line names the computation too.
 //
 //   html`<${HandoffButtons} code=${code} variable="Q" computed=${data.computed_by[0]} result=${{…}} />`
 
@@ -18,9 +20,10 @@ import { html, useEffect, useRef, useState } from "../lib.js";
  * @param {object} doc the server's `nogat-handoff/1`
  * @param {object|undefined} computed one provenance item of `computed_by`
  * @param {object|undefined} result the analysis' numbers
+ * @param {object|null} [texts] api/meta's `attribution` texts
  * @returns {object} the document handed off
  */
-export function withAnalysis(doc, computed, result) {
+export function withAnalysis(doc, computed, result, texts = null) {
   const out = { ...doc, provenance: { ...doc.provenance } };
   if (computed) {
     const hydrolog = computed.engine === "hydrolog";
@@ -39,6 +42,9 @@ export function withAnalysis(doc, computed, result) {
       own.command = `prototyp: ${computed.method}`;
     }
     out.result = own;
+    if (texts && Array.isArray(out.attribution)) {
+      out.attribution = out.attribution.map((line) => (line === texts.lines.CP ? texts.lines.CPR : line));
+    }
   }
   return out;
 }
@@ -66,7 +72,7 @@ export function HandoffButtons({ code, variable = "Q", resolution, from, to, com
   }, [code, variable, resolution, from, to]);
   const build = async () => {
     const doc = await api.get("api/handoff", { station: code, variable, resolution, from, to }, { memo: false });
-    return withAnalysis(doc, computed, result);
+    return withAnalysis(doc, computed, result, meta && meta.attribution);
   };
   const run = (action) => async () => {
     setState({ busy: true, message: null, error: null });

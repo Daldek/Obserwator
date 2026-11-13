@@ -4,9 +4,13 @@
 // a phone. The map's bar switches the views: „Stacje” (the catalogs), „Pomiary bieżące”
 // (IMGW-PIB's current measurements, current.js) and „PMAXTP” (plan D12: the form takes the
 // left panel and the results the right one; no layer of the PMAXTP grid). The address
-// keeps the station, its open section, the view and the PMAXTP point (state.js).
+// keeps the station, its open section, the view and the PMAXTP point (state.js). Every view
+// with provider data shows their lines and terms (attribution.js): the strip under the map
+// for what it draws, the panels for what they show; on a phone, where the sheets cover the
+// strip, the station list's sheet has them in its foot.
 
 import { api } from "./api.js";
+import { Attribution, catalogSources, compose, useTexts } from "./attribution.js";
 import { clock, useCurrent } from "./current.js";
 import { html, render, useEffect, useMemo, useState } from "./lib.js";
 import { DEFAULT_FILTERS, StationList, onMap, prepareStations } from "./list.js";
@@ -71,6 +75,9 @@ function App() {
   const byCode = useMemo(() => new Map(all.map((station) => [station.code, station])), [stations]);
   const drawn = useMemo(() => all.filter((station) => onMap(station, filters)), [stations, filters.provider, filters.kind, filters.active]);
   const station = selected ? byCode.get(selected) || null : null;
+  const texts = useTexts();
+  const listed = useMemo(() => compose(texts, catalogSources(drawn)), [texts, drawn]);
+  const credits = { stations: listed, current: current.doc, pmaxtp: null }[view];
   const pmaxtpView = view === "pmaxtp";
 
   const select = (code, { fly: go = false } = {}) => {
@@ -103,6 +110,7 @@ function App() {
           : stations
             ? html`<${StationList} stations=${all} filters=${filters} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted">Wczytuję katalog stacji…</p>`,
+        foot: listed ? html`<${Attribution} fields=${listed} inline=${true} />` : null,
       };
   const hints = {
     stations: "Kliknij stację, aby zobaczyć jej dane",
@@ -122,6 +130,7 @@ function App() {
       current=${current}
       pick=${pick}
       pickFly=${pickFly}
+      credits=${credits}
       onSelect=${(code) => select(code)}
       onPick=${choosePoint}
     />`,

@@ -29,6 +29,33 @@ Nothing here is part of the package. The repository's ruff config excludes `mock
 | Hand-off | `api/handoff`: `nogat-handoff/1` around `hydrolog-series/1`, opened by Hydrolog's GUI in „Statystyka przepływów” | the same (D13) |
 | Current data | `api/current`: snapshots of `fetch_hydro_states`, `fetch_hydro_current`, `fetch_meteo_current` and `fetch_synop`, in memory only, at most one per source per 10 minutes, the last one kept on failure | the same (D8) |
 | PMAXTP | `api/pmaxtp`: `fetch_pmaxtp`, 24 hours in memory per method and point, one live request at a time. `api/pmaxtp/file`: CSV and JSON packed by the server with PMAXTP's own terms. A link opens IMGW-PIB's own answer for the point. | the same (D8, D12) |
+| Attribution | The lines of Nogat's DEV §20 (ECO-060), byte for byte, from `server/attribution.py` (below) | the same, from Obserwator's own catalog |
+
+## Provider attribution
+
+The providers' terms require their lines with every product of their data. The mockup keeps the lines in `server/attribution.py`, the only place, quoted byte for byte from Nogat's `DEVELOPMENT_STANDARDS.md` §20:
+
+- IMGW-PIB data: S and P;
+- data of hydro.imgw.pl: also H;
+- PMAXTP: PS, PP and the monograph M, in place of S and P;
+- ČHMÚ: C and CP, where CP names what was done;
+- with IMGW-PIB data: the notice N and the terms that apply, RD, RH and RK.
+
+`api/meta` serves the texts to the page (`web/src/attribution.js`). Where each surface carries them:
+
+| Surface | Lines |
+|---|---|
+| Every API response with data or results (`api/stations`, `api/station`, `api/series`, `api/analysis/*`, `api/current`, `api/export/info`, `api/pmaxtp`) | the fields `attribution` and `terms_notice`; `api/station` adds `attribution_parts` for the panel's catalog, series and results |
+| `api/export` CSV | `export_series`'s file unchanged, plus the trailing columns `attribution` and `terms_notice`, one line per row from the first data row down |
+| `api/export` JSON, `api/pmaxtp/file` JSON, `api/handoff` | the fields `attribution` and `terms_notice`; a hand-off validates against Nogat's `handoff-1` schema |
+| `api/pmaxtp/file` CSV | the columns `attribution` and `terms_notice` |
+| The map, views „Stacje” and „Pomiary bieżące” | a strip under the map with the lines of the data drawn. It never folds, unlike MapLibre's compact control, which keeps the basemap's credit only. |
+| The station panel | a block under each open section with data: its catalog, current, series or results lines |
+| „Opady” | an extra block beside the PMAXTP values |
+| The panel without a station, the station list on a phone | a block, or a sheet foot |
+| PMAXTP | a block under the table |
+
+The library's own lines differ in places: `export_series` writes S and P, but no `attribution` or `terms_notice` columns and no N. Its ČHMÚ source line lacks C's licence link. `provider_notice_imgw` says less than N.
 
 ## Demo store
 
@@ -69,12 +96,12 @@ The app menu „Aplikacje” reads `[nogat] gui` from `nogat.toml`, as Obserwato
 ## Layout
 
 - `server/`:
-  - `app.py`: routes, headers, cache;
+  - `app.py`: routes, headers, cache; `attribution.py`: the providers' lines;
   - `store.py`: catalogs, series indexes, station Parquet files;
   - `hydrolog_bridge.py`;
   - `analyses/`: `hydro.py`, `meteo.py` and their prototypes.
 - `web/`:
-  - `index.html` and `src/`: Preact with htm, the panel and the map; `src/symbols.js`: hydro.imgw.pl's station symbols; `src/current.js`: the current measurements; `src/pmaxtp/`: the PMAXTP view;
+  - `index.html` and `src/`: Preact with htm, the panel and the map; `src/symbols.js`: hydro.imgw.pl's station symbols; `src/current.js`: the current measurements; `src/pmaxtp/`: the PMAXTP view; `src/attribution.js`: the lines drawn;
   - `src/charts/`: Hydrolog's chart module, copied, with a `date` axis and a `band` series added;
   - `vendor/`: Preact, htm, MapLibre and Archiwista's glyphs;
   - `nogat/`: the kit and tokens, byte for byte.

@@ -1,5 +1,8 @@
 """The mockup's server: the page, a private GET-only API over the demo store, analyses.
 
+Every response with provider data or results carries `attribution` and `terms_notice`
+(Nogat DEV §20, ECO-060) from `server/attribution.py`.
+
 Run: `OBSERWATOR_MOCKUP_ROOT=<store> uvicorn server.app:app --port 8060` from `mockup/gui`.
 """
 
@@ -24,20 +27,19 @@ from typing import Any
 
 import numpy as np
 from starlette.applications import Starlette
-from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import obserwator
 from obserwator import _environment as environment
-from obserwator.messages import localize, message
-from server import hydrolog_bridge
+from obserwator.messages import localize
+from server import attribution, hydrolog_bridge
 from server.analyses import BadParam, Context, NoData, Params, registry
 from server.store import Store
 
@@ -66,6 +68,7 @@ def _station_entry(feature: Any) -> dict[str, Any]:
         "kind": props.get("kind"),
         "meteo_kind": props.get("meteo_kind"),
         "active": props.get("active"),
+        "location_source": props.get("location_source"),
         "lon": lon,
         "lat": lat,
         "datasets": [d["dataset"] for d in datasets],
@@ -76,6 +79,8 @@ def _station_entry(feature: Any) -> dict[str, Any]:
 
 STATIONS = [_station_entry(f) for f in store.catalog]
 FEATURES = {f.station_code: f for f in store.catalog}
+#: The sources of the whole catalog: the lines of the station list and of the map's „Stacje”.
+CATALOG_SOURCES = sorted({source for f in store.catalog for source in attribution.station_sources(f.provider, f.properties)})
 
 
 def _station_doc(code: str) -> dict[str, Any]:
@@ -136,20 +141,36 @@ async def meta(request: Request) -> JSONResponse:
             "series": {k: {"version": v.name, "year_type": v.year_type, "stations": len(v.stations)} for k, v in store.versions.items()},
             "analyses": {name: {"kind": a.kind, "title": a.title} for name, a in ANALYSES.items()},
             "gui": environment.gui_addresses() or {},
+            "attribution": attribution.meta(),
             "mockup": True,
         }
     )
 
 
 async def stations(request: Request) -> JSONResponse:
-    return _json({"count": len(STATIONS), "stations": STATIONS})
+    return _json({"count": len(STATIONS), "stations": STATIONS, **attribution.fields(*CATALOG_SOURCES)})
 
 
 async def station(request: Request) -> JSONResponse:
+    """
+    A station's catalog entry and coverage, with its lines; `attribution_parts` gives the
+    lines of each part of its panel: the catalog, the series and the results computed
+    from them (the current values carry theirs in api/current).
+    """
     try:
-        return _json(_station_doc(request.path_params["code"]))
+        doc = _station_doc(request.path_params["code"])
     except NoData as exc:
         return _error(404, "not_found", str(exc))
+    provider, props = doc["provider"], doc["properties"]
+    catalog = attribution.fields(*attribution.station_sources(provider, props))
+    held = bool(doc["datasets"])
+    doc.update(catalog)
+    doc["attribution_parts"] = {
+        "catalog": catalog,
+        "series": attribution.fields(*attribution.station_sources(provider, props, location=False)) if held else None,
+        "results": attribution.fields(*attribution.station_sources(provider, props, location=False, results=True)) if held else None,
+    }
+    return _json(doc)
 
 
 async def series(request: Request) -> JSONResponse:
@@ -185,7 +206,7 @@ async def series(request: Request) -> JSONResponse:
         "units": {n: data.units.get(n) for n in names},
         "values": {n: data.values[n][mask] for n in names},
         "flags": flags,
-        "attribution": _attribution(dataset),
+        **_dataset_fields(dataset),
     }
     if data.period is not None:
         out["period"] = data.period[mask]
@@ -195,8 +216,9 @@ async def series(request: Request) -> JSONResponse:
     return _json(out)
 
 
-def _attribution(dataset: str) -> str:
-    return obserwator.get_provider(obserwator.get_dataset(dataset).provider).processed_attribution
+def _dataset_fields(dataset: str) -> dict[str, list[str]]:
+    """The attribution lines and terms of a dataset's series."""
+    return attribution.fields(*attribution.dataset_sources(dataset, obserwator.get_dataset(dataset).provider))
 
 
 _RESULTS: OrderedDict[tuple[str, ...], dict[str, Any]] = OrderedDict()
@@ -215,6 +237,12 @@ def _run_analysis(name: str, code: str, params: Params) -> dict[str, Any]:
     result = ANALYSES[name].function(ctx, params)
     result.setdefault("analysis", name)
     result.setdefault("station", code)
+    # A result is computed from the station's data; a precipitation card adds PMAXTP
+    sources = attribution.station_sources(doc["provider"], doc["properties"], location=False, results=True)
+    pmaxtp_part = result.get("pmaxtp")
+    if isinstance(pmaxtp_part, dict) and pmaxtp_part.get("available"):
+        sources.append("pmaxtp")
+    result.update(attribution.fields(*sources))
     with _RESULTS_LOCK:
         _RESULTS[key] = result
         while len(_RESULTS) > 500:
@@ -427,12 +455,14 @@ async def current(request: Request) -> Response:
         if all(snap.items is None for snap in snaps.values()):
             errors = "; ".join(dict.fromkeys(snap.error for snap in snaps.values() if snap.error))
             return _error(503, "unavailable", errors or "Brak danych bieżących IMGW-PIB.")
+        # Values of danepubliczne.imgw.pl and water states of hydro.imgw.pl
         return _json(
             {
                 "source": "IMGW-PIB",
                 "snapshots": _snapshot_times(snaps),
                 "hydro": _hydro_points(snaps["states"], snaps["hydro"]),
                 "meteo": _meteo_points(snaps["meteo"]),
+                **attribution.fields("imgw", "imgw-hydro"),
             }
         )
     feature = FEATURES.get(code)
@@ -455,6 +485,7 @@ async def current(request: Request) -> Response:
         "source": "IMGW-PIB",
         "snapshots": _snapshot_times(snaps),
         "record": main.items.get(code),
+        **attribution.fields(*(("imgw", "imgw-hydro") if kind == "hydro" else ("imgw",))),
     }
     if kind == "hydro":
         state = (snaps["states"].items or {}).get(code)
@@ -469,24 +500,12 @@ PMAXTP_TTL = 86400.0
 PMAXTP_ENTRIES = 1000
 PMAXTP_METHODS = ("POT", "AMP")
 #: PMAXTP's own terms („Regulamin udostępniania danych projektu PMAXTP” on
-#: https://klimat.imgw.pl/opady-maksymalne, read on 2026-11-13): the source with the
-#: project's page and the monograph, and the mark of processed data, on every work or file.
-PMAXTP_TERMS = {
-    "source": (
-        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy "
-        "Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne"
-    ),
-    "processed": (
-        "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego "
-        "pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone"
-    ),
-    "monograph": (
-        "Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i "
-        "prawdopodobieństwie przewyższenia – Projekt PMAXTP, red. Bogdan Ozga-Zieliński, "
-        "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
-    ),
-    "monograph_url": "https://www.imgw.pl/sites/default/files/2022-12/imgw-pib-monografia_modele-probabilistyczne-opadow-maksymalnych.pdf",
+#: https://klimat.imgw.pl/opady-maksymalne, read on 2026-11-13) replace IMGW-PIB's lines:
+#: PS, PP and the monograph M (server/attribution.py). The page and the monograph's PDF
+#: are links of the panel.
+PMAXTP_LINKS = {
     "page": "https://klimat.imgw.pl/opady-maksymalne",
+    "monograph": "https://www.imgw.pl/sites/default/files/2022-12/imgw-pib-monografia_modele-probabilistyczne-opadow-maksymalnych.pdf",
 }
 PMAXTP_TABLES = {
     "ks": "kwantyle opadu maksymalnego",
@@ -553,8 +572,8 @@ def _pmaxtp_doc(method: str, lat: float, lon: float) -> dict[str, Any]:
             "command": obserwator.format_command("pmaxtp fetch", options=options),
             "files": {"csv": f"{stem}.csv", "json": f"{stem}.json"},
             "tables": PMAXTP_TABLES,
-            "terms": PMAXTP_TERMS,
-            "notice": str(message(_NOTICES["IMGW-PIB"], lang="pl")),
+            "links": PMAXTP_LINKS,
+            **attribution.fields("pmaxtp"),
         }
     with _PMAXTP_CACHE:
         _PMAXTP[key] = (time.monotonic(), doc)
@@ -566,23 +585,20 @@ def _pmaxtp_doc(method: str, lat: float, lon: float) -> dict[str, Any]:
 
 def _pmaxtp_csv(doc: dict[str, Any]) -> str:
     """
-    One header row, then a row per table and duration with a column per probability [%];
-    PMAXTP's attribution, processed mark and monograph only in the first data row, as
-    Obserwator's series CSV carries its attribution (UTF-8, comma, dot decimal, CRLF).
+    One header row, then a row per table and duration with a column per probability [%],
+    and the columns `attribution` and `terms_notice`: PMAXTP's lines and terms one per
+    cell from the first data row down (DEV-20.5). UTF-8, comma, dot decimal, CRLF.
     """
     probabilities = doc["probabilities"]
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\r\n")
-    writer.writerow(
-        ["method", "latitude", "longitude", "table", "duration [min]", *(f"p={p}% [mm]" for p in probabilities), "attribution_source", "attribution_processed", "monograph"]
-    )
-    terms = doc["terms"]
-    tail = [terms["source"], terms["processed"], terms["monograph"]]
-    for table in ("ks", "sg", "rb"):
-        for duration in doc["durations"]:
-            row = doc["data"][table].get(duration, {})
-            writer.writerow([doc["method"], f"{doc['latitude']:.4f}", f"{doc['longitude']:.4f}", table, duration, *(row.get(p, "") for p in probabilities), *tail])
-            tail = ["", "", ""]
+    writer.writerow(["method", "latitude", "longitude", "table", "duration [min]", *(f"p={p}% [mm]" for p in probabilities), "attribution", "terms_notice"])
+    rows = [(table, duration) for table in ("ks", "sg", "rb") for duration in doc["durations"]]
+    lines = attribution.spread(doc["attribution"], len(rows))
+    terms = attribution.spread(doc.get("terms_notice", []), len(rows))
+    for index, (table, duration) in enumerate(rows):
+        row = doc["data"][table].get(duration, {})
+        writer.writerow([doc["method"], f"{doc['latitude']:.4f}", f"{doc['longitude']:.4f}", table, duration, *(row.get(p, "") for p in probabilities), lines[index], terms[index]])
     return out.getvalue()
 
 
@@ -595,8 +611,7 @@ def _pmaxtp_file_document(doc: dict[str, Any]) -> dict[str, Any]:
         "units": {"ks": "mm", "sg": "mm", "rb": "mm", "duration": "min", "probability": "%"},
         "fetched_at": doc["fetched_at"],
         "source_url": doc["source_url"],
-        "terms": doc["terms"],
-        "notice": doc["notice"],
+        **attribution.fields("pmaxtp"),
     }
 
 
@@ -751,6 +766,8 @@ def _handoff_doc(code: str, variable: str, resolution: str | None, first: int | 
         "created_at": _utc_now(),
         "producer": {"tool": "obserwator", "version": obserwator.__version__, "page": page},
         "subject": f"{station_name}{river} — {variable}, {what}",
+        # The provider's lines and terms travel with the series (DEV-20.6, DEV-20.7)
+        **_dataset_fields(origin["dataset"]),
         "provenance": {"series": origin},
         "payload": payload,
     }
@@ -781,21 +798,15 @@ async def handoff(request: Request) -> Response:
     return _json(doc)
 
 
-_NOTICES = {"IMGW-PIB": "datasets.provider_notice_imgw", "CHMI": "datasets.provider_notice_chmi"}
-
-
 def _licence(dataset: str) -> dict[str, Any]:
-    """The provider's attribution formulas, licence and notice of a dataset (Polish)."""
+    """The provider's licence of a dataset and its terms page; the lines are `attribution`."""
     descriptor = obserwator.get_dataset(dataset)
     provider = obserwator.get_provider(descriptor.provider)
     return {
         "provider": provider.short_name,
-        "attribution": descriptor.license.attribution,
-        "processed": provider.processed_attribution,
         "licence": descriptor.license.id,
         "url": descriptor.license.url,
         "terms_url": descriptor.license.terms_url,
-        "notice": str(message(_NOTICES[provider.id], lang="pl")),
     }
 
 
@@ -830,12 +841,19 @@ def _export_document(dataset: str, code: str) -> dict[str, Any]:
         "units": data.units,
         "rows": int(data.dates.size),
         "columns": columns,
-        "attribution": _licence(dataset),
+        "licence": _licence(dataset),
+        **_dataset_fields(dataset),
     }
 
 
 async def export(request: Request) -> Response:
-    """A station's series as a file: Obserwator's CSV (`export_series`) or the JSON document."""
+    """
+    A station's series as a file: Obserwator's CSV (`export_series`) or the JSON document.
+
+    The CSV keeps every row and column of `export_series`, whose first data row has the
+    columns `attribution_source` and `attribution_processed`, and adds the columns
+    `attribution` and `terms_notice` of DEV-20.5, which the library does not write yet.
+    """
     params = request.query_params
     code = params.get("station", "")
     dataset = params.get("dataset", "")
@@ -845,23 +863,22 @@ async def export(request: Request) -> Response:
     if not _holds(dataset, code):
         return _error(404, "not_found", "Stacja nie ma szeregu tego zbioru.")
     name = _export_name(code, dataset, fmt)
+    headers = {"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"}
     if fmt == "json":
         doc = await run_in_threadpool(_export_document, dataset, code)
         body = json.dumps(_clean(doc), ensure_ascii=False).encode()
-        return Response(body, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"})
+        return Response(body, media_type="application/json", headers=headers)
     folder = Path(tempfile.mkdtemp(prefix="obserwator-mockup-"))
     try:
         await run_in_threadpool(obserwator.export_series, root=ROOT, dataset=dataset, station=code, format="csv", output=folder / name)
+        text = (folder / name).read_bytes().decode("utf-8")  # CRLF rows kept as written
     except (obserwator.ObserwatorError, OSError) as exc:
-        shutil.rmtree(folder, ignore_errors=True)
         return _error(422, str(getattr(exc, "code", "io_error")), _hide_paths(str(exc)))
-    return FileResponse(
-        folder / name,
-        media_type="text/csv; charset=utf-8",
-        filename=name,
-        headers={"Cache-Control": "no-cache"},
-        background=BackgroundTask(shutil.rmtree, folder, True),
-    )
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    sources = attribution.dataset_sources(dataset, obserwator.get_dataset(dataset).provider)
+    body = attribution.with_columns(text, *sources).encode()
+    return Response(body, media_type="text/csv; charset=utf-8", headers=headers)
 
 
 async def export_info(request: Request) -> Response:
@@ -880,7 +897,7 @@ async def export_info(request: Request) -> Response:
         options={"root": str(ROOT), "dataset": dataset, "station": code, "format": "csv", "output": str(target)},
     )
     line = line.replace(f" --root {shlex.quote(str(ROOT))}", "").replace(shlex.quote(str(target)), shlex.quote(names["csv"]))
-    return _json({"station": code, "dataset": dataset, "files": names, "command": line, "licence": _licence(dataset)})
+    return _json({"station": code, "dataset": dataset, "files": names, "command": line, "licence": _licence(dataset), **_dataset_fields(dataset)})
 
 
 # --- security headers ----------------------------------------------------------------

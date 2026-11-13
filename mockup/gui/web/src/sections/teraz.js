@@ -8,9 +8,11 @@
 //   synoptic station adds the last report of `current synop` (temperature, wind and its
 //   direction, humidity, the precipitation total, pressure).
 // IMGW-PIB's API gives its times in UTC (current.js). Obserwator does not serve ČHMÚ's
-// current data.
+// current data. Under the values: the lines and terms of the response (Nogat DEV §20): S, P
+// for danepubliczne.imgw.pl, and H for the water state of hydro.imgw.pl.
 
 import { api } from "../api.js";
+import { Attribution } from "../attribution.js";
 import { SOURCES, clock, measuredAt } from "../current.js";
 import { fmt, html, useEffect, useState } from "../lib.js";
 import { SymbolIcon, hydroState, meteoClass } from "../symbols.js";
@@ -142,10 +144,11 @@ function Teraz({ station }) {
       : null}
     <div class="btn-row">
       <button type="button" class="btn sm" disabled=${state.loading} onClick=${() => setRound(round + 1)}>Odśwież</button>
-      <span class="muted small">Źródło: IMGW-PIB, dane operacyjne</span>
+      <span class="muted small">Dane operacyjne IMGW-PIB, bieżące, nie archiwalne</span>
     </div>
+    ${doc ? html`<${Attribution} fields=${doc} className="sec-attrib" />` : null}
   </${Section}>`;
 }
 
 /** The section „Pomiary bieżące”. */
-export const TERAZ = { id: "teraz", title: "Pomiary bieżące", component: Teraz };
+export const TERAZ = { id: "teraz", title: "Pomiary bieżące", component: Teraz, part: null };

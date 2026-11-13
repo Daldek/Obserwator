@@ -1,8 +1,9 @@
 /*
  * The map (src/map.js): the basemap's greys in both themes, the station symbols of
  * hydro.imgw.pl (src/symbols.js), the tooltip, the legend (bottom left; zoom bottom right,
- * Nogat design/README.md) and the note shown without WebGL. map.js reads the --map-* and
- * --imgw-* colours when the map starts and again when the theme changes.
+ * Nogat design/README.md), the providers' strip under the map and the note shown without
+ * WebGL. map.js reads the --map-* and --imgw-* colours when the map starts and again when
+ * the theme changes.
  */
 
 :root {
@@ -84,8 +85,15 @@
   --imgw-outline: #a8b1bd;
 }
 
-.map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); }
+.map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); display: flex; flex-direction: column; }
+.map-stage { position: relative; flex: 1; min-height: 0; }
 .map { position: absolute; inset: 0; }
+/* The providers' lines and terms of the data drawn (src/attribution.js): under the map, never folded */
+.map-credits {
+  flex: none; max-height: 40%; overflow-y: auto;
+  padding: 5px 12px 6px; border-top: 1px solid var(--line); background: var(--surface);
+}
+.map-credits .attrib { font-size: 11px; line-height: 1.35; }
 .map .maplibregl-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* MapLibre's controls in the tokens */
@@ -162,4 +170,6 @@ html[data-theme="dark"] .map-wrap .maplibregl-ctrl-icon { filter: invert(0.9); }
 @media (max-width: 860px) {
   .map-legend { left: 6px; bottom: 6px; max-width: calc(100% - 64px); }
   .legend-list.two { grid-template-columns: max-content; }
+  .map-credits { padding: 4px 8px 5px; max-height: 34%; }
+  .map-credits .attrib { font-size: 10.5px; line-height: 1.3; }
 }

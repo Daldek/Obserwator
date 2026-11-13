@@ -37,7 +37,7 @@ export const api = {
   stations: () => get("api/stations"),
   /** One station: catalog properties and the datasets that hold it. */
   station: (code) => get(`api/station/${encodeURIComponent(code)}`),
-  /** A station's series: {dates, values: {V: [...]}, units, flags, version, attribution, …}. */
+  /** A station's series: {dates, values: {V: [...]}, units, flags, version, attribution, terms_notice, …}. */
   series: (code, dataset, { variables, from, to } = {}) =>
     get(`api/series/${encodeURIComponent(code)}`, { dataset, variables: variables && variables.join(","), from, to }),
   /** An analysis of a station with its options (strings): the analysis' document. */

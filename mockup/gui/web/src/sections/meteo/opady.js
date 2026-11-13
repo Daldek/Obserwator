@@ -2,6 +2,7 @@
 // precipitation and the intensity, heavy precipitation, the maxima of 1 to 10 days and their
 // quantiles (Hydrolog's `stats flood-frequency`) beside PMAXTP of the station's point.
 
+import { Attribution } from "../../attribution.js";
 import { Chart, fmt, html, useMemo, useState } from "../../lib.js";
 import { Figures, Section, Seg, Table, YearRange, useAnalysis } from "../common.js";
 import {
@@ -453,7 +454,10 @@ function Quantiles({ state, opt, setOpt }) {
     <h4 class="me-sub">Opad maksymalny P_p [mm]</h4>
     <${Table} columns=${columns} rows=${rows} />
     ${pm && !pm.available ? html`<p class="muted me-caption">PMAXTP: ${pm.reason}</p>` : null}
-    ${pm && pm.available ? html`<p class="muted me-caption">POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania ${pm.duration_min / 60} h) dla punktu ${fmt(pm.latitude, 4)}° N, ${fmt(pm.longitude, 4)}° E. ${pm.attribution}.</p>` : null}
+    ${pm && pm.available
+      ? html`<p class="muted me-caption">POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania ${pm.duration_min / 60} h) dla punktu ${fmt(pm.latitude, 4)}° N, ${fmt(pm.longitude, 4)}° E. Dane PMAXTP mają własny regulamin:</p>
+          <${Attribution} fields=${pm} className="sec-attrib" />`
+      : null}
     <details class="me-details"><summary>Wszystkie rozkłady i miary zgodności</summary>
       <${Table} columns=${allColumns} rows=${allRows} />
       <${Table} columns=${fitColumns} rows=${fitRows} />

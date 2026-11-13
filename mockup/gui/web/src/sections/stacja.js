@@ -8,9 +8,9 @@ import { KINDS, PERIODS, PROVIDERS, datasetTitle, variableInfo } from "../words.
 import { Section, Table } from "./common.js";
 
 const LOCATION_SOURCES = {
-  api_hydro: "bieżące API IMGW-PIB, stacje hydrologiczne",
-  api_meteo: "bieżące API IMGW-PIB, stacje meteorologiczne",
-  static: "plik położeń stacji hydrologicznych w pakiecie Obserwatora",
+  api_hydro: "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje hydrologiczne",
+  api_meteo: "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje meteorologiczne",
+  static: "mapa serwisu hydrologicznego IMGW-PIB (hydro.imgw.pl), plik położeń w pakiecie Obserwatora",
   chmi_hydro_now: "bieżące metadane ČHMÚ, hydrologia",
   chmi_hydro_meta3: "metadane ČHMÚ (meta3), hydrologia",
   chmi_hydro_stations: "wykaz stacji ČHMÚ, hydrologia",
@@ -111,4 +111,4 @@ function Stacja({ station }) {
 }
 
 /** The section „Informacje o stacji”. */
-export const STACJA = { id: "stacja", title: "Informacje o stacji", component: Stacja };
+export const STACJA = { id: "stacja", title: "Informacje o stacji", component: Stacja, part: "catalog" };

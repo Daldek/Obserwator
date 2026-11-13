@@ -3,13 +3,19 @@
 // 2026-11-13: „Informacje o stacji” and „Pomiary bieżące” at the top, then „Dane
 // pomiarowo-obserwacyjne”, then the hydrological (HYDRO_SECTIONS) or meteorological
 // (METEO_SECTIONS) analyses by the station's kind, then „Pobierz”. A registry entry is
-// `{id, title, component, available?}`: the panel draws the title as the card's header and,
-// when open, `component({station, meta})` inside; `available(station) === false` leaves the
-// card out. A station without series shows its catalog data and says the store holds none. A
-// section that throws is shown as an error in its card, the others go on.
+// `{id, title, component, available?, part?}`: the panel draws the title as the card's header
+// and, when open, `component({station, meta})` inside; `available(station) === false` leaves
+// the card out. A station without series shows its catalog data and says the store holds
+// none. A section that throws is shown as an error in its card, the others go on.
+//
+// Under each open section with data the panel draws the provider's lines and terms (Nogat
+// DEV §20, attribution.js): those of the station's `attribution_parts` named by the entry's
+// `part` ("catalog", "series", or by default "results"); `part: null` means the section
+// draws its own from its response („Pomiary bieżące”).
 
 import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
+import { Attribution, catalogSources, compose, useTexts } from "./attribution.js";
 import { fmt, html, useEffect, useState } from "./lib.js";
 import { HYDRO_SECTIONS } from "./sections/hydro/index.js";
 import { METEO_SECTIONS } from "./sections/meteo/index.js";
@@ -115,6 +121,7 @@ export function StationPanel({ code, meta, open, focus, onToggle }) {
           ${isOpen
             ? html`<div class="acc-body" id=${`sec-${entry.id}`}>
                 <${Guard} key=${`${code}:${entry.id}`}><${Body} station=${station} meta=${meta} /></${Guard}>
+                ${entry.part === null ? null : html`<${Attribution} fields=${(station.attribution_parts || {})[entry.part || "results"]} className="sec-attrib" />`}
               </div>`
             : null}
         </section>`;
@@ -130,6 +137,7 @@ export function StationPanel({ code, meta, open, focus, onToggle }) {
  * @returns {object}
  */
 export function NoStation({ meta, stations }) {
+  const texts = useTexts();
   const count = (test) => stations.filter(test).length;
   const series = meta ? Object.entries(meta.series || {}) : [];
   return html`<div class="no-station">
@@ -163,5 +171,6 @@ export function NoStation({ meta, stations }) {
           .join(", ")}) jeszcze się pobierają; pojawią się po ponownym uruchomieniu serwera makiety.</p>`
       : null}
     ${meta ? html`<p class="note">Obserwator ${meta.obserwator} · Hydrolog ${meta.hydrolog}</p>` : null}
+    <${Attribution} fields=${compose(texts, catalogSources(stations))} className="sec-attrib" />
   </div>`;
 }

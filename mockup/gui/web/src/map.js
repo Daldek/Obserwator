@@ -18,7 +18,12 @@
 // The selected station is its symbol at 32 px, as on hydro.imgw.pl. A tooltip names the
 // station and its latest values; a click selects it. Colours come from css/map.css
 // (tokens), read again when the theme changes.
+//
+// Under the map, a strip carries the providers' lines and terms of the data the view draws
+// (Nogat DEV §20, attribution.js). It never folds: MapLibre's compact attribution control,
+// which collapses after the first drag, keeps the basemap's credit only.
 
+import { Attribution } from "./attribution.js";
 import { REFRESH_MS, clock, measuredAt } from "./current.js";
 import { fmt, html, useEffect, useRef, useState } from "./lib.js";
 import { PMAXTP_BOUNDS } from "./pmaxtp/state.js";
@@ -372,14 +377,15 @@ const LOCALE = {
  *   fly: {code: string, n: number}|null, view: "stations"|"current"|"pmaxtp",
  *   current: {doc: object|null, error: Error|null, loading: boolean},
  *   pick: {lat: number, lon: number}|null, pickFly: {n: number}|null,
+ *   credits: {attribution: string[], terms_notice: string[]}|null,
  *   onSelect: (code: string) => void, onPick: (point: {lat: number, lon: number}) => void}} props
  *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
  *   the selected one, a request to fly to a station, the view, the current measurements
- *   (current.js), the point picked for PMAXTP and a request to fly to it, the selection's
- *   and the pick's handlers
- * @returns {object} the map with its legend
+ *   (current.js), the point picked for PMAXTP and a request to fly to it, the lines and
+ *   terms of the data drawn, the selection's and the pick's handlers
+ * @returns {object} the map with its legend and the providers' strip
  */
-export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onSelect, onPick }) {
+export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, credits, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
@@ -543,14 +549,17 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
     tipBody = html`<${StationTip} station=${byCode.get(tip.code)} />`;
   }
   return html`<div class="map-wrap">
-    <div class="map" ref=${box} role="region" aria-label="Mapa stacji"></div>
-    ${failure
-      ? html`<div class="map-failure" role="status">
-          <strong>Ta przeglądarka nie rysuje mapy</strong> (MapLibre: ${failure.message || String(failure)}). Lista stacji, panel stacji i formularz PMAXTP działają dalej.
-        </div>`
-      : null}
-    ${tipBody ? html`<div class="map-tip" style=${{ left: `${tip.x}px`, top: `${tip.y}px` }} role="tooltip">${tipBody}</div>` : null}
-    <${Legend} view=${view} basemap=${basemap} current=${current} />
+    <div class="map-stage">
+      <div class="map" ref=${box} role="region" aria-label="Mapa stacji"></div>
+      ${failure
+        ? html`<div class="map-failure" role="status">
+            <strong>Ta przeglądarka nie rysuje mapy</strong> (MapLibre: ${failure.message || String(failure)}). Lista stacji, panel stacji i formularz PMAXTP działają dalej.
+          </div>`
+        : null}
+      ${tipBody ? html`<div class="map-tip" style=${{ left: `${tip.x}px`, top: `${tip.y}px` }} role="tooltip">${tipBody}</div>` : null}
+      <${Legend} view=${view} basemap=${basemap} current=${current} />
+    </div>
+    ${credits ? html`<footer class="map-credits" aria-label="Źródła danych mapy"><${Attribution} fields=${credits} inline=${true} /></footer>` : null}
   </div>`;
 }
 
