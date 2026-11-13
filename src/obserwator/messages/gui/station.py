@@ -74,6 +74,39 @@ MESSAGES: dict[str, Text] = {
         "no Hydrolog: no analyses computed on request",
         "bez Hydrologa: bez analiz liczonych na żądanie",
     ),
+    "station.none.files": Text("Download the station list", "Pobierz listę stacji"),
+    "station.none.files_info": Text(
+        "Each file is made by the command obserwator stations export "
+        "(export_stations) from the current station catalogs in the server's data "
+        "root, stations without coordinates included. GeoJSON: one document "
+        "obserwator-stations-export/1, a FeatureCollection with the catalogs read, the "
+        "series holding each station and the providers' lines. CSV: UTF-8, comma, "
+        "decimal point, one row per station with its catalog properties, coordinates, "
+        "datasets and the providers' lines. Without --root the command reads "
+        "Obserwator's default data root.",
+        "Każdy plik tworzy polecenie obserwator stations export (export_stations) z "
+        "bieżących katalogów stacji w katalogu danych serwera, razem ze stacjami bez "
+        "współrzędnych. GeoJSON: jeden dokument obserwator-stations-export/1, "
+        "FeatureCollection z odczytanymi katalogami, szeregami, w których jest każda "
+        "stacja, i wierszami dostawców. CSV: UTF-8, przecinek, kropka dziesiętna, "
+        "wiersz na stację z jej właściwościami z katalogu, współrzędnymi, zbiorami i "
+        "wierszami dostawców. Bez --root polecenie czyta domyślny katalog danych "
+        "Obserwatora.",
+    ),
+    "station.none.files_stations": Text("Stations in the file", "Stacje w pliku"),
+    "station.none.files_note": Text(
+        "The file takes only the list's provider and kind: the dataset chips and "
+        "“active only” do not narrow it.",
+        "Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i "
+        "„tylko czynne” go nie zawężają.",
+    ),
+    "station.none.files_cli": Text(
+        "{format} from the command line", "{format} z wiersza poleceń"
+    ),
+    "station.none.files_failed": Text(
+        "The station list cannot be offered: {message}",
+        "Nie można udostępnić listy stacji: {message}",
+    ),
     # --- „Informacje o stacji” ------------------------------------------------------------
     "station.info.catalog": Text("Catalog data", "Dane katalogowe"),
     "station.info.code": Text("Station code", "Kod stacji"),

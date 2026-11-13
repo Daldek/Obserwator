@@ -3,15 +3,17 @@
 
 Every series file the panel offers, in each format, is byte for byte the file of
 `export_series` with the same options; the command line it shows for a format, run on the
-fixture root (`obserwator.run_command`), makes that very file; and the hand-off of the daily
+fixture root (`obserwator.run_command`), makes that very file; the hand-off of the daily
 series to Hydrolog, saved or copied, is a `nogat-handoff/1` valid against Nogat's schema
-that holds the series' days with values.
+that holds the series' days with values; and „Pobierz listę stacji” of the panel without a
+station gives the stations of the list's provider and kind as `export_stations` makes them.
 """
 
 from __future__ import annotations
 
 import csv
 import json
+import re
 import urllib.parse
 from pathlib import Path
 from typing import Any
@@ -19,7 +21,7 @@ from typing import Any
 import jsonschema
 import pytest
 
-from obserwator import export_series, parse_command, run_command
+from obserwator import export_series, export_stations, parse_command, run_command
 from tests.e2e.conftest import FIXTURE_STATIONS
 
 expect = pytest.importorskip("playwright.sync_api").expect
@@ -39,6 +41,11 @@ WAIT = 20_000
 HANDOFF_SCHEMA = (
     Path(__file__).resolve().parents[2] / "schemas" / "nogat" / "handoff-1.schema.json"
 )
+RADIOS = {
+    "pl": {"CHMI": "ČHMÚ", "meteo": "Meteorologiczne"},
+    "en": {"CHMI": "ČHMÚ", "meteo": "Meteorological"},
+}
+"""The labels of the list's provider and kind filters chosen in a test."""
 
 
 def files_card(open_page: Any, code: str) -> Any:
@@ -179,3 +186,65 @@ def test_the_hand_off_is_a_valid_nogat_hand_off_of_the_daily_series(
     assert held == days
     assert document["provenance"]["series"]["station"] == code
     assert document["attribution"]
+
+
+@pytest.mark.parametrize(
+    ("lang", "theme", "width", "provider", "kind"),
+    [("pl", "light", 1440, None, None), ("en", "dark", 390, "CHMI", "meteo")],
+)
+def test_the_station_list_files_are_the_export_of_the_list_selection(
+    open_page: Any,
+    gui_root: Path,
+    gui_url: str,
+    lang: str,
+    theme: str,
+    width: int,
+    provider: str | None,
+    kind: str | None,
+) -> None:
+    page = open_page(lang=lang, theme=theme, width=width, height=844)
+    phone = width < 860
+    toggle = ".map-bar .panel-toggle.{}"
+    if provider or kind:
+        if phone:
+            page.locator(toggle.format("left")).click()
+        stations = page.locator("#panel-left")
+        for value in (provider, kind):
+            if value:
+                choice = stations.get_by_role(
+                    "radio", name=RADIOS[lang][value], exact=True
+                )
+                choice.click()
+                expect(choice).to_have_attribute("aria-checked", "true")
+        if phone:
+            page.keyboard.press("Escape")
+    if phone:
+        page.locator(toggle.format("right")).click()
+    card = page.locator("#panel-right .no-station .stations-files")
+    selection = {
+        key: value for key, value in (("provider", provider), ("kind", kind)) if value
+    }
+    offered = page.request.get(
+        f"{gui_url}api/downloads/stations", params=selection
+    ).json()
+    expect(card.locator(".files-count")).to_have_text(
+        re.compile(rf"^{offered['stations']}$"), timeout=WAIT
+    )
+    for fmt in ("geojson", "csv"):
+        link = card.locator(f'.files a[data-format="{fmt}"]')
+        expect(link).to_have_attribute("download", offered["formats"][fmt]["file"])
+        name, body = download(link)
+        assert name == offered["formats"][fmt]["file"]
+        made = "".join(
+            export_stations(
+                gui_root,
+                format="csv" if fmt == "csv" else "geojson",
+                provider=provider,
+                kind="meteo" if kind == "meteo" else "hydro" if kind else None,
+            )
+        )
+        assert body == made.encode("utf-8"), (fmt, selection)
+        line = card.locator(f'[data-format="{fmt}"] pre.code').inner_text()
+        assert line == offered["formats"][fmt]["command"]
+    assert offered["attribution"]
+    expect(card.locator(".sec-attrib")).to_contain_text(offered["attribution"][0])

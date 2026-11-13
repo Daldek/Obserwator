@@ -199,7 +199,7 @@ function App({ lang: language }) {
         short: station ? station.name || station.code : t("shell.panel.station"),
         body: selected
           ? html`<${StationPanel} key=${selected} code=${selected} session=${session} open=${open} focus=${start.station === selected ? start.section : null} onToggle=${toggle} />`
-          : html`<${NoStation} session=${session} stations=${all} />`,
+          : html`<${NoStation} session=${session} stations=${all} provider=${filters.provider} kind=${filters.kind} />`,
       };
   return html`
     <${TopBar}

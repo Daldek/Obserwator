@@ -50,8 +50,8 @@ export function Command({ line, label }) {
   </div>`;
 }
 
-/** The provider's terms or licence of a series, and ČHMÚ's disclaimer. */
-function Licence({ licence }) {
+/** The provider's terms or licence of a series or file, and ČHMÚ's disclaimer (also panel.js). */
+export function Licence({ licence }) {
   if (!licence || !licence.url) return null;
   const name = licence.id === licence.provider ? t("station.files.terms", { provider: licence.provider }) : t("station.files.licence", { licence: String(licence.id).replace(/-/g, " ") });
   return html`<p class="licence muted">

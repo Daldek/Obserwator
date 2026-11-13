@@ -93,6 +93,12 @@ export const api = {
   stripes: (code, options = {}, { signal } = {}) => get(`api/prototype/stripes/${enc(code)}`, options, { signal }),
   /** The files of a station: each series in each format, its command line and licence. */
   downloads: (code) => get(`api/downloads/${enc(code)}`),
+  /**
+   * The stations of the current catalogs as files (`export_stations`): {provider, kind,
+   * stations, formats: {geojson, csv: {file, url, command}}, licences, attribution,
+   * terms_notice}; `provider` and `kind` empty for every one.
+   */
+  stationsDownloads: ({ provider, kind } = {}) => get("api/downloads/stations", { provider, kind }),
   /** IMGW-PIB's current data: the points of „Pomiary bieżące” (never memoised). */
   current: () => get("api/current", {}, { memo: false }),
   /** One station's current values (IMGW-PIB only). */

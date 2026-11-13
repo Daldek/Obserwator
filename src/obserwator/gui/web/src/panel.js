@@ -21,17 +21,19 @@ import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
 import { Attribution, catalogSources, compose, useTexts } from "./attribution.js";
 import { fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
-import { ResultLines } from "./sections/common.js";
+import { ResultLines, Section } from "./sections/common.js";
 import { DANE } from "./sections/dane.js";
 import { HYDRO_SECTIONS } from "./sections/hydro/index.js";
 import { METEO_SECTIONS } from "./sections/meteo/index.js";
-import { POBIERZ } from "./sections/pobierz.js";
+import { Command, Licence, POBIERZ } from "./sections/pobierz.js";
 import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
 import { DATASET_STEPS, datasetTitle, kindName, providerFullName, providerName } from "./words.js";
 
 /** The providers of the catalogs, in the order the panel lists them. */
 const PROVIDERS = ["IMGW-PIB", "CHMI"];
+/** The names of the formats of a stations file. */
+const STATIONS_FORMATS = { geojson: "GeoJSON", csv: "CSV" };
 
 /** The analysis sections of a kind of station. */
 function analysisSections(kind) {
@@ -218,13 +220,68 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
 }
 
 /**
- * The panel without a station: how to choose one and what the data root holds.
+ * „Pobierz listę stacji”: the stations of the list's provider and kind as the files of
+ * `export_stations` (api/downloads/stations), each format's command line, the licences and
+ * the lines; fetched again when the provider or the kind changes.
  *
- * @param {{session: object|null, stations: object[]}} props api/session and the stations
- *   of api/stations
+ * @param {{provider: string|null, kind: string|null}} props null for every one
  * @returns {object}
  */
-export function NoStation({ session, stations }) {
+function StationsFiles({ provider, kind }) {
+  const [state, setState] = useState({ doc: null, error: null });
+  useEffect(() => {
+    let live = true;
+    setState({ doc: null, error: null });
+    api.stationsDownloads({ provider, kind }).then(
+      (doc) => live && setState({ doc, error: null }),
+      (error) => live && setState({ doc: null, error }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [provider, kind]);
+  const { doc, error } = state;
+  const formats = doc ? Object.keys(doc.formats) : [];
+  return html`<div class="stations-files">
+    <${Section} title=${t("station.none.files")} info=${t("station.none.files_info")}>
+      <table class="params compact">
+        <tbody>
+          <tr><th scope="row">${t("stations.list.provider")}</th><td>${provider ? providerName(provider) : t("stations.list.provider_all")}</td></tr>
+          <tr><th scope="row">${t("stations.list.kind")}</th><td>${kind ? t(`stations.list.kind_${kind}`) : t("stations.list.kind_all")}</td></tr>
+          <tr><th scope="row">${t("station.none.files_stations")}</th><td class="files-count">${doc ? fmt(doc.stations) : "…"}</td></tr>
+        </tbody>
+      </table>
+      <p class="note">${t("station.none.files_note")}</p>
+      ${error
+        ? html`<p class="ana-error" role="alert">${t("station.none.files_failed", { message: error.message })}</p>`
+        : doc
+          ? html`<div class="btn-row files">
+                ${formats.map(
+                  (key) => html`<a class="btn sm" href=${doc.formats[key].url} download=${doc.formats[key].file} data-format=${key}>
+                    <span class="fmt">${STATIONS_FORMATS[key] || key}</span>${doc.formats[key].file}
+                  </a>`,
+                )}
+              </div>
+              ${formats.map(
+                (key) => html`<div data-format=${key}><${Command} line=${doc.formats[key].command} label=${t("station.none.files_cli", { format: STATIONS_FORMATS[key] || key })} /></div>`,
+              )}
+              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} />`)}
+              <${Attribution} fields=${doc} className="sec-attrib" />`
+          : html`<p class="muted" role="status">${t("station.files.loading")}</p>`}
+    </${Section}>
+  </div>`;
+}
+
+/**
+ * The panel without a station: how to choose one, what the data root holds and the
+ * stations of the list's provider and kind to download.
+ *
+ * @param {{session: object|null, stations: object[], provider?: string, kind?: string}}
+ *   props api/session, the stations of api/stations and the list's provider and kind
+ *   filters ("all" or none for every one)
+ * @returns {object}
+ */
+export function NoStation({ session, stations, provider = "all", kind = "all" }) {
   const texts = useTexts();
   const count = (test) => fmt(stations.filter(test).length);
   const root = session ? session.root : null;
@@ -253,6 +310,7 @@ export function NoStation({ session, stations }) {
         <tr><th scope="row">${t("station.none.without_location")}</th><td>${count((s) => s.lon === null)}</td></tr>
       </tbody>
     </table>
+    <${StationsFiles} provider=${provider === "all" ? null : provider} kind=${kind === "all" ? null : kind} />
     <h3 class="group-title">${t("station.none.series")}</h3>
     ${series.length
       ? html`<table class="params compact">
