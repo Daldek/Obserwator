@@ -10,16 +10,17 @@
 // series_sha256}], `hydrolog` {version}, `computed_at`, `stored` (true for a stored result),
 // `analyses_version`, `attribution` and `terms_notice`.
 //
-// The panel draws the lines of the results a card shows under it: a card's body sits in a
-// `ResultLines` provider whose value is called with each analysis document its sections get.
+// The view's strip shows the lines of the results a card shows: a card's body sits in a
+// `ResultLines` provider whose value is called with each document with lines its sections get.
 
 import { api } from "../api.js";
 import { has } from "../i18n.js";
 import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, useState } from "../lib.js";
 
 /**
- * Where the analysis documents of a card go (the panel's provider): a function called with
- * each `obserwator-analysis/1` a section receives, so the card shows their lines.
+ * Where the documents of a card go (the panel's provider): a function called with each
+ * `obserwator-analysis/1` or other answer with lines a section receives, so the panel's
+ * strip carries their lines.
  */
 export const ResultLines = createContext(null);
 

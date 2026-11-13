@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **GUI: one compact strip of provider lines per view (Nogat DEV-20.5, ECO-064, kit 0.5.1).**
+  The lines under the map, under every open card of the station panel and under PMAXTP's tables
+  give way to one `<nogat-sources>` of the kit across the page under the map and both panels,
+  fed the union of the `attribution` and `terms_notice` of what the list, the map and the right
+  panel show, the basemap's credit after it; S, P, PS, PP and „Źródło: ČHMÚ, CC BY 4.0” on
+  screen, every line, the terms and „Regulamin” in the dialog of „Źródła i warunki”. On a phone
+  the sheets stop above it. A first visit opens a welcome window with the same full content.
+  Files, PNG and SVG images, hand-offs and the API's `attribution` and `terms_notice` keep the
+  full lines.
 - **Web GUI: `obserwator gui serve` (ADR-013, GUI plan S1 and S2).** A Starlette app of its own
   (extra `gui`: Starlette and uvicorn; entry point `nogat.gui` → `obserwator.gui:gui_module`;
   `create_app`, `serve`) serves the page and a private API relative to it, GET and HEAD only:

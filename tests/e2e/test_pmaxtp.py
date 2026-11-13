@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.conftest import PMAXTP_POINT, THEMES, WIDTHS
 
@@ -81,10 +82,13 @@ def test_typed_coordinates_show_the_tables_with_the_link_to_imgw(
     link = page.locator(f'.pmaxtp-result a[href="{answer["source_url"]}"]')
     assert link.is_visible()
     assert link.get_attribute("target") == "_blank"
-    # the lines of PMAXTP are under the table
-    lines = page.locator(".pmaxtp-result .attrib").inner_text()
-    for line in answer["attribution"]:
-        assert line in lines
+    # PMAXTP's lines are the view's strip: PS and PP on screen, every line behind it
+    strip = page.locator(".view-foot nogat-sources")
+    expect(strip.locator(".nogat-sources-strip")).to_contain_text(
+        answer["attribution"][0]
+    )
+    assert strip.evaluate("(element) => element.attribution") == answer["attribution"]
+    assert strip.evaluate("(element) => element.termsNotice") == answer["terms_notice"]
 
 
 @pytest.mark.parametrize("width", WIDTHS)

@@ -9,16 +9,15 @@
 //   direction, humidity, the precipitation total, pressure).
 // IMGW-PIB's API gives its times in UTC, shown as such (current.js `measuredAt`).
 // Obserwator serves no current data of ČHMÚ: the section says so in the words of the
-// server's answer (`errors.no_current_chmi`) without asking it. Under the values: the
-// lines and terms of the response (Nogat DEV §20): S, P of danepubliczne.imgw.pl, and H
-// for the water state of hydro.imgw.pl.
+// server's answer (`errors.no_current_chmi`) without asking it. The response's lines and
+// terms (Nogat DEV §20: S, P of danepubliczne.imgw.pl, and H for the water state of
+// hydro.imgw.pl) go to the view's strip (`ResultLines`).
 
 import { api } from "../api.js";
-import { Attribution } from "../attribution.js";
 import { clock, measuredAt } from "../current.js";
-import { fmt, fmtDate, html, t, useEffect, useState } from "../lib.js";
+import { fmt, fmtDate, html, t, useContext, useEffect, useState } from "../lib.js";
 import { SymbolIcon, hydroState, meteoClass } from "../symbols.js";
-import { Figures, Section } from "./common.js";
+import { Figures, ResultLines, Section } from "./common.js";
 
 const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 
@@ -131,6 +130,10 @@ function Teraz({ station }) {
       live = false;
     };
   }, [station.code, round]);
+  const report = useContext(ResultLines);
+  useEffect(() => {
+    if (report && state.doc) report(state.doc);
+  }, [report, state.doc]);
   if (!imgw) {
     return html`<p class="note-box">${t("errors.no_current_chmi")} ${t("station.now.chmi_note")}</p>`;
   }
@@ -147,7 +150,6 @@ function Teraz({ station }) {
       <button type="button" class="btn sm" disabled=${state.loading} onClick=${() => setRound(round + 1)}>${t("station.now.refresh")}</button>
       <span class="muted small">${t("station.now.operational")}</span>
     </div>
-    ${doc ? html`<${Attribution} fields=${doc} className="sec-attrib" />` : null}
   </${Section}>`;
 }
 

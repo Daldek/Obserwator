@@ -90,14 +90,6 @@
 .map-stage { position: relative; flex: 1; min-height: 0; }
 .map { position: absolute; inset: 0; }
 .map .maplibregl-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-/* The providers' lines and terms of the data drawn and the basemap's credit (src/attribution.js):
-   under the map, never folded */
-.map-credits {
-  flex: none; max-height: 40%; overflow-y: auto;
-  padding: 5px 12px 6px; border-top: 1px solid var(--line); background: var(--surface);
-}
-.map-credits .attrib { font-size: 11px; line-height: 1.35; }
-
 /* The zoom buttons, bottom right */
 .map-zoom {
   position: absolute; right: 10px; bottom: 10px; z-index: 3;
@@ -199,7 +191,5 @@
   .legend-list.two { grid-template-columns: max-content; }
   .map-zoom { right: 6px; bottom: 6px; }
   .map-zoom button { width: 40px; height: 40px; }
-  .map-credits { padding: 4px 8px 5px; max-height: 34%; }
-  .map-credits .attrib { font-size: 10.5px; line-height: 1.3; }
   .ds-chip { min-height: 32px; }
 }

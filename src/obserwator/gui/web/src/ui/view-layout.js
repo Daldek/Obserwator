@@ -1,12 +1,14 @@
 // The layout of the view (Nogat design/README.md, Layout; after Hydrolog's GUI,
 // src/ui/view-layout.js): „Stacje” on the left, the map in the centre, „Stacja” on the right.
-//   html`<${ViewLayout} left=${{title, sub, body, foot}} center=${{bar, body, foot, label}}
-//     right=${{title, sub, body, short, badge}} />`
+//   html`<${ViewLayout} left=${{title, sub, body}} center=${{bar, body, label}}
+//     right=${{title, sub, body, short, badge}} foot=${foot} />`
 // The side panels resize by dragging or by keys (arrows 16 px, Shift 64 px, Home, End,
 // Enter or a double click for the default width), left 260-560 px (300) and right
 // 340-720 px (400), keeping the centre at least 480 px; the widths are kept in the
 // browser. At 860 px and below the panels are bottom sheets, opened from the map's bar.
-// The centre's `foot` is its status bar, under the map.
+// The `foot` runs across the whole view under the map and both panels (after Hydrograf's
+// #view-foot): the view's one strip of provider lines and the statement of a public
+// deployment. On a phone the sheets stop above it (`--view-foot-h`), so it stays in sight.
 
 import { useLayoutEffect, useRef, useState } from "../../vendor/preact/hooks.mjs";
 import { html, t } from "../lib.js";
@@ -144,25 +146,38 @@ function Panel({ side, panel, open, sheet, onClose }) {
       </button>
     </div>
     <div class="view-panel-body">${panel.body}</div>
-    ${panel.foot ? html`<div class="panel-foot">${panel.foot}</div>` : null}
   </aside>`;
 }
 
 /**
- * The layout: the list, the map and the station.
+ * The layout: the list, the map and the station, and the foot across them.
  *
- * @param {{left: {title?: any, sub?: any, body: any, foot?: any}, center: {bar?: any, body: any,
- *   foot?: any, label?: string}, right: {title?: any, sub?: any, body: any, short?: string,
- *   badge?: any}}} props the panels and the centre; `right.short` and `right.badge` label the
- *   bar's button that opens the station panel (a sheet on a phone); `center.foot` is the
- *   status bar under the map
+ * @param {{left: {title?: any, sub?: any, body: any}, center: {bar?: any, body: any,
+ *   label?: string}, right: {title?: any, sub?: any, body: any, short?: string, badge?: any},
+ *   foot?: any}} props the panels and the centre; `right.short` and `right.badge` label the
+ *   bar's button that opens the station panel (a sheet on a phone); `foot` is the view's
+ *   foot under the map and both panels
  * @returns {object} the layout
  */
-export function ViewLayout({ left, center, right }) {
+export function ViewLayout({ left, center, right, foot }) {
   const panels = usePanels();
   const box = useRef(null);
+  const footBox = useRef(null);
   const [, setDragged] = useState(0);
   const [total, setTotal] = useState(0);
+  // The foot's height, for the phone's sheets to stop above it
+  useLayoutEffect(() => {
+    const element = footBox.current;
+    if (!element) return undefined;
+    const measure = () => box.current && box.current.style.setProperty("--view-foot-h", `${element.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (box.current) box.current.style.removeProperty("--view-foot-h");
+    };
+  }, [Boolean(foot)]);
   useLayoutEffect(() => {
     const measure = () => {
       if (box.current && box.current.clientWidth) setTotal(box.current.clientWidth);
@@ -219,9 +234,9 @@ export function ViewLayout({ left, center, right }) {
         <div class="end">${button("right", (right && right.short) || titleOf("right", right), right && right.badge)}</div>
       </div>
       <div class="view-body map-body">${center.body}</div>
-      ${center.foot ? html`<div class="view-foot">${center.foot}</div>` : null}
     </section>
     ${open.right && !panels.phone ? html`<${Resizer} side="right" title=${titleOf("right", right)} ...${sizes.right} onWidth=${onWidth("right")} />` : null}
     <${Panel} side="right" panel=${right} open=${open.right} sheet=${sheet === "right"} onClose=${close("right")} />
+    ${foot ? html`<div class="view-foot" ref=${footBox}>${foot}</div>` : null}
   </div>`;
 }

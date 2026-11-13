@@ -42,7 +42,6 @@
 .me-details > summary { cursor: pointer; color: var(--text-2); }
 .me-details[open] > summary { margin-bottom: var(--space-2); }
 .me-cli { margin: 0; padding: var(--space-2); white-space: pre-wrap; word-break: break-all; font: var(--text-xs) var(--font-mono); background: var(--code-bg); color: var(--code-text); border-radius: var(--radius-sm); }
-.me-card .sec-attrib { margin: 0 0 var(--space-2); }
 
 /* The threshold of the spells: presets, a number of the person's own and „Przelicz” (that
    form takes the look of the period's form, .years of app.css) */
