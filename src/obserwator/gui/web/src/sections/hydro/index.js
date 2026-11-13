@@ -29,7 +29,7 @@ export const HYDRO_SECTIONS = [
   },
   { id: "rating", title: "hydro.section.rating", component: RatingCurve, available: some("rating_curve", "rating_curve.periods") },
   { id: "extremes", title: "hydro.section.extremes", component: Extremes, available: some("flood_frequency.Q", "low_flow.Q", "homogeneity.Q") },
-  { id: "lowflow", title: "hydro.section.lowflow", component: LowFlowPeriods, available: some("low_flow_sequences.Q") },
+  { id: "lowflow", title: "hydro.section.lowflow", component: LowFlowPeriods, available: some("low_flow_sequences.Q", "low_flow_sequences.H") },
   {
     id: "duration",
     title: "hydro.section.duration",
@@ -40,7 +40,11 @@ export const HYDRO_SECTIONS = [
     id: "regime",
     title: "hydro.section.regime",
     component: Regime,
-    available: some(...VARIABLES.flatMap((v) => [`daily.${v}`, `monthly.${v}`]), "regime.Q", "seasonality.Q.max", "seasonality.Q.min"),
+    available: some(
+      ...VARIABLES.flatMap((v) => [`daily.${v}`, `monthly.${v}`]),
+      "regime.Q",
+      ...["Q", "H"].flatMap((v) => [`seasonality.${v}.max`, `seasonality.${v}.min`]),
+    ),
   },
   {
     id: "temperature",

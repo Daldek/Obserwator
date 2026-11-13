@@ -140,6 +140,34 @@ def test_a_threshold_chosen_by_the_person_recomputes_the_periods(
     assert all(item["duration_days"] >= 10 for item in given["sequences"])
 
 
+def test_low_water_periods_of_the_water_level_are_hydrologs(
+    open_page: Any, analysis_url: str
+) -> None:
+    card = section(open_page, analysis_url, KLODZKO, "lowflow")
+    expect(tile(card, "Próg").locator("dd")).to_have_text(
+        re.compile(r"m³/s"), timeout=WAIT
+    )
+    card.get_by_role("radio", name="H · stan wody", exact=True).click()
+    periods = analysis(analysis_url, KLODZKO, "low_flow_sequences.H")
+    threshold = tile(card, "Próg")
+    expect(threshold.locator("dd")).to_have_text(re.compile(r"\scm$"), timeout=WAIT)
+    assert number(figure(card, "Próg")) == pytest.approx(periods["threshold"], abs=0.5)
+    expect(threshold).to_contain_text("SNW", timeout=WAIT)
+    assert number(figure(card, "Niżówek")) == periods["n_events"]
+    assert number(figure(card, "Najdłuższa")) == periods["max_duration_days"]
+    largest = max(periods["sequences"], key=lambda item: item["deficit_volume"])
+    assert largest["deficit_volume_m3"] is None
+    deficit = figure(card, "Największy niedobór")
+    assert deficit.endswith("cm·d")
+    assert number(deficit) == pytest.approx(largest["deficit_volume"], abs=0.5)
+    assert number(figure(card, "Łączny niedobór")) == pytest.approx(
+        periods["total_deficit"], abs=0.5
+    )
+    expect(card.get_by_role("radio", name="H90", exact=True)).to_be_visible()
+    provenance(card, "stats low-flow-sequences")
+    expect(card.get_by_role("button", name="Kopiuj do Hydrologa")).to_be_visible()
+
+
 def test_duration_curves_and_zones_are_hydrologs(
     open_page: Any, analysis_url: str
 ) -> None:
@@ -199,6 +227,38 @@ def test_regime_and_seasonality_are_hydrologs(
     expect(tile(card, "Średni termin NQ").locator("dd")).to_have_text(
         f"{day} {roman[month - 1]}", timeout=WAIT
     )
+
+
+def test_the_seasonality_of_the_water_levels_extremes_is_hydrologs(
+    open_page: Any, analysis_url: str
+) -> None:
+    card = section(open_page, analysis_url, KLODZKO, "regime")
+    expect(tile(card, "Średni termin WQ").locator("dd")).to_have_text(
+        re.compile(r"\d"), timeout=WAIT
+    )
+    seasonality = (
+        card.locator("section.ana")
+        .filter(has=card.page.locator("h3", has_text="Sezonowość ekstremów rocznych"))
+        .last
+    )
+    seasonality.get_by_role("radio", name="H · stan wody", exact=True).click()
+    roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+    for extreme, name in (("max", "WW"), ("min", "NW")):
+        if extreme == "min":
+            seasonality.get_by_role("radio", name="minima").click()
+        found = analysis(analysis_url, KLODZKO, f"seasonality.H.{extreme}")
+        month, day = (int(part) for part in found["mean_date"].split("-"))
+        expect(tile(card, f"Średni termin {name}").locator("dd")).to_have_text(
+            f"{day} {roman[month - 1]}", timeout=WAIT
+        )
+        assert number(figure(card, "Koncentracja r")) == pytest.approx(
+            found["concentration"], abs=0.005
+        )
+        sources = {"half_years": "półrocza IMGW-PIB", "daily": "szereg dobowy"}
+        assert figure(card, "Źródło") == sources[found["source"]]
+        expect(card.locator("figure.hy-circle circle.hy-circle-dot")).to_have_count(
+            len(found["years"]), timeout=WAIT
+        )
 
 
 def test_water_temperature_is_hydrologs(open_page: Any, analysis_url: str) -> None:
@@ -266,4 +326,34 @@ def test_each_section_reads_in_english_on_a_phone_in_the_dark(
     )
     expect(tile(card, label).locator("dd")).to_have_text(
         re.compile(r"\d"), timeout=WAIT
+    )
+
+
+def test_low_water_periods_of_the_water_level_read_in_english_on_a_phone_in_the_dark(
+    open_page: Any, analysis_url: str
+) -> None:
+    card = section(
+        open_page,
+        analysis_url,
+        KLODZKO,
+        "lowflow",
+        theme=THEMES[1],
+        width=WIDTHS[1],
+        lang="en",
+    )
+    expect(tile(card, "Threshold").locator("dd")).to_have_text(
+        re.compile(r"m³/s"), timeout=WAIT
+    )
+    card.get_by_role("radio", name="H · water level", exact=True).click()
+    periods = analysis(analysis_url, KLODZKO, "low_flow_sequences.H")
+    threshold = tile(card, "Threshold")
+    expect(threshold.locator("dd")).to_have_text(
+        re.compile(rf"^{periods['threshold']:.0f}\s+cm$"), timeout=WAIT
+    )
+    expect(threshold).to_contain_text("SNW, the mean of the annual minima")
+    expect(tile(card, "Low-flow periods").locator("dd")).to_have_text(
+        str(periods["n_events"])
+    )
+    expect(tile(card, "Longest").locator("dd")).to_have_text(
+        f"{periods['max_duration_days']} days"
     )

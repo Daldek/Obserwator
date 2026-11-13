@@ -31,7 +31,7 @@ MESSAGES: dict[str, Text] = {
     "hydro.volume.unit": Text("million m³", "mln m³"),
     "hydro.volume.axis": Text("V [million m³]", "V [mln m³]"),
     # --- „Niżówki” ------------------------------------------------------------------------
-    "hydro.lowflow.info": Text(
+    "hydro.lowflow.info_q": Text(
         "A low-flow period is a run of days with the discharge below a threshold (the "
         "threshold level method; Tallaksen and van Lanen 2004) that lasts at least the "
         "given number of days (5 by default); runs parted by a gap shorter than the "
@@ -55,19 +55,57 @@ MESSAGES: dict[str, Text] = {
         "początku; ciąg przy braku danych mógł trwać dłużej (≥). Liczy Hydrolog („stats "
         "low-flow-sequences”); wykres roku rysuje szereg dobowy z tymi niżówkami.",
     ),
+    "hydro.lowflow.info_h": Text(
+        "A low-water period is a run of days with the water level below a threshold: the "
+        "threshold level method (Tallaksen and van Lanen 2004) applied to the daily water "
+        "levels. The run lasts at least the given number of days (5 by default); runs "
+        "parted by a gap shorter than the merging limit (4 days by default; a day without "
+        "data counts as a gap) make one period. The threshold: SNW, the mean of the annual "
+        "minima of the water level in the period; H70 or H90, the level equalled or "
+        "exceeded on 70 or 90 % of the days of the period (the duration curve); or a "
+        "value given in cm. The duration includes the days of the gaps; the deficit sums "
+        "(threshold − H) over the days below the threshold, in cm·d (centimetres times "
+        "days), as Hydrolog gives it: a measure of how deep and long the level stayed "
+        "low, not a volume of water. The water level depends on the gauge's zero and on "
+        "the river bed, so thresholds and deficits compare within one station, not "
+        "between stations. A period belongs to the hydrological year (November to "
+        "October) in which it starts; one beside missing data may have lasted longer "
+        "(≥). Computed by Hydrolog (“stats low-flow-sequences” of H); the chart of a "
+        "year draws the daily water levels with these periods.",
+        "Niżówka stanów to ciąg dni ze stanem wody poniżej progu: metoda progowa "
+        "(Tallaksen i van Lanen 2004) zastosowana do dobowych stanów wody. Ciąg trwa co "
+        "najmniej podaną liczbę dni (domyślnie 5); ciągi rozdzielone przerwą krótszą niż "
+        "próg łączenia (domyślnie 4 dni; dzień bez danych liczy się jak przerwa) tworzą "
+        "jedną niżówkę. Próg: SNW – średni z rocznych minimów stanu wody w okresie; H70 "
+        "lub H90 – stan osiągany lub przekraczany przez 70 albo 90 % dni okresu (krzywa "
+        "czasu trwania); albo wartość podana w cm. Czas trwania obejmuje dni przerw; "
+        "niedobór sumuje (próg − H) dni poniżej progu, w cm·d (centymetry razy doby), tak "
+        "jak podaje go Hydrolog: miara tego, jak głęboko i długo stan był niski, a nie "
+        "objętość wody. Stan wody zależy od zera wodowskazu i koryta, więc progi i "
+        "niedobory porównuje się w obrębie jednej stacji, nie między stacjami. Niżówkę "
+        "przypisuje się rokowi hydrologicznemu (XI–X) jej początku; ciąg przy braku "
+        "danych mógł trwać dłużej (≥). Liczy Hydrolog („stats low-flow-sequences” dla "
+        "H); wykres roku rysuje dobowe stany wody z tymi niżówkami.",
+    ),
     "hydro.lowflow.threshold": Text("Threshold", "Próg"),
     "hydro.lowflow.threshold_value": Text("value", "wartość"),
     "hydro.lowflow.min_days": Text("min. days", "min. dni"),
     "hydro.lowflow.max_gap": Text(
         "merge gaps shorter than", "łącz przerwy krótsze niż"
     ),
-    "hydro.lowflow.threshold_snq": Text(
-        "SNQ, the mean of the annual minima {from}–{to}",
-        "SNQ, średni z rocznych minimów {from}–{to}",
+    "hydro.lowflow.threshold_mean_minimum": Text(
+        "{name}, the mean of the annual minima {from}–{to}",
+        "{name}, średni z rocznych minimów {from}–{to}",
     ),
-    "hydro.lowflow.threshold_exceedance": Text(
+    "hydro.lowflow.threshold_exceedance_q": Text(
         "Q{percent}, equalled or exceeded on {percent} % of the days {from}–{to}",
         "Q{percent}, osiągany lub przekraczany przez {percent} % dni {from}–{to}",
+    ),
+    "hydro.lowflow.threshold_exceedance_h": Text(
+        "H{percent}, the water level equalled or exceeded on {percent} % of the days "
+        "{from}–{to}",
+        "H{percent}, stan wody osiągany lub przekraczany przez {percent} % dni "
+        "{from}–{to}",
     ),
     "hydro.lowflow.threshold_given": Text("the threshold given", "próg podany"),
     "hydro.lowflow.events": Text("Low-flow periods", "Niżówek"),
@@ -83,7 +121,7 @@ MESSAGES: dict[str, Text] = {
     "hydro.lowflow.metric_name.deficit": Text("deficit", "niedobór"),
     "hydro.lowflow.metric_name.n": Text("number", "liczba"),
     "hydro.lowflow.axis.days": Text("low-flow days", "dni niżówki"),
-    "hydro.lowflow.axis.deficit": Text("deficit [million m³]", "niedobór [mln m³]"),
+    "hydro.lowflow.axis.deficit": Text("deficit [{unit}]", "niedobór [{unit}]"),
     "hydro.lowflow.axis.n": Text("number of low-flow periods", "liczba niżówek"),
     "hydro.lowflow.per_year_title": Text(
         "Low-flow periods by year", "Niżówki w latach"
@@ -97,7 +135,8 @@ MESSAGES: dict[str, Text] = {
         "Loading the year {year}…", "Wczytuję rok {year}…"
     ),
     "hydro.lowflow.deficit_band": Text("deficit", "niedobór"),
-    "hydro.lowflow.daily_flow": Text("daily discharge", "przepływ dobowy"),
+    "hydro.lowflow.daily_q": Text("daily discharge", "przepływ dobowy"),
+    "hydro.lowflow.daily_h": Text("daily water level", "dobowy stan wody"),
     "hydro.lowflow.threshold_mark": Text("threshold {value}", "próg {value}"),
     "hydro.lowflow.table_title": Text(
         "Low-flow periods (latest first)", "Niżówki (od najnowszej)"
@@ -105,8 +144,8 @@ MESSAGES: dict[str, Text] = {
     "hydro.lowflow.col.from": Text("from", "od"),
     "hydro.lowflow.col.to": Text("to", "do"),
     "hydro.lowflow.col.days": Text("days", "dni"),
-    "hydro.lowflow.col.deficit": Text("deficit [million m³]", "niedobór [mln m³]"),
-    "hydro.lowflow.col.min": Text("lowest [m³/s]", "min [m³/s]"),
+    "hydro.lowflow.col.deficit": Text("deficit [{unit}]", "niedobór [{unit}]"),
+    "hydro.lowflow.col.min": Text("lowest [{unit}]", "min [{unit}]"),
     "hydro.lowflow.col.mean": Text("mean", "średnio"),
     "hydro.lowflow.col.missing": Text("days missing", "braki"),
     "hydro.lowflow.open_end": Text("{date} (cut off)", "{date} (urwana)"),
@@ -240,11 +279,12 @@ MESSAGES: dict[str, Text] = {
         "the share of March and April in the annual volume and Walsh and Lawler's (1981) "
         "seasonality index of the monthly volumes, 0 for equal months, 1.83 when one "
         "month holds all (Hydrolog's “stats regime”). Seasonality: the dates of the "
-        "annual maxima and minima as directions on the circle of the year (Bayliss and "
-        "Jones 1993, Burn 1997), their mean date and concentration r from 0 (spread) to "
-        "1 (the same day), the shares of the winter (XI–IV) and summer half-years; from "
-        "IMGW-PIB's half-years where they exist, else from the complete years of the "
-        "daily series (Hydrolog's “stats seasonality”).",
+        "annual maxima and minima of the discharge (WQ, NQ) or of the water level (WW, "
+        "NW) as directions on the circle of the year (Bayliss and Jones 1993, Burn 1997), "
+        "their mean date and concentration r from 0 (spread) to 1 (the same day), the "
+        "shares of the winter (XI–IV) and summer half-years; from IMGW-PIB's half-years "
+        "where they exist, else from the complete years of the daily series (Hydrolog's "
+        "“stats seasonality”).",
         "Reżim dobowy: dla każdej doby roku hydrologicznego (1 = 1 XI) największa, "
         "średnia, mediana i najmniejsza wartość wszystkich lat (Hydrolog „stats daily”). "
         "Statystyki miesięczne miesięcy kalendarzowych, tu w kolejności roku "
@@ -255,11 +295,12 @@ MESSAGES: dict[str, Text] = {
         "większy z III i IV, Perz 2019; letni – największy z VI–VIII); udział marca i "
         "kwietnia w odpływie rocznym i wskaźnik sezonowości Walsha i Lawlera (1981) "
         "objętości miesięcznych: 0 – równomierny, 1,83 – cały odpływ w jednym miesiącu "
-        "(Hydrolog „stats regime”). Sezonowość: terminy rocznych maksimów i minimów jako "
-        "kierunki na okręgu roku (Bayliss i Jones 1993, Burn 1997), ich średni termin i "
-        "koncentracja r od 0 (rozproszone) do 1 (ten sam dzień), udział półrocza "
-        "zimowego (XI–IV) i letniego; z półroczy IMGW-PIB, gdzie są, inaczej z pełnych lat "
-        "szeregu dobowego (Hydrolog „stats seasonality”).",
+        "(Hydrolog „stats regime”). Sezonowość: terminy rocznych maksimów i minimów "
+        "przepływu (WQ, NQ) lub stanu wody (WW, NW) jako kierunki na okręgu roku (Bayliss "
+        "i Jones 1993, Burn 1997), ich średni termin i koncentracja r od 0 (rozproszone) "
+        "do 1 (ten sam dzień), udział półrocza zimowego (XI–IV) i letniego; z półroczy "
+        "IMGW-PIB, gdzie są, inaczej z pełnych lat szeregu dobowego (Hydrolog „stats "
+        "seasonality”).",
     ),
     "hydro.regime.daily_monthly_title": Text(
         "Daily and monthly regime", "Reżim dobowy i miesięczny"
