@@ -120,10 +120,11 @@ MESSAGES = {
         "są znane",
     ),
     "provider_notice_imgw": Text(
-        "For private and research use; other uses require checking the IMGW-PIB "
-        "terms, including the exceptions for high-value data.",
-        "Do użytku prywatnego i badawczego; inne zastosowania wymagają sprawdzenia "
-        "warunków IMGW-PIB, także wyjątków dla danych o wysokiej wartości.",
+        "{terms} (In English: IMGW-PIB data may be used free of charge only for "
+        "private, non-profit purposes; business use, websites with advertising and "
+        "the purposes the terms list, such as water management planning under art. "
+        "317 of the Water Law, need an agreement with IMGW-PIB.)",
+        "{terms}",
     ),
     "provider_notice_chmi": Text(
         "The CC BY 4.0 licence permits copying, changes and commercial use provided "

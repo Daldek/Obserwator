@@ -1,5 +1,6 @@
 """Offline tests for ``python -m obserwator.reference_data``."""
 
+import csv
 import runpy
 import warnings
 
@@ -7,8 +8,10 @@ import httpx
 import pytest
 
 from obserwator import reference_data
-from obserwator.datasets import get_provider, station_source_files
+from obserwator.attribution import attribution
+from obserwator.datasets import station_source_files
 from obserwator.stations import HYDRO_MAP_API_URL
+from tests.contract.support import trailing_lines
 
 HYDRO_STATIONS_CSV_URL, METEO_STATIONS_CSV_URL = (
     file.url for file in station_source_files()
@@ -74,22 +77,32 @@ def test_reference_data_main_writes_stations_and_descriptions(
 
     out = capsys.readouterr().out
     assert str(isolated_reference_dir) in out
-    attribution = get_provider("IMGW-PIB").license.attribution
-    assert f"Wymagana atrybucja: {attribution}\n" in out
+    # The lines of the whole directory: the hydro.imgw.pl locations (processed)
+    # and the verbatim format descriptions of danepubliczne.imgw.pl (ADR-012 D8).
+    lines = attribution("imgw_hydro") | attribution("imgw", processed=False)
+    assert "Wymagana atrybucja: {}\n".format("\n".join(lines.lines)) in out
     assert (
         "pominięto: dane_hydrologiczne/dobowe/ZJAW_publiczne_format.txt: HTTP 404"
         in out
     )
     assert "pominięto: k_d_t_format.txt: HTTP 500" in out
-    # Only the locations file and format descriptions are written; latitude
-    # before longitude; stations without coordinates are omitted.
+    # Only the locations file, format descriptions and their lines are written;
+    # latitude before longitude; stations without coordinates are omitted.
     assert {
         path.relative_to(isolated_reference_dir).as_posix()
         for path in isolated_reference_dir.iterdir()
-    } == {"hydro_stations_locations.csv", "desc"}
-    assert (isolated_reference_dir / "hydro_stations_locations.csv").read_text(
+    } == {"hydro_stations_locations.csv", "desc", "ATTRIBUTION.txt"}
+    with (isolated_reference_dir / "hydro_stations_locations.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        table = list(csv.DictReader(handle))
+    assert [
+        (row["station_code"], row["latitude"], row["longitude"]) for row in table
+    ] == [("149190310", "49.61", "20.05")]
+    assert trailing_lines(table) == attribution("imgw_hydro")
+    assert (isolated_reference_dir / "ATTRIBUTION.txt").read_text(
         encoding="utf-8"
-    ).splitlines() == ["station_code,latitude,longitude", "149190310,49.61,20.05"]
+    ) == "".join(f"{line}\n" for line in lines.lines)
 
     desc = isolated_reference_dir / "desc"
     assert {
@@ -129,9 +142,9 @@ def test_reference_data_main_rerun_overwrites_stale_files(
     }
 
     assert first == second
-    assert stale.read_text(encoding="utf-8").splitlines() == [
-        "station_code,latitude,longitude",
-        "149190310,49.61,20.05",
+    assert stale.read_text(encoding="utf-8").splitlines()[:2] == [
+        "station_code,latitude,longitude,attribution,terms_notice",
+        f'149190310,49.61,20.05,"{attribution("imgw_hydro").attribution[0]}',
     ]
 
 

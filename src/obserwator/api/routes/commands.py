@@ -188,6 +188,16 @@ class _Envelope(BaseModel):
     status: Literal["ok", "partial", "failed", "cancelled"] = Field(
         description="ok without failures, partial/failed when items of the report failed"
     )
+    attribution: list[str] | None = Field(
+        None,
+        description="The attribution lines the data providers require, verbatim "
+        "(present when the result carries, reads or writes provider data; ADR-012)",
+    )
+    terms_notice: list[str] | None = Field(
+        None,
+        description="The terms-of-use notice of IMGW-PIB data and the terms that "
+        "apply (present with IMGW-PIB data; ADR-012)",
+    )
     notices: list[Notice] = Field(
         description="The distinct notices in order of first occurrence (e.g. license_terms)"
     )
@@ -552,11 +562,22 @@ def _stream(
         headers={
             "Content-Disposition": f'attachment; filename="{_attachment(route, options)}"',
             "X-Obserwator-Status": envelope.status,
-            "X-Obserwator-Notices": json.dumps(
-                notices, ensure_ascii=True, separators=(",", ":")
-            ),
+            "X-Obserwator-Notices": _ascii_json(notices),
+            **{
+                header: _ascii_json(list(value))
+                for header, value in (
+                    ("X-Obserwator-Attribution", envelope.attribution),
+                    ("X-Obserwator-Terms-Notice", envelope.terms_notice),
+                )
+                if value
+            },
         },
     )
+
+
+def _ascii_json(value: object) -> str:
+    """A header value: compact JSON with every non-ASCII character escaped."""
+    return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
 
 
 def _respond(
@@ -804,7 +825,9 @@ def _add_route(route: _Route) -> None:
     if route.spec.result == "stream":
         responses[200] = {
             "description": "The data stream (an attachment) with the headers "
-            "X-Obserwator-Status and X-Obserwator-Notices",
+            "X-Obserwator-Status and X-Obserwator-Notices and, for data of a "
+            "provider, X-Obserwator-Attribution and X-Obserwator-Terms-Notice "
+            "(JSON arrays of the lines, non-ASCII escaped; the data carry them too)",
             "content": {
                 _MEDIA_TYPES[name]: {"schema": {"type": "string"}}
                 for name in route.schema["properties"]["format"]["enum"]

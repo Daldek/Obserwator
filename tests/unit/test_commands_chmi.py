@@ -398,7 +398,9 @@ def test_unpublished_files_count_as_successful_items_of_a_download(tmp_path):
         result = run_command("datasets download", options=options)
         printed = CliRunner().invoke(cli_app, cli_words("datasets download", options))
 
-    assert [action.status for action in planned.result.actions] == ["missing"] * 2
+    # two files and the ATTRIBUTION.txt of the directory (ADR-012 D5)
+    assert [action.status for action in planned.result.actions] == ["missing"] * 3
+    assert planned.result.actions[-1].path.name == "ATTRIBUTION.txt"
     assert [item.status for item in result.result.items] == ["failed", "not_published"]
     # A failure beside an unpublished candidate is partial, not failed (§13.6).
     assert result.status == "partial"

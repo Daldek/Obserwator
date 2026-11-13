@@ -44,6 +44,7 @@ src/obserwator/
 ├── commands.py           # command catalog (30 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
 ├── coverage.py, exceptions.py (ERROR_CODES), testing.py, config.py, reference_data.py
+├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006)
 ├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
 ├── _data/                # borders, agents/ templates, packaged fixtures

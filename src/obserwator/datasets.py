@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from types import MappingProxyType
 from typing import ClassVar, Literal
 
+from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import Message, message
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
@@ -78,8 +79,10 @@ class License:
         License identifier, e.g. ``"IMGW-PIB"`` (IMGW-PIB terms of use) or
         ``"CC-BY-4.0"``.
     attribution : str
-        Required attribution formula of the source files; it keeps its (Polish)
-        wording in every language, because sidecars and exports persist it.
+        Required attribution formula of the source files (IMGW-PIB ``S``,
+        PMAXTP ``PS``, ČHMÚ ``C`` of `obserwator.attribution`); it keeps its
+        (Polish) wording in every language, because sidecars and exports
+        persist it.
     url : str
         URL of the license or terms of use.
     terms_url : str or None, optional
@@ -117,10 +120,11 @@ class ProviderDescriptor:
         License and attribution of the provider's data.
     processed_attribution : str
         Formula marking processed forms (series, catalog, exports), without
-        a final full stop.
+        a final full stop (IMGW-PIB ``P``, ČHMÚ ``CP``).
     notice : str
         Text of the ``license_terms`` notice that follows the attribution (a
-        catalog message).
+        catalog message): the IMGW-PIB terms notice with its terms, or the
+        CC BY 4.0 note of ČHMÚ.
     station_code_pattern : str
         Regular expression of the provider's station codes.
     datasets : tuple of str
@@ -141,28 +145,34 @@ class ProviderDescriptor:
     station_code_pattern: str
     datasets: tuple[str, ...]
 
-    def license_notice(self, attribution: str | None = None) -> Message:
+    def license_notice(self, lines: Attribution | None = None) -> Message:
         """
         Text of the ``license_terms`` notice of data of this provider.
 
         Parameters
         ----------
-        attribution : str or None, optional
-            The attribution formula the written data carries (the source one
-            with the processed-data formula appended for a derived form);
-            the provider's source formula by default.
+        lines : Attribution or None, optional
+            The lines the written or returned data carry (`obserwator.attribution`):
+            the processed lines of a derived form, the PMAXTP lines of a cell;
+            the provider's lines of a verbatim copy by default.
 
         Returns
         -------
         Message
-            The attribution followed by the provider's notice.
+            The attribution lines followed by the terms notice of IMGW-PIB
+            data or the provider's notice.
         """
+        if lines is None:
+            lines = attribution(provider_origin(self.id), processed=False)
+        notice = (
+            message("datasets.provider_notice_imgw", terms=" ".join(lines.terms_notice))
+            if lines.terms_notice
+            else self.notice
+        )
         return message(
             "datasets.license_notice",
-            attribution=self.license.attribution
-            if attribution is None
-            else attribution,
-            notice=self.notice,
+            attribution=". ".join(lines.attribution),
+            notice=notice,
         )
 
 
@@ -306,6 +316,12 @@ _LICENSE = License(
     "IMGW-PIB",
     message("legal.imgw_attribution"),
     "https://danepubliczne.imgw.pl/regulations",
+)
+# PMAXTP has terms of its own (the project page), with its own formulas.
+_PMAXTP_LICENSE = License(
+    "IMGW-PIB",
+    message("legal.pmaxtp_attribution"),
+    "https://klimat.imgw.pl/opady-maksymalne",
 )
 _CHMI_LICENSE = License(
     "CC-BY-4.0",
@@ -456,7 +472,7 @@ _DATASETS = (
         year_type="none",
         first_year=None,
         update_signal="none",
-        license=_LICENSE,
+        license=_PMAXTP_LICENSE,
         legacy_alias=None,
         in_store=True,
     ),
@@ -639,7 +655,10 @@ _PROVIDERS = (
         base_url=f"{IMGW_PUBLIC_DATA_URL}/",
         license=_LICENSE,
         processed_attribution=message("legal.imgw_processed_attribution"),
-        notice=message("datasets.provider_notice_imgw"),
+        notice=message(
+            "datasets.provider_notice_imgw",
+            terms=" ".join(attribution("imgw").terms_notice),
+        ),
         station_code_pattern=r"^[0-9]{9}$",
         datasets=tuple(item.key for item in _DATASETS if item.provider == "IMGW-PIB"),
     ),

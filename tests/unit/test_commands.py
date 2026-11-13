@@ -996,6 +996,8 @@ def test_check_of_datasets_download_plans_each_target_as_write_replace_or_confli
     ] == [
         ("conflict", target(files[0]), "output_exists", "unverifiable"),
         ("write", target(files[1]), None, "missing"),
+        # the lines of the files merge into the directory's file (ADR-012 D5)
+        ("write", output / "ATTRIBUTION.txt", None, "missing"),
     ]
     assert refused.result.actions[0].detail == (
         f"{target(files[0])} exists, so {files[0].url} is not written; "
@@ -1006,6 +1008,7 @@ def test_check_of_datasets_download_plans_each_target_as_write_replace_or_confli
     )
     assert [(a.action, a.status) for a in forced.result.actions] == [
         ("replace", "unverifiable"),
+        ("write", "missing"),
         ("write", "missing"),
     ]
     document = refused.to_json()["result"]["actions"]

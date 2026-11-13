@@ -18,6 +18,7 @@ import httpx
 from pydantic import ValidationError
 
 from obserwator._version import __version__
+from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
     MonthsArg,
@@ -46,10 +47,12 @@ from obserwator.models import (
 from obserwator.output import (
     FileResult,
     Staging,
+    plan_attribution,
     plan_plain,
     refuse,
     refuse_directory,
     resolve_target,
+    write_attribution,
 )
 from obserwator.urls import build_api_url, build_pmaxtp_url
 
@@ -1178,9 +1181,12 @@ def _download_plain(
     Write the archives as ordinary files below ``directory`` (DEV-19.5 to DEV-19.9).
 
     The names are the server paths. The output directory is checked first
-    (`refuse_directory`), then the full target list, both before the first
-    request (`plan_plain`, `refuse`); each file is streamed to the staging
-    directory, verified and moved into place with ``os.replace``.
+    (`refuse_directory`), then the full target list with the directory's
+    ``ATTRIBUTION.txt``, both before the first request (`plan_plain`,
+    `plan_attribution`, `refuse`); each file is streamed to the staging
+    directory, verified and moved into place with ``os.replace``. Once a file
+    is written, the attribution file gets the lines of the verbatim files
+    (ADR-012) and is the last entry of the returned files.
 
     Raises
     ------
@@ -1193,8 +1199,18 @@ def _download_plain(
         If the output directory cannot be created.
     """
     refuse_directory(directory)
+    lines = attribution(
+        *dict.fromkeys(dataset_origin(archive.dataset) for archive in files),
+        processed=False,
+    )
+    attribution_entry = plan_attribution(directory, lines)
     refuse(
-        plan_plain(directory, [archive.server_path for archive in files], force=force)
+        [
+            *plan_plain(
+                directory, [archive.server_path for archive in files], force=force
+            ),
+            *([] if attribution_entry is None else [attribution_entry]),
+        ]
     )
     with Staging(directory) as staging:
 
@@ -1210,7 +1226,7 @@ def _download_plain(
             target = directory.joinpath(*archive.server_path.split("/"))
             return staging.commit(staged, target, size, sha256)
 
-        return _download_loop(
+        items, written = _download_loop(
             files,
             save,
             timeout=timeout,
@@ -1218,6 +1234,9 @@ def _download_plain(
             on_notice=on_notice,
             cancel=cancel,
         )
+    if written and (noted := write_attribution(directory, lines)) is not None:
+        written = [*written, noted]
+    return items, written
 
 
 def _download_store(

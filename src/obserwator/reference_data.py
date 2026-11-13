@@ -6,15 +6,19 @@ After installing the package (``pip install -e .``), run it with no arguments:
 
 The module reuses ``obserwator.stations.fetch_hydro_states`` (it does not
 duplicate IMGW URLs, parsing, or encoding) and writes only
-``hydro_stations_locations.csv`` and the format descriptions (``desc/``).
+``hydro_stations_locations.csv``, the format descriptions (``desc/``) and
+``ATTRIBUTION.txt``.
 Output goes to ``settings.reference_dir``: ``OBSERWATOR_REFERENCE_DIR``, ``[obserwator]
 reference_dir`` of ``nogat.toml``, else ``<cache_dir>/obserwator/reference`` (the cache
 directory of ``nogat``; ``OBSERWATOR_CACHE_DIR`` moves it). Nothing is written to the
 working directory.
 
-All fetched data comes from IMGW-PIB and is subject to IMGW-PIB's terms of use.
-Regulations and the exact attribution wording:
-https://danepubliczne.imgw.pl/regulations
+All fetched data comes from IMGW-PIB and is subject to IMGW-PIB's terms of use:
+the station locations come from the map of the hydrological service hydro.imgw.pl
+(reference data, never its operational water states) and the format descriptions
+from danepubliczne.imgw.pl. The locations file carries the lines of its data in
+the trailing columns ``attribution`` and ``terms_notice`` and ``ATTRIBUTION.txt``
+the lines of the whole directory (`obserwator.attribution`, ADR-012).
 """
 
 import csv
@@ -26,10 +30,11 @@ from pathlib import Path
 
 import httpx
 
+from obserwator.attribution import attribution
 from obserwator.config import human_language, settings
-from obserwator.datasets import get_provider
 from obserwator.exceptions import ObserwatorError
 from obserwator.messages import Lang, message, reason
+from obserwator.output import write_attribution
 from obserwator.stations import fetch_hydro_states
 
 # Format-description files are not covered by obserwator.stations, so their URLs
@@ -44,8 +49,10 @@ HYDRO_DESC = [
 METEO_INTERVALS = ["dobowe", "miesieczne", "terminowe"]
 METEO_SUBTYPES = ["klimat", "opad", "synop"]
 
-# Required attribution of IMGW-PIB data: the formula of the provider registry.
-ATTRIBUTION = get_provider("IMGW-PIB").license.attribution
+# The lines of the station locations (processed hydro.imgw.pl data) and of the
+# whole directory, the verbatim format descriptions included.
+LOCATION_LINES = attribution("imgw_hydro")
+DIRECTORY_LINES = LOCATION_LINES | attribution("imgw", processed=False)
 
 # Language of the lines this module prints: OBSERWATOR_LANG (Polish by default), Polish
 # also for an unusable value (the CLI reports that one).
@@ -55,16 +62,43 @@ _LANG: Lang = human_language() or "pl"
 def _write_csv(path: Path, header: list[str], rows: Iterable[list[object]]) -> None:
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(header)
+    writer.writerow([*header, "attribution", "terms_notice"])
     count = 0
-    for row in rows:
-        writer.writerow(row)
+    for row, (attributed, notice) in _with_lines(rows):
+        writer.writerow([*row, attributed, notice])
         count += 1
     path.parent.mkdir(parents=True, exist_ok=True)
     # newline="": the csv module already ended each row with \r\n; text mode would
     # turn it into \r\r\n on Windows.
     path.write_text(buf.getvalue(), encoding="utf-8", newline="")
     print(message("reference.rows_written", lang=_LANG, path=path, count=count))
+
+
+def _with_lines(
+    rows: Iterable[list[object]],
+) -> Iterator[tuple[list[object], tuple[str, str]]]:
+    """
+    Rows with the cells of the trailing columns ``attribution`` and ``terms_notice``.
+
+    One line per cell from the first data row down, empty below; the last row
+    of a table with fewer rows than lines holds the rest, joined with a line
+    feed (Nogat DEV-20.5).
+    """
+    listed = list(rows)
+    columns = (LOCATION_LINES.attribution, LOCATION_LINES.terms_notice)
+    for number, row in enumerate(listed):
+        last = number == len(listed) - 1
+        yield (
+            row,
+            (
+                "\n".join(columns[0][number:]) if last else _line(columns[0], number),
+                "\n".join(columns[1][number:]) if last else _line(columns[1], number),
+            ),
+        )
+
+
+def _line(lines: tuple[str, ...], number: int) -> str:
+    return lines[number] if number < len(lines) else ""
 
 
 def _write_bytes(path: Path, data: bytes) -> None:
@@ -152,11 +186,16 @@ def main() -> int:
     print(message("reference.fetching_to", lang=_LANG, directory=reference_dir))
     print(message("reference.terms_of_use", lang=_LANG))
     print(
-        message("reference.required_attribution", lang=_LANG, attribution=ATTRIBUTION)
+        message(
+            "reference.required_attribution",
+            lang=_LANG,
+            attribution="\n".join(DIRECTORY_LINES.lines),
+        )
     )
 
     try:
         fetch_stations(reference_dir)
+        write_attribution(reference_dir, DIRECTORY_LINES)
         fetch_descriptions(reference_dir)
     except (ObserwatorError, httpx.HTTPError) as exc:
         print(

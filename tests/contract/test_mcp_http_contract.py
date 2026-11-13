@@ -74,6 +74,15 @@ def assert_same(answered, result, command: str, options: dict[str, object]) -> N
     data = answered.content
     default = input_schema(command)["properties"]["format"]["default"]
     assert result.content[0].text == data.decode("utf-8")
+    # The lines of a stream travel in its headers (ADR-012 D2).
+    lines = {
+        field: json.loads(answered.headers[f"x-obserwator-{header}"])
+        for field, header in (
+            ("attribution", "attribution"),
+            ("terms_notice", "terms-notice"),
+        )
+        if f"x-obserwator-{header}" in answered.headers
+    }
     assert result.structured_content == {
         "schema": "obserwator-result/1",
         "tool": "obserwator",
@@ -87,6 +96,7 @@ def assert_same(answered, result, command: str, options: dict[str, object]) -> N
             "bytes": len(data),
             "lines": data.count(b"\n"),
         },
+        **lines,
         "notices": json.loads(answered.headers["x-obserwator-notices"]),
     }
 

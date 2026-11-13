@@ -499,6 +499,8 @@ async def _route(
         cast(Any, headers["x-obserwator-status"]),  # a status the REST route wrote
         _summary(tool, options, len(data), text),
         tuple(Notice(**notice) for notice in notices),
+        attribution=tuple(json.loads(headers.get("x-obserwator-attribution", "[]"))),
+        terms_notice=tuple(json.loads(headers.get("x-obserwator-terms-notice", "[]"))),
     ).to_json()
     return _answer(envelope, text)
 

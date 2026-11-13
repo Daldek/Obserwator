@@ -32,4 +32,10 @@ MESSAGES = {
         "{target} leży w magazynie, więc nie zostanie zapisany (dotyczy: {what}); "
         "eksport zapisuje się poza każdym magazynem",
     ),
+    "attribution_what": Text(
+        "the attribution lines and terms notice of the providers' data (merged with "
+        "the lines the file holds)",
+        "linii atrybucji i informacji o warunkach danych dostawców (scalonych z "
+        "liniami, które plik już zawiera)",
+    ),
 }

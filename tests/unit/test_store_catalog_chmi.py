@@ -10,6 +10,7 @@ import pytest
 import respx
 
 from obserwator._version import __version__
+from obserwator.attribution import attribution
 from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorConnectionError,
@@ -62,10 +63,8 @@ CODES = [
     "0-203-1-900004",
     "0-203-1-CB900003",
 ]
-CHMI_ATTRIBUTION = (
-    "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
-    "licencja CC BY 4.0. Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
-)
+# The sidecar keeps one text: C. CP (ADR-012 D4).
+CHMI_ATTRIBUTION = ". ".join(attribution("chmi").attribution)
 
 
 def body(case):

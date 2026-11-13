@@ -381,7 +381,8 @@ async def test_plain_files_inside_an_allowed_directory_are_written(tmp_path):
         failed, document = await call(tool, arguments, allow=(allowed,))
 
     assert not failed, document
-    assert [file["status"] for file in document["result"]["files"]] == ["written"]
+    # the archive and the ATTRIBUTION.txt of the directory (ADR-012 D5)
+    assert [file["status"] for file in document["result"]["files"]] == ["written"] * 2
     assert (allowed / "out" / "plain" / H2024.server_path).read_bytes() == NEW
     assert not (tmp_path / "data").exists()  # a plain write needs no store root
 

@@ -34,6 +34,7 @@ from obserwator._parsing.chmi import (
 )
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
+from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     STATION_CODE_PATTERN,
@@ -978,7 +979,8 @@ def _catalog_bytes(
         else:
             used[source] = used.get(source, 0) + 1
         features.append(feature)
-    document = {"type": "FeatureCollection", "features": features}
+    lines = _catalog_lines(get_provider("IMGW-PIB"), used)
+    document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), without, used, series_only
 
 
@@ -1360,7 +1362,8 @@ def _chmi_catalog_bytes(
         if conflict:
             conflicts.append(code)
         features.append(feature)
-    document = {"type": "FeatureCollection", "features": features}
+    lines = _catalog_lines(get_provider("CHMI"), used)
+    document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), without, used, series_only, conflicts
 
 
@@ -1466,20 +1469,29 @@ def _unverifiable_sources(provider: ProviderDescriptor) -> tuple[tuple[str, str]
     )
 
 
-def _catalog_license(provider: ProviderDescriptor) -> License:
+def _catalog_lines(
+    provider: ProviderDescriptor, used: Mapping[str, int]
+) -> Attribution:
     """
-    License of a provider's catalog sidecar.
+    The lines of a provider's catalog (ADR-012).
 
-    The catalog is a processed form: under CC BY 4.0 (ČHMÚ) its attribution
-    adds the provider's mark of changes (spec 2026-10-18 §7.5, §8). The
-    IMGW-PIB catalog keeps the attribution of the source lists (3.0.0 bytes).
+    The catalog is a processed form of the provider's station lists, so it
+    carries the processed lines (under CC BY 4.0 the provider's mark of
+    changes, spec 2026-10-18 §7.5, §8); a catalog that took any location from
+    the static file, written from the hydro.imgw.pl map, adds its lines.
     """
+    lines = attribution(provider_origin(provider.id))
+    if used.get("static"):
+        lines |= attribution("imgw_hydro")
+    return lines
+
+
+def _catalog_license(provider: ProviderDescriptor, lines: Attribution) -> License:
+    """License of a provider's catalog sidecar: the catalog's lines as its attribution."""
     license_ = provider.license
-    if provider.id == "IMGW-PIB":
-        return license_
     return License(
         license_.id,
-        f"{license_.attribution}. {provider.processed_attribution}",
+        ". ".join(lines.attribution),
         license_.url,
         license_.terms_url,
     )
@@ -1892,6 +1904,7 @@ class _Build:
         without: int,
         from_series: int,
         problems: list[str],
+        lines: Attribution,
     ) -> CatalogReport:
         """
         Publish the catalog bytes as a new version unless the current one is equal.
@@ -1906,6 +1919,9 @@ class _Build:
             Station counts of the report.
         problems : list of str
             Problems of the report.
+        lines : Attribution
+            The lines the catalog carries, also the attribution of its
+            sidecar and of the ``license_terms`` notice.
 
         Returns
         -------
@@ -1931,7 +1947,7 @@ class _Build:
             )
         now = datetime.now(UTC)
         label = now.date().isoformat()
-        license_ = _catalog_license(provider)
+        license_ = _catalog_license(provider, lines)
         meta = {
             "schema": "obserwator-meta/1",
             "producer": "obserwator",
@@ -1971,7 +1987,7 @@ class _Build:
                 Notice(
                     "info",
                     LICENSE_NOTICE,
-                    provider.license_notice(license_.attribution),
+                    provider.license_notice(lines),
                 )
             )
         return CatalogReport(
@@ -2227,6 +2243,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
         without=without,
         from_series=len(series_only),
         problems=problems,
+        lines=_catalog_lines(owner, used),
     )
 
 
@@ -2350,4 +2367,5 @@ def _build_chmi(build: _Build) -> CatalogReport:
         without=without,
         from_series=len(series_only),
         problems=problems,
+        lines=_catalog_lines(owner, used),
     )

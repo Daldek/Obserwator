@@ -14,6 +14,7 @@ import httpx
 import pytest
 import respx
 
+from obserwator.attribution import attribution
 from obserwator.datasets import archive_files, station_source_files
 from obserwator.exceptions import (
     ObserwatorConnectionError,
@@ -640,7 +641,8 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(store, isolated_referenc
         f"stations/versions/{datetime.now(UTC).date().isoformat()}_{hashlib.sha256(raw).hexdigest()[:8]}/stations.geojson"
     )
     assert document["type"] == "FeatureCollection"
-    assert set(document) == {"type", "features"}  # no crs member, no catalog date
+    # no crs member, no catalog date; the lines of ADR-012 D4
+    assert set(document) == {"type", "features", "attribution", "terms_notice"}
     for feature in document["features"]:
         assert (
             feature["type"] == "Feature"
@@ -657,6 +659,11 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(store, isolated_referenc
         warsaw["properties"]["kind"] == "meteo"
         and warsaw["properties"]["location_source"] == "api_meteo"
     )
+    # A location from the static file of the hydro.imgw.pl map adds H and RH.
+    static_station = next(f for f in document["features"] if f["id"] == "149190312")
+    assert static_station["properties"]["location_source"] == "static"
+    lines = attribution("imgw") | attribution("imgw_hydro")
+    assert {key: document[key] for key in lines.fields()} == lines.fields()
     meta = json.loads(
         report.version.with_name("stations.geojson.meta.json").read_text(
             encoding="utf-8"
@@ -668,6 +675,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(store, isolated_referenc
     )
     assert meta["size_bytes"] == len(raw)
     assert meta["license"]["id"] == "IMGW-PIB"
+    assert meta["license"]["attribution"] == ". ".join(lines.attribution)
     assert meta["extra"]["version"]["label_source"] == "downloaded"
     by_source = {entry["source"]: entry for entry in meta["extra"]["catalog"]}
     assert set(by_source) == {

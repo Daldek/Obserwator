@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import obserwator.store.export as export_module
+from obserwator.attribution import attribution
 from obserwator.datasets import archive_files
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -28,6 +29,7 @@ from obserwator.store import (
     read_series_index,
     write_archive,
 )
+from tests.contract.support import trailing_lines
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
 DAILY = "pl.imgw.hydro_daily"
@@ -36,8 +38,14 @@ HALF = "pl.imgw.hydro_semiannual"
 MONTHLY = "pl.imgw.hydro_monthly"
 STATION = "149190310"
 METEO_STATION = "123750000"
-SOURCE = "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy"
-PROCESSED = "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone"
+SOURCE, PROCESSED = attribution("imgw").attribution
+# The trailing columns of every series CSV (ADR-001 Q10, ADR-012 D4).
+ATTRIBUTION_COLUMNS = [
+    "attribution_source",
+    "attribution_processed",
+    "attribution",
+    "terms_notice",
+]
 
 
 def zipped(name, lines):
@@ -135,8 +143,7 @@ def test_csv_has_units_header_formulas_once_and_every_day(hydro_year, tmp_path):
         "H_flag",
         "Q [m3/s]",
         "Q_flag",
-        "attribution_source",
-        "attribution_processed",
+        *ATTRIBUTION_COLUMNS,
     ]
     assert len(data) == 366 == read_series_index(hydro_year).stations[STATION].rows
     assert [row["date"] for row in data] == [
@@ -151,6 +158,7 @@ def test_csv_has_units_header_formulas_once_and_every_day(hydro_year, tmp_path):
         row["attribution_source"] == row["attribution_processed"] == ""
         for row in data[1:]
     )
+    assert trailing_lines(data) == attribution("imgw")
     assert (
         data[0]["H [cm]"],
         data[0]["H_flag"],
@@ -214,8 +222,7 @@ def test_meteo_defaults_to_calendar_and_keeps_zero_and_accumulated_flags(
         "year",
         "P [mm]",
         "P_flag",
-        "attribution_source",
-        "attribution_processed",
+        *ATTRIBUTION_COLUMNS,
     ]
     by_date = {row["date"]: row for row in data}
     assert [
@@ -273,8 +280,7 @@ def test_half_year_has_period_and_extrema_columns_and_rejects_calendar(root, tmp
         "H_max_start",
         "H_max_end",
         "H_max_occurrences",
-        "attribution_source",
-        "attribution_processed",
+        *ATTRIBUTION_COLUMNS,
     ]
     assert {row["period"] for row in data} == {"winter", "summer", "annual"}
     assert {row["year"] for row in data} == {"2024"}
@@ -294,8 +300,7 @@ def test_monthly_has_no_period_column(root, tmp_path):
         "year",
         "H_mean [cm]",
         "H_mean_flag",
-        "attribution_source",
-        "attribution_processed",
+        *ATTRIBUTION_COLUMNS,
     ]
     assert data and all(row["date"].endswith("-01") for row in data)
 

@@ -1,3 +1,4 @@
+import html as html_text
 import json
 import re
 from html.parser import HTMLParser
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from obserwator import archive_files, run_command, station_source_files
 from obserwator.api.main import app
+from obserwator.attribution import attribution
 from obserwator.store.types import page_cursor
 from obserwator.web.app import router as web_router
 
@@ -56,6 +58,20 @@ def _links(html: str) -> list[str]:
 
 def _station_codes(html: str) -> list[str]:
     return re.findall(r"<td><code>([0-9]{9})</code></td>", html)
+
+
+def _provider_lines(html: str) -> tuple[str, ...]:
+    """The visible provider lines of a page or partial, unescaped, in order."""
+    return tuple(
+        html_text.unescape(line)
+        for line in re.findall(r'<p class="provider-line[^"]*">([^<]*)</p>', html)
+    )
+
+
+def _embedded_json(html: str, name: str) -> object:
+    found = re.search(rf"const {name} = (.+);\n", html)
+    assert found is not None
+    return json.loads(found.group(1))
 
 
 def _stations_find(**options: object) -> list[str]:
@@ -122,6 +138,21 @@ def test_web_app_page_title_uses_base_layout(client):
     response = client.get("/download/archives")
 
     assert "<title>Dane archiwalne | Obserwator</title>" in response.text
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/download", "/download/pmaxtp", "/stations", "/map"]
+)
+def test_web_app_pages_without_provider_data_show_no_provider_lines(client, path):
+    html = client.get(path).text
+
+    assert _provider_lines(html) == ()
+
+
+def test_web_app_archive_page_shows_lines_of_verbatim_imgw_files(client):
+    html = client.get("/download/archives").text
+
+    assert _provider_lines(html) == attribution("imgw", processed=False).lines
 
 
 def _app_menu(html: str) -> dict[str, str | None]:
@@ -255,6 +286,22 @@ def test_web_app_download_links_golden_urls_and_columns(client):
     assert "<th>Miesiąc</th>" not in synop.text
 
 
+def test_web_app_download_links_and_wget_script_carry_imgw_lines(client):
+    response = client.post(
+        "/download/files", data={"dataset": "pl.imgw.hydro_daily", "years": "2023"}
+    )
+    lines = attribution("imgw", processed=False)
+
+    # S alone (links to untouched files), then N and RD.
+    assert _provider_lines(response.text) == lines.lines
+    wget = re.search(
+        r'<script type="application/json" id="wget-provider-lines">([^<]*)</script>',
+        response.text,
+    )
+    assert wget is not None
+    assert json.loads(wget.group(1)) == list(lines.lines)
+
+
 def test_web_app_download_semi_annual_checked_params_only(client):
     response = client.post(
         "/download/files",
@@ -333,11 +380,8 @@ def test_web_app_pmaxtp_renders_tables_and_embeds_result_for_export(
     # Formatted quantile (ks, 60 min, p=1%) and missing probability rendered as "-"
     assert "<td>28.40</td>" in html
     assert "<td>-</td>" in html
-    for label in ("Pobierz CSV", "Pobierz XLSX", "Pobierz JSON"):
-        assert label in html
-    embedded = re.search(r"const pmaxtpData = (.+);\n", html)
-    assert embedded is not None
-    data = json.loads(embedded.group(1))
+    data = _embedded_json(html, "pmaxtpData")
+    assert isinstance(data, dict)
     assert (data["method"], data["latitude"], data["longitude"]) == (
         "POT",
         50.06,
@@ -345,6 +389,32 @@ def test_web_app_pmaxtp_renders_tables_and_embeds_result_for_export(
     )
     assert data["data"]["ks"]["60"]["1"] == 28.4
     assert data["data"]["sg"] == pmaxtp_api_response["data"]["sg"]
+
+
+def test_web_app_pmaxtp_view_and_downloads_carry_pmaxtp_lines(
+    client, pmaxtp_api_response
+):
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(PMAXTP_POT_URL).respond(json=pmaxtp_api_response)
+        html = client.post("/download/pmaxtp/generate", data=PMAXTP_FORM).text
+    lines = attribution("pmaxtp")
+
+    assert _provider_lines(html) == lines.lines
+    # JSON download and copy: the serialized object.
+    data = _embedded_json(html, "pmaxtpData")
+    assert isinstance(data, dict)
+    assert data["attribution"] == list(lines.attribution)
+    assert data["terms_notice"] == list(lines.terms_notice)
+    # CSV and XLSX: one line per row, first cell, in the metadata block on top.
+    head = _embedded_json(html, "pmaxtpHeadRows")
+    assert isinstance(head, list)
+    assert head[:4] == [
+        ["IMGW PMAXTP - Opady maksymalne prawdopodobne"],
+        [""],
+        ["Metoda:", "Peak Over Threshold (POT)"],
+        ["Lokalizacja:", "50.06°N, 19.94°E"],
+    ]
+    assert head[5 : 5 + len(lines.lines)] == [[line] for line in lines.lines]
 
 
 def test_web_app_pmaxtp_amp_uses_amp_endpoint_and_skips_missing_tables(client):
@@ -444,6 +514,16 @@ def test_web_app_station_search_equals_stations_find(client, station_lists):
     assert "<td><code>18</code></td>" in response.text  # hydrographic code
     assert "https://hydro.imgw.pl/#/station/hydro/150190340" in response.text
     assert "https://hydro.imgw.pl/#/station/meteo/251190470" in response.text
+
+
+def test_web_app_station_search_shows_the_lines_of_stations_find(client, station_lists):
+    response = client.get("/stations/find", params={"query": "lodz"})
+    outcome = run_command(
+        "stations find", options={"provider": "IMGW-PIB", "query": "lodz"}
+    )
+
+    assert _provider_lines(response.text) == attribution("imgw").lines
+    assert _provider_lines(response.text) == outcome.attribution + outcome.terms_notice
 
 
 def test_web_app_station_search_pages_like_stations_find(client, station_lists):
@@ -554,6 +634,11 @@ def test_web_app_map_source_route_serves_marker_fields_with_paging(client):
             "water_state": None,
         }
     ]
+    lines = attribution("imgw_hydro")
+    for page in (first.json(), second.json()):
+        # What the map shows in its footer and popups.
+        assert page["attribution"] == list(lines.attribution)
+        assert page["terms_notice"] == list(lines.terms_notice)
 
 
 def test_web_app_map_source_failure_is_problem_with_code_title_detail(client):

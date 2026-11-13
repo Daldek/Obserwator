@@ -89,7 +89,9 @@ def test_daily_and_term_archives_of_one_name_never_collide(respx_mock, tmp_path)
         "dane_meteorologiczne/terminowe/klimat/2001/2001_01_k.zip",
     ]
     assert [item.path.read_bytes() for item in items] == [bodies[daily], bodies[terms]]
+    # both downloads merge their lines into one ATTRIBUTION.txt (ADR-012 D5)
     assert [name for name in _tree(tmp_path) if Path(name).suffix] == [
+        "ATTRIBUTION.txt",
         "dane_meteorologiczne/dobowe/klimat/2001/2001_01_k.zip",
         "dane_meteorologiczne/terminowe/klimat/2001/2001_01_k.zip",
     ]

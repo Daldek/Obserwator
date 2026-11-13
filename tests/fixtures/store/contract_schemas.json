@@ -345,6 +345,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "attribution": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "terms_notice": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
         }
       },
       "additionalProperties": true
@@ -530,6 +546,22 @@
             },
             "additionalProperties": true
           }
+        },
+        "attribution": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "terms_notice": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
         }
       },
       "additionalProperties": true
@@ -770,6 +802,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "attribution": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "terms_notice": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
         }
       },
       "$defs": {
@@ -922,6 +970,22 @@
               "type": "null"
             }
           ]
+        },
+        "attribution": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "terms_notice": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
         },
         "notices": {
           "type": "array",

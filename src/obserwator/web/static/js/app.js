@@ -33,6 +33,26 @@ function renderProblem(target, problem) {
     target.replaceChildren(article);
 }
 
+/**
+ * Render provider lines like partials/provider_lines.html (Nogat DEV §20).
+ *
+ * @param {Element} target - Element whose content is replaced.
+ * @param {string[]} attribution - ``attribution`` of a result envelope.
+ * @param {string[]} termsNotice - ``terms_notice`` of a result envelope.
+ */
+function renderProviderLines(target, attribution, termsNotice) {
+    const lines = [
+        ...attribution.map(text => [text, 'provider-line']),
+        ...termsNotice.map(text => [text, 'provider-line provider-terms']),
+    ];
+    target.replaceChildren(...lines.map(([text, className]) => {
+        const line = document.createElement('p');
+        line.className = className;
+        line.textContent = text;
+        return line;
+    }));
+}
+
 // Error answers of the web GUI are HTML partials (status from the error
 // registry): swap them into the target instead of dropping them.
 document.body.addEventListener('htmx:beforeSwap', function(event) {

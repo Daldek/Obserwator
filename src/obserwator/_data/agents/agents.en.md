@@ -31,7 +31,7 @@ One command in every interface: CLI `obserwator <group> <command> --option value
 
 ## Envelope, statuses and errors
 
-A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `notices` is a list of `{"level", "code", "message"}` (each once, e.g. `license_terms`). List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
+A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}` (each once, e.g. `license_terms`). List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
 
 <!-- obserwator:statuses -->
 
@@ -72,7 +72,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 6. Do not download "just in case": narrow `years`, `months` and `stations`; do not mix providers in one call with `stations`.
 7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.
-9. Pass the `license_terms` notice and the attribution on to the user (IMGW-PIB: terms of the purpose of use; ČHMÚ: CC BY 4.0).
+9. Show the `attribution` and `terms_notice` lines verbatim with the data and in what you make of it (the `license_terms` notice too).
 10. Point `version` only below `*/versions/` of the store, without `..`; over REST and MCP over HTTP — relative to the server's store.
 
 Developing this repository? Read CLAUDE.md.

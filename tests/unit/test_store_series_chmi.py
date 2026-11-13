@@ -17,7 +17,8 @@ import pyarrow.parquet as pq
 import pytest
 import respx
 
-from obserwator.datasets import ArchiveFile, archive_files, get_dataset
+from obserwator.attribution import attribution
+from obserwator.datasets import ArchiveFile, archive_files, get_dataset, get_provider
 from obserwator.fetch import DownloadResult
 from obserwator.store import current_version, init_store, write_archive
 from obserwator.store.series import build_series, check_series
@@ -62,17 +63,16 @@ METEO_GETS = {
     for archive in archive_files(METEO, stations=[FULL, RAIN])
     if archive.station_code == FULL or archive.param == "SRA"
 }
-CHMI_ATTRIBUTION = (
-    "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
-    "licencja CC BY 4.0. Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
-)
+# The sidecar keeps one text: C. CP (ADR-012 D4).
+CHMI_ATTRIBUTION = ". ".join(attribution("chmi").attribution)
 CHMI_LICENSE = {
     "id": "CC-BY-4.0",
     "attribution": CHMI_ATTRIBUTION,
     "url": "https://creativecommons.org/licenses/by/4.0/",
     "terms_url": "https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti",
 }
-# Spec 2026-10-18 §6.3 verbatim; its Parquet SHA-256 is a placeholder.
+# Spec 2026-10-18 §6.3 verbatim, with the lines of ADR-012 added below; its
+# Parquet SHA-256 is a placeholder.
 EXAMPLE_900002 = (
     '{"schema":"obserwator-series/1","dataset":"cz.chmi.hydro_daily","year_type":"calendar",'
     '"periods":[["2004-01-01","2004-12-31"],["2006-01-01","2006-12-31"]],"stations":'
@@ -142,7 +142,8 @@ def test_station_with_an_unpublished_year_matches_the_spec_example(root):
     assert version.parent == root / "series" / "versions" / "chmi_hydro_daily"
     parquet = version / "stations" / f"{S2}.parquet"
     digest = hashlib.sha256(parquet.read_bytes()).hexdigest()
-    assert index_of(report) == json.loads(EXAMPLE_900002.replace("0" * 64, digest))
+    expected = json.loads(EXAMPLE_900002.replace("0" * 64, digest))
+    assert index_of(report) == {**expected, **attribution("chmi").fields()}
     # 2005 has no file: its days are rows without values, unknown rather than gaps.
     rows = {row["date"]: row for row in station_table(report, S2).to_pylist()}
     assert list(rows) == [date(2004, 1, 1) + timedelta(days=n) for n in range(1096)]
@@ -513,22 +514,26 @@ def test_imgw_series_keep_the_layout_of_3_0_0(root):
         for entry in index["stations"].values()
     )
     table = station_table(report, next(iter(index["stations"])))
-    assert set(table.schema.metadata) == {b"obserwator_schema", b"dataset", b"units"}
+    # 3.0.0 keys plus the lines of ADR-012 D4
+    assert set(table.schema.metadata) == {
+        b"obserwator_schema",
+        b"dataset",
+        b"units",
+        b"attribution",
+        b"terms_notice",
+    }
     assert not any(
         name.endswith(("_quality", "_source_flag")) for name in table.column_names
     )
     meta = sidecar_of(report)
-    attribution = (
-        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – "
-        "Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – "
-        "Państwowego Instytutu Badawczego zostały przetworzone"
-    )
+    lines = attribution("imgw")
+    joined = ". ".join(lines.attribution)
     assert (meta["country"], meta["provider"], meta["license"]) == (
         "PL",
         "IMGW-PIB",
         {
             "id": "IMGW-PIB",
-            "attribution": attribution,
+            "attribution": joined,
             "url": "https://danepubliczne.imgw.pl/regulations",
         },
     )
@@ -537,6 +542,8 @@ def test_imgw_series_keep_the_layout_of_3_0_0(root):
         for entry in meta["extra"]["source_files"]
     )
     assert [notice.message for notice in notices] == [
-        f"{attribution}. For private and research use; other uses require checking "
-        "the IMGW-PIB terms, including the exceptions for high-value data."
+        get_provider("IMGW-PIB").license_notice(lines)
     ]
+    assert str(notices[0].message).startswith(
+        f"{joined}. {' '.join(lines.terms_notice)}"
+    )

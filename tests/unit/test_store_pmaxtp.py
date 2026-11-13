@@ -8,6 +8,7 @@ import httpx
 import pytest
 import respx
 
+from obserwator.attribution import attribution
 from obserwator.exceptions import (
     ObserwatorDataError,
     ObserwatorStoreError,
@@ -77,6 +78,8 @@ def test_cell_key_comes_from_api_response(store):
             "sg": {"15": {"50": 14.1}},
             "rb": {"15": {"50": 0.3}},
         },
+        # PS, PP, M; N, RK (ADR-012 D4)
+        **attribution("pmaxtp").fields(),
     }
     meta = json.loads(
         result.version.with_name("cell.json.meta.json").read_text(encoding="utf-8")
@@ -88,7 +91,11 @@ def test_cell_key_comes_from_api_response(store):
     assert meta["request"]["ind_x"] == 751 and meta["request"]["latitude"] == 52.23
     assert meta["extra"]["derived"] == "pmaxtp"
     assert meta["extra"]["version"]["label_source"] == "downloaded"
-    assert "przetworzone" in meta["license"]["attribution"]
+    assert meta["license"] == {
+        "id": "IMGW-PIB",
+        "attribution": ". ".join(attribution("pmaxtp").attribution),
+        "url": "https://klimat.imgw.pl/opady-maksymalne",
+    }
     assert result.result.data.get_precipitation(15, 50) == 13.34
     assert result.result.latitude == 52.23
     assert any(n.code == "license_terms" for n in notices)

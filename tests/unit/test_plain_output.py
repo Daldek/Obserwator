@@ -74,7 +74,11 @@ def test_a_plain_download_lists_what_it_wrote_with_the_hash_of_the_bytes(
 
     assert (report.mode, report.root) == ("plain", None)
     assert report.output_dir == tmp_path / "out"
-    assert [file.path for file in report.files] == [item.path for item in report.items]
+    # The data files, then the ATTRIBUTION.txt with their lines (ADR-012 D5).
+    assert [file.path for file in report.files] == [
+        *(item.path for item in report.items),
+        tmp_path / "out" / "ATTRIBUTION.txt",
+    ]
     for file in report.files:
         data = file.path.read_bytes()
         assert (file.size_bytes, file.sha256, file.status) == (
@@ -83,7 +87,9 @@ def test_a_plain_download_lists_what_it_wrote_with_the_hash_of_the_bytes(
             "written",
         )
     # Ordinary files only: no sidecar, no staging directory left behind.
-    assert names(tmp_path / "out") == sorted(a.server_path for a in FILES)
+    assert names(tmp_path / "out") == sorted(
+        ["ATTRIBUTION.txt", *(a.server_path for a in FILES)]
+    )
     assert not (tmp_path / "out" / ".obserwator-incoming").exists()
 
 
@@ -184,7 +190,7 @@ def test_plain_download_needs_no_hard_links(respx_mock, tmp_path, monkeypatch):
 
     report = download_archives(SEMIANNUAL, years=2024, output_dir=tmp_path / "fat")
 
-    assert [file.status for file in report.files] == ["written"] * 3
+    assert [file.status for file in report.files] == ["written"] * (3 + 1)
 
 
 def test_a_cancelled_download_leaves_no_staging_directory(respx_mock, tmp_path):
@@ -199,7 +205,9 @@ def test_a_cancelled_download_leaves_no_staging_directory(respx_mock, tmp_path):
     )
 
     assert report.cancelled is True
-    assert [file.status for file in report.files] == ["written"]
+    # the one archive written and its ATTRIBUTION.txt
+    assert [file.status for file in report.files] == ["written"] * 2
+    assert report.files[-1].path.name == "ATTRIBUTION.txt"
     assert not (tmp_path / "out" / ".obserwator-incoming").exists()
 
 
@@ -284,7 +292,7 @@ def test_a_dataset_that_is_download_only_has_no_place_in_the_store(
         "datasets download", options={**options, "output_dir": tmp_path / "plain"}
     )
     assert outcome.status == "ok"
-    assert [file.status for file in outcome.result.files] == ["written"]
+    assert [file.status for file in outcome.result.files] == ["written"] * 2
 
 
 # --------------------------------------------------------------------------
@@ -302,9 +310,11 @@ def test_a_plain_sync_writes_the_selected_archives_without_a_freshness_check(
 
     assert outcome.status == "ok"
     assert [item.status for item in outcome.result.items] == ["new"] * 3
-    assert [file.status for file in outcome.result.files] == ["written"] * 3
+    assert [file.status for file in outcome.result.files] == ["written"] * (3 + 1)
     assert outcome.result.series == ()
-    assert names(tmp_path / "out") == sorted(a.server_path for a in FILES)
+    assert names(tmp_path / "out") == sorted(
+        ["ATTRIBUTION.txt", *(a.server_path for a in FILES)]
+    )
 
     with pytest.raises(ObserwatorError) as error:
         run_command("store sync", options=options)
@@ -357,10 +367,15 @@ def test_a_plain_pmaxtp_sync_writes_the_cell_and_the_raw_answer(respx_mock, tmp_
     result = sync_pmaxtp(output_dir=out, **point)
 
     assert result.status == "new"
-    assert names(out) == ["POT/751_317/cell.json", "POT/751_317/response.json"]
+    assert names(out) == [
+        "ATTRIBUTION.txt",
+        "POT/751_317/cell.json",
+        "POT/751_317/response.json",
+    ]
     assert [file.path for file in result.files] == [
         out / "POT/751_317/cell.json",
         out / "POT/751_317/response.json",
+        out / "ATTRIBUTION.txt",
     ]
     for file in result.files:
         data = file.path.read_bytes()

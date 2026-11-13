@@ -6,6 +6,46 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
+  2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,
+  `Attribution` with `attribution`, `terms_notice`, `|`, `fields()`, `from_lines()`), composes the
+  lines of `obserwator.messages.legal`, byte for byte as the standard quotes them: IMGW-PIB S and
+  P, H for hydro.imgw.pl data, PMAXTP PS, PP and the monograph M (the PMAXTP terms replace S and
+  P), ČHMÚ C — now with the licence link „(https://creativecommons.org/licenses/by/4.0/)” — and CP,
+  and the IMGW-PIB terms notice N with RD, RH or RK. Where they appear:
+  - the envelope `obserwator-result/1` (Python `CommandResult`, CLI `--json`, REST, MCP) has the
+    optional arrays `attribution` and `terms_notice` for every command that returns, reads or
+    writes provider data (`current *`, `stations find`, `pmaxtp fetch|sync|read`, `series
+    select|read|summary|export|build`, `store export|sync|catalog`, `datasets download`); REST
+    streams add the headers `X-Obserwator-Attribution` and `X-Obserwator-Terms-Notice`; the CLI
+    summary prints the lines after the result;
+  - CSV: `series export` keeps `attribution_source` and `attribution_processed` and appends
+    `attribution` and `terms_notice` (one line per cell from the first data row down; a shorter
+    series joins the rest into its last row with a line feed); `store export` appends the same two
+    columns, and its first JSONL object has `attribution` and `terms_notice`;
+  - Parquet station files have the metadata keys `attribution` and `terms_notice` (JSON arrays);
+    `series.json`, `stations.geojson` and PMAXTP `cell.json` have top-level `attribution` and
+    `terms_notice`; sidecars keep `license.attribution` as one text (the IMGW-PIB catalog now
+    „S. P”, with H when a location came from the hydro.imgw.pl reference file; PMAXTP cells
+    „PS. PP. M” and the PMAXTP terms as `license.url`);
+  - plain writes (`--output-dir` of `datasets download`, `store sync`, `pmaxtp sync`) put
+    `ATTRIBUTION.txt` (UTF-8, LF, attribution lines then terms lines) at the root of the directory,
+    merged with the lines a previous write left; the plan lists it and `files[]` reports it;
+  - `python -m obserwator.reference_data`: the trailing columns in `hydro_stations_locations.csv`
+    and `ATTRIBUTION.txt` in the reference directory;
+  - the web pages: the lines under the data and in the footer of each view with data (archive
+    links and the wget script, PMAXTP tables with their JSON, CSV and XLSX downloads, the station
+    table, the map and its popups); the map labels the hydro.imgw.pl water states as current data
+    with the time they were read; the footer no longer paraphrases the source.
+
+  The `license_terms` notice shows the lines and then the terms notice (an English gloss of N in
+  English); `ProviderDescriptor.license_notice` takes an `Attribution`. A series version without
+  the lines is no longer reused, so the next `series build` writes one with them (`store check`
+  says `outdated`); catalogs and PMAXTP cells get a new version at the next build or sync, and
+  versions already written keep their bytes. For consumers: show the envelope's `attribution` and
+  `terms_notice` with the data and carry them on; readers of the series CSV by column name need no
+  change (Hydrolog), `license.attribution` stays a text (Archiwista).
+
 - Repository URLs point to `github.com/Daldek/Obserwator` (the repository was renamed from IMGWTools).
 - The version has one source, `src/obserwator/_version.py` (`pyproject.toml` reads it through
   `[tool.hatch.version]`); `develop` carries `3.0.0.dev0` until the release (Nogat REL-1.1).

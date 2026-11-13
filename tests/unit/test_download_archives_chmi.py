@@ -77,7 +77,8 @@ def test_unpublished_year_is_a_successful_not_published_item(respx_mock, tmp_pat
         assert item.path == output / CASES[case]["path"]
         assert item.path.read_bytes() == body(CASES[case])  # bytes 1:1, no ZIP check
     assert files(output) == [
-        CASES[case]["path"] for case in ("h900002_2004_get", "h900002_2006_get")
+        "ATTRIBUTION.txt",  # the lines of the files written (ADR-012 D5)
+        *(CASES[case]["path"] for case in ("h900002_2004_get", "h900002_2006_get")),
     ]
     assert not report.cancelled and _status(report) == "ok"
     assert [
@@ -118,7 +119,7 @@ def test_meteo_station_files_are_four_elements_with_missing_ones_unpublished(
         ),
     ]
     assert report.items[1].slot == f"archive:{METEO}:temperature/dly-{RAIN}-T.csv"
-    assert len(files(tmp_path)) == 5
+    assert len(files(tmp_path)) == 5 + 1  # and ATTRIBUTION.txt (ADR-012 D5)
 
 
 def test_only_404_is_unpublished_other_answers_fail_the_item(respx_mock, tmp_path):
