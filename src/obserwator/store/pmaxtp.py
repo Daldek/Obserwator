@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 import httpx
 
 from obserwator._version import __version__
+from obserwator.attribution import attribution
 from obserwator.datasets import (
     ProviderDescriptor,
     _license_document,
@@ -30,10 +31,12 @@ from obserwator.models import PMaXTPData, PMaXTPResult
 from obserwator.output import (
     Staging,
     chunks_of,
+    plan_attribution,
     plan_plain,
     refuse,
     refuse_directory,
     resolve_target,
+    write_attribution,
 )
 from obserwator.store.catalog import (
     LICENSE_NOTICE,
@@ -74,6 +77,8 @@ CELL_SCHEMA = "obserwator-pmaxtp/1"
 PMAXTP_DATASET = "pl.imgw.pmaxtp"
 _METHODS = ("POT", "AMP")
 _TABLES = ("ks", "sg", "rb")
+# A cell is the API answer reformatted: the processed PMAXTP lines (ADR-012).
+_LINES = attribution("pmaxtp")
 
 Method = Literal["POT", "AMP"]
 
@@ -172,6 +177,7 @@ def _cell_document(
         "ind_y": ind_y,
         "center": center,
         "data": {name: _table(name, data.get(name)) for name in _TABLES},
+        **_LINES.fields(),
     }
 
 
@@ -193,9 +199,7 @@ def _provider() -> ProviderDescriptor:
 
 def _license() -> dict[str, str]:
     license_ = _license_document(get_dataset(PMAXTP_DATASET).license)
-    license_["attribution"] = (
-        f"{license_['attribution']}. {_provider().processed_attribution}"
-    )
+    license_["attribution"] = ". ".join(_LINES.attribution)
     return license_
 
 
@@ -297,7 +301,11 @@ def _check_plain(
         )
     if cell is not None:
         actions = plain_actions(
-            "pmaxtp sync", directory, _plain_targets(method, cell), force=force
+            "pmaxtp sync",
+            directory,
+            _plain_targets(method, cell),
+            force=force,
+            lines=_LINES,
         )
         return StorePlan("obserwator-plan/1", directory, now, (), {}, tuple(actions))
     # The names come from the indices of the answer, so only the request knows them.
@@ -342,18 +350,22 @@ def _sync_plain(
     a store. The names are known when the caller gave the indices, so a
     conflict of a name then refuses before the request; otherwise they come
     from the answer, which is small and is checked before anything is written
-    (DEV-19.6).
+    (DEV-19.6). The directory's ``ATTRIBUTION.txt`` gets the PMAXTP lines
+    (ADR-012) and is the last of the written files when it changes.
     """
     refuse_directory(directory)
+    noted = plan_attribution(directory, _LINES)
+    extra = [] if noted is None else [noted]
     if expected is not None:
         refuse(
             plan_plain(directory, list(_plain_names(method, *expected)), force=force)
+            + extra
         )
     if _cancelled(cancel):
         return PMaXTPStoreResult("cancelled", None, given[0], given[1], None)
     response, document, cell = _fetch_cell(latitude, longitude, method, expected)
     names = _plain_names(method, *cell)
-    refuse(plan_plain(directory, list(names), force=force))
+    refuse(plan_plain(directory, list(names), force=force) + extra)
     result = _result(document, latitude=latitude, longitude=longitude)
     if _cancelled(cancel):
         return PMaXTPStoreResult("cancelled", None, cell[0], cell[1], None)
@@ -365,6 +377,9 @@ def _sync_plain(
             staged, size, sha256 = staging.write(chunks_of(content))
             target = directory.joinpath(*name.split("/"))
             written.append(staging.commit(staged, target, size, sha256))
+    attribution_file = write_attribution(directory, _LINES)
+    if attribution_file is not None:
+        written.append(attribution_file)
     if on_progress is not None:
         on_progress(
             Progress(
@@ -385,7 +400,7 @@ def _sync_plain(
             Notice(
                 "info",
                 LICENSE_NOTICE,
-                _provider().license_notice(_license()["attribution"]),
+                _provider().license_notice(_LINES),
             )
         )
     return PMaXTPStoreResult(
@@ -725,7 +740,7 @@ def sync_pmaxtp(
             Notice(
                 "info",
                 LICENSE_NOTICE,
-                _provider().license_notice(_license()["attribution"]),
+                _provider().license_notice(_LINES),
             )
         )
     return PMaXTPStoreResult(

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, overload
 
 from obserwator._parsing.meteo import DATASET_ATTRIBUTES
+from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import DatasetDescriptor, get_dataset, get_provider
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -107,23 +108,54 @@ def _target(output: PathArg | None, *, force: bool) -> Path | None:
     return target
 
 
-def _attribution(descriptor: DatasetDescriptor) -> tuple[str, str]:
-    """Source and processed-data attribution formulas of the dataset's provider."""
-    processed = get_provider(descriptor.provider).processed_attribution
-    return descriptor.license.attribution, processed
+def _lines(descriptor: DatasetDescriptor) -> Attribution:
+    """The lines of the records of a dataset: parsed and reformatted (ADR-012)."""
+    return attribution(dataset_origin(descriptor.key))
 
 
 def _license(descriptor: DatasetDescriptor, on_notice: NoticeHook | None) -> None:
     if on_notice is not None:
-        source, processed = _attribution(descriptor)
-        provider = get_provider(descriptor.provider)
         on_notice(
             Notice(
                 "info",
                 "license_terms",
-                provider.license_notice(f"{source}. {processed}"),
+                get_provider(descriptor.provider).license_notice(_lines(descriptor)),
             )
         )
+
+
+def _trailing(lines: tuple[str, ...], number: int, last: bool) -> str:
+    """
+    Cell of a trailing ``attribution`` or ``terms_notice`` column in data row ``number``.
+
+    One line per cell from the first data row down, empty below; the last row
+    of a table with fewer rows than lines holds the rest, joined with a line
+    feed (Nogat DEV-20.5).
+    """
+    if number >= len(lines):
+        return ""
+    return "\n".join(lines[number:]) if last else lines[number]
+
+
+def _flagged(rows: Iterable[list[str]]) -> Iterator[tuple[int, list[str], bool]]:
+    """``(number, row, last)`` of every row, looking one row ahead."""
+    iterator = iter(rows)
+    current = next(iterator, None)
+    number = 0
+    while current is not None:
+        following = next(iterator, None)
+        yield number, current, following is None
+        current, number = following, number + 1
+
+
+def _with_lines(rows: Iterable[list[str]], lines: Attribution) -> Iterator[list[str]]:
+    """Rows with the trailing ``attribution`` and ``terms_notice`` cells (DEV-20.5)."""
+    for number, row, last in _flagged(rows):
+        yield [
+            *row,
+            _trailing(lines.attribution, number, last),
+            _trailing(lines.terms_notice, number, last),
+        ]
 
 
 def _field_names(name: str, descriptor: DatasetDescriptor) -> list[str]:
@@ -317,7 +349,12 @@ def _archive_row(
 def _archive_lines(
     records: Iterator[NormalizedRecord], format: str
 ) -> tuple[tuple[str, ...], Iterator[str]]:
-    """Header lines and lazy data lines of archive records; no records give no lines."""
+    """
+    Header lines and lazy data lines of archive records; no records give no lines.
+
+    The first JSONL object and the trailing CSV columns ``attribution`` and
+    ``terms_notice`` carry the lines of the dataset's provider (ADR-012).
+    """
     first = next(records, None)
     if first is None:
         return (), iter(())
@@ -327,10 +364,16 @@ def _archive_lines(
         yield from records
 
     descriptor = get_dataset(first.dataset)
+    lines = _lines(descriptor)
     if format == "jsonl":
         return (), (
-            json.dumps(_record_json(record, descriptor), ensure_ascii=False) + "\n"
-            for record in chained()
+            json.dumps(
+                _record_json(record, descriptor)
+                | (lines.fields() if number == 0 else {}),
+                ensure_ascii=False,
+            )
+            + "\n"
+            for number, record in enumerate(chained())
         )
     attributes = tuple(DATASET_ATTRIBUTES.get(first.dataset, ()))
     header = ["station_code", "dataset", "date", "hydro_year", "period"]
@@ -338,9 +381,9 @@ def _archive_lines(
         header += [f"{name} [{unit}]", f"{name}_flag", *_field_names(name, descriptor)]
         if descriptor.time_unit == "half_year":
             header += [f"{name}_start", f"{name}_end", f"{name}_occurrences"]
-    header += attributes
+    header += [*attributes, "attribution", "terms_notice"]
     rows = (_archive_row(record, descriptor, attributes) for record in chained())
-    return (_csv_line(header),), _csv_lines(rows)
+    return (_csv_line(header),), _csv_lines(_with_lines(rows, lines))
 
 
 @overload
@@ -393,13 +436,18 @@ def export_archive(
     without BOM, comma, CRLF rows) starts with the header ``station_code,
     dataset,date,hydro_year,period``, then ``<V> [<unit>],<V>_flag`` for every
     dataset variable (ČHMÚ meteo adds ``<V>_quality,<V>_source_flag``,
-    half-year datasets ``<V>_start,<V>_end,<V>_occurrences``) and one column
-    per qualitative attribute of the dataset (meteo ``precip_type`` etc.); a
-    variable or attribute absent from a record gives empty cells. JSONL
-    writes one object per record with the `NormalizedRecord` fields (the
-    ``Measurement`` fields ``quality`` and ``source_flag`` only for datasets
-    that fill them) and LF line ends. An archive without records gives no
-    lines.
+    half-year datasets ``<V>_start,<V>_end,<V>_occurrences``), one column
+    per qualitative attribute of the dataset (meteo ``precip_type`` etc.) and
+    the trailing columns ``attribution`` and ``terms_notice``: the lines of the
+    dataset's provider (`obserwator.attribution`, ADR-012), one line per cell
+    from the first data row down, the rest joined with a line feed into the
+    last row of a shorter table; a variable or attribute absent from a record
+    gives empty cells. JSONL writes one object per record with the
+    `NormalizedRecord` fields (the ``Measurement`` fields ``quality`` and
+    ``source_flag`` only for datasets that fill them) and LF line ends; the
+    first object adds ``attribution`` and, with IMGW-PIB data,
+    ``terms_notice`` (arrays of the lines). An archive without records gives
+    no lines.
 
     Parameters
     ----------
@@ -548,7 +596,7 @@ def export_series(
     cancel: Cancel | None = None,
 ) -> OutputReport | Iterator[str]:
     """
-    Export values, flags and both attribution formulas of one station as CSV.
+    Export values, flags and the provider's attribution lines of one station as CSV.
 
     ``year_type=None`` uses the publication convention of ``series.json`` (IMGW
     hydro ``hydrological``, IMGW meteo and ČHMÚ ``calendar``). Arguments and
@@ -557,12 +605,16 @@ def export_series(
 
     The CSV (UTF-8 without BOM, comma, dot decimal, CRLF rows) has a single
     header row ``date,year,<V> [<unit>],<V>_flag,…,attribution_source,
-    attribution_processed``; ČHMÚ meteo series add ``<V>_quality`` and
-    ``<V>_source_flag`` after the flag of every variable, half-year series add
-    ``period`` and ``<V>_start`` / ``<V>_end`` extremum dates with
-    ``<V>_occurrences`` (number of merged IMGW rows). The source attribution
-    and the processed-data attribution of the dataset's provider appear only in
-    the first data row. Missing values are empty cells flagged ``missing``.
+    attribution_processed,attribution,terms_notice``; ČHMÚ meteo series add
+    ``<V>_quality`` and ``<V>_source_flag`` after the flag of every variable,
+    half-year series add ``period`` and ``<V>_start`` / ``<V>_end`` extremum
+    dates with ``<V>_occurrences`` (number of merged IMGW rows). The source
+    attribution and the processed-data attribution of the dataset's provider
+    appear only in the first data row (ADR-001 Q10); the columns
+    ``attribution`` and ``terms_notice`` hold the lines of `obserwator.attribution`
+    (ADR-012), one line per cell from the first data row down, the rest
+    joined with a line feed into the last row of a shorter series. Missing
+    values are empty cells flagged ``missing``.
 
     Parameters
     ----------
@@ -698,8 +750,16 @@ def export_series(
         ]
         if half_year:
             header += [f"{name}_start", f"{name}_end", f"{name}_occurrences"]
-    header += ["attribution_source", "attribution_processed"]
-    attribution = _attribution(descriptor)
+    header += [
+        "attribution_source",
+        "attribution_processed",
+        "attribution",
+        "terms_notice",
+    ]
+    formulas = (
+        descriptor.license.attribution,
+        get_provider(descriptor.provider).processed_attribution,
+    )
 
     def row(number: int, record: NormalizedRecord) -> list[str]:
         year = record.hydro_year if chosen == "hydrological" else record.date.year
@@ -712,11 +772,16 @@ def export_series(
             cells += _measurement_cells(record.measurements[name], descriptor)
             if half_year:
                 cells += _extrema(record, name)
-        return [*cells, *(attribution if number == 0 else ("", ""))]
+        return [*cells, *(formulas if number == 0 else ("", ""))]
 
     lines = _Lines(
         (_csv_line(header),),
-        _csv_lines(row(number, record) for number, record in enumerate(records)),
+        _csv_lines(
+            _with_lines(
+                (row(number, record) for number, record in enumerate(records)),
+                _lines(descriptor),
+            )
+        ),
         total=len(records),
         label=message("export.station_progress", station=station),
         on_progress=on_progress,

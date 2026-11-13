@@ -1,11 +1,13 @@
 """
 Names and formulas that keep their wording in every language.
 
-The attribution formulas are persisted in sidecars, series, catalogs and CSV exports
-and one of them is the wording the IMGW-PIB terms of use prescribe, so a file must not
-depend on the language of the person or program that wrote it; an institution has one
-official name. The Polish text is the English one by design (the guard test allows it
-for this area only).
+The attribution lines and the terms notice are the only source of the texts the data
+providers require (ADR-012, Nogat DEV §20): they are persisted in sidecars, series,
+catalogs, PMAXTP cells and exports and printed on every surface with provider data,
+and their wordings are prescribed (the IMGW-PIB terms, the PMAXTP terms, CC BY 4.0
+of ČHMÚ), so a file must not depend on the language of the person or program that
+wrote it; an institution has one official name. The Polish text is the English one
+by design (the guard test allows it for this area only).
 """
 
 from obserwator.messages import Text
@@ -15,19 +17,56 @@ _IMGW_PROCESSED = (
     "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
     "Badawczego zostały przetworzone"
 )
+_IMGW_HYDRO = "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
+_PMAXTP_PAGE = "https://klimat.imgw.pl/opady-maksymalne"
+_PMAXTP_PROCESSED = (
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
+    f"Badawczego pochodzące ze strony {_PMAXTP_PAGE} zostały przetworzone"
+)
+_PMAXTP_MONOGRAPH = (
+    "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i "
+    "prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, "
+    f"{_IMGW_NAME}, Warszawa 2022"
+)
 _CHMI_ATTRIBUTION = (
     "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
-    "licencja CC BY 4.0"
+    "licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
 _CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
+_IMGW_TERMS = (
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych "
+    "(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z "
+    "reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w "
+    "gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
+)
+_TERMS_DANEPUBLICZNE = "Regulamin: https://danepubliczne.imgw.pl/regulations"
+_TERMS_HYDRO = "Regulamin: https://hydro.imgw.pl/#/regulamin"
+_TERMS_PMAXTP = f"Regulamin: {_PMAXTP_PAGE}"
 
 MESSAGES = {
     "imgw_name": Text(_IMGW_NAME, _IMGW_NAME),
+    # S, P and H of DEV-20.1 (IMGW-PIB data other than PMAXTP).
     "imgw_attribution": Text(
         f"Źródłem pochodzenia danych jest {_IMGW_NAME}",
         f"Źródłem pochodzenia danych jest {_IMGW_NAME}",
     ),
     "imgw_processed_attribution": Text(_IMGW_PROCESSED, _IMGW_PROCESSED),
+    "imgw_hydro_attribution": Text(_IMGW_HYDRO, _IMGW_HYDRO),
+    # PS, PP and M of DEV-20.2 (PMAXTP data).
+    "pmaxtp_attribution": Text(
+        f"Źródłem pochodzenia danych jest {_IMGW_NAME}, dane pochodzą ze strony "
+        f"{_PMAXTP_PAGE}",
+        f"Źródłem pochodzenia danych jest {_IMGW_NAME}, dane pochodzą ze strony "
+        f"{_PMAXTP_PAGE}",
+    ),
+    "pmaxtp_processed_attribution": Text(_PMAXTP_PROCESSED, _PMAXTP_PROCESSED),
+    "pmaxtp_monograph": Text(_PMAXTP_MONOGRAPH, _PMAXTP_MONOGRAPH),
+    # C and CP of DEV-20.3 (ČHMÚ data, CC BY 4.0).
     "chmi_attribution": Text(_CHMI_ATTRIBUTION, _CHMI_ATTRIBUTION),
     "chmi_processed_attribution": Text(_CHMI_PROCESSED, _CHMI_PROCESSED),
+    # N and the terms RD, RH, RK of DEV-20.7 (every product with IMGW-PIB data).
+    "imgw_terms_notice": Text(_IMGW_TERMS, _IMGW_TERMS),
+    "imgw_terms_danepubliczne": Text(_TERMS_DANEPUBLICZNE, _TERMS_DANEPUBLICZNE),
+    "imgw_terms_hydro": Text(_TERMS_HYDRO, _TERMS_HYDRO),
+    "imgw_terms_pmaxtp": Text(_TERMS_PMAXTP, _TERMS_PMAXTP),
 }

@@ -65,6 +65,10 @@ MESSAGES = {
     ),
     "human_status_cancelled": Text("Cancelled", "Przerwano"),
     "human_page": Text("Page: {shown} of {total}", "Strona: {shown} z {total}"),
+    "human_attribution": Text(
+        "Data sources and terms of use (required with the data):",
+        "Źródła danych i warunki korzystania (wymagane razem z danymi):",
+    ),
     "human_page_more": Text(
         "Page: {shown} of {total}, more: --cursor {cursor}",
         "Strona: {shown} z {total}, dalej: --cursor {cursor}",

@@ -23,6 +23,7 @@ from typing import Any, Final, Literal
 
 from obserwator._parsing import normalize_archive
 from obserwator._version import __version__
+from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
     DatasetDescriptor,
@@ -323,6 +324,7 @@ class _SeriesVersion:
     path: Path
     meta: Mapping[str, Any]
     manifest: tuple[tuple[str, str], ...]
+    lines: Attribution = Attribution()
 
 
 def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesVersion]:
@@ -340,10 +342,11 @@ def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesV
                 (directory / "series.json.meta.json").read_text(encoding="utf-8")
             )
             extra = meta["extra"]
+            content = main.read_bytes()
             if (
                 meta["schema"] != "obserwator-meta/1"
                 or extra.get("series_schema") != SERIES_SCHEMA
-                or hashlib.sha256(main.read_bytes()).hexdigest() != meta["sha256"]
+                or hashlib.sha256(content).hexdigest() != meta["sha256"]
             ):
                 continue
             manifest = tuple(
@@ -356,10 +359,29 @@ def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesV
                 )
             )
             _downloaded(meta)
-        except (OSError, ValueError, KeyError, TypeError):
+            document = json.loads(content)
+            lines = Attribution(
+                tuple(document.get("attribution", ())),
+                tuple(document.get("terms_notice", ())),
+            )
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
-        result.append(_SeriesVersion(main, meta, manifest))
+        result.append(_SeriesVersion(main, meta, manifest, lines))
     return result
+
+
+def _reusable(
+    version: _SeriesVersion,
+    manifest: tuple[tuple[str, str], ...],
+    descriptor: DatasetDescriptor,
+) -> bool:
+    """
+    Whether a series version stays current: the same inputs and the current lines.
+
+    A version written before the series carried the provider's attribution
+    lines (ADR-012) is rebuilt once, so the store's products carry them.
+    """
+    return version.manifest == manifest and version.lines == _lines(descriptor)
 
 
 def _current_series(versions: Iterable[_SeriesVersion]) -> _SeriesVersion | None:
@@ -382,7 +404,9 @@ def _series_state(
     if current is None:
         return "missing"
     return (
-        "current" if reliable and current.manifest == _manifest(inputs) else "outdated"
+        "current"
+        if reliable and _reusable(current, _manifest(inputs), descriptor)
+        else "outdated"
     )
 
 
@@ -824,7 +848,17 @@ def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) ->
         metadata["variable_notes"] = (
             _canonical(dict(descriptor.variable_notes)).decode("utf-8").rstrip("\n")
         )
+    # The lines of the provider as JSON arrays (ADR-012, Nogat DEV-20.5).
+    metadata.update(
+        (name, _canonical(value).decode("utf-8").rstrip("\n"))
+        for name, value in _lines(descriptor).fields().items()
+    )
     return pa.table(columns).replace_schema_metadata(metadata)
+
+
+def _lines(descriptor: DatasetDescriptor) -> Attribution:
+    """The lines of a series: data parsed, harmonised and reformatted (ADR-012)."""
+    return attribution(dataset_origin(descriptor.key))
 
 
 def _archive_span(archive: ArchiveFile) -> tuple[date, date]:
@@ -1036,7 +1070,7 @@ def build_series(
         )
     manifest = _manifest(inputs)
     current = _current_series(_series_versions(path, descriptor))
-    if current is not None and current.manifest == manifest:
+    if current is not None and _reusable(current, manifest, descriptor):
         series = json.loads(current.path.read_text(encoding="utf-8"))
         recorded = [
             path / PurePosixPath(source["file"])
@@ -1162,6 +1196,7 @@ def build_series(
                         )
                     )
             _fsync_dir(staging / "stations")
+            lines = _lines(descriptor)
             series = {
                 "schema": SERIES_SCHEMA,
                 "dataset": descriptor.key,
@@ -1176,6 +1211,7 @@ def build_series(
                     else _merge_spans(_archive_span(item.archive) for item in inputs)
                 ),
                 "stations": index_stations,
+                **lines.fields(),
             }
             content = _canonical(series)
             sha = hashlib.sha256(content).hexdigest()
@@ -1193,9 +1229,7 @@ def build_series(
             )
             provider = get_provider(descriptor.provider)
             license_info = _license_document(descriptor.license)
-            license_info["attribution"] = (
-                f"{descriptor.license.attribution}. {provider.processed_attribution}"
-            )
+            license_info["attribution"] = ". ".join(lines.attribution)
             # Inputs of a dataset with a canonical form carry its content sum (pins
             # ``input`` restorable by content, ADR-003 D17); others keep 3.0.0 bytes.
             source_files = [
@@ -1270,7 +1304,7 @@ def build_series(
                         Notice(
                             "info",
                             "license_terms",
-                            provider.license_notice(license_info["attribution"]),
+                            provider.license_notice(lines),
                         )
                     )
                 return _report(

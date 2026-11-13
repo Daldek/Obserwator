@@ -107,11 +107,16 @@
 <article>
     <div id="map"></div>
     <footer>
-        <small>
-            Stany wody z <a href="/api/v1/current/hydro-states" target="_blank">GET /api/v1/current/hydro-states</a>
-            (mapa hydro.imgw.pl) w czasie rzeczywistym.
-            Kliknij w marker, aby zobaczyć szczegóły stacji.
-        </small>
+        <p class="map-current">
+            <small>
+                Bieżące (operacyjne) stany wody z serwisu hydro.imgw.pl, nie dane archiwalne:
+                <strong id="map-fetched">pobieranie…</strong>.
+                Źródło: <a href="/api/v1/current/hydro-states" target="_blank">GET /api/v1/current/hydro-states</a>.
+                Kliknij w marker, aby zobaczyć szczegóły stacji.
+            </small>
+        </p>
+        <!-- attribution and terms_notice of the envelope (Nogat DEV §20) -->
+        <div class="provider-lines" id="map-provider-lines"></div>
     </footer>
 </article>
 
@@ -214,9 +219,11 @@
         return element.innerHTML;
     }
 
-    // Every page of the catalog command `current hydro-states`
+    // Every page of the catalog command `current hydro-states`, with the
+    // provider lines of the first page's envelope and the client time of the fetch
     async function fetchHydroStates() {
         const states = [];
+        let lines = null;
         let cursor = null;
         for (;;) {
             const query = cursor === null ? '' : `?cursor=${encodeURIComponent(cursor)}`;
@@ -225,9 +232,16 @@
             if (!response.ok) {
                 throw body;  // application/problem+json
             }
+            if (lines === null) {
+                lines = {
+                    attribution: body.attribution || [],
+                    termsNotice: body.terms_notice || [],
+                    fetchedAt: new Date(),
+                };
+            }
             states.push(...body.result);
             if (!body.page.truncated) {
-                return states;
+                return { states, ...lines };
             }
             cursor = body.page.next_cursor;
         }
@@ -239,9 +253,9 @@
 
     // Load stations from the REST API
     async function loadStations() {
-        let states;
+        let states, attribution, termsNotice, fetchedAt;
         try {
-            states = await fetchHydroStates();
+            ({ states, attribution, termsNotice, fetchedAt } = await fetchHydroStates());
         } catch (problem) {
             console.error('Failed to load stations:', problem);
             renderProblem(document.getElementById('map-error'), problem.code ? problem : {
@@ -250,6 +264,14 @@
             });
             return;
         }
+        // Operational data of hydro.imgw.pl: current, with their time (DEV-20.8)
+        const fetched = `Stan na ${formatDate(fetchedAt)}`;
+        document.getElementById('map-fetched').textContent = fetched;
+        renderProviderLines(document.getElementById('map-provider-lines'), attribution, termsNotice);
+        // The attribution lines in every popup, escaped as text
+        const popupLines = document.createElement('div');
+        renderProviderLines(popupLines, attribution, []);
+        const popupAttribution = popupLines.innerHTML;
         const located = states.filter(state => state.latitude !== null && state.longitude !== null);
 
         document.getElementById('stat-total').textContent = located.length;
@@ -281,8 +303,9 @@
                         <dd><code>${code}</code></dd>
                         <dt>Rzeka</dt>
                         <dd>${escapeHtml(station.river || '-')}</dd>
-                        <dt>Stan wody</dt>
-                        <dd><span class="state-badge ${badgeClass}">${escapeHtml(stateLabel)}</span></dd>
+                        <dt>Stan wody (bieżący, hydro.imgw.pl)</dt>
+                        <dd><span class="state-badge ${badgeClass}">${escapeHtml(stateLabel)}</span>
+                            <small>${escapeHtml(fetched)}</small></dd>
                         <dt>Współrzędne</dt>
                         <dd>${station.latitude.toFixed(4)}, ${station.longitude.toFixed(4)}</dd>
                     </dl>
@@ -294,6 +317,7 @@
                             IMGW
                         </a>
                     </div>
+                    <div class="provider-lines popup-attribution">${popupAttribution}</div>
                 </div>
             `;
 

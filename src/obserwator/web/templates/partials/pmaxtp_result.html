@@ -49,6 +49,8 @@
     </div>
     {% endfor %}
 
+    {% include "partials/provider_lines.html" %}
+
     <footer>
         <div class="download-actions">
             <button class="secondary outline" onclick="downloadPmaxtpCSV()">
@@ -71,7 +73,19 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
 <script>
-    const pmaxtpData = {{ result.model_dump(mode="json") | tojson }};
+    // The result with the provider lines as top-level `attribution` and
+    // `terms_notice` (Nogat DEV §20): what "Pobierz JSON" and "Kopiuj JSON" give.
+    const pmaxtpData = {{ export | tojson }};
+    {# The metadata block at the top of the CSV and XLSX sheets, the provider
+       lines one per row in the first cell. #}
+    {% set head_rows = [
+        ["IMGW PMAXTP - Opady maksymalne prawdopodobne"],
+        [""],
+        ["Metoda:", methods[result.method] ~ " (" ~ result.method ~ ")"],
+        ["Lokalizacja:", result.latitude ~ "°N, " ~ result.longitude ~ "°E"],
+        [""],
+    ] + (provider_lines.lines | batch(1) | list) + [[""]] %}
+    const pmaxtpHeadRows = {{ head_rows | tojson }};
     const pmaxtpMethod = pmaxtpData.method;
     const pmaxtpLat = pmaxtpData.latitude;
     const pmaxtpLon = pmaxtpData.longitude;
@@ -116,13 +130,7 @@
     }
 
     function getMetadataRows() {
-        return [
-            ['IMGW PMAXTP - Opady maksymalne prawdopodobne'],
-            [''],
-            ['Metoda:', pmaxtpMethod === 'POT' ? 'Peak Over Threshold (POT)' : 'Annual Max Precipitation (AMP)'],
-            ['Lokalizacja:', `${pmaxtpLat}°N, ${pmaxtpLon}°E`],
-            [''],
-        ];
+        return pmaxtpHeadRows;
     }
 
     function getAllData() {

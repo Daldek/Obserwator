@@ -25,6 +25,7 @@ import httpx
 import respx
 
 from obserwator import archive_files, command_schema, current_version
+from obserwator.attribution import Attribution, attribution
 from obserwator.commands import _input_schema, _input_schemas, _spec
 from obserwator.datasets import ArchiveFile
 from obserwator.messages import Lang
@@ -36,14 +37,8 @@ if TYPE_CHECKING:
 DAILY = "pl.imgw.hydro_daily"
 PRECIP = "pl.imgw.meteo_precip_daily"
 RABA, BEZ_Q = "149190310", "149190311"  # fictional stations of the synthetic fixtures
-SOURCE = (
-    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej"
-    " – Państwowy Instytut Badawczy"
-)
-PROCESSED = (
-    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu"
-    " Badawczego zostały przetworzone"
-)
+# The IMGW-PIB lines S and P (ADR-012), as the products carry them.
+SOURCE, PROCESSED = attribution("imgw").attribution
 (H2023,) = archive_files(DAILY, years=[2023])
 (H2024,) = archive_files(DAILY, years=[2024])
 (O1995,) = archive_files(PRECIP, years=[1995])
@@ -57,6 +52,25 @@ ANYWHERE = tuple(
         for directory in (Path.cwd(), tempfile.gettempdir())
     )
 )
+
+
+def trailing_lines(table: list[dict[str, str]]) -> Attribution:
+    """
+    The lines of the trailing ``attribution`` and ``terms_notice`` columns of a CSV.
+
+    Checks the layout of DEV-20.5 on the way: one line per cell from the first
+    data row down and nothing below, the rest of the lines joined with a line
+    feed into the last row of a table shorter than its lines.
+    """
+
+    def column(name: str) -> tuple[str, ...]:
+        cells = [row[name] for row in table]
+        filled = len([cell for cell in cells if cell])
+        assert all(cells[:filled]) and not any(cells[filled:]), name
+        assert all("\n" not in cell for cell in cells[: filled - 1]), name
+        return tuple("\n".join(cells[:filled]).split("\n")) if filled else ()
+
+    return Attribution(column("attribution"), column("terms_notice"))
 
 
 def _json(name: str) -> Any:

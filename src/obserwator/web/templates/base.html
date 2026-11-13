@@ -40,13 +40,13 @@
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Footer -->
+    <!-- Footer: the provider lines of the view's data (Nogat DEV §20), none without data -->
     <footer class="container">
         <hr>
+        {% include "partials/provider_lines.html" %}
         <p>
             <small>
                 Obserwator v{{ version }} |
-                Dane pochodzą z <a href="https://danepubliczne.imgw.pl" target="_blank">IMGW-PIB</a> |
                 <a href="https://github.com/Daldek/Obserwator" target="_blank">GitHub</a>
             </small>
         </p>

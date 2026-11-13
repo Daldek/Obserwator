@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from obserwator.attribution import attribution
 from obserwator.datasets import archive_files
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -19,7 +20,9 @@ from obserwator.models import NormalizedRecord
 from obserwator.store import export_archive, init_store, write_archive
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
-# Golden files: output of the former ``obserwator store read`` command, saved before the change.
+# Golden files: output of the former ``obserwator store read`` command, saved before
+# the change, with the lines of ADR-012 added (two trailing CSV columns, two fields
+# of the first JSONL object).
 GOLDEN_DIR = FIXTURES.parent / "export_golden"
 GOLDEN = {
     "hydro_daily_2024": ("pl.imgw.hydro_daily", [2024], None),
@@ -64,7 +67,12 @@ def test_jsonl_objects_carry_the_normalized_record_fields(root):
     version = stored(root, "hydro_semiannual_2024")
     objects = [json.loads(line) for line in export_archive(version, format="jsonl")]
     fields = [field.name for field in dataclasses.fields(NormalizedRecord)]
-    assert objects and all(list(item) == fields for item in objects)
+    lines = attribution("imgw").fields()
+    # The first object adds the lines of the data (ADR-012 D4), the others do not.
+    first, *others = objects
+    assert first == {**{name: first[name] for name in fields}, **lines}
+    assert list(first) == [*fields, *lines]
+    assert others and all(list(item) == fields for item in others)
 
 
 def test_version_relative_to_root_and_license_terms_before_the_first_line(root):

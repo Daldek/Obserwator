@@ -1349,6 +1349,13 @@ class CommandResult[T]:
         Distinct notices in order of first occurrence.
     page : Page or None, optional
         Paging of a list command result, None for other commands.
+    attribution : tuple of str, optional
+        The attribution lines the providers require for the data the result
+        carries, reads or writes (`obserwator.attribution`, ADR-012); empty
+        for a result without provider data and for a check plan.
+    terms_notice : tuple of str, optional
+        The terms-of-use notice of IMGW-PIB data with the terms that apply;
+        empty without IMGW-PIB data.
     """
 
     command: str
@@ -1357,6 +1364,8 @@ class CommandResult[T]:
     result: T | None
     notices: tuple[Notice, ...]
     page: Page | None = None
+    attribution: tuple[str, ...] = ()
+    terms_notice: tuple[str, ...] = ()
 
     def to_json(
         self,
@@ -1387,8 +1396,9 @@ class CommandResult[T]:
         dict of str to object
             JSON-compatible document with ``schema``, ``tool``, ``version``,
             ``command``, ``check``, ``status``, ``result`` (a document with its
-            own ``schema``, a list of them or null), ``notices`` and, for a
-            list command, ``page``.
+            own ``schema``, a list of them or null), ``attribution`` and
+            ``terms_notice`` when the result has provider data (arrays of the
+            lines), ``notices`` and, for a list command, ``page``.
         """
         document: dict[str, object] = {
             "schema": "obserwator-result/1",
@@ -1398,8 +1408,12 @@ class CommandResult[T]:
             "check": self.check,
             "status": self.status,
             "result": self.result,
-            "notices": self.notices,
         }
+        if self.attribution:
+            document["attribution"] = self.attribution
+        if self.terms_notice:
+            document["terms_notice"] = self.terms_notice
+        document["notices"] = self.notices
         if self.page is not None:
             document["page"] = self.page
         return cast(

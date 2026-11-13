@@ -52,6 +52,7 @@ from obserwator import (
     sync_store,
     write_archive,
 )
+from obserwator.attribution import Attribution, attribution
 from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     DAILY,
@@ -76,6 +77,7 @@ from tests.contract.support import (
     signal,
     snapshot,
     stamps,
+    trailing_lines,
 )
 
 ARCHIVE_SLOT = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
@@ -100,11 +102,24 @@ def assert_sidecar_contract(root: Path, sidecar: Path) -> dict[str, Any]:
     assert (meta["sha256"], meta["size_bytes"]) == (sha256(main), main.stat().st_size)
     label = meta["extra"]["version"]["label"]
     assert main.parent.name == f"{label}_{meta['sha256'][:8]}"
+    # ADR-012 D4: a verbatim archive S, a series S. P, a PMAXTP cell PS. PP. M,
+    # the catalog S. P (and H with a static location); the JSON products carry
+    # the same lines in their top-level fields.
     derived = meta["extra"].get("derived")
-    attribution = (
-        f"{SOURCE}. {PROCESSED}" if derived in ("series", "pmaxtp") else SOURCE
-    )
-    assert meta["license"]["attribution"] == attribution
+    lines = {
+        None: attribution("imgw", processed=False),
+        "series": attribution("imgw"),
+        "pmaxtp": attribution("pmaxtp"),
+    }.get(derived)
+    if main.suffix in (".json", ".geojson"):
+        document = load(main)
+        if lines is None:  # the catalog
+            lines = attribution("imgw")
+            assert document["attribution"][:2] == list(lines.attribution)
+            lines = Attribution.from_lines(document["attribution"])
+        assert {key: document.get(key) for key in lines.fields()} == lines.fields()
+    assert lines is not None, sidecar
+    assert meta["license"]["attribution"] == ". ".join(lines.attribution)
     if main.relative_to(root).parts[0] == "archives":
         server_path = meta["request"]["server_path"]
         stem = Path(server_path).name.rsplit(".", 1)[0]
@@ -615,7 +630,8 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert {item.status for item in catalog_plan.items} == {"current"}
     assert build_catalog(root).status == "unchanged"
 
-    # CSV: one header row with units, both formulas once, every day of the series.
+    # CSV: one header row with units, both formulas once, every day of the series,
+    # the lines of ADR-012 in the trailing columns.
     target = export_series(
         series.version, station=RABA, output=tmp_path / "raba.csv", variables=["H", "Q"]
     ).output
@@ -630,6 +646,8 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
         "Q_flag",
         "attribution_source",
         "attribution_processed",
+        "attribution",
+        "terms_notice",
     ]
     assert (table[0]["attribution_source"], table[0]["attribution_processed"]) == (
         SOURCE,
@@ -638,6 +656,7 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert not any(
         row["attribution_source"] or row["attribution_processed"] for row in table[1:]
     )
+    assert trailing_lines(table) == attribution("imgw")
     assert [(row["date"], row["H_flag"], row["Q_flag"]) for row in table] == [
         (row.date.isoformat(), row.measurements["H"].flag, row.measurements["Q"].flag)
         for row in rows

@@ -5,7 +5,8 @@ The human rendering of a command result: ``obserwator`` without ``--json`` (AGI-
 lines for a person, in the language of the call: the status with the command,
 the result (the items of a list as a table of their key fields and the
 ``page`` line; the main fields of a document, its lists of items as tables,
-work items with an error first), then the notices. One renderer serves every
+work items with an error first), the attribution lines and the terms notice of
+the provider data (verbatim, ADR-012), then the notices. One renderer serves every
 command: the key fields are the first scalar fields of an item; `_COLUMNS` and
 `_FIELDS` name them only where those are not the telling ones. Field names
 stay the names of the document; the status, page, notice and yes/no words are
@@ -125,6 +126,10 @@ def render(envelope: Mapping[str, Any], notices: Sequence[Notice], lang: Lang) -
         lines += _document(cast(Mapping[str, Any], result), lang, "")
     elif result is not None:
         lines.append(_cell(result, lang))
+    provided = [*envelope.get("attribution", ()), *envelope.get("terms_notice", ())]
+    if provided:
+        lines.append(message("cli.human_attribution", lang=lang))
+        lines += [_INDENT + line for line in provided]
     for notice in notices:
         label = message(_LEVELS[notice.level], lang=lang)
         lines.append(f"{label}: {localize(notice.message, lang)}")

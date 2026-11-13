@@ -211,7 +211,7 @@ for coverage in summarize_series(root=demo, dataset="cz.chmi.hydro_daily", stati
 # CSV: ČHMÚ quality and flag columns, ČHMÚ attribution (CC BY 4.0) in the first data row
 lines = list(export_series(root=demo, dataset="cz.chmi.meteo_daily", station="0-203-0-90001",
                            variables=["P"]))
-print(lines[0], end="")  # date,year,P [mm],P_flag,P_quality,P_source_flag,attribution_source,attribution_processed
+print(lines[0], end="")  # date,year,P [mm],P_flag,P_quality,P_source_flag,attribution_source,attribution_processed,attribution,terms_notice
 
 # ČHMÚ station catalog: SPA thresholds (drought, spa1–spa3, q50) for water level and discharge
 for feature in read_catalog(root=demo, provider="CHMI"):

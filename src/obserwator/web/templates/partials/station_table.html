@@ -53,6 +53,8 @@
     <p>Brak stacji spełniających kryteria wyszukiwania.</p>
     {% endif %}
 
+    {% include "partials/provider_lines.html" %}
+
     {% if previous_url or next_url %}
     <footer class="pager">
         {% if previous_url %}

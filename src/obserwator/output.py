@@ -26,11 +26,15 @@ steps of this module, written once:
 
 No sidecar, no hard link and no ``versions/`` directory: the output works on
 FAT, exFAT and SMB. A store is recognised by its marker file name alone, so
-nothing is imported from another tool (DEV-19.11, DEV-19.12).
+nothing is imported from another tool (DEV-19.11, DEV-19.12). The one file
+beside the data is ``ATTRIBUTION.txt`` (`plan_attribution`, `write_attribution`):
+the lines the providers' terms require for the files of the directory
+(ADR-012, Nogat DEV-20.5), merged with the lines it already holds, so a later
+write into the same directory never conflicts with it.
 
 An export writes exactly one file (``output``, DEV-19.1): the directory that
 holds it plays the role of ``output_dir`` for the staging directory and the
-store check, and the result is an `OutputReport`.
+store check, and the result is an `OutputReport`; it carries its lines inside.
 """
 
 from __future__ import annotations
@@ -50,10 +54,12 @@ from pathlib import Path
 from types import FrameType, TracebackType
 from typing import ClassVar, Literal
 
+from obserwator.attribution import Attribution
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
 from obserwator.messages import message
 
 __all__ = [
+    "ATTRIBUTION_FILE",
     "STAGING",
     "STORE_MARKER",
     "STORE_MARKERS",
@@ -62,6 +68,7 @@ __all__ = [
     "PlanEntry",
     "Staging",
     "Target",
+    "plan_attribution",
     "plan_plain",
     "refuse",
     "refuse_directory",
@@ -69,6 +76,7 @@ __all__ = [
     "resolve_target",
     "store_around",
     "store_below",
+    "write_attribution",
 ]
 
 STORE_MARKER = "obserwator-store.json"
@@ -77,6 +85,8 @@ STORE_MARKERS = ("kartograf-store.json", STORE_MARKER)
 """File names that mark the root of a store of any Nogat tool (DEV-19.12)."""
 STAGING = ".obserwator-incoming"
 """Name of the staging directory inside the output directory (DEV-19.7)."""
+ATTRIBUTION_FILE = "ATTRIBUTION.txt"
+"""File of a plain write with the lines of the providers' terms (Nogat DEV-20.5)."""
 _STALE_SECONDS = 24 * 60 * 60
 _CHUNK = 1 << 16
 
@@ -542,3 +552,96 @@ def chunks_of(data: bytes) -> Iterator[bytes]:
     """Split ``data`` into the chunks `Staging.write` hashes one by one."""
     for start in range(0, len(data), _CHUNK):
         yield data[start : start + _CHUNK]
+
+
+def _attribution_content(path: Path, lines: Attribution) -> bytes | None:
+    """
+    Content of the attribution file with ``lines`` merged in; None when it holds them.
+
+    UTF-8, one line per line with a line feed after each: the attribution lines,
+    then the terms lines, each once in the order of the standard.
+
+    Raises
+    ------
+    OSError
+        If an existing file cannot be read (e.g. it is a directory).
+    UnicodeDecodeError
+        If an existing file is no UTF-8 text.
+    """
+    try:
+        existing: bytes | None = path.read_bytes()
+    except FileNotFoundError:
+        existing = None
+    if existing is not None:
+        lines = Attribution.from_lines(existing.decode("utf-8").splitlines()) | lines
+    content = "".join(f"{line}\n" for line in lines.lines).encode("utf-8")
+    return None if content == existing else content
+
+
+def plan_attribution(directory: Path, lines: Attribution) -> PlanEntry | None:
+    """
+    The entry of ``ATTRIBUTION.txt`` in the plan of a plain write (ADR-012).
+
+    Parameters
+    ----------
+    directory : pathlib.Path
+        Absolute output directory (it need not exist yet).
+    lines : Attribution
+        The lines of the files the write puts into ``directory``.
+
+    Returns
+    -------
+    PlanEntry or None
+        ``write`` for a missing file, ``replace`` for a file that lacks some
+        of the lines (they are merged in, none is removed, so ``force`` does
+        not matter), ``conflict`` (``output_exists``) for a path that is no
+        readable UTF-8 file; None without lines or when the file holds them.
+    """
+    if not lines:
+        return None
+    path = directory / ATTRIBUTION_FILE
+    try:
+        content = _attribution_content(path, lines)
+    except (OSError, UnicodeDecodeError):
+        return PlanEntry(path, "conflict", "output_exists")
+    if content is None:
+        return None
+    return PlanEntry(path, "replace" if path.exists() else "write")
+
+
+def write_attribution(directory: Path, lines: Attribution) -> FileResult | None:
+    """
+    Merge ``lines`` into the ``ATTRIBUTION.txt`` of a plain write (ADR-012).
+
+    The file is written like every plain file: staged, hashed and moved into
+    place with ``os.replace``.
+
+    Parameters
+    ----------
+    directory : pathlib.Path
+        Absolute output directory; created when missing.
+    lines : Attribution
+        The lines of the files written into ``directory``.
+
+    Returns
+    -------
+    FileResult or None
+        The file as ``files[]`` (``written`` or ``replaced``), or None when
+        it already holds every line.
+
+    Raises
+    ------
+    ObserwatorError
+        Code ``conflict`` (``output_exists``) when the path is no readable
+        UTF-8 file; nothing is written.
+    """
+    entry = plan_attribution(directory, lines)
+    if entry is None:
+        return None
+    refuse([entry])
+    content = _attribution_content(entry.path, lines)
+    if content is None:
+        return None
+    with Staging(directory) as staging:
+        staged, size, sha256 = staging.write(chunks_of(content))
+        return staging.commit(staged, entry.path, size, sha256)

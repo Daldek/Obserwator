@@ -10,7 +10,9 @@ per-station ČHMÚ datasets require (spec 2026-10-18 §9.3). Every `ObserwatorEr
 rendered as ``partials/error.html`` with its ``code`` and ``detail`` and the
 HTTP status of the error registry; HTMX swaps those answers too
 (``static/js/app.js``). Every page carries Nogat's app menu (DEV-15.4) with the
-GUI addresses of ``[nogat] gui`` in ``nogat.toml``, read on each request.
+GUI addresses of ``[nogat] gui`` in ``nogat.toml``, read on each request. A view
+with provider data shows their attribution lines and terms notice (Nogat DEV §20)
+through ``partials/provider_lines.html``, with the texts of `obserwator.attribution`.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from obserwator import (
 from obserwator import _environment as environment
 from obserwator._version import __version__
 from obserwator.api.errors import hide_server_paths
+from obserwator.attribution import Attribution, attribution
 from obserwator.messages import Lang, localize, message
 from obserwator.store.types import Page, cursor_index, page_cursor
 
@@ -88,6 +91,10 @@ _PMAXTP_METHODS = (
     ("POT", "Peak Over Threshold"),
     ("AMP", "Annual Max Precipitation"),
 )
+# Archive links point to verbatim IMGW-PIB files; PMAXTP tables are a processed
+# product (Nogat DEV-20.1, DEV-20.2).
+_ARCHIVE_LINES = attribution("imgw", processed=False)
+_PMAXTP_LINES = attribution("pmaxtp")
 _STATION_PAGE_SIZE = "50"
 
 
@@ -173,6 +180,7 @@ async def download_archives_page(request: Request) -> HTMLResponse:
             "title": message("web.title_archives", lang=_LANG),
             "groups": groups,
             "archives": archives,
+            "provider_lines": _ARCHIVE_LINES,
         },
     )
 
@@ -217,7 +225,9 @@ async def download_files(
     except ObserwatorError as error:
         return _error(request, error)
     return templates.TemplateResponse(
-        request, "partials/download_links.html", {"files": files}
+        request,
+        "partials/download_links.html",
+        {"files": files, "provider_lines": _ARCHIVE_LINES},
     )
 
 
@@ -255,8 +265,10 @@ async def generate_pmaxtp(
     Returns
     -------
     HTMLResponse
-        ``partials/pmaxtp_result.html``, or the error partial when the input
-        is invalid, the point lies outside the PMAXTP grid or IMGW fails.
+        ``partials/pmaxtp_result.html`` with the provider lines under the tables
+        and the result for the downloads (``export``: the result with top-level
+        ``attribution`` and ``terms_notice``), or the error partial when the
+        input is invalid, the point lies outside the PMAXTP grid or IMGW fails.
     """
     given = {"latitude": latitude, "longitude": longitude, "method": method}
     try:
@@ -271,10 +283,20 @@ async def generate_pmaxtp(
         )
     except ObserwatorError as error:
         return _error(request, error)
+    export = {
+        **result.model_dump(mode="json"),
+        "attribution": list(_PMAXTP_LINES.attribution),
+        "terms_notice": list(_PMAXTP_LINES.terms_notice),
+    }
     return templates.TemplateResponse(
         request,
         "partials/pmaxtp_result.html",
-        {"result": result, "methods": dict(_PMAXTP_METHODS)},
+        {
+            "result": result,
+            "export": export,
+            "methods": dict(_PMAXTP_METHODS),
+            "provider_lines": _PMAXTP_LINES,
+        },
     )
 
 
@@ -319,8 +341,9 @@ def find_stations_partial(
     Returns
     -------
     HTMLResponse
-        ``partials/station_table.html`` with the page and links to the
-        neighbouring pages, or the error partial.
+        ``partials/station_table.html`` with the page, links to the
+        neighbouring pages and the command's provider lines, or the error
+        partial.
     """
     given = {
         "kind": kind,
@@ -365,6 +388,7 @@ def find_stations_partial(
             "last": end,
             "previous_url": _page_url(max(start - size, 0)) if start > 0 else None,
             "next_url": _page_url(end) if page.truncated else None,
+            "provider_lines": Attribution(outcome.attribution, outcome.terms_notice),
         },
     )
 

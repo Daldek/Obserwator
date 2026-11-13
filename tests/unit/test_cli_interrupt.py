@@ -186,7 +186,10 @@ def test_an_interrupted_plain_download_leaves_no_staging_and_no_partial_target(
             "cancelled",
         ]
         digest = hashlib.sha256(complete).hexdigest()
-        assert [file["sha256"] for file in document["result"]["files"]] == [digest] * 2
+        *data, notice = document["result"]["files"]
+        assert [file["sha256"] for file in data] == [digest] * 2
+        # the lines of the files written follow them (ADR-012 D5)
+        assert Path(notice["path"]) == tmp_path / "out" / "ATTRIBUTION.txt"
     elif how == "sigint_twice":
         assert command.error_line()["code"] == "cancelled"
     assert "Traceback" not in command.errors()

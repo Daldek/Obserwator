@@ -17,6 +17,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-009](#adr-009-the-tool-is-called-obserwator) | The tool is called Obserwator | 2026-11-03 | Accepted |
 | [ADR-010](#adr-010-result-error-and-catalog-documents-follow-the-nogat-standard-10) | Result, error and catalog documents follow the Nogat standard 1.0 | 2026-11-04 | Accepted |
 | [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted |
+| [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted |
 
 ---
 
@@ -99,6 +100,8 @@ Consequences: source archives keep their bytes and provenance; stations without 
 **2026-10-24 — D3, Q3 (superseded by ADR-007).** The marker `imgw-store.json` gains `tool`, `producer_version` and an always present `created_at` (`created_by` stays); the first write into an empty or new root creates it, and a root with the layout and no marker is `store_unavailable` until `imgw store init` verifies it (ADR-007 D6). Q3's probe of Kartograf by `kartograf-project.json` and `kartograf-meta/1` sidecars is replaced by the marker file names `kartograf-store.json` and `imgw-store.json` in ancestors, at the root and in descendants. The layout of D3 is unchanged.
 
 **2026-10-31 — D1, Q1, Q2, version policy (superseded by ADR-008).** Projects moved to Archiwista: `imgw-project/1`, `imgwtools.project` and the `imgw project …` commands (with `set_project_store` of Q2) are removed without aliases. D1 keeps the contracts `imgw-store/1`, `imgw-meta/1`, `imgw-series/1` and `imgw-plan/1`; the rule of the version policy on the strictly validated project manifest has nothing left to apply to.
+
+**2026-11-13 — Q10 (changed by ADR-012).** The CSV keeps `attribution_source` and `attribution_processed` in the first data row, and the columns `attribution` and `terms_notice` of Nogat DEV-20.5 follow them (the lines of `obserwator.attribution`, one per cell from the first data row down). Still no `#` row.
 
 ---
 
@@ -261,6 +264,8 @@ Archiwista reads ČHMÚ with the same adapter and contracts, and IMGW behavior d
 **2026-10-19 — D13, number of commands (ADR-004).** "36 commands in total" in D13 → 37: ADR-004 D4 adds the command `commands guide` (`agent_guide`, `GET /api/v1/commands/guide`). The options `provider` and `stations` and the command `datasets providers` also have English texts and effect metadata (ADR-004 D2–D3). Spec 2026-10-18 §9.3 has the note `[ADR-004]`. The text of D13 is unchanged.
 
 **2026-10-31 — D2, D14, D17, D18 (superseded by ADR-008 where they speak of projects).** Projects moved to Archiwista. D14 and its erratum of 2026-10-19 no longer apply: `imgw-project/1`, the project commands, restoring a pin by content, the item status `restored_by_content`, the pin state `content_match` and the notice `pin_restored_by_content` are removed without aliases. D2 no longer opens the domains of `imgw-project/1`. D17 and D18 stay valid for the store: `content_sha256` and `content_form` in the sidecar, `CONTENT_FORMS`, `imgwtools.store.content` and the observation register `imgw-observation/1` are the facts Archiwista matches its own pins on (`archiwista-project/1`); only their sentences on the manifest's `files[]` and on pins go.
+
+**2026-11-13 — D12 (changed by ADR-012).** The ČHMÚ `attribution` ends with the link of the licence, „… licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)” (CC BY 4.0 §3(a)(1)), and the processed forms carry it with the mark of changes; new sidecars write it, versions already written keep their bytes.
 
 ---
 
@@ -454,6 +459,8 @@ An agent or a script writes without a flag (the default store), writes plain fil
 
 **2026-10-31 — D2, D8 (superseded by ADR-008).** The project commands are removed (ADR-008), so D2's project task without a `root` and the `project *` commands of D8's store-only class are gone; the store-only class is `store init`, `store catalog`, `series build` and the options `plan` and `series` of `store sync`.
 
+**2026-11-13 — D3 (changed by ADR-012 D5).** A plain write also puts `ATTRIBUTION.txt` at the root of the output directory: the lines the providers' terms require for its files (Nogat DEV-20.5), merged with the lines the file holds, so it never conflicts; the plan lists it and `files[]` reports it. The data files stay plain, without sidecars.
+
 ---
 
 ## ADR-008: Projects move to Archiwista
@@ -570,3 +577,30 @@ No GUI of the ecosystem linked to another. Nogat's kit 0.1.0 (`design/kit/`) giv
 ### Consequences
 
 The pages link to every other GUI of the deployment, opened in the tab `nogat-<name>`. A new kit version is copied again (DEV-15.6); `tests/unit/test_web_app.py` checks the attribute against a `nogat.toml` with characters that need escaping.
+
+## ADR-012: Provider attribution in every product
+
+**Date:** 2026-11-13  
+**Status:** Accepted (the author's order of 2026-11-13: the attribution the IMGW-PIB terms require appears in every product with their data, and the ČHMÚ terms are met; recorded by Nogat as ECO-060)  
+**Standard:** Nogat DEV §20 (DEV-20.1 to DEV-20.8, Nogat commit `6f75180`), ECO-060; changes ADR-001 Q10 (CSV of `series export`), ADR-003 D12 (ČHMÚ attribution) and ADR-007 D3 (plain mode)  
+
+### Context and options
+
+The IMGW-PIB terms (danepubliczne.imgw.pl/regulations §5 ust. 3–4) make the source line S a condition of use on every product made with the data and the line P on every product with processed data; the PMAXTP terms (klimat.imgw.pl/opady-maksymalne) prescribe their own lines PS and PP and the monograph M; the terms of the hydrological service (hydro.imgw.pl/#/regulamin) repeat S and P for its data; ČHMÚ publishes under CC BY 4.0 (creator, address, licence with its link, mark of changes). Free use of IMGW-PIB data is private use only, so the person also sees the terms notice N with the terms that apply. Obserwator carried S and P in the CSV of `series export` (ADR-001 Q10), in sidecars (`license.attribution`: S of archives, „S. P” of series and PMAXTP cells, only S for the IMGW-PIB catalog) and in the `license_terms` notice of writing commands. The ČHMÚ line lacked the licence link, PMAXTP carried S and P instead of its own lines, data of hydro.imgw.pl were not named, and the envelope, the CLI summary, `store export`, the Parquet files, `series.json`, `stations.geojson`, PMAXTP `cell.json`, plain downloads, reference data and the web pages carried no lines; no product showed N. Options: (a) lines written per surface (copies of the texts that drift apart); (b) one module composing the lines of the standard from the one catalog area `legal`, asked by every surface (chosen).
+
+### Decisions D1–D8
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Texts and their composition.** `obserwator.messages.legal` holds the lines of DEV §20 byte for byte, in Polish in every language: S, P, H, PS, PP, M, C (now with „(https://creativecommons.org/licenses/by/4.0/)”), CP („normalizacja i zmiana formatu”), N, RD, RH, RK. `obserwator.attribution` composes them: `attribution(*origins, processed=True)` over the origins `imgw` (archives and API of danepubliczne.imgw.pl), `imgw_hydro` (hydro.imgw.pl and hydro-back.imgw.pl), `pmaxtp` and `chmi`; `Attribution` (`attribution`, `terms_notice`, `a \| b` merges each line once in the order S, P, H, PS, PP, M, C, CP and N, RD, RH, RK, `fields()` for JSON, `from_lines()`). A verbatim copy carries the source lines (S; PS and M; C), processed data add P, PP or CP, data of hydro.imgw.pl add H; IMGW-PIB data of any origin carry N and their terms. | Lines retyped per surface. |
+| D2 | **Envelope.** `obserwator-result/1` and `CommandResult` gain the optional arrays `attribution` and `terms_notice` (AGI-4.1: additive, the version stays) for the commands that return, read or write provider data: `current hydro\|meteo\|synop\|warnings` (S, P; N, RD), `current hydro-states` (S, P, H; N, RH), `pmaxtp fetch\|sync\|read` (PS, PP, M; N, RK), `stations find` (by the providers of the page's stations; H and RH when a store search located an IMGW-PIB station by a `static` location of the catalog), `series select\|read\|summary\|export\|build`, `store export` (processed), `store catalog` (the catalog's lines), `store sync` (verbatim lines, processed once a series exists) and `datasets download` (verbatim lines). They are absent from plans and from commands without provider data (the registry, URLs, the store state, the catalog of commands). A REST stream adds the headers `X-Obserwator-Attribution` and `X-Obserwator-Terms-Notice` (ASCII-escaped JSON arrays), which MCP over HTTP reads back into its envelope. | One field inside every result document (the documents of 30 commands change for one meaning). |
+| D3 | **CLI.** Without `--json` the summary prints the lines verbatim after the result under „Data sources and terms of use (required with the data)” in the language of `--lang`; stream lines carry their own. | A line only in `--json`. |
+| D4 | **Files.** CSV of `series export`: `attribution_source` and `attribution_processed` stay as in ADR-001 Q10, and the columns `attribution` and `terms_notice` of DEV-20.5 follow them (one line per cell from the first data row down, empty below, the rest joined with a line feed into the last row of a shorter series). CSV of `store export`: the same two trailing columns; JSONL: the first object adds `attribution` and `terms_notice`. Parquet station files: the file metadata keys `attribution` and `terms_notice`, JSON arrays. `series.json`, `stations.geojson` and PMAXTP `cell.json`: top-level `attribution` and `terms_notice`. Sidecars keep `license.attribution` as one text, the lines joined with „. ”: archives S or C, series S. P or C. CP, the IMGW-PIB catalog S. P (and H with a static location), PMAXTP cells PS. PP. M with the PMAXTP terms as `license.url`. | `#` comment rows (they break `csv.DictReader`, Excel and QGIS, ADR-001 Q10); a new sidecar field. |
+| D5 | **Plain mode.** A plain write (`datasets download`, `store sync`, `pmaxtp sync` with `--output-dir`) puts `ATTRIBUTION.txt` at the root of the directory (DEV-20.5): UTF-8 with LF line ends, the attribution lines and then the terms lines of the files written, merged with the lines the file already holds (never a conflict; a path that is no readable UTF-8 file is `conflict`/`output_exists`). The plan lists it and `files[]` reports it after the data files. The data files stay plain: ADR-007 D3 („no sidecar”) still holds for them. | A sidecar per file (one more file per archive); a README per call (conflicts with the next call). |
+| D6 | **Stored versions.** A series version whose `series.json` lacks the current lines is no longer reused: `store check` reports the series `outdated`, and the next `series build` (or `store sync`) writes a version with them. Catalogs and PMAXTP cells change bytes and get a new version on the next build or sync. Versions already written keep their bytes (the store only grows). | Old series current until new inputs (their Parquet files would never carry the lines). |
+| D7 | **Web pages.** Each view with data shows its lines under the data and in the footer, the terms included: archive links S, N, RD (and the wget script as comments); PMAXTP PS, PP, M, N, RK with the JSON download and copy (fields), the CSV and XLSX (rows of the header block: the CSV is a report of three tables, not one table); the station table and the map from the envelope, the map popups the attribution lines, the hydro.imgw.pl states labelled as current with the time they were read (DEV-20.8). The paraphrase „Dane pochodzą z IMGW-PIB” of the footer is gone. | Lines in a tooltip. |
+| D8 | **Registry and reference data.** `ProviderDescriptor.license_notice(lines)` takes an `Attribution`, so the `license_terms` notice shows the lines of the written data and then N with its terms (an English gloss of N follows it in English) or the CC BY note of ČHMÚ; the IMGW-PIB `notice` is N with RD, the `pl.imgw.pmaxtp` license has PS and the PMAXTP terms. `python -m obserwator.reference_data` writes the locations file with the trailing columns (S, P, H; N, RH) and `ATTRIBUTION.txt` for the directory, and prints the lines. | — |
+
+### Consequences
+
+Additive changes of `/1` contracts (no version changes): the envelope fields and stream headers, two trailing CSV columns of each export, the first JSONL object, Parquet metadata keys, the fields of `series.json`, `stations.geojson` and `cell.json`, the texts of `license.attribution` and of the `license_terms` notice, and `ATTRIBUTION.txt` in plain mode; `ProviderDescriptor.license_notice` takes an `Attribution` instead of a text. Hydrolog reads the CSV by column names, so the trailing columns are harmless, and carries the lines on; Archiwista reads `license.attribution` as a text as before; Retman and the web pages take the envelope fields. `tests/unit/test_attribution.py` and the tests of each surface family (CSV, JSON, Parquet, REST, MCP, the PMAXTP page) compare with the lines of `obserwator.attribution`.

@@ -21,6 +21,7 @@ write or connect without a decision of the user (spec 2026-10-19 §3–§4).
 import copy
 import importlib
 import inspect
+import json
 import math
 import os
 import re
@@ -37,6 +38,12 @@ from obserwator import stations as _stations
 from obserwator import store as _store
 from obserwator._examples import EXAMPLES
 from obserwator._version import __version__
+from obserwator.attribution import (
+    Attribution,
+    attribution,
+    dataset_origin,
+    provider_origin,
+)
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -65,6 +72,7 @@ from obserwator.exceptions import (
     io_error,
 )
 from obserwator.messages import LANGS, Lang, localize, message, reason
+from obserwator.models import StationListEntry
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
 from obserwator.store import sync as _sync
@@ -2604,6 +2612,125 @@ def _page(options: Options) -> tuple[int | None, int]:
     return limit, 0 if cursor is None else cursor_index(cursor)
 
 
+# --- atrybucja (ADR-012) ---------------------------------------------------------------------
+
+
+def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
+    """Lines of the data of the given datasets (keys, slugs or legacy aliases)."""
+    return attribution(
+        *dict.fromkeys(dataset_origin(get_dataset(key).key) for key in keys),
+        processed=processed,
+    )
+
+
+def _series_lines(options: Options, result: object) -> Attribution:
+    """Processed lines of the series a series command reads or builds."""
+    if options.get("dataset") is not None:
+        return _of_datasets([str(options["dataset"])])
+    series = _reader._series_path(
+        cast(PathArg, options["version"]), root=options.get("root"), dataset=None
+    )
+    meta = _reader.read_meta(series)
+    return _of_datasets([meta.dataset_key or meta.dataset])
+
+
+def _archive_lines(options: Options, result: object) -> Attribution:
+    """Processed lines of the records ``store export`` reads from one archive."""
+    source = Path(cast(PathArg, options["version"])).expanduser()
+    if options.get("root") is not None:
+        source = _reader._open(options["root"]) / source
+    meta = _reader.read_meta(_reader._archive_main(source))
+    return _of_datasets([meta.dataset_key or meta.dataset])
+
+
+def _download_lines(options: Options, result: object) -> Attribution:
+    """Lines of the verbatim files of ``datasets download``."""
+    return _of_datasets([str(options["dataset"])], processed=False)
+
+
+def _sync_lines(options: Options, result: object) -> Attribution:
+    """Lines of the archives of a sync (verbatim), processed once series exist."""
+    report = cast(SyncReport, result)
+    keys = [
+        slot.split(":")[1]
+        for item in report.items
+        if (slot := item.slot) is not None and slot.startswith("archive:")
+    ]
+    built = any(series.version is not None for series in report.series)
+    return _of_datasets(keys, processed=built)
+
+
+def _catalog_lines(options: Options, result: object) -> Attribution:
+    """The lines the built (or the equal current) catalog document carries."""
+    report = cast(CatalogReport, result)
+    lines = attribution(provider_origin(report.provider))
+    if report.version is None:
+        return Attribution()
+    document = json.loads(report.version.read_bytes())
+    return lines | Attribution(
+        tuple(document.get("attribution", ())), tuple(document.get("terms_notice", ()))
+    )
+
+
+def _stations_lines(options: Options, result: object) -> Attribution:
+    """
+    Lines of the providers of the stations found.
+
+    A store search locates IMGW-PIB stations by the current catalog, whose
+    ``static`` locations come from hydro.imgw.pl; those add its lines.
+    """
+    entries = cast(Sequence[StationListEntry], result)
+    lines = attribution(*dict.fromkeys(provider_origin(e.provider) for e in entries))
+    located = {
+        entry.station_code
+        for entry in entries
+        if entry.provider == "IMGW-PIB" and entry.latitude is not None
+    }
+    if options.get("source") != "store" or not located:
+        return lines
+    try:
+        features = _store.read_catalog(root=options["root"], provider="IMGW-PIB")
+    except ObserwatorStoreError:
+        return lines
+    if any(
+        feature.station_code in located
+        and feature.properties.get("location_source") == "static"
+        for feature in features
+    ):
+        lines |= attribution("imgw_hydro")
+    return lines
+
+
+def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
+    """Resolver of a command whose data have fixed origins (processed)."""
+    lines = attribution(*origins)
+    return lambda options, result: lines
+
+
+# The lines of the data a command returns, reads or writes (ADR-012); commands
+# without provider data (the registry, URLs, plans, the store state) have none.
+_ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
+    "datasets download": _download_lines,
+    "stations find": _stations_lines,
+    "current hydro": _origin_lines("imgw"),
+    "current meteo": _origin_lines("imgw"),
+    "current synop": _origin_lines("imgw"),
+    "current warnings": _origin_lines("imgw"),
+    "current hydro-states": _origin_lines("imgw_hydro"),
+    "pmaxtp fetch": _origin_lines("pmaxtp"),
+    "pmaxtp sync": _origin_lines("pmaxtp"),
+    "pmaxtp read": _origin_lines("pmaxtp"),
+    "store sync": _sync_lines,
+    "store catalog": _catalog_lines,
+    "store export": _archive_lines,
+    "series build": _series_lines,
+    "series select": _series_lines,
+    "series read": _series_lines,
+    "series summary": _series_lines,
+    "series export": _series_lines,
+}
+
+
 def run_command(
     command: str,
     /,
@@ -2650,7 +2777,10 @@ def run_command(
         (``partial``/``failed`` for failed items of a report, ``cancelled``
         for a cancelled report or an `ObserwatorCancelledError` with
         ``result=None``), the result (the page's items for list commands) and the
-        distinct notices in order of first occurrence; a list command's ``page``.
+        distinct notices in order of first occurrence; a list command's ``page``;
+        the ``attribution`` lines and the ``terms_notice`` of the provider data
+        the command returns, reads or writes (ADR-012, empty for a command
+        without provider data).
 
     Raises
     ------
@@ -2677,8 +2807,18 @@ def run_command(
             result = items[start:end]
     except ObserwatorCancelledError:
         return CommandResult(spec.name, False, "cancelled", None, notices.collected())
+    lines = Attribution()
+    if result is not None and spec.name in _ATTRIBUTIONS:
+        lines = _ATTRIBUTIONS[spec.name](normalized, result)
     return CommandResult(
-        spec.name, False, _status(result), result, notices.collected(), page
+        spec.name,
+        False,
+        _status(result),
+        result,
+        notices.collected(),
+        page,
+        lines.attribution,
+        lines.terms_notice,
     )
 
 
@@ -2749,6 +2889,13 @@ def _check_datasets_files(options: Options, hooks: Hooks) -> StorePlan:
     )
 
 
+def _verbatim_lines(files: Sequence[ArchiveFile]) -> Attribution | None:
+    """Lines of the verbatim files of a plain write (none without files)."""
+    if not files:
+        return None
+    return _of_datasets([file.dataset for file in files], processed=False)
+
+
 def _check_download(options: Options, hooks: Hooks) -> StorePlan:
     files = _archives(options)
     if "output_dir" in options:
@@ -2761,6 +2908,7 @@ def _check_download(options: Options, hooks: Hooks) -> StorePlan:
                 directory,
                 targets,
                 force=bool(options.get("force")),
+                lines=_verbatim_lines(files),
             ),
         )
     root = cast(Path, options["root"])
@@ -2956,6 +3104,7 @@ def _check_store_sync(options: Options, hooks: Hooks) -> StorePlan:
                 directory,
                 [(archive.server_path, archive.url) for archive in archives],
                 force=bool(options.get("force")),
+                lines=_verbatim_lines(archives),
             ),
         )
     root = cast(Path, options["root"])

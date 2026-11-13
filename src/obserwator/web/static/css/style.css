@@ -156,6 +156,26 @@ footer.container p {
     color: var(--pico-muted-color);
 }
 
+/* Provider attribution lines and terms notice (Nogat DEV §20): small but always
+   visible, one per line, printed too */
+.provider-lines {
+    margin: 1rem 0;
+}
+
+.provider-lines .provider-line {
+    margin: 0 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--pico-muted-color);
+}
+
+.popup-attribution {
+    margin: 0.5rem 0 0;
+}
+
+.popup-attribution .provider-line {
+    font-size: 0.7rem;
+}
+
 /* Details/Summary styling */
 details {
     margin-bottom: 0.5rem;
@@ -208,7 +228,7 @@ input[type="search"] {
 
 /* Print styles */
 @media print {
-    nav, footer, .download-actions, button {
+    nav, footer > :not(.provider-lines), .download-actions, button {
         display: none !important;
     }
 
