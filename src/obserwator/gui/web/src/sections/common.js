@@ -5,13 +5,23 @@
 // plan's O2): `useAnalysis(code, "characteristic.Q", overrides)` gives the stored result
 // without overrides and one computed on request with them (GUI plan D8). The result is
 // `obserwator-analysis/1`: `status` ("ok" | "failed"), `envelope` (Hydrolog's
-// `hydrolog-result/1`: `result`, `notices`, `attribution`, `terms_notice`) or `error`
-// (`hydrolog-error/1`), `command`, `options`, `inputs` [{dataset, series_version}],
-// `hydrolog` {version}, `computed_at`, `source` ("stored" | "computed").
+// `hydrolog-result/1`: `result`, `notices`, `inputs`, `attribution`, `terms_notice`) or
+// `error` (`hydrolog-error/1`), `command`, `options`, `inputs` [{dataset, series_version,
+// series_sha256}], `hydrolog` {version}, `computed_at`, `stored` (true for a stored result),
+// `analyses_version`, `attribution` and `terms_notice`.
+//
+// The panel draws the lines of the results a card shows under it: a card's body sits in a
+// `ResultLines` provider whose value is called with each analysis document its sections get.
 
 import { api } from "../api.js";
 import { has } from "../i18n.js";
-import { fmt, fmtDateTime, html, t, tn, useEffect, useState } from "../lib.js";
+import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, useState } from "../lib.js";
+
+/**
+ * Where the analysis documents of a card go (the panel's provider): a function called with
+ * each `obserwator-analysis/1` a section receives, so the card shows their lines.
+ */
+export const ResultLines = createContext(null);
 
 /**
  * The analysis ids that apply to a station (`api/analyses/{code}`).
@@ -58,6 +68,7 @@ function clean(overrides) {
 export function useAnalysis(code, id, overrides = {}) {
   const chosen = clean(overrides);
   const key = JSON.stringify(chosen);
+  const report = useContext(ResultLines);
   const [state, setState] = useState({ data: null, error: null, loading: Boolean(id) });
   useEffect(() => {
     if (!id) {
@@ -72,6 +83,9 @@ export function useAnalysis(code, id, overrides = {}) {
     );
     return () => control.abort();
   }, [code, id, key]);
+  useEffect(() => {
+    if (report && state.data) report(state.data);
+  }, [report, state.data]);
   const data = state.data;
   const result = data && data.status === "ok" && data.envelope ? data.envelope.result : null;
   return { ...state, result };
@@ -138,11 +152,11 @@ export function Provenance({ results }) {
       seen.add(key);
       continue;
     }
-    const key = `${doc.command} ${doc.source}`;
+    const key = `${doc.command} ${doc.stored ? "stored" : "computed"}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const version = doc.hydrolog && doc.hydrolog.version;
-    const when = doc.source === "stored" ? t("sections.stored", { when: fmtDateTime(doc.computed_at) }) : t("sections.on_request");
+    const when = doc.stored ? t("sections.stored", { when: fmtDateTime(doc.computed_at) }) : t("sections.on_request");
     items.push(
       html`<span class="prov prov-hydrolog" title=${JSON.stringify(doc.options || {})}>Hydrolog ${version || ""} · <code>${doc.command}</code> · ${when}</span>`,
     );

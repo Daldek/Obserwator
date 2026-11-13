@@ -25,6 +25,8 @@ htmlcov/
 *.txt
 # Derived guide for AI agents (obserwator commands guide --format llms), kept in the repository
 !/llms.txt
+# Licence of a vendored library of the web GUI (vendor.json), shipped in the package
+!/src/obserwator/gui/web/vendor/maplibre-gl/LICENSE.txt
 
 # IMGW reference data — NOT shipped; fetch via `python -m obserwator.reference_data`
 # (data is IMGW-PIB's, under its terms, not this project's MIT licence)

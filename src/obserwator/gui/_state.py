@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,11 @@ class GuiState:
         not public (no usable ``[nogat.operator]``).
     version : str
         Obserwator's version, the app's version in reports and the session.
+    hidden : tuple of Path
+        More directories hidden in answers.
+    boot : str
+        A random token of this run, part of every ETag: an answer cached by a browser
+        is made again after a restart, when the server's code may have changed.
     """
 
     config: GuiConfig
@@ -56,6 +62,7 @@ class GuiState:
     terms: bytes | None
     version: str = __version__
     hidden: tuple[Path, ...] = field(default_factory=tuple)
+    boot: str = field(default_factory=lambda: secrets.token_hex(8))
 
     def directories(self) -> tuple[Path, ...]:
         """The server's directories hidden in answers (D6): root, state, temporary, working."""

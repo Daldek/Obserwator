@@ -26,6 +26,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   the area `gui` of the message catalog. Settings: `OBSERWATOR_GUI_BASEMAP_URL` (empty: the
   packaged borders only) and `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`. The page vendors Preact,
   htm and MapLibre GL JS (Archiwista's bytes) and copies Nogat's kit and tokens byte for byte.
+  The page (GUI plan S2 to S7): every station of the catalogs on a MapLibre map with
+  hydro.imgw.pl's symbols and legend, the list with search ignoring case and diacritics and
+  filters, „Pomiary bieżące” of IMGW-PIB's hydrological and meteorological stations, the station
+  panel („Informacje o stacji”, „Pomiary bieżące”, „Dane pomiarowo-obserwacyjne” with chart and
+  table, the hydrological or meteorological analyses, „Pobierz” with series as CSV, JSON and
+  Parquet, the stations as GeoJSON and CSV and analysis results as JSON, each with its command
+  line), the hand-off to Hydrolog (`nogat-handoff/1`), PMAXTP of a point with its CSV and JSON,
+  an SVG chart module with date axis, band, zoom and readout by keys, „PL | EN” and both
+  themes. Every analysis is an id of the stored analyses' registry (O2), computed by Hydrolog
+  on request until stored results land; the climate stripes (M15) are a labelled prototype of
+  their colour scale only. A deployment whose state directory overlaps the root writes none of
+  the GUI's files.
+
+- **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
+  is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
+  gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still
+  brings python-multipart).
 
 - **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
   2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,

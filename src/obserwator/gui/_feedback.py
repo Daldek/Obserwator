@@ -65,14 +65,23 @@ class Feedback:
     ----------
     path : Path
         ``<state_dir>/feedback.jsonl``.
+    writes : bool, optional
+        Take reports (default); False keeps them off: ``POST api/feedback`` answers
+        ``forbidden`` and nothing is written (GUI plan D7: the state directory
+        overlaps the data root).
     monotonic : callable, optional
         Monotonic time in seconds (the limit's window).
     """
 
     def __init__(
-        self, path: Path, *, monotonic: Callable[[], float] = time.monotonic
+        self,
+        path: Path,
+        *,
+        writes: bool = True,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.path = path
+        self.writes = writes
         self.monotonic = monotonic
         self._lock = threading.Lock()
         self._times: dict[str, deque[float]] = {}
@@ -295,7 +304,8 @@ async def post_feedback(request: Request) -> Response:
     -------
     Response
         ``{"id": <id>, "status": "ok"}``; else the error document: ``forbidden``
-        (403) from another site, ``validation_error`` (400; ``413`` for a body too
+        (403) from another site or when reports are off (``details.reason``
+        ``feedback_off``), ``validation_error`` (400; ``413`` for a body too
         large, ``details.reason`` ``content_type`` for another media type),
         ``rate_limited`` (429 with ``Retry-After``) above `RATE_COUNT` reports of
         one address in `RATE_WINDOW_S`, ``io_error`` (500) when the file cannot be
@@ -303,6 +313,12 @@ async def post_feedback(request: Request) -> Response:
     """
     state = request.app.state.gui
     try:
+        if not state.feedback.writes:
+            raise GuiError(
+                "forbidden",
+                message("gui.errors.feedback_off"),
+                details={"reason": "feedback_off"},
+            )
         if not _same_origin(request):
             raise GuiError("forbidden", message("gui.public.feedback_forbidden"))
         media = request.headers.get("content-type", "").split(";")[0].strip().lower()

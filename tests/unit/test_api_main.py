@@ -89,18 +89,10 @@ def test_api_main_gzip_applies_only_above_threshold(client):
     assert "content-encoding" not in small.headers
 
 
-@pytest.mark.parametrize(
-    "path,content_type",
-    [("/static/css/style.css", "text/css"), ("/static/js/app.js", "javascript")],
-)
-def test_api_main_serves_static_assets(client, path, content_type):
-    response = client.get(path)
-    assert response.status_code == 200
-    assert content_type in response.headers["content-type"]
-
-
-def test_api_main_unknown_static_file_is_404(client):
-    assert client.get("/static/css/brak.css").status_code == 404
+def test_api_main_root_redirects_to_the_documentation(client):
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
 
 
 @pytest.mark.parametrize("env,reload", [("development", True), ("production", False)])

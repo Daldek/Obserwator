@@ -1,14 +1,16 @@
 """
 A stand-in for the stored analyses of the Nogat plan's O2, until they land in Obserwator.
 
-It answers like O2's public functions (``list_analyses``, ``read_analysis``,
-``compute_analysis``; the dict of ``AnalysisResult``, schema ``obserwator-analysis/1``)
-for the analysis ids of the registry that O2 adopts (``local://gui-analysis-calls.md``):
-one id is one call of Hydrolog's program, its inputs exported from the data root with
-`export_series` into a private temporary directory, its options the registry's defaults
-with the person's overrides, its options taken from another id's result where the id
-depends on one. Nothing is stored: ``read_analysis`` finds nothing and every result
-comes from ``compute_analysis``.
+It answers like O2's functions (``list_analyses``, ``read_analysis``,
+``compute_analysis`` of ``obserwator.store.analyses``; the documents of
+``AnalysisSummary`` and ``AnalysisResult``, ``obserwator-analysis/1``) over the GUI's
+read-only snapshot of the data root (`Snapshot`), for the ids of O2's registry
+(`registry`, a temporary copy). O2's compute path is ported as it is: the analyses an
+id takes numbers from (its chain) are planned for the station, the series files are
+exported into a private temporary directory, and Hydrolog's program runs one batch per
+round of calls (`hydrolog`); a person's options are checked against the registry and
+an option of a dependency is passed on to it. Nothing is stored before O2:
+``read_analysis`` finds nothing and every result comes from ``compute_analysis``.
 
 When O2 lands, this package goes and the GUI calls ``obserwator.list_analyses``,
 ``read_analysis`` and ``compute_analysis``.
@@ -18,630 +20,756 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
-import subprocess
 import tempfile
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, cast
 
-import obserwator
-from obserwator.attribution import Attribution
-from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
+from obserwator.attribution import Attribution, attribution, dataset_origin
+from obserwator.datasets import get_dataset
+from obserwator.exceptions import (
+    ObserwatorDataError,
+    ObserwatorError,
+    ObserwatorValidationError,
+)
 from obserwator.gui._root import Snapshot
+from obserwator.gui._standin.hydrolog import Call, Deadline, Hydrolog
+from obserwator.gui._standin.registry import (
+    BY_ID,
+    DEFINITIONS,
+    AnalysisDefinition,
+    AnalysisOption,
+    AnalysisPick,
+    AnalysisVariant,
+    Kind,
+)
 from obserwator.messages import message
+from obserwator.store import export_series
+from obserwator.store.types import SeriesIndex
+
+__all__ = ["ANALYSIS_SCHEMA", "SUMMARY_SCHEMA", "StandIn"]
 
 ANALYSIS_SCHEMA = "obserwator-analysis/1"
+SUMMARY_SCHEMA = "obserwator-analysis-summary/1"
 EXPORTS_KEPT = 16
 """How many exported series files stay in the private directory."""
-
-ParamType = Literal["integer", "number", "string", "boolean", "integers", "numbers"]
-
-
-@dataclass(frozen=True)
-class Param:
-    """
-    An option the person may change: its type and bounds.
-
-    Attributes
-    ----------
-    type : {"integer", "number", "string", "boolean", "integers", "numbers"}
-        The type; ``integers`` and ``numbers`` are comma-separated lists.
-    minimum, maximum : float or None
-        Inclusive bounds of a number (of each item of a list).
-    allowed : tuple of str or None
-        The values of a ``string``.
-    """
-
-    type: ParamType
-    minimum: float | None = None
-    maximum: float | None = None
-    allowed: tuple[str, ...] | None = None
+_RESULT = "hydrolog-result/1"
 
 
-YEAR = Param("integer", 1700, 2200)
-"""``first_year`` and ``last_year``: hydrological or calendar years."""
+def _pointer(document: object, pointer: str) -> object:
+    """The value at a JSON Pointer (RFC 6901), or None when there is none."""
+    if pointer == "":
+        return document
+    current = document
+    for raw in pointer.split("/")[1:]:
+        token = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, Mapping):
+            if token not in current:
+                return None
+            current = current[token]
+        elif isinstance(current, list):
+            if not token.isdigit() or int(token) >= len(current):
+                return None
+            current = current[int(token)]
+        else:
+            return None
+    return current
 
 
-@dataclass(frozen=True)
-class Dependency:
-    """
-    Options of an id taken from the result of another id.
-
-    Attributes
-    ----------
-    analysis : str
-        The id whose result feeds the options.
-    select : callable
-        ``select(result) -> options``: picks values of the other result (its
-        ``result`` member, Hydrolog's own document); selection only, no arithmetic.
-    shared : tuple of str
-        The overrides passed on to the other id (the same period).
-    """
-
-    analysis: str
-    select: Callable[[Mapping[str, Any]], Mapping[str, Any]]
-    shared: tuple[str, ...] = ("first_year", "last_year")
-
-
-@dataclass(frozen=True)
-class Spec:
-    """
-    One analysis id: one call of Hydrolog's program.
-
-    Attributes
-    ----------
-    id : str
-        The dotted id (``characteristic.Q``).
-    command : str
-        Hydrolog's catalog command (``stats characteristic``).
-    kinds : tuple of str
-        The station kinds it applies to (``hydro``, ``meteo``).
-    inputs : Mapping of str to tuple of str
-        Each file option and the datasets that may fill it, the first the station
-        holds being used (``{"input_file": ("pl.imgw.hydro_daily", …)}``).
-    variables : Mapping of str to str
-        Variables the input of a file option must hold for the station
-        (``{"input_file": "Q"}``); without them the id does not apply.
-    options : Mapping of str to object
-        The other options: columns and defaults.
-    overridable : Mapping of str to Param
-        The options the person may change, with their types.
-    depends : Dependency or None
-        Options taken from another id's result.
-    providers : tuple of str or None
-        Only stations of these providers (``("CHMI",)``); None for every one.
-    needs : callable or None
-        ``needs(properties) -> bool`` for an id that applies only to stations with
-        some catalog property (the ČHMÚ thresholds).
-    """
-
-    id: str
-    command: str
-    kinds: tuple[str, ...]
-    inputs: Mapping[str, tuple[str, ...]]
-    variables: Mapping[str, str] = field(default_factory=dict)
-    options: Mapping[str, Any] = field(default_factory=dict)
-    overridable: Mapping[str, Param] = field(default_factory=dict)
-    depends: Dependency | None = None
-    providers: tuple[str, ...] | None = None
-    needs: Callable[[Mapping[str, Any]], bool] | None = None
-    catalog_options: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
-
-
-class Registry:
-    """The ids of the stand-in, by id; filled by the modules of this package."""
-
-    def __init__(self, specs: Sequence[Spec]) -> None:
-        self.specs: dict[str, Spec] = {}
-        for spec in specs:
-            if spec.id in self.specs:
-                raise ValueError(f"Analysis id twice: {spec.id}")
-            self.specs[spec.id] = spec
-
-
-HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
-"""The daily hydrological series, IMGW-PIB's before ČHMÚ's (a station has one)."""
-HALF_YEARS = ("pl.imgw.hydro_semiannual",)
-"""IMGW-PIB's half-year and annual characteristics."""
-METEO_DAILY = (
-    "pl.imgw.meteo_climate_daily",
-    "cz.chmi.meteo_daily",
-    "pl.imgw.meteo_precip_daily",
-)
-"""The daily meteorological series: climate stations before precipitation stations."""
-PERIOD = {"first_year": YEAR, "last_year": YEAR}
-"""The period the person may choose."""
-
-
-def _registry() -> Registry:
-    from obserwator.gui._standin import (
-        hydro_levels,
-        hydro_regime,
-        meteo_precipitation,
-        meteo_temperature,
-    )
-
-    return Registry(
-        [
-            *hydro_levels.SPECS,
-            *hydro_regime.SPECS,
-            *meteo_precipitation.SPECS,
-            *meteo_temperature.SPECS,
-        ]
+def _is_number(value: object) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
     )
 
 
-def _now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _holdings(index: SeriesIndex, code: str) -> frozenset[str]:
+    """The variables of the station with a value in a series (half-years without ``@``)."""
+    return frozenset(
+        name.split("@", 1)[0]
+        for name, coverage in index.stations[code].variables.items()
+        if coverage.with_value > 0
+    )
 
 
-class HydrologFailed(Exception):
-    """Hydrolog's program could not be run or gave no document."""
+@dataclass(frozen=True)
+class _Planned:
+    """An analysis of the registry that applies to a station: its variant and files."""
+
+    definition: AnalysisDefinition
+    variant: AnalysisVariant
+    files: tuple[tuple[str, str], ...]
 
 
-@dataclass
-class _Program:
-    command: tuple[str, ...]
-    version: str | None = None
-    options: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
-    lock: threading.Lock = field(default_factory=threading.Lock)
+def _plan(
+    kind: Kind,
+    holdings: Mapping[str, frozenset[str]],
+    properties: Mapping[str, Any],
+    definitions: Iterable[AnalysisDefinition],
+) -> tuple[_Planned, ...]:
+    """The analyses of ``definitions`` the station's series and catalog entry allow."""
+    planned: dict[str, _Planned] = {}
+    for definition in definitions:
+        if definition.kind != kind or any(
+            name not in planned for name in definition.depends_on
+        ):
+            continue
+        if any(
+            pick.analysis is None and not _is_number(_pointer(properties, pick.pointer))
+            for pick in definition.picks
+        ):
+            continue
+        for variant in definition.variants:
+            files: list[tuple[str, str]] = []
+            for item in variant.inputs:
+                key = next(
+                    (
+                        key
+                        for key in item.datasets
+                        if set(item.variables) <= holdings.get(key, frozenset())
+                    ),
+                    None,
+                )
+                if key is None:
+                    break
+                files.append((item.option, key))
+            else:
+                planned[definition.id] = _Planned(definition, variant, tuple(files))
+                break
+    return tuple(planned.values())
 
-    def run(
-        self, args: Sequence[str], timeout: float
-    ) -> subprocess.CompletedProcess[str]:
-        try:
-            return subprocess.run(
-                [*self.command, *args],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-                stdin=subprocess.DEVNULL,
+
+def _export_name(code: str, key: str) -> str:
+    """The name of a series file as O2 gives it to Hydrolog."""
+    return f"{code}_{get_dataset(key).slug}.csv"
+
+
+@dataclass(frozen=True)
+class _Station:
+    """A station to analyse: its series, catalog entry and applicable analyses."""
+
+    code: str
+    provider: str
+    kind: Kind
+    properties: Mapping[str, Any]
+    planned: tuple[_Planned, ...]
+
+    def datasets(self) -> tuple[str, ...]:
+        """The datasets the planned analyses read, in order of first use."""
+        return tuple(
+            dict.fromkeys(key for planned in self.planned for _, key in planned.files)
+        )
+
+    def datasets_of(self, planned: _Planned) -> tuple[str, ...]:
+        """The datasets an analysis reads, with those of the analyses it depends on."""
+        by_id = {item.definition.id: item for item in self.planned}
+        found: dict[str, None] = {}
+        pending = [planned]
+        while pending:
+            current = pending.pop()
+            for _, key in current.files:
+                found.setdefault(key)
+            pending += [by_id[name] for name in current.definition.depends_on]
+        return tuple(key for key in self.datasets() if key in found)
+
+    def options(self, planned: _Planned) -> dict[str, Any]:
+        """The options of an analysis before the picks: the registry's and the files."""
+        return {
+            **planned.definition.options,
+            **planned.variant.options,
+            **{option: _export_name(self.code, key) for option, key in planned.files},
+        }
+
+
+@dataclass(frozen=True)
+class _Outcome:
+    """Hydrolog's answer to the call of one analysis of a station."""
+
+    planned: _Planned
+    options: Mapping[str, Any]
+    document: Mapping[str, Any]
+    datasets: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        return self.document.get("schema") == _RESULT
+
+    @property
+    def error_code(self) -> str | None:
+        code = self.document.get("code")
+        return None if self.ok or not isinstance(code, str) else code
+
+    def lines(self) -> Attribution:
+        """The attribution lines of Hydrolog's envelope (none for an error)."""
+        return Attribution(
+            tuple(self.document.get("attribution") or ()),
+            tuple(self.document.get("terms_notice") or ()),
+        )
+
+
+def _picked(
+    definition: AnalysisDefinition,
+    answers: Mapping[str, _Outcome],
+    properties: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """
+    The options a definition takes from earlier answers or the catalog; None without them.
+
+    A value is copied from Hydrolog's ``result`` (or the catalog entry), never
+    computed; ``offset`` moves a year (``last_year`` − 9).
+    """
+    values: dict[str, Any] = {}
+    arrays: dict[tuple[str | None, str, str | None], list[AnalysisPick]] = {}
+
+    def document(pick: AnalysisPick) -> object:
+        if pick.analysis is None:
+            return properties
+        answer = answers.get(pick.analysis)
+        return (
+            answer.document.get("result") if answer is not None and answer.ok else None
+        )
+
+    for pick in definition.picks:
+        if pick.each is not None:
+            arrays.setdefault((pick.analysis, pick.pointer, pick.where), []).append(
+                pick
             )
-        except subprocess.TimeoutExpired as exc:
-            raise TimeoutError(str(exc)) from exc
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise HydrologFailed(str(exc)) from exc
-
-    def load(self) -> None:
-        """Hydrolog's version and the options of its catalog, asked once."""
-        with self.lock:
-            if self.version is not None:
-                return
-            done = self.run(["commands", "schema", "--json"], 60.0)
-            try:
-                envelope = json.loads(done.stdout)
-                catalog = envelope["result"]["commands"]
-            except (ValueError, KeyError, TypeError) as exc:
-                raise HydrologFailed(done.stderr.strip()[-500:] or str(exc)) from exc
-            self.options = {
-                entry["name"]: {option["name"]: option for option in entry["options"]}
-                for entry in catalog
-            }
-            self.version = str(envelope.get("version"))
-
-
-def _flag(name: str, value: Any, schema: Mapping[str, Any]) -> list[str]:
-    """One option as the CLI's flags: ``--name=value``, lists comma-separated."""
-    flag = "--" + name.replace("_", "-")
-    if schema.get("type") == "boolean":
-        return [flag if value else "--no-" + name.replace("_", "-")]
-    if name == "attribution" or (
-        schema.get("type") == "array"
-        and schema.get("items") not in ("number", "integer", "string")
-    ):
-        return [f"{flag}={json.dumps(value, ensure_ascii=False)}"]
-    if isinstance(value, list | tuple):
-        return [f"{flag}=" + ",".join(_plain(item) for item in value)]
-    return [f"{flag}={_plain(value)}"]
+            continue
+        value = _pointer(document(pick), pick.pointer)
+        if not _is_number(value):
+            return None
+        if pick.offset:
+            if not isinstance(value, int):
+                return None
+            value += pick.offset
+        values[pick.option] = value
+    for (_, pointer, where), picks in arrays.items():
+        items = _pointer(document(picks[0]), pointer)
+        if not isinstance(items, list):
+            return None
+        rows = []
+        for item in items:
+            if where is not None and _pointer(item, where) is not True:
+                continue
+            row = [_pointer(item, cast(str, pick.each)) for pick in picks]
+            if all(_is_number(value) for value in row):
+                rows.append(row)
+        if not rows:
+            return None
+        for column, pick in enumerate(picks):
+            values[pick.option] = [row[column] for row in rows]
+    return values
 
 
-def _plain(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, float) and value.is_integer():
-        return repr(value)
-    return str(value)
+def _chain(definition: AnalysisDefinition) -> list[AnalysisDefinition]:
+    """``definition`` and every analysis it depends on, in registry order."""
+    needed = {definition.id}
+    pending = [definition]
+    while pending:
+        for name in pending.pop().depends_on:
+            if name not in needed:
+                needed.add(name)
+                pending.append(BY_ID[name])
+    return [item for item in DEFINITIONS if item.id in needed]
+
+
+def _reachable(
+    definition: AnalysisDefinition,
+) -> list[tuple[AnalysisDefinition, tuple[str, ...]]]:
+    """The chain with the options a change given for ``definition`` does not reach."""
+    return [
+        (item, () if item.id == definition.id else definition.locked)
+        for item in _chain(definition)
+    ]
+
+
+def _overrides(
+    definition: AnalysisDefinition, options: Mapping[str, object]
+) -> dict[str, dict[str, Any]]:
+    """
+    The checked options of a person per analysis of the chain.
+
+    An option goes to the analysis and to every analysis it depends on that
+    declares it, except those the analysis keeps fixed (``locked``).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        For an option no analysis of the chain lets change (``details.allowed``),
+        or a value of the wrong type or outside its bounds (``details.option``).
+    """
+    chain = _reachable(definition)
+    allowed = sorted(
+        {
+            option.name
+            for item, locked in chain
+            for option in item.overridable
+            if option.name not in locked
+        }
+    )
+    result: dict[str, dict[str, Any]] = {}
+    for name, value in options.items():
+        targets = [
+            item
+            for item, locked in chain
+            if name not in locked and item.option(name) is not None
+        ]
+        if not targets:
+            raise ObserwatorValidationError(
+                message(
+                    "gui.analyses.option_not_overridable",
+                    option=name,
+                    analysis=definition.id,
+                    allowed=", ".join(allowed) or message("common.none"),
+                ),
+                details={"option": name, "allowed": allowed},
+            )
+        for target in targets:
+            spec = target.option(name)
+            assert spec is not None
+            result.setdefault(target.id, {})[name] = spec.check(value)
+    return result
+
+
+def _dataset_lines(keys: Iterable[str]) -> Attribution:
+    """The lines of data of the given datasets: parsed and computed (ADR-012)."""
+    return attribution(*dict.fromkeys(dataset_origin(key) for key in keys))
+
+
+def _instant(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
 
 
 class StandIn:
     """
-    The functions of O2 over the GUI's data root, computing every result on request.
+    O2's functions over the GUI's data root, computing every result on request.
 
     Parameters
     ----------
     root : Path
-        The data root.
+        The data root (read only).
     command : tuple of str or None
-        Hydrolog's program; None when the deployment has none.
+        Hydrolog's program and its leading arguments; None when the deployment has
+        none (nothing is computed).
     work : Path or None, optional
-        The private directory of the exported series; a new temporary one by default.
+        The private directory of the exported series and of Hydrolog's batches; a
+        new temporary one by default.
     """
 
     def __init__(
         self, root: Path, command: tuple[str, ...] | None, work: Path | None = None
     ) -> None:
         self.root = root
-        self.registry = _registry()
-        self.program = _Program(command) if command else None
+        self.program = Hydrolog(command) if command else None
         self._work = work
-        self._exports: OrderedDict[tuple[str, str, str], Path] = OrderedDict()
-        self._exports_lock = threading.Lock()
+        self._exports: OrderedDict[tuple[str, str, str], tuple[Path, str]] = (
+            OrderedDict()
+        )
+        self._lock = threading.Lock()
 
-    # --- the registry -------------------------------------------------------------
+    # --- the registry ---------------------------------------------------------------
 
-    def spec(self, analysis: str) -> Spec:
-        """The id's spec; ``not_found`` for an unknown id."""
-        try:
-            return self.registry.specs[analysis]
-        except KeyError:
+    def definition(self, analysis: str) -> AnalysisDefinition:
+        """
+        The definition of an id.
+
+        Raises
+        ------
+        ObserwatorError
+            ``not_found`` for an id that is not in the registry.
+        """
+        found = BY_ID.get(analysis)
+        if found is None:
             raise ObserwatorError(
-                message("gui.errors.no_analysis", analysis=analysis), code="not_found"
-            ) from None
+                message("gui.errors.no_analysis", analysis=analysis),
+                code="not_found",
+                details={"option": "analysis", "value": analysis[:200]},
+            )
+        return found
 
-    def _inputs(
-        self, spec: Spec, snapshot: Snapshot, station: str
-    ) -> dict[str, str] | None:
-        """The dataset of each file option, or None when the station lacks one."""
-        chosen: dict[str, str] = {}
-        for option, candidates in spec.inputs.items():
-            wanted = spec.variables.get(option)
-            for dataset in candidates:
-                series = snapshot.series.get(dataset)
-                entry = series.index.stations.get(station) if series else None
-                if entry is None:
-                    continue
-                if wanted is not None and not any(
-                    (name == wanted or name.startswith(f"{wanted}_"))
-                    and coverage.first is not None
-                    for name, coverage in entry.variables.items()
-                ):
-                    continue
-                chosen[option] = dataset
-                break
-            else:
-                return None
-        return chosen
+    def overridable(self, analysis: str) -> dict[str, AnalysisOption]:
+        """
+        The options a person may change for an id, its own before its dependencies'.
 
-    def applies(
-        self, spec: Spec, snapshot: Snapshot, station: str
-    ) -> dict[str, str] | None:
-        """The inputs of an id for a station, or None when it does not apply."""
-        feature = snapshot.features.get(station)
-        if feature is None:
-            return None
-        props = dict(feature.properties)
-        if props.get("kind") not in spec.kinds:
-            return None
-        if spec.providers is not None and feature.provider not in spec.providers:
-            return None
-        if spec.needs is not None and not spec.needs(props):
-            return None
-        inputs = self._inputs(spec, snapshot, station)
-        if inputs is None:
-            return None
-        if (
-            spec.depends is not None
-            and self.applies(self.spec(spec.depends.analysis), snapshot, station)
-            is None
-        ):
-            return None
-        return inputs
+        An option of an analysis it depends on is passed on to that analysis,
+        unless the id keeps it fixed (``locked``).
+        """
+        found: dict[str, AnalysisOption] = {}
+        definition = self.definition(analysis)
+        reachable = _reachable(definition)
+        reachable.sort(key=lambda entry: entry[0].id != definition.id)
+        for item, locked in reachable:
+            for option in item.overridable:
+                if option.name not in locked:
+                    found.setdefault(option.name, option)
+        return found
 
-    # --- O2's functions -----------------------------------------------------------
+    def check_options(
+        self, analysis: str, options: Mapping[str, object]
+    ) -> dict[str, Any]:
+        """
+        A person's options of an id, typed and checked as O2's ``compute_analysis`` does.
+
+        Parameters
+        ----------
+        analysis : str
+            The id.
+        options : Mapping
+            Option names and values; numbers may come as text, an array as text
+            with commas (a query string).
+
+        Returns
+        -------
+        dict
+            The options with their values as Hydrolog takes them.
+
+        Raises
+        ------
+        ObserwatorError
+            ``not_found`` for an unknown id.
+        ObserwatorValidationError
+            For an option the id does not let change, or a value of the wrong type or
+            outside its bounds.
+        """
+        definition = self.definition(analysis)
+        checked = _overrides(definition, options)
+        return {
+            name: next(values[name] for values in checked.values() if name in values)
+            for name in options
+        }
+
+    # --- the station ----------------------------------------------------------------
+
+    def _station(
+        self,
+        snapshot: Snapshot,
+        code: str,
+        definitions: Iterable[AnalysisDefinition],
+    ) -> _Station | None:
+        """The station's plan for ``definitions`` over the snapshot's current series."""
+        chosen = tuple(definitions)
+        keys = dict.fromkeys(key for item in chosen for key in item.datasets())
+        held = {
+            key: _holdings(snapshot.series[key].index, code)
+            for key in keys
+            if key in snapshot.series and code in snapshot.series[key].index.stations
+        }
+        if not held:
+            return None
+        first = get_dataset(next(iter(held)))
+        feature = snapshot.features.get(code)
+        properties = dict(feature.properties) if feature is not None else {}
+        planned = _plan(cast(Kind, first.kind), held, properties, chosen)
+        if not planned:
+            return None
+        return _Station(
+            code, first.provider, cast(Kind, first.kind), properties, planned
+        )
+
+    def _version_dir(self, snapshot: Snapshot, key: str) -> str:
+        """The series version directory, relative to the root (POSIX) as O2 names it."""
+        directory = snapshot.series[key].version.path.parent
+        for base in (self.root, self.root.resolve()):
+            if directory.is_relative_to(base):
+                return directory.relative_to(base).as_posix()
+        return directory.as_posix()
+
+    def _source(self, snapshot: Snapshot, code: str, key: str) -> dict[str, Any]:
+        series = snapshot.series[key]
+        return {
+            "dataset": key,
+            "series_version": self._version_dir(snapshot, key),
+            "series_sha256": series.version.sha256,
+            "station_sha256": series.index.stations[code].sha256,
+        }
+
+    # --- O2's functions -------------------------------------------------------------
 
     def list_analyses(
         self, snapshot: Snapshot, station: str
     ) -> tuple[dict[str, Any], ...]:
-        """The ids that apply to a station, as summaries without results (nothing is stored)."""
-        found = []
-        for spec in self.registry.specs.values():
-            inputs = self.applies(spec, snapshot, station)
-            if inputs is None:
-                continue
-            found.append(
+        """
+        The ids that apply to a station, in registry order, as summaries.
+
+        Nothing is stored before O2: a summary has the command, the options known
+        before Hydrolog runs (without the picks), the series it reads, the lines of
+        their data and the options a person may change (``overridable``); no
+        ``hydrolog``, ``computed_at`` or ``status``.
+        """
+        found = self._station(snapshot, station, DEFINITIONS)
+        if found is None:
+            return ()
+        sources = {
+            key: self._source(snapshot, station, key) for key in found.datasets()
+        }
+        summaries = []
+        for planned in found.planned:
+            datasets = found.datasets_of(planned)
+            lines = _dataset_lines(datasets)
+            definition = planned.definition
+            summaries.append(
                 {
-                    "schema": ANALYSIS_SCHEMA,
+                    "schema": SUMMARY_SCHEMA,
                     "station": station,
-                    "analysis": spec.id,
-                    "command": spec.command,
-                    "options": self._shown(spec, {}),
-                    "overridable": {
-                        name: {k: v for k, v in vars(param).items() if v is not None}
-                        for name, param in spec.overridable.items()
-                    },
+                    "provider": found.provider,
+                    "kind": found.kind,
+                    "analysis": definition.id,
+                    "command": definition.command,
+                    "options": found.options(planned),
                     "inputs": [
-                        {
-                            "dataset": dataset,
-                            "series_version": snapshot.series[dataset].version.label,
-                            "sha256": snapshot.series[dataset].version.sha256,
-                        }
-                        for dataset in inputs.values()
+                        {**sources[key], "export_sha256": None} for key in datasets
                     ],
+                    "hydrolog": None,
+                    "computed_at": None,
                     "stored": False,
+                    "status": None,
+                    "error_code": None,
+                    "attribution": list(lines.attribution),
+                    "terms_notice": list(lines.terms_notice),
+                    "analyses_version": None,
+                    "overridable": {
+                        name: option.schema()
+                        for name, option in self.overridable(definition.id).items()
+                    },
                 }
             )
-        return tuple(found)
+        return tuple(summaries)
 
     def read_analysis(
         self, snapshot: Snapshot, station: str, analysis: str
     ) -> dict[str, Any] | None:
-        """Nothing is stored before O2: always None."""
-        self.spec(analysis)
+        """Nothing is stored before O2: None for every id of the registry."""
+        self.definition(analysis)
         return None
-
-    def _shown(self, spec: Spec, overrides: Mapping[str, Any]) -> dict[str, Any]:
-        options = {**spec.options, **overrides}
-        return {
-            key: value
-            for key, value in options.items()
-            if key not in ("values", "years", "dates")
-        }
-
-    def _export(self, snapshot: Snapshot, dataset: str, station: str) -> Path:
-        """The station's series of a dataset as Obserwator's CSV, kept for a while."""
-        version = snapshot.series[dataset].version
-        key = (dataset, version.sha256, station)
-        with self._exports_lock:
-            hit = self._exports.get(key)
-            if hit is not None and hit.is_file():
-                self._exports.move_to_end(key)
-                return hit
-            if self._work is None:
-                self._work = Path(tempfile.mkdtemp(prefix="obserwator-gui-"))
-            work = self._work
-        target = work / f"{station}_{dataset}_{version.sha256[:12]}.csv"
-        if not target.is_file():
-            partial = target.with_suffix(".part.csv")
-            obserwator.export_series(
-                root=self.root,
-                dataset=dataset,
-                station=station,
-                format="csv",
-                output=partial,
-                force=True,
-            )
-            partial.replace(target)
-        with self._exports_lock:
-            self._exports[key] = target
-            while len(self._exports) > EXPORTS_KEPT:
-                _, old = self._exports.popitem(last=False)
-                old.unlink(missing_ok=True)
-        return target
 
     def compute_analysis(
         self,
         snapshot: Snapshot,
         station: str,
         analysis: str,
-        options: Mapping[str, Any] | None = None,
+        options: Mapping[str, object] | None = None,
         *,
         timeout: float = 30.0,
     ) -> dict[str, Any]:
         """
-        One id for a station, with the person's overrides, computed now and not stored.
+        Compute one id of a station on the fly with a person's options; keep nothing.
+
+        Hydrolog computes the id and the analyses it takes numbers from, one
+        process per round, on the station's series of the snapshot.
+
+        Parameters
+        ----------
+        snapshot : Snapshot
+            The data root's current versions.
+        station : str
+            The station.
+        analysis : str
+            The id.
+        options : Mapping or None, optional
+            Changes of the registry's options (`check_options`).
+        timeout : float, optional
+            Seconds for the whole computation; Hydrolog's process is killed past it.
 
         Returns
         -------
         dict
-            ``obserwator-analysis/1``: ``status`` ``ok`` with Hydrolog's
-            ``envelope``, or ``failed`` with its ``error`` document.
+            ``obserwator-analysis/1`` with ``stored`` false: ``status`` ``ok`` with
+            Hydrolog's ``envelope``, or ``failed`` with its ``error`` document.
 
         Raises
         ------
         ObserwatorError
-            ``not_found`` for an id that does not apply to the station,
-            ``missing_dependency`` without Hydrolog's program, ``source_unavailable``
-            when the program cannot be run.
+            ``not_found`` for an unknown id or one the station's series (or its
+            catalog entry) do not allow (``details.reason`` ``no_series``);
+            ``missing_dependency`` without Hydrolog's program; ``source_unavailable``
+            past the timeout (``details.reason`` ``timeout``) or when the program
+            fails (``hydrolog_failed``).
+        ObserwatorValidationError
+            For an option that may not be changed or a wrong value.
+        ObserwatorDataError
+            ``data_error`` (``details.reason`` ``dependency_failed``) when an analysis
+            the id takes a number from gave none.
         """
-        spec = self.spec(analysis)
-        inputs = self.applies(spec, snapshot, station)
-        if inputs is None:
+        definition = self.definition(analysis)
+        overrides = _overrides(definition, options or {})
+        found = self._station(snapshot, station, _chain(definition))
+        if found is None or definition.id not in {
+            planned.definition.id for planned in found.planned
+        }:
             raise ObserwatorError(
                 message(
                     "gui.errors.analysis_not_for_station",
-                    analysis=analysis,
+                    analysis=definition.id,
                     station=station,
                 ),
                 code="not_found",
+                details={"reason": "no_series", "option": "station", "value": station},
             )
         if self.program is None:
             raise ObserwatorError(
-                message("gui.errors.no_hydrolog"), code="missing_dependency"
+                message("gui.errors.no_hydrolog"),
+                code="missing_dependency",
+                details={"reason": "hydrolog_missing"},
             )
+        deadline = Deadline.after(timeout)
+        scratch = Path(tempfile.mkdtemp(prefix="compute-", dir=self._directory()))
         try:
-            self.program.load()
-        except HydrologFailed as exc:
-            raise ObserwatorError(
-                message("gui.errors.hydrolog_failed", reason=str(exc)),
-                code="source_unavailable",
-            ) from exc
-        overrides = dict(options or {})
-        call = {**spec.options, **overrides}
-        if spec.catalog_options is not None:
-            call.update(
-                spec.catalog_options(dict(snapshot.features[station].properties))
-            )
-        attribution = Attribution()
-        if spec.depends is not None:
-            shared = {
-                key: overrides[key] for key in spec.depends.shared if key in overrides
+            exports = {
+                key: self._export(snapshot, key, station, scratch)
+                for key in found.datasets()
             }
-            base = self.compute_analysis(
-                snapshot, station, spec.depends.analysis, shared, timeout=timeout
+            version, answers = self._rounds(found, scratch, overrides, deadline)
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        computed_at = _instant(datetime.now(UTC))
+        outcome = answers.get(definition.id)
+        if outcome is None:
+            failed = next(
+                (
+                    answers[name]
+                    for name in definition.depends_on
+                    if name in answers and not answers[name].ok
+                ),
+                None,
             )
-            if base["status"] != "ok":
-                return {**base, "analysis": analysis, "command": spec.command}
-            call.update(spec.depends.select(base["envelope"]["result"]))
-            attribution = Attribution(
-                tuple(base["envelope"].get("attribution") or ()),
-                tuple(base["envelope"].get("terms_notice") or ()),
+            raise ObserwatorDataError(
+                message(
+                    "gui.analyses.dependency_without_result",
+                    analysis=definition.id,
+                    reason=(failed.document.get("message") if failed else None)
+                    or message("gui.analyses.no_value"),
+                ),
+                details={"reason": "dependency_failed", "analysis": definition.id},
             )
-            if attribution:
-                call["attribution"] = list(attribution.lines)
-        files = {
-            option: self._export(snapshot, dataset, station)
-            for option, dataset in inputs.items()
-        }
-        call.update({option: str(path) for option, path in files.items()})
-        schemas = self.program.options.get(spec.command, {})
-        args = [*spec.command.split(), "--json"]
-        for name, value in call.items():
-            if value is None:
-                continue
-            args += _flag(name, value, schemas.get(name, {}))
-        try:
-            done = self.program.run(args, timeout)
-        except HydrologFailed as exc:
-            raise ObserwatorError(
-                message("gui.errors.hydrolog_failed", reason=str(exc)),
-                code="source_unavailable",
-            ) from exc
-        feature = snapshot.features[station]
-        result: dict[str, Any] = {
+        lines = _dataset_lines(outcome.datasets) | outcome.lines()
+        return {
             "schema": ANALYSIS_SCHEMA,
             "station": station,
-            "provider": feature.provider,
-            "kind": feature.properties.get("kind"),
-            "analysis": analysis,
-            "command": spec.command,
-            "options": self._shown(spec, overrides),
+            "provider": found.provider,
+            "kind": found.kind,
+            "analysis": definition.id,
+            "command": definition.command,
+            "options": dict(outcome.options),
             "inputs": [
                 {
-                    "dataset": dataset,
-                    "series_version": snapshot.series[dataset].version.label,
-                    "sha256": snapshot.series[dataset].version.sha256,
+                    **self._source(snapshot, station, key),
+                    "export_sha256": exports[key],
                 }
-                for dataset in inputs.values()
+                for key in outcome.datasets
             ],
-            "hydrolog": {"version": self.program.version},
-            "computed_at": _now(),
+            "hydrolog": {"version": version},
+            "computed_at": computed_at,
             "stored": False,
+            "status": "ok" if outcome.ok else "failed",
+            "error_code": outcome.error_code,
+            "envelope": dict(outcome.document) if outcome.ok else None,
+            "error": None if outcome.ok else dict(outcome.document),
+            "attribution": list(lines.attribution),
+            "terms_notice": list(lines.terms_notice),
             "analyses_version": None,
         }
-        document = _document(done)
-        if document is None:
-            raise ObserwatorError(
-                message(
-                    "gui.errors.hydrolog_failed",
-                    reason=done.stderr.strip()[-300:] or f"exit {done.returncode}",
-                ),
-                code="source_unavailable",
+
+    def _rounds(
+        self,
+        station: _Station,
+        scratch: Path,
+        overrides: Mapping[str, Mapping[str, Any]],
+        deadline: Deadline,
+    ) -> tuple[str, dict[str, _Outcome]]:
+        """Every planned analysis of the station: one Hydrolog process per round."""
+        program = cast(Hydrolog, self.program)
+        answers: dict[str, _Outcome] = {}
+        version = ""
+        for level in sorted({planned.definition.level for planned in station.planned}):
+            calls: list[Call] = []
+            owners: list[tuple[_Planned, dict[str, Any]]] = []
+            for planned in station.planned:
+                definition = planned.definition
+                if definition.level != level:
+                    continue
+                picked = _picked(definition, answers, station.properties)
+                if picked is None:
+                    continue
+                options = {
+                    **station.options(planned),
+                    **picked,
+                    **overrides.get(definition.id, {}),
+                }
+                calls.append(Call(definition.command, options))
+                owners.append((planned, options))
+            if not calls:
+                continue
+            version, lines = program.batch(
+                scratch, f"compute-{level}", calls, deadline=deadline
             )
-        if document.get("schema") == "hydrolog-result/1":
-            result.update(status="ok", envelope=document)
-            lines = Attribution(
-                tuple(document.get("attribution") or ()),
-                tuple(document.get("terms_notice") or ()),
-            )
-        else:
-            result.update(status="failed", error=document)
-            lines = attribution
-        result.update(lines.fields())
-        return result
+            for (planned, options), line in zip(owners, lines, strict=True):
+                answers[planned.definition.id] = _Outcome(
+                    planned,
+                    options,
+                    cast(Mapping[str, Any], json.loads(line)),
+                    station.datasets_of(planned),
+                )
+        return version, answers
+
+    # --- the series files -----------------------------------------------------------
+
+    def _directory(self) -> Path:
+        with self._lock:
+            if self._work is None:
+                self._work = Path(tempfile.mkdtemp(prefix="obserwator-gui-"))
+            self._work.mkdir(parents=True, exist_ok=True)
+            return self._work
+
+    def _export(self, snapshot: Snapshot, key: str, code: str, scratch: Path) -> str:
+        """
+        Put the station's series of a dataset into ``scratch`` under O2's file name.
+
+        The file is exported once per series version (`export_series` of the
+        snapshot's version) and kept for the next computations (`EXPORTS_KEPT`);
+        ``scratch`` gets a hard link to it (a copy where links do not work).
+
+        Returns
+        -------
+        str
+            SHA-256 of the file.
+        """
+        version = snapshot.series[key].version
+        cached = (key, version.sha256, code)
+        exports = self._directory() / "exports"
+        with self._lock:
+            hit = self._exports.get(cached)
+            if hit is None or not hit[0].is_file():
+                target = (
+                    exports
+                    / f"{code}_{get_dataset(key).slug}_{version.sha256[:16]}.csv"
+                )
+                report = export_series(
+                    version.path, station=code, output=target, force=True
+                )
+                hit = (target, report.files[0].sha256)
+                self._exports[cached] = hit
+                while len(self._exports) > EXPORTS_KEPT:
+                    _, (old, _) = self._exports.popitem(last=False)
+                    old.unlink(missing_ok=True)
+            self._exports.move_to_end(cached)
+            name = scratch / _export_name(code, key)
+            try:
+                os.link(hit[0], name)
+            except OSError:
+                shutil.copyfile(hit[0], name)
+            return hit[1]
 
     def close(self) -> None:
         """Remove the private directory of exported series."""
-        with self._exports_lock:
+        with self._lock:
             self._exports.clear()
             if self._work is not None:
                 shutil.rmtree(self._work, ignore_errors=True)
                 self._work = None
-
-
-def _document(done: subprocess.CompletedProcess[str]) -> dict[str, Any] | None:
-    """The envelope on standard output, else the error document of standard error's last line."""
-    for text in (done.stdout.strip(), (done.stderr.strip().splitlines() or [""])[-1]):
-        if not text:
-            continue
-        try:
-            document = json.loads(text)
-        except ValueError:
-            continue
-        if isinstance(document, dict) and str(document.get("schema", "")).startswith(
-            "hydrolog-"
-        ):
-            return document
-    return None
-
-
-def check_overrides(spec: Spec, query: Mapping[str, str]) -> dict[str, Any]:
-    """
-    The person's overrides of an id, typed and checked against its spec.
-
-    Raises
-    ------
-    ObserwatorValidationError
-        For an option the id does not let change, or a value of a wrong type or
-        out of its bounds (``details.option``).
-    """
-    found: dict[str, Any] = {}
-    for name, text in query.items():
-        param = spec.overridable.get(name)
-        if param is None:
-            raise ObserwatorValidationError(
-                message("gui.errors.bad_parameter", option=name, value=text),
-                details={
-                    "option": name,
-                    "value": text,
-                    "reason": "unknown",
-                    "allowed": sorted(spec.overridable),
-                },
-            )
-        found[name] = _typed(name, text, param)
-    first, last = found.get("first_year"), found.get("last_year")
-    if isinstance(first, int) and isinstance(last, int) and first > last:
-        raise ObserwatorValidationError(
-            message("gui.errors.bad_parameter", option="first_year", value=first),
-            details={
-                "option": "first_year",
-                "value": first,
-                "reason": "range",
-                "maximum": last,
-            },
-        )
-    return found
-
-
-def _typed(name: str, text: str, param: Param) -> Any:
-    def bad(reason: str) -> ObserwatorValidationError:
-        return ObserwatorValidationError(
-            message("gui.errors.bad_parameter", option=name, value=text[:200]),
-            details={"option": name, "value": text[:200], "reason": reason},
-        )
-
-    def bounded(value: float) -> None:
-        if (param.minimum is not None and value < param.minimum) or (
-            param.maximum is not None and value > param.maximum
-        ):
-            raise bad("range")
-
-    if len(text) > 400:
-        raise bad("length")
-    if param.type == "string":
-        if param.allowed is not None and text not in param.allowed:
-            raise bad("allowed")
-        return text
-    if param.type == "boolean":
-        if text not in ("true", "false"):
-            raise bad("boolean")
-        return text == "true"
-    items = text.split(",") if param.type in ("integers", "numbers") else [text]
-    values: list[float | int] = []
-    for item in items:
-        try:
-            value: float | int = (
-                int(item) if param.type in ("integer", "integers") else float(item)
-            )
-        except ValueError:
-            raise bad("number") from None
-        if isinstance(value, float) and not math.isfinite(value):
-            raise bad("number")
-        bounded(value)
-        values.append(value)
-    return values if param.type in ("integers", "numbers") else values[0]

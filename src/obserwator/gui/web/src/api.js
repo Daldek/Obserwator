@@ -85,6 +85,12 @@ export const api = {
     get(`api/analysis/${enc(code)}/${enc(id)}`, overrides, { signal }),
   /** The address of an analysis id's result as a JSON file. */
   analysisFileUrl: (code, id, overrides = {}) => `api/files/analysis/${enc(code)}/${enc(id)}${query(overrides)}`,
+  /**
+   * The M15 climate stripes prototype of a station (`obserwator-gui-stripes/1`): Hydrolog's
+   * annual means and normal and the prototype's colour scale; options `scale`,
+   * `centre_first_year`, `centre_last_year`, `spread_first_year`, `spread_last_year`.
+   */
+  stripes: (code, options = {}, { signal } = {}) => get(`api/prototype/stripes/${enc(code)}`, options, { signal }),
   /** The files of a station: each series in each format, its command line and licence. */
   downloads: (code) => get(`api/downloads/${enc(code)}`),
   /** IMGW-PIB's current data: the points of „Pomiary bieżące” (never memoised). */

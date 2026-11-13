@@ -66,6 +66,29 @@ def only(query: Mapping[str, str], allowed: Iterable[str]) -> None:
         seen.add(key)
 
 
+def single(query: Mapping[str, str]) -> dict[str, str]:
+    """
+    The parameters as a dictionary, each given once.
+
+    Parameters
+    ----------
+    query : Mapping of str to str
+        The query parameters (Starlette's ``QueryParams``).
+
+    Returns
+    -------
+    dict of str to str
+        Every parameter with its value.
+
+    Raises
+    ------
+    GuiError
+        ``validation_error`` with ``reason`` ``repeated`` for a parameter given twice.
+    """
+    only(query, query.keys())
+    return dict(query)
+
+
 def station(value: str, option: str = "station") -> str:
     """A station code of either provider (``STATION_CODE_PATTERN``)."""
     if not _STATION.fullmatch(value):

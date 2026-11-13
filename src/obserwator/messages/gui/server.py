@@ -23,6 +23,14 @@ MESSAGES: dict[str, Text] = {
         "Port {port} adresu {host} jest zajęty; zatrzymaj program, który go używa, "
         "albo wybierz inny opcją --port.",
     ),
+    "server.state_in_root": Text(
+        "The GUI keeps its own files in {state_dir}, which overlaps the data root "
+        "{root}: it writes none of them (no statistics, no access log, no reports). "
+        "Serve a root outside {state_dir} or set another data_dir.",
+        "GUI trzyma własne pliki w {state_dir}, który pokrywa się z katalogiem danych "
+        "{root}: nie zapisuje żadnego z nich (bez statystyk, dziennika dostępu i "
+        "zgłoszeń). Wskaż katalog danych poza {state_dir} albo ustaw inny data_dir.",
+    ),
     "errors.bad_parameter": Text(
         "Invalid value of {option}: {value}", "Niepoprawna wartość {option}: {value}"
     ),
@@ -56,6 +64,18 @@ MESSAGES: dict[str, Text] = {
         "The station {station} has no series of {dataset}.",
         "Stacja {station} nie ma szeregu zbioru {dataset}.",
     ),
+    "errors.no_dataset": Text(
+        "There is no series of the dataset {dataset} in the data root.",
+        "W katalogu danych nie ma szeregów zbioru {dataset}.",
+    ),
+    "errors.no_stations": Text(
+        "The catalogs hold no station of the chosen provider and kind.",
+        "Katalogi nie mają stacji wybranego dostawcy i rodzaju.",
+    ),
+    "errors.feedback_off": Text(
+        "Reports are off on this server.",
+        "Zgłaszanie uwag jest na tym serwerze wyłączone.",
+    ),
     "errors.not_found": Text("Nothing here: {path}", "Nic tu nie ma: {path}"),
     "errors.method_not_allowed": Text(
         "The method {method} is not allowed here; allowed: {allowed}.",
@@ -72,6 +92,24 @@ MESSAGES: dict[str, Text] = {
     "errors.no_values": Text(
         "The chosen years hold no values of {variable}.",
         "W wybranych latach nie ma wartości {variable}.",
+    ),
+    "errors.stripes_no_years": Text(
+        "The climate stripes of the station {station} need at least two years with an "
+        "annual mean temperature.",
+        "Paski klimatyczne stacji {station} potrzebują co najmniej dwóch lat ze średnią "
+        "roczną temperatury.",
+    ),
+    "errors.stripes_no_normal": Text(
+        "The normal of the annual mean temperature of the station {station} cannot be "
+        "computed, not even over its whole record: the climate stripes have no centre.",
+        "Normalnej średniej rocznej temperatury stacji {station} nie da się policzyć "
+        "nawet z całego zapisu: paski klimatyczne nie mają środka skali.",
+    ),
+    "errors.stripes_no_spread": Text(
+        "The annual mean temperatures of the station {station} do not vary: the climate "
+        "stripes have no colour scale.",
+        "Średnie roczne temperatury stacji {station} się nie różnią: paski klimatyczne "
+        "nie mają skali kolorów.",
     ),
     "handoff.subject_daily": Text(
         "{station} — {variable}, daily values",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -15,6 +16,9 @@ from obserwator.messages import message
 
 NO_BASEMAP = frozenset({"", "none", "off"})
 """Values of ``gui_basemap_url`` that mean no basemap: the packaged borders only."""
+BASEMAP_ENV = f"{environment.PREFIX}GUI_BASEMAP_URL"
+"""The variable of the basemap's address; set and empty, it means no basemap (the
+settings ignore an empty variable, which would bring the default basemap back)."""
 
 
 @dataclass(frozen=True)
@@ -50,7 +54,7 @@ class GuiConfig:
     state_dir : Path
         ``<data_dir>/obserwator``: the GUI's statistics (``stats.jsonl``), reports
         of „Zgłoś uwagę” (``feedback.jsonl``) and access logs (``logs/``),
-        Nogat DEV-15.10 to DEV-15.12; never under ``root``.
+        Nogat DEV-15.10 to DEV-15.12; never under ``root`` (`writes_state`).
     basemap : Basemap or None
         The basemap, or None for the offline map (the borders only).
     request_limit, request_window : int
@@ -77,6 +81,17 @@ class GuiConfig:
     operator: Mapping[str, str] | None
     operator_problems: tuple[str, ...]
 
+    @property
+    def writes_state(self) -> bool:
+        """
+        Whether the GUI may write its own files: ``state_dir`` and ``root`` are apart.
+
+        ``<data_dir>/obserwator`` is both the GUI's directory and the CLI's default
+        root, and the server never writes under the root (GUI plan D7): when one of
+        the two directories is the other or holds it, the GUI writes none of its files.
+        """
+        return not _overlap(self.state_dir, self.root)
+
     @classmethod
     def resolve(cls, *, root: Path | None = None) -> GuiConfig:
         """
@@ -95,7 +110,8 @@ class GuiConfig:
         """
         settings = Settings()
         chosen = (root if root is not None else store_root().root).expanduser()
-        url = (settings.gui_basemap_url or "").strip()
+        given = os.environ.get(BASEMAP_ENV)
+        url = (settings.gui_basemap_url if given is None else given).strip()
         basemap = None
         if url.lower() not in NO_BASEMAP:
             parts = urlsplit(url)
@@ -122,3 +138,11 @@ class GuiConfig:
             operator=dict(operator.values) if operator.usable else None,
             operator_problems=operator.problems,
         )
+
+
+def _overlap(first: Path, second: Path) -> bool:
+    """Whether two directories are one or one holds the other, also through symbolic links."""
+    return any(
+        one == other or one in other.parents or other in one.parents
+        for one, other in ((first, second), (first.resolve(), second.resolve()))
+    )

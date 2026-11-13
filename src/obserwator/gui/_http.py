@@ -119,6 +119,30 @@ def _not_modified(request: Request, etag: str) -> bool:
     return any(tag.strip() in (f'"{etag}"', "*") for tag in given.split(","))
 
 
+def not_modified(request: Request, etag: str) -> Response | None:
+    """
+    ``304`` when the request's ``If-None-Match`` holds ``etag``, before the answer is made.
+
+    Parameters
+    ----------
+    request : Request
+        The request answered.
+    etag : str
+        Strong ETag of the answer (`etag_of`).
+
+    Returns
+    -------
+    Response or None
+        The ``304`` with the ETag and ``Cache-Control: no-cache``; None when the
+        answer must be made.
+    """
+    if not _not_modified(request, etag):
+        return None
+    return Response(
+        status_code=304, headers={"Cache-Control": NO_CACHE, "ETag": f'"{etag}"'}
+    )
+
+
 def json_response(
     request: Request,
     document: Any,

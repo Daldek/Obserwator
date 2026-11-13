@@ -1,0 +1,126 @@
+/* The hydrological sections of the station panel (web/src/sections/hydro). */
+
+:root {
+  /* Periods from the oldest to the newest: orange through green to blue, both themes. */
+  --hy-c0: var(--warn);
+  --hy-c1: color-mix(in oklch longer hue, var(--warn) 86%, var(--info));
+  --hy-c2: color-mix(in oklch longer hue, var(--warn) 71%, var(--info));
+  --hy-c3: color-mix(in oklch longer hue, var(--warn) 57%, var(--info));
+  --hy-c4: color-mix(in oklch longer hue, var(--warn) 43%, var(--info));
+  --hy-c5: color-mix(in oklch longer hue, var(--warn) 29%, var(--info));
+  --hy-c6: color-mix(in oklch longer hue, var(--warn) 14%, var(--info));
+  --hy-c7: var(--info);
+  /* Warning levels: ČHMÚ SPA 1–3, Q50, drought; the characteristic levels muted. */
+  --hy-lv-1: var(--warn);
+  --hy-lv-2: color-mix(in oklab, var(--warn) 45%, var(--bad));
+  --hy-lv-3: var(--bad);
+  --hy-lv-4: var(--bad-ink);
+  --hy-lv-dry: color-mix(in oklab, var(--warn) 50%, var(--text-3));
+  --hy-lv-c: var(--text-3);
+}
+
+/* --- layout within a section ---------------------------------------------------------- */
+
+.ana .hy-sub { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2); }
+.ana .hy-sub:first-child { margin-top: var(--space-2); }
+.hy-card > .years, .hy-card > .hy-options { margin: 0 0 var(--space-3); }
+.hy-card > .years + .hy-options { margin-top: calc(-1 * var(--space-1)); }
+.hy-options { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: var(--space-2) 0; }
+.hy-option { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
+.hy-options .hy-option { margin: 0; }
+.hy-label { font-size: var(--text-xs); color: var(--text-3); min-width: 0; }
+.hy-select { font: inherit; font-size: var(--text-sm); color: var(--text); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 3px 6px; min-height: var(--control-sm); }
+.hy-select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.hy-note { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); font-size: var(--text-sm); color: var(--text-2); background: var(--surface-2); border-left: 3px solid var(--line-2); border-radius: var(--radius-xs); }
+.hy-caption { margin: var(--space-1) 0 var(--space-3); font-size: var(--text-xs); line-height: 1.45; }
+.hy-formula { margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
+.hy-limits { flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.hy-limits input { width: 5.5em; }
+.years.hy-periods { margin: var(--space-1) 0 var(--space-2); }
+.years.hy-periods input { width: 17em; max-width: 100%; }
+.hy-handoff { margin: var(--space-2) 0; }
+.hy-details { margin: var(--space-2) 0; font-size: var(--text-sm); }
+.hy-details summary { cursor: pointer; color: var(--text-2); }
+
+/* --- tables ------------------------------------------------------------------------------ */
+
+.tbl.hy-compact { font-size: var(--text-xs); }
+.tbl.hy-compact td, .tbl.hy-compact th { padding-inline: 4px; white-space: nowrap; }
+.tbl.hy-quantiles td:nth-child(n + 3) { font-variant-numeric: tabular-nums; }
+.hy-details .table-wrap { max-height: 360px; overflow: auto; }
+.tbl.hy-matrix th, .tbl.hy-matrix td { padding: 3px 6px; }
+.hy-matrix th[scope="row"] { text-align: left; font-weight: var(--weight-regular); color: var(--text-2); white-space: nowrap; }
+.hy-matrix td { vertical-align: top; white-space: nowrap; }
+.hy-matrix .hy-name { display: block; font-size: var(--text-xs); color: var(--text-3); }
+.hy-matrix strong { font-variant-numeric: tabular-nums; }
+.hy-matrix .hy-alt { display: block; font-size: var(--text-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* --- levels -------------------------------------------------------------------------------- */
+
+.hy-levels { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-xs); color: var(--text-2); }
+.hy-levels li { display: inline-flex; align-items: center; gap: 6px; }
+.hy-levels i { display: inline-block; width: 18px; border-top: 2px dashed currentColor; }
+.hy-levels small { color: var(--text-3); }
+.hy-levels .hy-lv-1 i { color: var(--hy-lv-1); }
+.hy-levels .hy-lv-2 i { color: var(--hy-lv-2); }
+.hy-levels .hy-lv-3 i { color: var(--hy-lv-3); }
+.hy-levels .hy-lv-4 i { color: var(--hy-lv-4); }
+.hy-levels .hy-lv-dry i { color: var(--hy-lv-dry); }
+.hy-levels .hy-lv-c i { color: var(--hy-lv-c); }
+.chart .mark.hline.hy-lv-1 .peak-line { stroke: var(--hy-lv-1); }
+.chart .mark.hline.hy-lv-2 .peak-line { stroke: var(--hy-lv-2); }
+.chart .mark.hline.hy-lv-3 .peak-line { stroke: var(--hy-lv-3); }
+.chart .mark.hline.hy-lv-4 .peak-line { stroke: var(--hy-lv-4); }
+.chart .mark.hline.hy-lv-dry .peak-line { stroke: var(--hy-lv-dry); }
+.chart .mark.hline.hy-lv-c .peak-line { stroke: var(--hy-lv-c); }
+
+/* --- period colours: points, lines, legend swatches ------------------------------------------ */
+
+.chart .emp.hy-c0 circle, .chart .emp.hy-c1 circle, .chart .emp.hy-c2 circle, .chart .emp.hy-c3 circle,
+.chart .emp.hy-c4 circle, .chart .emp.hy-c5 circle, .chart .emp.hy-c6 circle, .chart .emp.hy-c7 circle { stroke-width: 0; fill-opacity: 0.55; }
+.chart .emp.hy-c0 circle { fill: var(--hy-c0); }
+.chart .emp.hy-c1 circle { fill: var(--hy-c1); }
+.chart .emp.hy-c2 circle { fill: var(--hy-c2); }
+.chart .emp.hy-c3 circle { fill: var(--hy-c3); }
+.chart .emp.hy-c4 circle { fill: var(--hy-c4); }
+.chart .emp.hy-c5 circle { fill: var(--hy-c5); }
+.chart .emp.hy-c6 circle { fill: var(--hy-c6); }
+.chart .emp.hy-c7 circle { fill: var(--hy-c7); }
+.chart .ser.hy-c0 { stroke: var(--hy-c0); stroke-dasharray: none; }
+.chart .ser.hy-c1 { stroke: var(--hy-c1); stroke-dasharray: none; }
+.chart .ser.hy-c2 { stroke: var(--hy-c2); stroke-dasharray: none; }
+.chart .ser.hy-c3 { stroke: var(--hy-c3); stroke-dasharray: none; }
+.chart .ser.hy-c4 { stroke: var(--hy-c4); stroke-dasharray: none; }
+.chart .ser.hy-c5 { stroke: var(--hy-c5); stroke-dasharray: none; }
+.chart .ser.hy-c6 { stroke: var(--hy-c6); stroke-dasharray: none; }
+.chart .ser.hy-c7 { stroke: var(--hy-c7); stroke-dasharray: none; }
+.chart .ser.hy-fit { stroke: var(--text); stroke-width: 2.6; }
+.sw-stroke.hy-fit { color: var(--text); }
+.sw-stroke.hy-c0 { color: var(--hy-c0); }
+.sw-stroke.hy-c1 { color: var(--hy-c1); }
+.sw-stroke.hy-c2 { color: var(--hy-c2); }
+.sw-stroke.hy-c3 { color: var(--hy-c3); }
+.sw-stroke.hy-c4 { color: var(--hy-c4); }
+.sw-stroke.hy-c5 { color: var(--hy-c5); }
+.sw-stroke.hy-c6 { color: var(--hy-c6); }
+.sw-stroke.hy-c7 { color: var(--hy-c7); }
+.chart .bars rect.hy-modal { fill: var(--warn); }
+.chart .bars rect.hy-incomplete { fill: var(--line-2); }
+
+/* --- the circle of the year (seasonality) --------------------------------------------------- */
+
+.hy-pair { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; }
+.hy-pair > .hy-circle { flex: 0 1 230px; }
+.hy-pair-side { flex: 1 1 220px; min-width: 0; }
+.hy-circle { margin: 0; }
+.hy-circle svg { display: block; width: 100%; max-width: 260px; height: auto; }
+.hy-circle figcaption { font-size: var(--text-xs); color: var(--text-3); line-height: 1.4; }
+.hy-circle-ring { fill: none; stroke: var(--line-2); stroke-width: 1; }
+.hy-circle-ring.inner { stroke-dasharray: 2 3; stroke: var(--line); }
+.hy-circle-tick { stroke: var(--text-3); stroke-width: 1; }
+.hy-circle-label { fill: var(--text-3); font: 9px var(--font-sans); text-anchor: middle; }
+.hy-circle-dot { fill-opacity: 0.75; stroke: var(--surface); stroke-width: 0.6; }
+.hy-circle-dot.winter { fill: var(--info); }
+.hy-circle-dot.summer { fill: var(--warn); }
+.hy-circle-mean { stroke: var(--text); stroke-width: 2; }
+.hy-circle-head { fill: var(--text); }

@@ -132,6 +132,10 @@ class TrafficState:
         The sliding window of the rate limit [s].
     state_dir : Path
         The GUI's own directory: ``stats.jsonl`` and ``logs/`` go there.
+    writes : bool, optional
+        Keep ``stats.jsonl`` and the access log (default); False keeps both off, so
+        nothing under ``state_dir`` is read, written or deleted and the day's numbers
+        stay in memory (GUI plan D7: ``state_dir`` overlaps the data root).
     clock : callable, optional
         Wall-clock time in seconds since the epoch (the UTC day, the log's time).
     monotonic : callable, optional
@@ -144,6 +148,7 @@ class TrafficState:
         limit: int,
         window: int,
         state_dir: Path,
+        writes: bool = True,
         clock: Callable[[], float] = time.time,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -152,6 +157,7 @@ class TrafficState:
         self.state_dir = state_dir
         self.stats_path = state_dir / STATS_FILE
         self.log_dir = state_dir / LOG_DIR
+        self.writes = writes
         self.clock = clock
         self.monotonic = monotonic
         self._lock = threading.Lock()  # windows, salt, visitors, counters
@@ -284,6 +290,8 @@ class TrafficState:
 
     def _read_line(self, day: str) -> dict[str, int]:
         """The numbers of ``day`` in ``stats.jsonl``, written by an earlier run."""
+        if not self.writes:
+            return {}
         try:
             text = self.stats_path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -303,6 +311,8 @@ class TrafficState:
 
     def _write_line(self, line: Mapping[str, str | int]) -> None:
         """Put ``line`` into ``stats.jsonl`` in date order: temporary file, then rename."""
+        if not self.writes:
+            return
         try:
             try:
                 text = self.stats_path.read_text(encoding="utf-8")
@@ -345,6 +355,8 @@ class TrafficState:
         entry : Mapping
             The line: ``time`` (UTC, ISO 8601 with ``Z``) first; never an address.
         """
+        if not self.writes:
+            return
         day = str(entry["time"])[:10]
         line = json.dumps(entry, separators=(",", ":")) + "\n"
         with self._log_lock:
@@ -378,6 +390,8 @@ class TrafficState:
 
     def _prune_logs(self, today: date) -> None:
         """Delete the access logs of days `LOG_DAYS` or more before ``today``."""
+        if not self.writes:
+            return
         oldest = today - timedelta(days=LOG_DAYS - 1)
         try:
             names = [path for path in self.log_dir.iterdir() if path.is_file()]

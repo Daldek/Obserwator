@@ -10,19 +10,24 @@ registry's status, in the page's language, without server paths.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import csv
+import functools
 import io
 import logging
+import shlex
 import shutil
 import tempfile
+import weakref
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import date
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlencode
 
-from anyio import to_thread
+from anyio import CapacityLimiter, to_thread
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -54,7 +59,9 @@ from obserwator.gui._http import (
     error_body,
     error_response,
     etag_of,
+    hide_paths,
     json_response,
+    not_modified,
     page_lang,
 )
 from obserwator.gui._live import (
@@ -68,13 +75,15 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
-from obserwator.gui._root import DataRoot, Snapshot
+from obserwator.gui._root import DataRoot, Snapshot, StationsFormat
 from obserwator.gui._standin import StandIn
 from obserwator.gui._state import GuiState
+from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
 from obserwator.gui._traffic import Traffic, TrafficState
-from obserwator.messages import LANGS, message
+from obserwator.messages import LANGS, Lang, message
 from obserwator.messages.gui import MESSAGES as TEXTS
+from obserwator.store.types import StationFeature
 
 LOG = logging.getLogger(__name__)
 WEB = Path(__file__).resolve().parent / "web"
@@ -89,13 +98,22 @@ HANDOFF_SCHEMA = "nogat-handoff/1"
 SERIES_SCHEMA = "hydrolog-series/1"
 HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
 PMAXTP_TABLES = ("ks", "sg", "rb")
+SERIES_FORMATS: tuple[str, ...] = ("csv", "json", "parquet")
+"""The formats of a station's series file (`export_series`, ADR-014)."""
+STATIONS_FORMATS: tuple[str, ...] = ("geojson", "csv")
+"""The formats of the stations file (`export_stations`, ADR-014)."""
+KINDS = ("hydro", "meteo")
+READERS = 4
+"""Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
 SEXT = {
     "csv": "text/csv; charset=utf-8",
     "json": "application/json",
     "parquet": "application/vnd.apache.parquet",
+    "geojson": "application/geo+json",
 }
 
 Handler = Callable[[Request], Awaitable[Response]]
+StationKind = Literal["hydro", "meteo"]
 
 
 def _gui(request: Request) -> GuiState:
@@ -117,12 +135,24 @@ def _route(handler: Handler) -> Handler:
     return wrapped
 
 
+_LIMITERS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, CapacityLimiter] = (
+    weakref.WeakKeyDictionary()
+)
+"""The limiter of the blocking reads of each event loop (each server)."""
+
+
 async def _thread[T](function: Callable[[], T]) -> T:
-    """Run a blocking read in a worker thread, at most four at a time (D7)."""
-    return await to_thread.run_sync(function, limiter=_LIMITER)
+    """Run a blocking read in a worker thread, at most `READERS` at a time (D7)."""
+    loop = asyncio.get_running_loop()
+    limiter = _LIMITERS.get(loop)
+    if limiter is None:
+        limiter = _LIMITERS[loop] = CapacityLimiter(READERS)
+    return await to_thread.run_sync(function, limiter=limiter)
 
 
-_LIMITER: Any = None
+def _etag(request: Request, *parts: object) -> str:
+    """A strong ETag of an answer of this server's run: what it was made from (D7)."""
+    return etag_of(_gui(request).boot, *parts)
 
 
 def _snapshot(request: Request) -> Snapshot:
@@ -138,6 +168,35 @@ def _station(request: Request, snapshot: Snapshot, value: str | None = None) -> 
         raise GuiError(
             "not_found",
             message("gui.errors.no_station", station=code),
+            details={"option": "station", "value": code},
+        )
+    return code
+
+
+def _dataset(request: Request, snapshot: Snapshot) -> str:
+    """The dataset of the address, one whose series the root holds; else ``not_found``."""
+    dataset: str = request.path_params["dataset"]
+    if dataset not in snapshot.series:
+        shown = dataset[: params.MAX_TEXT]
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_dataset", dataset=shown),
+            details={
+                "option": "dataset",
+                "value": shown,
+                "allowed": list(snapshot.series),
+            },
+        )
+    return dataset
+
+
+def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
+    """The station of the address, held by the dataset's series; else ``not_found``."""
+    code = _station(request, snapshot)
+    if code not in snapshot.series[dataset].index.stations:
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_series", station=code, dataset=dataset),
             details={"option": "station", "value": code},
         )
     return code
@@ -189,7 +248,7 @@ async def session(request: Request) -> Response:
             "analyses": None,
             "error": None
             if snapshot.error is None
-            else error_body(snapshot.error, lang),
+            else hide_paths(error_body(snapshot.error, lang), state.directories()),
         },
         "providers": {
             provider.id: {
@@ -222,18 +281,22 @@ async def session(request: Request) -> Response:
     return json_response(request, document)
 
 
+@functools.cache
+def _texts(lang: Lang) -> dict[str, Any]:
+    """The area ``gui`` of the message catalog in ``lang``, made once."""
+    return {
+        "lang": lang,
+        "texts": {key: getattr(text, lang) for key, text in TEXTS.items()},
+    }
+
+
 @_route
 async def texts(request: Request) -> Response:
     """The area ``gui`` of the message catalog in one language (``lang``: pl or en)."""
     params.only(request.query_params, ("lang",))
-    lang = params.choice(request.query_params.get("lang"), "lang", LANGS, "pl")
-    document = {
-        "lang": lang,
-        "texts": {key: getattr(text, lang) for key, text in TEXTS.items()},
-    }
-    return json_response(
-        request, document, etag=etag_of("texts", lang, _gui(request).version)
-    )
+    chosen = params.choice(request.query_params.get("lang"), "lang", LANGS, "pl")
+    lang: Lang = "en" if chosen == "en" else "pl"
+    return json_response(request, _texts(lang), etag=_etag(request, "texts", lang))
 
 
 # --- stations and series --------------------------------------------------------------
@@ -250,7 +313,7 @@ async def stations(request: Request) -> Response:
             feature.provider, feature.properties, location=True
         )
     document = {**snapshot.layer, **lines.fields()}
-    return json_response(request, document, etag=snapshot.layer_etag)
+    return json_response(request, document, etag=_etag(request, snapshot.layer_etag))
 
 
 @_route
@@ -282,7 +345,9 @@ async def station(request: Request) -> Response:
         },
     }
     _gui(request).traffic.count("stations_opened")
-    return json_response(request, document, etag=etag_of("station", snapshot.key, code))
+    return json_response(
+        request, document, etag=_etag(request, "station", snapshot.key, code)
+    )
 
 
 def _slice(
@@ -339,16 +404,8 @@ async def series(request: Request) -> Response:
     query = request.query_params
     params.only(query, ("variables", "start", "end"))
     snapshot = await _thread(lambda: _snapshot(request))
-    dataset = params.choice(
-        request.path_params["dataset"], "dataset", tuple(snapshot.series)
-    )
-    code = _station(request, snapshot)
-    if code not in snapshot.series[dataset].index.stations:
-        raise GuiError(
-            "not_found",
-            message("gui.errors.no_series", station=code, dataset=dataset),
-            details={"option": "station", "value": code},
-        )
+    dataset = _dataset(request, snapshot)
+    code = _held(request, snapshot, dataset)
     descriptor = get_dataset(dataset)
     variables = params.names(
         query.get("variables"), "variables", tuple(descriptor.variables)
@@ -366,7 +423,9 @@ async def series(request: Request) -> Response:
         **_slice(document, variables, start, end),
         **attribution(dataset_origin(dataset)).fields(),
     }
-    return json_response(request, body, etag=etag_of(base, variables, start, end))
+    return json_response(
+        request, body, etag=_etag(request, base, variables, start, end)
+    )
 
 
 # --- analyses ---------------------------------------------------------------------------
@@ -388,7 +447,7 @@ async def analyses(request: Request) -> Response:
     return json_response(
         request,
         document,
-        etag=etag_of("analyses", snapshot.key, code, state.analyses.can_compute),
+        etag=_etag(request, "analyses", snapshot.key, code, state.analyses.can_compute),
     )
 
 
@@ -399,10 +458,10 @@ async def analysis(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     name = request.path_params["analysis"]
-    overrides = state.analyses.overrides(name, dict(request.query_params))
+    overrides = state.analyses.overrides(name, params.single(request.query_params))
     result, etag = await state.analyses.get(snapshot, code, name, overrides)
     state.traffic.count("analyses_run")
-    return json_response(request, result, etag=etag)
+    return json_response(request, result, etag=_etag(request, etag))
 
 
 @_route
@@ -412,7 +471,7 @@ async def analysis_file(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     name = request.path_params["analysis"]
-    overrides = state.analyses.overrides(name, dict(request.query_params))
+    overrides = state.analyses.overrides(name, params.single(request.query_params))
     result, etag = await state.analyses.get(snapshot, code, name, overrides)
     state.traffic.count("downloads")
     return attachment(
@@ -420,7 +479,7 @@ async def analysis_file(request: Request) -> Response:
         dumps(result, indent=2),
         filename=f"{code}_{name}.json",
         media_type="application/json",
-        etag=etag,
+        etag=_etag(request, etag),
     )
 
 
@@ -640,22 +699,29 @@ async def pmaxtp_file(request: Request) -> Response:
 # --- files and command lines -------------------------------------------------------------
 
 
-SERIES_FORMATS: tuple[str, ...] = ("csv",)
-"""The formats of `export_series`; JSON and Parquet join when S0 (ADR-014) lands."""
+def _shown_command(command: str, options: Mapping[str, Any]) -> str:
+    """
+    The command line that makes the same file on the reader's computer.
+
+    It is `format_command`'s canonical line without the server's root (the reader's
+    default root stands for it) and with the bare file name as the output (in the
+    reader's working directory): no server path (D6).
+    """
+    words = iter(shlex.split(obserwator.format_command(command, options=options)))
+    shown: list[str] = []
+    for word in words:
+        if word == "--root":
+            next(words, None)
+        elif word == "--output":
+            shown += [word, Path(next(words, "")).name]
+        else:
+            shown.append(word)
+    return shlex.join(shown)
 
 
-def _series_formats() -> tuple[str, ...]:
-    """The formats a series file may be downloaded in."""
-    return SERIES_FORMATS
-
-
-def _command_line(dataset: str, code: str, fmt: str) -> str:
-    """The equivalent command line: the CLI's default root stands for the server's."""
-    name = f"{code}_{get_dataset(dataset).slug}.{fmt}"
-    options: dict[str, Any] = {"dataset": dataset, "station": code, "output": name}
-    if fmt != "csv":
-        options["format"] = fmt
-    return obserwator.format_command("series export", options=options)
+def _series_name(dataset: str, code: str, fmt: str) -> str:
+    """The name of a station's series file: ``<code>_<dataset slug>.<format>``."""
+    return f"{code}_{get_dataset(dataset).slug}.{fmt}"
 
 
 @_route
@@ -664,23 +730,27 @@ async def downloads(request: Request) -> Response:
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
-    formats = _series_formats()
     files = []
     for entry in snapshot.datasets_of(code):
         dataset = entry["dataset"]
         descriptor = get_dataset(dataset)
+        formats = {}
+        for fmt in SERIES_FORMATS:
+            name = _series_name(dataset, code, fmt)
+            options = {"dataset": dataset, "station": code, "output": name}
+            formats[fmt] = {
+                "file": name,
+                "url": f"api/files/series/{dataset}/{code}?format={fmt}",
+                "command": _shown_command(
+                    "series export",
+                    options if fmt == "csv" else {**options, "format": fmt},
+                ),
+            }
         files.append(
             {
                 "dataset": dataset,
                 "version": entry["version"],
-                "formats": {
-                    fmt: {
-                        "file": f"{code}_{descriptor.slug}.{fmt}",
-                        "url": f"api/files/series/{dataset}/{code}?format={fmt}",
-                        "command": _command_line(dataset, code, fmt),
-                    }
-                    for fmt in formats
-                },
+                "formats": formats,
                 "licence": {
                     "provider": get_provider(descriptor.provider).short_name,
                     "id": descriptor.license.id,
@@ -693,7 +763,7 @@ async def downloads(request: Request) -> Response:
     return json_response(
         request,
         {"station": code, "series": files},
-        etag=etag_of("downloads", snapshot.key, code, formats),
+        etag=_etag(request, "downloads", snapshot.key, code),
     )
 
 
@@ -703,42 +773,159 @@ async def series_file(request: Request) -> Response:
     query = request.query_params
     params.only(query, ("format",))
     snapshot = await _thread(lambda: _snapshot(request))
-    dataset = params.choice(
-        request.path_params["dataset"], "dataset", tuple(snapshot.series)
-    )
-    code = _station(request, snapshot)
-    if code not in snapshot.series[dataset].index.stations:
-        raise GuiError(
-            "not_found", message("gui.errors.no_series", station=code, dataset=dataset)
-        )
-    fmt = params.choice(query.get("format"), "format", _series_formats(), "csv")
+    dataset = _dataset(request, snapshot)
+    code = _held(request, snapshot, dataset)
+    fmt = params.choice(query.get("format"), "format", SERIES_FORMATS, "csv")
     state = _gui(request)
-    name = f"{code}_{get_dataset(dataset).slug}.{fmt}"
+    name = _series_name(dataset, code, fmt)
+    etag = _etag(request, "file", snapshot.series[dataset].version.sha256, code, fmt)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+    root = state.config.root
 
     def export() -> bytes:
+        if fmt != "parquet":
+            lines = obserwator.export_series(
+                root=root,
+                dataset=dataset,
+                station=code,
+                format="json" if fmt == "json" else "csv",
+            )
+            return "".join(lines).encode("utf-8")
+        # Parquet is binary and needs a file: a private one, removed at once.
         folder = Path(tempfile.mkdtemp(prefix="obserwator-gui-file-"))
         try:
-            options: dict[str, Any] = {
-                "root": state.config.root,
-                "dataset": dataset,
-                "station": code,
-                "output": folder / name,
-            }
-            if fmt != "csv":
-                options["format"] = fmt
-            obserwator.export_series(**options)
+            obserwator.export_series(
+                root=root,
+                dataset=dataset,
+                station=code,
+                format="parquet",
+                output=folder / name,
+            )
             return (folder / name).read_bytes()
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
     body = await _thread(export)
     state.traffic.count("downloads")
+    return attachment(request, body, filename=name, media_type=SEXT[fmt], etag=etag)
+
+
+def _stations_query(
+    query: Mapping[str, str],
+) -> tuple[str | None, StationKind | None]:
+    """The provider and the kind of a stations file; None for every one."""
+    provider = query.get("provider") or None
+    if provider is not None:
+        params.choice(provider, "provider", tuple(item.id for item in providers()))
+    kind = query.get("kind") or None
+    if kind is not None:
+        params.choice(kind, "kind", KINDS)
+    return provider, ("hydro" if kind == "hydro" else "meteo" if kind else None)
+
+
+def _stations_of(
+    snapshot: Snapshot, provider: str | None, kind: str | None
+) -> list[StationFeature]:
+    """The stations of the current catalogs of a provider and a kind; else ``not_found``."""
+    chosen = [
+        feature
+        for feature in snapshot.features.values()
+        if (provider is None or feature.provider == provider)
+        and (kind is None or feature.properties.get("kind") == kind)
+    ]
+    if not chosen:
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_stations"),
+            details={"provider": provider, "kind": kind},
+        )
+    return chosen
+
+
+def _stations_name(provider: str | None, kind: str | None, fmt: str) -> str:
+    """The name of a stations file: ``stations[_<provider>][_<kind>].<format>``."""
+    parts = ["stations", *(part for part in (provider, kind) if part)]
+    return f"{'_'.join(parts).lower()}.{fmt}"
+
+
+@_route
+async def stations_downloads(request: Request) -> Response:
+    """The stations of the current catalogs as files: each format, its command line."""
+    query = request.query_params
+    params.only(query, ("provider", "kind"))
+    provider, kind = _stations_query(query)
+    snapshot = await _thread(lambda: _snapshot(request))
+    chosen = _stations_of(snapshot, provider, kind)
+    lines = Attribution()
+    for feature in chosen:
+        lines = lines | _station_origins(
+            feature.provider, feature.properties, location=True
+        )
+    selection = {
+        key: value for key, value in (("provider", provider), ("kind", kind)) if value
+    }
+    formats = {}
+    for fmt in STATIONS_FORMATS:
+        name = _stations_name(provider, kind, fmt)
+        options = {**selection, "output": name}
+        formats[fmt] = {
+            "file": name,
+            "url": f"api/files/stations?{urlencode({'format': fmt, **selection})}",
+            "command": _shown_command(
+                "stations export",
+                options if fmt == "geojson" else {**options, "format": fmt},
+            ),
+        }
+    held = {feature.provider for feature in chosen}
+    document = {
+        "provider": provider,
+        "kind": kind,
+        "stations": len(chosen),
+        "formats": formats,
+        "licences": [
+            {
+                "provider": item.short_name,
+                "id": item.license.id,
+                "url": item.license.url,
+                "terms_url": item.license.terms_url,
+            }
+            for item in providers()
+            if item.id in held
+        ],
+        **lines.fields(),
+    }
+    return json_response(
+        request,
+        document,
+        etag=_etag(request, "stations-downloads", snapshot.key, provider, kind),
+    )
+
+
+@_route
+async def stations_file(request: Request) -> Response:
+    """The stations of the current catalogs as a file, made by `export_stations`."""
+    query = request.query_params
+    params.only(query, ("format", "provider", "kind"))
+    chosen = params.choice(query.get("format"), "format", STATIONS_FORMATS, "geojson")
+    fmt: StationsFormat = "csv" if chosen == "csv" else "geojson"
+    provider, kind = _stations_query(query)
+    state = _gui(request)
+    snapshot = await _thread(lambda: _snapshot(request))
+    _stations_of(snapshot, provider, kind)
+    etag = _etag(request, "stations-file", snapshot.key, fmt, provider, kind)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+    body = await _thread(lambda: state.root.stations_file(fmt, provider, kind))
+    state.traffic.count("downloads")
     return attachment(
         request,
         body,
-        filename=name,
+        filename=_stations_name(provider, kind, fmt),
         media_type=SEXT[fmt],
-        etag=etag_of("file", snapshot.series[dataset].version.sha256, code, fmt),
+        etag=etag,
     )
 
 
@@ -755,16 +942,28 @@ async def handoff(request: Request) -> Response:
     the id ``analysis`` used (``annual_maxima`` and ``hydrological_years``), with the id's
     command, options and result in the envelope.
     """
-    query = dict(request.query_params)
+    query = params.single(request.query_params)
     state = _gui(request)
-    snapshot = await _thread(lambda: _snapshot(request))
-    code = _station(request, snapshot)
-    feature = snapshot.features[code]
-    props = dict(feature.properties)
+    params.station(request.path_params["code"])
     variable = params.choice(query.pop("variable", None), "variable", ("Q", "H"), "Q")
     resolution = params.choice(
         query.pop("resolution", None), "resolution", ("daily", "annual"), "daily"
     )
+    first = last = None
+    analysis_id = f"flood_frequency.{variable}"
+    overrides: dict[str, Any] = {}
+    if resolution == "daily":
+        first = params.year(query.pop("first_year", None), "first_year")
+        last = params.year(query.pop("last_year", None), "last_year")
+        params.years(first, last, first_option="first_year", last_option="last_year")
+        params.only(query, ())
+    else:
+        analysis_id = query.pop("analysis", "") or analysis_id
+        overrides = state.analyses.overrides(analysis_id, query)
+    snapshot = await _thread(lambda: _snapshot(request))
+    code = _station(request, snapshot)
+    feature = snapshot.features[code]
+    props = dict(feature.properties)
     name = str(props.get("name") or code)
     river = f" ({props['river']})" if props.get("river") else ""
     producer = {
@@ -773,10 +972,6 @@ async def handoff(request: Request) -> Response:
         "page": _page_address(request, code),
     }
     if resolution == "daily":
-        first = params.year(query.pop("first_year", None), "first_year")
-        last = params.year(query.pop("last_year", None), "last_year")
-        params.years(first, last, first_option="first_year", last_option="last_year")
-        params.only(query, ())
         dataset = next(
             (
                 key
@@ -842,14 +1037,17 @@ async def handoff(request: Request) -> Response:
         )
         result = None
     else:
-        analysis_id = query.pop("analysis", f"flood_frequency.{variable}")
-        overrides = state.analyses.overrides(analysis_id, query)
         result_doc, _ = await state.analyses.get(snapshot, code, analysis_id, overrides)
-        if result_doc.get("status") != "ok":
+        found = (result_doc.get("envelope") or {}).get("result") or {}
+        years, maxima = found.get("hydrological_years"), found.get("annual_maxima")
+        if (
+            result_doc.get("status") != "ok"
+            or not isinstance(years, list)
+            or not isinstance(maxima, list)
+        ):
             raise GuiError(
                 "not_found", message("gui.errors.no_values", variable=variable)
             )
-        found = result_doc["envelope"]["result"]
         payload = {
             "schema": SERIES_SCHEMA,
             "name": f"{name} — {variable}",
@@ -863,8 +1061,8 @@ async def handoff(request: Request) -> Response:
             "step": "year",
             "statistic": "max",
             "year_type": "hydrological",
-            "years": found["hydrological_years"],
-            "values": found["annual_maxima"],
+            "years": years,
+            "values": maxima,
         }
         lines = Attribution(
             tuple(result_doc.get("attribution") or ()),
@@ -907,8 +1105,10 @@ async def handoff(request: Request) -> Response:
 
 
 def _page_address(request: Request, code: str) -> str:
-    """The station's page in this GUI: the deployment's address, else this server's."""
-    base = _gui(request).config.gui.get("obserwator") or str(request.base_url)
+    """The station's page: the deployment's address, else this app's, under its prefix."""
+    base = _gui(request).config.gui.get("obserwator") or (
+        f"{request.url.scheme}://{request.url.netloc}{request.scope.get('root_path', '')}"
+    )
     return f"{base.rstrip('/')}/?station={code}"
 
 
@@ -1044,6 +1244,10 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
     """
     The app for resolved settings: routes, static files, middleware and lifespan.
 
+    When the GUI's own directory and the data root overlap (`GuiConfig.writes_state`),
+    the app writes none of its files (D7): no statistics, no access log, „Zgłoś uwagę”
+    off; one warning says so.
+
     Parameters
     ----------
     config : GuiConfig
@@ -1056,12 +1260,17 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
     Starlette
         The app.
     """
-    from anyio import CapacityLimiter
-
-    global _LIMITER
-    if _LIMITER is None:
-        _LIMITER = CapacityLimiter(4)
     if state is None:
+        writes = config.writes_state
+        if not writes:
+            LOG.warning(
+                "%s",
+                message(
+                    "gui.server.state_in_root",
+                    state_dir=str(config.state_dir),
+                    root=str(config.root),
+                ),
+            )
         standin = StandIn(config.root, config.hydrolog_command)
         state = GuiState(
             config=config,
@@ -1073,8 +1282,9 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
                 limit=config.request_limit,
                 window=config.request_window,
                 state_dir=config.state_dir,
+                writes=writes,
             ),
-            feedback=Feedback(config.state_dir / "feedback.jsonl"),
+            feedback=Feedback(config.state_dir / "feedback.jsonl", writes=writes),
             terms=terms_page(config, WEB),
         )
 
@@ -1098,11 +1308,14 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
         Route("/api/current", current),
         Route("/api/current/{code}", current_station),
         Route("/api/pmaxtp", pmaxtp),
+        Route("/api/downloads/stations", stations_downloads),
         Route("/api/downloads/{code}", downloads),
+        Route("/api/files/stations", stations_file),
         Route("/api/files/series/{dataset}/{code}", series_file),
         Route("/api/files/analysis/{code}/{analysis}", analysis_file),
         Route("/api/files/pmaxtp", pmaxtp_file),
         Route("/api/handoff/{code}", handoff),
+        Route("/api/prototype/stripes/{code}", _route(stripes_prototype)),
         Route("/api/feedback", post_feedback, methods=["POST"]),
         Route("/api/{rest:path}", api_not_found),
         Route("/regulamin.html", regulamin),

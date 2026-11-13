@@ -2,10 +2,11 @@
 Obserwator's data root as the GUI reads it: catalogs, series indexes and station series.
 
 The GUI never writes under the root (GUI plan D7). It reads it only through the public
-readers (`read_catalog`, `read_series_index`, `read_series`, `current_version`) and asks
-again at most once a minute whether a current version changed, so a new ``series build``
-or catalog shows without a restart. In memory: the station layer of the current versions
-and the 32 most recent series documents.
+readers (`read_catalog`, `read_series_index`, `read_series`, `current_version`,
+`export_stations`) and asks again at most once a minute whether a current version
+changed, so a new ``series build`` or catalog shows without a restart. In memory: the
+station layer of the current versions, the 32 most recent series documents and the 4
+most recent files of the stations.
 """
 
 from __future__ import annotations
@@ -13,15 +14,16 @@ from __future__ import annotations
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from obserwator.datasets import datasets, get_dataset
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
+from obserwator.store import export_stations
 from obserwator.store.reader import (
     current_version,
     read_catalog,
@@ -34,6 +36,10 @@ RELOAD_AFTER_S = 60.0
 """How long the current versions are trusted before the root is asked again [s]."""
 SERIES_DOCUMENTS = 32
 """How many station series documents stay in memory."""
+STATIONS_FILES = 4
+"""How many files of the stations stay in memory (one is a few MB on a full root)."""
+StationsFormat = Literal["geojson", "csv"]
+"""The formats of `export_stations`."""
 CATALOG_SLOTS: Mapping[str, str] = {
     "IMGW-PIB": "catalog:pl.imgw.stations",
     "CHMI": "catalog:cz.chmi.stations",
@@ -224,17 +230,28 @@ class DataRoot:
         The root.
     reload_after_s : float, optional
         How long a read of the current versions is trusted [s].
+    clock : callable, optional
+        Monotonic time in seconds.
     """
 
-    def __init__(self, path: Path, *, reload_after_s: float = RELOAD_AFTER_S) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        reload_after_s: float = RELOAD_AFTER_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.path = path
         self._reload_after_s = reload_after_s
+        self._clock = clock
         self._lock = threading.Lock()
         self._snapshot: Snapshot | None = None
         self._checked_at = -1e18
         self._versions: tuple[tuple[str, str], ...] | None = None
         self._series_docs: OrderedDict[tuple[str, ...], dict[str, Any]] = OrderedDict()
+        self._stations_files: OrderedDict[tuple[str, ...], bytes] = OrderedDict()
         self._docs_lock = threading.Lock()
+        self._export_lock = threading.Lock()
 
     def _current(self) -> tuple[tuple[str, str], ...]:
         """The slot and SHA-256 of every current version (cheap: the pointers only)."""
@@ -259,7 +276,7 @@ class DataRoot:
             be read (the GUI then shows the error and serves no stations).
         """
         with self._lock:
-            now = time.monotonic()
+            now = self._clock()
             if (
                 self._snapshot is not None
                 and now - self._checked_at < self._reload_after_s
@@ -398,3 +415,54 @@ class DataRoot:
             while len(self._series_docs) > SERIES_DOCUMENTS:
                 self._series_docs.popitem(last=False)
         return document, etag_of("series", key)
+
+    def stations_file(
+        self,
+        fmt: StationsFormat,
+        provider: str | None,
+        kind: Literal["hydro", "meteo"] | None,
+    ) -> bytes:
+        """
+        The stations of the current catalogs as `export_stations` writes them.
+
+        One export runs at a time (it reads every series index: seconds on a full
+        root); the `STATIONS_FILES` most recent stay in memory per current versions.
+
+        Parameters
+        ----------
+        fmt : {"geojson", "csv"}
+            The format.
+        provider : str or None
+            The provider's stations only; None for every one.
+        kind : {"hydro", "meteo"} or None
+            The stations of this kind only; None for both.
+
+        Returns
+        -------
+        bytes
+            The file, UTF-8.
+
+        Raises
+        ------
+        ObserwatorError
+            When the root holds no catalog of ``provider`` or no station of ``kind``.
+        """
+        key = (fmt, provider or "", kind or "", *self.snapshot().key)
+        with self._docs_lock:
+            hit = self._stations_files.get(key)
+            if hit is not None:
+                self._stations_files.move_to_end(key)
+                return hit
+        with self._export_lock:
+            with self._docs_lock:
+                hit = self._stations_files.get(key)
+            if hit is None:
+                lines = export_stations(
+                    self.path, provider=provider, kind=kind, format=fmt
+                )
+                hit = "".join(lines).encode("utf-8")
+                with self._docs_lock:
+                    self._stations_files[key] = hit
+                    while len(self._stations_files) > STATIONS_FILES:
+                        self._stations_files.popitem(last=False)
+        return hit

@@ -1,0 +1,205 @@
+/*
+ * The map (src/map.js): the basemap's greys in both themes, the station symbols of
+ * hydro.imgw.pl (src/symbols.js), the tooltip, the legend (bottom left) and the zoom
+ * buttons (bottom right, Nogat design/README.md), the providers' strip under the map, the
+ * note shown without WebGL, and the station list's dataset filter (src/list.js). map.js
+ * reads the --map-* and --imgw-* colours when the map starts and again when the theme
+ * changes.
+ */
+
+:root {
+  /* The basemap: greys a shade off the background, so the stations stay the strong colours */
+  --map-bg: #eef0f3;
+  --map-land: #f4f5f7;
+  --map-landuse: #e4e7eb;
+  --map-water: #d3d9e1;
+  --map-road: #ffffff;
+  --map-road-far: #d5dae1;
+  --map-casing: #cfd5dd;
+  --map-state: #c3c9d2;
+  --map-country: #98a2b3;
+  --map-water-text: #5f6f82;
+  --map-halo: rgba(255, 255, 255, 0.85);
+  --map-place-1: #667085;
+  --map-place-2: #5d6878;
+  --map-place-3: #344054;
+  --map-place-4: #667085;
+  --map-border: #8a94a6;
+  /* The station symbols: hydro.imgw.pl's colours (IMGW-PIB, version 2.1.13.1, read on
+     2026-11-13), its CSS variables --<class>-status-color and its icons' outline. They mean
+     the same in both themes, so only the outline changes in the dark one. */
+  --imgw-alarm: #ff0000;      /* --alarm-status-color: above the alarm level */
+  --imgw-warning: #ffa500;    /* --warning-status-color: above the warning level */
+  --imgw-high: #ffeb09;       /* --high-status-color: high water zone */
+  --imgw-medium: #0a65c0;     /* --medium-status-color: medium water zone; also „Stacje”'s hydrological station */
+  --imgw-low: #000000;        /* --low-status-color: low water zone */
+  --imgw-below: #791919;      /* --below-status-color: below the periodic minimum */
+  --imgw-no-data: #ceceff;    /* --no-water-state-data-status-color and --no-precip-data-status-color: no data */
+  --imgw-unknown: #ffffff;    /* --unknown-status-color, --no-char-states-status-color: no characteristic levels */
+  --imgw-high-precip: #ff0000; /* --high-precip-status-color: heavy precipitation */
+  --imgw-precip: #2b60bd;     /* --precip-status-color: precipitation */
+  --imgw-no-precip: #289613;  /* --no-precip-status-color: no precipitation; also „Stacje”'s meteorological station */
+  --imgw-outline: #777777;    /* its icons' stroke="#777" */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --map-bg: #1b2028;
+    --map-land: #1f252d;
+    --map-landuse: #232a33;
+    --map-water: #0f141a;
+    --map-road: #343c47;
+    --map-road-far: #2c333d;
+    --map-casing: #2c333d;
+    --map-state: #3a424d;
+    --map-country: #5d6875;
+    --map-water-text: #7d8a99;
+    --map-halo: rgba(13, 17, 23, 0.85);
+    --map-place-1: #8b949e;
+    --map-place-2: #9da7b3;
+    --map-place-3: #c9d1d9;
+    --map-place-4: #8b949e;
+    --map-border: #6e7781;
+    /* Our own: hydro.imgw.pl has no dark theme; a lighter outline keeps the black and the
+       dark red symbols apart from the dark basemap */
+    --imgw-outline: #a8b1bd;
+  }
+}
+
+:root[data-theme="dark"] {
+  --map-bg: #1b2028;
+  --map-land: #1f252d;
+  --map-landuse: #232a33;
+  --map-water: #0f141a;
+  --map-road: #343c47;
+  --map-road-far: #2c333d;
+  --map-casing: #2c333d;
+  --map-state: #3a424d;
+  --map-country: #5d6875;
+  --map-water-text: #7d8a99;
+  --map-halo: rgba(13, 17, 23, 0.85);
+  --map-place-1: #8b949e;
+  --map-place-2: #9da7b3;
+  --map-place-3: #c9d1d9;
+  --map-place-4: #8b949e;
+  --map-border: #6e7781;
+  --imgw-outline: #a8b1bd;
+}
+
+.map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); display: flex; flex-direction: column; }
+.map-stage { position: relative; flex: 1; min-height: 0; }
+.map { position: absolute; inset: 0; }
+.map .maplibregl-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* The providers' lines and terms of the data drawn and the basemap's credit (src/attribution.js):
+   under the map, never folded */
+.map-credits {
+  flex: none; max-height: 40%; overflow-y: auto;
+  padding: 5px 12px 6px; border-top: 1px solid var(--line); background: var(--surface);
+}
+.map-credits .attrib { font-size: 11px; line-height: 1.35; }
+
+/* The zoom buttons, bottom right */
+.map-zoom {
+  position: absolute; right: 10px; bottom: 10px; z-index: 3;
+  display: grid; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.map-zoom button {
+  display: grid; place-items: center; width: var(--control); height: var(--control); padding: 0;
+  border: 0; background: transparent; color: var(--text-2); cursor: pointer;
+}
+.map-zoom button + button { border-top: 1px solid var(--line); }
+.map-zoom button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.map-zoom button:focus-visible { outline-offset: -2px; }
+.map-zoom button:disabled { color: var(--text-3); opacity: 0.5; cursor: default; }
+.map-zoom svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+/* The station symbols in the list, the legend, the tooltip and the panel: src/symbols.js
+   draws the same on the map's canvas */
+.sym { flex: none; overflow: visible; vertical-align: middle; }
+.sym .body { fill: var(--sym-fill, var(--imgw-unknown)); }
+.sym .edge { fill: none; stroke: var(--imgw-outline); stroke-width: 2; stroke-linejoin: round; }
+.sym.dashed .edge { stroke-width: 2.6; stroke-dasharray: 5 3; }
+.sym.faded { opacity: 0.5; }
+
+/* The class of a station in its section „Pomiary bieżące” (src/sections/teraz.js) */
+.now-class { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 var(--space-2); }
+.now-class .muted { flex-basis: 100%; }
+
+/* Tooltip: right of the pointer, left of it near the right edge, below or above it near the top or bottom */
+.map-tip {
+  position: absolute; z-index: 4; pointer-events: none;
+  transform: translate(12px, -50%);
+  display: grid; gap: 1px; width: max-content; max-width: 280px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+  font-size: var(--text-sm); line-height: 1.35;
+}
+.map-tip.west { transform: translate(calc(-100% - 12px), -50%); }
+.map-tip.below { transform: translate(12px, 8px); }
+.map-tip.west.below { transform: translate(calc(-100% - 12px), 8px); }
+.map-tip.above { transform: translate(12px, calc(-100% - 8px)); }
+.map-tip.west.above { transform: translate(calc(-100% - 12px), calc(-100% - 8px)); }
+.map-tip strong { font-size: var(--text-base); }
+.map-tip .muted { font-size: var(--text-xs); }
+.map-tip code { font-size: var(--text-xs); }
+.tip-class { display: flex; align-items: center; gap: 6px; margin: 2px 0 1px; font-weight: var(--weight-bold); }
+.tip-value strong { font-variant-numeric: tabular-nums; }
+
+/* Legend, bottom left */
+.map-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 3;
+  max-width: min(330px, calc(100% - 80px)); max-height: calc(100% - 20px); overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs); color: var(--text-2);
+}
+.legend-toggle {
+  display: block; width: 100%; padding: 4px 10px; border: 0; background: none; text-align: left; cursor: pointer;
+  font: var(--weight-bold) var(--text-xs) var(--font-sans); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.map-legend:not(.closed) .legend-toggle { border-bottom: 1px solid var(--line); }
+.legend-body { padding: 6px 10px 8px; }
+.legend-list { display: grid; gap: 3px 12px; margin: 0; padding: 0; list-style: none; }
+.legend-list.two { grid-template-columns: repeat(2, max-content); }
+.legend-list li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend-note { margin: 6px 0 0; color: var(--text-3); line-height: 1.35; white-space: normal; }
+.legend-note.bad-text { color: var(--bad-ink); }
+.legend-title { margin: 6px 0 3px; font-weight: var(--weight-bold); color: var(--text-2); }
+.legend-title:first-child { margin-top: 0; }
+.legend-gap { display: inline-block; width: 15px; flex: none; }
+.pick-ring { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; }
+
+/* Without WebGL */
+.map-failure {
+  position: absolute; left: 50%; top: 40%; z-index: 5; transform: translate(-50%, -50%);
+  width: min(420px, calc(100% - 32px)); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text-2); box-shadow: var(--shadow); font-size: var(--text-sm);
+}
+.map-failure-reason { display: block; margin-top: 6px; color: var(--text-3); font-size: var(--text-xs); overflow-wrap: anywhere; }
+
+/* The station list (src/list.js): its filter by the datasets holding a station, and the
+   flags of a row (inactive, no coordinates), which stay whole while the rest shortens */
+.ds-filter { display: grid; gap: 4px; }
+.ds-title { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--text-3); }
+.ds-group { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: baseline; gap: 4px; }
+.ds-provider { font-size: var(--text-xs); color: var(--text-3); }
+.ds-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ds-chip { font-family: var(--font-sans); gap: 5px; }
+.st-item .st-sub { display: flex; gap: 0.3em; }
+.st-facts { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-flag { flex: none; }
+.station-list .empty-note p { margin: 0 0 var(--space-2); }
+.counts .count { white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .map-legend { left: 6px; bottom: 6px; max-width: calc(100% - 64px); }
+  .legend-list.two { grid-template-columns: max-content; }
+  .map-zoom { right: 6px; bottom: 6px; }
+  .map-zoom button { width: 40px; height: 40px; }
+  .map-credits { padding: 4px 8px 5px; max-height: 34%; }
+  .map-credits .attrib { font-size: 10.5px; line-height: 1.3; }
+  .ds-chip { min-height: 32px; }
+}

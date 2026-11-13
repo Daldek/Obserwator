@@ -18,7 +18,7 @@ import time
 import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -43,15 +43,34 @@ def utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-@dataclass
+@dataclass(frozen=True)
 class Snapshot:
-    """The last answer of one IMGW-PIB source of current data, in memory only."""
+    """
+    The last answer of one IMGW-PIB source of current data, in memory only.
 
-    items: dict[str, dict[str, Any]] | None = None
+    Attributes
+    ----------
+    items : Mapping of str to dict, or None
+        The records by station code; None before the first answer.
+    fetched_at : str or None
+        When they were fetched (UTC, ISO 8601 with ``Z``).
+    error : ObserwatorError or None
+        Why the last attempt failed; None when it answered.
+    """
+
+    items: Mapping[str, dict[str, Any]] | None = None
     fetched_at: str | None = None
+    error: ObserwatorError | None = None
+
+
+@dataclass
+class _Source:
+    """One source: its function, its last snapshot, when it last answered and was asked."""
+
+    fetch: Callable[[], Any]
+    snapshot: Snapshot = field(default_factory=Snapshot)
     ok_at: float = -1e18
     tried_at: float = -1e18
-    error: ObserwatorError | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -73,11 +92,20 @@ class CurrentData:
     sources : Mapping of str to callable, optional
         A function per source returning its records (each with ``station_code`` and
         ``model_dump``); the library's fetchers by default, recorded answers in tests.
+    clock : callable, optional
+        Monotonic time in seconds.
     """
 
-    def __init__(self, sources: Mapping[str, Callable[[], Any]] | None = None) -> None:
-        self._sources = dict(sources or SOURCES)
-        self._snapshots = {name: Snapshot() for name in self._sources}
+    def __init__(
+        self,
+        sources: Mapping[str, Callable[[], Any]] | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._sources = {
+            name: _Source(fetch) for name, fetch in (sources or SOURCES).items()
+        }
+        self._clock = clock
 
     def get(self, name: str) -> Snapshot:
         """
@@ -94,27 +122,29 @@ class CurrentData:
             The last successful answer (``items`` None before the first one) and
             the error of the last attempt.
         """
-        snap = self._snapshots[name]
-        with snap.lock:
-            now = time.monotonic()
-            if snap.items is not None and now - snap.ok_at < CURRENT_TTL_S:
-                return snap
-            if now - snap.tried_at < CURRENT_RETRY_S:
-                return snap
-            snap.tried_at = now
+        source = self._sources[name]
+        with source.lock:
+            now = self._clock()
+            last = source.snapshot
+            if last.items is not None and now - source.ok_at < CURRENT_TTL_S:
+                return last
+            if now - source.tried_at < CURRENT_RETRY_S:
+                return last
+            source.tried_at = now
             try:
-                records = self._sources[name]()
+                records = source.fetch()
             except ObserwatorError as exc:
-                snap.error = exc
-                return snap
-            snap.items = {
-                str(record.station_code): record.model_dump(mode="json")
-                for record in records
-            }
-            snap.fetched_at = utc_now()
-            snap.ok_at = now
-            snap.error = None
-            return snap
+                source.snapshot = replace(last, error=exc)
+                return source.snapshot
+            source.snapshot = Snapshot(
+                {
+                    str(record.station_code): record.model_dump(mode="json")
+                    for record in records
+                },
+                utc_now(),
+            )
+            source.ok_at = now
+            return source.snapshot
 
 
 _STROKES = str.maketrans({0x141: "L"})
@@ -232,10 +262,18 @@ class Pmaxtp:
     fetch : callable, optional
         ``fetch(latitude, longitude, method=…)`` returning a `PMaxTPResult`;
         `obserwator.fetch_pmaxtp` by default, a recorded answer in tests.
+    clock : callable, optional
+        Monotonic time in seconds.
     """
 
-    def __init__(self, fetch: Callable[..., Any] | None = None) -> None:
+    def __init__(
+        self,
+        fetch: Callable[..., Any] | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._fetch = fetch or obserwator.fetch_pmaxtp
+        self._clock = clock
         self._points: OrderedDict[
             tuple[str, str, str], tuple[float, dict[str, Any]]
         ] = OrderedDict()
@@ -245,7 +283,7 @@ class Pmaxtp:
     def _hit(self, key: tuple[str, str, str]) -> dict[str, Any] | None:
         with self._cache:
             hit = self._points.get(key)
-            if hit and time.monotonic() - hit[0] < PMAXTP_TTL_S:
+            if hit and self._clock() - hit[0] < PMAXTP_TTL_S:
                 self._points.move_to_end(key)
                 return hit[1]
         return None
@@ -309,7 +347,7 @@ class Pmaxtp:
                 ),
             }
         with self._cache:
-            self._points[key] = (time.monotonic(), document)
+            self._points[key] = (self._clock(), document)
             self._points.move_to_end(key)
             while len(self._points) > PMAXTP_ENTRIES:
                 self._points.popitem(last=False)

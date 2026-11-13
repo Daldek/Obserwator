@@ -2,11 +2,11 @@
 // one place.
 
 import htm from "../vendor/htm/htm.mjs";
-import { h, render, Fragment } from "../vendor/preact/preact.mjs";
-import { useCallback, useEffect, useMemo, useRef, useState } from "../vendor/preact/hooks.mjs";
+import { h, render, Fragment, createContext } from "../vendor/preact/preact.mjs";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "../vendor/preact/hooks.mjs";
 
 export const html = htm.bind(h);
-export { Fragment, h, render, useCallback, useEffect, useMemo, useRef, useState };
+export { Fragment, createContext, h, render, useCallback, useContext, useEffect, useMemo, useRef, useState };
 export { Chart } from "./charts/chart.js";
 export { fmt, fmtDate, fmtDateTime, fmtTime, lang, t, tn } from "./i18n.js";
 

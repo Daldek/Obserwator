@@ -6,7 +6,8 @@ Without overrides the GUI serves the stored result over the whole record; with t
 person's choices (a period, a distribution, a threshold) it asks Hydrolog to compute the
 id on the fly (GUI plan D8): at most two programs at a time, 30 s each, the result held
 in this server's memory only (500 results, per series version, id, options and Hydrolog
-version) and never written to the data root or to disk.
+version) and never written to the data root or to disk; requests for a result being
+computed wait for that computation.
 """
 
 from __future__ import annotations
@@ -22,8 +23,7 @@ from anyio import to_thread
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
 from obserwator.gui._root import Snapshot
-from obserwator.gui._standin import StandIn, check_overrides
-from obserwator.messages import message
+from obserwator.gui._standin import StandIn
 
 PROCESSES = 2
 """Hydrolog programs running at a time."""
@@ -61,18 +61,25 @@ class Analyses:
         if program is None:
             return None
         try:
-            program.load()
-        except Exception:  # noqa: BLE001 - shown as "unknown" in the session
+            return program.version()
+        except ObserwatorError:  # shown as "unknown" in the session
             return None
-        return program.version
 
     def list(self, snapshot: Snapshot, station: str) -> tuple[dict[str, Any], ...]:
         """The ids of a station: stored summaries, or the ids that apply to it."""
         return self.backend.list_analyses(snapshot, station)
 
     def overrides(self, analysis: str, query: Mapping[str, str]) -> dict[str, Any]:
-        """The person's overrides of an id, checked against the registry (D6)."""
-        return check_overrides(self.backend.spec(analysis), query)
+        """
+        The person's overrides of an id, checked against the registry (D6).
+
+        Raises
+        ------
+        ObserwatorError
+            ``not_found`` for an unknown id; ``validation_error`` for an option the id
+            (or an analysis it depends on) does not let change, or a wrong value.
+        """
+        return self.backend.check_options(analysis, query)
 
     async def get(
         self,
@@ -106,7 +113,8 @@ class Analyses:
         ObserwatorError
             ``not_found`` for an id that does not apply, ``missing_dependency``
             without Hydrolog's program, ``source_unavailable`` when it fails or
-            exceeds `TIMEOUT_S`.
+            exceeds `TIMEOUT_S`, ``data_error`` when an analysis the id takes a
+            number from gave none.
         """
         if not overrides:
             stored = await to_thread.run_sync(
@@ -116,13 +124,9 @@ class Analyses:
                 return {**stored, "source": "stored"}, etag_of(
                     "stored", stored.get("analyses_version"), station, analysis
                 )
+        version = await to_thread.run_sync(self.hydrolog_version)
         key = etag_of(
-            "computed",
-            snapshot.key,
-            station,
-            analysis,
-            dict(overrides),
-            self.hydrolog_version(),
+            "computed", snapshot.key, station, analysis, dict(overrides), version
         )
         with self._lock:
             hit = self._results.get(key)
@@ -159,15 +163,9 @@ class Analyses:
         if self._slots is None:
             self._slots = asyncio.Semaphore(PROCESSES)
         async with self._slots:
-            try:
-                result = await to_thread.run_sync(
-                    lambda: self.backend.compute_analysis(
-                        snapshot, station, analysis, overrides, timeout=TIMEOUT_S
-                    )
+            result = await to_thread.run_sync(
+                lambda: self.backend.compute_analysis(
+                    snapshot, station, analysis, overrides, timeout=TIMEOUT_S
                 )
-            except TimeoutError as exc:
-                raise ObserwatorError(
-                    message("gui.errors.hydrolog_timeout", seconds=int(TIMEOUT_S)),
-                    code="source_unavailable",
-                ) from exc
+            )
         return {**result, "source": "computed"}
