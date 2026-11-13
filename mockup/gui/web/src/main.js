@@ -7,7 +7,8 @@
 // keeps the station, its open section, the view and the PMAXTP point (state.js). Every view
 // with provider data shows their lines and terms (attribution.js): the strip under the map
 // for what it draws, the panels for what they show; on a phone, where the sheets cover the
-// strip, the station list's sheet has them in its foot.
+// strip, the station list's sheet has them in its foot. „Zgłoś uwagę” (ui/feedback.js) sends
+// the view, the station and section shown, and the address.
 
 import { api } from "./api.js";
 import { Attribution, catalogSources, compose, useTexts } from "./attribution.js";
@@ -15,13 +16,15 @@ import { clock, useCurrent } from "./current.js";
 import { html, render, useEffect, useMemo, useState } from "./lib.js";
 import { DEFAULT_FILTERS, StationList, onMap, prepareStations } from "./list.js";
 import { StationMap } from "./map.js";
-import { NoStation, StationPanel } from "./panel.js";
+import { NoStation, StationPanel, sectionTitle } from "./panel.js";
 import { PmaxtpForm } from "./pmaxtp/form.js";
 import { PmaxtpResult } from "./pmaxtp/result.js";
 import { pointLabel, round4, usePmaxtp } from "./pmaxtp/state.js";
 import { readAddress, writeAddress } from "./state.js";
+import { FeedbackDialog, feedbackContext } from "./ui/feedback.js";
 import { Seg } from "./ui/seg.js";
 import { openPanel } from "./ui/sheet.js";
+import { ToastHost } from "./ui/toast.js";
 import { TopBar } from "./ui/top-bar.js";
 import { ViewLayout } from "./ui/view-layout.js";
 
@@ -79,6 +82,15 @@ function App() {
   const listed = useMemo(() => compose(texts, catalogSources(drawn)), [texts, drawn]);
   const credits = { stations: listed, current: current.doc, pmaxtp: null }[view];
   const pmaxtpView = view === "pmaxtp";
+  // What „Zgłoś uwagę” sends: the view and, outside PMAXTP, the station and its section; the
+  // name and the section's title come from the catalog once it is loaded
+  const captureFeedback = () => {
+    const code = pmaxtpView ? null : selected;
+    return {
+      context: feedbackContext({ view, station: code, section, sectionTitle: station && section ? sectionTitle(station.kind, section) : null }),
+      stationName: code && station ? station.name || null : null,
+    };
+  };
 
   const select = (code, { fly: go = false } = {}) => {
     setSelected(code);
@@ -160,6 +172,8 @@ function App() {
     <main class="main">
       <${ViewLayout} left=${left} center=${center} right=${right} />
     </main>
+    <${FeedbackDialog} capture=${captureFeedback} meta=${meta} />
+    <${ToastHost} />
   `;
 }
 

@@ -44,4 +44,20 @@ export const api = {
   analysis: (name, code, params = {}) => get(`api/analysis/${encodeURIComponent(name)}`, { station: code, ...params }),
   /** A GET of any other route of the server. */
   get,
+  /**
+   * „Zgłoś uwagę”: POST api/feedback, the server's only write.
+   *
+   * @param {{message: string, context: object}} report the text and the automatic context
+   * @returns {Promise<{id: string, status: string}>} the stored report's id
+   */
+  async feedback(report) {
+    const response = await fetch("api/feedback", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(report),
+    });
+    const doc = await response.json().catch(() => null);
+    if (!response.ok) throw new ApiError(response.status, doc);
+    return doc;
+  },
 };

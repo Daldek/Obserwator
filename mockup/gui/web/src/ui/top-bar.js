@@ -1,12 +1,13 @@
 // The top bar (Nogat design/README.md, Layout; plan D15; after Hydrolog's GUI,
 // src/ui/top-bar.js): Obserwator's mark and name, the badge that says this is a mockup, the
-// view and what it shows (the selected station, or the PMAXTP point), Nogat's app menu
-// „Aplikacje” (the kit's <nogat-app-menu>, the deployment's [nogat] gui of nogat.toml from
-// api/meta) and the theme switch Auto, Jasny, Ciemny. Inside Nogat's shell ("?nogat=1") the
-// shell's own bar replaces it.
+// view and what it shows (the selected station, or the PMAXTP point), „Zgłoś uwagę”
+// (feedback.js), Nogat's app menu „Aplikacje” (the kit's <nogat-app-menu>, the deployment's
+// [nogat] gui of nogat.toml from api/meta) and the theme switch Auto, Jasny, Ciemny. Inside
+// Nogat's shell ("?nogat=1") the shell's own bar replaces it.
 
 import "../../nogat/nogat-app-menu.js";
 import { html, useEffect, useRef } from "../lib.js";
+import { FeedbackButton } from "./feedback.js";
 import { Seg } from "./seg.js";
 import { useTheme } from "./theme.js";
 
@@ -75,6 +76,7 @@ export function TopBar({ meta, station, section = "Stacje", context = null }) {
         : null}
     </nav>
     <div class="top-actions">
+      <${FeedbackButton} />
       <${AppMenu} apps=${meta ? meta.gui : null} />
       <${ThemeSwitch} />
     </div>

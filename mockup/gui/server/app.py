@@ -1,7 +1,8 @@
 """The mockup's server: the page, a private GET-only API over the demo store, analyses.
 
 Every response with provider data or results carries `attribution` and `terms_notice`
-(Nogat DEV §20, ECO-060) from `server/attribution.py`.
+(Nogat DEV §20, ECO-060) from `server/attribution.py`. The one route that is not GET is
+``POST api/feedback``, „Zgłoś uwagę” (`server/feedback.py`): same-origin JSON only.
 
 Run: `OBSERWATOR_MOCKUP_ROOT=<store> uvicorn server.app:app --port 8060` from `mockup/gui`.
 """
@@ -12,9 +13,12 @@ import asyncio
 import csv
 import io
 import json
+import logging
+import math
 import os
 import shlex
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -39,13 +43,29 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import obserwator
 from obserwator import _environment as environment
 from obserwator.messages import localize
-from server import attribution, hydrolog_bridge
+from server import attribution, feedback, hydrolog_bridge
 from server.analyses import BadParam, Context, NoData, Params, registry
 from server.store import Store
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 ROOT = Path(os.environ.get("OBSERWATOR_MOCKUP_ROOT", "/home/claude-agent/data/obserwator-demo/store"))
 BASEMAP = "https://tiles.openfreemap.org"
+LOG = logging.getLogger(__name__)
+
+
+def _mockup_commit() -> str | None:
+    """The mockup's commit (short hash), or None outside a git checkout."""
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent, capture_output=True, text=True, timeout=5, check=True
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() or None
+
+
+#: The app's version: in api/meta and in every report of „Zgłoś uwagę”.
+VERSION = {"obserwator": obserwator.__version__, "hydrolog": hydrolog_bridge.VERSION, "mockup": _mockup_commit()}
 
 store = Store(ROOT)
 ANALYSES = registry()
@@ -79,6 +99,7 @@ def _station_entry(feature: Any) -> dict[str, Any]:
 
 STATIONS = [_station_entry(f) for f in store.catalog]
 FEATURES = {f.station_code: f for f in store.catalog}
+STATION_BY_CODE = {entry["code"]: entry for entry in STATIONS}
 #: The sources of the whole catalog: the lines of the station list and of the map's „Stacje”.
 CATALOG_SOURCES = sorted({source for f in store.catalog for source in attribution.station_sources(f.provider, f.properties)})
 
@@ -136,8 +157,9 @@ def _error(status: int, code: str, text: str) -> JSONResponse:
 async def meta(request: Request) -> JSONResponse:
     return _json(
         {
-            "obserwator": obserwator.__version__,
-            "hydrolog": hydrolog_bridge.VERSION,
+            "obserwator": VERSION["obserwator"],
+            "hydrolog": VERSION["hydrolog"],
+            "version": VERSION,
             "series": {k: {"version": v.name, "year_type": v.year_type, "stations": len(v.stations)} for k, v in store.versions.items()},
             "analyses": {name: {"kind": a.kind, "title": a.title} for name, a in ANALYSES.items()},
             "gui": environment.gui_addresses() or {},
@@ -900,6 +922,53 @@ async def export_info(request: Request) -> Response:
     return _json({"station": code, "dataset": dataset, "files": names, "command": line, "licence": _licence(dataset), **_dataset_fields(dataset)})
 
 
+# --- „Zgłoś uwagę” -------------------------------------------------------------------
+
+FEEDBACK_LIMIT = feedback.RateLimit()
+
+
+def _same_origin(request: Request) -> bool:
+    """Whether the page of this server sent the request: Sec-Fetch-Site, else Origin."""
+    site = request.headers.get("sec-fetch-site")
+    if site is not None:
+        return site == "same-origin"
+    origin = request.headers.get("origin")
+    return origin is not None and origin == f"{request.url.scheme}://{request.headers.get('host', '')}"
+
+
+async def feedback_post(request: Request) -> Response:
+    """``POST api/feedback``: store a report (``{"message", "context"}``); ``{"id", "status"}``."""
+    if not _same_origin(request):
+        return _error(403, "forbidden", "Zgłoszenia przyjmuje tylko strona makiety.")
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        return _error(415, "unsupported_media_type", "Zgłoszenie musi być w formacie JSON.")
+    too_large = _error(413, "payload_too_large", f"Zgłoszenie jest za duże (najwyżej {feedback.BODY_MAX_BYTES // 1024} KB).")
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > feedback.BODY_MAX_BYTES:
+        return too_large
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > feedback.BODY_MAX_BYTES:
+            return too_large
+    try:
+        message, context = feedback.parse(json.loads(body), STATION_BY_CODE)
+    except (ValueError, RecursionError) as exc:
+        text = str(exc) if isinstance(exc, feedback.Invalid) else "Zgłoszenie nie jest poprawnym JSON-em."
+        return _error(400, "validation_error", text)
+    wait = FEEDBACK_LIMIT.take(request.client.host if request.client else "")
+    if wait is not None:
+        response = _error(429, "rate_limited", f"Za dużo zgłoszeń z tego adresu. Spróbuj ponownie za {max(1, math.ceil(wait / 60))} min.")
+        response.headers["Retry-After"] = str(math.ceil(wait))
+        return response
+    try:
+        report = await run_in_threadpool(feedback.append, message, context, VERSION)
+    except OSError:
+        LOG.exception("The feedback report could not be stored")
+        return _error(500, "io_error", "Nie udało się zapisać zgłoszenia. Spróbuj ponownie później.")
+    return _json({"id": report["id"], "status": "ok"})
+
+
 # --- security headers ----------------------------------------------------------------
 
 CSP = "; ".join(
@@ -935,8 +1004,10 @@ class SecurityHeaders:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        if scope["method"] not in ("GET", "HEAD"):
-            await Response("Method Not Allowed", 405, headers={"Allow": "GET, HEAD"})(scope, receive, send)
+        # GET and HEAD only, but for the one write: POST api/feedback, which is POST only
+        allowed = ("POST",) if scope["path"] == "/api/feedback" else ("GET", "HEAD")
+        if scope["method"] not in allowed:
+            await Response("Method Not Allowed", 405, headers={"Allow": ", ".join(allowed)})(scope, receive, send)
             return
 
         async def wrapped(message: dict[str, Any]) -> None:
@@ -963,6 +1034,7 @@ app = Starlette(
         Route("/api/handoff", handoff),
         Route("/api/export", export),
         Route("/api/export/info", export_info),
+        Route("/api/feedback", feedback_post, methods=["POST"]),
         Mount("/", StaticFiles(directory=WEB, html=True)),
     ],
     middleware=[Middleware(SecurityHeaders), Middleware(GZipMiddleware, minimum_size=1024)],

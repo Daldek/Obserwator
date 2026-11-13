@@ -30,6 +30,7 @@ Nothing here is part of the package. The repository's ruff config excludes `mock
 | Current data | `api/current`: snapshots of `fetch_hydro_states`, `fetch_hydro_current`, `fetch_meteo_current` and `fetch_synop`, in memory only, at most one per source per 10 minutes, the last one kept on failure | the same (D8) |
 | PMAXTP | `api/pmaxtp`: `fetch_pmaxtp`, 24 hours in memory per method and point, one live request at a time. `api/pmaxtp/file`: CSV and JSON packed by the server with PMAXTP's own terms. A link opens IMGW-PIB's own answer for the point. | the same (D8, D12) |
 | Attribution | The lines of Nogat's DEV §20 (ECO-060), byte for byte, from `server/attribution.py` (below) | the same, from Obserwator's own catalog |
+| Feedback | „Zgłoś uwagę”: `POST api/feedback`, the server's only write, one JSON line per report (below) | not yet planned; Hydrolog and Hydrograf keep reports in a database with an admin page |
 
 ## Provider attribution
 
@@ -56,6 +57,35 @@ The providers' terms require their lines with every product of their data. The m
 | PMAXTP | a block under the table |
 
 The library's own lines differ in places: `export_series` writes S and P, but no `attribution` or `terms_notice` columns and no N. Its ČHMÚ source line lacks C's licence link. `provider_notice_imgw` says less than N.
+
+## „Zgłoś uwagę”
+
+The button „Zgłoś uwagę” of the top bar opens a dialog, after Hydrolog's GUI and Hydrograf. The author's decision of 2026-11-13 sets what a report holds: the text and the automatic context, no contact fields. Under the field the dialog says „Nie wpisuj danych osobowych. Jeśli chcesz odpowiedzi, napisz na kontakt@debever.pl”, and it shows the context it sends, read-only.
+
+`POST api/feedback` takes `{"message", "context"}` as JSON, at most 8 KB, from the page's own origin only (`Sec-Fetch-Site: same-origin`, else a matching `Origin`). The text has 1 to 4000 characters. The context holds:
+
+- `view`: `stations`, `current` or `pmaxtp`;
+- `station`: a code of the catalog; the server adds its `station_name`;
+- `section` and `section_title`: the open section of the station panel;
+- `address`: the page's path and query.
+
+An unknown field is refused. At most 5 reports per client address in 10 minutes, counted in memory, then `429` „Za dużo zgłoszeń z tego adresu…”.
+
+Each report is one line of `${OBSERWATOR_MOCKUP_FEEDBACK:-<data_dir>/obserwator/feedback/reports.jsonl}`, where `data_dir` is Nogat's (DEV-18.2). On this host the path is `~/.local/share/nogat/obserwator/feedback/reports.jsonl`. The first report creates the file (directory 0700, file 0600). Each line is appended in one write under a lock. A line holds `schema`, `id`, `created_at` (UTC), `version` (Obserwator, Hydrolog, the mockup's commit), `context` and `message`. It never holds the IP address or the `User-Agent`:
+
+```json
+{"schema":"obserwator-mockup-feedback/1","id":"fbf467ec-973e-4708-80cc-e5e1f9e59292","created_at":"2026-11-13T12:23:18Z","version":{"obserwator":"3.0.0.dev0","hydrolog":"1.0.0.dev0","mockup":"667c886"},"context":{"view":"stations","station":"150160180","station_name":"KŁODZKO","section":"characteristic","section_title":"Stany charakterystyczne","address":"/?station=150160180&section=characteristic"},"message":"Test zgłoszenia: wykres stanów charakterystycznych nie mieści się w panelu."}
+```
+
+Reading the reports, without an admin page:
+
+```bash
+F=~/.local/share/nogat/obserwator/feedback/reports.jsonl
+jq -r '[.created_at, .context.station // "-", .context.section // "-", .message] | @tsv' "$F"   # one line each
+jq . "$F"                                                                                     # in full
+```
+
+Reports stay until handled. To set the handled ones aside, move the file, e.g. `mv "$F" "${F%.jsonl}-$(date +%F).jsonl"`. The next report starts a new file.
 
 ## Demo store
 
@@ -96,12 +126,12 @@ The app menu „Aplikacje” reads `[nogat] gui` from `nogat.toml`, as Obserwato
 ## Layout
 
 - `server/`:
-  - `app.py`: routes, headers, cache; `attribution.py`: the providers' lines;
+  - `app.py`: routes, headers, cache; `attribution.py`: the providers' lines; `feedback.py`: „Zgłoś uwagę”'s checks, rate limit and file;
   - `store.py`: catalogs, series indexes, station Parquet files;
   - `hydrolog_bridge.py`;
   - `analyses/`: `hydro.py`, `meteo.py` and their prototypes.
 - `web/`:
-  - `index.html` and `src/`: Preact with htm, the panel and the map; `src/symbols.js`: hydro.imgw.pl's station symbols; `src/current.js`: the current measurements; `src/pmaxtp/`: the PMAXTP view; `src/attribution.js`: the lines drawn;
+  - `index.html` and `src/`: Preact with htm, the panel and the map; `src/symbols.js`: hydro.imgw.pl's station symbols; `src/current.js`: the current measurements; `src/pmaxtp/`: the PMAXTP view; `src/attribution.js`: the lines drawn; `src/ui/feedback.js` and `src/ui/toast.js`: „Zgłoś uwagę” and the toasts;
   - `src/charts/`: Hydrolog's chart module, copied, with a `date` axis and a `band` series added;
   - `vendor/`: Preact, htm, MapLibre and Archiwista's glyphs;
   - `nogat/`: the kit and tokens, byte for byte.

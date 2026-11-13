@@ -32,6 +32,19 @@ export function stationSections(station) {
   return [STACJA, TERAZ, DANE, ...analyses, POBIERZ];
 }
 
+/**
+ * The title of a section of a station of this kind.
+ *
+ * @param {string|undefined} kind "hydro" or "meteo"
+ * @param {string} id the section's id
+ * @returns {string|null} its title, or null for no such section
+ */
+export function sectionTitle(kind, id) {
+  const own = kind === "hydro" ? HYDRO_SECTIONS : kind === "meteo" ? METEO_SECTIONS : [];
+  const entry = [STACJA, TERAZ, DANE, ...own, POBIERZ].find((item) => item.id === id);
+  return entry ? entry.title : null;
+}
+
 /** A section's error, in its card: one broken section leaves the panel working. */
 class Guard extends Component {
   constructor(props) {
