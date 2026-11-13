@@ -1,7 +1,7 @@
-// The sections of a meteorological station (Nogat plan M1 to M14), in the panel's order.
+// The sections of a meteorological station (Nogat plan M1 to M15), in the panel's order.
 // Each: {id, title, component, available} where component({station, meta}) renders the
-// section and available(station) says whether the station's data allow it: a precipitation
-// post shows no „Temperatura”, a ČHMÚ station no „Śnieg”.
+// section and available(station) says whether the station's data allow it: a ČHMÚ station
+// shows no „Śnieg”; a precipitation post keeps „Temperatura”, which says it needs temperature.
 
 import { Opady } from "./opady.js";
 import { Snieg } from "./snieg.js";
@@ -20,7 +20,7 @@ const hasT = (station) => ["Tmean", "Tmax", "Tmin"].some((v) => stationHas(stati
 export const METEO_SECTIONS = [
   { id: "opady", title: "Opady", component: Opady, available: hasP },
   { id: "susze", title: "Susze i okresy bezopadowe", component: Susze, available: hasP },
-  { id: "temperatura", title: "Temperatura", component: Temperatura, available: hasT },
+  { id: "temperatura", title: "Temperatura", component: Temperatura, available: (station) => hasP(station) || hasT(station) },
   { id: "snieg", title: "Śnieg", component: Snieg, available: (station) => stationHas(station, "snow_cover", SNOW_SETS) },
   { id: "trendy", title: "Trendy", component: Trendy, available: (station) => hasP(station) || hasT(station) },
 ];

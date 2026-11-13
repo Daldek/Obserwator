@@ -53,6 +53,7 @@ The providers' terms require their lines with every product of their data. The m
 | The map, views „Stacje” and „Pomiary bieżące” | a strip under the map with the lines of the data drawn. It never folds, unlike MapLibre's compact control, which keeps the basemap's credit only. |
 | The station panel | a block under each open section with data: its catalog, current, series or results lines |
 | „Opady” | an extra block beside the PMAXTP values |
+| „Paski klimatyczne” in „Temperatura” | PNG and SVG: the lines and terms drawn under the stripes, after the station, the period and „Metoda: Ed Hawkins (University of Reading), #ShowYourStripes”; CSV, written in the browser: the columns `method`, `attribution` and `terms_notice` |
 | The panel without a station, the station list on a phone | a block, or a sheet foot |
 | PMAXTP | a block under the table |
 
@@ -112,6 +113,7 @@ Found while building the views (2026-11-13):
 - `MeteoCurrentData` keeps 4 of the meteo API's values: air temperature, mean wind, humidity and the 10-minute precipitation. It drops ground temperature, wind direction, maximum wind speed and the 10-minute gust. Of the times, it keeps only the air temperature's.
 - The times of IMGW-PIB's current-data API are UTC; hydro.imgw.pl labels the same measurements „UTC”.
 - `fetch_synop` names stations by WMO index (`12566`). The mockup pairs it with the catalog's code `3PPLL0NNN` (`350190566`); this matches 61 of the 62 synoptic stations by name.
+- showyourstripes.info's FAQ („How have these graphics been made?”) changed the stripes' scale. In June 2019 the centre was the mean of 1971–2000 and the colours spanned ±2.6 standard deviations of the annual means of 1901–2000; the current page (data to 2025) says 1961–2010 and ±3.0. „Paski klimatyczne” offers both, the current one first. IMGW-PIB's records start in 1951 or later, so their spread falls back to the whole record.
 
 ## Run
 

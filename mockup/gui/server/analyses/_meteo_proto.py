@@ -1,7 +1,7 @@
 """Numeric prototypes of the meteorological analyses Hydrolog does not have yet.
 
-The Nogat plan (2026-11-12-station-data-and-analyses, M1 to M14) moves each of these
-computations to Hydrolog; until then `meteo.py` labels every result computed here with
+The Nogat plan (2026-11-12-station-data-and-analyses, M1 to M14; M15 the warming stripes)
+moves each of these computations to Hydrolog; until then `meteo.py` labels every result computed here with
 `hydrolog_bridge.prototype(method, target)`. Each function names its method and source.
 
 Missing data follow the WMO Guidelines on the Calculation of Climate Normals (WMO-No. 1203,
@@ -570,3 +570,70 @@ def sen_slope(years: np.ndarray, values: np.ndarray, var_s: float, alpha: float 
         "intercept": float(np.median(x) - slope * np.median(t)),
         "pairs": count,
     }
+
+
+# --- warming stripes ---------------------------------------------------------------------
+
+#: Hawkins's colours, coldest first: the 8 most saturated of ColorBrewer's 9-class sequential
+#: Blues (darkest first) and Reds (lightest first), as the stripes of showyourstripes.info use
+#: them. ColorBrewer colour schemes: Copyright (c) 2002 Cynthia Brewer, Mark Harrower, and The
+#: Pennsylvania State University, Apache License 2.0 („Apache-Style Software License for
+#: ColorBrewer software and ColorBrewer Color Schemes”). This product includes color
+#: specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/).
+STRIPE_COLOURS = (
+    "#08306b", "#08519c", "#2171b5", "#4292c6", "#6baed6", "#9ecae1", "#c6dbef", "#deebf7",
+    "#fee0d2", "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#a50f15", "#67000d",
+)  # fmt: skip
+#: The scales of showyourstripes.info's FAQ „How have these graphics been made?”, by the
+#: version of the page: (centre period, spread period, multiple of the standard deviation).
+#: 2025 (current page, data to the end of 2025): „the average temperature in 1961-2010 is set as
+#: the boundary between blue and red colours, and the colour scale varies from +/- 3.0 standard
+#: deviations of the annual average temperatures between 1901-2000”. 2019 (the page of June
+#: 2019, web.archive.org 20190617215129): the same with 1971-2000 and +/- 2.6.
+STRIPE_SCALES = {
+    "2025": ((1961, 2010), (1901, 2000), 3.0),
+    "2019": ((1971, 2000), (1901, 2000), 2.6),
+}
+
+
+@dataclass(frozen=True)
+class StripeScale:
+    """The colour scale of warming stripes: centre ± k standard deviations, in 16 equal bins."""
+
+    centre: float  # mean annual value of the centre period
+    sd: float  # standard deviation of the annual values of the spread period
+    k: float
+
+    @property
+    def lo(self) -> float:
+        return self.centre - self.k * self.sd
+
+    @property
+    def hi(self) -> float:
+        return self.centre + self.k * self.sd
+
+    def edges(self) -> np.ndarray:
+        """The 17 bounds of the 16 colours, coldest first."""
+        return np.linspace(self.lo, self.hi, len(STRIPE_COLOURS) + 1)
+
+    def colour(self, value: float) -> int | None:
+        """The index of a value's colour (0 = darkest blue); beyond the scale, its end colour."""
+        if not math.isfinite(value):
+            return None
+        n = len(STRIPE_COLOURS)
+        return min(max(int(math.floor((value - self.lo) / (self.hi - self.lo) * n)), 0), n - 1)
+
+
+def period_sd(values: np.ndarray, years: np.ndarray, lo: int, hi: int) -> tuple[float, int]:
+    """The sample standard deviation (n − 1) of `values` over the years lo..hi and their count.
+
+    NaN under the 80 % rule of a normal (WMO-No. 1203, 4.4.2) or below 2 values. The FAQ of
+    showyourstripes.info does not say which estimator it uses; for 100 years the two differ
+    by 0.5 %.
+    """
+    inside = (years >= lo) & (years <= hi)
+    have = inside & np.isfinite(values)
+    count = int(have.sum())
+    if count < 2 or count < WMO_NORMAL_SHARE * (hi - lo + 1):
+        return math.nan, count
+    return float(np.std(values[have], ddof=1)), count

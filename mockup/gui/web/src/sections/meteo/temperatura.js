@@ -1,9 +1,11 @@
-// „Temperatura” (Nogat plan M11, M12, M14): means, extremes, the normal and anomalies,
-// characteristic days and degree days, the annual cycle and its harmonics, Sielianinov's
-// hydrothermal coefficient and de Martonne's aridity index.
+// „Temperatura” (Nogat plan M11, M12, M14, M15): means, extremes, the normal and anomalies,
+// characteristic days and degree days, the warming stripes, the annual cycle and its
+// harmonics, Sielianinov's hydrothermal coefficient and de Martonne's aridity index. A
+// station without air temperature (a precipitation post) gets a note of what it lacks.
 
 import { Chart, fmt, html, useMemo, useState } from "../../lib.js";
 import { Figures, Section, Seg, Table, YearRange, useAnalysis } from "../common.js";
+import { Stripes } from "./stripes.js";
 import { ClassLegend, DatasetSeg, MONTH_TICKS, Option, ROMAN, Source, byYear, classCls, datasetsWith, date, dayLabel, num, part, stationHas, useOptions, yearAxis, yearReadout } from "./util.js";
 
 const INFO_T = `Średnie miesięczne Tśr, Tmax i Tmin liczę, gdy w miesiącu brakuje mniej niż 11 dni i mniej niż 5 kolejnych (WMO-No. 1203, 2017, p. 4.4.1 a); średnia roczna to średnia dwunastu takich miesięcy. Normalna to średnia z okresu odniesienia (domyślnie cały zapis stacji; można go zawęzić, zalecany minimalny okres to 30 lat), liczona, gdy wartości ma co najmniej 80 % lat okresu (p. 4.4.2); anomalia to różnica od normalnej. Ekstrema bezwzględne biorą wszystkie dni z pomiarem (p. 4.4.1 b). Amplituda dobowa to średnia Tmax − Tmin dni z oboma pomiarami.`;
@@ -281,8 +283,18 @@ function HydrothermalPart({ code, opt }) {
   return html`<${Hydrothermal} state=${state} />`;
 }
 
-/** The card „Temperatura”: the harmonics need Tśr, the coefficient also P in the same dataset. */
+/** The card „Temperatura”: the stripes and the harmonics need Tśr, the coefficient also P in the same dataset. */
 export function Temperatura({ station }) {
+  const hasT = ["Tmean", "Tmax", "Tmin"].some((v) => stationHas(station, v, T_SETS));
+  if (!hasT) {
+    return html`<div class="me-card">
+      <p class="note-box">Stacja nie mierzy temperatury powietrza (posterunek opadowy). Analizy tej sekcji, w tym paski klimatyczne, potrzebują pomiarów temperatury powietrza, a paski — średniej dobowej temperatury (Tśr).</p>
+    </div>`;
+  }
+  return html`<${TemperatureCard} station=${station} />`;
+}
+
+function TemperatureCard({ station }) {
   const code = station.code;
   const [opt, setOpt] = useOptions({ dataset: undefined, ref_from: undefined, ref_to: undefined, from: undefined, to: undefined }, code);
   const temp = useAnalysis("meteo-temperature", code, { dataset: opt.dataset, ref_from: opt.ref_from, ref_to: opt.ref_to });
@@ -295,10 +307,11 @@ export function Temperatura({ station }) {
       ${ref && html`<${YearRange} first=${ref.min} last=${ref.max} from=${ref.from} to=${ref.to} label="Okres odniesienia" onApply=${(a, b) => setOpt({ ref_from: a, ref_to: b })} />`}
     </div>
     <${Temperature} state=${temp} />
+    ${hasMean && html`<${Stripes} station=${station} dataset=${opt.dataset} />`}
     <${CharacteristicDays} state=${temp} />
     ${hasMean && html`<${HarmonicsPart} code=${code} opt=${opt} setOpt=${setOpt} />`}
     ${hasBoth && html`<${HydrothermalPart} code=${code} opt=${opt} />`}
-    ${!hasMean && html`<p class="muted me-caption">Stacja nie ma średniej dobowej temperatury: bez analizy harmonicznej i współczynnika hydrotermicznego.</p>`}
+    ${!hasMean && html`<p class="muted me-caption">Stacja nie ma średniej dobowej temperatury: bez pasków klimatycznych, analizy harmonicznej i współczynnika hydrotermicznego.</p>`}
     ${hasMean && !hasBoth && html`<p class="muted me-caption">Stacja nie mierzy opadu: bez współczynnika hydrotermicznego.</p>`}
   </div>`;
 }

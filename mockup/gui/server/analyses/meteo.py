@@ -1,4 +1,4 @@
-"""Meteorological analyses (Nogat plan M1 to M14) of a station's daily series.
+"""Meteorological analyses (Nogat plan M1 to M14, the warming stripes M15) of a station's daily series.
 
 The daily datasets: IMGW-PIB `pl.imgw.meteo_climate_daily` (P, Tmax, Tmin, Tmean,
 snow_cover), `pl.imgw.meteo_precip_daily` (P, snow_cover, fresh_snow) and ČHMÚ
@@ -1529,6 +1529,137 @@ def trends(ctx: Context, params: Params) -> dict[str, Any]:
     return out
 
 
+# --- M15: warming stripes (Hawkins) -----------------------------------------------------------------------------
+
+STRIPES_METHOD = (
+    "Hawkins warming stripes, showyourstripes.info (FAQ „How have these graphics been made?”) i "
+    "climate-lab-book.ac.uk/2018/warming-stripes: średnia roczna Tśr (12 miesięcy wg WMO-No. 1203, 4.4.1), "
+    "kolor wg różnicy od średniej okresu odniesienia, skala ±kσ średnich rocznych okresu rozrzutu w 16 kolorach "
+    "(8 Blues i 8 Reds ColorBrewer)"
+)
+
+
+def _years(n: int) -> str:
+    """„1 rok”, „3 lata”, „5 lat”."""
+    if n == 1:
+        return "1 rok"
+    return f"{n} lata" if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else f"{n} lat"
+
+
+def _stripe_period(
+    params: Params, key: str, default: tuple[int, int], annual: np.ndarray, years: np.ndarray, stat: Any
+) -> tuple[dict[str, Any], float]:
+    """
+    The period asked for (by default the FAQ's), else the whole record.
+
+    `stat(values, years, lo, hi)` gives the period's value and count, NaN under the 80 % rule
+    of WMO-No. 1203, 4.4.2. The whole record takes every year with a value.
+    """
+    lo = params.int(f"{key}_from", None, 1700, 2200)
+    hi = params.int(f"{key}_to", None, 1700, 2200)
+    lo = default[0] if lo is None else lo
+    hi = default[1] if hi is None else hi
+    if lo > hi:
+        raise BadParam(f"{key}_from: after {key}_to")
+    value, count = stat(annual, years, lo, hi)
+    out: dict[str, Any] = {"asked_from": lo, "asked_to": hi, "asked_years": count, "default": [lo, hi] == list(default)}
+    if math.isfinite(value):
+        out.update({"from": lo, "to": hi, "years": count, "fallback": False})
+        return out, value
+    valid = np.isfinite(annual)
+    first, last = int(years[valid][0]), int(years[valid][-1])
+    sample = annual[valid]
+    whole = float(sample.mean()) if key == "centre" else (float(np.std(sample, ddof=1)) if len(sample) > 1 else math.nan)
+    out.update({"from": first, "to": last, "years": int(valid.sum()), "fallback": True})
+    return out, whole
+
+
+def stripes(ctx: Context, params: Params) -> dict[str, Any]:
+    """M15: Ed Hawkins's warming stripes of the annual mean temperature (showyourstripes.info)."""
+    dataset = _choose(ctx, params, ("Tmean",), T_SOURCES, "Paski klimatyczne potrzebują średniej dobowej temperatury powietrza (Tśr); stacja jej nie ma.")
+    st = _prepared(ctx, dataset)
+    axis = st.axis
+    t = st.values["Tmean"]
+    variant = params.choice("scale", tuple(proto.STRIPE_SCALES), "2025")
+    centre_default, spread_default, k = proto.STRIPE_SCALES[variant]
+    years = np.arange(axis.y0, axis.y0 + axis.ny)
+    monthly = _month_means(axis, t).reshape(axis.ny, 12)
+    annual = np.where(np.isfinite(monthly).all(axis=1), monthly.mean(axis=1), np.nan)
+    valid = np.isfinite(annual)
+    if valid.sum() < 2:
+        raise NoData("Paski klimatyczne potrzebują co najmniej dwóch lat z pełnymi miesiącami (WMO-No. 1203: mniej niż 11 braków w miesiącu i mniej niż 5 kolejnych).")
+    centre, centre_value = _stripe_period(params, "centre", centre_default, annual, years, proto.normal)
+    spread, sd = _stripe_period(params, "spread", spread_default, annual, years, proto.period_sd)
+    if not (math.isfinite(sd) and sd > 0):
+        raise NoData("Średnie roczne nie mają rozrzutu: skali kolorów nie da się wyznaczyć.")
+    scale = proto.StripeScale(centre_value, sd, k)
+    quality = proto.month_quality(axis, np.isfinite(t))
+    bad_months = (~quality.enough).reshape(axis.ny, 12).sum(axis=1)
+
+    rows = _trim(years, valid)
+    out_years = []
+    for i in range(rows.start, rows.stop):
+        value = float(annual[i])
+        out_years.append(
+            {
+                "year": int(years[i]),
+                "mean": _r(value, 2),
+                "anomaly": _r(value - scale.centre, 2),
+                "colour": scale.colour(value),
+                "missing_months": int(bad_months[i]),
+            }
+        )
+    drawn = [y for y in out_years if y["colour"] is not None]
+    by_anomaly = sorted(drawn, key=lambda y: y["anomaly"])
+    grey = [y["year"] for y in out_years if y["colour"] is None]
+    notes = []
+    for period, word in ((centre, "Środek skali"), (spread, "Rozrzut σ")):
+        if period["fallback"]:
+            notes.append(
+                f"{word}: lata {period['asked_from']}–{period['asked_to']} mają średnią roczną w {period['asked_years']} z "
+                f"{period['asked_to'] - period['asked_from'] + 1} lat (mniej niż 80 %, WMO-No. 1203, 4.4.2); "
+                f"biorę cały zapis {period['from']}–{period['to']} ({_years(period['years'])} ze średnią)."
+            )
+        span = period["to"] - period["from"] + 1
+        if span < 30:
+            notes.append(f"{word}: okres {period['from']}–{period['to']} ma {_years(span)}, mniej niż zalecane 30 lat; skala jest mniej pewna.")
+    if grey:
+        notes.append(f"Lata szare (brak średniej rocznej: miesiąc z 11 lub więcej brakami dni albo 5 kolejnymi): {len(grey)}.")
+    edges = scale.edges()
+    computed_by = [_proto(STRIPES_METHOD, "M15")]
+    out = _base(st, ctx, T_SOURCES, ("Tmean",), computed_by)
+    out.update(
+        {
+            "variable": "Tmean",
+            "first": out_years[0]["year"],
+            "last": out_years[-1]["year"],
+            "record": dict(out["record"], min=int(years[valid][0]), max=int(years[valid][-1])),
+            "years": out_years,
+            "grey": grey,
+            "scale": {
+                "variant": variant,
+                "k": k,
+                "centre": dict(centre, value=_r(scale.centre, 3)),
+                "spread": dict(spread, sd=_r(scale.sd, 3)),
+                "lo": _r(scale.lo, 2),
+                "hi": _r(scale.hi, 2),
+                "edges": [_r(e, 3) for e in edges],
+                "anomaly_edges": [_r(e - scale.centre, 3) for e in edges],
+            },
+            "palette": list(proto.STRIPE_COLOURS),
+            "coldest": by_anomaly[:5],
+            "warmest": by_anomaly[::-1][:5],
+            "darkest": {
+                "blue": [y["year"] for y in drawn if y["colour"] == 0],
+                "red": [y["year"] for y in drawn if y["colour"] == len(proto.STRIPE_COLOURS) - 1],
+            },
+            "notes": notes,
+        }
+    )
+    return out
+
+
+
 ANALYSES: dict[str, Analysis] = {
     "meteo-precip-sums": Analysis(precip_sums, "meteo", "Sumy opadów, normalna i sezonowość"),
     "meteo-precip-days": Analysis(precip_days, "meteo", "Dni z opadem, natężenie i opady duże"),
@@ -1541,4 +1672,5 @@ ANALYSES: dict[str, Analysis] = {
     "meteo-hydrothermal": Analysis(hydrothermal, "meteo", "Współczynnik hydrotermiczny"),
     "meteo-snow": Analysis(snow, "meteo", "Pokrywa śnieżna"),
     "meteo-trends": Analysis(trends, "meteo", "Trendy serii rocznych"),
+    "meteo-stripes": Analysis(stripes, "meteo", "Paski klimatyczne"),
 }
