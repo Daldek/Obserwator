@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
 PathArg = str | PathLike[str]
 Writes = Literal["none", "add", "replace"]
+RootKind = Literal["raw", "data"]
+"""Kind of an Obserwator root (ADR-017): ``raw`` holds the archives and PMAXTP cells,
+``data`` the series, station catalogs and analyses built from them."""
 
 
 @dataclass(frozen=True)
@@ -87,18 +90,32 @@ Cancel = Callable[[], bool]
 @dataclass(frozen=True)
 class StoreHandle:
     """
-    Handle to an opened or initialised Obserwator store.
+    Handle to an opened or initialised Obserwator root.
 
     Attributes
     ----------
     root : Path
-        Absolute path of the store root directory.
-    schema : {"obserwator-store/1"}
-        Version of the store marker contract.
+        Absolute path of the root directory.
+    schema : {"obserwator-store/1", "obserwator-data/1"}
+        Version of the marker contract: ``obserwator-store/1`` of a raw root
+        (``obserwator-store.json``), ``obserwator-data/1`` of a data root
+        (``obserwator-data.json``).
     """
 
     root: Path
-    schema: Literal["obserwator-store/1"]
+    schema: Literal["obserwator-store/1", "obserwator-data/1"]
+
+    @property
+    def kind(self) -> RootKind:
+        """
+        Kind of the root, told by its marker contract.
+
+        Returns
+        -------
+        {"raw", "data"}
+            ``raw`` for ``obserwator-store/1``, ``data`` for ``obserwator-data/1``.
+        """
+        return "raw" if self.schema == "obserwator-store/1" else "data"
 
 
 @dataclass(frozen=True)
@@ -113,14 +130,17 @@ class StoreInfo:
     exists : bool
         Whether the root directory exists.
     store_schema : str or None
-        Schema read from the ``obserwator-store.json`` marker, or None when the
-        marker is missing or unreadable.
+        Schema read from the marker: ``obserwator-store/1`` of a raw root
+        (``obserwator-store.json``) or ``obserwator-data/1`` of a data root
+        (``obserwator-data.json``); None when the root has neither marker, or
+        both, or the marker is unreadable.
     supported : bool
-        Whether this library can open the store; False also for a missing or
-        unreadable marker.
+        Whether this library can open the root (either kind); False also for
+        a missing or unreadable marker.
     contracts : Mapping of str to str
         Contract versions supported by the library, keyed by ``store``,
-        ``meta``, ``series``, ``plan``, ``pmaxtp`` and ``observation``.
+        ``data``, ``meta``, ``series``, ``plan``, ``pmaxtp``, ``observation``
+        and ``analyses``.
     problems : tuple of str
         Human-readable descriptions of detected problems.
     providers : tuple of ProviderDescriptor, optional
@@ -128,14 +148,15 @@ class StoreInfo:
         datasets, license and attribution).
     problem_codes : tuple of str, optional
         Machine-readable code of each problem: one per entry of ``problems``,
-        in the same order, and empty for a supported store. ``"missing_store"``
+        in the same order, and empty for a supported root. ``"missing_store"``
         (the root does not exist), ``"missing_marker"`` (no marker file: the
         root is no store, or holds the layout of one and ``obserwator store init``
         writes the marker), ``"invalid_marker"`` (the marker is not JSON or has
-        no ``schema`` text) and ``"unsupported_store"`` (the marker names
-        another store schema: see ``store_schema``). A consumer decides by the code
-        and shows the text; `iter_store` gives the entry of the same problem
-        the same code in ``StoreEntry.problem_code``.
+        no ``schema`` text), ``"unsupported_store"`` (the marker names
+        another schema: see ``store_schema``) and ``"conflicting_markers"``
+        (the directory holds the markers of both kinds). A consumer decides by
+        the code and shows the text; `iter_store` gives the entry of the same
+        problem the same code in ``StoreEntry.problem_code``.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-store-info/1"
@@ -648,25 +669,25 @@ class SyncReport:
     """
     Report of a store synchronisation.
 
+    A sync writes only raw data (ADR-015), so the report has no series:
+    ``obserwator-sync-report/2`` drops the ``series`` of ``/1``.
+
     Attributes
     ----------
     items : tuple of OperationResult
         Per-archive outcomes.
-    series : tuple of SeriesReport
-        Outcomes of the series builds triggered by the sync.
     cancelled : bool
         Whether the sync was cancelled.
     files : tuple of FileResult, optional
         The files of the run as ``files[]`` (DEV-19.19): in store mode the
-        archive and series versions with their sidecar size and SHA-256 and
-        their status (``new``, ``unchanged``, ``relabeled``); in plain mode the
-        files written (``written``, ``replaced``).
+        archive versions with their sidecar size and SHA-256 and their status
+        (``new``, ``unchanged``, ``relabeled``); in plain mode the files
+        written (``written``, ``replaced``).
     """
 
-    SCHEMA: ClassVar[str] = "obserwator-sync-report/1"
+    SCHEMA: ClassVar[str] = "obserwator-sync-report/2"
 
     items: tuple[OperationResult, ...]
-    series: tuple[SeriesReport, ...]
     cancelled: bool
     files: tuple[FileResult, ...] = ()
 
@@ -895,13 +916,16 @@ class StoreEntry:
 
     Attributes
     ----------
-    kind : {"archive", "series", "catalog", "pmaxtp", "observation", "problem"}
-        Kind of the entry.
+    kind : {"archive", "series", "catalog", "pmaxtp", "analyses", "observation", "problem"}
+        Kind of the entry: a raw root has ``archive``, ``pmaxtp`` and
+        ``observation`` entries, a data root ``series``, ``catalog`` and
+        ``analyses`` entries; both have ``problem`` entries.
     slot : str or None
         Slot (spec §13.7), e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``,
-        ``series:pl.imgw.hydro_daily``, ``catalog:pl.imgw.stations`` or
-        ``pmaxtp:pl.imgw.pmaxtp:POT/751_317``; for an observation, the
+        ``series:pl.imgw.hydro_daily``, ``catalog:pl.imgw.stations``,
+        ``pmaxtp:pl.imgw.pmaxtp:POT/751_317`` or
+        ``analyses:pl.imgw.analyses``; for an observation, the
         archive slot it belongs to; for a problem, the slot of the version
         or observation it concerns, or None when it concerns neither (e.g.
         an unknown directory, a symbolic link or a stale staging directory).
@@ -929,7 +953,9 @@ class StoreEntry:
 
     SCHEMA: ClassVar[str] = "obserwator-store-entry/1"
 
-    kind: Literal["archive", "series", "catalog", "pmaxtp", "observation", "problem"]
+    kind: Literal[
+        "archive", "series", "catalog", "pmaxtp", "analyses", "observation", "problem"
+    ]
     slot: str | None
     version: Path | None
     meta: Meta | None
@@ -1203,8 +1229,11 @@ class DataCommand:
         changes nothing more (a stored version is reported ``unchanged``, a
         file is rewritten with the same bytes); the MCP ``idempotentHint``.
     env_root_when : Mapping of str to str, optional
-        Option values under which an absent ``root`` is the default store root
-        (``OBSERWATOR_ROOT``, ``[obserwator] root`` or ``<data_dir>/obserwator``); empty means always.
+        Option values under which an absent ``root`` is the default root of
+        the command's kind (`obserwator.store_root`, ADR-017): the data root
+        (``OBSERWATOR_ROOT``, ``[obserwator] root`` or ``<data_dir>/obserwator``)
+        or the raw root (``OBSERWATOR_RAW_ROOT``, ``[obserwator] raw_root`` or
+        ``<data_dir>/obserwator-raw``); empty means always.
     exclusive : tuple of tuple of str, optional
         Groups of options that exclude each other: at most one option of a
         group may be given (``output_dir`` and ``root``, DEV-19.1).

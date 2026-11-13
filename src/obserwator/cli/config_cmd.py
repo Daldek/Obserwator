@@ -42,14 +42,19 @@ def _render(report: dict[str, Any]) -> str:
             lang=_LANG,
         )
         lines.append(f"  {name}: {shown}")
-    store = report["store"]
-    if store["root"] is None:
-        lines.append(message("cli.config_store_unset", lang=_LANG))
-    else:
+    # The data root and the raw root (ADR-017 D5), each with its source and size.
+    for key, unset, line in (
+        ("store", "cli.config_store_unset", "cli.config_store"),
+        ("raw_store", "cli.config_raw_store_unset", "cli.config_raw_store"),
+    ):
+        store = report[key]
+        if store["root"] is None:
+            lines.append(message(unset, lang=_LANG))
+            continue
         size = store["size_bytes"]
         lines.append(
             message(
-                "cli.config_store",
+                line,
                 lang=_LANG,
                 root=store["root"],
                 origin=_origin(store),

@@ -15,6 +15,28 @@ MESSAGES = {
         "force replaces the output file of an export, so it needs output",
         "force zastępuje plik wyjścia eksportu, więc wymaga output",
     ),
+    "binary_format_needs_output": Text(
+        "The format {format} is a binary file, not text lines: give output, the one "
+        "file to write (REST answers it as an attachment)",
+        "Format {format} to plik binarny, nie linie tekstu: podaj output, jedyny plik "
+        "do zapisania (REST zwraca go jako załącznik)",
+    ),
+    "unknown_kind_allowed": Text(
+        "Unknown kind of stations {kind!r}; allowed: {kinds}",
+        "Nieznany rodzaj stacji {kind!r}; dozwolone: {kinds}",
+    ),
+    "store_has_no_station_catalog": Text(
+        "The store has no station catalog of any provider; build one with "
+        "obserwator store catalog",
+        "Magazyn nie zawiera katalogu stacji żadnego dostawcy; buduje go obserwator "
+        "store catalog",
+    ),
+    "no_station_of_kind": Text(
+        "The catalogs of {providers} have no station of the kind {kind}; the export "
+        "was rejected so as not to lose the attribution formulas",
+        "Katalogi {providers} nie mają stacji rodzaju {kind}; eksport odrzucono, by "
+        "nie utracić formuł atrybucji",
+    ),
     "record_station_from_has_columns": Text(
         "The record of the station {station_code} from {date} has columns outside "
         "the dataset {dataset}: {unknown}",
@@ -60,6 +82,14 @@ MESSAGES = {
     "archive_exported": Text(
         "Exported the archive {source}",
         "Wyeksportowano archiwum {source}",
+    ),
+    "stations_progress": Text(
+        "Stations",
+        "Stacje",
+    ),
+    "stations_exported": Text(
+        "Exported {count} stations",
+        "Wyeksportowano stacje: {count}",
     ),
     "exported_to_file": Text(
         "{done} to {target}",

@@ -157,6 +157,7 @@ def _server_directories() -> list[Path]:
     found: dict[str, Path] = {}
     for directory in (
         settings.root,
+        settings.raw_root,
         settings.user_locations_dir,
         settings.reference_dir,
         settings.data_dir,
@@ -175,8 +176,9 @@ def hide_server_paths(value: object) -> object:
     """
     Rewrite absolute server paths in a JSON value as paths relative to them.
 
-    The hidden directories are ``OBSERWATOR_ROOT``, ``OBSERWATOR_USER_LOCATIONS_DIR``,
-    ``OBSERWATOR_REFERENCE_DIR``, ``OBSERWATOR_DATA_DIR``, ``OBSERWATOR_CACHE_DIR``, the temporary
+    The hidden directories are ``OBSERWATOR_ROOT``, ``OBSERWATOR_RAW_ROOT``,
+    ``OBSERWATOR_USER_LOCATIONS_DIR``, ``OBSERWATOR_REFERENCE_DIR``,
+    ``OBSERWATOR_DATA_DIR``, ``OBSERWATOR_CACHE_DIR``, the temporary
     directory and the working directory of the server process (also in their
     resolved form). The most nested
     directory is rewritten first, so ``<dir>/x`` becomes ``x`` and a bare

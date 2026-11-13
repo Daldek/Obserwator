@@ -1,4 +1,4 @@
-"""Command catalog (spec §13.3, §13.6): 30 commands, validation, envelope, paging, checks."""
+"""Command catalog (spec §13.3, §13.6): 35 commands, validation, envelope, paging, checks."""
 
 import functools
 import importlib
@@ -40,7 +40,6 @@ from obserwator.store.types import (
     StorePlan,
     page_cursor,
 )
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     H2023,
     H2024,
@@ -50,6 +49,7 @@ from tests.contract.support import (
     FakeImgw,
     archive_bytes,
     stamps,
+    use_fake_hydrolog,
 )
 
 DAILY = "pl.imgw.hydro_daily"
@@ -62,6 +62,7 @@ SPEC_COMMANDS = [
     "datasets download",
     "datasets providers",
     "stations find",
+    "stations export",
     "current hydro",
     "current meteo",
     "current synop",
@@ -84,6 +85,10 @@ SPEC_COMMANDS = [
     "series read",
     "series summary",
     "series export",
+    "analyses build",
+    "analyses list",
+    "analyses read",
+    "analyses export",
     "commands list",
     "commands schema",
     "commands guide",
@@ -116,6 +121,18 @@ VALID: dict[str, list[dict[str, object]]] = {
     "stations find": [
         {"kind": "hydro", "query": "raba", "limit": 20},
         {"source": "store", "root": ROOT},
+    ],
+    "stations export": [
+        {"root": ROOT},
+        {
+            "root": ROOT,
+            "provider": "CHMI",
+            "kind": "hydro",
+            "series": False,
+            "format": "csv",
+            "output": "/tmp/stacje.csv",
+            "force": True,
+        },
     ],
     "current hydro": [{"station": RABA}],
     "current meteo": [{}],
@@ -152,11 +169,13 @@ VALID: dict[str, list[dict[str, object]]] = {
             "years": ["2023-2025"],
             "months": [1],
             "plan": "/tmp/plan 1.json",
-        }
+        },
+        {"root": ROOT, "datasets": ["pl.imgw.hydro_stations", "cz.chmi.meteo_now"]},
     ],
     "store sync": [
-        {"root": ROOT, "plan": "/tmp/plan.json", "series": False},
+        {"root": ROOT, "plan": "/tmp/plan.json", "force": True},
         {"root": ROOT, "datasets": [DAILY], "years": [2024]},
+        {"root": ROOT, "datasets": ["pl.imgw.hydro_now", "pl.imgw.meteo_stations"]},
     ],
     "store catalog": [{"root": ROOT, "user_locations": "/tmp/moje położenia.csv"}],
     "store export": [
@@ -204,6 +223,33 @@ VALID: dict[str, list[dict[str, object]]] = {
             "format": "csv",
             "output": "/tmp/eksport.csv",
             "force": True,
+        },
+        {"root": ROOT, "dataset": DAILY, "station": RABA, "format": "json"},
+        {
+            "version": "series/versions/hydro_daily/v",
+            "root": ROOT,
+            "station": RABA,
+            "variables": ["Q", "H"],
+            "format": "parquet",
+            "output": "/tmp/raba.parquet",
+        },
+    ],
+    "analyses build": [{"root": ROOT, "stations": [RABA], "workers": 2}],
+    "analyses list": [
+        {"root": ROOT, "station": RABA},
+        {"version": "analyses/versions/pl.imgw/v", "root": ROOT, "station": RABA},
+    ],
+    "analyses read": [
+        {"root": ROOT, "station": "0-203-1-001000", "analysis": "characteristic.Q"}
+    ],
+    "analyses export": [
+        {
+            "root": ROOT,
+            "station": RABA,
+            "analyses": ["flood_frequency.Q", "low_flow.Q"],
+            "format": "csv",
+            "output": "/tmp/analizy.csv",
+            "force": True,
         }
     ],
     "commands list": [{}, {"lang": "en"}],
@@ -229,6 +275,12 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
     "stations find": [
         ({"query": "raba", "cursor": 3}, "cursor"),
         ({"source": "archive"}, "source"),
+    ],
+    "stations export": [
+        ({"root": ROOT, "format": "shapefile"}, "format"),
+        ({"root": ROOT, "kind": "air"}, "kind"),
+        ({"root": ROOT, "provider": "DWD"}, "provider"),
+        ({"root": ROOT, "force": True}, "output"),
     ],
     "current hydro": [({"station": "12345"}, "station")],
     "current meteo": [({"station": "abc"}, "station")],
@@ -295,6 +347,15 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
         ),
         ({"root": ROOT, "dataset": DAILY, "station": RABA, "force": True}, "output"),
     ],
+    "analyses build": [({"root": ROOT, "workers": 0}, "workers")],
+    "analyses read": [
+        ({"root": ROOT, "station": RABA, "analysis": "median.Q"}, "analysis"),
+        ({"root": ROOT, "analysis": "characteristic.Q"}, "station"),
+    ],
+    "analyses export": [
+        ({"root": ROOT, "station": RABA, "format": "xlsx"}, "format"),
+        ({"root": ROOT, "station": RABA, "analyses": ["x"]}, "analyses"),
+    ],
     "commands list": [({"lang": "de"}, "lang")],
     "commands schema": [({"command": "store delete"}, "command")],
     "commands guide": [({"format": "html"}, "format"), ({"lang": "de"}, "lang")],
@@ -318,11 +379,6 @@ def returning(monkeypatch, module, name, value):
         return value
 
     monkeypatch.setattr(module, name, fake)
-
-
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("commands") / "store").root
 
 
 @pytest.fixture
@@ -461,17 +517,27 @@ def test_format_command_writes_the_run_flags_last_and_refuses_another_flag_of_a_
 
 
 def test_format_command_quotes_and_writes_bools_as_flags():
-    words = f"--root {quoted('/s')} --plan {quoted('/p.json')}"
+    words = f"--root {quoted('/s')} --no-series --output {quoted('/o.csv')}"
     assert (
         format_command("store info", options={"root": "/a b/s"})
         == f"obserwator store info --root {quoted('/a b/s')}"
     )
+    # A default-true flag is written only when false, as its --no- form.
+    assert (
+        format_command(
+            "stations export",
+            options={"root": "/s", "output": "/o.csv", "series": True},
+        )
+        == f"obserwator stations export --root {quoted('/s')} --output {quoted('/o.csv')}"
+    )
     assert format_command(
-        "store sync", options={"root": "/s", "plan": "/p.json", "series": True}
-    ) == (f"obserwator store sync {words}")
+        "stations export", options={"root": "/s", "output": "/o.csv", "series": False}
+    ) == (f"obserwator stations export {words}")
     assert format_command(
-        "store sync", options={"root": "/s", "plan": "/p.json", "series": False}
-    ) == (f"obserwator store sync {words} --no-series")
+        "store sync", options={"root": "/s", "plan": "/p.json", "force": True}
+    ) == (
+        f"obserwator store sync --root {quoted('/s')} --force --plan {quoted('/p.json')}"
+    )
     assert (
         format_command("current hydro-states", options={"main_only": "true"})
         == "obserwator current hydro-states --main-only"
@@ -523,13 +589,14 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
         "store export", options={"version": "archives/versions/x", "root": "store"}
     )
     assert exported["version"] == tmp_path / "store" / "archives" / "versions" / "x"
+    stations = {"root": "s", "output": "o.csv"}
     assert validate_command(
-        "store sync", options={"root": "s", "plan": "p.json", "series": True}
-    ) == {"root": tmp_path / "s", "plan": tmp_path / "p.json"}
+        "stations export", options={**stations, "series": True}
+    ) == {"root": tmp_path / "s", "output": tmp_path / "o.csv"}
     assert (
-        validate_command(
-            "store sync", options={"root": "s", "plan": "p.json", "series": "false"}
-        )["series"]
+        validate_command("stations export", options={**stations, "series": "false"})[
+            "series"
+        ]
         is False
     )
 
@@ -551,7 +618,8 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
             "years",
         ),
         ("store sync", {"root": "/s", "plan": "p.json", "months": 1}, "months"),
-        ("store sync", {"root": "/s", "plan": "p.json", "series": "nie"}, "series"),
+        ("stations export", {"root": "/s", "series": "nie"}, "series"),
+        ("store sync", {"root": "/s", "plan": "p.json", "series": False}, "series"),
         ("stations find", {"root": "/s"}, "root"),
         ("stations find", {"query": "   "}, "query"),
         ("pmaxtp fetch", {"latitude": "abc", "longitude": 21.0}, "latitude"),
@@ -608,12 +676,12 @@ def test_validate_command_rejects_invalid_options_naming_the_option(
 
 
 def test_an_output_in_a_store_passes_validation_so_that_the_plan_can_list_the_conflict(
-    fixture_root,
+    fixture_raw_root,
 ):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
-    target = fixture_root / "x.csv"
+    target = fixture_raw_root / "x.csv"
 
     options = validate_command(
         "store export", options={"version": version, "output": target}
@@ -632,9 +700,11 @@ def test_an_output_in_a_store_passes_validation_so_that_the_plan_can_list_the_co
     assert not target.exists()
 
 
-def test_an_output_that_is_a_directory_is_rejected_offline(fixture_root, tmp_path):
+def test_an_output_that_is_a_directory_is_rejected_offline(
+    fixture_root, fixture_raw_root, tmp_path
+):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     for command, options in (
         ("store export", {"version": version, "output": tmp_path}),
@@ -654,12 +724,12 @@ def test_an_output_that_is_a_directory_is_rejected_offline(fixture_root, tmp_pat
         assert error.value.details["option"] == "output"
 
 
-def test_list_commands_page_after_counting_the_function_items(fixture_root):
-    every = tuple(store.iter_store(fixture_root))
+def test_list_commands_page_after_counting_the_function_items(fixture_raw_root):
+    every = tuple(store.iter_store(fixture_raw_root))
     assert len(every) > 3
 
     def scan(**paging):
-        return run_command("store scan", options={"root": fixture_root, **paging})
+        return run_command("store scan", options={"root": fixture_raw_root, **paging})
 
     first = scan(limit=2, cursor=page_cursor(1))
     assert first.result == every[1:3]
@@ -737,12 +807,7 @@ def test_store_sync_with_failed_items_is_partial_or_failed(
         imgw.router.get(archive.url).mock(return_value=httpx.Response(500))
     result = run_command(
         "store sync",
-        options={
-            "root": root,
-            "datasets": DAILY,
-            "years": [2023, 2024],
-            "series": False,
-        },
+        options={"root": root, "datasets": DAILY, "years": [2023, 2024]},
     )
     assert result.status == status
     assert sum(item.status == "failed" for item in result.result.items) == len(failing)
@@ -895,12 +960,15 @@ def test_cancelled_error_gives_cancelled_envelope_with_notices_before_it(monkeyp
 
 
 def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
-    tmp_path, fixture_root
+    tmp_path, fixture_root, fixture_raw_root, monkeypatch
 ):
-    root = tmp_path / "store"
+    root, raw = tmp_path / "data", tmp_path / "raw"
     shutil.copytree(fixture_root, root)
+    shutil.copytree(fixture_raw_root, raw)
+    use_fake_hydrolog(monkeypatch)
+    store.build_analyses(root)  # the analyses the reading commands plan to read
     version = store.current_version(
-        root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        raw, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     point = {"latitude": 52.23, "longitude": 21.01}
     options = {
@@ -913,6 +981,7 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         },
         "datasets providers": {},
         "stations find": {"source": "store", "root": root},
+        "stations export": {"root": root, "output": tmp_path / "stations.geojson"},
         "current hydro": {},
         "current meteo": {"station": RABA},
         "current synop": {"station": "12375"},
@@ -920,22 +989,22 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         "current hydro-states": {"main_only": True},
         "pmaxtp fetch": point,
         "pmaxtp url": point,
-        "pmaxtp check": {"root": root, **point},
-        "pmaxtp sync": {"root": root, **point},
-        "pmaxtp read": {"root": root, "ind_x": 751, "ind_y": 317},
-        "store init": {"root": tmp_path / "new"},
+        "pmaxtp check": {"root": raw, **point},
+        "pmaxtp sync": {"root": raw, **point},
+        "pmaxtp read": {"root": raw, "ind_x": 751, "ind_y": 317},
+        "store init": {"root": tmp_path / "new", "kind": "data"},
         "store info": {"root": root},
         "store scan": {"root": root, "limit": 1},
         "store check": {
-            "root": root,
+            "root": raw,
             "datasets": DAILY,
             "years": 2024,
             "plan": tmp_path / "plan.json",
         },
-        "store sync": {"root": root, "datasets": DAILY, "years": 2024},
-        "store catalog": {"root": root},
+        "store sync": {"root": raw, "datasets": DAILY, "years": 2024},
+        "store catalog": {"root": root, "raw_root": raw},
         "store export": {"version": version, "output": tmp_path / "archive.csv"},
-        "series build": {"root": root, "dataset": DAILY},
+        "series build": {"root": root, "raw_root": raw, "dataset": DAILY},
         "series select": {"root": root, "dataset": DAILY, "stations": RABA},
         "series read": {"root": root, "dataset": DAILY, "station": RABA},
         "series summary": {"root": root, "dataset": DAILY},
@@ -944,6 +1013,19 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
             "dataset": DAILY,
             "station": RABA,
             "output": tmp_path / "series.csv",
+        },
+        "analyses build": {"root": root, "workers": 2},
+        "analyses list": {"root": root, "station": RABA},
+        "analyses read": {
+            "root": root,
+            "station": RABA,
+            "analysis": "characteristic.Q",
+        },
+        "analyses export": {
+            "root": root,
+            "station": RABA,
+            "format": "csv",
+            "output": tmp_path / "analyses.csv",
         },
         "commands list": {"lang": "en"},
         "commands schema": {"command": "store sync"},
@@ -1019,15 +1101,15 @@ def test_check_of_datasets_download_plans_each_target_as_write_replace_or_confli
 
 
 def test_check_of_an_export_plans_its_one_file_as_write_replace_or_conflict(
-    tmp_path, fixture_root
+    tmp_path, fixture_root, fixture_raw_root
 ):
     version = store.current_version(
-        fixture_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
+        fixture_raw_root, slot="archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
     ).version
     new, existing, inside = (
         tmp_path / "new.csv",
         tmp_path / "old.csv",
-        fixture_root / "x.csv",
+        fixture_raw_root / "x.csv",
     )
     existing.write_text("old", encoding="utf-8")
 
@@ -1063,11 +1145,11 @@ def test_check_of_an_export_plans_its_one_file_as_write_replace_or_conflict(
 
 
 def test_check_of_datasets_download_into_the_store_says_what_it_holds(
-    tmp_path, fixture_root
+    tmp_path, fixture_raw_root
 ):
     held = check_command(
         "datasets download",
-        options={"dataset": DAILY, "years": 2024, "root": fixture_root},
+        options={"dataset": DAILY, "years": 2024, "root": fixture_raw_root},
     )
     fresh = check_command(
         "datasets download",
@@ -1082,13 +1164,13 @@ def test_check_of_datasets_download_into_the_store_says_what_it_holds(
 
 
 def test_check_of_store_sync_with_a_plan_returns_it_for_the_same_store(
-    tmp_path, fixture_root
+    tmp_path, fixture_raw_root
 ):
-    saved = StorePlan("obserwator-plan/1", fixture_root, FROZEN_AT, (), {}).to_json(
+    saved = StorePlan("obserwator-plan/1", fixture_raw_root, FROZEN_AT, (), {}).to_json(
         tmp_path / "plan.json"
     )
     plan = check_command(
-        "store sync", options={"root": fixture_root, "plan": saved}
+        "store sync", options={"root": fixture_raw_root, "plan": saved}
     ).result
     assert plan == StorePlan.from_json(saved)
     with pytest.raises(ObserwatorValidationError) as error:

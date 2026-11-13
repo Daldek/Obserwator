@@ -45,7 +45,6 @@ from obserwator.store.types import (
     SyncReport,
     page_cursor,
 )
-from obserwator.testing import build_fixture_store
 from obserwator.urls import IMGW_API_URL
 from tests.contract.support import (
     DAILY,
@@ -112,14 +111,10 @@ CLI_ERROR = {
 
 @pytest.fixture(autouse=True)
 def no_obserwator_root(monkeypatch):
-    """The developer's OBSERWATOR_ROOT and OBSERWATOR_LANG must not reach the commands."""
+    """The developer's roots and OBSERWATOR_LANG must not reach the commands."""
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
     monkeypatch.delenv("OBSERWATOR_LANG", raising=False)
-
-
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("cli") / "store").root
 
 
 @pytest.fixture
@@ -219,7 +214,7 @@ def raising(monkeypatch, module, name, error):
 
 def run_installed(*args, lang=None, **kwargs):
     """
-    The installed ``obserwator`` in its own process, without OBSERWATOR_ROOT or network.
+    The installed ``obserwator`` in its own process, without its roots or network.
 
     ``lang`` is the OBSERWATOR_LANG of the process (unset by default).
     """
@@ -230,7 +225,7 @@ def run_installed(*args, lang=None, **kwargs):
     env = {
         key: value
         for key, value in os.environ.items()
-        if key not in ("OBSERWATOR_ROOT", "OBSERWATOR_LANG")
+        if key not in ("OBSERWATOR_ROOT", "OBSERWATOR_RAW_ROOT", "OBSERWATOR_LANG")
     }
     env |= {"HTTP_PROXY": dead, "HTTPS_PROXY": dead, "NO_PROXY": ""}
     env |= PLAIN_TERMINAL
@@ -346,7 +341,7 @@ def test_cli_catalog_passes_the_given_option_text_to_the_dispatcher(
     [
         (
             *("store", "sync", "-r/data/obserwator", f"--datasets={DAILY}"),
-            *("-y", "2023", "-y", "2024,2025", "--no-series", "--force", "--check"),
+            *("-y", "2023", "-y", "2024,2025", "--force", "--check"),
             "--",
         ),
         ("store", "info", "--root", "/a", "-r", "/b"),
@@ -470,18 +465,18 @@ def test_cli_commands_schema_is_english_and_polish_only_on_request():
 
 
 def test_cli_catalog_object_and_list_commands_print_the_run_command_envelope(
-    fixture_root, offline
+    fixture_root, fixture_raw_root, offline
 ):
-    root = fixture_root
+    root, raw = fixture_root, fixture_raw_root
     cases = [
         (("store", "info", "--root", root), "store info", {"root": root}),
         (
             (
-                *("store", "scan", "-r", root, "-k", "archive"),
+                *("store", "scan", "-r", raw, "-k", "archive"),
                 *("--limit", 2, "--cursor", page_cursor(1)),
             ),
             "store scan",
-            {"root": root, "kind": "archive", "limit": 2, "cursor": page_cursor(1)},
+            {"root": raw, "kind": "archive", "limit": 2, "cursor": page_cursor(1)},
         ),
         (
             (
@@ -520,16 +515,20 @@ def test_cli_catalog_object_and_list_commands_print_the_run_command_envelope(
 
 
 def test_cli_catalog_series_build_prints_the_envelope_of_the_same_run(
-    tmp_path, fixture_root, frozen
+    tmp_path, fixture_root, fixture_raw_root, frozen
 ):
     cli_root, api_root = tmp_path / "cli", tmp_path / "api"
     shutil.copytree(fixture_root, cli_root)
     shutil.copytree(fixture_root, api_root)
+    raw = fixture_raw_root
     printed = envelope(
-        invoke("series", "build", "-r", cli_root, "-d", PRECIP, "--json")
+        invoke(
+            *("series", "build", "-r", cli_root, "--raw-root", raw, "-d", PRECIP),
+            "--json",
+        )
     )
     expected = run_command(
-        "series build", options={"root": api_root, "dataset": PRECIP}
+        "series build", options={"root": api_root, "raw_root": raw, "dataset": PRECIP}
     ).to_json(root=api_root)
     assert printed == expected
     assert printed["result"]["status"] == "new"
@@ -537,16 +536,22 @@ def test_cli_catalog_series_build_prints_the_envelope_of_the_same_run(
 
 
 def test_cli_catalog_check_flag_prints_the_plan_without_writing(
-    tmp_path, fixture_root, offline, frozen
+    tmp_path, fixture_root, fixture_raw_root, offline, frozen
 ):
-    root = tmp_path / "store"
+    root, raw = tmp_path / "data", tmp_path / "raw"
     shutil.copytree(fixture_root, root)
-    before = stamps(root)
+    shutil.copytree(fixture_raw_root, raw)
+    before = stamps(tmp_path)
     printed = envelope(
-        invoke("series", "build", "-r", root, "-d", PRECIP, "--check", "--json")
+        invoke(
+            *("series", "build", "-r", root, "--raw-root", raw, "-d", PRECIP),
+            *("--check", "--json"),
+        )
     )
-    assert stamps(root) == before
-    expected = check_command("series build", options={"root": root, "dataset": PRECIP})
+    assert stamps(tmp_path) == before
+    expected = check_command(
+        "series build", options={"root": root, "raw_root": raw, "dataset": PRECIP}
+    )
     assert printed == expected.to_json(root=root)
     assert (printed["check"], printed["result"]["schema"]) == (
         True,
@@ -554,8 +559,10 @@ def test_cli_catalog_check_flag_prints_the_plan_without_writing(
     )
 
 
-def test_cli_catalog_streams_print_only_the_data_lines(tmp_path, fixture_root, offline):
-    version = store.current_version(fixture_root, slot=O2001).version
+def test_cli_catalog_streams_print_only_the_data_lines(
+    tmp_path, fixture_root, fixture_raw_root, offline
+):
+    version = store.current_version(fixture_raw_root, slot=O2001).version
     cases = [
         (("store", "export", "--version", version), store.export_archive(version)),
         (
@@ -610,7 +617,7 @@ def test_cli_catalog_prints_each_distinct_notice_once(monkeypatch, tmp_path):
         ):
             received.append(Notice(level, code, text))
             on_notice(received[-1])
-        return SyncReport((), (), cancelled=False)
+        return SyncReport((), cancelled=False)
 
     monkeypatch.setattr(store, "sync_store", sync_store)
     result = invoke("store", "sync", "-r", tmp_path, "-d", DAILY, "-y", 2024, "--json")
@@ -634,7 +641,7 @@ def test_cli_catalog_stderr_lines_follow_obserwator_lang_while_the_envelope_is_e
     def sync_store(root, /, *, on_notice, on_progress, **kwargs):
         on_progress(Progress(1, 1, "archive", "new", message("catalog.no_version")))
         on_notice(Notice("warning", "other", message("catalog.no_version")))
-        return SyncReport((), (), cancelled=False)
+        return SyncReport((), cancelled=False)
 
     monkeypatch.setattr(store, "sync_store", sync_store)
 
@@ -695,7 +702,7 @@ def test_cli_without_json_prints_the_main_fields_of_a_document(
         "root": str(fixture_root),
         "exists": yes,
         "supported": yes,
-        "store_schema": "obserwator-store/1",
+        "store_schema": "obserwator-data/1",
         "problems": "—",
     }
     assert lines[6:8] == ["providers: 2", "  id        country  name"]
@@ -734,7 +741,7 @@ def test_cli_without_json_prints_a_partial_outcome_failed_items_first_and_exits_
     imgw.router.get(H2024.url).mock(return_value=httpx.Response(500))
 
     result = invoke(
-        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024", "--no-series"),
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
         *lang,
     )
 
@@ -782,7 +789,7 @@ def test_cli_error_without_json_puts_one_readable_line_before_the_error_document
     assert error_line(machine, "validation_error") == document
 
 
-# --- --root z OBSERWATOR_ROOT ----------------------------------------------------------
+# --- --root z OBSERWATOR_ROOT i --raw-root z OBSERWATOR_RAW_ROOT ----------------------------
 
 
 def test_cli_catalog_root_falls_back_to_obserwator_root(
@@ -816,51 +823,132 @@ def test_cli_catalog_root_falls_back_to_obserwator_root(
     assert calls == [{"query": "raba"}]
 
 
+@pytest.fixture
+def filled(monkeypatch):
+    """Options of each call the CLI dispatches, with the defaults run_command fills."""
+    calls = []
+
+    def dispatch(name, /, *, options, on_progress, on_notice, cancel):
+        calls.append(validate_command(name, options=options))
+        return CommandResult(name, False, "ok", None, ())
+
+    monkeypatch.setattr(_dispatch, "run_command", dispatch)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("store", "info"), {"root": "data"}),
+        (("store", "scan", "-k", "analyses"), {"root": "data"}),
+        (("store", "init"), {"root": "raw"}),
+        (("store", "init", "--kind", "data"), {"root": "data"}),
+        (("store", "check", "-d", DAILY, "-y", 2024), {"root": "raw"}),
+        (("pmaxtp", "check", "--latitude", 52.2, "--longitude", 21.0), {"root": "raw"}),
+        (("series", "summary", "-d", DAILY), {"root": "data"}),
+        (("analyses", "build"), {"root": "data"}),
+        (("series", "build", "-d", DAILY), {"root": "data", "raw_root": "raw"}),
+        (("store", "catalog"), {"root": "data", "raw_root": "raw"}),
+    ],
+    ids=lambda value: " ".join(map(str, value)) if isinstance(value, tuple) else None,
+)
+def test_cli_catalog_each_root_falls_back_to_the_variable_of_its_kind(
+    tmp_path, filled, args, expected
+):
+    env = {
+        "OBSERWATOR_ROOT": str(tmp_path / "data"),
+        "OBSERWATOR_RAW_ROOT": str(tmp_path / "raw"),
+    }
+
+    assert invoke(*args, env=env).exit_code == 0
+
+    (options,) = filled
+    assert {name: options.get(name) for name in ("root", "raw_root")} == {
+        name: tmp_path / expected[name] if name in expected else None
+        for name in ("root", "raw_root")
+    }
+
+
+def test_cli_catalog_roots_default_to_the_data_directory_by_kind(tmp_path, filled):
+    env = {"OBSERWATOR_DATA_DIR": str(tmp_path), "NOGAT_CONFIG": os.devnull}
+
+    for args in (
+        ("store", "init"),
+        ("store", "init", "-k", "data"),
+        ("store", "catalog"),
+    ):
+        assert invoke(*args, env=env).exit_code == 0
+
+    raw_init, data_init, catalog = filled
+    assert raw_init["root"] == tmp_path / "obserwator-raw"
+    assert data_init["root"] == tmp_path / "obserwator"
+    assert (catalog["root"], catalog["raw_root"]) == (
+        tmp_path / "obserwator",
+        tmp_path / "obserwator-raw",
+    )
+
+
+def test_cli_store_init_of_kind_data_writes_the_data_marker(tmp_path):
+    root = tmp_path / "data"
+
+    printed = envelope(invoke("store", "init", "--kind", "data", "-r", root, "--json"))
+
+    assert printed["result"]["schema"] == "obserwator-data/1"
+    assert [path.name for path in root.iterdir()] == ["obserwator-data.json"]
+    marker = json.loads((root / "obserwator-data.json").read_text(encoding="utf-8"))
+    assert (marker["schema"], marker["tool"]) == ("obserwator-data/1", "obserwator")
+    # The same directory is no raw root.
+    refused = invoke("store", "init", "-r", root, "--json")
+    assert error_line(refused, "store_unavailable")["details"]["reason"] == (
+        "wrong_root"
+    )
+
+
 # --- błędy i kody wyjścia --------------------------------------------------------------------
 
 
-def _validation(tmp_path, root, router, monkeypatch):
+def _validation(tmp_path, roots, router, monkeypatch):
     return ["pmaxtp", "fetch", "--latitude", "1", "--longitude", "1"]
 
 
-def _not_found(tmp_path, root, router, monkeypatch):
-    return ["pmaxtp", "read", "-r", root, "--ind-x", "1", "--ind-y", "1"]
+def _not_found(tmp_path, roots, router, monkeypatch):
+    return ["pmaxtp", "read", "-r", roots.raw.root, "--ind-x", "1", "--ind-y", "1"]
 
 
-def _conflict(tmp_path, root, router, monkeypatch):
+def _conflict(tmp_path, roots, router, monkeypatch):
     busy = tmp_path / "zajety"
     busy.mkdir()
     (busy / "notatki.txt").write_text("nie magazyn", encoding="utf-8")
     return ["store", "init", "-r", busy]
 
 
-def _source_unavailable(tmp_path, root, router, monkeypatch):
+def _source_unavailable(tmp_path, roots, router, monkeypatch):
     router.get(f"{IMGW_API_URL}/hydro").mock(return_value=httpx.Response(503))
     return ["current", "hydro"]
 
 
-def _missing_dependency(tmp_path, root, router, monkeypatch):
+def _missing_dependency(tmp_path, roots, router, monkeypatch):
     copy = tmp_path / "store"
-    shutil.copytree(root, copy)
+    shutil.copytree(roots.data.root, copy)
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
-    return ["series", "build", "-r", copy, "-d", PRECIP]
+    return ["series", "build", "-r", copy, "--raw-root", roots.raw.root, "-d", PRECIP]
 
 
-def _data_error(tmp_path, root, router, monkeypatch):
+def _data_error(tmp_path, roots, router, monkeypatch):
     copy = tmp_path / "store"
-    shutil.copytree(root, copy)
+    shutil.copytree(roots.raw.root, copy)
     version = store.current_version(copy, slot=O2001).version
     version.write_bytes(b"uszkodzone archiwum")
     return ["store", "export", "--version", version]
 
 
-def _store_unavailable(tmp_path, root, router, monkeypatch):
-    (tmp_path / "archives").mkdir()  # the layout of a store without its marker
-    return ["series", "build", "-r", tmp_path, "-d", DAILY]
+def _store_unavailable(tmp_path, roots, router, monkeypatch):
+    # A raw root given as the data root of a build.
+    return ["series", "build", "-r", roots.raw.root, "-d", DAILY]
 
 
-def _io_error(tmp_path, root, router, monkeypatch):
+def _io_error(tmp_path, roots, router, monkeypatch):
     if sys.platform == "win32":
         pytest.skip("chmod only sets the read-only attribute on Windows")
     if os.geteuid() == 0:
@@ -880,27 +968,27 @@ def _io_error(tmp_path, root, router, monkeypatch):
     ]
 
 
-def _forbidden(tmp_path, root, router, monkeypatch):
+def _forbidden(tmp_path, roots, router, monkeypatch):
     # No CLI path refuses a write itself; a refusal raised below reaches exit 12.
     refusal = ObserwatorError(
         "Write refused", code="forbidden", details={"reason": "writes_disabled"}
     )
     raising(monkeypatch, store, "store_info", refusal)
-    return ["store", "info", "-r", root]
+    return ["store", "info", "-r", roots.data.root]
 
 
-def _unsupported(tmp_path, root, router, monkeypatch):
+def _unsupported(tmp_path, roots, router, monkeypatch):
     # No catalog command refuses a combination itself; a refusal below reaches exit 15.
     refusal = ObserwatorError(
         "Not rebuildable", code="unsupported", details={"reason": "test"}
     )
     raising(monkeypatch, store, "store_info", refusal)
-    return ["store", "info", "-r", root]
+    return ["store", "info", "-r", roots.data.root]
 
 
-def _internal_error(tmp_path, root, router, monkeypatch):
+def _internal_error(tmp_path, roots, router, monkeypatch):
     raising(monkeypatch, store, "store_info", RuntimeError("awaria testowa"))
-    return ["store", "info", "-r", root]
+    return ["store", "info", "-r", roots.data.root]
 
 
 ERRORS = {
@@ -920,10 +1008,10 @@ ERRORS = {
 
 @pytest.mark.parametrize(("code", "case"), ERRORS.items(), ids=list(ERRORS))
 def test_cli_catalog_error_leaves_stdout_empty_and_ends_stderr_with_json(
-    code, case, tmp_path, fixture_root, monkeypatch
+    code, case, tmp_path, fixture_roots, monkeypatch
 ):
     with respx.mock(assert_all_called=False) as router:
-        args = case(tmp_path, fixture_root, router, monkeypatch)
+        args = case(tmp_path, fixture_roots, router, monkeypatch)
         result = invoke(*args)
     error_line(result, code)
 
@@ -934,7 +1022,7 @@ def test_cli_catalog_error_leaves_stdout_empty_and_ends_stderr_with_json(
         (("datasets", "list", "--colour", "red"), "colour"),
         (("store", "check", "-r", "/r", "-d", DAILY, "-y", 2024, "--check"), "check"),
         (("datasets", "files", "-d", DAILY, "--years"), "years"),
-        (("store", "sync", "--series=tak"), "series"),
+        (("store", "sync", "--force=tak"), "force"),
         (("stor",), None),
         (("store",), None),
         ((), None),
@@ -994,7 +1082,7 @@ def test_cli_catalog_sync_with_failed_items_prints_the_envelope_and_exits_10_or_
     for archive in failing:
         imgw.router.get(archive.url).mock(return_value=httpx.Response(500))
     result = invoke(
-        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024", "--no-series"),
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
         "--json",
     )
     assert (
@@ -1015,7 +1103,7 @@ def test_cli_catalog_first_ctrl_c_prints_the_partial_report_and_exits_130(
     original = store.build_series
 
     @functools.wraps(original)
-    def build_series(root, /, *, dataset, on_progress, on_notice, cancel):
+    def build_series(root, /, *, raw_root, dataset, on_progress, on_notice, cancel):
         before = cancel()
         signal.raise_signal(signal.SIGINT)
         seen.append((before, cancel()))
@@ -1112,10 +1200,10 @@ def test_cli_streams_are_utf8_with_lf_like_on_windows(monkeypatch):
 
 
 def test_cli_catalog_installed_obserwator_stream_ends_quietly_when_the_reader_leaves(
-    fixture_root,
+    fixture_raw_root,
 ):
     version = store.current_version(
-        fixture_root, slot=f"archive:{DAILY}:2024/codz_2024.zip"
+        fixture_raw_root, slot=f"archive:{DAILY}:2024/codz_2024.zip"
     ).version
     reader, writer = os.pipe()
     os.close(reader)  # like ``| head`` that already exited: every write gets EPIPE

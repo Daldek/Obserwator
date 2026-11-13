@@ -27,7 +27,6 @@ import httpx
 
 from obserwator._parsing.chmi import (
     MetadataTable,
-    parse_listing,
     read_metadata,
     station_coordinates,
     station_rows,
@@ -37,28 +36,31 @@ from obserwator._version import __version__
 from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    _CATALOG_SOURCES,
+    _CHMI_METEO_NOW_FILE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     License,
     ProviderDescriptor,
     _license_document,
+    _station_file,
+    _station_files,
     datasets,
     get_dataset,
     get_provider,
-    station_source_files,
 )
 from obserwator.exceptions import (
     ObserwatorConnectionError,
     ObserwatorDataError,
     ObserwatorStoreConflictError,
+    ObserwatorStoreError,
     ObserwatorValidationError,
     io_error,
 )
-from obserwator.fetch import _IDENTIFY, DEFAULT_TIMEOUT, DownloadResult
+from obserwator.fetch import DEFAULT_TIMEOUT
 from obserwator.messages import message, reason
 from obserwator.models import StationListEntry
-from obserwator.store.content import content_sha256
-from obserwator.store.series import _current_series, _series_versions
+from obserwator.store.series import _current_series, _raw, _series_versions
 from obserwator.store.types import (
     Cancel,
     CatalogReport,
@@ -66,7 +68,6 @@ from obserwator.store.types import (
     NoticeHook,
     PathArg,
     PlanAction,
-    PlanItem,
     Progress,
     ProgressHook,
     StoreHandle,
@@ -83,11 +84,10 @@ from obserwator.store.writer import (
     _write_json,
     lenient_store,
     prepare_store,
+    refuse_root,
     root_conflict_plan,
     version_file,
-    write_archive,
 )
-from obserwator.urls import IMGW_API_URL
 
 RootArg = PathArg | StoreHandle
 
@@ -108,8 +108,6 @@ _NESTED_CATALOGS: Mapping[str, str] = MappingProxyType(
         if directory != CATALOG_SLOT
     }
 )
-HYDRO_API_URL = f"{IMGW_API_URL}/hydro"
-METEO_API_URL = f"{IMGW_API_URL}/meteo"
 STATIC_LOCATIONS = "hydro_stations_locations.csv"
 BORDER_RESOURCE = "poland_border_wgs84.geojson"
 CZECHIA_BORDER_RESOURCE = "czechia_border_wgs84.geojson"
@@ -140,13 +138,6 @@ _PROPERTY_ORDER = (
     "river_km",
     "elevation_m",
 )
-# ČHMÚ catalog sources that are not archived (spec 2026-10-18 §7.2), relative to the
-# provider's base URL: hydro now meta1 and meta3, the directory of the daily meteo
-# now meta1-<YYYYMMDD>.json files.
-_CHMI_HYDRO_NOW = "hydrology/now/metadata/meta1.json"
-_CHMI_HYDRO_META3 = "hydrology/now/metadata/meta3.json"
-_CHMI_METEO_NOW_DIR = "meteorology/climate/now/metadata/"
-_CHMI_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
 # Units of the SPA thresholds (SPAH_UNIT, SPAQ_UNIT) in the catalog.
 _THRESHOLD_UNITS: Mapping[str, str] = MappingProxyType({"CM": "cm", "M3_S": "m3/s"})
 
@@ -235,10 +226,6 @@ def _publish_version(
     finally:
         if staging.exists():
             shutil.rmtree(staging)
-
-
-def _handle(root: RootArg) -> StoreHandle:
-    return lenient_store(root)
 
 
 def _cancelled(cancel: Cancel | None) -> bool:
@@ -459,21 +446,6 @@ def _http(
         ) from exc
 
 
-def _headers(provider: str) -> Mapping[str, str] | None:
-    """Request headers of a provider's sources: ČHMÚ requests name ``obserwator/<version>``."""
-    return _IDENTIFY if provider == "CHMI" else None
-
-
-def _content_length(response: httpx.Response) -> int | None:
-    value = response.headers.get("Content-Length")
-    try:
-        return int(value) if value is not None else None
-    except ValueError as exc:
-        raise ObserwatorDataError(
-            message("catalog.invalid_content_length_header", value=value)
-        ) from exc
-
-
 def _signal_time(meta: Mapping[str, Any]) -> datetime:
     http = meta["extra"].get("http")
     modified = http.get("last_modified") if isinstance(http, Mapping) else None
@@ -517,111 +489,29 @@ def _archive_http(path: Path, meta: Mapping[str, Any]) -> Mapping[str, Any]:
     return http
 
 
-def _list_status(
-    stored: Mapping[str, Any], etag: str | None, modified: str | None
-) -> Literal["current", "newer", "unverifiable"]:
-    """Compare the ``HEAD`` signals present in a response with the stored version's."""
-    pairs = [
-        (new, stored.get(key))
-        for key, new in (("etag", etag), ("last_modified", modified))
-        if new
-    ]
-    if not pairs:
-        return "unverifiable"
-    return "current" if all(new == old for new, old in pairs) else "newer"
-
-
-def _reference(
-    root: Path, archive: ArchiveFile, current: tuple[Path, dict[str, Any]]
-) -> tuple[Mapping[str, Any], Path | None]:
+def _stored_source(
+    root: Path, archive: ArchiveFile, source: str
+) -> tuple[bytes, dict[str, Any]] | None:
     """
-    Signal a stored station list is compared with, and the observation giving it.
+    Bytes and sidecar entry of the current stored version of a station source.
 
-    The reference signal of the slot (ADR-003 D18): the newest observation of
-    the current version, without one the version's ``extra.http`` (a version
-    without it is corrupted). The observation path is relative to ``root``;
-    None when the signal is the version's own, always for IMGW-PIB lists.
+    The current version (`_current_archive`, verified by SHA-256) of a station
+    list or of a file of station metadata, which ``store sync`` downloaded
+    into the store (ADR-015); None when the store holds no version of it. The
+    entry of a source with a canonical form carries its ``content_sha256``.
     """
-    # The reader imports this module, so it is imported at call time.
-    from obserwator.store.reader import _archive_slot as slot_of
-    from obserwator.store.reader import _reference_signal
-
-    own = _archive_http(*current)
-    slot = slot_of(archive.server_path)
-    reference = None if slot is None else _reference_signal(root, slot=slot)
-    if reference is None or reference.observation is None:
-        return own, None
-    signal = {"etag": reference.etag, "last_modified": reference.last_modified}
-    return signal, reference.observation.relative_to(root)
-
-
-def _station_list(
-    handle: StoreHandle,
-    archive: ArchiveFile,
-    *,
-    on_progress: ProgressHook | None,
-    on_notice: NoticeHook | None,
-) -> tuple[bytes, dict[str, Any]]:
-    """Current stored list, first downloaded and archived when missing or changed.
-
-    A stored list is re-validated with ``HEAD`` exactly as :func:`check_catalog`
-    compares it, against the reference signal of its slot: matching
-    ETag/Last-Modified reuse it; a different signal, or none to compare,
-    downloads the list and commits it with ``write_archive`` (identical bytes
-    stay ``unchanged``, other bytes of a list with a canonical form and the same
-    content are only observed) before the catalog reads it. The sidecar entry
-    of a list with a canonical form carries its ``content_sha256``.
-    """
-    headers = _headers(get_dataset(archive.dataset).provider)
-    current = _current_archive(handle.root, archive)
-    stale = current is None
-    if current is not None:
-        signal, _ = _reference(handle.root, archive, current)
-        head = _http("HEAD", archive.url, headers=headers)
-        status = _list_status(
-            signal, head.headers.get("ETag"), head.headers.get("Last-Modified")
-        )
-        stale = status != "current"
-        if status == "unverifiable" and on_notice is not None:
-            on_notice(
-                Notice(
-                    "warning",
-                    "source_unverifiable",
-                    message(
-                        "catalog.no_comparable_signal_download",
-                        server_path=archive.server_path,
-                    ),
-                )
-            )
-    if stale:
-        response = _http("GET", archive.url, headers=headers)
-        result = DownloadResult(
-            data=response.content,
-            url=str(response.url),
-            etag=response.headers.get("ETag"),
-            last_modified=response.headers.get("Last-Modified"),
-            content_length=_content_length(response),
-        )
-        write_archive(
-            handle,
-            archive=archive,
-            response=result,
-            on_progress=on_progress,
-            on_notice=on_notice,
-        )
-        current = _current_archive(handle.root, archive)
-    if current is None:  # pragma: no cover - write_archive always leaves a version
-        raise ObserwatorStoreConflictError(
-            message(
-                "catalog.no_stored_version_listing", server_path=archive.server_path
-            )
-        )
+    current = _current_archive(root, archive)
+    if current is None:
+        return None
     path, meta = current
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise io_error(exc) from exc
     record = {
-        "source": get_dataset(archive.dataset).slug,
+        "source": source,
         "url": _archive_http(path, meta).get("url"),
-        "file": path.relative_to(handle.root).as_posix(),
+        "file": path.relative_to(root).as_posix(),
         "fetched_at": meta["downloaded_at"],
         "sha256": meta["sha256"],
     }
@@ -632,13 +522,112 @@ def _station_list(
     return data, record
 
 
-def _api(
-    url: str, source: str, code_key: str
-) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    response = _http("GET", url)
-    fetched_at = _utc(datetime.now(UTC))
+def _chmi_meteo_now(root: Path) -> ArchiveFile | None:
+    """The newest stored ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``."""
+    descriptor = get_dataset("cz.chmi.meteo_now")
+    directory = _validate_slot(root, f"archives/versions/{descriptor.server_dir}")
+    names = (
+        sorted(
+            (
+                f"{child.name}.json"
+                for child in directory.iterdir()
+                if child.is_dir()
+                and _CHMI_METEO_NOW_FILE.fullmatch(f"{child.name}.json")
+            ),
+            reverse=True,
+        )
+        if directory.is_dir()
+        else []
+    )
+    for name in names:
+        archive = _station_file(descriptor, name)
+        if archive is not None and _current_archive(root, archive) is not None:
+            return archive
+    return None
+
+
+def _catalog_sources(
+    root: Path, provider: ProviderDescriptor
+) -> list[tuple[str, ArchiveFile | None]]:
+    """
+    The station sources of a provider's catalog in build order, by source name.
+
+    IMGW-PIB: the hydro and meteo lists and the current-data API answers
+    (``api_hydro``, ``api_meteo``); ČHMÚ: the two ``historical`` lists, the hydro
+    ``now`` metadata ``meta1.json`` and ``meta3.json`` and the newest daily meteo
+    ``now`` file (None when none is stored).
+    """
+    hydro_list, meteo_list, hydro_now, meteo_now = _CATALOG_SOURCES[provider.id]
+    lists = [
+        (get_dataset(key).slug, _station_files(key)[0])
+        for key in (hydro_list, meteo_list)
+    ]
+    if provider.id == "IMGW-PIB":
+        return [
+            *lists,
+            ("api_hydro", _station_files(hydro_now)[0]),
+            ("api_meteo", _station_files(meteo_now)[0]),
+        ]
+    meta1, meta3 = _station_files(hydro_now)
+    return [
+        *lists,
+        ("chmi_hydro_now", meta1),
+        ("chmi_hydro_meta3", meta3),
+        ("chmi_meteo_now", _chmi_meteo_now(root)),
+    ]
+
+
+def _read_sources(
+    root: Path, provider: ProviderDescriptor
+) -> dict[str, tuple[bytes, dict[str, Any]]]:
+    """
+    Every station source of a provider's catalog from the store, without a request.
+
+    Raises
+    ------
+    ObserwatorStoreError
+        ``not_found`` (``details.reason`` ``missing_source``) naming the
+        datasets whose files the store lacks, with the ``store sync`` that
+        downloads them.
+    """
+    found: dict[str, tuple[bytes, dict[str, Any]]] = {}
+    missing: list[str] = []
+    for (source, archive), key in zip(
+        _catalog_sources(root, provider), _source_datasets(provider), strict=True
+    ):
+        stored = None if archive is None else _stored_source(root, archive, source)
+        if stored is None:
+            missing.append(key)
+        else:
+            found[source] = stored
+    if missing:
+        keys = list(dict.fromkeys(missing))
+        raise ObserwatorStoreError(
+            message("catalog.missing_sources", root=root, datasets=", ".join(keys)),
+            code="not_found",
+            details={"reason": "missing_source", "datasets": keys},
+            hint=message(
+                "catalog.hint_sync_sources", root=root, datasets=",".join(keys)
+            ),
+        )
+    return found
+
+
+def _source_datasets(provider: ProviderDescriptor) -> list[str]:
+    """Dataset of each source of `_catalog_sources`, in the same order."""
+    hydro_list, meteo_list, hydro_now, meteo_now = _CATALOG_SOURCES[provider.id]
+    if provider.id == "IMGW-PIB":
+        return [hydro_list, meteo_list, hydro_now, meteo_now]
+    return [hydro_list, meteo_list, hydro_now, hydro_now, meteo_now]
+
+
+def _api_rows(
+    data: bytes, record: Mapping[str, Any], code_key: str
+) -> dict[str, dict[str, Any]]:
+    """Station rows by code of a stored current-data API answer of IMGW-PIB."""
+    url = record["url"]
     try:
-        payload = response.json()
+        payload = json.loads(data)
     except ValueError as exc:
         raise ObserwatorDataError(
             message("catalog.invalid_json_response_from", url=url)
@@ -654,14 +643,7 @@ def _api(
         code = str(row.get(code_key) or "").strip()
         if code:
             rows[code] = row
-    return rows, {
-        "source": source,
-        "url": url,
-        "file": None,
-        "fetched_at": fetched_at,
-        "count": len(rows),
-        "sha256": hashlib.sha256(response.content).hexdigest(),
-    }
+    return rows
 
 
 _LOCATION_COLUMNS = ("station_code", "latitude", "longitude")
@@ -1105,46 +1087,6 @@ def _metadata(
     return _Metadata(source, kind, table, rows, thresholds)
 
 
-def _chmi_get(url: str, *, source: str, form: str) -> tuple[bytes, dict[str, Any]]:
-    """A ČHMÚ metadata file that is not archived and its sidecar entry (count 0)."""
-    response = _http("GET", url, headers=_IDENTIFY)
-    data = response.content
-    try:
-        content = content_sha256(data, form=form)
-    except ObserwatorDataError as exc:
-        raise ObserwatorDataError(
-            message("catalog.invalid_json_document", url=url, exc=reason(exc)),
-            details={"url": url},
-        ) from exc
-    return data, {
-        "source": source,
-        "url": url,
-        "file": None,
-        "fetched_at": _utc(datetime.now(UTC)),
-        "count": 0,
-        "sha256": hashlib.sha256(data).hexdigest(),
-        "content_sha256": content,
-        "content_form": form,
-    }
-
-
-def _chmi_meteo_now_url(base_url: str) -> str:
-    """URL of the newest ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``."""
-    listing = base_url + _CHMI_METEO_NOW_DIR
-    response = _http("GET", listing, headers=_IDENTIFY)
-    names = sorted(
-        entry.name
-        for entry in parse_listing(response.content, url=listing)
-        if _CHMI_METEO_NOW_FILE.fullmatch(entry.name)
-    )
-    if not names:
-        raise ObserwatorDataError(
-            message("catalog.unreadable_listing_no_file_meta1", listing=listing),
-            details={"url": listing},
-        )
-    return listing + names[-1]
-
-
 def _thresholds(source: _Metadata, code: str) -> dict[str, Any] | None:
     """
     SPA thresholds of a station's row (spec 2026-10-18 §7.4).
@@ -1447,28 +1389,6 @@ def _catalog_meteo_kinds(path: Path, meta: Mapping[str, Any]) -> dict[str, objec
         raise io_error(exc) from exc
 
 
-def _unverifiable_sources(provider: ProviderDescriptor) -> tuple[tuple[str, str], ...]:
-    """Sources downloaded by every build, with the reason they have no signal."""
-    if provider.id == "IMGW-PIB":
-        reason = message("catalog.no_stable_signal_public_api")
-        return ((HYDRO_API_URL, reason), (METEO_API_URL, reason))
-    base = provider.base_url
-    return (
-        (
-            base + _CHMI_HYDRO_NOW,
-            message("catalog.metadata_envelope_hourly"),
-        ),
-        (
-            base + _CHMI_HYDRO_META3,
-            message("catalog.metadata_envelope_daily"),
-        ),
-        (
-            f"{base}{_CHMI_METEO_NOW_DIR}meta1-<YYYYMMDD>.json",
-            message("catalog.metadata_new_file_daily"),
-        ),
-    )
-
-
 def _catalog_lines(
     provider: ProviderDescriptor, used: Mapping[str, int]
 ) -> Attribution:
@@ -1501,6 +1421,7 @@ def check_catalog(
     root: RootArg,
     /,
     *,
+    raw_root: RootArg,
     provider: str = "IMGW-PIB",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
@@ -1508,23 +1429,24 @@ def check_catalog(
     cancel: Cancel | None = None,
 ) -> StorePlan:
     """
-    Compare the catalog sources of one provider with the store using HEAD and local hashes only.
+    Compare the inputs of one provider's catalog with its current catalog, offline.
 
-    Station lists are checked with ``HEAD`` against the reference signal of
-    their slot (the newest observation of the current version, otherwise its
-    ``extra.http``); the sources downloaded by every build expose no stable
-    signal and are reported as ``unverifiable`` without a request (IMGW-PIB:
-    the public station APIs; ČHMÚ: the ``now`` metadata files, whose envelope
-    is regenerated hourly or daily). Location files are compared by SHA-256
-    with the entries recorded in the provider's current catalog sidecar; the
-    station codes of the provider's current series indexes and the
-    ``meteo_kind`` they give are compared with its current catalog. Nothing
-    is downloaded or written.
+    Nothing is requested, downloaded or written (ADR-015): whether the station
+    sources are fresh is the business of ``store check``. Each station source
+    the build reads from the raw root (the two station lists and the station
+    metadata that ``store sync`` stores) is compared by the SHA-256 of its
+    current version with the one recorded in the provider's current catalog
+    sidecar in the data root. Location files are compared by SHA-256 with the
+    entries recorded in that sidecar; the station codes of the provider's
+    current series indexes in the data root and the ``meteo_kind`` they give
+    are compared with its current catalog.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the catalog would be written to (ADR-017); it need not exist.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose station sources the build reads; only read.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
         ``"IMGW-PIB"`` by default.
@@ -1532,30 +1454,31 @@ def check_catalog(
         User CSV ``station_code,latitude,longitude[,source]`` whose SHA-256 is
         compared with the one recorded in the catalog.
     on_progress : ProgressHook or None, optional
-        Called after each station list and once at the end with the overall
+        Called after each station source and once at the end with the overall
         catalog status.
     on_notice : NoticeHook or None, optional
-        Receives a ``source_unverifiable`` warning for each source without a
-        signal.
+        Receives a ``source_missing`` warning for each station source the store
+        lacks.
     cancel : Cancel or None, optional
-        Polled before each station list; once it returns ``True`` the remaining
-        lists are reported as ``unverifiable`` with error ``"cancelled"``.
+        Polled before each station source; once it returns ``True`` the
+        remaining sources are reported as ``unverifiable`` with error
+        ``"cancelled"``.
 
     Returns
     -------
     StorePlan
-        Plan with one item per station list (``current``, ``newer``, ``missing``,
-        ``unverifiable`` or ``check_failed``, also for a broken observation of
-        the current version; ``local_observation`` names the observation giving
-        the reference signal) and ``store catalog`` actions: one
-        ``unverifiable`` per source without a signal, one per location file
-        (``current``, or ``newer`` when the file appeared, disappeared or
-        changed; ``missing`` without a catalog; the IMGW-PIB static file is
-        always checked), one for the series indexes (``current``, ``newer``
-        when a series station code is absent from the catalog or a station's
-        ``meteo_kind`` differs, ``missing`` without a catalog) and a final
-        catalog action that is ``missing`` without a catalog, ``newer`` when
-        any source changed, otherwise ``unverifiable``.
+        Plan without items and with ``store catalog`` actions: one per station
+        source (``current``, ``newer`` when its current version differs from
+        the one the catalog was built from, ``missing`` when the store has no
+        version of it, so the build would fail, or without a catalog), one per
+        location file (``current``, or ``newer`` when the file appeared,
+        disappeared or changed; ``missing`` without a catalog; the IMGW-PIB
+        static file is always checked), one for the series indexes
+        (``current``, ``newer`` when a series station code is absent from the
+        catalog or a station's ``meteo_kind`` differs, ``missing`` without a
+        catalog) and a final catalog action that is ``missing`` without a
+        catalog, ``newer`` when any input changed or is missing, otherwise
+        ``current``.
 
     Raises
     ------
@@ -1563,124 +1486,70 @@ def check_catalog(
         If ``provider`` names no provider, or a location file exists but
         cannot be read.
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store or a version path contains a
-        symbolic link.
+        If ``root`` is no data root that may be written, ``raw_root`` is
+        missing or no raw root (code ``store_unavailable``; ``details.reason``
+        ``wrong_root`` for a root of the other kind) or a version path
+        contains a symbolic link.
     ObserwatorStoreConflictError
-        If a stored list or catalog version is corrupted.
+        If a stored source or catalog version is corrupted.
     ObserwatorDataError
-        If a station list responds with an invalid ``Content-Length`` header, or
-        a current series index is corrupted; with code ``io_error``
+        If a current series index is corrupted; with code ``io_error``
         (``details.path``) if the system cannot read a stored version.
     """
     owner = get_provider(provider)
     user = _user_file(user_locations)
-    refused = root_conflict_plan("store catalog", root)
+    refused = root_conflict_plan("store catalog", root, kind="data")
     if refused is not None:
         return refused
-    handle = _handle(root)
-    catalog = _current_catalog(handle.root, owner.id)
+    base = lenient_store(root, kind="data").root
+    raw = _raw(raw_root)
+    catalog = _current_catalog(base, owner.id)
     recorded = {
         entry.get("source"): entry.get("sha256")
         for entry in (catalog[1]["extra"].get("catalog", []) if catalog else [])
         if isinstance(entry, dict)
     }
-    items: list[PlanItem] = []
     actions: list[PlanAction] = []
-    sources = station_source_files(provider=owner.id)
-    headers = _headers(owner.id)
+    sources = list(
+        zip(_catalog_sources(raw, owner), _source_datasets(owner), strict=True)
+    )
     total = len(sources) + 2
     cancelled = False
-    for index, archive in enumerate(sources, start=1):
-        if _cancelled(cancel):
-            cancelled = True
-            items.append(
-                PlanItem(
-                    archive,
-                    "unverifiable",
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    message("common.cancelled"),
-                )
-            )
-            continue
-        current = _current_archive(handle.root, archive)
-        local_path, local_sha = (
-            (current[0], current[1]["sha256"]) if current else (None, None)
+    for index, ((source, archive), key) in enumerate(sources, start=1):
+        cancelled = cancelled or _cancelled(cancel)
+        stored = (
+            None if cancelled or archive is None else _current_archive(raw, archive)
         )
-        signal: Mapping[str, Any] = {}
-        observation: Path | None = None
-        try:
-            if current is not None:
-                signal, observation = _reference(handle.root, archive, current)
-            response = _http("HEAD", archive.url, headers=headers)
-        except (ObserwatorConnectionError, ObserwatorDataError) as exc:
-            if isinstance(exc, ObserwatorDataError) and exc.code != "data_error":
-                raise
-            items.append(
-                PlanItem(
-                    archive,
-                    "check_failed",
-                    local_path,
-                    local_sha,
-                    None,
-                    None,
-                    None,
-                    reason(exc),
-                    local_observation=observation,
-                )
-            )
+        status: Literal["current", "newer", "missing", "unverifiable"]
+        if cancelled:
+            status, detail = "unverifiable", message("common.cancelled")
+        elif stored is None:
+            status = "missing"
+            detail = message("catalog.source_not_stored", source=source, dataset=key)
+            if on_notice is not None:
+                on_notice(Notice("warning", "source_missing", detail))
         else:
-            etag = response.headers.get("ETag")
-            modified = response.headers.get("Last-Modified")
-            length = _content_length(response)
-            status: Literal["current", "newer", "missing", "unverifiable"] = (
-                "missing" if current is None else _list_status(signal, etag, modified)
+            path, meta = stored
+            if catalog is None:
+                status = "missing"
+            elif recorded.get(source) == meta["sha256"]:
+                status = "current"
+            else:
+                status = "newer"
+            detail = message(
+                "catalog.source_detail",
+                source=source,
+                file=path.relative_to(raw).as_posix(),
             )
-            why = (
-                message("catalog.no_comparable_signal")
-                if status == "unverifiable"
-                else None
-            )
-            items.append(
-                PlanItem(
-                    archive,
-                    status,
-                    local_path,
-                    local_sha,
-                    etag,
-                    modified,
-                    length,
-                    why,
-                    local_observation=observation,
-                )
-            )
+        actions.append(PlanAction("store catalog", status, detail))
         if on_progress is not None:
             on_progress(
                 Progress(
                     index,
                     total,
                     "source",
-                    items[-1].status,
-                    message("catalog.source_checked", server_path=archive.server_path),
-                )
-            )
-    for url, cause in _unverifiable_sources(owner):
-        actions.append(
-            PlanAction(
-                "store catalog",
-                "unverifiable",
-                message("catalog.check_needs_download", url=url, reason=cause),
-            )
-        )
-        if on_notice is not None:
-            on_notice(
-                Notice(
-                    "warning",
-                    "source_unverifiable",
-                    message("catalog.cannot_check_without_download", url=url),
+                    status,
+                    message("catalog.source_checked", server_path=key),
                 )
             )
     local_files: list[tuple[str, bytes | None, Path]] = []
@@ -1695,7 +1564,7 @@ def check_catalog(
             file_status: Literal["current", "newer", "missing"] = "missing"
         else:
             file_status = "current" if recorded.get(source) == digest else "newer"
-        detail = (
+        found = (
             f"sha256 {digest}"
             if digest is not None
             else message("catalog.missing_file", path=path.as_posix())
@@ -1704,19 +1573,19 @@ def check_catalog(
             PlanAction(
                 "store catalog",
                 file_status,
-                message("catalog.location_file_detail", source=source, detail=detail),
+                message("catalog.location_file_detail", source=source, detail=found),
             )
         )
-    series, _, meteo_kinds = _series_codes(handle.root, [], provider=owner)
+    series, _, meteo_kinds = _series_codes(base, [], provider=owner)
     series_codes = series["hydro"] | series["meteo"]
     if catalog is None:
         series_status: Literal["current", "newer", "missing"] = "missing"
         series_detail = message("catalog.codes_stations", count=len(series_codes))
     else:
-        stored = _catalog_meteo_kinds(*catalog)
-        absent = sorted(series_codes - stored.keys())
+        kinds = _catalog_meteo_kinds(*catalog)
+        absent = sorted(series_codes - kinds.keys())
         changed = sorted(
-            code for code, kind in stored.items() if kind != meteo_kinds.get(code)
+            code for code, kind in kinds.items() if kind != meteo_kinds.get(code)
         )
         series_status = "newer" if absent or changed else "current"
         if absent:
@@ -1741,13 +1610,11 @@ def check_catalog(
         )
     )
     if catalog is None:
-        overall: Literal["missing", "newer", "unverifiable"] = "missing"
-    elif any(item.status in ("newer", "missing") for item in items) or any(
-        action.status == "newer" for action in actions
-    ):
+        overall: Literal["missing", "newer", "current"] = "missing"
+    elif any(action.status in ("newer", "missing") for action in actions):
         overall = "newer"
     else:
-        overall = "unverifiable"
+        overall = "current"
     actions.append(
         PlanAction(
             "store catalog",
@@ -1755,7 +1622,7 @@ def check_catalog(
             message(
                 "catalog.station_catalog_version",
                 version=(
-                    catalog[0].relative_to(handle.root).as_posix()
+                    catalog[0].relative_to(base).as_posix()
                     if catalog
                     else message("catalog.no_version")
                 ),
@@ -1774,9 +1641,9 @@ def check_catalog(
         )
     return StorePlan(
         schema="obserwator-plan/1",
-        root=handle.root,
+        root=base,
         checked_at=datetime.now(UTC),
-        items=tuple(items),
+        items=(),
         series_state={},
         actions=tuple(actions),
         cancelled=cancelled,
@@ -1856,9 +1723,10 @@ def _catalog_notices(
 
 @dataclass(frozen=True)
 class _Build:
-    """Common state of one catalog build: store, provider, user file and hooks."""
+    """Common state of one catalog build: roots, provider, user file and hooks."""
 
-    handle: StoreHandle
+    root: Path
+    raw: Path
     provider: ProviderDescriptor
     user: tuple[Path, bytes] | None
     total: int
@@ -1930,7 +1798,7 @@ class _Build:
             current one.
         """
         provider = self.provider
-        root = self.handle.root
+        root = self.root
         sha = hashlib.sha256(data).hexdigest()
         current = _current_catalog(root, provider.id)
         if current is not None and current[1]["sha256"] == sha:
@@ -1966,6 +1834,8 @@ class _Build:
                 "catalog": sources,
             },
         }
+        # The first write of a new data root creates its marker (DEV-19.13).
+        prepare_store(root, kind="data")
         path, created = _publish_version(
             root,
             slot=_CATALOG_DIRS[provider.id],
@@ -2006,6 +1876,7 @@ def build_catalog(
     root: RootArg,
     /,
     *,
+    raw_root: RootArg,
     provider: str = "IMGW-PIB",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
@@ -2013,19 +1884,24 @@ def build_catalog(
     cancel: Cancel | None = None,
 ) -> CatalogReport:
     """
-    Build the ``stations.geojson`` catalog of one provider from its station sources.
+    Build the ``stations.geojson`` catalog of one provider from its stored station sources.
 
-    Station lists are re-validated with ``HEAD`` (as :func:`check_catalog`
-    compares them): a list that is missing, has a different ETag/Last-Modified
-    or no comparable signal is downloaded and stored with ``write_archive``
-    first, so the catalog always reflects the current lists; the sources
-    without a signal are always downloaded. Identical content (same SHA-256 of
-    the canonical GeoJSON, whatever the envelopes of the sources) yields
-    ``unchanged`` without a new version.
+    The build makes no request (ADR-015): it reads the current versions of the
+    provider's station lists and station metadata that ``store sync``
+    downloaded into the raw root (``store sync --datasets`` of the
+    station-source datasets), the current series indexes of the data root and
+    the location files, and writes the catalog into the data root (ADR-017).
+    The raw root is only read: no marker, staging directory or cleanup there,
+    so a read-only raw root works; the data root gets its marker with its
+    first version. Identical content (same SHA-256 of the canonical GeoJSON,
+    whatever the envelopes of the sources) yields ``unchanged`` without a new
+    version.
 
     IMGW-PIB (``stations/versions/<label>_<sha8>/``): every code of the lists,
-    the public hydro and meteo APIs, the static file and the current series
-    indexes is kept (a code only in the static file is a hydro station; a code
+    the stored answers of the current hydro and meteo data API
+    (``pl.imgw.hydro_now``, ``pl.imgw.meteo_now``), the static file and the
+    current series indexes is kept (a code only in the static file is a hydro
+    station; a code
     only in a series index is a historical station of the series family with
     ``geometry`` null unless the user file locates it, counted in
     ``from_series``); codes only in the user file are reported in ``problems``.
@@ -2041,11 +1917,11 @@ def build_catalog(
     ČHMÚ (``stations/versions/chmi_stations/<label>_<sha8>/``, spec
     2026-10-18 §7): sources in precedence order of location, name, river and
     thresholds — hydro ``hydrology/now/metadata/meta1.json``, ``meta3.json``
-    (names, rivers, ``HLGP4`` and locations only) and the archived list
-    ``cz.chmi.hydro_stations``; meteo the newest
-    ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json`` (listing) and the
-    archived list ``cz.chmi.meteo_stations`` (the period with the latest
-    ``BEGIN_DATE``); then the user CSV. Every code of these files and of the
+    (names, rivers, ``HLGP4`` and locations only; ``cz.chmi.hydro_now``) and the
+    list ``cz.chmi.hydro_stations``; meteo the newest stored
+    ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
+    (``cz.chmi.meteo_now``) and the list ``cz.chmi.meteo_stations`` (the period
+    with the latest ``BEGIN_DATE``); then the user CSV. Every code of these files and of the
     current ČHMÚ series indexes is a station, also closed and foreign ones;
     points are validated against the outline of Czechia. ``active`` means
     present in the ``now`` file; hydro stations carry the SPA ``thresholds``.
@@ -2055,12 +1931,16 @@ def build_catalog(
     The user CSV ``station_code,latitude,longitude[,source]`` may hold codes of
     both providers: codes of the other provider are skipped, codes of no
     provider are problems. Every series index read is recorded in the sidecar
-    as a ``series`` source.
+    as a ``series`` source; the ``file`` of a station source is relative to
+    the raw root, that of a series index to the data root.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Root of an existing Obserwator store.
+        Data root the catalog is written to; created with its marker when it
+        is new or empty.
+    raw_root : str, os.PathLike or StoreHandle
+        Raw root whose station sources are read; never written.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
         ``"IMGW-PIB"`` by default.
@@ -2068,15 +1948,13 @@ def build_catalog(
         User CSV ``station_code,latitude,longitude[,source]`` with fallback
         station locations.
     on_progress : ProgressHook or None, optional
-        Called after each build step (station lists, sources, assembly,
+        Called after each build step (each station source, assembly,
         publication).
     on_notice : NoticeHook or None, optional
         Receives catalog problems, rejected locations, location source summaries,
         a ``location_conflict`` summary of stations whose sources disagree (ČHMÚ),
         a ``series_station`` summary of stations known only from series indexes,
-        stations without location, ``source_unverifiable`` for a list without a
-        comparable signal, writer notices of downloaded lists (including
-        ``content_unchanged``), a ``leftover_incoming`` warning for every
+        stations without location, a ``leftover_incoming`` warning for every
         removed staging directory older than 24 hours and the provider's
         ``license_terms`` notice when a new version is created.
     cancel : Cancel or None, optional
@@ -2098,36 +1976,45 @@ def build_catalog(
         cannot be read or does not start with the
         ``station_code,latitude,longitude`` columns (the static file in the old
         ``id,X,Y`` format must be regenerated with
-        ``python -m obserwator.reference_data``); raised before any download.
+        ``python -m obserwator.reference_data``); raised before the sources are read.
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store or collides with a Kartograf
-        store.
-    ObserwatorConnectionError
-        If a station list cannot be checked or downloaded, or another source
-        cannot be downloaded.
+        Code ``store_unavailable`` if ``root`` is no supported data root or
+        collides with a Kartograf store, or ``raw_root`` is missing or no raw
+        root (``details.reason`` ``wrong_root`` for a root of the other kind);
+        ``not_found`` (``details.reason`` ``missing_source``,
+        ``details.datasets``) when the raw root lacks a station source, with
+        the ``store sync`` that downloads it as the hint.
     ObserwatorDataError
-        If a source is not valid (an API response that is not a JSON list of
-        objects, a ČHMÚ metadata file or listing that cannot be read, an unknown
-        threshold unit), a current series index or an observation of a stored
-        list is unreadable, or a station code appears in both the hydro and
-        meteo families.
+        If a source is not valid (an API answer that is not a JSON list of
+        objects, a ČHMÚ metadata file that cannot be read, an unknown
+        threshold unit), a current series index is unreadable, or a station
+        code appears in both the hydro and meteo families.
     ObserwatorStoreConflictError
-        If a stored version is corrupted or the new version cannot be published
+        If ``root`` nests a store or holds other files and is no store, a
+        stored version is corrupted or the new version cannot be published
         atomically.
     """
     owner = get_provider(provider)
-    handle = prepare_store(root)
+    refuse_root(root, kind="data")
+    base = lenient_store(root, kind="data").root
+    raw = _raw(raw_root)
     user = _user_file(user_locations)
-    if owner.id == "IMGW-PIB":
-        return _build_imgw(
-            _Build(handle, owner, user, 6, on_progress, on_notice, cancel)
-        )
-    return _build_chmi(_Build(handle, owner, user, 7, on_progress, on_notice, cancel))
+    build = _Build(
+        base,
+        raw,
+        owner,
+        user,
+        6 if owner.id == "IMGW-PIB" else 7,
+        on_progress,
+        on_notice,
+        cancel,
+    )
+    return _build_imgw(build) if owner.id == "IMGW-PIB" else _build_chmi(build)
 
 
 def _build_imgw(build: _Build) -> CatalogReport:
     """IMGW-PIB catalog from the station lists, public APIs and location files."""
-    handle, owner, user = build.handle, build.provider, build.user
+    owner, user = build.provider, build.user
     # Location files are validated before any download, so a bad header writes nothing.
     static_path, static_bytes = _static_file()
     static, static_problems = (
@@ -2140,35 +2027,33 @@ def _build_imgw(build: _Build) -> CatalogReport:
         if user is not None
         else ({}, [])
     )
+    if (report := build.stopped()) is not None:
+        return report
+    stored = _read_sources(build.raw, owner)
     sources: list[dict[str, Any]] = []
     lists: list[bytes] = []
-    for step, archive in enumerate(station_source_files(provider=owner.id), start=1):
-        if (report := build.stopped()) is not None:
-            return report
-        data, source = _station_list(
-            handle, archive, on_progress=None, on_notice=build.on_notice
-        )
-        lists.append(data)
-        sources.append(source)
+    apis: list[dict[str, dict[str, Any]]] = []
+    for step, (source, archive) in enumerate(
+        _catalog_sources(build.raw, owner), start=1
+    ):
+        data, record = stored[source]
+        if source in ("api_hydro", "api_meteo"):
+            rows = _api_rows(
+                data, record, "id_stacji" if source == "api_hydro" else "kod_stacji"
+            )
+            record["count"] = len(rows)
+            apis.append(rows)
+        else:
+            lists.append(data)
+        sources.append(record)
         build.progress(
             step,
             "done",
-            message("catalog.list_progress", server_path=archive.server_path),
+            message(
+                "catalog.source_read",
+                server_path=archive.server_path if archive else source,
+            ),
         )
-    apis = []
-    for step, (url, api_source, key) in enumerate(
-        (
-            (HYDRO_API_URL, "api_hydro", "id_stacji"),
-            (METEO_API_URL, "api_meteo", "kod_stacji"),
-        ),
-        start=3,
-    ):
-        if (report := build.stopped()) is not None:
-            return report
-        rows, record = _api(url, api_source, key)
-        apis.append(rows)
-        sources.append(record)
-        build.progress(step, "done", message("catalog.url_downloaded", url=url))
     if (report := build.stopped()) is not None:
         return report
     problems: list[str] = []
@@ -2210,7 +2095,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
             )
         )
     series, series_sources, meteo_kinds = _series_codes(
-        handle.root, problems, provider=owner
+        build.root, problems, provider=owner
     )
     sources.extend(series_sources)
     data, count, without, used, series_only = _catalog_bytes(
@@ -2248,50 +2133,31 @@ def _build_imgw(build: _Build) -> CatalogReport:
 
 
 def _build_chmi(build: _Build) -> CatalogReport:
-    """ČHMÚ catalog from the now and archived metadata files and the user file."""
-    handle, owner, user = build.handle, build.provider, build.user
-    # The user file is validated before any download, so a bad header writes nothing.
+    """ČHMÚ catalog from the stored now and historical metadata files and the user file."""
+    owner, user = build.provider, build.user
+    # The user file is validated before the sources are read, so a bad header writes nothing.
     user_rows, user_problems = (
         _read_locations(user[1], user=True, provider=owner)
         if user is not None
         else ({}, [])
     )
-    hydro_list, meteo_list = station_source_files(provider=owner.id)
-    form = get_dataset(hydro_list.dataset).content_form
-    if form is None:  # pragma: no cover - registry invariant (spec §3.1)
-        raise ObserwatorDataError(
-            message("catalog.dataset_has_no_content_form", dataset=hydro_list.dataset)
-        )
-    stored: dict[str, tuple[bytes, dict[str, Any]]] = {}
-    for step, archive in enumerate((hydro_list, meteo_list), start=1):
-        if (report := build.stopped()) is not None:
-            return report
-        stored[archive.dataset] = _station_list(
-            handle, archive, on_progress=None, on_notice=build.on_notice
-        )
+    if (report := build.stopped()) is not None:
+        return report
+    stored = _read_sources(build.raw, owner)
+    for step, (source, archive) in enumerate(
+        _catalog_sources(build.raw, owner), start=1
+    ):
         build.progress(
             step,
             "done",
-            message("catalog.list_progress", server_path=archive.server_path),
+            message(
+                "catalog.source_read",
+                server_path=archive.server_path if archive else source,
+            ),
         )
-    fetched: dict[str, tuple[bytes, dict[str, Any]]] = {}
-    for step, (source, path) in enumerate(
-        (
-            ("chmi_hydro_now", _CHMI_HYDRO_NOW),
-            ("chmi_hydro_meta3", _CHMI_HYDRO_META3),
-            ("chmi_meteo_now", None),
-        ),
-        start=3,
-    ):
-        if (report := build.stopped()) is not None:
-            return report
-        url = (
-            owner.base_url + path
-            if path is not None
-            else _chmi_meteo_now_url(owner.base_url)
-        )
-        fetched[source] = _chmi_get(url, source=source, form=form)
-        build.progress(step, "done", message("catalog.url_downloaded", url=url))
+    hydro_list, meteo_list = (
+        get_dataset(key).slug for key in _CATALOG_SOURCES[owner.id][:2]
+    )
     if (report := build.stopped()) is not None:
         return report
     problems: list[str] = []
@@ -2309,7 +2175,7 @@ def _build_chmi(build: _Build) -> CatalogReport:
             data,
             source=record["source"],
             kind=kind,
-            filename=record["url"] if record["file"] is None else record["file"],
+            filename=record["file"],
             problems=problems,
             thresholds=thresholds,
         )
@@ -2319,13 +2185,13 @@ def _build_chmi(build: _Build) -> CatalogReport:
 
     families = {
         "hydro": (
-            parse(*fetched["chmi_hydro_now"], kind="hydro"),
-            parse(*fetched["chmi_hydro_meta3"], kind="hydro", thresholds=False),
-            parse(*stored[hydro_list.dataset], kind="hydro"),
+            parse(*stored["chmi_hydro_now"], kind="hydro"),
+            parse(*stored["chmi_hydro_meta3"], kind="hydro", thresholds=False),
+            parse(*stored[hydro_list], kind="hydro"),
         ),
         "meteo": (
-            parse(*fetched["chmi_meteo_now"], kind="meteo"),
-            parse(*stored[meteo_list.dataset], kind="meteo"),
+            parse(*stored["chmi_meteo_now"], kind="meteo"),
+            parse(*stored[meteo_list], kind="meteo"),
         ),
     }
     if user is not None:
@@ -2337,7 +2203,7 @@ def _build_chmi(build: _Build) -> CatalogReport:
             | {"available": True}
         )
     # ČHMÚ publishes no station class: meteo_kind stays null (spec 2026-10-18 §7.3).
-    series, series_sources, _ = _series_codes(handle.root, problems, provider=owner)
+    series, series_sources, _ = _series_codes(build.root, problems, provider=owner)
     records.extend(series_sources)
     data, count, without, used, series_only, conflicts = _chmi_catalog_bytes(
         families=families,

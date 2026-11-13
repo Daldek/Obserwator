@@ -1314,7 +1314,7 @@ def download_archives(
     cancel: Cancel | None = None,
 ) -> DownloadReport:
     """
-    Download the source files of a dataset as plain files or into the store.
+    Download the source files of a dataset as plain files or into the raw root.
 
     With ``output_dir`` (plain mode, DEV-19.1) every file of `archive_files`
     is written as ``<output_dir>/<server_path>``: before the first request the
@@ -1324,13 +1324,14 @@ def download_archives(
     ``<output_dir>/.obserwator-incoming/<host>_<pid>_<token>/``, hashed while it
     streams, verified and moved into place with ``os.replace``, so an
     interrupted download leaves no partial file. Without ``output_dir`` the
-    files are published as versions in the store at ``root`` (the default
-    root when ``root`` is not given: ``OBSERWATOR_ROOT``, ``[obserwator] root`` of
-    ``nogat.toml`` or ``<data_dir>/obserwator``); only the datasets of the store
-    are accepted. A failed file becomes a ``failed`` item and the remaining
-    files are still downloaded. ČHMÚ files are candidates that are fetched
-    without a listing (spec 2026-10-18 §4.4): a candidate the server answers
-    with HTTP 404 or 410 is a successful ``not_published`` item.
+    files are published as versions in the raw root at ``root`` (ADR-017; the
+    default raw root when ``root`` is not given: ``OBSERWATOR_RAW_ROOT``,
+    ``[obserwator] raw_root`` of ``nogat.toml`` or ``<data_dir>/obserwator-raw``);
+    only the datasets of the store are accepted. A failed file becomes a
+    ``failed`` item and the remaining files are still downloaded. ČHMÚ files
+    are candidates that are fetched without a listing (spec 2026-10-18 §4.4):
+    a candidate the server answers with HTTP 404 or 410 is a successful
+    ``not_published`` item.
 
     Parameters
     ----------
@@ -1352,8 +1353,8 @@ def download_archives(
         Plain mode: directory of the files, created when missing. Excludes
         ``root``.
     root : str or os.PathLike or None, optional
-        Store mode: root of the store; None (with no ``output_dir``) is the
-        default root.
+        Store mode: the raw root; None (with no ``output_dir``) is the
+        default raw root.
     force : bool, optional
         Plain mode: replace existing target files (each atomically, nothing
         else is deleted). Store mode: the files are fetched again anyway and
@@ -1397,9 +1398,9 @@ def download_archives(
         (``output_exists``), duplicate names (``duplicate_output_name``) or a
         target that would enter a store below the directory
         (``output_in_store``); ``details["paths"]`` lists every such path. In
-        store mode ``store_unavailable`` (a layout without a marker) or
-        ``conflict`` (a nested store, ``nested_store``, or a root with other
-        files, ``not_empty``).
+        store mode ``store_unavailable`` (a layout without a marker, or a data
+        root: ``details["reason"]="wrong_root"``) or ``conflict`` (a nested
+        store, ``nested_store``, or a root with other files, ``not_empty``).
     OSError
         If the output directory cannot be created.
 

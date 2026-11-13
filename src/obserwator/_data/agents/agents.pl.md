@@ -4,7 +4,7 @@
 
 ## Czym jest Obserwator
 
-Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego magazynu (zwykły katalog; wersje są niezmienne, tożsamość to SHA-256) albo jako zwykłe pliki, a z magazynu offline czyta się szeregi stacji.
+Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego katalogu surowego (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi, katalogi stacji i analizy powstają z niego w katalogu danych i czyta się je offline.
 
 Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, lokalnych kopii i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
 
@@ -25,13 +25,13 @@ Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, l
 
 Ta sama komenda w każdym interfejsie: CLI `obserwator <grupa> <komenda> --opcja wartość --json` (flaga = `--` + nazwa opcji z `-` zamiast `_`); Python `run_command("<grupa> <komenda>", options={...})`; REST `/api/v1/<grupa>/<komenda>` (GET: parametry zapytania, POST: ciało JSON); narzędzie MCP `obserwator_<grupa>_<komenda>`.
 
-- **REST:** korzeń magazynu ustawia serwer (`OBSERWATOR_ROOT`), `version` jest względna do niego, opcji lokalnych nie ma; zapis (POST bez `?check=true`) wymaga włączenia na serwerze i nagłówka `X-API-Key`.
+- **REST:** katalogi ustawia serwer (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`), `version` jest względna do katalogu komendy, opcji lokalnych nie ma; zapis (POST bez `?check=true`) wymaga włączenia na serwerze i nagłówka `X-API-Key`.
 - **MCP:** `obserwator mcp` (stdio) startuje bez zapisu — komendy zapisujące zwracają plan (`check` stałe `true`); zapis włącza użytkownik (`--allow-writes`), a i wtedy `check` jest domyślnie `true`. `/mcp` serwera REST (`OBSERWATOR_MCP_ENABLED=true`) tylko czyta i planuje.
-- **Język:** wynik maszynowy jest po angielsku (koperta `--json`, linie błędów, MCP, REST, domyślny przewodnik). Polski tylko na prośbę: `--lang pl` (`commands list|schema|guide`; w pozostałych komendach język podsumowania CLI bez `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
+- **Język:** wynik maszynowy jest po angielsku; polski na prośbę: `--lang pl` (`commands list|schema|guide`, w innych komendach podsumowanie CLI bez `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
 ## Koperta, statusy i błędy
 
-Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}` (każdy raz, np. `license_terms`). Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Komendy strumieniowe bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST odpowiada załącznikiem (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
+Komenda zwraca kopertę `obserwator-result/1` `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` to dokument z własnym `schema` (`obserwator-<rodzaj>/1`), lista takich dokumentów albo null; `attribution` i `terms_notice` (tylko z danymi dostawców) to linie, które użytkownik musi zobaczyć z danymi; `notices` to lista `{"level", "code", "message"}`. Komendy listowe zwracają listę elementów jako `result` i w kopercie `page` `{"total", "next_cursor", "truncated"}`: dopóki `truncated` jest prawdą, podaj `next_cursor` jako `cursor` kolejnej strony. Sprawdzenie zwraca plan `obserwator-plan/1`. Strumienie bez `output` dają same linie danych: CLI pisze je na stdout (z `--json` i bez), REST daje załącznik (status i komunikaty w `X-Obserwator-Status`, `X-Obserwator-Notices`). REST: 200 także dla `partial` i `failed` — decyduje `status`.
 
 <!-- obserwator:statuses -->
 
@@ -39,16 +39,16 @@ Błąd ma kod z zamkniętego rejestru, ten sam w Pythonie, CLI, REST (problem+js
 
 ## Zbiory danych
 
-Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane wyłącznie na wejściu. Zbiory magazynu:
+Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane tylko na wejściu. Zbiory magazynu:
 
 <!-- obserwator:datasets -->
 
-- `stations` (identyfikatory WIGOS): wymagane dla `cz.chmi.*`, niedozwolone dla `pl.imgw.*` w `datasets files`, `datasets download`, `store check` i `store sync`; jedno wywołanie obejmuje zbiory jednego rodzaju (`pl.imgw.*` albo `cz.chmi.*`).
-- `years`: wymagane w `datasets files`, `datasets download` (poza `cz.chmi.meteo_daily`) i, dla `pl.imgw.*`, w `store check` i `store sync`; tam opcjonalne dla `cz.chmi.hydro_daily` (brak = lata opublikowane); nigdy dla `cz.chmi.meteo_daily`; nie wcześniej niż „Od roku”. `months` wyłącznie dla `pl.imgw.*`, `params` wyłącznie dla `pl.imgw.hydro_semiannual`.
+- `stations` (identyfikatory WIGOS): wymagane dla `cz.chmi.*`, niedozwolone dla `pl.imgw.*` w `datasets files|download` i `store check|sync`; jedno wywołanie obejmuje zbiory jednego rodzaju (`pl.imgw.*` albo `cz.chmi.*`).
+- `years`: wymagane w `datasets files|download` (poza `cz.chmi.meteo_daily`) i, dla `pl.imgw.*`, w `store check|sync`; tam opcjonalne dla `cz.chmi.hydro_daily` (brak = lata opublikowane); nigdy dla `cz.chmi.meteo_daily`; nie wcześniej niż „Od roku”. `months` wyłącznie dla `pl.imgw.*`, `params` wyłącznie dla `pl.imgw.hydro_semiannual`.
 
 ## Komendy
 
-Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwator commands schema --command "<komenda>" --json`. Znaczniki: `[output: …]` — opcja zapisuje plik, gdy ją podasz; `[jest sprawdzeniem]` — komenda sama planuje; `[lokalna]` — bez trasy REST.
+Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwator commands schema --command "<komenda>" --json`. Znaczniki: `[output: …]` — opcja zapisuje plik; `[jest sprawdzeniem]` — komenda sama planuje; `[lokalna]` — bez trasy REST.
 
 <!-- obserwator:commands -->
 
@@ -58,21 +58,21 @@ Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwa
 
 ## Typowe przepływy
 
-Symbole pisane wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcześniejszych kroków.
+Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcześniejszych kroków.
 
 <!-- obserwator:flows -->
 
 ## Czego nie robić
 
-1. Nie buduj URL-i serwerów IMGW-PIB i ČHMÚ ręcznie ani ich nie przeszukuj — `datasets files`, `datasets download`, `store sync`.
-2. Kody wyjścia 10 i 11 nie oznaczają awarii programu — przeczytaj kopertę (`items[].status`, `error_code`).
+1. Nie składaj ani nie przeszukuj URL-i serwerów IMGW-PIB i ČHMÚ — `datasets files`, `datasets download`, `store sync`.
+2. Kody wyjścia 10 i 11 to nie awaria programu — czytaj kopertę (`items[].status`, `error_code`).
 3. Nie uruchamiaj zapisu (`store sync`, `series build`, `datasets download`) bez planu i zgody użytkownika.
 4. Nie zgaduj stacji ani zbioru: przy kilku trafieniach `stations find` zapytaj; obecność stacji w zbiorze sprawdź `series summary`.
-5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — magazyn jest tylko przyrostowy.
-6. Nie pobieraj „na zapas”: zawężaj `years`, `months` i `stations`; nie mieszaj dostawców w jednym wywołaniu ze `stations`.
+5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu — jest tylko przyrostowy.
+6. Nie pobieraj „na zapas”: zawężaj `years`, `months` i `stations`.
 7. Długie listy czytaj stronami (`limit`, `cursor` = `page.next_cursor`); używaj `series read` albo `series export --output`, nie CSV w kontekście.
 8. Nie odpytuj `current …` w pętli — to API na żywo; zachowaj wynik.
 9. Pokazuj linie `attribution` i `terms_notice` dosłownie z danymi i w tym, co z nich zrobisz (także komunikat `license_terms`).
-10. `version` wskazuj wyłącznie pod `*/versions/` magazynu, bez `..`; w REST i MCP przez HTTP — względnie do magazynu serwera.
+10. `version` wskazuj tylko pod `*/versions/` katalogu, bez `..`; w REST i MCP przez HTTP — względnie do katalogu serwera.
 
 Rozwijasz to repozytorium? Przeczytaj CLAUDE.md.

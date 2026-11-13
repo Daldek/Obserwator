@@ -178,7 +178,9 @@ def test_coverage_with_and_without_station_periods_equals_the_series_index(tmp_p
         METEO: store_meteo(root),
     }
     for dataset, written in inputs.items():
-        version = build_series(root, dataset=dataset).version
+        version = build_series(
+            tmp_path / "data", raw_root=root, dataset=dataset
+        ).version
         index = read_series_index(version)
         records = [item for entry in written for item in read_archive(entry.path)]
         periods = {code: entry.periods for code, entry in index.stations.items()}

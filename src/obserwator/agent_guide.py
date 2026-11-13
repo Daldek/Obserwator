@@ -33,6 +33,7 @@ from typing import Any, Literal, cast, overload
 from obserwator._version import __version__
 from obserwator.commands import (
     _input_schemas,
+    _root_kind,
     command_schema,
     data_commands,
     format_command,
@@ -146,24 +147,19 @@ class _Flow:
 _STATION = _Symbol("agent_guide.symbol_station_code", "123456789")
 _WIGOS = _Symbol("agent_guide.symbol_wigos_id", "0-203-1-900001")
 _SYMBOLS = (_STATION, _WIGOS)
-_STORE = "/data/obserwator"
 _PRECIP = "pl.imgw.meteo_precip_daily"
 _CHMI_HYDRO = "cz.chmi.hydro_daily"
-_PRECIP_STORE = {"root": _STORE, "datasets": [_PRECIP], "years": "2010-2020"}
+_PRECIP_STORE = {"datasets": [_PRECIP], "years": "2010-2020"}
 _PRECIP_DAYS = {
-    "root": _STORE,
     "dataset": _PRECIP,
     "station": _STATION,
     "variables": ["P"],
     "start": "2010-01-01",
     "end": "2020-12-31",
 }
-_CHMI_STORE = {
-    "root": _STORE,
-    "datasets": [_CHMI_HYDRO],
-    "stations": [_WIGOS],
-    "years": "2020-2025",
-}
+_CHMI_STORE = {"datasets": [_CHMI_HYDRO], "stations": [_WIGOS], "years": "2020-2025"}
+# The flags of the roots that `format_command` names; a flow line leaves them out.
+_ROOT_FLAGS = ("--root", "--raw-root")
 _FLOWS: tuple[_Flow, ...] = (
     _Flow(
         "agent_guide.flow_precipitation_title",
@@ -175,10 +171,13 @@ _FLOWS: tuple[_Flow, ...] = (
             ),
             _Step(None, {}, "agent_guide.flow_precipitation_choose_dataset"),
             _Step("store check", _PRECIP_STORE, "agent_guide.flow_precipitation_plan"),
-            _Step("store sync", _PRECIP_STORE, "agent_guide.flow_precipitation_sync"),
+            _Step("store sync", _PRECIP_STORE, "agent_guide.flow_after_consent"),
+            _Step(
+                "series build", {"dataset": _PRECIP}, "agent_guide.flow_series_build"
+            ),
             _Step(
                 "series summary",
-                {"root": _STORE, "dataset": _PRECIP, "stations": [_STATION]},
+                {"dataset": _PRECIP, "stations": [_STATION]},
                 "agent_guide.flow_precipitation_summary",
             ),
             _Step(
@@ -197,11 +196,15 @@ _FLOWS: tuple[_Flow, ...] = (
                 "agent_guide.flow_czech_discharge_find_station",
             ),
             _Step("store check", _CHMI_STORE, "agent_guide.flow_czech_discharge_plan"),
-            _Step("store sync", _CHMI_STORE, "agent_guide.flow_czech_discharge_sync"),
+            _Step("store sync", _CHMI_STORE, "agent_guide.flow_after_consent"),
+            _Step(
+                "series build",
+                {"dataset": _CHMI_HYDRO},
+                "agent_guide.flow_series_build",
+            ),
             _Step(
                 "series read",
                 {
-                    "root": _STORE,
                     "dataset": _CHMI_HYDRO,
                     "station": _WIGOS,
                     "variables": ["Q"],
@@ -373,7 +376,11 @@ def _notes(schema: Mapping[str, Any], lang: Lang) -> str:
 def _commands(
     schemas: Iterable[Mapping[str, Any]], summaries: Mapping[str, str], lang: Lang
 ) -> str:
-    """Commands by effect of a run (``read``, ``network``, ``add``, ``replace``)."""
+    """
+    Commands by effect of a run (``read``, ``network``, ``add``, ``replace``).
+
+    A class without commands gets no heading.
+    """
     classes: dict[str, list[str]] = {name: [] for name in _EFFECTS}
     for schema in schemas:
         meta = schema["x-obserwator"]
@@ -387,11 +394,26 @@ def _commands(
     return "\n\n".join(
         f"**{message(_EFFECTS[name], lang=lang)}**\n\n" + "\n".join(lines)
         for name, lines in classes.items()
+        if lines
     )
 
 
 def _listed(flags: Iterable[str]) -> str:
     return ", ".join(_code(flag) for flag in sorted(set(flags)))
+
+
+def _raw_commands() -> str:
+    """The commands whose root is the raw root, by group: ``store check|sync``."""
+    groups: dict[str, list[str]] = {}
+    for spec in data_commands():
+        if any(option.name == "root" for option in spec.options) and (
+            _root_kind(spec, {}) == "raw"
+        ):
+            group, name = spec.name.split(" ", 1)
+            groups.setdefault(group, []).append(name)
+    return ", ".join(
+        _code(f"{group} {'|'.join(names)}") for group, names in groups.items()
+    )
 
 
 def _flags(schemas: Iterable[Mapping[str, Any]], lang: Lang) -> str:
@@ -441,7 +463,12 @@ def _flags(schemas: Iterable[Mapping[str, Any]], lang: Lang) -> str:
             switches=_listed(kinds["switch"]),
         ),
         message("agent_guide.flags_output", lang=lang),
-        message("agent_guide.flags_environment", lang=lang, roots=roots),
+        message(
+            "agent_guide.flags_environment",
+            lang=lang,
+            raw=_raw_commands(),
+            roots=roots,
+        ),
     ]
     return "\n".join(lines)
 
@@ -474,17 +501,23 @@ def _command_line(step: _Step, lang: Lang) -> str:
     The ``obserwator`` line of a step: `format_command` with the symbols put back.
 
     The agent reads the result of every step, so every line asks for the
-    envelope (``--json``). `format_command` writes the store root absolute, on
-    Windows with the drive of the working directory; the line names it as
-    given, the same everywhere.
+    envelope (``--json``). The line leaves out the roots that `format_command`
+    names (the default roots of this machine): the environment line of the
+    guide tells the defaults, so the line is the same everywhere.
     """
     options = cast(
         Mapping[str, object], _substituted(step.options, lambda s: s.stand_in)
     )
     run = {"check": step.check, "json": True}
-    line = format_command(cast(str, step.command), options=options, run=run)
-    line = line.replace(shlex.quote(str(Path(_STORE).absolute())), _STORE)
-    line = _YEAR_RUN.sub(_year_range, line)
+    words = shlex.split(
+        format_command(cast(str, step.command), options=options, run=run)
+    )
+    kept = [
+        word
+        for before, word in zip(["", *words], words, strict=False)
+        if word not in _ROOT_FLAGS and before not in _ROOT_FLAGS
+    ]
+    line = _YEAR_RUN.sub(_year_range, shlex.join(kept))
     for symbol in _SYMBOLS:
         line = line.replace(symbol.stand_in, symbol.name(lang))
     return line
@@ -664,6 +697,7 @@ def _instructions(
     mode: McpMode,
     workdir: PathArg | None,
     root: PathArg | None,
+    raw_root: PathArg | None = None,
 ) -> str:
     """
     Return the ``instructions`` of the MCP server: the rules and the mode lines.
@@ -678,8 +712,11 @@ def _instructions(
         Working directory of a stdio server (base of relative paths); not
         shown in the ``http`` mode, which never names server directories.
     root : str, os.PathLike or None
-        Default store root of a stdio server, or None for none; the
-        ``http`` mode only tells whether the server has a store (``OBSERWATOR_ROOT``).
+        Default data root of a stdio server, or None for none; the ``http``
+        mode only tells whether the server has one (``OBSERWATOR_ROOT``).
+    raw_root : str, os.PathLike or None, optional
+        Default raw root of a stdio server, or None for none; the ``http``
+        mode only tells whether the server has one (``OBSERWATOR_RAW_ROOT``).
 
     Returns
     -------
@@ -687,21 +724,37 @@ def _instructions(
         Markdown text below 2 KiB in UTF-8.
     """
     lines = ["Rules of Obserwator:", _principles("en"), "", _MODES[mode]]
+    # The roots by kind (ADR-017 D4) and the options that name them.
+    roots = {
+        "data": ("OBSERWATOR_ROOT", root, "`root`"),
+        "raw": ("OBSERWATOR_RAW_ROOT", raw_root, "`root` or `raw_root`"),
+    }
     if mode == "http":
-        lines.append(
-            "Store: the server's store; `version` relative to it."
-            if root is not None
-            else "The server has no store: store commands end with `store_unavailable`."
-        )
+        given = [
+            f"{kind} root" for kind, (_, path, _) in roots.items() if path is not None
+        ]
+        if given:
+            lines.append(
+                f"Roots: the server's {' and '.join(given)}; `version` relative to "
+                "the root of the command."
+            )
+        lines += [
+            f"The server has no {kind} root (`{variable}`): its commands end with "
+            "`store_unavailable`."
+            for kind, (variable, path, _) in roots.items()
+            if path is None
+        ]
     else:
         if workdir is not None:
             lines.append(
                 f"Working directory (base of relative paths): `{os.fspath(workdir)}`."
             )
-        if root is not None:
-            lines.append(f"Default store (`OBSERWATOR_ROOT`): `{os.fspath(root)}`.")
-        else:
-            lines.append("No default store: give `root`.")
+        lines += [
+            f"Default {kind} root (`{variable}`): `{os.fspath(path)}`."
+            if path is not None
+            else f"No default {kind} root (`{variable}`): give {options}."
+            for kind, (variable, path, options) in roots.items()
+        ]
     lines += [
         f"Lists: `limit` {_PAGE_SIZE} by default, at most `OBSERWATOR_API_MAX_LIMIT`; "
         "next pages: `cursor` = `page.next_cursor` while `page.truncated`.",

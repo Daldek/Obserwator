@@ -2,9 +2,11 @@
 
 The three interfaces run in this process: Python through ``run_command``, the
 ``obserwator`` CLI through Click's runner and REST through the FastAPI test client.
+Hydrolog's program is the recorded fake of ``tests/fixtures/hydrolog``.
 """
 
 import importlib
+import shutil
 import socket
 import threading
 from collections.abc import Callable
@@ -19,8 +21,9 @@ from typer.testing import CliRunner, Result
 from obserwator.api.main import app as rest_app
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
-from obserwator.testing import build_fixture_store
-from tests.contract.support import FakeImgw
+from obserwator.store import open_store, sync_pmaxtp
+from obserwator.testing import FixtureRoots
+from tests.contract.support import FakeImgw, build_served_analyses, use_fake_hydrolog
 
 FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 WRITE_TOKEN = "kontrakt-token"
@@ -31,6 +34,7 @@ _CLOCKED = (
     "obserwator.store.catalog",
     "obserwator.store.sync",
     "obserwator.store.pmaxtp",
+    "obserwator.store.analyses",
     "obserwator.commands",
 )
 
@@ -72,6 +76,18 @@ def no_network(monkeypatch):
 def no_obserwator_root(monkeypatch):
     """The developer's OBSERWATOR_ROOT must not reach the commands under test."""
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def hydrolog(monkeypatch, tmp_path_factory):
+    """
+    Hydrolog's program is the recorded fake, for this process and the processes it starts.
+
+    Its series files go to one directory per test, so the stored lines, which
+    echo their paths, are the same in Python, the CLI, REST and MCP.
+    """
+    use_fake_hydrolog(monkeypatch, tmp_path_factory.mktemp("hydrolog") / "scratch")
 
 
 @pytest.fixture
@@ -96,16 +112,40 @@ def imgw():
 
 
 @pytest.fixture(scope="session")
-def fixture_root(tmp_path_factory):
-    """``complete`` store of ``obserwator.testing`` built once; tests copy it to mutate."""
-    return build_fixture_store(tmp_path_factory.mktemp("contract") / "store").root
+def served_roots(tmp_path_factory, fixture_roots):
+    """
+    Read-only roots of the read commands: copies of the fixture roots with a
+    PMAXTP cell in the raw root and the analyses in the data root.
+    """
+    base = tmp_path_factory.mktemp("served")
+    raw, data = base / "raw", base / "data"
+    shutil.copytree(fixture_roots.raw.root, raw)
+    shutil.copytree(fixture_roots.data.root, data)
+    with respx.mock(assert_all_called=False) as router:
+        FakeImgw(router).publish_pmaxtp("pmaxtp_pot_first")
+        sync_pmaxtp(raw, latitude=52.23, longitude=21.01)
+    build_served_analyses(data)
+    return FixtureRoots(open_store(raw, kind="raw"), open_store(data, kind="data"))
+
+
+@pytest.fixture(scope="session")
+def served_root(served_roots):
+    """The served data root (series, catalogs, analyses): a ``Path``."""
+    return served_roots.data.root
+
+
+@pytest.fixture(scope="session")
+def served_raw_root(served_roots):
+    """The served raw root (archives, station sources, a PMAXTP cell): a ``Path``."""
+    return served_roots.raw.root
 
 
 @pytest.fixture
 def server(monkeypatch):
-    """REST server settings: no store root, writes disabled, default page size."""
+    """REST server settings: no roots, writes disabled, default page size."""
     for name, value in (
         ("root", None),
+        ("raw_root", None),
         ("store_writes_enabled", False),
         ("store_write_token", None),
         ("user_locations_dir", None),
@@ -113,6 +153,14 @@ def server(monkeypatch):
     ):
         monkeypatch.setattr(settings, name, value)
     return settings
+
+
+@pytest.fixture
+def served(server, monkeypatch, served_root, served_raw_root):
+    """REST server serving the served roots (``OBSERWATOR_ROOT``, ``OBSERWATOR_RAW_ROOT``)."""
+    monkeypatch.setattr(server, "root", served_root)
+    monkeypatch.setattr(server, "raw_root", served_raw_root)
+    return server
 
 
 @pytest.fixture

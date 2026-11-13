@@ -4,7 +4,7 @@
 
 ## What Obserwator is
 
-Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned store (a plain directory whose versions never change and are identified by SHA-256) or are written as plain files, and station series are read offline from the store.
+Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
 Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), IMGW-PIB daily synoptic archives, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
@@ -13,7 +13,7 @@ Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep
 
 ## Rules: check → run → read
 
-1. **Learn the commands:** `obserwator commands list --json` (a one-sentence summary of each), then `obserwator commands schema --command … --json` or `obserwator <group> <command> --schema --json`; REST `GET /api/v1/commands/list` and `/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules they do not express are in `rules`, effects in `effects` (`writes`, `network`, `idempotent`).
+1. **Learn the commands:** `obserwator commands list --json`, then `obserwator commands schema --command … --json` or `obserwator <group> <command> --schema --json`; REST `GET /api/v1/commands/list` and `/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules they do not express are in `rules`, effects in `effects` (`writes`, `network`, `idempotent`).
 2. **Check without writing:** `--check` (CLI), `?check=true` (REST, POST), `check: true` (MCP; the default of writing commands), `check_command()` (Python) → an `obserwator-plan/1` plan without writing and without downloading content. `store check` is a check itself. Ask the user about a large plan.
 3. **Run:** without `check`; read the `status` of the envelope, not only the exit code.
 4. **Read offline:** `store info`, `store scan`, `series summary`, `series read` (`limit`/`cursor`), `pmaxtp read` — without downloading again.
@@ -30,13 +30,13 @@ Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep
 
 One command in every interface: CLI `obserwator <group> <command> --option value --json` (flag = `--` + the option name with `-` for `_`); Python `run_command("<group> <command>", options={...})`; REST `/api/v1/<group>/<command>` (GET: query parameters, POST: JSON body); MCP tool `obserwator_<group>_<command>`.
 
-- **REST:** the server sets the store root (`OBSERWATOR_ROOT`), `version` is relative to it, local options do not exist; writing (POST without `?check=true`) must be enabled on the server and needs the `X-API-Key` header.
+- **REST:** the server sets the roots (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`), `version` is relative to the command's root, local options do not exist; writing (POST without `?check=true`) must be enabled on the server and needs the `X-API-Key` header.
 - **MCP:** `obserwator mcp` (stdio) starts without writes — writing commands return a plan (`check` fixed to `true`); the user enables writes (`--allow-writes`), and even then `check` is `true` by default. `/mcp` of the REST server (`OBSERWATOR_MCP_ENABLED=true`) reads and plans only.
-- **Language:** machine output is English (this guide, the envelope of `--json`, error lines, MCP, REST). Polish only on request: `--lang pl` (`commands list|schema|guide`; for the other commands the language of the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
+- **Language:** machine output is English; Polish on request: `--lang pl` (`commands list|schema|guide`, else the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
 ## Envelope, statuses and errors
 
-A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}` (each once, e.g. `license_terms`). List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
+A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}`. List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
 
 | Status | CLI exit code | Meaning |
 |---|---|---|
@@ -60,16 +60,20 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 | `pl.imgw.meteo_precip_daily` | `P`, `snow_cover`, `fresh_snow` | 1950 |
 | `pl.imgw.hydro_stations` | — | — |
 | `pl.imgw.meteo_stations` | — | — |
+| `pl.imgw.hydro_now` | — | — |
+| `pl.imgw.meteo_now` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
 | `cz.chmi.hydro_daily` | `H`, `Q`, `T` | 1887 |
 | `cz.chmi.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin` | — |
 | `cz.chmi.hydro_stations` | — | — |
 | `cz.chmi.meteo_stations` | — | — |
+| `cz.chmi.hydro_now` | — | — |
+| `cz.chmi.meteo_now` | — | — |
 
 Outside the store (`datasets files` and `datasets download` only): `pl.imgw.hydro_phenomena`, `pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`, `pl.imgw.meteo_climate_terms`.
 
-- `stations` (WIGOS identifiers): required for `cz.chmi.*`, not allowed for `pl.imgw.*` in `datasets files`, `datasets download`, `store check` and `store sync`; one call covers datasets of one kind (`pl.imgw.*` or `cz.chmi.*`).
-- `years`: required in `datasets files`, `datasets download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check` and `store sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations` (WIGOS identifiers): required for `cz.chmi.*`, not allowed for `pl.imgw.*` in `datasets files|download` and `store check|sync`; one call covers datasets of one kind (`pl.imgw.*` or `cz.chmi.*`).
+- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
@@ -78,21 +82,25 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 **Read — no network, no writes**
 
 - `datasets list` — List the datasets of the registry: keys, providers, legacy aliases, variables and first year.
-- `datasets files` — List the source files of a dataset for given years or stations (offline, no download).
+- `datasets files` — List the source files of a dataset for given years or stations.
 - `datasets providers` — List the data providers: identifiers, countries, licenses, station code patterns, datasets.
-- `pmaxtp url` — Build the PMAXTP API URL of a point (offline, without downloading).
-- `pmaxtp check` — Check the PMAXTP cell in the store without downloading data. [is a check]
-- `pmaxtp read` — Read a saved PMAXTP cell from the store (offline).
-- `store info` — Show the state of an Obserwator store and the supported contracts (offline, without writing).
-- `store scan` — List the versions and problems of an Obserwator store (offline, without writing).
-- `store export` — Export the records of one archive version as CSV or JSONL (offline, SHA-256 verified). [`output`: write; `force`: overwrite]
-- `series select` — Select stations, variables and years of the current series (without writing).
-- `series read` — Read the values and flags of one station's series from the store.
-- `series summary` — Show the coverage of stations and variables of a series from series.json (without pyarrow).
-- `series export` — Export the series of one station as CSV with the attribution of the data provider. [`output`: write; `force`: overwrite]
+- `stations export` — Export the stations of the current catalogs as GeoJSON or CSV. [`output`: write; `force`: overwrite]
+- `pmaxtp url` — Build the PMAXTP API URL of a point.
+- `pmaxtp check` — Check the PMAXTP cell in the raw root without downloading data. [is a check]
+- `pmaxtp read` — Read a saved PMAXTP cell from the raw root.
+- `store info` — Show the state of a raw or data root and the supported contracts.
+- `store scan` — List the versions and problems of a raw or data root.
+- `store export` — Export the records of one archive version as CSV or JSONL. [`output`: write; `force`: overwrite]
+- `series select` — Select stations, variables and years of the current series.
+- `series read` — Read the values and flags of one station's series from the data root.
+- `series summary` — Show the coverage of stations and variables of a series from series.json.
+- `series export` — Export one station's series as CSV, JSON or Parquet with the provider's attribution. [`output`: write; `force`: overwrite]
+- `analyses list` — List the stored analyses of a station.
+- `analyses read` — Read one stored analysis of a station.
+- `analyses export` — Export the stored analyses of a station as JSON or CSV. [`output`: write; `force`: overwrite]
 - `commands list` — List the catalog commands: tool names, effects and routes.
 - `commands schema` — Describe a command or the whole catalog as obserwator-commands/1.
-- `commands guide` — Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or English. [`output`: write; `force`: overwrite]
+- `commands guide` — Generate AGENTS.md or llms.txt for AI agents, in Polish or English. [`output`: write; `force`: overwrite]
 
 **Network — connects to a source, writes nothing**
 
@@ -102,28 +110,25 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `current synop` — Fetch current synoptic data from the IMGW API.
 - `current warnings` — Fetch the current IMGW hydrological and meteorological warnings.
 - `current hydro-states` — Fetch the water states of hydrological stations with coordinates (hydro.imgw.pl map).
-- `pmaxtp fetch` — Fetch the PMAXTP maximum precipitation of a point (live, without saving).
+- `pmaxtp fetch` — Fetch the PMAXTP maximum precipitation of a point.
 - `store check` — Check the freshness of the dataset archives without downloading data. [`plan`: overwrite; is a check]
 
 **Write — new files, versions or tasks; `--check` first**
 
-- `datasets download` — Download the source files of a dataset as plain files (--output-dir) or into the store (--root). [`output_dir`: write; `force`: overwrite; local]
-- `pmaxtp sync` — Download the PMAXTP cell of a point as a store version or, with --output-dir, as plain files. [`output_dir`: write; `force`: overwrite]
-- `store init` — Create an empty Obserwator store (obserwator-store.json marker) in the given directory. [local]
-- `store sync` — Download new or missing archives into the store, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
-- `store catalog` — Build the versioned station catalog stations.geojson of one provider.
-- `series build` — Build the Parquet series of a dataset from the current archive versions of the store.
-
-**Overwrite — may replace an existing file or manifest; `--check` first**
-
-
+- `datasets download` — Download the source files of a dataset as plain files (--output-dir) or into the raw root (--root). [`output_dir`: write; `force`: overwrite; local]
+- `pmaxtp sync` — Download the PMAXTP cell of a point into the raw root or, with --output-dir, as plain files. [`output_dir`: write; `force`: overwrite]
+- `store init` — Create a raw root or, with --kind data, a data root. [local]
+- `store sync` — Download new or missing archives into the raw root, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
+- `store catalog` — Build the station catalog stations.geojson of one provider.
+- `series build` — Build the Parquet series of a dataset from the current archives of the raw root.
+- `analyses build` — Compute and store the analyses of every station with Hydrolog.
 
 ## Flags and values
 
-- Lists (`--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
+- Lists (`--analyses`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
-- Output of the CLI: `--json` (every command) prints the envelope as one JSON line on stdout — parse only that; without it stdout carries a short summary for a person in the language of `--lang` (`pl`, `en`). The data lines of `store export`, `series export` and `commands guide` without `--output` are the same in both modes.
-- Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
+- CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
+- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else `<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default `--raw-root` and `--root` of `datasets download`, `pmaxtp check|sync|read`, `store init|check|sync|export`, else `<data_dir>/obserwator-raw` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
 
 ## Typical flows
 
@@ -133,17 +138,19 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 
 1. `obserwator stations find --kind meteo --query poznan --json` — several hits → ask the user; the code of the chosen station is `STATION_CODE`.
 2. Choose the dataset: `pl.imgw.meteo_precip_daily` (precipitation stations, `P`) or `pl.imgw.meteo_climate_daily` (climate stations, `P` and temperatures) — the station list does not tell the network of a station.
-3. `obserwator store check --root /data/obserwator --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — plan: the number of files and bytes; the archives cover the whole country, so tell the user the size.
-4. `obserwator store sync --root /data/obserwator --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — after the user agrees; the station series are built as well.
-5. `obserwator series summary --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --stations STATION_CODE --json` — the station is missing → repeat steps 3–5 with `pl.imgw.meteo_climate_daily`; missing from both → tell the user, do not substitute another station.
-6. `obserwator series read --root /data/obserwator --dataset pl.imgw.meteo_precip_daily --station STATION_CODE --variables P --start 2010-01-01 --end 2020-12-31 --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
+3. `obserwator store check --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — plan: the number of files and bytes; the archives cover the whole country, so tell the user the size.
+4. `obserwator store sync --datasets pl.imgw.meteo_precip_daily --years 2010-2020 --json` — after the user agrees.
+5. `obserwator series build --dataset pl.imgw.meteo_precip_daily --json` — the station series in the data root.
+6. `obserwator series summary --dataset pl.imgw.meteo_precip_daily --stations STATION_CODE --json` — the station is missing → repeat steps 3–6 with `pl.imgw.meteo_climate_daily`; missing from both → tell the user, do not substitute another station.
+7. `obserwator series read --dataset pl.imgw.meteo_precip_daily --station STATION_CODE --variables P --start 2010-01-01 --end 2020-12-31 --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
 ### 2. Daily discharge of a Czech station (ČHMÚ)
 
 1. `obserwator stations find --kind hydro --query spindleruv --provider CHMI --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
-2. `obserwator store check --root /data/obserwator --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
-3. `obserwator store sync --root /data/obserwator --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
-4. `obserwator series read --root /data/obserwator --dataset cz.chmi.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
+2. `obserwator store check --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
+3. `obserwator store sync --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
+4. `obserwator series build --dataset cz.chmi.hydro_daily --json` — the station series in the data root.
+5. `obserwator series read --dataset cz.chmi.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
 ## What not to do
 
@@ -151,11 +158,11 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
-5. Do not edit, move or delete store files (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — the store only grows.
-6. Do not download "just in case": narrow `years`, `months` and `stations`; do not mix providers in one call with `stations`.
+5. Do not edit, move or delete files of a store — it only grows.
+6. Do not download "just in case": narrow `years`, `months` and `stations`.
 7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.
 9. Show the `attribution` and `terms_notice` lines verbatim with the data and in what you make of it (the `license_terms` notice too).
-10. Point `version` only below `*/versions/` of the store, without `..`; over REST and MCP over HTTP — relative to the server's store.
+10. Point `version` only below `*/versions/` of a root, without `..`; over REST and MCP over HTTP — relative to the server's root.
 
 Developing this repository? Read CLAUDE.md.

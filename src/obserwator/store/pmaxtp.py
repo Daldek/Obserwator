@@ -42,7 +42,6 @@ from obserwator.store.catalog import (
     LICENSE_NOTICE,
     RootArg,
     _cancelled,
-    _handle,
     _http,
     _newest_downloaded,
     _publish_version,
@@ -65,6 +64,7 @@ from obserwator.store.writer import (
     _existing,
     _utc,
     _validate_slot,
+    lenient_store,
     prepare_store,
     root_conflict_plan,
     version_file,
@@ -432,8 +432,8 @@ def check_pmaxtp(
     Parameters
     ----------
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root directory or an open store handle; None (with no
-        ``output_dir``) is the store at the default root.
+        Raw root (ADR-017) or an open handle of one; None (with no
+        ``output_dir``) is the default raw root.
     output_dir : str, os.PathLike or None, optional
         Plain mode: directory the files would be written to. Excludes
         ``root``. The plan lists ``cell.json`` and ``response.json`` of the
@@ -497,10 +497,10 @@ def check_pmaxtp(
     method = _validate_method(method)
     _validate_poland_coords(latitude, longitude)
     cell = _validate_cell(ind_x, ind_y)
-    refused = root_conflict_plan("pmaxtp sync", target.path)
+    refused = root_conflict_plan("pmaxtp sync", target.path, kind="raw")
     if refused is not None:
         return refused
-    handle = _handle(target.path)
+    handle = lenient_store(target.path, kind="raw")
     now = datetime.now(UTC)
     if _cancelled(cancel):
         action = PlanAction("pmaxtp sync", "unverifiable", message("common.cancelled"))
@@ -572,8 +572,8 @@ def sync_pmaxtp(
     Parameters
     ----------
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root directory or an open store handle; None (with no
-        ``output_dir``) is the store at the default root.
+        Raw root (ADR-017) or an open handle of one; None (with no
+        ``output_dir``) is the default raw root.
     output_dir : str, os.PathLike or None, optional
         Plain mode: write ``<METHOD>/<indX>_<indY>/cell.json`` and the raw
         ``response.json`` as ordinary files below this directory instead of a
@@ -649,7 +649,7 @@ def sync_pmaxtp(
             on_notice=on_notice,
             cancel=cancel,
         )
-    handle = prepare_store(target.path)
+    handle = prepare_store(target.path, kind="raw")
     if _cancelled(cancel):
         return PMaXTPStoreResult("cancelled", None, ind_x, ind_y, None)
     response, document, cell = _fetch_cell(latitude, longitude, method, expected)
@@ -766,7 +766,7 @@ def read_pmaxtp(
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Raw root (ADR-017) or an open handle of one.
     ind_x : int
         Grid cell X index.
     ind_y : int
@@ -788,9 +788,10 @@ def read_pmaxtp(
         If the method or indices are invalid, ``version`` does not belong to
         the cell, or the root path contains ``..``.
     ObserwatorStoreError
-        If the root is not a supported store, no version of the cell (or the
-        given version) is stored (code ``not_found``), or a path contains a
-        symbolic link.
+        If the root is not a supported raw root (code ``store_unavailable``;
+        ``details.reason`` ``wrong_root`` for a data root), no version of the
+        cell (or the given version) is stored (code ``not_found``), or a path
+        contains a symbolic link.
     ObserwatorStoreConflictError
         If a stored version of the cell is corrupted.
     ObserwatorDataError
@@ -798,7 +799,7 @@ def read_pmaxtp(
         path; with code ``io_error`` (``details.path``) if the system cannot
         read a version of the cell.
     """
-    handle = _handle(root)
+    handle = lenient_store(root, kind="raw")
     method = _validate_method(method)
     cell = (_validate_index("ind_x", ind_x), _validate_index("ind_y", ind_y))
     slot = _validate_slot(handle.root, _slot(method, *cell))

@@ -69,8 +69,10 @@ catalog, effect metadata of the commands and an MCP server (ADR-004). Later work
 repository in line with the Nogat standard 1.0 (then the draft 2.1): the user environment
 (ADR-005), the message catalog and English machine output (ADR-006), data output in plain mode
 and in the store with a default root (ADR-007), and projects moved to Archiwista (ADR-008). The
-registry has 17 datasets of two providers, and the catalog 30 commands. Decisions:
-`docs/DECISIONS.md`; contracts:
+downloads write raw data only, into a raw root, and the series, catalogs and analyses built from
+them live in a data root of their own (ADR-015, ADR-017). The stations' analyses are computed by
+Hydrolog and stored as its answers (ADR-016). The registry has 21 datasets of two providers, and
+the catalog 35 commands. Decisions: `docs/DECISIONS.md`; contracts:
 `docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
 §13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
 `2026-10-19-agent-support-design.md` (agents). The release has no aliases or shims of old names.
@@ -130,8 +132,9 @@ Migration:
   Kartograf finds the marker by its name for its nested-store check.
 - A store, plan, sidecar or envelope written by a development build before the rename (marker
   `imgw-store.json`, ids `imgw-*/1`) is neither read nor converted, as no release wrote one:
-  download the data again into a new store (`obserwator store sync`, default root
-  `<data_dir>/obserwator`).
+  download the data again into new roots (`obserwator store sync` into the raw root, default
+  `<data_dir>/obserwator-raw`, then `series build` and `store catalog` into the data root, default
+  `<data_dir>/obserwator`; ADR-017).
 
 #### Result, error and catalog documents follow the Nogat standard 1.0 (ADR-010)
 
@@ -275,6 +278,58 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
 
 ### Added
 
+- **Harmonized exports (ADR-014, Obserwator GUI plan S0, Nogat plan O3):** `export_stations` and
+  the command `stations export` (`GET /api/v1/stations/export`, MCP `obserwator_stations_export`)
+  export the stations of the current catalogs of the chosen providers as GeoJSON
+  (`obserwator-stations-export/1`, an RFC 7946 FeatureCollection with the members `schema`,
+  `catalogs`, `series`, `attribution`, `terms_notice`; each feature with the catalog's properties,
+  `provider` and the current series that hold the station) or as CSV (one row per station,
+  `latitude`, `longitude`, `datasets` and the attribution columns of `series export`);
+  `--kind`, `--provider`, `--no-series`. `series export` gains `--format json`
+  (`obserwator-series-export/1`, columnar, with the series version, units, definitions, licence
+  and lines) and `--format parquet` (the CSV's columns typed, the same fields as file metadata;
+  it needs `--output`, REST answers it as an attachment `application/vnd.apache.parquet`); the
+  CSV stays byte for byte (`tests/fixtures/export_golden/series_export_*.csv`). JSON Schemas of
+  both documents in `schemas/`. IMGW-PIB variables carry the definitions of IMGW-PIB's format
+  descriptions (`variable_notes`), also in the metadata of newly built IMGW-PIB series.
+  MCP over HTTP answers a JSON or GeoJSON export as a stream (no longer taken for an envelope).
+- **Stored analyses computed by Hydrolog (ADR-016, Nogat ECO-059, plan 2026-11-12 step O2):**
+  every number of an analysis is Hydrolog's; Obserwator exports the series, runs Hydrolog's
+  catalog calls and keeps each answer line byte for byte with its provenance.
+  - Registry `analysis_definitions(kind=None)` of 87 analyses (59 hydrological, among them the
+    water-level analyses `low_flow_sequences.H`, `seasonality.H.max` and `seasonality.H.min`, and
+    28 meteorological; types `AnalysisDefinition`, `AnalysisVariant`, `AnalysisInput`,
+    `AnalysisPick`, `AnalysisOption`): one call of a Hydrolog command (23 commands) over the
+    whole record of a station, with its series files, the numbers it takes from another
+    analysis's result (a next round of calls), its overridable options and `locked`.
+  - `build_analyses(root=None, /, *, stations=None, workers=1, ...)` and `check_analyses`: the
+    series export into a scratch directory outside the root, `hydrolog commands batch` in a
+    separate process (up to 16 stations per process and round, `workers` processes at a time),
+    one version per provider `analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/`
+    (`analyses.json` `obserwator-analyses/1`, `stations/<code>.json`
+    `obserwator-station-analyses/1`, `stations/<code>/<id>.json` Hydrolog's line, the sidecar
+    published last); a station with the same station Parquet SHA-256s, catalog thresholds,
+    Hydrolog version and registry digest is carried forward by hard links without a call, a
+    provider without changes is `unchanged`; an analysis Hydrolog refuses is stored as `failed`
+    with its `hydrolog-error/1` document (`AnalysesReport`, `ProviderAnalyses`).
+  - Readers `list_analyses`, `read_analysis` (`AnalysisSummary`, `AnalysisResult`,
+    `AnalysisSource`) and `export_analyses` (`json`: `obserwator-analyses-export/1`; `csv`: one
+    row per value with its JSON Pointer and the attribution columns).
+  - `compute_analysis(root=None, /, *, station, analysis, options=None, timeout=30.0, cancel=None)`:
+    one analysis with a person's overridable options, computed on the fly and never stored
+    (Python only, for the GUI server; Obserwator's GUI plan D8).
+  - Catalog commands `analyses build|list|read|export` (CLI, REST `/api/v1/analyses/*`, MCP
+    `obserwator_analyses_*`): the catalog has 35 commands, REST 33 routes.
+  - Setting `hydrolog_command` (`OBSERWATOR_HYDROLOG_COMMAND`, `[obserwator] hydrolog_command`):
+    Hydrolog's program, else `hydrolog` on `PATH`; no command option chooses it. Without it
+    `missing_dependency` (`details.reason="hydrolog_missing"`); a failing or slow program
+    `source_unavailable` (`hydrolog_failed`, `timeout`).
+
+  Additive: new documents and a new directory; no existing contract changes. The analyses live in
+  the data root (`obserwator-data/1`, ADR-017, under "Changed"), where `store scan --kind
+  analyses`, `iter_store` and `current_version` find them. Hydrolog's development builds all
+  report `1.0.0.dev0`, so a Hydrolog change within one development version does not trigger a
+  recomputation. Pinned and recorded against Hydrolog develop `14e8f06` (ADR-0033 names).
 - **`command_for_version(version, *, root=None)` (ADR-008, Nogat ECO-054, plan 2026-10-31 step 3):**
   the data command that fetches a stored version again, rebuilt offline and read-only from its
   sidecar (`obserwator-meta/1`) and the store layout, as the `CommandCall` that `parse_command` reads
@@ -322,7 +377,7 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
 - **Example calls in the catalog (AGI-2.2):** every command of `command_schema` has
   `examples` (Nogat `commands-1`), at least one `{call, result}`: a complete `obserwator` line
   with `--json` and an excerpt of the
-  `result` of its envelope (41 examples for the 30 commands, with `--check`, the ČHMÚ datasets
+  `result` of its envelope (50 examples for the 35 commands, with `--check`, the ČHMÚ datasets
   and plain `--output-dir` among them). Each call is the canonical line of `format_command`
   (AGI-2.1): `format_command` writes the call that `parse_command` reads from it as the same line,
   and `validate_command` accepts its options. A contract test holds this for every example (also
@@ -436,9 +491,10 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   `store_unavailable` (8/503), `io_error` (9/500), `cancelled` (130), `forbidden` (12/403),
   `unsupported` (15/422), `method_not_allowed` (405), `internal_error` (1/500). Every `ObserwatorError`
   has `code` and `details` (e.g. `option`, `allowed`, `reason`); new `ObserwatorCancelledError`.
-- **Command catalog** `obserwator.commands`: 30 commands in the groups `datasets`, `stations`,
-  `current`, `pmaxtp`, `store`, `series` and `commands` (27 of ADR-002, `datasets providers` of
-  ADR-003, `commands guide` of ADR-004 and `commands list` of AGI-5.9);
+- **Command catalog** `obserwator.commands`: 35 commands in the groups `datasets`, `stations`,
+  `current`, `pmaxtp`, `store`, `series`, `analyses` and `commands` (27 of ADR-002, `datasets
+  providers` of ADR-003, `commands guide` of ADR-004, `commands list` of AGI-5.9, `stations
+  export` of ADR-014 and the four `analyses` commands of ADR-016);
   `command_schema(command=None)` (the document `obserwator-commands/1`: per command a Nogat
   `commands-1` entry with the function, check twin, result type, options with CLI flags, REST
   route, rules, effects, errors and exit codes), `data_commands`, `validate_command`,
@@ -453,7 +509,7 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   registry, `--check` on the commands with a twin, `--schema` on every command, an optional
   `--root` (the default root, see Changed), lists comma-separated or as a repeated flag; Ctrl+C
   cancels between files (130).
-- **REST** generated from the catalog (`/api/v1/<group>/<command>`, 28 routes; `GET /api/v1`
+- **REST** generated from the catalog (`/api/v1/<group>/<command>`, 33 routes; `GET /api/v1`
   lists the routes): the same envelope as the CLI, `application/problem+json`, `?check=true` on
   `POST`, `limit` by default and at most `OBSERWATOR_API_MAX_LIMIT` (1000). The store commands work only
   on the server's absolute `OBSERWATOR_ROOT` (503 without it); a write needs
@@ -757,12 +813,100 @@ release have the same bytes as without the ČHMÚ provider.
 
 ### Changed
 
+- **Breaking — the data root: downloads write a raw root, and the series, catalogs and analyses
+  built from it a data root of their own (ADR-017, Nogat ECO-059, plan 2026-11-12 D2, D3 and
+  step O1):**
+  - Two roots, two markers. The raw root keeps `obserwator-store.json` (`obserwator-store/1`,
+    unchanged), `archives/` and `pmaxtp/`; the data root has the new marker `obserwator-data.json`
+    (`obserwator-data/1`, the same fields) and `series/`, `stations/` and `analyses/`. Downloads
+    and the readers of archives and cells (`datasets download`, `store check|sync|export`,
+    `pmaxtp check|sync|read`, `write_archive`, `read_station_list`, `read_archive`) use the raw
+    root; `series build|select|read|summary|export`, `store catalog`, `stations export`, `stations
+    find --source store` and `analyses build|list|read|export` the data root; `store info|scan`
+    either (default: the data root). New: `RootKind`, `StoreHandle.kind`, `output.DATA_MARKER`;
+    `output.STORE_MARKERS` lists the three marker names (no root nests in another), a directory
+    with both Obserwator markers is refused (`conflict`, `nested_store`; problem code
+    `conflicting_markers` in `store_info` and `iter_store`), and `StoreInfo.contracts` gains the
+    keys `data` and `analyses`.
+  - `OBSERWATOR_ROOT` (`root`, `[obserwator] root`, default `<data_dir>/obserwator`) names the
+    data root; the new `OBSERWATOR_RAW_ROOT` (`raw_root`, `[obserwator] raw_root`, default
+    `<data_dir>/obserwator-raw`) names the raw root. A command without `--root` takes the default
+    of its kind; `store_root(*, kind="data")`; `config show --json` reports `raw_store` beside
+    `store` (the text has a "Data root" and a "Raw root" line). REST inserts `root` from the
+    setting of the command's kind and the `raw_root` of `series build` and `store catalog` from
+    `OBSERWATOR_RAW_ROOT` (503 `store_unavailable`, `not_configured`, naming the missing
+    variable); `obserwator mcp` fills both defaults and confines both to `--allow-dir`.
+  - `build_series`, `check_series`, `build_catalog` and `check_catalog` take the keyword-only,
+    required `raw_root` (`--raw-root` of `series build` and `store catalog`, by default the raw
+    root): they read the archives and station sources there, read-only, and write only the data
+    root. `store init --kind raw|data` (`init_store(root, /, *, kind="raw", created_at=None)`).
+  - A root of the other kind is `store_unavailable` with `details.reason="wrong_root"` and
+    `details.kind`; so is a store not yet split used as a data root, and scanned as a raw root its
+    `series/`, `stations/` and `analyses/` are `unknown_entry` problems.
+  - `stations find --source store` reads the current catalogs of the data root instead of the raw
+    station lists (`short_code` None; without any catalog `not_found` with the `store catalog`
+    hint).
+  - The analyses are entries and slots of the data root: `store scan --kind analyses`,
+    `iter_store`, `current_version(root, slot="analyses:pl.imgw.analyses")`
+    (`analyses:cz.chmi.analyses`); a broken current analyses version is the `data_error` of
+    `current_version`.
+  - `command_for_version(version, *, root=None, raw_root=None)`: the tree of the version gives the
+    kind of its root; series → `series build --root <data> --raw-root <raw> --dataset <key>`,
+    catalogs → `store catalog --root <data> --raw-root <raw> --provider <id>`, analyses →
+    `analyses build --root <data>`; an absolute version without `root` lies in its nearest
+    ancestor with a marker.
+  - The sidecar of a series or catalog names its sources relative to the raw root and the series a
+    catalog read relative to the data root; `SeriesReport.source_files` and the `check_series`
+    items name files of the raw root; the plan of `check_store` has an empty `series_state`.
+  - `obserwator.testing.build_fixture_store(root, *, data_root, variant="complete")` builds the
+    raw root at `root` and the data root at `data_root` and returns `FixtureRoots(raw, data)`.
+  - Polish texts call the raw root „katalog surowy” and the data root „katalog danych”.
+
+  Migration: point the downloads at the raw root and the rest at the data root
+  (`OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, or `raw_root` and `root` in `[obserwator]` of
+  `nogat.toml`; a REST server needs both); pass `raw_root=` to the four builders and `--raw-root`
+  where the raw root is not the default; take the stations of the store from the catalogs
+  (`store catalog` first); call `build_fixture_store(raw, data_root=data)` and use `.raw` and
+  `.data` of its result. Split an existing store once, as `docs/USAGE.md` "Splitting a store"
+  shows: move a store at `<data_dir>/obserwator` aside, then `mkdir RAW DATA`, `cp -al
+  OLD/archives OLD/pmaxtp RAW/` and `cp -al OLD/series OLD/stations OLD/analyses DATA/` (the trees
+  it has; in Python `shutil.copytree(src, dst, copy_function=os.link)`), `obserwator store init
+  --root RAW` and `obserwator store init --kind data --root DATA`; `obserwator store scan --root
+  RAW --kind problem` and the same of `DATA` list nothing. Archiwista and Retman follow in the
+  Nogat plan's step R2.
+- **Breaking — `store sync` writes raw data only; the station sources are archived and the
+  catalogs are built offline (ADR-015, Nogat ECO-059, plan 2026-11-12 step R1):**
+  - `sync_store`/`store sync` lose `series` (`--series/--no-series`); `SyncReport` has no `series`
+    and is `obserwator-sync-report/2` (`items`, `cancelled`, `files`, archive versions only). Build
+    the series with `build_series`/`series build` after a sync. Migration: drop `series=…`, read
+    `report.items`/`report.files`, call `series build --dataset <key>` for each synced dataset.
+  - Four new store datasets, the station metadata of the catalogs: `pl.imgw.hydro_now`,
+    `pl.imgw.meteo_now` (IMGW-PIB's current-data API `api/data/hydro|meteo`;
+    `DatasetDescriptor.base_url`) and `cz.chmi.hydro_now`, `cz.chmi.meteo_now` (ČHMÚ
+    `now/metadata`); the registry has 21 datasets. `store check` and `store sync --datasets` take
+    the eight station sources (lists and metadata) in a call of their own (no `years`, `months`,
+    `stations`; store only): lists by HEAD, the `now` metadata without a signal always downloaded
+    and compared by bytes or canonical content, the ČHMÚ meteo file by its listing.
+  - Operational data are never archived (the author's decision of 2026-11-13, Nogat DEV-20.8):
+    of an IMGW-PIB current-data answer the store keeps a derived JSON list of each station's code,
+    name, river and coordinates (`DatasetDescriptor.kept_fields`, sidecar `extra.kept_fields`),
+    never the measurements, their times or the warning and alarm levels; the sync lines are S and P
+    for these files.
+  - `build_catalog`/`check_catalog` (`store catalog`) make no request: they read the stored station
+    sources, and a missing one is `not_found` (`details.reason="missing_source"`,
+    `details.datasets`, a hint with the `store sync --datasets` line); `check_catalog` returns no
+    items and one action per source (`current`, `newer`, `missing`); `store catalog` is no longer a
+    network command. Migration: run `store sync --datasets` of the provider's four station sources
+    before `store catalog`.
+  - `command_for_version` of a station list or station metadata gives `store sync --datasets
+    <key>`; `read_archive` of a `now` version is a `validation_error`. The fixture stores hold the
+    station sources; the contract schemas accept every major version of a result document.
 - **Breaking — projects move to Archiwista (ADR-008, Nogat ECO-054, ECO-020):** Obserwator keeps no
   projects any more; Archiwista owns them (`archiwista-project/1`) and pins store versions by the
   `sha256` and `content_sha256` that the store already records. Removed without aliases: the
   catalog group `project` and its eight commands `project init`, `project add`, `project remove`,
   `project set-store`, `project download`, `project check`, `project status` and `project verify`
-  (CLI, REST, MCP; the catalog has 30 commands and 41 example calls); the functions
+  (CLI, REST, MCP; the catalog then had 30 commands and 41 example calls); the functions
   `init_project`, `open_project`, `add_project_task`, `remove_project_task`, `set_project_store`,
   `download_project`, `check_project`, `get_project_status`, `verify_project` and the module
   `imgwtools.project`; the types `Project`, `ProjectFile`, `ProjectTask` and `ProjectReport`; the
@@ -1039,8 +1183,9 @@ release have the same bytes as without the ČHMÚ provider.
   message guard. Migration: REST clients that relied on the Polish default send
   `Accept-Language: pl`.
 - By default the server still only generates URLs to IMGW; data reach the disk only on the user's
-  command (`--output-dir`, `--output`, `--root`, `OBSERWATOR_ROOT` or the default store
-  `<data_dir>/obserwator`) or in the `OBSERWATOR_ROOT` configured on the server.
+  command (`--output-dir`, `--output`, `--root`, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT` or the
+  default roots `<data_dir>/obserwator-raw` and `<data_dir>/obserwator`) or in the roots
+  `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT` configured on the server.
 - The archive URLs (library, CLI, REST, web) come only from the registry `archive_files`, without
   a hard-coded upper bound of the year.
 - The hydro station list keeps `river_order` (the fourth column of the CSV) and
@@ -1245,24 +1390,26 @@ the unreleased 3.0.0, so no earlier release has to keep working and no alias exi
 **The three targets (DEV-19.1, DEV-19.2).** `output_dir` (`--output-dir`, `-o`) writes plain files,
 `root` (`--root`, `-r`) writes the versioned store, `output` (`--output`, no short form) writes the one
 file of an export; `--force` replaces existing plain files. `output_dir` and `root` exclude each other
-(`validation_error`, `exclusive_options`). A writing command given neither writes the store at the first
-of `--root`, `OBSERWATOR_ROOT`, `[obserwator] root` of `nogat.toml` and `<data_dir>/obserwator` (`obserwator config show --json`
-names it and its source), never into the working directory. A REST server writes only to its own
+(`validation_error`, `exclusive_options`). A writing command given neither writes the root of its kind
+(ADR-017): a download the raw root at the first of `--root`, `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` of
+`nogat.toml` and `<data_dir>/obserwator-raw`, a build the data root at the first of `--root`, `OBSERWATOR_ROOT`,
+`[obserwator] root` and `<data_dir>/obserwator` (`obserwator config show --json` names both and their sources),
+never the working directory. A REST server writes only to its own `OBSERWATOR_RAW_ROOT` and
 `OBSERWATOR_ROOT`, with writes enabled and the token, and takes no `root`, `output_dir`, `output` or `force` in
 a request; `obserwator mcp` writes only inside its `--allow-dir` directories and with `--allow-writes`.
 
 | Old | New |
 |---|---|
-| `IMGW_STORE_ROOT`, `Settings.store_root` | `OBSERWATOR_ROOT`, `Settings.root`; `root` is optional in every store command (default store) |
+| `IMGW_STORE_ROOT`, `Settings.store_root` | `OBSERWATOR_ROOT`, `Settings.root` (the data root since ADR-017; the raw root is `OBSERWATOR_RAW_ROOT`, `Settings.raw_root`); `root` is optional in every store command (the default root of its kind) |
 | `IMGW_DATA_DIR` as the directory of the reference data | `OBSERWATOR_REFERENCE_DIR` (`OBSERWATOR_DATA_DIR` is the user data directory) |
-| `download_archives(output=DIR)`, `datasets download --output/-o DIR` (default `./data/downloaded`) | `output_dir=DIR`, `--output-dir/-o DIR` for plain files; `root=`, `--root` for versions in the store; neither: the default store |
+| `download_archives(output=DIR)`, `datasets download --output/-o DIR` (default `./data/downloaded`) | `output_dir=DIR`, `--output-dir/-o DIR` for plain files; `root=`, `--root` for versions in the raw root; neither: the default raw root |
 | `DownloadReport.output` | `DownloadReport.mode` (`plain`/`store`), `.output_dir` or `.root`, `.files` |
 | `export_archive`, `export_series`, `agent_guide` with `path=F`; `--path F`, `-p F` | `output=F` (`force=True` over an existing file); `--output F` (`--force`) |
 | their `Path` result; envelope `result` `"<path>"` | `OutputReport` (`.output`, `.files`); `{"output": …, "files": […]}` |
 | status `created`; series status `reused` | `new`; `unchanged` |
 | `.part` files beside the targets | staging directory `<dir>/.obserwator-incoming/<host>_<pid>_<token>/`, removed after every run (success, error, SIGINT, SIGTERM) |
 | `imgw-store.json` with `schema`, `created_by` | `obserwator-store.json`, also with `tool` (`obserwator`), `created_at`, `producer_version`, always; the first write creates it, `obserwator store init` only verifies the layout |
-| nested stores found by `kartograf-project.json` and `kartograf-meta/1` sidecars | by the marker names `kartograf-store.json` and `obserwator-store.json` only |
+| nested stores found by `kartograf-project.json` and `kartograf-meta/1` sidecars | by the marker names `kartograf-store.json`, `obserwator-store.json` and `obserwator-data.json` only |
 | `imgw mcp --allow-writes` alone | needs `--allow-dir DIR` (repeatable) for any write and for any `output`, `output_dir` or `plan` file |
 
 **Results (DEV-19.19).** Every writing command lists `files[]` = `{path, size_bytes, sha256, status}`

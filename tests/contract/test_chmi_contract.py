@@ -1,14 +1,16 @@
 """Contract of the ČHMÚ provider: IMGW-15..IMGW-19 on complete_pl_cz and recordings.
 
 Spec 2026-10-18 §14 and §16 (C09). Every row of the acceptance table is a test
-whose name carries the row: the ``complete_pl_cz`` store of
+whose name carries the row: the ``complete_pl_cz`` roots of
 ``obserwator.testing`` (built at the frozen clock of the contract suite) and the
 recorded ČHMÚ answers of ``chmi_recordings.json``,
-``chmi_catalog_recordings.json`` and ``chmi_builder_recordings.json``. The ČHMÚ
-commands answer alike in Python, ``obserwator``, REST and MCP at a frozen clock
-(IMGW-19 k1): canonical envelopes, the same requests to the recordings, the
-same SHA-256 of every written file and the same plan of every write. No request
-leaves the recordings.
+``chmi_catalog_recordings.json`` and ``chmi_builder_recordings.json``. Archives,
+observations and station sources lie in the raw root; series and catalogs in
+the data root built from it (ADR-017), so every check runs on the root of its
+kind. The ČHMÚ commands answer alike in Python, ``obserwator``, REST and MCP at
+a frozen clock (IMGW-19 k1): canonical envelopes, the same requests to the
+recordings, the same SHA-256 of every written file and the same plan of every
+write. No request leaves the recordings.
 """
 
 import csv
@@ -63,17 +65,19 @@ from tests.contract.support import (
     schema_errors,
     slots,
     snapshot,
-    stamps,
     unversioned,
 )
 from tests.contract.test_interface_contract import (
     ROUTES,
+    Roots,
     answer,
     assert_alike,
     line_of,
     relative_reference_dir,  # noqa: F401 (fixture)
     rooted,
+    stamps_of,
 )
+from tests.contract.test_interface_contract import serve as serve_roots
 
 HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
 # Fictional stations of the fixtures (spec 2026-10-18 §13.2).
@@ -87,16 +91,24 @@ SLOT_2023 = f"archive:{HYDRO}:H_{S1}_DQ_2023.json"
 SLOT_2024 = f"archive:{HYDRO}:H_{S1}_DQ_2024.json"
 DAILY_DIR = "archives/versions/hydrology/historical/data/daily"
 LIST_DIR = "archives/versions/hydrology/historical/metadata/meta1"
-# ČHMÚ catalog sources: lists by HEAD (stored, current), then the live metadata.
-CATALOG_HEADS = (
+# ČHMÚ station sources (``time_unit="station_list"``) the offline catalog reads.
+CHMI_SOURCES = (
+    "cz.chmi.hydro_stations",
+    "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
+)
+# Their recorded answers: lists by HEAD and GET, the current metadata by GET.
+CATALOG_GETS = (
     "hydro_stations_head",
     "meteo_stations_head",
     "hydro_now_get",
     "hydro_meta3_get",
     "meteo_now_listing",
     "meteo_now_get",
+    "hydro_stations_get",
+    "meteo_stations_get",
 )
-CATALOG_GETS = (*CATALOG_HEADS, "hydro_stations_get", "meteo_stations_get")
 FIRST_900001 = (
     "hydro_listing",
     "h900001_2023_head",
@@ -185,11 +197,11 @@ def chmi(imgw) -> FakeChmi:
 
 
 # --------------------------------------------------------------------------
-# Stores at the frozen clock
+# Roots at the frozen clock
 # --------------------------------------------------------------------------
 
 
-def _frozen_build(path: Path, variant: str) -> Path:
+def _frozen_build(path: Path, variant: str) -> Roots:
     """``build_fixture_store`` at the frozen clock of the suite (reproducible bytes)."""
 
     class Frozen(datetime):
@@ -200,24 +212,32 @@ def _frozen_build(path: Path, variant: str) -> Path:
     with pytest.MonkeyPatch.context() as patch:
         for name in _CLOCKED:
             patch.setattr(importlib.import_module(name), "datetime", Frozen)
-        return build_fixture_store(path, variant=variant).root  # type: ignore[arg-type]
+        built = build_fixture_store(
+            path / "raw",
+            data_root=path / "data",
+            variant=variant,  # type: ignore[arg-type]
+        )
+    return Roots(data=built.data.root, raw=built.raw.root)
 
 
 @pytest.fixture(scope="module")
-def pl_cz(tmp_path_factory) -> Path:
+def pl_cz(tmp_path_factory) -> Roots:
     """``complete_pl_cz``, read-only: tests that write take a copy."""
-    return _frozen_build(tmp_path_factory.mktemp("pl_cz") / "store", "complete_pl_cz")
+    return _frozen_build(tmp_path_factory.mktemp("pl_cz"), "complete_pl_cz")
 
 
 @pytest.fixture(scope="module")
-def complete(tmp_path_factory) -> Path:
+def complete(tmp_path_factory) -> Roots:
     """``complete`` (IMGW-PIB only) at the same frozen clock."""
-    return _frozen_build(tmp_path_factory.mktemp("complete") / "store", "complete")
+    return _frozen_build(tmp_path_factory.mktemp("complete"), "complete")
 
 
-def copy_of(store: Path, target: Path) -> Path:
-    shutil.copytree(store, target)
-    return target
+def copy_of(roots: Roots, target: Path) -> Roots:
+    """A writable copy of both roots below ``target``."""
+    copy = Roots(data=target / "data", raw=target / "raw")
+    shutil.copytree(roots.raw, copy.raw)
+    shutil.copytree(roots.data, copy.data)
+    return copy
 
 
 def relative(root: Path, path: Path | None) -> str | None:
@@ -230,10 +250,19 @@ def version_of(root: Path, slot: str) -> Path:
     return entry.version
 
 
-def sidecars(root: Path) -> dict[Path, dict[str, Any]]:
-    """Sidecars of the ČHMÚ versions of a store."""
-    found = {path: load(path) for path in sorted(root.rglob("*.meta.json"))}
+def sidecars(roots: Roots) -> dict[Path, dict[str, Any]]:
+    """Sidecars of the ČHMÚ versions of both roots."""
+    found = {
+        path: load(path)
+        for root in (roots.raw, roots.data)
+        for path in sorted(root.rglob("*.meta.json"))
+    }
     return {path: meta for path, meta in found.items() if meta["provider"] == "CHMI"}
+
+
+def entries_of(roots: Roots, **options: Any) -> list[Any]:
+    """`iter_store` of the raw root, then of the data root."""
+    return [*iter_store(roots.raw, **options), *iter_store(roots.data, **options)]
 
 
 def statuses(items: Iterator[Any] | tuple[Any, ...]) -> list[str]:
@@ -249,49 +278,61 @@ def test_imgw_15_chmi_documents_meet_the_1_contracts_and_imgw_bytes_stay(
     pl_cz, complete, tmp_path, chmi, frozen
 ):
     assert (
-        schema_errors(load(pl_cz / "obserwator-store.json"), "obserwator-store/1") == []
+        schema_errors(load(pl_cz.raw / "obserwator-store.json"), "obserwator-store/1")
+        == []
     )
+    assert load(pl_cz.data / "obserwator-data.json")["schema"] == "obserwator-data/1"
+    assert not (pl_cz.raw / "obserwator-data.json").exists()
+    assert not (pl_cz.data / "obserwator-store.json").exists()
     contracts = {
         "series.json": "obserwator-series/1",
         "stations.geojson": "stations.geojson",
     }
     found = sidecars(pl_cz)
-    # 12 archives, 2 station lists, 3 series versions and the catalog.
-    assert len(found) == 18
+    # 12 archives, 2 station lists, 3 current-metadata files (hydro meta1 and
+    # meta3, meteo meta1-<date>), 3 series versions and the catalog.
+    assert len(found) == 21
     for sidecar, meta in found.items():
         assert schema_errors(meta, "obserwator-meta/1") == [], sidecar
         main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
         if main.name in contracts:
             assert schema_errors(load(main), contracts[main.name]) == [], main
-    (observation,) = pl_cz.glob(f"{DAILY_DIR}/*/observations/*.json")
+    (observation,) = pl_cz.raw.glob(f"{DAILY_DIR}/*/observations/*.json")
     assert schema_errors(load(observation), "obserwator-observation/1") == []
 
     chmi.serve("hydro_listing_reserialized")
     plan = check_store(
-        pl_cz, datasets=[HYDRO], stations=[S1], years=[2023], plan=tmp_path / "p.json"
+        pl_cz.raw,
+        datasets=[HYDRO],
+        stations=[S1],
+        years=[2023],
+        plan=tmp_path / "p.json",
     )
     assert plan.items[0].local_observation is not None
     assert schema_errors(load(tmp_path / "p.json"), "obserwator-plan/1") == []
 
-    # The IMGW-PIB part of the store is the ``complete`` store, byte for byte.
-    both, alone = snapshot(pl_cz), snapshot(complete)
-    assert {path: both[path] for path in alone} == alone
-    added = sorted(set(both) - set(alone))
-    assert added and all(
-        path.startswith(
-            (
-                "archives/versions/hydrology",
-                "archives/versions/meteorology",
-                "series/versions/chmi_",
-                "stations/versions/chmi_stations",
-            )
-        )
-        for path in added
-    )
+    # The IMGW-PIB part of each root is the ``complete`` root, byte for byte;
+    # ČHMÚ adds archives to the raw root, series and a catalog to the data root.
+    for root, alone_root, chmi_trees in (
+        (
+            pl_cz.raw,
+            complete.raw,
+            ("archives/versions/hydrology", "archives/versions/meteorology"),
+        ),
+        (
+            pl_cz.data,
+            complete.data,
+            ("series/versions/chmi_", "stations/versions/chmi_stations"),
+        ),
+    ):
+        both, alone = snapshot(root), snapshot(alone_root)
+        assert {path: both[path] for path in alone} == alone
+        added = sorted(set(both) - set(alone))
+        assert added and all(path.startswith(chmi_trees) for path in added)
 
 
 def test_imgw_15_k1_both_providers_scan_clean_with_a_provider_on_every_entry(pl_cz):
-    entries = list(iter_store(pl_cz))
+    entries = entries_of(pl_cz)
 
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
     assert {entry.provider for entry in entries} == {"IMGW-PIB", "CHMI"}
@@ -303,43 +344,55 @@ def test_imgw_15_k1_both_providers_scan_clean_with_a_provider_on_every_entry(pl_
         "catalog:pl.imgw.stations": "IMGW-PIB",
         "catalog:cz.chmi.stations": "CHMI",
     }
-    features = read_catalog(root=pl_cz)
+    features = read_catalog(root=pl_cz.data)
     pairs = [(feature.provider, feature.station_code) for feature in features]
     assert len(pairs) == len(set(pairs))
     assert {provider for provider, _ in pairs} == {"IMGW-PIB", "CHMI"}
     # Each provider's catalog is a separate entry with its own stations.
     assert {
-        feature.provider for feature in read_catalog(root=pl_cz, provider="CHMI")
+        feature.provider for feature in read_catalog(root=pl_cz.data, provider="CHMI")
     } == {"CHMI"}
 
 
-def _scan(root: Path, *, provider: str | None = None) -> list[tuple[object, ...]]:
+def _scan(roots: Roots, *, provider: str | None = None) -> list[tuple[object, ...]]:
+    """Entries of the raw root, then of the data root, relative to their root."""
     return [
         (entry.kind, entry.slot, entry.provider, relative(root, entry.version))
+        for root in (roots.raw, roots.data)
         for entry in iter_store(root, provider=provider)
     ]
 
 
 def test_imgw_15_k2_a_store_without_chmi_reads_as_before(complete, pl_cz):
-    assert {entry.provider for entry in iter_store(complete)} == {"IMGW-PIB"}
+    assert {entry.provider for entry in entries_of(complete)} == {"IMGW-PIB"}
     assert _scan(complete) == _scan(pl_cz, provider="IMGW-PIB")
-    assert store_info(complete).contracts == store_info(pl_cz).contracts
-    assert read_catalog(root=complete) == read_catalog(root=pl_cz, provider="IMGW-PIB")
-    assert {feature.provider for feature in read_catalog(root=complete)} == {"IMGW-PIB"}
+    for kind in ("raw", "data"):
+        assert (
+            store_info(getattr(complete, kind)).contracts
+            == store_info(getattr(pl_cz, kind)).contracts
+        )
+    assert read_catalog(root=complete.data) == read_catalog(
+        root=pl_cz.data, provider="IMGW-PIB"
+    )
+    assert {feature.provider for feature in read_catalog(root=complete.data)} == {
+        "IMGW-PIB"
+    }
 
 
 def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
-    assert [provider.id for provider in store_info(pl_cz).providers] == [
-        "IMGW-PIB",
-        "CHMI",
-    ]
+    for root in (pl_cz.raw, pl_cz.data):
+        assert [provider.id for provider in store_info(root).providers] == [
+            "IMGW-PIB",
+            "CHMI",
+        ]
+
     chmi = _scan(pl_cz, provider="CHMI")
     imgw = _scan(pl_cz, provider="IMGW-PIB")
     assert {row[2] for row in chmi} == {"CHMI"}
     assert {row[2] for row in imgw} == {"IMGW-PIB"}
     assert sorted(chmi + imgw, key=repr) == sorted(_scan(pl_cz), key=repr)
     assert Counter(row[0] for row in chmi) == {
-        "archive": 14,
+        "archive": 17,  # 12 data files, 2 station lists, 3 current-metadata files
         "observation": 1,
         "series": 3,
         "catalog": 1,
@@ -354,10 +407,12 @@ def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
 def test_imgw_16_k1_check_states_come_from_one_listing_without_any_content(
     pl_cz, tmp_path, chmi
 ):
-    before = stamps(pl_cz)
+    before = stamps_of(pl_cz)
     chmi.serve("hydro_listing_reserialized")
 
-    plan = check_store(pl_cz, datasets=[HYDRO], stations=[S1, S2], years="2023-2024")
+    plan = check_store(
+        pl_cz.raw, datasets=[HYDRO], stations=[S1, S2], years="2023-2024"
+    )
 
     states = {
         (item.station_code, item.archive.year): (item.status, item.error)
@@ -377,7 +432,7 @@ def test_imgw_16_k1_check_states_come_from_one_listing_without_any_content(
 
     chmi.serve("precipitation_listing", "temperature_listing")
     start = len(chmi.router.calls)
-    meteo = check_store(pl_cz, datasets=[METEO], stations=[FULL, RAIN])
+    meteo = check_store(pl_cz.raw, datasets=[METEO], stations=[FULL, RAIN])
     assert Counter((item.station_code, item.status) for item in meteo.items) == {
         (FULL, "current"): 4,
         (RAIN, "current"): 1,
@@ -393,7 +448,7 @@ def test_imgw_16_k1_check_states_come_from_one_listing_without_any_content(
     assert statuses(missing.items) == ["missing", "missing"]
     assert missing.requests == {"made": 1, "planned": 4}
     assert [method for method, _ in chmi.traffic(start)] == ["GET"]
-    assert stamps(pl_cz) == before
+    assert stamps_of(pl_cz) == before
 
 
 def _versions(root: Path, slot_dir: str) -> list[str]:
@@ -410,12 +465,14 @@ def _register(root: Path, slot_dir: str) -> list[str]:
 
 
 def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen):
-    root = copy_of(pl_cz, tmp_path / "store")
+    roots = copy_of(pl_cz, tmp_path / "store")
+    root = roots.raw
     slot_2023 = f"{DAILY_DIR}/H_{S1}_DQ_2023"
     (first,) = _versions(root, slot_2023)
     (seen,) = _register(root, slot_2023)
 
-    # The same bytes under a new signal: a relabeled version, the series reused.
+    # The same bytes under a new signal: a relabeled version; a later build of
+    # the series reuses the current one (same inputs).
     chmi.serve(
         "hydro_listing_republished",
         "h900001_2023_republished_head",
@@ -423,7 +480,7 @@ def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen
     )
     relabeled = sync_store(root, datasets=[HYDRO], stations=[S1], years=[2023])
     assert statuses(relabeled.items) == ["relabeled"]
-    assert statuses(relabeled.series) == ["unchanged"]
+    assert build_series(roots.data, raw_root=root, dataset=HYDRO).status == "unchanged"
     assert _versions(root, slot_2023) == sorted([first, f"2026-02-06_{first[-8:]}"])
 
     # Other bytes of the same canonical content: no version, one more observation.
@@ -453,6 +510,7 @@ def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen
         "m90001_SRA_corrected_head",
         "m90001_SRA_corrected_get",
     )
+    meteo_series = snapshot(roots.data / "series" / "versions" / "chmi_meteo_daily")
     corrected = sync_store(root, datasets=[METEO], stations=[FULL])
     assert statuses(corrected.items) == [
         "new",
@@ -460,10 +518,15 @@ def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen
         "unchanged",
         "unchanged",
     ]
-    assert statuses(corrected.series) == ["new"]
+    # The sync writes raw data only; the series follows the new content when built.
+    assert (
+        snapshot(roots.data / "series" / "versions" / "chmi_meteo_daily")
+        == meteo_series
+    )
+    assert build_series(roots.data, raw_root=root, dataset=METEO).status == "new"
     assert len(_versions(root, sra)) == 2 and old in _versions(root, sra)
     assert [
-        entry.problem for entry in iter_store(root) if entry.kind == "problem"
+        entry.problem for entry in entries_of(roots) if entry.kind == "problem"
     ] == []
 
 
@@ -472,7 +535,7 @@ def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen
 def test_imgw_16_k2_cancelling_a_write_leaves_no_version_and_no_observation(
     change, after_download, pl_cz, tmp_path, chmi, frozen
 ):
-    root = copy_of(pl_cz, tmp_path / "store")
+    root = copy_of(pl_cz, tmp_path / "store").raw
     if change == "observation":
         get = "h900001_2023_rewritten_get"
         chmi.serve("hydro_listing_rewritten", "h900001_2023_rewritten_head", get)
@@ -503,7 +566,6 @@ def test_imgw_16_k2_cancelling_a_write_leaves_no_version_and_no_observation(
     report = sync_store(root, **selectors, cancel=cancel)
 
     assert "cancelled" in statuses(report.items) and report.cancelled
-    assert statuses(report.series) == ["cancelled"]
     # Only the (empty) staging directory may differ: no version, no observation.
     after = snapshot(root)
     assert {path: digest for path, digest in after.items() if path != ".incoming"} == {
@@ -577,7 +639,7 @@ def test_imgw_17_k1_every_station_of_the_chmi_metadata_is_in_the_catalog(pl_cz):
         for entry in parse_chmi_stations(content(case), kind=kind)
     }
 
-    features = read_catalog(root=pl_cz, provider="CHMI")
+    features = read_catalog(root=pl_cz.data, provider="CHMI")
 
     assert {feature.station_code for feature in features} == published
     unlocated = [feature for feature in features if feature.geometry is None]
@@ -602,7 +664,7 @@ def _rows(case: str, code: str) -> dict[str, list[dict[str, object]]]:
 def test_imgw_17_k2_codes_stay_text_and_coordinates_equal_the_published_decimals(
     pl_cz,
 ):
-    catalog = version_of(pl_cz, "catalog:cz.chmi.stations")
+    catalog = version_of(pl_cz.data, "catalog:cz.chmi.stations")
     document = json.loads(catalog.read_text("utf-8"), parse_float=Decimal)
     sources = {
         "chmi_hydro_now": (_rows("hydro_now_get", "objID"), "GEOGR1", "GEOGR2"),
@@ -641,27 +703,18 @@ def test_imgw_17_k2_codes_stay_text_and_coordinates_equal_the_published_decimals
 def test_imgw_17_k3_a_new_metadata_envelope_creates_no_version(
     pl_cz, tmp_path, chmi, frozen
 ):
-    root = copy_of(pl_cz, tmp_path / "store")
-    catalog = version_of(root, "catalog:cz.chmi.stations")
+    roots = copy_of(pl_cz, tmp_path / "store")
+    root = roots.raw
+    catalog = version_of(roots.data, "catalog:cz.chmi.stations")
     (listed,) = _versions(root, LIST_DIR)
-    chmi.serve(
-        "hydro_stations_regenerated_head",
-        "hydro_stations_regenerated_get",
-        "meteo_stations_head",
-        "hydro_now_regenerated_get",
-        "hydro_meta3_get",
-        "meteo_now_listing",
-        "meteo_now_get",
-    )
+    chmi.serve("hydro_stations_regenerated_head", "hydro_stations_regenerated_get")
     notices = []
 
-    report = build_catalog(root, provider="CHMI", on_notice=notices.append)
-
-    assert (report.status, report.version, report.provider) == (
-        "unchanged",
-        catalog,
-        "CHMI",
+    report = sync_store(
+        root, datasets=["cz.chmi.hydro_stations"], on_notice=notices.append
     )
+
+    assert statuses(report.items) == ["unchanged"]
     assert _versions(root, LIST_DIR) == [listed]
     (seen,) = _register(root, LIST_DIR)
     observation = load(root / LIST_DIR / "observations" / seen)
@@ -671,13 +724,24 @@ def test_imgw_17_k3_a_new_metadata_envelope_creates_no_version(
     assert unchanged.level == "info"
     assert "archive:cz.chmi.hydro_stations:meta1.json" in unchanged.message
 
-    chmi.serve("hydro_stations_regenerated_head")
-    plan = check_catalog(root, provider="CHMI")
-    (item,) = [
-        item for item in plan.items if item.archive.dataset == "cz.chmi.hydro_stations"
-    ]
+    # The stored version carries the old signal: the observation of the
+    # regenerated envelope is the slot's reference signal.
+    plan = check_store(root, datasets=["cz.chmi.hydro_stations"])
+    (item,) = plan.items
     assert item.status == "current"
     assert item.local_observation == Path(LIST_DIR, "observations", seen)
+
+    # The catalog reads the same stored version: it stays current, no new catalog.
+    assert (
+        check_catalog(roots.data, raw_root=root, provider="CHMI").actions[-1].status
+        == "current"
+    )
+    built = build_catalog(roots.data, raw_root=root, provider="CHMI")
+    assert (built.status, built.version, built.provider) == (
+        "unchanged",
+        catalog,
+        "CHMI",
+    )
 
 
 # --------------------------------------------------------------------------
@@ -790,7 +854,7 @@ BY_HAND: dict[str, tuple[Callable[[Path, str], Station], tuple[str, ...]]] = {
 @pytest.mark.parametrize("dataset", [HYDRO, METEO])
 def test_imgw_18_k1_coverage_and_gaps_equal_a_computation_by_hand(dataset, pl_cz):
     reader, codes = BY_HAND[dataset]
-    stations = {code: reader(pl_cz, code) for code in codes}
+    stations = {code: reader(pl_cz.raw, code) for code in codes}
     expected = [
         {"station_code": code, "variable": name, **coverage_by_hand(station, name)}
         for code, station in sorted(stations.items())
@@ -806,9 +870,11 @@ def test_imgw_18_k1_coverage_and_gaps_equal_a_computation_by_hand(dataset, pl_cz
         "gaps",
     )
 
-    summary = run_command("series summary", options={"root": pl_cz, "dataset": dataset})
-    items = summary.to_json(root=pl_cz)["result"]
-    index = load(version_of(pl_cz, f"series:{dataset}"))
+    summary = run_command(
+        "series summary", options={"root": pl_cz.data, "dataset": dataset}
+    )
+    items = summary.to_json(root=pl_cz.data)["result"]
+    index = load(version_of(pl_cz.data, f"series:{dataset}"))
 
     assert [{key: item[key] for key in keys} for item in items] == expected
     for row in expected:
@@ -826,9 +892,9 @@ def _hydro_year(day: date) -> int:
 def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
     year_type, pl_cz
 ):
-    station = hydro_by_hand(pl_cz, S2)
+    station = hydro_by_hand(pl_cz.raw, S2)
     lines = list(
-        export_series(root=pl_cz, dataset=HYDRO, station=S2, year_type=year_type)
+        export_series(root=pl_cz.data, dataset=HYDRO, station=S2, year_type=year_type)
     )
     rows = list(csv.DictReader(io.StringIO("".join(lines))))
 
@@ -853,13 +919,16 @@ def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
         PROCESSED,
     )
 
-    meteo = meteo_by_hand(pl_cz, FULL)
+    meteo = meteo_by_hand(pl_cz.raw, FULL)
     exported = list(
         csv.DictReader(
             io.StringIO(
                 "".join(
                     export_series(
-                        root=pl_cz, dataset=METEO, station=FULL, year_type=year_type
+                        root=pl_cz.data,
+                        dataset=METEO,
+                        station=FULL,
+                        year_type=year_type,
                     )
                 )
             )
@@ -883,8 +952,8 @@ def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
 
 
 def test_imgw_18_k2_every_station_of_a_chmi_dataset_is_in_its_series(pl_cz):
-    hydro = read_series_index(version_of(pl_cz, f"series:{HYDRO}"))
-    meteo = read_series_index(version_of(pl_cz, f"series:{METEO}"))
+    hydro = read_series_index(version_of(pl_cz.data, f"series:{HYDRO}"))
+    meteo = read_series_index(version_of(pl_cz.data, f"series:{METEO}"))
 
     assert set(hydro.stations) == {S1, S2}
     assert hydro.stations[S1].periods == ((date(2023, 1, 1), date(2024, 12, 31)),)
@@ -896,19 +965,23 @@ def test_imgw_18_k2_every_station_of_a_chmi_dataset_is_in_its_series(pl_cz):
     assert set(meteo.stations) == {FULL, RAIN}
     stored = {
         entry.meta.extra["period"]["station_code"]
-        for entry in iter_store(pl_cz, kind="archive", provider="CHMI")
+        for entry in iter_store(pl_cz.raw, kind="archive", provider="CHMI")
         if entry.meta is not None and entry.meta.dataset in (HYDRO, METEO)
     }
     assert stored == set(hydro.stations) | set(meteo.stations)
 
 
 def test_imgw_18_k3_the_same_inputs_reuse_the_series(pl_cz, tmp_path, chmi, frozen):
-    root = copy_of(pl_cz, tmp_path / "store")
+    roots = copy_of(pl_cz, tmp_path / "store")
     current = {
-        dataset: version_of(root, f"series:{dataset}") for dataset in (HYDRO, METEO)
+        dataset: version_of(roots.data, f"series:{dataset}")
+        for dataset in (HYDRO, METEO)
     }
 
-    built = {dataset: build_series(root, dataset=dataset) for dataset in current}
+    built = {
+        dataset: build_series(roots.data, raw_root=roots.raw, dataset=dataset)
+        for dataset in current
+    }
 
     assert {
         dataset: (report.status, report.version) for dataset, report in built.items()
@@ -919,38 +992,40 @@ def test_imgw_18_k3_the_same_inputs_reuse_the_series(pl_cz, tmp_path, chmi, froz
         "h900001_2023_republished_head",
         "h900001_2023_republished_get",
     )
-    report = sync_store(root, datasets=[HYDRO], stations=[S1], years=[2023])
+    report = sync_store(roots.raw, datasets=[HYDRO], stations=[S1], years=[2023])
     assert statuses(report.items) == ["relabeled"]
-    assert [(series.status, series.version) for series in report.series] == [
-        ("unchanged", current[HYDRO])
-    ]
-    assert snapshot(root / "series") == snapshot(pl_cz / "series")
+    rebuilt = build_series(roots.data, raw_root=roots.raw, dataset=HYDRO)
+    assert rebuilt.status == "unchanged"
+    assert version_of(roots.data, f"series:{HYDRO}") == current[HYDRO]
+    assert snapshot(roots.data / "series") == snapshot(pl_cz.data / "series")
 
 
 # --------------------------------------------------------------------------
 # IMGW-19 k1: Python = obserwator = REST = MCP for the ČHMÚ commands
 # --------------------------------------------------------------------------
 
-# Versions of the read-only store, resolved before the run.
+# Versions of the read-only roots, resolved in the root of their slot before the run.
 PLACEHOLDERS = {
     "<archive>": SLOT_2024,
     "<meteo>": f"archive:{METEO}:precipitation/dly-{FULL}-SRA.csv",
     "<series>": f"series:{HYDRO}",
 }
-# A plan file made by check_store on the fresh store before the run.
+# A plan file made by check_store on the fresh raw root before the run.
 PLAN = "<plan>"
-# Fresh stores of a write, one per interface: an initialized one, a copy of
-# complete_pl_cz and one without the ČHMÚ meteo series.
-FRESH = ("empty", "pl_cz", "unbuilt")
+# Fresh roots of a write, one pair per interface: initialized ones, ones holding
+# only the ČHMÚ station sources (synced from the recorded cases of the run), a
+# copy of complete_pl_cz and one without the ČHMÚ meteo series.
+FRESH = ("empty", "sources", "pl_cz", "unbuilt")
 
 
 @dataclass(frozen=True)
 class Run:
     """
-    A ČHMÚ run of a catalog command: JSON options without ``root``.
+    A ČHMÚ run of a catalog command: JSON options without ``root`` and ``raw_root``.
 
     ``store``: ``None`` = no root; ``"served"`` = the read-only
-    ``complete_pl_cz``; one of ``FRESH`` = a new store for every interface.
+    ``complete_pl_cz`` roots; one of ``FRESH`` = new roots for every interface.
+    The command works on the root of its kind (ADR-017).
     ``cases``: recorded ČHMÚ answers; ``plan``: selectors of the plan file;
     ``statuses``: of the report items; ``status``: of the result itself.
     """
@@ -991,9 +1066,8 @@ RUNS = [
     Run("stations find", {"source": "store", "query": "a", "limit": 8}, "served"),
     Run("store info", {}, "served"),
     Run("store scan", {"provider": "CHMI", "limit": 25}, "served"),
-    Run(
-        "store scan", {"provider": "CHMI", "kind": "observation", "limit": 5}, "served"
-    ),
+    # The data root holds no observations: a scan of its ČHMÚ series.
+    Run("store scan", {"provider": "CHMI", "kind": "series", "limit": 5}, "served"),
     Run(
         "store check",
         {"datasets": [HYDRO], "stations": [S1, S2], "years": "2023-2024"},
@@ -1044,14 +1118,17 @@ RUNS = [
         plan={"datasets": [HYDRO], "stations": [S1]},
         statuses=("new", "new"),
     ),
+    # The station sources: lists by HEAD and GET, the current metadata by GET.
     Run(
-        "store catalog",
-        {"provider": "CHMI"},
-        "pl_cz",
-        CATALOG_HEADS,
-        status="unchanged",
+        "store sync",
+        {"datasets": list(CHMI_SOURCES)},
+        "empty",
+        CATALOG_GETS,
+        statuses=("new",) * 5,
     ),
-    Run("store catalog", {"provider": "CHMI"}, "empty", CATALOG_GETS, status="new"),
+    # The catalog is offline: it reads the stored station sources only.
+    Run("store catalog", {"provider": "CHMI"}, "pl_cz", status="unchanged"),
+    Run("store catalog", {"provider": "CHMI"}, "sources", CATALOG_GETS, status="new"),
     Run("store export", {"version": "<archive>"}, "served"),
     Run("store export", {"version": "<meteo>", "format": "jsonl"}, "served"),
     Run("series build", {"dataset": HYDRO}, "pl_cz", status="unchanged"),
@@ -1094,6 +1171,11 @@ RUNS = [
     ),
     Run("series export", {"dataset": METEO, "station": FULL}, "served"),
     Run(
+        "series export", {"dataset": METEO, "station": FULL, "format": "json"}, "served"
+    ),
+    Run("stations export", {}, "served"),
+    Run("stations export", {"provider": "CHMI", "format": "csv"}, "served"),
+    Run(
         "series export",
         {
             "dataset": HYDRO,
@@ -1108,26 +1190,39 @@ RUNS = [
 WRITE_RUNS = [run for run in RUNS if run.store in FRESH]
 
 
-def fresh(kind: str, root: Path, pl_cz: Path) -> None:
-    if root.exists():
-        shutil.rmtree(root)
-    if kind == "empty":
-        init_store(root)
+def fresh(kind: str, roots: Roots, pl_cz: Roots) -> None:
+    """New roots of ``kind``; ``"sources"`` syncs from the served recordings."""
+    for root in (roots.raw, roots.data):
+        if root.exists():
+            shutil.rmtree(root)
+    if kind in ("empty", "sources"):
+        init_store(roots.raw)
+        init_store(roots.data, kind="data")
+        if kind == "sources":
+            sync_store(roots.raw, datasets=list(CHMI_SOURCES))
         return
-    shutil.copytree(pl_cz, root)
+    shutil.copytree(pl_cz.raw, roots.raw)
+    shutil.copytree(pl_cz.data, roots.data)
     if kind == "unbuilt":
-        shutil.rmtree(root / "series" / "versions" / "chmi_meteo_daily")
+        shutil.rmtree(roots.data / "series" / "versions" / "chmi_meteo_daily")
 
 
-def resolved(run: Run, root: Path | None, plan: Path | None) -> dict[str, object]:
-    """Options with placeholders replaced: versions relative to the root, the plan."""
+def written(roots: Roots) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """`snapshot` of both roots."""
+    return snapshot(roots.raw), snapshot(roots.data)
+
+
+def resolved(run: Run, roots: Roots | None, plan: Path | None) -> dict[str, object]:
+    """Options with placeholders replaced: versions relative to their root, the plan."""
     options = dict(run.options)
     for name, value in run.options.items():
         if value == PLAN:
             options[name] = str(plan)
         elif isinstance(value, str) and value in PLACEHOLDERS:
-            assert root is not None
-            options[name] = relative(root, version_of(root, PLACEHOLDERS[value]))
+            assert roots is not None
+            slot = PLACEHOLDERS[value]
+            root = roots.of_slot(slot)
+            options[name] = relative(root, version_of(root, slot))
     return options
 
 
@@ -1196,20 +1291,28 @@ def _id(run: Run) -> str:
     return f"{run.command}:{','.join(f'{k}={v}' for k, v in run.options.items())}"[:90]
 
 
-def _ask(interface, run, options, root, *, cli, rest, writable, check=False) -> Any:
+def _ask(
+    interface, run, options, root, raw_root, *, cli, rest, writable, check=False
+) -> Any:
     if interface == "mcp":
-        return mcp_answer(run.command, rooted(options, root), check=check)
+        return mcp_answer(run.command, rooted(options, root, raw_root), check=check)
     given = rest_options(options) if interface == "rest" else options
     return answer(
         interface,
         run.command,
         given,
         root,
+        raw_root=raw_root,
         cli=cli,
         rest=rest,
         headers=writable,
         check=check,
     )
+
+
+def fresh_roots(tmp_path: Path) -> Roots:
+    """Where the fresh roots of a write lie."""
+    return Roots(data=tmp_path / "store" / "data", raw=tmp_path / "store" / "raw")
 
 
 @pytest.mark.parametrize("run", RUNS, ids=_id)
@@ -1227,50 +1330,66 @@ def test_imgw_19_k1_chmi_commands_answer_alike_in_python_cli_rest_and_mcp(
     relative_reference_dir,  # noqa: F811
 ):
     writes = run.store in FRESH
-    root = tmp_path / "store" if writes else (pl_cz if run.store == "served" else None)
-    monkeypatch.setattr(server, "root", root)
+    roots = (
+        fresh_roots(tmp_path) if writes else (pl_cz if run.store == "served" else None)
+    )
+    root = None if roots is None else roots.root(run.command)
+    raw_root = None if roots is None else roots.raw_root(run.command)
+    serve_roots(server, monkeypatch, roots)
     chmi.serve(*run.cases)
     plan = None
     if run.plan is not None:
-        assert root is not None and run.store is not None
-        fresh(run.store, root, pl_cz)
+        assert roots is not None and run.store is not None
+        fresh(run.store, roots, pl_cz)
         plan = tmp_path / "plan.json"
-        check_store(root, **run.plan, plan=plan)
-    options = resolved(run, root, plan)
-    before = stamps(pl_cz)
+        check_store(roots.raw, **run.plan, plan=plan)
+    options = resolved(run, roots, plan)
+    before = stamps_of(pl_cz)
     answers, requests, trees = {}, {}, {}
     for interface in INTERFACES:
         if writes:
-            fresh(str(run.store), root, pl_cz)
+            assert roots is not None
+            fresh(str(run.store), roots, pl_cz)
         start = len(chmi.router.calls)
         answers[interface] = _ask(
-            interface, run, options, root, cli=cli, rest=rest, writable=writable
+            interface,
+            run,
+            options,
+            root,
+            raw_root,
+            cli=cli,
+            rest=rest,
+            writable=writable,
         )
         requests[interface] = chmi.traffic(start)
         if writes:
-            trees[interface] = snapshot(root)
+            assert roots is not None
+            trees[interface] = written(roots)
 
     python, printed = answers["python"], answers["cli"]
     stream = ROUTES[run.command]["result"] == "stream"
     if MCP:
         assert_mcp_alike(answers["mcp"], run.command, options, python, printed, root)
-    assert_alike(run.command, python, printed, answers["rest"], root)
+    assert_alike(run.command, python, printed, answers["rest"], root, raw_root=raw_root)
     assert len({canonical(traffic) for traffic in requests.values()}) == 1
-    if run.cases and not stream:
+    if run.command == "store catalog":
+        assert requests["python"] == []  # offline: the stored sources only
+    elif run.cases and not stream:
         assert requests["python"], "żadne nagranie nie zostało użyte"
     if writes:
         assert len({canonical(tree) for tree in trees.values()}) == 1
-    assert stamps(pl_cz) == before
+    assert stamps_of(pl_cz) == before
     if run.statuses is not None:
         assert tuple(statuses(python.result.items)) == run.statuses
     if run.status is not None:
         assert python.result.status == run.status
-    if root is not None and not stream:
-        # Every slot paired with a version names a current_version (§13.7); an
-        # unpublished ČHMÚ file is a result with version null.
+    if roots is not None and not stream:
+        # Every slot paired with a version names a current_version (§13.7) in
+        # the root of its kind; an unpublished ČHMÚ file is a result with
+        # version null.
         document = python.to_json(root=root)
         for slot in set(slots(document)) - set(unversioned(document)):
-            entry = current_version(root, slot=slot)
+            entry = current_version(roots.of_slot(slot), slot=slot)
             assert entry is not None and entry.slot == slot, slot
 
 
@@ -1278,21 +1397,29 @@ def test_imgw_19_k1_chmi_commands_answer_alike_in_python_cli_rest_and_mcp(
 def test_imgw_19_k1_chmi_writes_are_planned_alike_without_writing(
     run, cli, rest, server, monkeypatch, tmp_path, pl_cz, chmi, frozen
 ):
-    root = tmp_path / "store"
+    roots = fresh_roots(tmp_path)
+    root, raw_root = roots.root(run.command), roots.raw_root(run.command)
     assert run.store is not None
-    fresh(run.store, root, pl_cz)
-    monkeypatch.setattr(server, "root", root)  # writes stay disabled
     chmi.serve(*run.cases)
+    fresh(run.store, roots, pl_cz)
+    serve_roots(server, monkeypatch, roots)  # writes stay disabled
     plan = None
     if run.plan is not None:
         plan = tmp_path / "plan.json"
-        check_store(root, **run.plan, plan=plan)
-    options = resolved(run, root, plan)
-    before = stamps(root)
-
+        check_store(roots.raw, **run.plan, plan=plan)
+    options = resolved(run, roots, plan)
+    before = stamps_of(roots)
     answers = {
         interface: _ask(
-            interface, run, options, root, cli=cli, rest=rest, writable=None, check=True
+            interface,
+            run,
+            options,
+            root,
+            raw_root,
+            cli=cli,
+            rest=rest,
+            writable=None,
+            check=True,
         )
         for interface in INTERFACES
     }
@@ -1304,8 +1431,10 @@ def test_imgw_19_k1_chmi_writes_are_planned_alike_without_writing(
         assert_mcp_alike(
             answers["mcp"], run.command, options, python, answers["cli"], root
         )
-    assert_alike(run.command, python, answers["cli"], answers["rest"], root)
-    assert stamps(root) == before
+    assert_alike(
+        run.command, python, answers["cli"], answers["rest"], root, raw_root=raw_root
+    )
+    assert stamps_of(roots) == before
     downloads = [
         url
         for method, url in chmi.traffic()
@@ -1333,8 +1462,10 @@ REFUSED = [
 def test_imgw_19_k1_a_refused_chmi_selection_is_one_validation_error_everywhere(
     command, options, option, value, cli, rest, server, monkeypatch, pl_cz, chmi
 ):
-    root = pl_cz if "root" in input_schema(command)["properties"] else None
-    monkeypatch.setattr(server, "root", root)
+    root = (
+        pl_cz.root(command) if "root" in input_schema(command)["properties"] else None
+    )
+    serve_roots(server, monkeypatch, pl_cz)
     with pytest.raises(ObserwatorValidationError) as caught:
         run_command(command, options=rooted(options, root))
     error = caught.value
@@ -1373,7 +1504,7 @@ class Local:
     place: Path
 
 
-def _datasets_download(tmp_path: Path, pl_cz: Path, imgw, chmi: FakeChmi) -> Local:
+def _datasets_download(tmp_path: Path, pl_cz: Roots, imgw, chmi: FakeChmi) -> Local:
     chmi.serve("h900002_2004_get", "h900002_2005_get", "h900002_2006_get")
     output = tmp_path / "pobrane"
     options = {
@@ -1455,7 +1586,7 @@ def test_imgw_19_k3_every_chmi_sidecar_and_export_names_cc_by_and_chmi(pl_cz):
 
     terms = f"{SOURCE}. {PROCESSED}. {CHMI_PROVIDER.notice}"
     exported = 0
-    for entry in iter_store(pl_cz, kind="archive", provider="CHMI"):
+    for entry in iter_store(pl_cz.raw, kind="archive", provider="CHMI"):
         assert entry.meta is not None and entry.version is not None
         if entry.meta.dataset not in (HYDRO, METEO):
             continue  # station lists are read by stations find
@@ -1478,7 +1609,7 @@ def test_imgw_19_k3_every_chmi_sidecar_and_export_names_cc_by_and_chmi(pl_cz):
                     io.StringIO(
                         "".join(
                             export_series(
-                                root=pl_cz,
+                                root=pl_cz.data,
                                 dataset=dataset,
                                 station=code,
                                 on_notice=notices.append,

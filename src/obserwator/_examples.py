@@ -7,14 +7,17 @@ writes as the same line, and its options pass `obserwator.commands.validate_comm
 A call whose result is a JSON document ends with ``--json`` (the CLI prints the
 envelope, not the summary for a person); the call of a stream to stdout has no
 ``--json``, its data lines are the same either way.
-Paths are absolute (``/data/obserwator`` is the store of the examples), so the line is
-the same in every working directory and under every default store root.
+Paths are absolute (``/data/obserwator-raw`` is the raw root and ``/data/obserwator``
+the data root of the examples, ADR-017), so the line is the same in every working
+directory and under every default root.
 
 The result is an excerpt of the ``result`` of the ``obserwator-result/1`` envelope in
 its JSON form: some fields of the result object; for a list command the list of
 its first item with some fields; for a stream command the
 start of the text, or the `obserwator.output.OutputReport` of a written file.
-Store paths are relative to the root, as in every result (``obserwator._jsonable``).
+Store paths are relative to the command's root, as in every result
+(``obserwator._jsonable``); a path in the other root (the raw sources of a build)
+stays absolute.
 `obserwator.commands.command_schema` publishes the examples in ``examples`` of each command.
 """
 
@@ -32,6 +35,7 @@ class Example(NamedTuple):
 
 
 _ROOT = "/data/obserwator"
+_RAW_ROOT = "/data/obserwator-raw"
 _DAILY_VERSION = (
     "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/"
     "2026-10-19_b6a19f65/codz_2024.zip"
@@ -46,6 +50,14 @@ _RABA_ITEM = {
     "river": "Raba",
     "provider": "IMGW-PIB",
 }
+_ANALYSES_VERSION = "analyses/versions/pl.imgw/2026-11-13_5d1e0a27/analyses.json"
+_RABA_ANALYSIS = {
+    "station": "149190310",
+    "analysis": "flood_frequency.Q",
+    "command": "stats flood-frequency",
+    "status": "ok",
+    "analyses_version": "2026-11-13_5d1e0a27",
+}
 
 
 def _page(item: Mapping[str, object], schema: str) -> list[dict[str, object]]:
@@ -53,9 +65,9 @@ def _page(item: Mapping[str, object], schema: str) -> list[dict[str, object]]:
     return [{"schema": schema, **item}]
 
 
-def _plan(item: Mapping[str, object]) -> dict[str, object]:
-    """The excerpt of an ``obserwator-plan/1`` plan of the store of the examples."""
-    return {"schema": "obserwator-plan/1", "root": _ROOT, "items": [item]}
+def _plan(item: Mapping[str, object], *, root: str = _RAW_ROOT) -> dict[str, object]:
+    """The excerpt of an ``obserwator-plan/1`` plan of a root of the examples."""
+    return {"schema": "obserwator-plan/1", "root": root, "items": [item]}
 
 
 _DAILY_PLAN = _plan(
@@ -140,10 +152,10 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     "datasets download": (
         Example(
             "obserwator datasets download --dataset pl.imgw.hydro_daily --years 2024 "
-            "--root /data/obserwator --json",
+            "--root /data/obserwator-raw --json",
             {
                 "mode": "store",
-                "root": _ROOT,
+                "root": _RAW_ROOT,
                 "items": [
                     {
                         "slot": "archive:pl.imgw.hydro_daily:2024/codz_2024.zip",
@@ -156,7 +168,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
         ),
         Example(
             "obserwator datasets download --dataset pl.imgw.hydro_daily --years 2024 "
-            "--root /data/obserwator --check --json",
+            "--root /data/obserwator-raw --check --json",
             _DAILY_PLAN,
         ),
         Example(
@@ -206,6 +218,20 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                 },
                 "obserwator-station/1",
             ),
+        ),
+    ),
+    "stations export": (
+        Example(
+            "obserwator stations export --root /data/obserwator --provider CHMI --kind hydro",
+            '{"type":"FeatureCollection","schema":"obserwator-stations-export/1",',
+        ),
+        Example(
+            "obserwator stations export --root /data/obserwator --format csv "
+            "--output /data/stations.csv --json",
+            {
+                "output": "/data/stations.csv",
+                "files": [{"path": "/data/stations.csv", "status": "written"}],
+            },
         ),
     ),
     "current hydro": (
@@ -299,17 +325,17 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     ),
     "pmaxtp check": (
         Example(
-            "obserwator pmaxtp check --root /data/obserwator --latitude 52.23 --longitude 21.01 --json",
+            "obserwator pmaxtp check --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 --json",
             {
                 "schema": "obserwator-plan/1",
-                "root": _ROOT,
+                "root": _RAW_ROOT,
                 "actions": [{"command": "pmaxtp sync", "status": "unverifiable"}],
             },
         ),
     ),
     "pmaxtp sync": (
         Example(
-            "obserwator pmaxtp sync --root /data/obserwator --latitude 52.23 --longitude 21.01 --json",
+            "obserwator pmaxtp sync --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 --json",
             {
                 "status": "new",
                 "version": _CELL_VERSION,
@@ -318,25 +344,29 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             },
         ),
         Example(
-            "obserwator pmaxtp sync --root /data/obserwator --latitude 52.23 --longitude 21.01 "
+            "obserwator pmaxtp sync --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 "
             "--check --json",
             {
                 "schema": "obserwator-plan/1",
-                "root": _ROOT,
+                "root": _RAW_ROOT,
                 "actions": [{"command": "pmaxtp sync", "status": "unverifiable"}],
             },
         ),
     ),
     "pmaxtp read": (
         Example(
-            "obserwator pmaxtp read --root /data/obserwator --ind-x 751 --ind-y 317 --json",
+            "obserwator pmaxtp read --root /data/obserwator-raw --ind-x 751 --ind-y 317 --json",
             _PMAXTP,
         ),
     ),
     "store init": (
         Example(
-            "obserwator store init --root /data/obserwator --json",
-            {"root": _ROOT, "schema": "obserwator-store/1"},
+            "obserwator store init --root /data/obserwator-raw --json",
+            {"root": _RAW_ROOT, "schema": "obserwator-store/1"},
+        ),
+        Example(
+            "obserwator store init --root /data/obserwator --kind data --json",
+            {"root": _ROOT, "schema": "obserwator-data/1"},
         ),
     ),
     "store info": (
@@ -346,7 +376,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                 "schema": "obserwator-store-info/1",
                 "root": _ROOT,
                 "exists": True,
-                "store_schema": "obserwator-store/1",
+                "store_schema": "obserwator-data/1",
                 "supported": True,
                 "problems": [],
             },
@@ -358,7 +388,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             _page(
                 {
                     "kind": "problem",
-                    "version": _DAILY_VERSION,
+                    "version": _SERIES_VERSION,
                     "problem_code": "missing_sidecar",
                 },
                 "obserwator-store-entry/1",
@@ -367,35 +397,35 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     ),
     "store check": (
         Example(
-            "obserwator store check --root /data/obserwator --datasets pl.imgw.hydro_daily "
+            "obserwator store check --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
             "--years 2023,2024 --json",
             _DAILY_PLAN,
         ),
         Example(
-            "obserwator store check --root /data/obserwator --datasets pl.imgw.hydro_daily "
+            "obserwator store check --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
             "--years 2023,2024 --plan /data/plan.json --json",
             _DAILY_PLAN,
         ),
     ),
     "store sync": (
         Example(
-            "obserwator store sync --root /data/obserwator --datasets pl.imgw.hydro_daily "
+            "obserwator store sync --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
             "--years 2024 --json",
             _DAILY_SYNC,
         ),
         Example(
-            "obserwator store sync --root /data/obserwator --datasets pl.imgw.hydro_daily "
+            "obserwator store sync --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
             "--years 2024 --check --json",
             _DAILY_PLAN,
         ),
         Example(
-            "obserwator store sync --root /data/obserwator --plan /data/plan.json --json",
+            "obserwator store sync --root /data/obserwator-raw --plan /data/plan.json --json",
             _DAILY_SYNC,
         ),
     ),
     "store catalog": (
         Example(
-            "obserwator store catalog --root /data/obserwator --json",
+            "obserwator store catalog --root /data/obserwator --raw-root /data/obserwator-raw --json",
             {
                 "status": "new",
                 "version": "stations/versions/2026-10-25_da58e6b7/stations.geojson",
@@ -406,7 +436,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     ),
     "store export": (
         Example(
-            f"obserwator store export --version /data/obserwator/{_DAILY_VERSION} --root /data/obserwator "
+            f"obserwator store export --version /data/obserwator-raw/{_DAILY_VERSION} --root /data/obserwator-raw "
             "--format jsonl --output /data/codz_2024.jsonl --json",
             {
                 "output": "/data/codz_2024.jsonl",
@@ -416,16 +446,18 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     ),
     "series build": (
         Example(
-            "obserwator series build --root /data/obserwator --dataset pl.imgw.hydro_daily --json",
+            "obserwator series build --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--dataset pl.imgw.hydro_daily --json",
             {
                 "status": "new",
                 "version": _SERIES_VERSION,
                 "stations": 2,
-                "source_files": [_DAILY_VERSION],
+                "source_files": [f"{_RAW_ROOT}/{_DAILY_VERSION}"],
             },
         ),
         Example(
-            "obserwator series build --root /data/obserwator --dataset pl.imgw.hydro_daily --check --json",
+            "obserwator series build --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--dataset pl.imgw.hydro_daily --check --json",
             {
                 "schema": "obserwator-plan/1",
                 "root": _ROOT,
@@ -487,6 +519,75 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             {
                 "output": "/data/raba.csv",
                 "files": [{"path": "/data/raba.csv", "status": "written"}],
+            },
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format json",
+            '{"schema":"obserwator-series-export/1","dataset":"pl.imgw.hydro_daily",',
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format parquet --output /data/raba.parquet --json",
+            {
+                "output": "/data/raba.parquet",
+                "files": [{"path": "/data/raba.parquet", "status": "written"}],
+            },
+        ),
+    ),
+    "analyses build": (
+        Example(
+            "obserwator analyses build --root /data/obserwator --json",
+            {
+                "status": "new",
+                "hydrolog_version": "1.0.0",
+                "providers": [
+                    {
+                        "provider": "IMGW-PIB",
+                        "status": "new",
+                        "version": _ANALYSES_VERSION,
+                        "stations": 2,
+                        "computed": 2,
+                        "carried": 0,
+                    }
+                ],
+            },
+        ),
+        Example(
+            "obserwator analyses build --root /data/obserwator --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _ROOT,
+                "actions": [{"command": "analyses build", "status": "newer"}],
+            },
+        ),
+    ),
+    "analyses list": (
+        Example(
+            "obserwator analyses list --root /data/obserwator --station 149190310 --json",
+            _page(_RABA_ANALYSIS, "obserwator-analysis-summary/1"),
+        ),
+    ),
+    "analyses read": (
+        Example(
+            "obserwator analyses read --root /data/obserwator --station 149190310 "
+            "--analysis flood_frequency.Q --json",
+            {
+                **_RABA_ANALYSIS,
+                "envelope": {
+                    "schema": "hydrolog-result/1",
+                    "result": {"schema": "hydrolog-stats-flood-frequency/1"},
+                },
+            },
+        ),
+    ),
+    "analyses export": (
+        Example(
+            "obserwator analyses export --root /data/obserwator --station 149190310 "
+            "--format csv --output /data/raba-analyses.csv --json",
+            {
+                "output": "/data/raba-analyses.csv",
+                "files": [{"path": "/data/raba-analyses.csv", "status": "written"}],
             },
         ),
     ),

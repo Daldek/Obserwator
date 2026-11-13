@@ -25,6 +25,8 @@ Features:
     - Archive data download (daily, monthly, semi-annual)
     - Station search and hydrological station states with coordinates
     - Versioned local store of IMGW archives, Parquet series and station catalog
+    - Exports of a station series (CSV, JSON, Parquet) and of the station catalogs
+      (GeoJSON, CSV), with the providers' attribution
     - ČHMÚ daily hydrological and meteorological data, stations and catalog
     - Data command catalog shared by Python, CLI, REST and MCP
     - Guide for AI agents (``AGENTS.md``, ``llms.txt``) generated from the catalog
@@ -160,6 +162,15 @@ from obserwator.stations import (
 
 # Versioned store
 from obserwator.store import (
+    AnalysesReport,
+    AnalysisDefinition,
+    AnalysisInput,
+    AnalysisOption,
+    AnalysisPick,
+    AnalysisResult,
+    AnalysisSource,
+    AnalysisSummary,
+    AnalysisVariant,
     Cancel,
     CatalogReport,
     Meta,
@@ -172,7 +183,9 @@ from obserwator.store import (
     PMaXTPStoreResult,
     Progress,
     ProgressHook,
+    ProviderAnalyses,
     RootArg,
+    RootKind,
     SeriesIndex,
     SeriesReport,
     StationCoverage,
@@ -184,18 +197,26 @@ from obserwator.store import (
     StorePlan,
     SyncReport,
     VersionResult,
+    analysis_definitions,
+    build_analyses,
     build_catalog,
     build_series,
+    check_analyses,
     check_catalog,
     check_pmaxtp,
     check_series,
     check_store,
+    compute_analysis,
     current_version,
+    export_analyses,
     export_archive,
     export_series,
+    export_stations,
     init_store,
     iter_store,
+    list_analyses,
     open_store,
+    read_analysis,
     read_archive,
     read_catalog,
     read_meta,
@@ -236,7 +257,7 @@ from obserwator.urls import (
 __all__ = [
     # Version
     "__version__",
-    # The default store root without reading the store (DEV-19.2)
+    # The default root of a kind, data or raw, without reading it (DEV-19.2, ADR-017)
     "store_root",
     "StoreRoot",
     # Exceptions
@@ -330,6 +351,7 @@ __all__ = [
     # Store types
     "PathArg",
     "RootArg",
+    "RootKind",
     "Progress",
     "Notice",
     "ProgressHook",
@@ -352,6 +374,24 @@ __all__ = [
     "StationSeriesIndex",
     "SeriesIndex",
     "PMaXTPStoreResult",
+    # Stored analyses computed by Hydrolog (ADR-016)
+    "AnalysesReport",
+    "ProviderAnalyses",
+    "AnalysisSource",
+    "AnalysisSummary",
+    "AnalysisResult",
+    "AnalysisDefinition",
+    "AnalysisVariant",
+    "AnalysisInput",
+    "AnalysisPick",
+    "AnalysisOption",
+    "analysis_definitions",
+    "check_analyses",
+    "build_analyses",
+    "list_analyses",
+    "read_analysis",
+    "export_analyses",
+    "compute_analysis",
     # Store functions
     "init_store",
     "open_store",
@@ -374,6 +414,7 @@ __all__ = [
     "select_series",
     "summarize_series",
     "export_series",
+    "export_stations",
     "export_archive",
     "check_pmaxtp",
     "sync_pmaxtp",

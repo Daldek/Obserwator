@@ -5,7 +5,6 @@ the expectations come from the input schemas of the catalog (names, order, optio
 groups, effects, texts), never from a written-down list.
 """
 
-import re
 from typing import Any
 
 import pytest
@@ -20,6 +19,7 @@ from obserwator.exceptions import ObserwatorValidationError
 from obserwator.mcp._tools import Mode
 from obserwator.mcp.server import create_server, http_app
 from tests.contract.support import input_schemas
+from tests.contract.test_interface_contract import RAW_COMMANDS
 
 STDIO = ("read", "write")
 # Tools are fixed by mode and page maximum: list each server once.
@@ -56,6 +56,23 @@ def keywords(value: object) -> set[str]:
     return set()
 
 
+def default_note(command: str, option: str) -> str:
+    """
+    The note a stdio server adds to ``root`` or ``raw_root``: the server's
+    default root of the option's kind (ADR-017 D4, D5).
+    """
+    if option == "raw_root":
+        return "default: the MCP server's raw root"
+    if command == "store init":
+        return (
+            "default: the MCP server's raw root, "
+            "with kind=data the MCP server's data root"
+        )
+    kind = "raw" if command in RAW_COMMANDS else "data"
+    when = " with source=store" if command == "stations find" else ""
+    return f"default{when}: the MCP server's {kind} root"
+
+
 def removed(schema: dict[str, Any], mode: str) -> set[str]:
     """Options a mode does not offer (spec §6.4 p. 2)."""
     if mode == "read":
@@ -72,8 +89,9 @@ def removed(schema: dict[str, Any], mode: str) -> set[str]:
 
 @pytest.fixture(autouse=True)
 def no_obserwator_root(monkeypatch):
-    """Servers of these tests have no OBSERWATOR_ROOT unless a test sets one."""
+    """Servers of these tests have no OBSERWATOR_ROOT or OBSERWATOR_RAW_ROOT."""
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
     monkeypatch.setattr(settings, "api_max_limit", 1000)
 
 
@@ -176,15 +194,10 @@ async def test_input_schema_is_the_command_schema_of_the_offered_options(mode):
                 if not key.startswith("x-obserwator")
             }
             prop = given["properties"][name]
-            if name == "root" and mode != "http":  # the note of the default store
-                prop = {
-                    **prop,
-                    "description": re.sub(
-                        r"; default( with [^:]+)?: the MCP server's store$",
-                        "",
-                        prop["description"],
-                    ),
-                }
+            if name in ("root", "raw_root") and mode != "http":
+                expected["description"] += "; " + default_note(
+                    schema["x-obserwator"]["command"], name
+                )
             if mode == "http" and name in ("version", "plan", "user_locations"):
                 continue  # as the REST route takes it (next test)
             if name == "limit":
@@ -224,29 +237,27 @@ async def test_removed_options_leave_the_required_groups():
 
 
 @pytest.mark.parametrize("mode", STDIO)
-async def test_obserwator_root_makes_root_optional_on_stdio(
+async def test_root_and_raw_root_are_optional_on_stdio_in_every_environment(
     mode, monkeypatch, tmp_path
 ):
     plain = {tool["name"]: tool["inputSchema"] for tool in await listing(mode)}
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path))
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw"))
     async with Client(create_server(mode=mode)) as client:
         rooted = {
             tool.name: tool.input_schema for tool in (await client.list_tools()).tools
         }
 
-    commands = {schema["x-obserwator"]["operation_id"]: schema for schema in catalog()}
-    for name, given in rooted.items():
-        if "root" not in given["properties"]:
-            assert given == plain[name]
-            continue
-        assert "root" not in given.get("required", [])
-        for group in given.get("oneOf", []):
-            assert "root" not in group["required"]
-        description = given["properties"]["root"]["description"]
-        assert description.startswith(plain[name]["properties"]["root"]["description"])
-        assert description.endswith("the MCP server's store")
-        when = commands[name]["x-obserwator"]["command"] == "stations find"
-        assert ("source=store" in description.rsplit(";", 1)[1]) is when
+    assert rooted == plain  # the server's roots are a default, not part of a tool
+    for given in rooted.values():
+        for option in ("root", "raw_root"):
+            assert option not in given.get("required", [])
+            for group in given.get("oneOf", []):
+                assert option not in group["required"]
+    builds = {
+        name for name, given in rooted.items() if "raw_root" in given["properties"]
+    }
+    assert builds == {"obserwator_series_build", "obserwator_store_catalog"}
     assert rooted["obserwator_series_read"]["oneOf"] == [
         {"required": ["version"]},
         {"required": ["dataset"]},
@@ -366,11 +377,10 @@ async def test_store_sync_of_a_server_without_writes_matches_spec_example(
         "years",
         "months",
         "stations",
-        "series",
         "check",
     ]
     assert given["properties"]["root"]["description"].endswith(
-        "; default: the MCP server's store"
+        "; default: the MCP server's raw root"
     )
     assert given["oneOf"] == [{"required": ["plan"]}, {"required": ["datasets"]}]
     assert "required" not in given

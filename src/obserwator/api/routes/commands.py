@@ -8,14 +8,19 @@ comma-separated text), POST from a JSON body checked by a model built with
 `pydantic.create_model` (``extra="forbid"``, loose JSON kinds: text, number,
 list, object). Values are normalized only by `validate_command`; the answer is
 the ``obserwator-result/1`` envelope of `run_command` (on POST with ``?check=true``
-of `check_command`) with the store root written as ``"."``, or a text stream
-for ``store export``, ``series export`` and ``commands guide``.
+of `check_command`) with the store root written as ``"."``, or an attachment for
+``store export``, ``stations export``, ``series export`` and ``commands guide``:
+the text stream, or for a binary format (Parquet) the file the export wrote to
+a private directory outside the store, removed after the answer is read.
 
-Server rules: the store root comes only from ``OBSERWATOR_ROOT`` (503
-``store_unavailable`` when it is missing, relative or unsupported; ``store
-info`` and ``store scan`` answer diagnostically for an unsupported root);
-``version`` is a path relative to the root under the ``*/versions/`` directory
-of the command; ``user_locations`` is a file name from
+Server rules: the root of a command comes only from the setting of its kind
+(ADR-017 D7): ``OBSERWATOR_ROOT`` for the data root (series, catalogs, analyses,
+also ``store info`` and ``store scan``), ``OBSERWATOR_RAW_ROOT`` for the raw root
+(archives, station sources, PMAXTP), which ``series build`` and ``store catalog``
+also get as ``raw_root`` (503 ``store_unavailable`` when the setting is missing,
+relative or unsupported; ``store info`` and ``store scan`` answer diagnostically
+for an unsupported root); ``version`` is a path relative to the root under the
+``*/versions/`` directory of the command; ``user_locations`` is a file name from
 ``OBSERWATOR_USER_LOCATIONS_DIR``; the ``store sync`` plan is an ``obserwator-plan/1``
 object. Server and local options in a request are refused. Writes (POST
 without ``?check=true``) need ``OBSERWATOR_STORE_WRITES_ENABLED``, a configured
@@ -63,6 +68,7 @@ from obserwator._jsonable import jsonable
 from obserwator.api.errors import PROBLEM_RESPONSES, accept_language, hide_server_paths
 from obserwator.commands import (
     _input_schemas,
+    _root_kind,
     check_command,
     data_commands,
     run_command,
@@ -80,6 +86,7 @@ from obserwator.exceptions import (
 from obserwator.messages import Lang, message
 from obserwator.models import PMaXTPResult
 from obserwator.store import store_info
+from obserwator.store.export import _BINARY_FORMATS
 from obserwator.store.types import (
     CommandOption,
     CommandResult,
@@ -87,6 +94,7 @@ from obserwator.store.types import (
     Notice,
     Page,
     PlanAction,
+    RootKind,
     StorePlan,
 )
 
@@ -101,12 +109,25 @@ _API_KEY = APIKeyHeader(
     auto_error=False,
 )
 # Store directory of the versions accepted by the version option of each group.
-_VERSION_DIRS = {"store": "archives", "series": "series", "pmaxtp": "pmaxtp"}
+_VERSION_DIRS = {
+    "store": "archives",
+    "series": "series",
+    "pmaxtp": "pmaxtp",
+    "analyses": "analyses",
+}
 # Commands answering diagnostically also for an unsupported store root.
 _DIAGNOSTIC = ("store info", "store scan")
+# The setting of the server's root of each kind (ADR-017 D7).
+_VARIABLES: Mapping[RootKind, str] = {
+    "data": "OBSERWATOR_ROOT",
+    "raw": "OBSERWATOR_RAW_ROOT",
+}
 _MEDIA_TYPES = {
     "csv": "text/csv; charset=utf-8",
     "jsonl": "application/x-ndjson",
+    "json": "application/json",
+    "geojson": "application/geo+json",
+    "parquet": "application/vnd.apache.parquet",
     "agents": "text/markdown; charset=utf-8",
     "llms": "text/markdown; charset=utf-8",
 }
@@ -268,7 +289,9 @@ def _refuse(route: _Route, name: str) -> NoReturn:
     option = next((o for o in route.spec.options if o.name == name), None)
     details: dict[str, object] = {"option": name}
     if option is not None and option.rest == "server":
-        detail = message("api.server_sets_option_obserwator_root", name=name)
+        detail = message(
+            "api.server_sets_option", name=name, variable=_variable(route, name)
+        )
     elif option is not None and option.rest == "local":
         detail = message(
             "api.option_command_available_only_locally",
@@ -368,8 +391,48 @@ def _unavailable(detail: str, reason: str) -> ObserwatorStoreError:
     return ObserwatorStoreError(detail, details={"reason": reason})
 
 
+def _setting(kind: RootKind) -> Path | None:
+    """The server's root of ``kind``: ``Settings.root`` or ``Settings.raw_root``."""
+    return settings.root if kind == "data" else settings.raw_root
+
+
+def _configured(kind: RootKind, *, diagnostic: bool = False) -> Path:
+    """
+    The server's root of ``kind`` (ADR-017 D7); 503 when it is unusable.
+
+    A diagnostic command (``store info``, ``store scan``) also gets a root
+    that is no supported store.
+    """
+    variable, root = _VARIABLES[kind], _setting(kind)
+    if root is None:
+        raise _unavailable(
+            message("api.root_not_configured", variable=variable), "not_configured"
+        )
+    if not root.is_absolute():
+        raise _unavailable(
+            message("api.root_must_be_absolute", variable=variable), "root_invalid"
+        )
+    try:
+        info = store_info(root)
+    except ObserwatorError as exc:
+        raise _unavailable(
+            message("api.invalid_root", variable=variable, detail=exc.detail),
+            "root_invalid",
+        ) from exc
+    if not info.supported and not diagnostic:
+        raise _unavailable(
+            message(
+                "api.root_unavailable",
+                variable=variable,
+                problems="; ".join(info.problems),
+            ),
+            "unsupported",
+        )
+    return info.root
+
+
 def _server_root(route: _Route, options: Mapping[str, object]) -> Path | None:
-    """``OBSERWATOR_ROOT`` for a command with a root; 503 when it is unusable."""
+    """The server's root of the command's kind, for a command with a root."""
     if not any(option.name == "root" for option in route.spec.options):
         return None
     source = options.get("source")
@@ -377,26 +440,16 @@ def _server_root(route: _Route, options: Mapping[str, object]) -> Path | None:
         isinstance(source, str) and source.strip() == "store"
     ):
         return None
-    root = settings.root
-    if root is None:
-        raise _unavailable(
-            message("api.store_not_configured_set_obserwator"),
-            "not_configured",
-        )
-    if not root.is_absolute():
-        raise _unavailable(message("api.obserwator_root_must_absolute"), "root_invalid")
-    try:
-        info = store_info(root)
-    except ObserwatorError as exc:
-        raise _unavailable(
-            message("api.invalid_obserwator_root", detail=exc.detail), "root_invalid"
-        ) from exc
-    if not info.supported and route.spec.name not in _DIAGNOSTIC:
-        raise _unavailable(
-            message("api.store_unavailable", problems="; ".join(info.problems)),
-            "unsupported",
-        )
-    return info.root
+    return _configured(
+        _root_kind(route.spec, options), diagnostic=route.spec.name in _DIAGNOSTIC
+    )
+
+
+def _server_raw_root(route: _Route) -> Path | None:
+    """The server's raw root, for a build that reads one (``raw_root``)."""
+    if not any(option.name == "raw_root" for option in route.spec.options):
+        return None
+    return _configured("raw")
 
 
 def _confine_version(route: _Route, root: Path, value: object) -> None:
@@ -470,24 +523,30 @@ def _user_locations(value: object) -> Path:
     return path
 
 
-def _scratch(root: Path) -> Path:
-    """New private temporary directory outside the store."""
-    base, store = Path(tempfile.gettempdir()).resolve(), root.resolve()
-    if base == store or store in base.parents:
-        raise ObserwatorError(message("api.temporary_directory_server_lies_obserwator"))
+def _scratch() -> Path:
+    """New private temporary directory outside the roots of the server."""
+    base = Path(tempfile.gettempdir()).resolve()
+    for kind, variable in _VARIABLES.items():
+        root = _setting(kind)
+        if root is not None and root.is_absolute():
+            store = root.resolve()
+            if base == store or store in base.parents:
+                raise ObserwatorError(
+                    message("api.temporary_directory_in_root", variable=variable)
+                )
     return Path(tempfile.mkdtemp(prefix="obserwator-rest-"))
 
 
 @contextmanager
-def _plan_file(document: object, root: Path) -> Iterator[Path]:
-    """``obserwator-plan/1`` object of the request written for this root outside the store."""
+def _plan_file(document: object, root: Path, variable: str) -> Iterator[Path]:
+    """``obserwator-plan/1`` object of the request written for this root outside it."""
     plan = cast(Mapping[str, object], document)
     if plan.get("root") not in (".", str(root)):
         raise ObserwatorValidationError(
-            message("api.plan_concerns_another_store_than"),
+            message("api.plan_concerns_another_root", variable=variable),
             details={"option": "plan", "value": plan.get("root")},
         )
-    directory = _scratch(root)
+    directory = _scratch()
     try:
         path = directory / "plan.json"
         path.write_text(
@@ -538,40 +597,69 @@ def _attachment(route: _Route, options: Mapping[str, object]) -> str:
     if format_ in _GUIDE_FILES:
         return _GUIDE_FILES[format_]
     if route.spec.name == "series export":
-        return f"{options['station']}.csv"
+        return f"{options['station']}.{format_}"
+    if route.spec.name == "stations export":
+        return f"stations.{format_}"
+    if route.spec.name == "analyses export":
+        return f"{options['station']}_analyses.{format_}"
     version = cast(Path, options["version"])
     name = version.name.removesuffix(".meta.json")
     stem = version.parent.name if version.is_dir() else PurePosixPath(name).stem
     return f"{stem}.{format_}"
 
 
-def _stream(
+def _binary(route: _Route, options: Mapping[str, object]) -> bool:
+    """Whether a stream is one binary file (Parquet): REST writes it, then sends it."""
+    value = options.get("format")
+    if route.spec.result != "stream" or not isinstance(value, str):
+        return False
+    choices = next(o.choices for o in route.spec.options if o.name == "format")
+    return value.strip() in _BINARY_FORMATS and value.strip() in choices
+
+
+@contextmanager
+def _binary_file() -> Iterator[Path]:
+    """The output of a binary export: a file in a private directory outside the roots."""
+    directory = _scratch()
+    try:
+        yield directory / "export"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def _download(
     route: _Route,
     envelope: CommandResult[object],
     options: Mapping[str, object],
     root: Path | None,
     lang: Lang,
-) -> StreamingResponse:
-    lines = cast(Iterator[str], envelope.result)
+    data: bytes | None,
+) -> Response:
+    """The attachment of a stream: its lines, or the bytes of a binary file."""
     notices = hide_server_paths(
         jsonable(envelope.notices, root=root, server=True, lang=lang)
     )
+    media_type = _MEDIA_TYPES[_stream_format(route, options)]
+    headers = {
+        "Content-Disposition": f'attachment; filename="{_attachment(route, options)}"',
+        "X-Obserwator-Status": envelope.status,
+        "X-Obserwator-Notices": _ascii_json(notices),
+        **{
+            header: _ascii_json(list(value))
+            for header, value in (
+                ("X-Obserwator-Attribution", envelope.attribution),
+                ("X-Obserwator-Terms-Notice", envelope.terms_notice),
+            )
+            if value
+        },
+    }
+    if data is not None:
+        return Response(data, media_type=media_type, headers=headers)
+    lines = cast(Iterator[str], envelope.result)
     return StreamingResponse(
         (line.encode("utf-8") for line in lines),
-        media_type=_MEDIA_TYPES[_stream_format(route, options)],
-        headers={
-            "Content-Disposition": f'attachment; filename="{_attachment(route, options)}"',
-            "X-Obserwator-Status": envelope.status,
-            "X-Obserwator-Notices": _ascii_json(notices),
-            **{
-                header: _ascii_json(list(value))
-                for header, value in (
-                    ("X-Obserwator-Attribution", envelope.attribution),
-                    ("X-Obserwator-Terms-Notice", envelope.terms_notice),
-                )
-                if value
-            },
-        },
+        media_type=media_type,
+        headers=headers,
     )
 
 
@@ -588,14 +676,22 @@ def _respond(
         options["root"] = root
         if "version" in options:
             _confine_version(route, root, options["version"])
+    raw_root = _server_raw_root(route)
+    if raw_root is not None:
+        options["raw_root"] = raw_root
     if "user_locations" in options:
         options["user_locations"] = _user_locations(options["user_locations"])
+    data: bytes | None = None
     with ExitStack() as stack:
         document = options.pop(_PLAN, None)
         if document is not None:
             # Only store sync takes a plan; its root option always yields a root.
-            plan = _plan_file(document, cast(Path, root))
+            plan = _plan_file(document, cast(Path, root), _variable(route, "root"))
             options[_PLAN] = stack.enter_context(plan)
+        binary = not check and _binary(route, options)
+        if binary:
+            # A binary export has no lines: it writes its file, which is sent.
+            options["output"] = stack.enter_context(_binary_file())
         normalized = validate_command(route.spec.name, options=options)
         if check:
             envelope: CommandResult[Any] = check_command(
@@ -605,12 +701,16 @@ def _respond(
             if route.spec.result == "list":
                 _paged(normalized)
             envelope = run_command(route.spec.name, options=normalized)
+            if binary and envelope.status != "cancelled":
+                data = cast(Path, normalized["output"]).read_bytes()
     if envelope.status == "cancelled":
         raise ObserwatorError(message("api.operation_was_interrupted_without_report"))
     # The ``lang`` option of a command wins; else the language of the caller.
     language = cast(Lang, normalized.get(_LANG, lang))
     if route.spec.result == "stream" and not check:
-        response: Response = _stream(route, envelope, normalized, root, language)
+        response: Response = _download(
+            route, envelope, normalized, root, language, data
+        )
     else:
         response = JSONResponse(
             hide_server_paths(envelope.to_json(root=root, server=True, lang=language))
@@ -674,14 +774,29 @@ class _Endpoint:
 # --------------------------------------------------------------------------
 
 
+def _variable(route: _Route, name: str) -> str:
+    """The setting of the server option ``name`` (``root`` or ``raw_root``)."""
+    kind: RootKind = "raw" if name == "raw_root" else _root_kind(route.spec, {})
+    return _VARIABLES[kind]
+
+
+def _server_options(route: _Route) -> list[str]:
+    """Every option the server sets, with its setting: ``root (OBSERWATOR_ROOT)``."""
+    return [
+        f"{option.name} ({_variable(route, option.name)})"
+        for option in route.spec.options
+        if option.rest == "server"
+    ]
+
+
 def _option_schema(route: _Route, option: CommandOption) -> dict[str, Any]:
     """JSON Schema of an option as the REST route accepts it."""
     schema = dict(route.schema["properties"][option.name])
     if option.name == "version":
         kind = _VERSION_DIRS[route.group]
         schema["description"] = (
-            f"{schema['description']}. REST: only a path relative to the store of "
-            f"the server under {kind}/versions/"
+            f"{schema['description']}. REST: only a path relative to the server's "
+            f"root ({_variable(route, 'root')}) under {kind}/versions/"
         )
     elif option.name == "user_locations":
         schema = {
@@ -711,6 +826,9 @@ def _description(route: _Route) -> str:
     rules = cast(list[str], route.schema["x-obserwator"]["rules"])
     if rules:
         lines += ["", "Rules:", *(f"- {rule}" for rule in rules)]
+    server = _server_options(route)
+    if server:
+        lines += ["", f"The server sets {' and '.join(server)}."]
     if route.method == "POST":
         lines += [
             "",
@@ -753,7 +871,8 @@ def _body_model(route: _Route) -> type[BaseModel]:
     return create_model(
         f"{_pascal(route)}Body",
         __config__=ConfigDict(extra="forbid", json_schema_extra=extra or None),
-        __doc__=f"JSON body of the command {route.spec.name}; the server inserts root.",
+        __doc__=f"JSON body of the command {route.spec.name}; the server inserts "
+        f"{' and '.join(_server_options(route))}.",
         **fields,
     )
 
@@ -824,12 +943,17 @@ def _add_route(route: _Route) -> None:
         body = _body_model(route)
     if route.spec.result == "stream":
         responses[200] = {
-            "description": "The data stream (an attachment) with the headers "
-            "X-Obserwator-Status and X-Obserwator-Notices and, for data of a "
-            "provider, X-Obserwator-Attribution and X-Obserwator-Terms-Notice "
-            "(JSON arrays of the lines, non-ASCII escaped; the data carry them too)",
+            "description": "The data (an attachment: text lines, or the file of a "
+            "binary format such as Parquet) with the headers X-Obserwator-Status and "
+            "X-Obserwator-Notices and, for data of a provider, X-Obserwator-Attribution "
+            "and X-Obserwator-Terms-Notice (JSON arrays of the lines, non-ASCII "
+            "escaped; the data carry them too)",
             "content": {
-                _MEDIA_TYPES[name]: {"schema": {"type": "string"}}
+                _MEDIA_TYPES[name]: {
+                    "schema": {"type": "string", "format": "binary"}
+                    if name in _BINARY_FORMATS
+                    else {"type": "string"}
+                }
                 for name in route.schema["properties"]["format"]["enum"]
             },
         }

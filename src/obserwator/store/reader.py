@@ -10,7 +10,7 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, cast
+from typing import Any, Final, Literal, cast
 
 from obserwator._parsing import normalize_archive
 from obserwator._parsing.chmi import iter_stations
@@ -24,6 +24,7 @@ from obserwator.datasets import (
     License,
     YearsArg,
     _archive_from_path,
+    _station_file,
     datasets,
     get_dataset,
     get_provider,
@@ -40,6 +41,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import message, reason
 from obserwator.models import Measurement, NormalizedRecord, StationListEntry
+from obserwator.output import DATA_MARKER, STORE_MARKER
 from obserwator.store.catalog import (
     _CATALOG_DIRS,
     _NESTED_CATALOGS,
@@ -60,6 +62,7 @@ from obserwator.store.types import (
     Meta,
     Observation,
     PathArg,
+    RootKind,
     SeriesIndex,
     SeriesSelection,
     StationCoverage,
@@ -70,37 +73,60 @@ from obserwator.store.types import (
     StoreInfo,
 )
 from obserwator.store.writer import (
-    _MARKER,
+    _LAYOUT_TREES,
+    _MARKERS,
     _OBSERVATIONS,
+    _SCHEMAS,
     OBSERVATION_SCHEMA,
     _is_register,
     _is_seen_at,
+    _missing_hint,
     _observation_name,
     _safe_root,
+    _unmarked_message,
     _validate_slot,
+    _wrong_root,
 )
 
 STORE_SCHEMA = "obserwator-store/1"
+DATA_SCHEMA = "obserwator-data/1"
 META_SCHEMA = "obserwator-meta/1"
 SERIES_FILE = "series.json"
+ANALYSES_SCHEMA: Final = "obserwator-analyses/1"
+ANALYSES_FILE: Final = "analyses.json"
+# Versions of the analyses of each provider: <ANALYSES_DIR>/<key prefix>/<label>_<sha8>/.
+ANALYSES_DIR: Final = "analyses/versions"
 CONTRACTS: Mapping[str, str] = {
     "store": STORE_SCHEMA,
+    "data": DATA_SCHEMA,
     "meta": META_SCHEMA,
     "series": SERIES_SCHEMA,
     "plan": "obserwator-plan/1",
     "pmaxtp": CELL_SCHEMA,
     "observation": OBSERVATION_SCHEMA,
+    "analyses": ANALYSES_SCHEMA,
 }
 
-EntryKind = Literal["archive", "series", "catalog", "pmaxtp", "observation", "problem"]
+EntryKind = Literal[
+    "archive", "series", "catalog", "pmaxtp", "analyses", "observation", "problem"
+]
 _KINDS: tuple[EntryKind, ...] = (
     "archive",
     "series",
     "catalog",
     "pmaxtp",
+    "analyses",
     "observation",
     "problem",
 )
+# Kind of root a slot lies in, by the kind word of the slot (ADR-017 D2).
+_SLOT_ROOTS: Mapping[str, RootKind] = {
+    "archive": "raw",
+    "pmaxtp": "raw",
+    "series": "data",
+    "catalog": "data",
+    "analyses": "data",
+}
 _STALE_SECONDS = 24 * 60 * 60
 _SIDECAR = ".meta.json"
 _SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -136,8 +162,17 @@ class _Invalid(Exception):
 # --------------------------------------------------------------------------
 
 
+def _marker_files(path: Path) -> list[tuple[RootKind, Path]]:
+    """The markers a directory holds as regular files (a link is no marker), by kind."""
+    return [
+        (kind, path / name)
+        for kind, name in _MARKERS.items()
+        if not (path / name).is_symlink() and (path / name).is_file()
+    ]
+
+
 def _inspect(path: Path) -> StoreInfo:
-    """State of a store root; an unusable one has its one problem and the code of it."""
+    """State of a root of either kind; an unusable one has its one problem and its code."""
     contracts = dict(CONTRACTS)
 
     def unusable(code: str, text: str, *, schema: str | None = None) -> StoreInfo:
@@ -149,19 +184,38 @@ def _inspect(path: Path) -> StoreInfo:
         return unusable(
             "missing_store", message("reader.store_directory_does_not_exist", path=path)
         )
-    marker = path / _MARKER
-    if marker.is_symlink() or not marker.is_file():
-        if any(
-            (path / name).is_dir()
-            for name in ("archives", "series", "stations", "pmaxtp")
-        ):
-            return unusable(
-                "missing_marker", message("reader.layout_without_marker", path=path)
-            )
+    markers = _marker_files(path)
+    if len(markers) > 1:
+        return unusable(
+            "conflicting_markers",
+            message(
+                "writer.root_holds_both_markers",
+                path=path,
+                raw=STORE_MARKER,
+                data=DATA_MARKER,
+            ),
+        )
+    if not markers:
+        layout = next(
+            (
+                kind
+                for kind, trees in _LAYOUT_TREES.items()
+                if any((path / name).is_dir() for name in trees)
+            ),
+            None,
+        )
+        if layout is not None:
+            return unusable("missing_marker", _unmarked_message(path, layout))
         return unusable(
             "missing_marker",
-            message("reader.no_marker_not_obserwator_store", marker=_MARKER, path=path),
+            message(
+                "reader.no_marker_not_obserwator_store",
+                raw=STORE_MARKER,
+                data=DATA_MARKER,
+                path=path,
+            ),
         )
+    ((kind, marker),) = markers
     try:
         payload = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -175,13 +229,13 @@ def _inspect(path: Path) -> StoreInfo:
             "invalid_marker",
             message("reader.marker_has_no_schema_field", marker=marker),
         )
-    if schema != STORE_SCHEMA:
+    if schema != _SCHEMAS[kind]:
         return unusable(
             "unsupported_store",
             message(
                 "reader.unsupported_store_version_this_version",
                 schema=schema,
-                store_schema=STORE_SCHEMA,
+                store_schema=_SCHEMAS[kind],
             ),
             schema=schema,
         )
@@ -190,20 +244,23 @@ def _inspect(path: Path) -> StoreInfo:
 
 def store_info(root: PathArg, /) -> StoreInfo:
     """
-    Describe a store root without raising for an unknown or missing marker.
+    Describe a root of either kind without raising for an unknown or missing marker.
 
-    An unknown store schema (e.g. ``obserwator-store/2``) and a missing or unreadable
-    marker yield ``supported=False`` with the reason in ``problems`` instead of
-    an exception. Of the marker only ``schema`` is read, exactly as
-    `open_store` reads it: DEV-19.12 requires ``tool``, ``created_at`` and
-    ``producer_version`` of what a writer writes, and ``created_by`` is
-    optional, so a marker lacking any of them is a supported store (the next
-    write completes the three fields).
+    A raw root (marker ``obserwator-store.json``, ``obserwator-store/1``) and a
+    data root (``obserwator-data.json``, ``obserwator-data/1``) are both
+    supported; ``store_schema`` says which (ADR-017). An unknown schema (e.g.
+    ``obserwator-store/2``), a missing or unreadable marker and a directory
+    with both markers yield ``supported=False`` with the reason in
+    ``problems`` instead of an exception. Of the marker only ``schema`` is
+    read, exactly as `open_store` reads it: DEV-19.12 requires ``tool``,
+    ``created_at`` and ``producer_version`` of what a writer writes, and
+    ``created_by`` is optional, so a marker lacking any of them is a
+    supported root (the next write completes the three fields).
 
     Parameters
     ----------
     root : str or os.PathLike
-        Store root directory; made absolute before inspection.
+        Root directory; made absolute before inspection.
 
     Returns
     -------
@@ -223,17 +280,35 @@ def store_info(root: PathArg, /) -> StoreInfo:
     return _inspect(_safe_root(root))
 
 
-def _open(root: RootArg) -> Path:
+def _open(root: RootArg, *, kind: RootKind | None = None) -> Path:
+    """
+    The absolute path of a supported root; every function needing one kind opens it here.
+
+    Parameters
+    ----------
+    root : str, os.PathLike or StoreHandle
+        Root directory or an open handle.
+    kind : {"raw", "data"} or None, optional
+        Kind of root needed; None accepts either kind.
+
+    Raises
+    ------
+    ObserwatorStoreError
+        Code ``store_unavailable``: the root is no supported root
+        (``details.reason`` ``unsupported``; a missing one with the hint that
+        creates a root of ``kind``) or one of the other kind than ``kind``
+        (``wrong_root``, ``details.kind`` the kind needed; ADR-017 D3).
+    """
     info = _inspect(_safe_root(root.root if isinstance(root, StoreHandle) else root))
     if not info.supported:
         missing = info.problem_codes == ("missing_store",)
         raise ObserwatorStoreError(
             "; ".join(info.problems),
             details={"reason": "unsupported"},
-            hint=message("errors.hint_missing_store", path=info.root)
-            if missing
-            else None,
+            hint=_missing_hint(info.root, kind) if missing else None,
         )
+    if kind is not None and info.store_schema != _SCHEMAS[kind]:
+        raise _wrong_root(info.root, kind)
     return info.root
 
 
@@ -573,9 +648,27 @@ def _relative(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def _analyses_slots() -> dict[str, str]:
+    """Analyses slot of every provider, keyed by its key prefix (its directory)."""
+    return {
+        owner.key_prefix: f"analyses:{owner.key_prefix}.analyses"
+        for owner in providers()
+    }
+
+
 def _slot_provider(slot: str | None) -> str | None:
     """Provider of the dataset named by a slot; None without a slot or a known key."""
-    key = (slot or "").partition(":")[2].partition(":")[0]
+    kind, _, rest = (slot or "").partition(":")
+    key = rest.partition(":")[0]
+    if kind == "analyses":
+        return next(
+            (
+                owner.id
+                for owner in providers()
+                if f"{owner.key_prefix}.analyses" == key
+            ),
+            None,
+        )
     origin = _registry_origin(key) if key else None
     return None if origin is None else origin[1]
 
@@ -642,6 +735,30 @@ def _entry(
                     "unknown_schema",
                     message(
                         "reader.unsupported_series_schema", series_schema=series_schema
+                    ),
+                )
+        if kind == "analyses":
+            if (
+                meta.dataset != slot.split(":")[1]
+                or meta.provider != _slot_provider(slot)
+                or meta.extra.get("derived") != "analyses"
+            ):
+                raise _Invalid(
+                    "invalid_meta",
+                    message("reader.sidecar_not_analyses_of_slot", slot=slot),
+                )
+            analyses_schema = meta.extra.get("analyses_schema")
+            if not isinstance(analyses_schema, str):
+                raise _Invalid(
+                    "invalid_meta",
+                    message("reader.field_extra_analyses_schema_must"),
+                )
+            if analyses_schema != ANALYSES_SCHEMA:
+                raise _Invalid(
+                    "unknown_schema",
+                    message(
+                        "reader.unsupported_analyses_schema",
+                        analyses_schema=analyses_schema,
                     ),
                 )
     except _Invalid as exc:
@@ -896,7 +1013,9 @@ def _scan_register(
 # --------------------------------------------------------------------------
 
 _SLOT_GRAMMAR = message(
-    "reader.archive_key_path_series_key", values=", ".join(_CATALOG_DATASETS.values())
+    "reader.archive_key_path_series_key",
+    values=", ".join(_CATALOG_DATASETS.values()),
+    analyses=", ".join(f"{owner.key_prefix}.analyses" for owner in providers()),
 )
 _PMAXTP_KEY = "pl.imgw.pmaxtp"
 
@@ -914,35 +1033,27 @@ def _archive_slot(server_path: str) -> str | None:
     Slot ``archive:<key>:<selector>`` of a stored server path.
 
     The owning dataset is the stored one with the longest matching server
-    directory. Station lists accept only their published file name, other
+    directory; station-source datasets (lists and station metadata) accept
+    only their own file names, so two of them may share a directory, other
     datasets a selector with a folder; any other path has no slot.
     """
-    descriptor = next(
-        (
-            item
-            for item in _archive_descriptors()
-            if server_path.startswith(f"{item.server_dir}/")
-        ),
-        None,
-    )
-    if descriptor is None:
-        return None
-    selector = server_path.removeprefix(f"{descriptor.server_dir}/")
-    if descriptor.time_unit == "station_list":
-        names = {
-            PurePosixPath(item.server_path).name
-            for item in station_source_files(provider=descriptor.provider)
-            if item.dataset == descriptor.key
-        }
-        valid = selector in names
-    elif descriptor.archive_scope != "country":
-        # Per-station files follow the file-name grammar of the dataset.
-        valid = _archive_from_path(descriptor.key, server_path) is not None
-    else:
-        valid = "/" in selector
-    if not valid or ":" in selector:
-        return None
-    return f"archive:{descriptor.key}:{selector}"
+    for descriptor in _archive_descriptors():
+        if not server_path.startswith(f"{descriptor.server_dir}/"):
+            continue
+        selector = server_path.removeprefix(f"{descriptor.server_dir}/")
+        if descriptor.time_unit == "station_list":
+            if _station_file(descriptor, selector) is None:
+                continue
+            valid = True
+        elif descriptor.archive_scope != "country":
+            # Per-station files follow the file-name grammar of the dataset.
+            valid = _archive_from_path(descriptor.key, server_path) is not None
+        else:
+            valid = "/" in selector
+        if not valid or ":" in selector:
+            return None
+        return f"archive:{descriptor.key}:{selector}"
+    return None
 
 
 def _scanned_archive_slot(
@@ -1155,6 +1266,8 @@ def _scan_kind(root: Path, top: Path, known: _Known) -> Iterator[StoreEntry]:
                         known,
                         subdirs=("stations",),
                     )
+        elif top.name == "analyses":
+            yield from _scan_analyses(root, versions, known)
         else:
             for method in _directories(root, versions):
                 if isinstance(method, StoreEntry) or method.name not in ("POT", "AMP"):
@@ -1184,15 +1297,55 @@ def _scan_kind(root: Path, top: Path, known: _Known) -> Iterator[StoreEntry]:
                         )
 
 
+def _scan_analyses(root: Path, versions: Path, known: _Known) -> Iterator[StoreEntry]:
+    """
+    Analyses versions and problems below ``analyses/versions/``.
+
+    A directory named after the key prefix of a provider holds the versions
+    of that provider's analyses slot (``analyses:<key prefix>.analyses``);
+    any other directory is an unknown element.
+    """
+    slots = _analyses_slots()
+    for prefix in _directories(root, versions):
+        if isinstance(prefix, StoreEntry) or prefix.name not in slots:
+            yield prefix if isinstance(prefix, StoreEntry) else _unknown(root, prefix)
+            continue
+        for version in _directories(root, prefix):
+            yield _derived_entry(
+                root,
+                version,
+                "analyses",
+                slots[prefix.name],
+                ANALYSES_FILE,
+                known,
+                subdirs=("stations",),
+            )
+
+
+def _marker_path(root: Path) -> Path:
+    """The marker a problem of an unusable root names: the data one if only it is there."""
+    data = root / DATA_MARKER
+    alone = data.is_file() and not (root / STORE_MARKER).is_file()
+    return data if alone else root / STORE_MARKER
+
+
 def _scan(root: Path, known: _Known) -> Iterator[StoreEntry]:
+    """
+    Every entry of a root, by the kind its marker gives (ADR-017 D2).
+
+    The trees of the root's kind are scanned; anything else at the top, a
+    tree of the other kind included (a store not yet split), is an unknown
+    element.
+    """
     info = _inspect(root)
     if not info.supported:
         for code, text in zip(info.problem_codes, info.problems, strict=True):
-            yield _problem(None, root / _MARKER, code, text)
+            yield _problem(None, _marker_path(root), code, text)
         return
+    kind: RootKind = "raw" if info.store_schema == STORE_SCHEMA else "data"
     cutoff = time.time() - _STALE_SECONDS
     for child in sorted(root.iterdir()):
-        if child.name == _MARKER:
+        if child.name == _MARKERS[kind]:
             continue
         if child.is_symlink():
             yield _problem(
@@ -1214,10 +1367,7 @@ def _scan(root: Path, known: _Known) -> Iterator[StoreEntry]:
                             "reader.abandoned_staging_older_than_24", relative=relative
                         ),
                     )
-        elif (
-            child.name in ("archives", "stations", "series", "pmaxtp")
-            and child.is_dir()
-        ):
+        elif child.name in _LAYOUT_TREES[kind] and child.is_dir():
             yield from _scan_kind(root, child, known)
         else:
             yield _unknown(root, child)
@@ -1262,17 +1412,23 @@ def iter_store(
     """
     Scan every published version, observation and problem offline, without writing.
 
-    Unknown directories, missing sidecars, corrupted JSON, unknown schemas
-    (of the sidecar or, for series, of ``extra.series_schema``), size
-    mismatches and ``.incoming`` stagings older than 24 hours are
-    reported as separate ``StoreEntry(kind="problem")`` entries; younger
-    stagings are private and are not versions. Files are not hashed during
-    the scan (only their size is compared with ``size_bytes``). Each valid
-    file of the observation register ``observations/`` of an archive slot
-    is a ``StoreEntry(kind="observation")`` (never a version); a broken one
-    is a problem with the slot. Every entry names the provider of its
-    slot's dataset in ``StoreEntry.provider`` (None for a problem without a
-    slot).
+    The root is scanned by its marker (ADR-017 D2): a raw root
+    (``obserwator-store.json``) yields archive, observation, PMAXTP and
+    problem entries, a data root (``obserwator-data.json``) series, catalog,
+    analyses and problem entries. A tree of the other kind in a root (e.g.
+    ``series/`` in a store not yet split) is an ``unknown_entry`` problem, as
+    any unknown directory, and ``kind`` of the other root kind yields
+    nothing. Unknown directories, missing sidecars, corrupted JSON, unknown
+    schemas (of the sidecar or, for series and analyses, of
+    ``extra.series_schema`` and ``extra.analyses_schema``), size mismatches
+    and ``.incoming`` stagings older than 24 hours are reported as separate
+    ``StoreEntry(kind="problem")`` entries; younger stagings are private and
+    are not versions. Files are not hashed during the scan (only their size
+    is compared with ``size_bytes``). Each valid file of the observation
+    register ``observations/`` of an archive slot is a
+    ``StoreEntry(kind="observation")`` (never a version); a broken one is a
+    problem with the slot. Every entry names the provider of its slot's
+    dataset in ``StoreEntry.provider`` (None for a problem without a slot).
 
     Every scan reads the sidecar of every version. A consumer that keeps what
     it has read passes the versions it knows in ``skip_versions`` (an
@@ -1281,8 +1437,8 @@ def iter_store(
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
-    kind : {"archive", "series", "catalog", "pmaxtp", "observation", "problem"} or None, optional
+        Root directory of either kind or an open handle.
+    kind : {"archive", "series", "catalog", "pmaxtp", "analyses", "observation", "problem"} or None, optional
         Return only entries of this kind; ``None`` returns all entries.
     provider : str or None, optional
         Return only the entries of this provider (``ProviderDescriptor.id`` or
@@ -1292,8 +1448,9 @@ def iter_store(
         The versions the caller already knows: the path of a version
         directory relative to the root, with ``/`` (``archives/versions/<server
         dir>/<stem>/<label>_<sha8>``, ``series/versions/<slug>/<label>_<sha8>``,
-        ``stations/versions/[<provider catalog>/]<label>_<sha8>`` or
-        ``pmaxtp/versions/<method>/<cell>/<label>_<sha8>``), mapped to the
+        ``stations/versions/[<provider catalog>/]<label>_<sha8>``,
+        ``pmaxtp/versions/<method>/<cell>/<label>_<sha8>`` or
+        ``analyses/versions/<key prefix>/<label>_<sha8>``), mapped to the
         names of its data files: the main file of the version, e.g.
         ``("codz_2024.zip",)``. Such a version comes back as an entry with
         ``skipped=True`` and ``meta=None`` (``kind``, ``slot``, ``version`` and
@@ -1405,6 +1562,16 @@ def _slot_location(
     )
     if kind == "catalog" and owner is not None:
         return "catalog", _validate_slot(root, _CATALOG_DIRS[owner]), CATALOG_FILE, {}
+    prefix = next(
+        (prefix for prefix, name in _analyses_slots().items() if name == slot), None
+    )
+    if prefix is not None:
+        return (
+            "analyses",
+            _validate_slot(root, f"{ANALYSES_DIR}/{prefix}"),
+            ANALYSES_FILE,
+            {"subdirs": ("stations",)},
+        )
     raise _invalid_slot(slot, message("reader.unknown_kind_key"))
 
 
@@ -1418,23 +1585,28 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     completes it.
 
     Archive versions are ordered by ``Last-Modified``, then ``downloaded_at``,
-    then path; derived versions (series, catalog, PMAXTP) by
+    then path; derived versions (series, catalog, PMAXTP, analyses) by
     ``downloaded_at``, then path. Staging directories are never returned, and
     the observation register ``observations/`` of an archive slot is not a
-    version.
+    version. The kind of the slot decides the kind of root (ADR-017 D2):
+    archive and PMAXTP slots lie in a raw root, series, catalog and analyses
+    slots in a data root.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Root directory of the slot's kind or an open handle.
     slot : str
         Slot in the §13.7 grammar: ``archive:<key>:<server path without the
         dataset server directory>`` (e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``),
         ``series:<key>``, ``catalog:<catalog key>`` (``catalog:pl.imgw.stations``,
-        ``catalog:cz.chmi.stations``) or
-        ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>``. Station selectors
-        of series slots (``series:<key>:<station_code>``) are rejected.
+        ``catalog:cz.chmi.stations``),
+        ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>`` or
+        ``analyses:<provider key prefix>.analyses``
+        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmi.analyses``). Station
+        selectors of series slots (``series:<key>:<station_code>``) are
+        rejected.
 
     Returns
     -------
@@ -1445,8 +1617,10 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     Raises
     ------
     ObserwatorStoreError
-        If the root is not a supported store (code ``store_unavailable``) or
-        a root or slot path component is a symbolic link (code
+        If the root is not a supported root (code ``store_unavailable``), one
+        of the other kind than the slot's (``store_unavailable``,
+        ``details.reason`` ``wrong_root``, ``details.kind`` the slot's kind of
+        root) or a root or slot path component is a symbolic link (code
         ``validation_error``).
     ObserwatorValidationError
         If ``slot`` does not follow the grammar (including the pre-3.0.0
@@ -1458,7 +1632,8 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         silently selected instead); with code ``io_error``
         (``details.path``) if the system cannot read one.
     """
-    path = _open(root)
+    word = slot.partition(":")[0] if isinstance(slot, str) else ""
+    path = _open(root, kind=_SLOT_ROOTS.get(word))
     kind, directory, name, options = _slot_location(path, slot)
     if not directory.is_dir():
         return None
@@ -1544,7 +1719,7 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Raw root directory or an open handle of one.
     slot : str
         Archive slot ``archive:<key>:<selector>``.
 
@@ -1775,8 +1950,8 @@ def read_catalog(
     version : str, os.PathLike or None, optional
         Catalog version directory or its ``stations.geojson`` file.
     root : str, os.PathLike, StoreHandle or None, optional
-        Store whose current catalog of every provider is read, in registry
-        order; exactly one of ``version`` and ``root`` is required.
+        Data root whose current catalog of every provider is read, in registry
+        order (ADR-017); exactly one of ``version`` and ``root`` is required.
     provider : str or None, optional
         With ``root``: read only the current catalog of this provider
         (``ProviderDescriptor.id`` or key prefix); None reads the catalog of
@@ -1868,13 +2043,13 @@ def read_station_list(
     ``meta1.json`` — for ČHMÚ), verifies its bytes against the SHA-256 and
     size of the sidecar and parses it with
     :func:`obserwator.parsers.parse_stations_csv` or
-    :func:`obserwator.parsers.parse_chmi_stations`. Lists are stored by
-    :func:`build_catalog` (``obserwator store catalog``).
+    :func:`obserwator.parsers.parse_chmi_stations`. Lists are stored in the
+    raw root by ``obserwator store sync --datasets`` (ADR-015, ADR-017).
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Raw root directory or an open handle of one.
     kind : {"hydro", "meteo"}
         Station family of the list.
     provider : str, optional
@@ -1897,8 +2072,10 @@ def read_station_list(
         If ``kind`` is neither ``"hydro"`` nor ``"meteo"``, or ``provider``
         names no provider.
     ObserwatorStoreError
-        If the root is not a supported store (code ``store_unavailable``) or
-        the store holds no version of the list (code ``not_found``).
+        If the root is not a supported raw root (code ``store_unavailable``;
+        ``details.reason`` ``wrong_root`` for a data root) or holds no version
+        of the list (code ``not_found``, with the ``store sync`` that stores it
+        as the hint).
     ObserwatorDataError
         If a version of the list is broken, or the current list does not
         match its sidecar or cannot be parsed.
@@ -1911,19 +2088,17 @@ def read_station_list(
             details={"option": "kind", "value": kind, "allowed": list(lists)},
         )
     source = lists[kind]
-    entry = current_version(root, slot=str(_archive_slot(source.server_path)))
+    base = _open(root, kind="raw")
+    entry = current_version(base, slot=str(_archive_slot(source.server_path)))
     if entry is None or entry.version is None or entry.meta is None:
-        hint = (
-            "build_catalog, obserwator store catalog"
-            if owner.id == "IMGW-PIB"
-            else f"build_catalog(root, provider={owner.id!r}), obserwator store catalog "
-            f"--provider {owner.id}"
-        )
         raise ObserwatorStoreError(
-            message(
-                "reader.store_has_no_station_list", dataset=source.dataset, hint=hint
-            ),
+            message("reader.store_has_no_station_list", dataset=source.dataset),
             code="not_found",
+            hint=message(
+                "catalog.hint_sync_sources",
+                root=base,
+                datasets=source.dataset,
+            ),
         )
     if entry.meta.dataset_key != source.dataset:
         raise ObserwatorDataError(
@@ -2008,10 +2183,21 @@ def read_archive(version: PathArg, /) -> Iterator[NormalizedRecord]:
         )
     if descriptor.time_unit == "station_list":
         kind = next(
-            k
-            for k, a in _station_lists(descriptor.provider).items()
-            if a.dataset == descriptor.key
+            (
+                k
+                for k, a in _station_lists(descriptor.provider).items()
+                if a.dataset == descriptor.key
+            ),
+            None,
         )
+        if kind is None:
+            raise ObserwatorValidationError(
+                message(
+                    "reader.version_station_metadata",
+                    main=main,
+                    dataset=meta.dataset,
+                )
+            )
         option = (
             ""
             if descriptor.provider == "IMGW-PIB"
@@ -2240,7 +2426,8 @@ def _series_path(
     if version is not None:
         if root is None:
             return _main_file(version, SERIES_FILE)
-        return _main_file(_open(root) / Path(version).expanduser(), SERIES_FILE)
+        path = _open(root, kind="data") / Path(version).expanduser()
+        return _main_file(path, SERIES_FILE)
     if root is None:
         raise ObserwatorValidationError(
             message("reader.dataset_dataset_selects_current_series"),
@@ -2350,8 +2537,8 @@ def read_series(
         absolute or relative to ``root`` (to the working directory without
         ``root``). Mutually exclusive with ``dataset``.
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root: the base of a relative ``version``, or with ``dataset``
-        the store whose current series version is read.
+        Data root (ADR-017): the base of a relative ``version``, or with
+        ``dataset`` the root whose current series version is read.
     dataset : str or None, optional
         Series dataset (key, slug or legacy alias) whose current version in
         ``root`` is read.
@@ -2571,8 +2758,8 @@ def summarize_series(
         absolute or relative to ``root`` (to the working directory without
         ``root``). Mutually exclusive with ``dataset``.
     root : str, os.PathLike, StoreHandle or None, optional
-        Store root: the base of a relative ``version``, or with ``dataset``
-        the store whose current series version is summarized.
+        Data root (ADR-017): the base of a relative ``version``, or with
+        ``dataset`` the root whose current series version is summarized.
     dataset : str or None, optional
         Series dataset (key, slug or legacy alias) whose current version in
         ``root`` is summarized.
@@ -2670,7 +2857,7 @@ def select_series(
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
-        Store root directory or an open store handle.
+        Data root directory (ADR-017) or an open handle of one.
     dataset : str
         Series dataset (key, slug or legacy alias).
     stations : Iterable[str]

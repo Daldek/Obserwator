@@ -16,21 +16,23 @@ Until release 2.1.1 the tool was called IMGWTools (`pip install imgwtools`, comm
 - **MCP server** - `obserwator mcp` (extra `obserwator[mcp]`) and the `/mcp` endpoint of the REST server: the catalog commands as tools for AI agents, read-only by default
 - **Web GUI** - download forms, station search and an interactive map (IMGW-PIB data)
 
-Since 3.0.0 all interfaces use one catalog of 30 commands (`obserwator commands list`, `obserwator commands schema`): the same option name in Python, CLI (`--option-name`), REST (parameter or JSON field) and MCP (tool argument), the same validation, one result envelope `obserwator-result/1` and one error code registry (`ERROR_CODES`). Machine output (envelope, errors, notices, catalog descriptions, the guide for AI agents, the MCP server) is in English; Polish texts are available on request (`--lang pl`, `Accept-Language: pl`), while CLI help and human-readable CLI lines are in Polish (`OBSERWATOR_LANG=en` switches them to English). Guide for AI agents: [`AGENTS.md`](https://github.com/Daldek/Obserwator/blob/main/AGENTS.md) and [`llms.txt`](https://github.com/Daldek/Obserwator/blob/main/llms.txt).
+Since 3.0.0 all interfaces use one catalog of 35 commands (`obserwator commands list`, `obserwator commands schema`): the same option name in Python, CLI (`--option-name`), REST (parameter or JSON field) and MCP (tool argument), the same validation, one result envelope `obserwator-result/1` and one error code registry (`ERROR_CODES`). Machine output (envelope, errors, notices, catalog descriptions, the guide for AI agents, the MCP server) is in English; Polish texts are available on request (`--lang pl`, `Accept-Language: pl`), while CLI help and human-readable CLI lines are in Polish (`OBSERWATOR_LANG=en` switches them to English). Guide for AI agents: [`AGENTS.md`](https://github.com/Daldek/Obserwator/blob/main/AGENTS.md) and [`llms.txt`](https://github.com/Daldek/Obserwator/blob/main/llms.txt).
 
 **Supported data:**
 - Current hydrological, meteorological and synoptic data through the IMGW API
-- Historical archive data of IMGW-PIB (ZIP/CSV) and ČHMÚ (JSON/CSV per station) — a registry of 17 datasets of two providers (`pl.imgw.*`, `cz.chmi.*`)
+- Historical archive data of IMGW-PIB (ZIP/CSV) and ČHMÚ (JSON/CSV per station) — a registry of 21 datasets of two providers (`pl.imgw.*`, `cz.chmi.*`)
 - Hydrological and meteorological warnings
 - PMAXTP data (probable maximum precipitation)
 - Station lists (IMGW-PIB and ČHMÚ search) and water levels of IMGW hydro stations with coordinates
 
-**Key principle:** the HTTP server writes nothing until the administrator sets `OBSERWATOR_ROOT` and enables writes; it generates direct links to the IMGW-PIB and ČHMÚ servers and passes current data through live. A writing command (CLI, Python) has two ways of writing and never writes to the working directory: `-o`/`--output-dir` writes plain files only, without metadata; `--root` or `OBSERWATOR_ROOT` writes to the versioned store. Without either, writes go to the store in the user data directory (`<data_dir>/obserwator`; `obserwator config show --json` shows the root and its source). A single export file: `--output FILE`.
+**Key principle:** the HTTP server writes nothing until the administrator sets its roots (`OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`) and enables writes; it generates direct links to the IMGW-PIB and ČHMÚ servers and passes current data through live. A writing command (CLI, Python) has two ways of writing and never writes to the working directory: `-o`/`--output-dir` writes plain files only, without metadata; `--root` writes to the versioned store, which has two roots (ADR-017): downloads go to the raw root (`OBSERWATOR_RAW_ROOT`), and the series, catalogs and analyses built from them to the data root (`OBSERWATOR_ROOT`). Without `--root` they go to the roots in the user data directory (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`; `obserwator config show --json` shows both roots and their sources). A single export file: `--output FILE`.
 
 **Versioned data store** (optional, since 3.0.0):
+- two roots, each with its own marker: the raw root keeps the downloaded sources, the data root what is built from them; `series build` and `store catalog` read the raw root and never write it (ADR-017),
 - immutable 1:1 versions of IMGW-PIB and ČHMÚ archives with SHA-256 checksums, HTTP headers and the license in a `*.meta.json` sidecar,
 - freshness checks without downloading (IMGW-PIB: listing + `HEAD`, ČHMÚ: one listing of the server directory) and an `obserwator-plan/1` plan,
 - station series in Parquet, `stations.geojson` station catalogs of both providers, PMAXTP cells, CSV/JSONL export,
+- the stations' analyses (characteristic levels and discharges, threshold events, flood and low-flow frequency, regimes, trends, precipitation indices, spells, SPI and more; 87 in all) computed by [Hydrolog](https://github.com/Daldek/Hydrolog) and stored as its answers with the series versions they came from (`obserwator analyses build|list|read|export`, ADR-016); Obserwator computes no number itself,
 - the command that downloads a stored version again, reconstructed from its sidecar (`command_for_version`, for the pins of Archiwista projects),
 - readable offline from a local disk or a network share, without a database.
 
@@ -94,7 +96,9 @@ obserwator stations find -k hydro -q wisla --limit 5
 obserwator current hydro -s 150160180
 obserwator pmaxtp fetch --lat 52.23 --lon 21.01 --method AMP
 obserwator datasets download -d hydro/miesieczne -y 2023 -o dane    # plain files in the dane/ directory
-obserwator store sync -d pl.imgw.hydro_monthly -y 2023              # versioned store in <data_dir>/obserwator
+obserwator store sync -d pl.imgw.hydro_monthly -y 2023              # archives in the raw root <data_dir>/obserwator-raw
+obserwator series build -d pl.imgw.hydro_monthly                    # series in the data root <data_dir>/obserwator
+obserwator analyses read -s 149190310 --analysis characteristic.Q   # a stored analysis computed by Hydrolog
 obserwator stations find -k hydro -q wisla --limit 5 --json        # one JSON line for scripts and agents
 ```
 
@@ -118,13 +122,13 @@ curl "http://localhost:8000/api/v1/datasets/files?dataset=hydro/dobowe&years=202
     "obserwator": {
       "command": "obserwator",
       "args": ["mcp"],
-      "env": {"OBSERWATOR_ROOT": "/dane/obserwator"}
+      "env": {"OBSERWATOR_ROOT": "/dane/obserwator", "OBSERWATOR_RAW_ROOT": "/dane/obserwator-raw"}
     }
   }
 }
 ```
 
-Read-only by default (writing commands return a plan); `--allow-writes` enables writes, and only in directories given with `--allow-dir` (e.g. `"args": ["mcp", "--allow-writes", "--allow-dir", "/dane/obserwator"]`); a root outside them ends with the `forbidden` error.
+Read-only by default (writing commands return a plan); `--allow-writes` enables writes, and only in directories given with `--allow-dir` (e.g. `"args": ["mcp", "--allow-writes", "--allow-dir", "/dane/obserwator", "--allow-dir", "/dane/obserwator-raw"]`); a root outside them ends with the `forbidden` error.
 
 ---
 
@@ -144,7 +148,7 @@ Language, command effects and MCP server configuration (stdio and `/mcp`): [usag
 
 ## Configuration
 
-A setting comes from the first of: the command-line option, the `OBSERWATOR_<KEY>` variable, the `.env` file, the `NOGAT_<KEY>` variable (shared keys `data_dir`, `cache_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file, the default value. The most important variables: `OBSERWATOR_ROOT` (store root), `OBSERWATOR_LANG` (`pl` or `en`), `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`. `obserwator config show --json` prints every key with its value and source.
+A setting comes from the first of: the command-line option, the `OBSERWATOR_<KEY>` variable, the `.env` file, the `NOGAT_<KEY>` variable (shared keys `data_dir`, `cache_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file, the default value. The most important variables: `OBSERWATOR_ROOT` (the data root), `OBSERWATOR_RAW_ROOT` (the raw root), `OBSERWATOR_LANG` (`pl` or `en`), `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`, `OBSERWATOR_HYDROLOG_COMMAND` (Hydrolog's program for the analyses; default `hydrolog` on `PATH`). `obserwator config show --json` prints every key with its value and source.
 
 Full table of variables, a `nogat.toml` example and store backup: [Configuration](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#configuration).
 
@@ -152,7 +156,7 @@ Full table of variables, a `nogat.toml` example and store backup: [Configuration
 
 ## Data sources
 
-Obserwator does not distribute IMGW-PIB or ČHMÚ data, and the server does not store them by default — every download and write is a deliberate decision of the user or administrator (`--output-dir`, `--output`, `--root`, `OBSERWATOR_ROOT`; without them the CLI and Python write to the store in the user data directory). Below is a summary of the sources used.
+Obserwator does not distribute IMGW-PIB or ČHMÚ data, and the server does not store them by default — every download and write is a deliberate decision of the user or administrator (`--output-dir`, `--output`, `--root`, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`; without them the CLI and Python write to the roots in the user data directory). Below is a summary of the sources used.
 
 | Source | Operator | Terms of use |
 |--------|----------|---------------------|
@@ -199,7 +203,7 @@ Other documents:
 - [`docs/CODEBASE.md`](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) - Code and module reference (public API, command catalog, data formats; [project structure](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md#project-structure-from-readme))
 - [`docs/TESTING.md`](https://github.com/Daldek/Obserwator/blob/main/docs/TESTING.md) - Tests: layout, markers, running ([test instructions from the README](https://github.com/Daldek/Obserwator/blob/main/docs/TESTING.md#tests-from-readme))
 - [`docs/CHANGELOG.md`](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) - Change history (including BREAKING 3.0.0)
-- [`docs/DECISIONS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) - Decision log (ADR-001: versioned store, ADR-002: one command catalog, ADR-003: ČHMÚ provider, ADR-004: AI agent support, ADR-005: user environment, ADR-006: message catalog, ADR-007: writing data, ADR-008: projects moved to Archiwista, ADR-009: the tool is called Obserwator)
+- [`docs/DECISIONS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) - Decision log (ADR-001: versioned store, ADR-002: one command catalog, ADR-003: ČHMÚ provider, ADR-004: AI agent support, ADR-005: user environment, ADR-006: message catalog, ADR-007: writing data, ADR-008: projects moved to Archiwista, ADR-009: the tool is called Obserwator, ADR-016: stored analyses computed by Hydrolog, ADR-017: the data root)
 - [`docs/ARCHITECTURE.md`](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) - System architecture
 - [`docs/PRD.md`](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) - Product requirements
 - [`docs/PROGRESS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/PROGRESS.md) - Current status, next steps, open questions

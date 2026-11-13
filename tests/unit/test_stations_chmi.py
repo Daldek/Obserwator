@@ -1,7 +1,8 @@
-"""find_stations for ČHMÚ: live current metadata and stored lists (spec 2026-10-18 §9.1).
+"""find_stations for ČHMÚ: live current metadata and stored catalogs (spec 2026-10-18 §9.1).
 
 Recorded answers of ``chmi_catalog_recordings.json`` only (respx refuses every
 other request); synthetic stations, e.g. ``0-203-1-900001`` Špindlerův Mlýn.
+``source="store"`` reads the current catalogs of the data root (ADR-017).
 """
 
 import httpx
@@ -17,9 +18,17 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
 )
 from obserwator.fetch import DownloadResult
+from obserwator.messages import message
 from obserwator.stations import find_stations, find_stations_async
 from obserwator.store import init_store, write_archive
-from tests.unit.test_store_catalog_chmi import BASE_URL, CASES, body, build, serve
+from tests.unit.test_store_catalog_chmi import (
+    BASE_URL,
+    CASES,
+    body,
+    build,
+    data_root,
+    serve,
+)
 
 NOW = ("hydro_now_get", "meteo_now_listing", "meteo_now_get", "meteo_now_previous_get")
 HYDRO_NOW = BASE_URL + "hydrology/now/metadata/meta1.json"
@@ -179,49 +188,58 @@ async def test_unknown_provider_is_a_validation_error_without_requests(router):
 
 
 # --------------------------------------------------------------------------
-# Store: stored lists located by the provider's catalog
+# Store: the current station catalogs of the data root
 # --------------------------------------------------------------------------
 
 
-async def test_store_search_reads_the_chmi_lists_located_by_the_chmi_catalog(
-    tmp_path,
-):
+async def test_store_search_reads_the_chmi_catalog_of_the_data_root(tmp_path):
     store = init_store(tmp_path / "store")
     build(store)
+    data = data_root(store)
 
     with respx.mock(assert_all_called=False) as offline:
         found = find_stations(
-            source="store", root=store.root, provider="CHMI", query="spindleruv"
+            source="store", root=data, provider="CHMI", query="spindleruv"
         )
-        everything = find_stations(source="store", root=store.root)
-        assert await find_stations_async(source="store", root=store.root) == everything
+        everything = find_stations(source="store", root=data)
+        meteo = find_stations(source="store", root=data, kind="meteo")
+        assert await find_stations_async(source="store", root=data) == everything
 
     assert not offline.calls
     (station,) = found
-    # Name of the stored historical list, location of the catalog (now meta1).
-    assert (station.provider, station.name) == ("CHMI", "Špindlerův Mlýn - most")
+    # Name and location of the catalog (now meta1), not of the stored list.
+    assert (station.provider, station.name) == ("CHMI", "Špindlerův Mlýn")
     assert (station.latitude, station.longitude) == (50.4032345, 15.6012345)
+    assert (station.hydrographic_code, station.short_code) == ("1-05-03-0110", None)
     located = {s.station_code: (s.latitude, s.longitude) for s in everything}
     # The catalog rejected the station abroad: no location, unlike the list.
     assert located["0-20000-0-99903"] == (None, None)
-    # IMGW-PIB has no stored lists here, so the search skips it.
+    # IMGW-PIB has no catalog here, so the search skips it.
     assert {s.provider for s in everything} == {"CHMI"}
+    assert {s.station_code for s in meteo} == {
+        "0-20000-0-99903",
+        "0-203-0-90000000002",
+        "0-203-0-90001",
+    }
 
 
-def test_store_without_lists_of_a_named_provider_is_not_found(tmp_path):
+def test_data_root_without_a_catalog_of_a_named_provider_is_not_found(tmp_path):
     store = init_store(tmp_path / "store")
     build(store)
-    empty = init_store(tmp_path / "empty")
+    empty = init_store(tmp_path / "empty", kind="data")
 
     with pytest.raises(ObserwatorStoreError) as named:
-        find_stations(source="store", root=store.root, provider="IMGW-PIB")
+        find_stations(source="store", root=data_root(store), provider="IMGW-PIB")
     with pytest.raises(ObserwatorStoreError) as nothing:
         find_stations(source="store", root=empty.root)
 
     assert named.value.code == nothing.value.code == "not_found"
+    assert nothing.value.hint == message(
+        "errors.hint_store_catalog", provider="IMGW-PIB"
+    )
 
 
-def test_provider_with_only_some_stored_lists_is_not_skipped(tmp_path):
+def test_stored_lists_without_a_catalog_are_not_searched(tmp_path):
     store = init_store(tmp_path / "store")
     hydro, _ = station_source_files(provider="CHMI")
     data = body("hydro_stations_get")
@@ -233,16 +251,14 @@ def test_provider_with_only_some_stored_lists_is_not_skipped(tmp_path):
             data, hydro.url, headers["ETag"], headers["Last-Modified"], len(data)
         ),
     )
+    empty = init_store(tmp_path / "data", kind="data")
 
-    found = find_stations(source="store", root=store.root, kind="hydro")
-    with pytest.raises(ObserwatorStoreError) as error:
-        find_stations(source="store", root=store.root)
+    with pytest.raises(ObserwatorStoreError) as missing:
+        find_stations(source="store", root=empty.root, provider="CHMI", kind="hydro")
+    # The raw root holds the lists but is not a data root.
+    with pytest.raises(ObserwatorStoreError) as raw:
+        find_stations(source="store", root=store.root, provider="CHMI")
 
-    # Without a catalog the stored list keeps its own coordinates.
-    assert [(s.station_code, s.latitude) for s in found] == [
-        ("0-203-1-900004", 49.2012345),
-        ("0-203-1-900001", 50.4012345),
-        ("0-203-1-900002", 49.8512345),
-    ]
-    assert error.value.code == "not_found"
-    assert "cz.chmi.meteo_stations" in error.value.detail
+    assert missing.value.code == "not_found"
+    assert raw.value.code == "store_unavailable"
+    assert raw.value.details == {"reason": "wrong_root", "kind": "data"}

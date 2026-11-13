@@ -87,8 +87,9 @@ def native(line: str) -> str:
 def test_every_catalog_example_call_is_a_canonical_line(
     meta, example, monkeypatch, tmp_path
 ):
-    # The default store root differs per user: a canonical example never relies on it.
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path))
+    # The default roots differ per user: a canonical example never relies on them.
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw"))
 
     call = parse_command(example["call"])
 

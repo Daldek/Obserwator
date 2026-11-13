@@ -84,6 +84,12 @@ ARCHIVE_SLOT = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SLOT_DIR = Path("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024")
 # <label>_<sha8>: a date label (series may add "+<8 hex>") and the SHA prefix.
 VERSION_DIR = re.compile(r"\d{4}-\d{2}-\d{2}(\+[0-9a-f]{8})?_[0-9a-f]{8}")
+IMGW_SOURCES = [
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+]
 
 
 def contract_of(main: Path) -> str:
@@ -94,8 +100,16 @@ def contract_of(main: Path) -> str:
     }.get(main.name, "")
 
 
-def assert_sidecar_contract(root: Path, sidecar: Path) -> dict[str, Any]:
-    """Envelope §11.2, checksums of the main file, directory name and attribution §4."""
+def assert_sidecar_contract(
+    root: Path, sidecar: Path, *, raw_root: Path | None = None
+) -> dict[str, Any]:
+    """
+    Envelope §11.2, checksums of the main file, directory name and attribution §4.
+
+    ``root`` is the root of the sidecar; the archives a series or a catalog was
+    built from are in ``raw_root`` (ADR-017), by default ``root`` itself.
+    """
+    raw = root if raw_root is None else raw_root
     meta: dict[str, Any] = load(sidecar)
     assert schema_errors(meta, "obserwator-meta/1") == [], sidecar
     main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
@@ -137,7 +151,7 @@ def assert_sidecar_contract(root: Path, sidecar: Path) -> dict[str, Any]:
             "none",
         )
     for source in meta["extra"].get("source_files", ()):
-        archive = root / source["file"]
+        archive = raw / source["file"]
         assert sha256(archive) == source["sha256"] and archive.name == source["name"]
         assert (
             load(Path(f"{archive}.meta.json"))["extra"]["version"]["label"]
@@ -145,17 +159,24 @@ def assert_sidecar_contract(root: Path, sidecar: Path) -> dict[str, Any]:
         )
     for source in meta["extra"].get("catalog", ()):
         if (source.get("file") or "").startswith("archives/"):
-            assert sha256(root / source["file"]) == source["sha256"]
+            assert sha256(raw / source["file"]) == source["sha256"]
     return meta
 
 
+@pytest.fixture(scope="module")
+def complete(tmp_path_factory):
+    """The ``complete`` roots of ``obserwator.testing`` (IMGW-PIB); tests copy them."""
+    base = tmp_path_factory.mktemp("complete")
+    return build_fixture_store(base / "raw", data_root=base / "data")
+
+
 def test_reader_enforces_required_sidecar_fields_and_tolerates_additions(
-    tmp_path, fixture_root
+    tmp_path, complete
 ):
     for contract, example in SCHEMAS["examples"].items():
         assert schema_errors(example, contract) == [], contract
     root = tmp_path / "store"
-    shutil.copytree(fixture_root, root)
+    shutil.copytree(complete.raw.root, root)
     entry = current_version(root, slot=ARCHIVE_SLOT)
     sidecar = Path(f"{entry.version}.meta.json")
     original = load(sidecar)
@@ -204,14 +225,20 @@ def test_reader_enforces_required_sidecar_fields_and_tolerates_additions(
     ]
 
 
-def test_fixture_store_files_conform_to_section_11_and_checksum_chains(fixture_root):
-    root = fixture_root
+def test_fixture_store_files_conform_to_section_11_and_checksum_chains(complete):
+    raw, data = complete.raw.root, complete.data.root
     assert (
-        schema_errors(load(root / "obserwator-store.json"), "obserwator-store/1") == []
+        schema_errors(load(raw / "obserwator-store.json"), "obserwator-store/1") == []
     )
-    sidecars = sorted(root.rglob("*.meta.json"))
-    assert len(sidecars) == 11  # 7 archives, 3 series, 1 catalog
-    metas = {sidecar: assert_sidecar_contract(root, sidecar) for sidecar in sidecars}
+    sidecars = {root: sorted(root.rglob("*.meta.json")) for root in (raw, data)}
+    # 9 archives (codz_2024 x3, two precipitation files, 4 station sources) in the
+    # raw root; 3 series and 1 catalog in the data root.
+    assert {root: len(found) for root, found in sidecars.items()} == {raw: 9, data: 4}
+    metas = {
+        sidecar: assert_sidecar_contract(root, sidecar, raw_root=raw)
+        for root, found in sidecars.items()
+        for sidecar in found
+    }
 
     for sidecar, meta in metas.items():
         main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
@@ -268,27 +295,27 @@ KINDS = {
 }
 
 
-@pytest.fixture(scope="module")
-def pl_cz_root(tmp_path_factory):
-    """``complete_pl_cz`` (IMGW-PIB and ČHMÚ), read-only: tests that write copy it."""
-    store = tmp_path_factory.mktemp("sidecar_core") / "store"
-    return build_fixture_store(store, variant="complete_pl_cz").root
-
-
 def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
-    tmp_path, pl_cz_root, imgw
+    tmp_path, fixture_roots, imgw
 ):
-    root = tmp_path / "store"
-    shutil.copytree(pl_cz_root, root)
+    roots = tmp_path / "raw", tmp_path / "data"
+    shutil.copytree(fixture_roots.raw.root, roots[0])
+    shutil.copytree(fixture_roots.data.root, roots[1])
     imgw.publish_pmaxtp("pmaxtp_pot_first")
-    sync_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01)
+    sync_pmaxtp(roots[0], method="POT", latitude=52.23, longitude=21.01)
 
     seen = set()
-    for sidecar in sorted(root.rglob("*.meta.json")):
+    sidecars = sorted(
+        (base, sidecar) for base in roots for sidecar in base.rglob("*.meta.json")
+    )
+    for root, sidecar in sidecars:
         main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
         document = load(sidecar)
         where = sidecar.relative_to(root).as_posix()
-        seen.add((KINDS[sidecar.relative_to(root).parts[0]], document["provider"]))
+        kind = KINDS[sidecar.relative_to(root).parts[0]]
+        # Each kind of version lies in the root of its kind (ADR-017).
+        assert (kind in ("archive", "pmaxtp")) is (root == roots[0]), where
+        seen.add((kind, document["provider"]))
 
         assert set(CORE_FIELDS) <= set(document), where
         assert document["schema"] == "obserwator-meta/1", where
@@ -332,25 +359,37 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
     } | {("pmaxtp", "IMGW-PIB")}
 
 
-def test_the_marker_contract_has_the_fields_of_dev_19_12(fixture_root):
-    marker = load(fixture_root / "obserwator-store.json")
+@pytest.mark.parametrize(
+    ("kind", "name", "contract", "other"),
+    [
+        ("raw", "obserwator-store.json", "obserwator-store/1", "obserwator-data/1"),
+        ("data", "obserwator-data.json", "obserwator-data/1", "obserwator-store/1"),
+    ],
+)
+def test_the_marker_contract_has_the_fields_of_dev_19_12(
+    complete, kind, name, contract, other
+):
+    marker = load(getattr(complete, kind).root / name)
 
     assert {"schema", "tool", "created_at", "producer_version"} <= set(marker)
-    assert schema_errors(marker, "obserwator-store/1") == []
-    for name in ("tool", "created_at", "producer_version"):
-        without = {key: value for key, value in marker.items() if key != name}
-        assert schema_errors(without, "obserwator-store/1"), name
+    assert schema_errors(marker, contract) == []
+    for field in ("tool", "created_at", "producer_version"):
+        without = {key: value for key, value in marker.items() if key != field}
+        assert schema_errors(without, contract), field
     # created_by is no field of the minimum: the writer keeps it, a reader never needs it
     optional = {key: value for key, value in marker.items() if key != "created_by"}
-    assert schema_errors(optional, "obserwator-store/1") == []
-    # a marker of another tool is not an obserwator store
-    assert schema_errors({**marker, "tool": "kartograf"}, "obserwator-store/1")
-    assert schema_errors({**marker, "created_at": "yesterday"}, "obserwator-store/1")
+    assert schema_errors(optional, contract) == []
+    # a marker of another tool is not an obserwator root
+    assert schema_errors({**marker, "tool": "kartograf"}, contract)
+    assert schema_errors({**marker, "created_at": "yesterday"}, contract)
+    # the marker of one kind of root is not that of the other (ADR-017)
+    assert schema_errors(marker, other)
 
 
-def test_cell_and_plans_of_every_check_conform_to_schemas(tmp_path, fixture_root, imgw):
-    root = tmp_path / "store"
-    shutil.copytree(fixture_root, root)
+def test_cell_and_plans_of_every_check_conform_to_schemas(tmp_path, complete, imgw):
+    root, data = tmp_path / "store", tmp_path / "data"
+    shutil.copytree(complete.raw.root, root)
+    shutil.copytree(complete.data.root, data)
     imgw.publish(H2024, V3, NEW)
     imgw.publish(O2001, signal("meteo_head"), archive_bytes(O2001))
     (h2001,) = archive_files(DAILY, years=[2001], months=[1])
@@ -367,16 +406,17 @@ def test_cell_and_plans_of_every_check_conform_to_schemas(tmp_path, fixture_root
     again = sync_pmaxtp(root, method="POT", latitude=52.2301, longitude=21.0101)
     assert (again.status, again.version) == ("unchanged", stored.version)
 
-    before = stamps(root)
+    before = stamps(root), stamps(data)
     plans = {
         "store": check_store(
             root, datasets=[DAILY, PRECIP], years=[2001, 2024], months=[1]
         ),
-        "series": check_series(root, dataset=DAILY),
-        "catalog": check_catalog(root),
+        "series": check_series(data, raw_root=root, dataset=DAILY),
+        "series_precip": check_series(data, raw_root=root, dataset=PRECIP),
+        "catalog": check_catalog(data, raw_root=root),
         "pmaxtp": check_pmaxtp(root, method="POT", latitude=52.23, longitude=21.01),
     }
-    assert stamps(root) == before and imgw.downloads() == []
+    assert (stamps(root), stamps(data)) == before and imgw.downloads() == []
     for name, plan in plans.items():
         document = load(plan.to_json(tmp_path / f"{name}.json"))
         assert schema_errors(document, "obserwator-plan/1") == [], name
@@ -390,10 +430,10 @@ def test_cell_and_plans_of_every_check_conform_to_schemas(tmp_path, fixture_root
     }
     assert items[h2001.server_path].error == items[o2024.server_path].error
     assert items[h2001.server_path].error == "not published"
-    assert plans["store"].series_state == {
-        "hydro_daily": "current",
-        "meteo_precip_daily": "outdated",
-    }
+    # The raw root holds no series: its plan states none; series plans do (ADR-017).
+    assert plans["store"].series_state == {}
+    assert plans["series"].series_state == {"hydro_daily": "current"}
+    assert plans["series_precip"].series_state == {"meteo_precip_daily": "outdated"}
 
 
 def set_read_only(root: Path, read_only: bool) -> None:
@@ -405,21 +445,31 @@ def set_read_only(root: Path, read_only: bool) -> None:
 
 
 def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_store(
-    tmp_path, fixture_root
+    tmp_path, complete
 ):
-    complete = tmp_path / "complete"
-    shutil.copytree(fixture_root, complete)
-    stale = complete / ".incoming" / "host_1_przerwany"
+    copied = tmp_path / "complete-raw", tmp_path / "complete-data"
+    shutil.copytree(complete.raw.root, copied[0])
+    shutil.copytree(complete.data.root, copied[1])
+    stale = copied[0] / ".incoming" / "host_1_przerwany"
     stale.mkdir(parents=True)
     old = time.time() - 2 * 24 * 60 * 60
     os.utime(stale, (old, old))
-    (complete / "series" / "versions" / "notatki.txt").write_text("?", encoding="utf-8")
+    (copied[1] / "series" / "versions" / "notatki.txt").write_text(
+        "?", encoding="utf-8"
+    )
+
+    def built(name, variant):
+        roots = build_fixture_store(
+            tmp_path / f"{name}-raw",
+            data_root=tmp_path / f"{name}-data",
+            variant=variant,
+        )
+        return roots.raw.root, roots.data.root
+
     stores = {
-        "complete": complete,
-        "corrupt": build_fixture_store(tmp_path / "corrupt", variant="corrupt").root,
-        "unknown": build_fixture_store(
-            tmp_path / "unknown", variant="unknown_schema"
-        ).root,
+        "complete": copied,
+        "corrupt": built("corrupt", "corrupt"),
+        "unknown": built("unknown", "unknown_schema"),
     }
     future = tmp_path / "future"
     future.mkdir()
@@ -433,19 +483,35 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
         "unknown": {"unknown_schema"},
     }
     broken_slots = {"corrupt": ARCHIVE_SLOT, "unknown": "series:pl.imgw.hydro_daily"}
-    for root in [*stores.values(), future]:
+    every_root = [root for pair in stores.values() for root in pair]
+    for root in [*every_root, future]:
         set_read_only(root, True)
     try:
-        before = {name: stamps(root) for name, root in stores.items()}
-        for name, root in stores.items():
-            info = store_info(root)
-            assert (info.supported, info.store_schema, info.problems) == (
-                True,
-                "obserwator-store/1",
-                (),
-            )
-            entries = list(iter_store(root))
-            problems = [entry for entry in entries if entry.kind == "problem"]
+        before = {root: stamps(root) for root in every_root}
+        for name, (raw, data) in stores.items():
+            problems, versions = [], []
+            for root, schema in (
+                (raw, "obserwator-store/1"),
+                (data, "obserwator-data/1"),
+            ):
+                info = store_info(root)
+                assert (info.supported, info.store_schema, info.problems) == (
+                    True,
+                    schema,
+                    (),
+                )
+                entries = list(iter_store(root))
+                found = [entry for entry in entries if entry.kind != "problem"]
+                problems += [entry for entry in entries if entry.kind == "problem"]
+                versions += found
+                for slot in sorted({entry.slot for entry in found}):
+                    if slot == broken_slots.get(name):
+                        with pytest.raises(ObserwatorDataError):
+                            current_version(root, slot=slot)
+                        continue
+                    current = current_version(root, slot=slot)
+                    assert current is not None and current.slot == slot
+                    assert current in [entry for entry in found if entry.slot == slot]
             assert {entry.problem_code for entry in problems} == expected[name]
             # A problem names the slot of the broken version, or none at all.
             assert {(entry.problem_code, entry.slot) for entry in problems} <= {
@@ -454,18 +520,9 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
                 ("invalid_json", broken_slots.get(name)),
                 ("unknown_schema", broken_slots.get(name)),
             }
-            versions = [entry for entry in entries if entry.kind != "problem"]
-            assert len(versions) == 11 - (name == "corrupt")
+            assert len(versions) == 13 - (name == "corrupt")
             for entry in versions:
                 assert read_meta(entry.version) == entry.meta
-            for slot in sorted({entry.slot for entry in versions}):
-                if slot == broken_slots.get(name):
-                    with pytest.raises(ObserwatorDataError):
-                        current_version(root, slot=slot)
-                    continue
-                current = current_version(root, slot=slot)
-                assert current is not None and current.slot == slot
-                assert current in [entry for entry in versions if entry.slot == slot]
             (catalog,) = [entry for entry in versions if entry.kind == "catalog"]
             assert any(
                 feature.geometry is None for feature in read_catalog(catalog.version)
@@ -485,7 +542,7 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
                 (problem,) = problems
                 with pytest.raises(ObserwatorDataError):
                     read_series_index(problem.version)
-        assert {name: stamps(root) for name, root in stores.items()} == before
+        assert {root: stamps(root) for root in every_root} == before
 
         info = store_info(future)
         assert (info.exists, info.store_schema, info.supported) == (
@@ -501,7 +558,7 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
         with pytest.raises(ObserwatorStoreError):
             current_version(future, slot="series:pl.imgw.hydro_daily")
     finally:
-        for root in [*stores.values(), future]:
+        for root in [*every_root, future]:
             set_read_only(root, False)
     response = DownloadResult(OLD, H2024.url, V1["ETag"], V1["Last-Modified"], len(OLD))
     with pytest.raises(ObserwatorStoreError):
@@ -513,6 +570,7 @@ def test_read_only_scan_reports_unknown_schema_and_problems_without_touching_sto
 
 def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, imgw):
     root = init_store(tmp_path / "store").root
+    data = init_store(tmp_path / "data", kind="data").root
     old8, new8 = sha256(OLD)[:8], sha256(NEW)[:8]
 
     # HEAD → plan: listing and HEAD only; nothing is downloaded or written.
@@ -525,21 +583,19 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
         V1["ETag"],
         None,
     )
-    assert plan.series_state == {"hydro_daily": "missing"}
     assert imgw.requests("HEAD") == [H2024.url] and imgw.downloads() == []
     plan_file = plan.to_json(tmp_path / "plan.json")
     assert schema_errors(load(plan_file), "obserwator-plan/1") == []
     assert StorePlan.from_json(plan_file) == plan
     assert stamps(root) == untouched
 
-    # Stale: IMGW republished after the check → no GET, no write, series not built.
+    # Stale: IMGW republished after the check → no GET, no write.
     imgw.publish(H2024, V2, OLD)
     notices = []
     report = sync_store(root, plan=plan_file, on_notice=notices.append)
     (stale,) = report.items
     assert (stale.status, stale.version) == ("stale_plan", None)
     assert "stale_plan" in {notice.code for notice in notices}
-    assert [series.status for series in report.series] == ["failed"]
     assert imgw.downloads() == [] and stamps(root) == untouched
 
     # Sync from a fresh plan: one GET, a version named after Last-Modified and SHA.
@@ -548,25 +604,27 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert created.status == "new"
     assert created.version == root / SLOT_DIR / f"2026-10-18_{old8}" / "codz_2024.zip"
     assert sha256(created.version) == sha256(OLD)
-    (first,) = report.series
+    assert not (root / "series").exists()  # a sync writes raw data only
+    first = build_series(data, raw_root=root, dataset=DAILY)
     assert first.status == "new" and first.source_files == (created.version,)
     assert imgw.downloads() == [H2024.url]
 
-    # Newer bytes: the plan flags the series; sync without series leaves it outdated.
+    # Newer bytes: the plan lists them; the sync leaves the series outdated.
     imgw.publish(H2024, V3, NEW)
     plan = check_store(root, datasets=[DAILY], years=[2024])
     assert [item.status for item in plan.items] == ["newer"]
-    assert plan.series_state == {"hydro_daily": "outdated"}
-    report = sync_store(root, plan=plan, series=False)
+    report = sync_store(root, plan=plan)
     (newer,) = report.items
-    assert newer.status == "new" and report.series == ()
+    assert newer.status == "new"
     assert newer.version == root / SLOT_DIR / f"2026-10-19_{new8}" / "codz_2024.zip"
-    assert check_series(root, dataset=DAILY).series_state == {"hydro_daily": "outdated"}
-    series = build_series(root, dataset=DAILY)
+    outdated = check_series(data, raw_root=root, dataset=DAILY)
+    assert outdated.series_state == {"hydro_daily": "outdated"}
+    series = build_series(data, raw_root=root, dataset=DAILY)
     assert series.status == "new" and series.source_files == (newer.version,)
-    assert check_series(root, dataset=DAILY).series_state == {"hydro_daily": "current"}
+    current = check_series(data, raw_root=root, dataset=DAILY)
+    assert current.series_state == {"hydro_daily": "current"}
     assert (
-        current_version(root, slot="series:pl.imgw.hydro_daily").version
+        current_version(data, slot="series:pl.imgw.hydro_daily").version
         == series.version
     )
     # The sync report, the scan and current_version share one slot per file.
@@ -605,9 +663,12 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
             else:
                 assert measurement == source.measurements[variable]
 
-    # Catalog: lists archived first, HEAD-only check, identical rebuild unchanged.
+    # Catalog: built offline from the station sources a sync stored first.
     imgw.publish_catalog_sources()
-    catalog = build_catalog(root)
+    sources = sync_store(root, datasets=IMGW_SOURCES)
+    assert [item.status for item in sources.items] == ["new"] * 4
+    requests = len(imgw.router.calls)
+    catalog = build_catalog(data, raw_root=root)
     assert catalog.status == "new" and catalog.without_location > 0
     features = read_catalog(catalog.version)
     assert len(features) == catalog.station_count
@@ -623,12 +684,16 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert lists == {
         "archive:pl.imgw.hydro_stations:lista_stacji_hydro.csv",
         "archive:pl.imgw.meteo_stations:wykaz_stacji.csv",
+        "archive:pl.imgw.hydro_now:hydro",
+        "archive:pl.imgw.meteo_now:meteo",
     }
-    untouched, gets = stamps(root), len(imgw.requests("GET"))
-    catalog_plan = check_catalog(root)
-    assert stamps(root) == untouched and len(imgw.requests("GET")) == gets
-    assert {item.status for item in catalog_plan.items} == {"current"}
-    assert build_catalog(root).status == "unchanged"
+    untouched = stamps(root), stamps(data)
+    catalog_plan = check_catalog(data, raw_root=root)
+    assert (stamps(root), stamps(data)) == untouched
+    assert catalog_plan.items == ()
+    assert {action.status for action in catalog_plan.actions} == {"current"}
+    assert build_catalog(data, raw_root=root).status == "unchanged"
+    assert len(imgw.router.calls) == requests  # build and check request nothing
 
     # CSV: one header row with units, both formulas once, every day of the series,
     # the lines of ADR-012 in the trailing columns.
@@ -663,14 +728,14 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     ]
     assert all(row["year"] == "2024" for row in table)  # hydrological year XI–X
 
-    # Relabel: same bytes under a new signal → new version, series reused untouched.
+    # Relabel: same bytes under a new signal → new version, the series is reused.
     imgw.publish(H2024, V4, NEW)
     series_files = stamps(series.version.parent)
     report = sync_store(root, datasets=[DAILY], years=[2024])
     (relabeled,) = report.items
     assert relabeled.status == "relabeled"
     assert relabeled.version == root / SLOT_DIR / f"2026-10-20_{new8}" / "codz_2024.zip"
-    (reused,) = report.series
+    reused = build_series(data, raw_root=root, dataset=DAILY)
     assert (reused.status, reused.version) == ("unchanged", series.version)
     assert stamps(series.version.parent) == series_files
 
@@ -688,6 +753,7 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
     tmp_path, imgw
 ):
     root = init_store(tmp_path / "store").root
+    data = init_store(tmp_path / "data", kind="data").root
     imgw.publish(H2023, V1, archive_bytes(H2023))
     imgw.publish(H2024, V1, OLD)
 
@@ -709,7 +775,7 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
 
     report = sync_store(root, plan=tmp_path / "plan.json")
     assert [result.status for result in report.items] == ["new", "cancelled"]
-    assert report.cancelled and [s.status for s in report.series] == ["cancelled"]
+    assert report.cancelled
     assert imgw.downloads() == [H2023.url]
 
     other = init_store(tmp_path / "other").root
@@ -722,15 +788,16 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
     assert [result.status for result in report.items] == ["new", "cancelled"]
     assert report.cancelled and report.items[1].version is None
     assert not (other / SLOT_DIR).exists() or not any((other / SLOT_DIR).iterdir())
-    assert [s.status for s in report.series] == ["cancelled"]
-    assert list((other / "series").glob("versions/*/*")) == []
 
-    before = snapshot(root)
-    assert build_series(root, dataset=DAILY, cancel=lambda: True).status == "cancelled"
     imgw.publish_catalog_sources()
-    assert build_catalog(root, cancel=lambda: True).status == "cancelled"
-    assert snapshot(root) == before
-    series = build_series(root, dataset=DAILY)
+    sync_store(root, datasets=IMGW_SOURCES)
+    before = snapshot(root), snapshot(data)
+    cancelled = build_series(data, raw_root=root, dataset=DAILY, cancel=lambda: True)
+    assert cancelled.status == "cancelled"
+    cancelled = build_catalog(data, raw_root=root, cancel=lambda: True)
+    assert cancelled.status == "cancelled"
+    assert (snapshot(root), snapshot(data)) == before
+    series = build_series(data, raw_root=root, dataset=DAILY)
     target = tmp_path / "eksport.csv"
     with pytest.raises(ObserwatorCancelledError):
         export_series(
@@ -741,16 +808,18 @@ def test_cancellation_reports_done_items_and_never_publishes_partial_versions(
             cancel=lambda: True,
         )
     assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "data",
         "other",
         "plan.json",
         "store",
     ]
-    for store in (root, other):
+    for store in (root, other, data):
         assert_no_partial_version(store)
 
 
 def test_concurrent_writers_publish_each_version_once(tmp_path):
     root = init_store(tmp_path / "store").root
+    data = init_store(tmp_path / "data", kind="data").root
     response = DownloadResult(OLD, H2024.url, V1["ETag"], V1["Last-Modified"], len(OLD))
     writers = threading.Barrier(4)
 
@@ -770,7 +839,7 @@ def test_concurrent_writers_publish_each_version_once(tmp_path):
 
     def build(_):
         builders.wait()
-        return build_series(root, dataset=DAILY)
+        return build_series(data, raw_root=root, dataset=DAILY)
 
     with ThreadPoolExecutor(3) as pool:
         built = list(pool.map(build, range(3)))
@@ -780,6 +849,7 @@ def test_concurrent_writers_publish_each_version_once(tmp_path):
         "unchanged",
     ]
     assert len({report.version for report in built}) == 1
-    assert len(list((root / "series" / "versions" / "hydro_daily").iterdir())) == 1
+    assert len(list((data / "series" / "versions" / "hydro_daily").iterdir())) == 1
+    assert not any(data.glob(".incoming/*"))
     assert not any((root / ".incoming").iterdir())
-    assert_no_partial_version(root)
+    assert_no_partial_version(data)

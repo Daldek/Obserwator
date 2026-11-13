@@ -1,8 +1,9 @@
 """MCP tool calls on stdio servers (spec 2026-10-19 §6.5–§6.8, §9 "Wywołania MCP").
 
 The SDK client talks to the server in memory (``Client(server)``); commands run on
-a copy of the fixture store against recorded IMGW answers. Parity of every
-contract case with Python and the CLI lives in ``tests/contract/test_mcp_contract.py``.
+copies of the fixture roots (ADR-017: the raw root and the data root) against
+recorded IMGW answers. Parity of every contract case with Python and the CLI lives
+in ``tests/contract/test_mcp_contract.py``.
 """
 
 import functools
@@ -11,6 +12,7 @@ import json
 import shutil
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -43,7 +45,6 @@ from obserwator.mcp._calls import STREAM_LIMIT
 from obserwator.mcp._tools import Mode
 from obserwator.mcp.server import create_server
 from obserwator.store.types import page_cursor
-from obserwator.testing import build_fixture_store
 from tests.contract.support import (
     ANYWHERE,
     DAILY,
@@ -63,23 +64,27 @@ H2023_SIGNAL = {
 }
 
 
-@pytest.fixture(scope="module")
-def fixture_root(tmp_path_factory):
-    return build_fixture_store(tmp_path_factory.mktemp("mcp") / "store").root
+@pytest.fixture
+def root(tmp_path, fixture_raw_root):
+    """A copy of the fixture raw root for one test."""
+    target = tmp_path / "raw"
+    shutil.copytree(fixture_raw_root, target)
+    return target
 
 
 @pytest.fixture
-def root(tmp_path, fixture_root):
-    """A copy of the fixture store for one test."""
-    target = tmp_path / "store"
+def data_root(tmp_path, fixture_root):
+    """A copy of the fixture data root for one test."""
+    target = tmp_path / "data"
     shutil.copytree(fixture_root, target)
     return target
 
 
 @pytest.fixture(autouse=True)
 def server_settings(monkeypatch):
-    """No OBSERWATOR_ROOT and the default page maximum unless a test sets them."""
+    """No default roots and the default page maximum unless a test sets them."""
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
     monkeypatch.setattr(settings, "api_max_limit", 1000)
 
 
@@ -171,20 +176,23 @@ async def test_a_writing_command_returns_its_plan_and_leaves_the_store(
     ],
 )
 async def test_a_server_without_writes_forbids_every_write(
-    tool, arguments, option, root, imgw, tmp_path, monkeypatch
+    tool, arguments, option, root, data_root, imgw, tmp_path, monkeypatch
 ):
     monkeypatch.chdir(tmp_path)
-    before = stamps(root)
+    before = stamps(root), stamps(data_root)
+    on_data = tool == "obserwator_series_export"  # a command of the data root
 
-    result = await call(tool, {"root": str(root), **arguments})
+    result = await call(
+        tool, {"root": str(data_root if on_data else root), **arguments}
+    )
 
     document = error_of(result)
     spec = ERROR_CODES["forbidden"]
     assert document["code"] == "forbidden"
     assert document["title"] == spec.title
     assert document["details"] == {"reason": "writes_disabled", "option": option}
-    assert stamps(root) == before
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["store"]
+    assert (stamps(root), stamps(data_root)) == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["data", "raw"]
     assert imgw.requests("GET") == imgw.requests("HEAD") == []
 
 
@@ -231,11 +239,12 @@ async def test_list_commands_page_by_50_and_at_most_obserwator_api_max_limit(
 
 
 async def test_a_list_tool_follows_next_cursor_to_the_next_page():
-    first = (await call("obserwator_datasets_list", {"limit": 10})).structured_content
+    # 21 datasets: a page of 11 and the last page of 10.
+    first = (await call("obserwator_datasets_list", {"limit": 11})).structured_content
     second = (
         await call(
             "obserwator_datasets_list",
-            {"limit": 10, "cursor": first["page"]["next_cursor"]},
+            {"limit": 11, "cursor": first["page"]["next_cursor"]},
         )
     ).structured_content
     whole = (await call("obserwator_datasets_list", {})).structured_content
@@ -255,18 +264,56 @@ async def test_a_malformed_cursor_is_a_validation_error(cursor):
     assert document["details"]["option"] == "cursor"
 
 
-async def test_obserwator_root_fills_an_absent_root(root, monkeypatch):
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(root))
+async def test_the_default_roots_fill_an_absent_root_by_the_kind_of_the_command(
+    root, data_root, imgw, monkeypatch
+):
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(data_root))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(root))
 
     info = await call("obserwator_store_info", {})
     found = await call("obserwator_stations_find", {"source": "store", "query": "1491"})
     live = await call("obserwator_stations_find", {"query": "raba", "check": True})
+    planned = await call("obserwator_store_check", SYNC)
+    built = await call("obserwator_series_build", {"dataset": DAILY})
 
-    assert info.structured_content["result"]["root"] == str(root)
+    assert info.structured_content["result"]["root"] == str(data_root)
+    assert info.structured_content["result"]["store_schema"] == "obserwator-data/1"
     assert found.is_error is False and found.structured_content["page"]["total"] > 0
     # A live search takes no root (env_root_when): its plan names the live list.
     assert live.is_error is False
     assert live.structured_content["result"]["actions"][0]["status"] == "unverifiable"
+    # A command on downloaded sources takes the raw root (ADR-017 D5).
+    assert planned.structured_content["result"]["root"] == str(root)
+    # A build plans on the data root and reads the default raw root.
+    assert built.is_error is False, built.content[0].text
+    assert built.structured_content["result"]["root"] == str(data_root)
+
+
+async def test_allowed_directories_confine_the_raw_root_given_or_by_default(
+    root, data_root, monkeypatch
+):
+    given = {"root": str(data_root), "dataset": DAILY}
+
+    async def build(arguments: dict[str, Any], *allowed: Path):
+        async with Client(create_server(mode="read", allow_dirs=allowed)) as client:
+            return await client.call_tool("obserwator_series_build", arguments)
+
+    explicit = await build({**given, "raw_root": str(root)}, data_root)
+    both = await build({**given, "raw_root": str(root)}, data_root, root)
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(root))
+    default = await build(given, data_root)
+
+    for refused in (explicit, default):
+        document = error_of(refused)
+        assert document["code"] == "forbidden"
+        assert document["details"] == {
+            "reason": "outside_allowed_dirs",
+            "option": "raw_root",
+            "value": str(root),
+            "allowed": [str(data_root)],
+        }
+    assert both.is_error is False, both.content[0].text
+    assert both.structured_content["result"]["root"] == str(data_root)
 
 
 async def test_lang_option_defaults_to_english():

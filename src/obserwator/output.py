@@ -6,7 +6,7 @@ Every plain write of Obserwator (the archives of ``datasets download`` and
 steps of this module, written once:
 
 0. the write target is the directory ``output_dir`` (plain mode) or the store
-   at ``root`` (store mode), never both, and the store at the default root
+   at ``root`` (store mode), never both, and the default raw root (ADR-017)
    when neither is given (`resolve_target`);
 1. the directory itself is checked first, before any request: one that is
    or lies in a store is a ``conflict`` with the reason ``output_in_store``
@@ -60,6 +60,7 @@ from obserwator.messages import message
 
 __all__ = [
     "ATTRIBUTION_FILE",
+    "DATA_MARKER",
     "STAGING",
     "STORE_MARKER",
     "STORE_MARKERS",
@@ -80,14 +81,18 @@ __all__ = [
 ]
 
 STORE_MARKER = "obserwator-store.json"
-"""File name of the marker of an Obserwator store (DEV-19.12)."""
-STORE_MARKERS = ("kartograf-store.json", STORE_MARKER)
+"""File name of the marker of an Obserwator raw root (DEV-19.12, ADR-017)."""
+DATA_MARKER = "obserwator-data.json"
+"""File name of the marker of an Obserwator data root (ADR-017)."""
+STORE_MARKERS = ("kartograf-store.json", STORE_MARKER, DATA_MARKER)
 """File names that mark the root of a store of any Nogat tool (DEV-19.12)."""
 STAGING = ".obserwator-incoming"
 """Name of the staging directory inside the output directory (DEV-19.7)."""
 ATTRIBUTION_FILE = "ATTRIBUTION.txt"
 """File of a plain write with the lines of the providers' terms (Nogat DEV-20.5)."""
 _STALE_SECONDS = 24 * 60 * 60
+# Attempts to create a staging directory whose parent a finishing run removes.
+_STAGING_ATTEMPTS = 5
 _CHUNK = 1 << 16
 
 Action = Literal["write", "replace", "conflict"]
@@ -199,9 +204,10 @@ def resolve_target(
     -------
     Target
         The plain directory when ``output_dir`` is given, else the store at
-        ``root`` or, when neither is given, the store at the default root
-        (``OBSERWATOR_ROOT``, ``[obserwator] root`` of ``nogat.toml`` or
-        ``<data_dir>/obserwator``).
+        ``root`` or, when neither is given, the default raw root
+        (``OBSERWATOR_RAW_ROOT``, ``[obserwator] raw_root`` of ``nogat.toml`` or
+        ``<data_dir>/obserwator-raw``): every plain write is a download of raw
+        data (ADR-017).
 
     Raises
     ------
@@ -224,7 +230,7 @@ def resolve_target(
         return Target("store", Path(root).expanduser().absolute())
     from obserwator.config import store_root  # config reads the environment
 
-    return Target("store", store_root().root)
+    return Target("store", store_root(kind="raw").root)
 
 
 def store_around(path: Path) -> Path | None:
@@ -423,7 +429,11 @@ def _leftovers(staging: Path) -> None:
     if not staging.is_dir():
         return
     cutoff = time.time() - _STALE_SECONDS
-    for child in staging.iterdir():
+    try:
+        children = list(staging.iterdir())
+    except FileNotFoundError:
+        return  # a run beside this one left it empty and removed it
+    for child in children:
         with contextlib.suppress(OSError):
             if (
                 child.is_dir()
@@ -470,7 +480,16 @@ class Staging:
         """Create the staging directory and arm the SIGTERM handler."""
         self.directory.mkdir(parents=True, exist_ok=True)
         _leftovers(self.root)
-        self.path.mkdir(parents=True)
+        # A run staging beside this one removes the empty `.obserwator-incoming`
+        # when it leaves, possibly between the creation of that parent and of this
+        # staging directory: create both again then.
+        for attempt in range(_STAGING_ATTEMPTS):
+            try:
+                self.path.mkdir(parents=True)
+                break
+            except FileNotFoundError:
+                if attempt == _STAGING_ATTEMPTS - 1:
+                    raise
         if threading.current_thread() is threading.main_thread():
             previous = signal.getsignal(signal.SIGTERM)
             if previous == signal.SIG_DFL:

@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -22,9 +23,10 @@ from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
 import httpx
+import pytest
 import respx
 
-from obserwator import archive_files, command_schema, current_version
+from obserwator import archive_files, build_analyses, command_schema, current_version
 from obserwator.attribution import Attribution, attribution
 from obserwator.commands import _input_schema, _input_schemas, _spec
 from obserwator.datasets import ArchiveFile
@@ -251,9 +253,66 @@ class FakeImgw:
             if call.request.method == method
         ]
 
-    def downloads(self) -> list[str]:
-        """Archive bodies fetched with GET (listings and live API excluded)."""
-        return [url for url in self.requests("GET") if url.endswith((".zip", ".csv"))]
+    def downloads(self, start: int = 0) -> list[str]:
+        """Archive bodies fetched with GET from call ``start`` on (no listings, API)."""
+        return [
+            url
+            for method, url in self.traffic(start)
+            if method == "GET" and url.endswith((".zip", ".csv"))
+        ]
+
+
+# --------------------------------------------------------------------------
+# Recorded Hydrolog (ADR-016): the program of the stored analyses
+# --------------------------------------------------------------------------
+
+# Answers of the real Hydrolog on the fixture store (tests/fixtures/hydrolog).
+FAKE_HYDROLOG = Path(__file__).parents[1] / "fixtures" / "hydrolog" / "fake_hydrolog.py"
+
+
+def command_line(*words: str) -> str:
+    """``words`` as one command line of the setting ``hydrolog_command``."""
+    if os.name == "nt":  # the setting keeps the backslashes of Windows paths
+        return subprocess.list2cmdline(words)
+    return shlex.join(words)
+
+
+def use_fake_hydrolog(
+    monkeypatch: pytest.MonkeyPatch, scratch: Path | None = None
+) -> None:
+    """
+    Run the recorded Hydrolog; with ``scratch``, in one fixed directory of series files.
+
+    ``OBSERWATOR_HYDROLOG_COMMAND`` names the fake for this process and every
+    process it starts. Hydrolog's lines echo the paths of the series files, so
+    one fixed scratch directory (made by each computation and removed after it,
+    as the temporary one) makes the stored bytes of equal builds equal.
+    """
+    monkeypatch.setenv(
+        "OBSERWATOR_HYDROLOG_COMMAND", command_line(sys.executable, str(FAKE_HYDROLOG))
+    )
+    if scratch is None:
+        return
+    fixed = scratch
+
+    def made() -> Path:
+        fixed.mkdir(parents=True)
+        return fixed
+
+    monkeypatch.setattr("obserwator.store.analyses._scratch", made)
+
+
+def build_served_analyses(root: Path) -> None:
+    """The analyses of a store served to the read commands, by the recorded Hydrolog."""
+    with pytest.MonkeyPatch.context() as patch:
+        use_fake_hydrolog(patch)
+        assert build_analyses(root).status == "new"
+
+
+def current_analyses(root: Path) -> Path:
+    """``analyses.json`` of the one IMGW-PIB analyses version of ``root``."""
+    (version,) = (root / "analyses" / "versions" / "pl.imgw").iterdir()
+    return version / "analyses.json"
 
 
 # --------------------------------------------------------------------------

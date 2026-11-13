@@ -23,17 +23,9 @@ MESSAGES = {
         "Connection error to {url}: {exc}",
         "Błąd połączenia z {url}: {exc}",
     ),
-    "invalid_content_length_header": Text(
-        "Invalid Content-Length header: {value}",
-        "Niepoprawny nagłówek Content-Length: {value}",
-    ),
     "corrupt_archive_version": Text(
         "A corrupt archive version: {parent}",
         "Uszkodzona wersja archiwum: {parent}",
-    ),
-    "no_stored_version_listing": Text(
-        "No stored version of the listing {server_path}",
-        "Brak zapisanej wersji listy {server_path}",
     ),
     "invalid_json_response_from": Text(
         "Invalid JSON response from {url}",
@@ -73,14 +65,6 @@ MESSAGES = {
         "the number {value} is out of range",
         "liczba {value} poza zakresem",
     ),
-    "invalid_json_document": Text(
-        "Invalid JSON document {url}: {exc}",
-        "Niepoprawny dokument JSON {url}: {exc}",
-    ),
-    "unreadable_listing_no_file_meta1": Text(
-        "Unreadable listing {listing}: no file meta1-<YYYYMMDD>.json",
-        "Nieczytelny listing {listing}: brak pliku meta1-<RRRRMMDD>.json",
-    ),
     "unknown_unit": Text(
         "unknown unit {unit!r}",
         "nieznana jednostka {unit!r}",
@@ -101,19 +85,9 @@ MESSAGES = {
         "A corrupt version of the station catalog {path}: {exc}",
         "Uszkodzona wersja katalogu stacji {path}: {exc}",
     ),
-    "dataset_has_no_content_form": Text(
-        "The dataset {dataset} has no content form",
-        "Zbiór {dataset} nie ma formy treści",
-    ),
     "source_point_rejected": Text(
         "{code}: the source point {source} ({lon}, {lat}) was rejected — {verdict}",
         "{code}: odrzucono punkt źródła {source} ({lon}, {lat}) — {verdict}",
-    ),
-    "no_comparable_signal_download": Text(
-        "{server_path}: no comparable ETag/Last-Modified signal; the file is "
-        "downloaded and its SHA-256 compared",
-        "{server_path}: brak porównywalnego sygnału ETag/Last-Modified; pobieranie i "
-        "porównanie sumy SHA-256",
     ),
     "location_row_invalid_code": Text(
         "Row {line}: invalid station code '{code}' in the location file",
@@ -165,34 +139,6 @@ MESSAGES = {
         "(e.g. {unknown}); the user file only completes locations",
         "Plik położeń użytkownika: {count} kodów spoza metadanych ČHMÚ i szeregów "
         "(np. {unknown}); plik użytkownika uzupełnia tylko położenia",
-    ),
-    "no_stable_signal_public_api": Text(
-        "the public API gives no stable freshness signal",
-        "publiczne API nie udostępnia stabilnego sygnału aktualności",
-    ),
-    "metadata_envelope_hourly": Text(
-        "the metadata envelope changes every hour, even without a change of the data",
-        "koperta metadanych zmienia się co godzinę, także bez zmiany danych",
-    ),
-    "metadata_envelope_daily": Text(
-        "the metadata envelope changes every day, even without a change of the data",
-        "koperta metadanych zmienia się codziennie, także bez zmiany danych",
-    ),
-    "metadata_new_file_daily": Text(
-        "a new metadata file every day; the newest is named by the directory listing",
-        "nowy plik metadanych codziennie; najnowszy wskazuje listing katalogu",
-    ),
-    "no_comparable_signal": Text(
-        "no comparable ETag/Last-Modified signal",
-        "brak porównywalnego sygnału ETag/Last-Modified",
-    ),
-    "check_needs_download": Text(
-        "{url}: {reason}; the check needs a download",
-        "{url}: {reason}; sprawdzenie wymaga pobrania",
-    ),
-    "cannot_check_without_download": Text(
-        "Cannot check the freshness of {url} without a download",
-        "Nie można sprawdzić aktualności {url} bez pobrania",
     ),
     "missing_file": Text(
         "missing file {path}",
@@ -258,13 +204,25 @@ MESSAGES = {
         "Station catalog: {name}",
         "Katalog stacji: {name}",
     ),
-    "list_progress": Text(
-        "Station list {server_path}",
-        "Lista stacji {server_path}",
+    "source_read": Text(
+        "Station source {server_path}",
+        "Źródło stacji {server_path}",
     ),
-    "url_downloaded": Text(
-        "Downloaded {url}",
-        "Pobrano {url}",
+    "missing_sources": Text(
+        "The store {root} lacks station sources of the catalog: {datasets}",
+        "W magazynie {root} brakuje źródeł stacji katalogu: {datasets}",
+    ),
+    "hint_sync_sources": Text(
+        "Download them with obserwator store sync --root {root} --datasets {datasets}",
+        "Pobierz je: obserwator store sync --root {root} --datasets {datasets}",
+    ),
+    "source_not_stored": Text(
+        "source {source}: not in the store ({dataset})",
+        "źródło {source}: brak w magazynie ({dataset})",
+    ),
+    "source_detail": Text(
+        "source {source}: {file}",
+        "źródło {source}: {file}",
     ),
     "no_static_locations": Text(
         "No local location file {static_path}; the static source was skipped (python "

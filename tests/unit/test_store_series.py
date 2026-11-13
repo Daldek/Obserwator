@@ -71,7 +71,14 @@ def station_table(report, code):
 
 @pytest.fixture
 def root(tmp_path):
+    """The raw root holding the archives a series is built from."""
     return init_store(tmp_path / "store").root
+
+
+@pytest.fixture
+def data(tmp_path):
+    """The data root the series are built into."""
+    return init_store(tmp_path / "data", kind="data").root
 
 
 @pytest.fixture(autouse=True)
@@ -82,11 +89,11 @@ def offline(monkeypatch):
     monkeypatch.setattr(httpx.Client, "send", refuse)
 
 
-def test_check_series_is_offline_read_only_and_tracks_state(root):
+def test_check_series_is_offline_read_only_and_tracks_state(root, data):
     written = store_archives(root, HYDRO, [2022, 2023, 2024], [1])
-    before = tree(root)
-    plan = check_series(root, dataset=HYDRO)
-    assert tree(root) == before
+    before = tree(root), tree(data)
+    plan = check_series(data, raw_root=root, dataset=HYDRO)
+    assert (tree(root), tree(data)) == before
     assert plan.series_state == {"hydro_daily": "missing"}
     assert [item.status for item in plan.items] == ["current"] * 3
     assert {item.local_sha256 for item in plan.items} == {
@@ -97,8 +104,10 @@ def test_check_series_is_offline_read_only_and_tracks_state(root):
     }
     assert plan.actions[0].status == "missing"
 
-    assert build_series(root, dataset=HYDRO).status == "new"
-    assert check_series(root, dataset=HYDRO).series_state == {"hydro_daily": "current"}
+    assert build_series(data, raw_root=root, dataset=HYDRO).status == "new"
+    assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
+        "hydro_daily": "current"
+    }
 
     archive = archive_files(HYDRO, years=[2024])[0]
     changed = (FIXTURES / "variants" / "codz_2024_changed.zip").read_bytes()
@@ -109,23 +118,23 @@ def test_check_series_is_offline_read_only_and_tracks_state(root):
             changed, archive.url, '"v3"', "Mon, 19 Oct 2026 12:00:00 GMT", len(changed)
         ),
     )
-    outdated = check_series(root, dataset=HYDRO)
+    outdated = check_series(data, raw_root=root, dataset=HYDRO)
     assert outdated.series_state == {"hydro_daily": "outdated"}
     assert outdated.actions[0].status == "newer"
 
-    cancelled = check_series(root, dataset=HYDRO, cancel=lambda: True)
+    cancelled = check_series(data, raw_root=root, dataset=HYDRO, cancel=lambda: True)
     assert cancelled.cancelled and {item.error for item in cancelled.items} == {
         "cancelled"
     }
 
 
-def test_daily_hydro_snapshot_covers_every_day_and_all_stations(root):
+def test_daily_hydro_snapshot_covers_every_day_and_all_stations(root, data):
     written = store_archives(root, HYDRO, [2022, 2023, 2024], [1])
-    report = build_series(root, dataset=HYDRO)
+    report = build_series(data, raw_root=root, dataset=HYDRO)
     assert report.status == "new" and report.stations == 2 and report.problems == ()
     assert set(report.source_files) == {entry.path for entry in written}
     version_dir = report.version.parent
-    assert version_dir.parent == root / "series/versions/hydro_daily"
+    assert version_dir.parent == data / "series/versions/hydro_daily"
 
     raw = report.version.read_bytes()
     index = json.loads(raw)
@@ -226,9 +235,9 @@ def test_daily_hydro_snapshot_covers_every_day_and_all_stations(root):
     }
 
 
-def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root):
+def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root, data):
     store_archives(root, "pl.imgw.meteo_climate_daily", [1995, 2004], [2])
-    report = build_series(root, dataset="pl.imgw.meteo_climate_daily")
+    report = build_series(data, raw_root=root, dataset="pl.imgw.meteo_climate_daily")
     index = read_index(report)
     assert index["year_type"] == "calendar"
     assert index["periods"] == [
@@ -248,7 +257,7 @@ def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root):
     )
 
     store_archives(root, "pl.imgw.meteo_precip_daily", [2001], [1])
-    precip = build_series(root, dataset="pl.imgw.meteo_precip_daily")
+    precip = build_series(data, raw_root=root, dataset="pl.imgw.meteo_precip_daily")
     station = read_index(precip)["stations"]["123750000"]
     table = station_table(precip, "123750000").to_pylist()
     assert (
@@ -267,9 +276,9 @@ def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root):
     ]
 
 
-def test_monthly_and_semiannual_snapshots(root):
+def test_monthly_and_semiannual_snapshots(root, data):
     store_archives(root, "pl.imgw.hydro_monthly", [2024])
-    monthly = build_series(root, dataset="pl.imgw.hydro_monthly")
+    monthly = build_series(data, raw_root=root, dataset="pl.imgw.hydro_monthly")
     table = station_table(monthly, "149190310")
     assert [column for column in table.column_names if column.endswith("_value")] == [
         f"{v}_{s}_value" for v in "HQT" for s in ("min", "mean", "max")
@@ -282,7 +291,7 @@ def test_monthly_and_semiannual_snapshots(root):
     )
 
     store_archives(root, "pl.imgw.hydro_semiannual", [2024])
-    half = build_series(root, dataset="pl.imgw.hydro_semiannual")
+    half = build_series(data, raw_root=root, dataset="pl.imgw.hydro_semiannual")
     assert len(half.source_files) == 3
     index = read_index(half)
     variables = index["stations"]["149190310"]["variables"]
@@ -312,7 +321,7 @@ def put_csv(root, archive, name, rows, *, signal=SIGNAL):
     return write_archive(root, archive=archive, response=response)
 
 
-def test_semiannual_repeated_extremum_rows_build_one_value_with_occurrences(root):
+def test_semiannual_repeated_extremum_rows_build_one_value_with_occurrences(root, data):
     (archive,) = [
         item
         for item in archive_files("pl.imgw.hydro_semiannual", years=[2024])
@@ -324,7 +333,7 @@ def test_semiannual_repeated_extremum_rows_build_one_value_with_occurrences(root
         "149190310,Raba Górna,Raba,2024,13,H,2,160,,,,,,,,,,\n"
     )
     put_csv(root, archive, "polr_H_2024.csv", rows)
-    report = build_series(root, dataset="pl.imgw.hydro_semiannual")
+    report = build_series(data, raw_root=root, dataset="pl.imgw.hydro_semiannual")
     assert report.status == "new", report.problems
     table = station_table(report, "149190310")
     assert table.schema.field("H_max_occurrences").type == pa.int32()
@@ -338,7 +347,7 @@ def test_semiannual_repeated_extremum_rows_build_one_value_with_occurrences(root
     assert winter["H_min_occurrences"] is None
 
 
-def test_parsing_memory_does_not_grow_with_the_dataset(root, monkeypatch):
+def test_parsing_memory_does_not_grow_with_the_dataset(root, data, monkeypatch):
     # 12 monthly archives x 60 stations: the old builder kept every parsed day of
     # every station in memory until all archives were read.
     for archive in archive_files(HYDRO, years=[2021]):
@@ -365,7 +374,7 @@ def test_parsing_memory_does_not_grow_with_the_dataset(root, monkeypatch):
 
     tracemalloc.start()
     try:
-        report = build_series(root, dataset=HYDRO, on_progress=progress)
+        report = build_series(data, raw_root=root, dataset=HYDRO, on_progress=progress)
     finally:
         tracemalloc.stop()
     assert report.status == "new" and report.stations == 60
@@ -376,16 +385,16 @@ def test_parsing_memory_does_not_grow_with_the_dataset(root, monkeypatch):
     assert table["H_value"][0].as_py() == 160.0
 
 
-def test_second_build_is_reused_without_parquet_writer(root, monkeypatch):
+def test_second_build_is_reused_without_parquet_writer(root, data, monkeypatch):
     store_archives(root, HYDRO, [2023, 2024])
-    first = build_series(root, dataset=HYDRO)
+    first = build_series(data, raw_root=root, dataset=HYDRO)
 
     def refuse(*args, **kwargs):
         raise AssertionError("writer Parquet nie może zostać otwarty")
 
     monkeypatch.setattr(pq, "write_table", refuse)
     monkeypatch.setattr(pq, "ParquetWriter", refuse)
-    again = build_series(root, dataset=HYDRO)
+    again = build_series(data, raw_root=root, dataset=HYDRO)
     assert (
         again.status == "unchanged"
         and again.version == first.version
@@ -397,39 +406,45 @@ def test_second_build_is_reused_without_parquet_writer(root, monkeypatch):
         root, HYDRO, [2024], signal=('"v2"', "Sun, 18 Oct 2026 12:00:00 GMT")
     )
     assert [entry.status for entry in relabeled] == ["relabeled"]
-    assert build_series(root, dataset=HYDRO).status == "unchanged"
-    assert check_series(root, dataset=HYDRO).series_state == {"hydro_daily": "current"}
-    assert len(series_versions(root)) == 1
+    assert build_series(data, raw_root=root, dataset=HYDRO).status == "unchanged"
+    assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
+        "hydro_daily": "current"
+    }
+    assert len(series_versions(data)) == 1
 
 
-def test_cancel_and_broken_input_publish_no_version(root):
+def test_cancel_and_broken_input_publish_no_version(root, data):
     store_archives(root, HYDRO, [2023, 2024])
     calls = iter([False, False, True])
     assert (
-        build_series(root, dataset=HYDRO, cancel=lambda: next(calls, True)).status
+        build_series(
+            data, raw_root=root, dataset=HYDRO, cancel=lambda: next(calls, True)
+        ).status
         == "cancelled"
     )
     station_calls = iter([False, False, False, False, True])
     progress = []
     late = build_series(
-        root,
+        data,
+        raw_root=root,
         dataset=HYDRO,
         cancel=lambda: next(station_calls, True),
         on_progress=progress.append,
     )
     assert late.status == "cancelled"
     assert [event.unit for event in progress].count("station") == 1
-    assert series_versions(root) == []
+    assert series_versions(data) == []
+    assert not any(data.glob(".incoming/*"))
     assert not any((root / ".incoming").iterdir())
 
-    current = check_series(root, dataset=HYDRO).items[-1]
+    current = check_series(data, raw_root=root, dataset=HYDRO).items[-1]
     (root / current.local_path).write_bytes(b"uszkodzone")
     notices = []
-    failed = build_series(root, dataset=HYDRO, on_notice=notices.append)
+    failed = build_series(data, raw_root=root, dataset=HYDRO, on_notice=notices.append)
     assert failed.status == "failed" and "checksum" in failed.problems[0]
     assert failed.version is None
     assert [notice.code for notice in notices] == ["archive_failed"]
-    assert series_versions(root) == []
+    assert series_versions(data) == []
 
 
 def put_2024(root, content, etag, day):
@@ -446,51 +461,53 @@ ORIGINAL_2024 = (
 CHANGED_2024 = (FIXTURES / "variants" / "codz_2024_changed.zip").read_bytes()
 
 
-def test_reverted_input_builds_new_current_series_instead_of_reusing_old(root):
+def test_reverted_input_builds_new_current_series_instead_of_reusing_old(root, data):
     put_2024(root, ORIGINAL_2024, '"v1"', 17)
-    first = build_series(root, dataset=HYDRO)
+    first = build_series(data, raw_root=root, dataset=HYDRO)
     put_2024(root, CHANGED_2024, '"v2"', 19)
-    second = build_series(root, dataset=HYDRO)
+    second = build_series(data, raw_root=root, dataset=HYDRO)
     # IMGW republishes the earlier bytes under a new Last-Modified: a relabeled copy
     # whose input manifest equals the one of the first, now superseded, series.
     assert put_2024(root, ORIGINAL_2024, '"v3"', 30).status == "relabeled"
-    third = build_series(root, dataset=HYDRO)
+    third = build_series(data, raw_root=root, dataset=HYDRO)
     assert (first.status, second.status, third.status) == ("new",) * 3
     assert third.version not in (first.version, second.version)
     assert third.version.read_bytes() == first.version.read_bytes()
     assert third.version.parent.name.startswith("2026-10-30_")
     assert (
-        current_version(root, slot="series:pl.imgw.hydro_daily").version
+        current_version(data, slot="series:pl.imgw.hydro_daily").version
         == third.version
     )
-    assert check_series(root, dataset=HYDRO).series_state == {"hydro_daily": "current"}
-    again = build_series(root, dataset=HYDRO)
+    assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
+        "hydro_daily": "current"
+    }
+    again = build_series(data, raw_root=root, dataset=HYDRO)
     assert (again.status, again.version) == ("unchanged", third.version)
 
 
-def test_alternating_input_under_dominating_label_keeps_series_current(root):
+def test_alternating_input_under_dominating_label_keeps_series_current(root, data):
     # The 2023 archive's later Last-Modified labels every build, so reverted inputs
     # produce identical series.json under an already taken directory name.
     store_archives(root, HYDRO, [2023], signal=('"x"', "Tue, 01 Dec 2026 12:00:00 GMT"))
     put_2024(root, ORIGINAL_2024, '"e0"', 17)
-    built = [build_series(root, dataset=HYDRO).version]
+    built = [build_series(data, raw_root=root, dataset=HYDRO).version]
     for step in range(1, 5):
         put_2024(root, (ORIGINAL_2024, CHANGED_2024)[step % 2], f'"e{step}"', 17 + step)
-        report = build_series(root, dataset=HYDRO)
+        report = build_series(data, raw_root=root, dataset=HYDRO)
         assert report.status == "new" and report.version not in built
         built.append(report.version)
         assert (
-            current_version(root, slot="series:pl.imgw.hydro_daily").version
+            current_version(data, slot="series:pl.imgw.hydro_daily").version
             == report.version
         )
-        assert check_series(root, dataset=HYDRO).series_state == {
+        assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
             "hydro_daily": "current"
         }
     assert {version.parent.name[:10] for version in built} == {"2026-12-01"}
     assert built[4].read_bytes() == built[2].read_bytes() == built[0].read_bytes()
 
 
-def test_parsed_records_are_released_while_building(root):
+def test_parsed_records_are_released_while_building(root, data):
     store_archives(root, HYDRO, [2023, 2024])
     alive = []
 
@@ -501,13 +518,16 @@ def test_parsed_records_are_released_while_building(root):
                 sum(isinstance(item, NormalizedRecord) for item in gc.get_objects())
             )
 
-    assert build_series(root, dataset=HYDRO, on_progress=progress).status == "new"
+    assert (
+        build_series(data, raw_root=root, dataset=HYDRO, on_progress=progress).status
+        == "new"
+    )
     # Records are folded into per-station values as they are parsed; at most the
     # last one is still referenced, so memory never holds the dataset twice.
     assert len(alive) == 2 and max(alive) <= 1
 
 
-def test_shared_measurements_keep_the_sign_of_zero(root):
+def test_shared_measurements_keep_the_sign_of_zero(root, data):
     rows = "".join(
         f'"{code}","Raba","Raba",2024,2,1,152,1.5,{temperature},12\n'
         for code, temperature in (
@@ -520,7 +540,7 @@ def test_shared_measurements_keep_the_sign_of_zero(root):
     with zipfile.ZipFile(buffer, "w") as bundle:
         bundle.writestr("codz_2024.csv", rows.encode("cp1250"))
     put_2024(root, buffer.getvalue(), '"z"', 17)
-    report = build_series(root, dataset=HYDRO)
+    report = build_series(data, raw_root=root, dataset=HYDRO)
     signs = {
         code: math.copysign(1.0, station_table(report, code)["T_value"][0].as_py())
         for code in ("149190310", "149190311", "149190312")
@@ -528,16 +548,16 @@ def test_shared_measurements_keep_the_sign_of_zero(root):
     assert signs == {"149190310": -1.0, "149190311": 1.0, "149190312": -1.0}
 
 
-def test_validation_and_missing_pyarrow(root, monkeypatch):
+def test_validation_and_missing_pyarrow(root, data, monkeypatch):
     with pytest.raises(ObserwatorValidationError):
-        build_series(root, dataset="pl.imgw.hydro_stations")
-    assert build_series(root, dataset=HYDRO).status == "failed"
+        build_series(data, raw_root=root, dataset="pl.imgw.hydro_stations")
+    assert build_series(data, raw_root=root, dataset=HYDRO).status == "failed"
     monkeypatch.setitem(sys.modules, "pyarrow", None)
     monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
     with pytest.raises(
         ObserwatorStoreDependencyError, match=r"pip install obserwator\[store\]"
     ):
-        build_series(root, dataset=HYDRO)
+        build_series(data, raw_root=root, dataset=HYDRO)
 
 
 def test_core_and_store_modules_import_without_pyarrow():

@@ -1,10 +1,10 @@
-"""Offline fixture store for contract tests of Obserwator consumers.
+"""Offline fixture roots for contract tests of Obserwator consumers.
 
-``build_fixture_store`` builds a small versioned store with the real public writers
-(``init_store``, ``write_archive``, ``sync_store``, ``build_series``,
-``build_catalog``) while every HTTP request is answered from recordings shipped with
-the package. No request reaches the network; an unrecorded request fails as a
-connection error.
+``build_fixture_store`` builds a small raw root and the data root built from it
+(ADR-017) with the real public writers (``init_store``, ``write_archive``,
+``sync_store``, ``build_series``, ``build_catalog``) while every HTTP request is
+answered from recordings shipped with the package. No request reaches the network;
+an unrecorded request fails as a connection error.
 
 Requires the ``pyarrow`` dependency of series building (``obserwator[store]``).
 """
@@ -17,6 +17,7 @@ import threading
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -44,7 +45,7 @@ from obserwator.store import catalog as _store_catalog
 from obserwator.store.types import PathArg, StoreHandle
 from obserwator.store.writer import _canonical
 
-__all__ = ["FixtureVariant", "build_fixture_store", "fixture_files"]
+__all__ = ["FixtureRoots", "FixtureVariant", "build_fixture_store", "fixture_files"]
 
 FixtureVariant = Literal["complete", "corrupt", "unknown_schema", "complete_pl_cz"]
 
@@ -60,10 +61,27 @@ _SCENARIO = (
     "new_bytes_get",
     "meteo_get",
     "meteo_1995_get",
+    "hydro_stations_head",
+    "hydro_stations_head",
     "hydro_stations_get",
+    "meteo_stations_head",
+    "meteo_stations_head",
     "meteo_stations_get",
     "hydro_current",
     "meteo_current",
+)
+# Station sources of each provider's catalog, stored by store sync (ADR-015).
+_IMGW_SOURCES = (
+    "pl.imgw.hydro_stations",
+    "pl.imgw.meteo_stations",
+    "pl.imgw.hydro_now",
+    "pl.imgw.meteo_now",
+)
+_CHMI_SOURCES = (
+    "cz.chmi.hydro_stations",
+    "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
 )
 _CHMI_HYDRO = "cz.chmi.hydro_daily"
 _CHMI_METEO = "cz.chmi.meteo_daily"
@@ -273,37 +291,63 @@ def _add_unknown_version(root: Path) -> None:
     )
 
 
-def _add_chmi(handle: StoreHandle) -> None:
+def _add_chmi(raw: StoreHandle, data: StoreHandle) -> None:
     """
     ČHMÚ part of ``complete_pl_cz``, replayed from ``chmi_builder_recordings.json``.
 
-    Each step is one `sync_store` (listing, then HEAD and GET of every new or
-    changed file, then the dataset's series); the ČHMÚ catalog is built last.
+    Each step is one `sync_store` into the raw root (listing, then HEAD and GET
+    of every new or changed file), then `build_series` of the step's dataset
+    into the data root; the station sources are synchronized and the ČHMÚ
+    catalog is built last.
     """
     with _recorded_http(None, recordings=_CHMI_RECORDINGS):
         for step, selectors, items, built in _CHMI_STEPS:
-            report = sync_store(handle, **selectors)
+            report = sync_store(raw, **selectors)
             _expect(
                 step,
                 ", ".join(sorted(item.status for item in report.items)),
                 ", ".join(sorted(items)),
             )
-            _expect(
-                f"{step}: series",
-                ", ".join(series.status for series in report.series),
-                built,
-            )
-        catalog = build_catalog(handle, provider="CHMI")
+            series = build_series(data, raw_root=raw, dataset=selectors["datasets"][0])
+            _expect(f"{step}: series", series.status, built)
+        sources = sync_store(raw, datasets=_CHMI_SOURCES)
+        _expect(
+            "ČHMÚ station sources",
+            ", ".join(sorted({item.status for item in sources.items})),
+            "new",
+        )
+        catalog = build_catalog(data, raw_root=raw, provider="CHMI")
         _expect("ČHMÚ station catalog", catalog.status, "new")
 
 
-def build_fixture_store(
-    root: PathArg, *, variant: FixtureVariant = "complete"
-) -> StoreHandle:
+@dataclass(frozen=True)
+class FixtureRoots:
     """
-    Build an offline fixture store with the public writers in an empty ``root``.
+    The two roots of a fixture built by `build_fixture_store` (ADR-017).
 
-    ``complete`` contains:
+    Attributes
+    ----------
+    raw : StoreHandle
+        The raw root (``obserwator-store.json``): archive versions and station
+        sources.
+    data : StoreHandle
+        The data root (``obserwator-data.json``): the series and station
+        catalogs built from the raw root.
+    """
+
+    raw: StoreHandle
+    data: StoreHandle
+
+
+def build_fixture_store(
+    root: PathArg, *, data_root: PathArg, variant: FixtureVariant = "complete"
+) -> FixtureRoots:
+    """
+    Build offline fixture roots with the public writers in two empty directories.
+
+    ``root`` becomes the raw root (archives, station sources) and ``data_root``
+    the data root (series, catalogs) built from it (ADR-017). ``complete``
+    contains:
 
     * ``codz_2024.zip`` (``pl.imgw.hydro_daily``) in three versions: the old one, the
       same bytes relabeled under a newer HTTP signal and newer bytes (current);
@@ -315,9 +359,10 @@ def build_fixture_store(
       ``geometry`` is ``null``, built without the local static locations file
       (recorded in its sidecar as ``available: false``).
 
-    ``corrupt`` additionally truncates the sidecar of the old hydro archive version;
-    ``unknown_schema`` additionally adds a ``hydro_daily`` series version with
-    ``obserwator-meta/2``/``obserwator-series/2`` that readers must report without parsing.
+    ``corrupt`` additionally truncates the sidecar of the old hydro archive
+    version (raw root); ``unknown_schema`` additionally adds a ``hydro_daily``
+    series version with ``obserwator-meta/2``/``obserwator-series/2`` that
+    readers must report without parsing (data root).
 
     ``complete_pl_cz`` is ``complete`` plus the ČHMÚ provider (spec 2026-10-18
     §13.3), synchronized with `sync_store` from ``chmi_builder_recordings.json``
@@ -338,21 +383,26 @@ def build_fixture_store(
     Parameters
     ----------
     root : str or os.PathLike
-        Store directory; it must not exist or be an empty directory.
+        Directory of the raw root; it must not exist or be an empty directory.
+    data_root : str or os.PathLike
+        Directory of the data root, outside ``root``; it must not exist or be
+        an empty directory.
     variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz"}, optional
         Fixture variant to build.
 
     Returns
     -------
-    StoreHandle
-        Handle of the built store.
+    FixtureRoots
+        Handles of the built raw and data roots.
 
     Raises
     ------
     ObserwatorValidationError
         If ``variant`` is unknown.
     ObserwatorStoreError
-        If ``root`` is not an empty directory.
+        If ``root`` or ``data_root`` is not an empty directory.
+    ObserwatorStoreConflictError
+        If one root lies in the other (``details.reason`` ``nested_store``).
     ObserwatorDataError
         If a build step ends with an unexpected status, a recording does not match
         its checksum or recorded answers are left unused.
@@ -367,45 +417,56 @@ def build_fixture_store(
                 allowed=", ".join(get_args(FixtureVariant)),
             )
         )
-    path = Path(root)
-    if path.exists() and (not path.is_dir() or any(path.iterdir())):
-        raise ObserwatorStoreError(
-            message("testing.fixture_store_needs_empty_directory", path=path)
-        )
-    handle = init_store(path)
+    paths = Path(root), Path(data_root)
+    for path in paths:
+        if path.exists() and (not path.is_dir() or any(path.iterdir())):
+            raise ObserwatorStoreError(
+                message("testing.fixture_store_needs_empty_directory", path=path)
+            )
+    raw = init_store(paths[0])
+    data = init_store(paths[1], kind="data")
     (hydro,) = archive_files(_HYDRO, years=(2024,))
     (meteo_2001,) = archive_files(_METEO, years=(2001,), months=(1,))
     (meteo_1995,) = archive_files(_METEO, years=(1995,))
     with _recorded_http(_SCENARIO):
         old = write_archive(
-            handle, archive=hydro, response=download_hydro_data("dobowe", 2024)
+            raw, archive=hydro, response=download_hydro_data("dobowe", 2024)
         )
         _expect("codz_2024 v1", old.status, "new")
-        _expect("series hydro v1", build_series(handle, dataset=_HYDRO).status, "new")
+        first = build_series(data, raw_root=raw, dataset=_HYDRO)
+        _expect("series hydro v1", first.status, "new")
         relabeled = write_archive(
-            handle, archive=hydro, response=download_hydro_data("dobowe", 2024)
+            raw, archive=hydro, response=download_hydro_data("dobowe", 2024)
         )
         _expect("codz_2024 v2", relabeled.status, "relabeled")
         newer = write_archive(
-            handle, archive=hydro, response=download_hydro_data("dobowe", 2024)
+            raw, archive=hydro, response=download_hydro_data("dobowe", 2024)
         )
         _expect("codz_2024 v3", newer.status, "new")
-        _expect("series hydro v2", build_series(handle, dataset=_HYDRO).status, "new")
+        second = build_series(data, raw_root=raw, dataset=_HYDRO)
+        _expect("series hydro v2", second.status, "new")
         meteo = write_archive(
-            handle,
+            raw,
             archive=meteo_2001,
             response=download_meteo_data("dobowe", "opad", 2001, 1),
         )
         _expect("2001_01_o", meteo.status, "new")
-        _expect("series meteo", build_series(handle, dataset=_METEO).status, "new")
+        precip = build_series(data, raw_root=raw, dataset=_METEO)
+        _expect("series meteo", precip.status, "new")
         late = write_archive(
-            handle,
+            raw,
             archive=meteo_1995,
             response=download_meteo_data("dobowe", "opad", 1995),
         )
         _expect("1995_o", late.status, "new")
+        sources = sync_store(raw, datasets=_IMGW_SOURCES)
+        _expect(
+            "station sources",
+            ", ".join(sorted({item.status for item in sources.items})),
+            "new",
+        )
         with _without_reference_data():
-            catalog = build_catalog(handle)
+            catalog = build_catalog(data, raw_root=raw)
         _expect("station catalog", catalog.status, "new")
         if catalog.without_location == 0:
             raise ObserwatorDataError(message("testing.fixture_station_catalog_has_no"))
@@ -413,7 +474,7 @@ def build_fixture_store(
         sidecar = old.path.with_name(f"{old.path.name}.meta.json")
         sidecar.write_bytes(sidecar.read_bytes()[: sidecar.stat().st_size // 2])
     elif variant == "unknown_schema":
-        _add_unknown_version(handle.root)
+        _add_unknown_version(data.root)
     elif variant == "complete_pl_cz":
-        _add_chmi(handle)
-    return handle
+        _add_chmi(raw, data)
+    return FixtureRoots(raw, data)

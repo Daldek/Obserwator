@@ -19,17 +19,21 @@ import pytest
 pytest.importorskip("mcp")
 
 from obserwator import ERROR_CODES, __version__
-from tests.contract.support import input_schema, rest_request, stamps
+from tests.contract.support import input_schema, rest_request
 from tests.contract.test_interface_contract import (
     CASES,
     ROUTES,
     SCENARIOS,
+    WRITTEN,
+    Roots,
     Setting,
-    fresh_store,
+    fresh_roots,
     recorded,  # noqa: F401 (fixture)
     relative_reference_dir,  # noqa: F401 (fixture)
     resolved,
-    served_root,  # noqa: F401 (fixture)
+    serve,
+    stamps_of,
+    written,
 )
 from tests.unit.test_mcp_http import ENGLISH, connected, enabled
 
@@ -67,7 +71,7 @@ def assert_same(answered, result, command: str, options: dict[str, object]) -> N
         return
     assert answered.status_code == 200, answered.text
     assert result.is_error is False, result.content[0].text
-    if media == "application/json":
+    if "x-obserwator-status" not in answered.headers:  # an envelope, not a stream
         assert result.structured_content == answered.json()
         assert result.content[0].text == answered.text
         return
@@ -109,21 +113,26 @@ async def test_every_rest_case_is_the_answer_of_its_mcp_tool(
     monkeypatch,
     tmp_path,
     fixture_root,
-    served_root,  # noqa: F811
+    fixture_raw_root,
+    served_root,
+    served_raw_root,
     recorded,  # noqa: F811
     frozen,
     relative_reference_dir,  # noqa: F811
 ):
     app = enabled(monkeypatch)
     tool = ROUTES[command]["operation_id"]
+    served = Roots(served_root, served_raw_root)
+    fixture = Roots(fixture_root, fixture_raw_root)
     async with connected(app) as client:
         for case in CASES[command]:
-            writes = case.store in ("empty", "fixture")
+            writes = case.store in WRITTEN
             if writes:
-                root = tmp_path / "store"
+                roots = written(tmp_path)
             else:
-                root = served_root if case.store == "served" else None
-            monkeypatch.setattr(server, "root", root)
+                roots = served if case.store == "served" else None
+            serve(server, monkeypatch, roots)
+            root = None if roots is None else roots.root(command)
             options = case.options if writes else resolved(case.options, root)
             paged = dict(options)
             if ROUTES[command]["result"] == "list" and "limit" not in options:
@@ -131,16 +140,16 @@ async def test_every_rest_case_is_the_answer_of_its_mcp_tool(
             answers, requests = {}, {}
             for interface in ("rest", "mcp"):
                 if writes:
-                    fresh_store(case.store, root, fixture_root)
-                before = None if root is None else stamps(root)
+                    fresh_roots(case.store, roots, fixture)
+                before = None if roots is None else stamps_of(roots)
                 start = len(recorded.router.calls)
                 if interface == "rest":
                     answers[interface] = rest_answer(rest, command, paged)
                 else:
                     answers[interface] = await client.call_tool(tool, options)
                 requests[interface] = recorded.traffic(start)
-                if root is not None:  # reads and plans leave the store as it was
-                    assert stamps(root) == before
+                if roots is not None:  # reads and plans leave the roots as they were
+                    assert stamps_of(roots) == before
 
             assert_same(answers["rest"], answers["mcp"], command, options)
             assert requests["mcp"] == requests["rest"]
@@ -150,11 +159,20 @@ async def test_every_rest_case_is_the_answer_of_its_mcp_tool(
     "code", [code for code in SCENARIOS if code != "method_not_allowed"]
 )
 async def test_every_error_scenario_of_rest_is_the_answer_of_the_mcp_tool(
-    code, rest, server, monkeypatch, tmp_path, fixture_root, imgw, frozen
+    code,
+    rest,
+    server,
+    monkeypatch,
+    tmp_path,
+    fixture_root,
+    fixture_raw_root,
+    imgw,
+    frozen,
 ):
     app = enabled(monkeypatch)  # before the scenario: it may break the registry
-    scenario = SCENARIOS[code](Setting(tmp_path, fixture_root, imgw, monkeypatch))
-    monkeypatch.setattr(server, "root", scenario.root)
+    fixture = Roots(fixture_root, fixture_raw_root)
+    scenario = SCENARIOS[code](Setting(tmp_path, fixture, imgw, monkeypatch))
+    serve(server, monkeypatch, scenario.roots)
     tool = ROUTES[scenario.command]["operation_id"]
 
     answered = rest_answer(rest, scenario.command, scenario.options)

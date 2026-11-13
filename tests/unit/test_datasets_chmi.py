@@ -12,6 +12,8 @@ from obserwator.datasets import (
     DatasetDescriptor,
     License,
     _archive_from_path,
+    _station_file,
+    _station_files,
     archive_files,
     datasets,
     get_dataset,
@@ -27,7 +29,14 @@ METEO = "cz.chmi.meteo_daily"
 # Fictional codes: no published ČHMÚ code starts with 0-203-1-9 or 0-203-0-9.
 A, B = "0-203-1-900001", "0-203-1-CB900003"
 M = "0-203-0-90001"
-CHMI_KEYS = [HYDRO, METEO, "cz.chmi.hydro_stations", "cz.chmi.meteo_stations"]
+CHMI_KEYS = [
+    HYDRO,
+    METEO,
+    "cz.chmi.hydro_stations",
+    "cz.chmi.meteo_stations",
+    "cz.chmi.hydro_now",
+    "cz.chmi.meteo_now",
+]
 
 
 def test_providers_follow_the_registry_table():
@@ -74,7 +83,7 @@ def test_providers_follow_the_registry_table():
     )
     assert chmi.station_code_pattern == "^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$"
     assert chmi.datasets == tuple(CHMI_KEYS)
-    assert len(imgw.datasets) == 13
+    assert len(imgw.datasets) == 15
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
@@ -113,7 +122,7 @@ def test_provider_lookup_by_id_or_key_prefix():
 
 def test_registry_invariants_across_providers():
     registry = datasets()
-    assert len(registry) == 17
+    assert len(registry) == 21
     names = [
         name
         for item in registry
@@ -146,8 +155,9 @@ def test_registry_invariants_across_providers():
         }
         for provider in by_provider
     }
+    # The current-data API of IMGW-PIB lies below its site, not below the archive.
     assert roots == {
-        "IMGW-PIB": {"dane_hydrologiczne", "dane_meteorologiczne"},
+        "IMGW-PIB": {"dane_hydrologiczne", "dane_meteorologiczne", "api"},
         "CHMI": {"hydrology", "meteorology"},
     }
     imgw, chmi = (re.compile(p.station_code_pattern) for p in providers())
@@ -160,7 +170,7 @@ def test_registry_invariants_across_providers():
         assert not imgw.fullmatch(code) and not chmi.fullmatch(code)
 
 
-def test_content_forms_only_for_the_three_chmi_json_datasets():
+def test_content_forms_only_for_the_chmi_json_datasets():
     for item in datasets():
         assert item.content_form is None or item.content_form in CONTENT_FORMS
         expected = (
@@ -173,6 +183,8 @@ def test_content_forms_only_for_the_three_chmi_json_datasets():
         HYDRO,
         "cz.chmi.hydro_stations",
         "cz.chmi.meteo_stations",
+        "cz.chmi.hydro_now",
+        "cz.chmi.meteo_now",
     ]
 
 
@@ -181,8 +193,11 @@ def test_chmi_descriptors_follow_the_spec_table():
     assert [item.key for item in datasets(provider="cz.chmi", kind="meteo")] == [
         METEO,
         "cz.chmi.meteo_stations",
+        "cz.chmi.meteo_now",
     ]
-    hydro, meteo, hydro_list, meteo_list = datasets(provider="CHMI")
+    hydro, meteo, hydro_list, meteo_list, hydro_now, meteo_now = datasets(
+        provider="CHMI"
+    )
     assert (hydro.slug, hydro.server_dir, hydro.parser) == (
         "chmi_hydro_daily",
         "hydrology/historical/data/daily",
@@ -231,6 +246,22 @@ def test_chmi_descriptors_follow_the_spec_table():
             "country",
             "http",
             True,
+        )
+    # The station metadata of the catalog (ADR-015): ``now`` files kept verbatim,
+    # the hydro ones without a stable signal, the daily meteo file by its listing.
+    for item, directory, signal in (
+        (hydro_now, "hydrology/now/metadata", "none"),
+        (meteo_now, "meteorology/climate/now/metadata", "listing"),
+    ):
+        assert (item.server_dir, item.parser, item.time_unit) == (
+            directory,
+            None,
+            "station_list",
+        )
+        assert (item.update_signal, item.in_store, item.kept_fields) == (
+            signal,
+            True,
+            (),
         )
     with pytest.raises(ObserwatorValidationError) as error:
         datasets(provider="SHMU")
@@ -346,11 +377,11 @@ def _every_file() -> list[ArchiveFile]:
     files: list[ArchiveFile] = []
     for item in datasets():
         if item.time_unit == "station_list":
-            files += [
-                file
-                for file in station_source_files(provider=item.provider)
-                if file.dataset == item.key
-            ]
+            files += _station_files(item.key)
+            if item.key == "cz.chmi.meteo_now":
+                daily = _station_file(item, "meta1-20261018.json")
+                assert daily is not None
+                files.append(daily)
         elif item.server_dir is None:
             continue
         elif item.archive_scope == "station_year":
@@ -392,6 +423,11 @@ def test_reverse_mapping_recreates_every_file():
             f"meteorology/climate/historical_csv/data/daily/temperature/dly-{M}-SRA.csv",
         ),
         ("cz.chmi.hydro_stations", "hydrology/historical/metadata/meta2.json"),
+        ("cz.chmi.hydro_now", "hydrology/now/metadata/meta2.json"),
+        ("cz.chmi.meteo_now", "meteorology/climate/now/metadata/meta2-20261018.json"),
+        ("cz.chmi.meteo_now", "meteorology/climate/now/metadata/meta1-2026101.json"),
+        ("pl.imgw.hydro_now", "api/data/synop"),
+        ("pl.imgw.meteo_now", "api/data/hydro"),
         ("pl.imgw.hydro_daily", "dane_hydrologiczne/dobowe/2023/zjaw_2023.zip"),
         ("pl.imgw.hydro_daily", "dane_hydrologiczne/dobowe/2023/codz_2023_01.zip"),
         (

@@ -35,7 +35,14 @@ METEO_VARIABLES = ("P", "Tmean", "Tmax", "Tmin")
 
 @pytest.fixture
 def root(tmp_path):
+    """The raw root holding the archives."""
     return init_store(tmp_path / "store").root
+
+
+@pytest.fixture
+def data(tmp_path):
+    """The data root the series are built into (ADR-017)."""
+    return tmp_path / "data"
 
 
 def table(lines):
@@ -49,9 +56,9 @@ def lines_of(header, rows):
     return trailing_lines([dict(zip(header, row, strict=True)) for row in rows])
 
 
-def test_meteo_series_export_has_quality_columns_and_the_chmi_attribution(root):
+def test_meteo_series_export_has_quality_columns_and_the_chmi_attribution(root, data):
     store_meteo(root)
-    version = build_series(root, dataset=METEO).version
+    version = build_series(data, raw_root=root, dataset=METEO).version
     notices = []
 
     header, rows = table(export_series(version, station=FULL, on_notice=notices.append))
@@ -110,9 +117,9 @@ def test_meteo_series_export_has_quality_columns_and_the_chmi_attribution(root):
     )
 
 
-def test_hydro_series_export_has_no_quality_columns_in_both_year_types(root):
+def test_hydro_series_export_has_no_quality_columns_in_both_year_types(root, data):
     store_hydro(root, H1_2023, H1_2024)
-    version = build_series(root, dataset=HYDRO).version
+    version = build_series(data, raw_root=root, dataset=HYDRO).version
     window = {"start": date(2023, 10, 31), "end": date(2023, 11, 1)}
 
     header, calendar = table(
