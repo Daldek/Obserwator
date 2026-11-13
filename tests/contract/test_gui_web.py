@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 from collections.abc import Iterator
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,8 @@ SRC = WEB_DIR / "src"
 SCRIPTS = sorted(SRC.rglob("*.js"))
 PAGES = sorted(path for path in WEB_DIR.rglob("*.html") if "nogat" not in path.parts)
 STYLES = sorted((WEB_DIR / "css").rglob("*.css"))
+# The user guide's own script and stylesheet, beside the page's
+GUIDE = WEB_DIR / "instrukcja"
 KEYS = {key.removeprefix("gui.") for key in MESSAGES}
 # Polish letters, and Polish words that no English text uses, as words of their own (not
 # joined by "-", "_" or "." into a class name, an id or a key)
@@ -189,22 +192,58 @@ def test_nogat_copies_keep_the_bytes_of_their_manifests():
 # --- the page and the CSP -----------------------------------------------------------------
 
 
+_REMOTE = re.compile(r"^\s*(?:https?:)?//", re.IGNORECASE)
+# Attributes that make the browser load what they name, on any element; ``href`` loads on
+# every element but a link the person follows (``<a>``, ``<area>``): a stylesheet, an icon,
+# a ``<base>``, an SVG ``<use>`` or ``<image>``
+_LOADING = frozenset({"src", "srcset", "poster", "data", "background"})
+_FOLLOWED = frozenset({"a", "area"})
+
+
+class _RemoteLoads(HTMLParser):
+    """The tags of a page that load something from another origin."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            loads = name in _LOADING or (
+                name in ("href", "xlink:href") and tag not in _FOLLOWED
+            )
+            parts = (value or "").split(",") if name == "srcset" else [value or ""]
+            if loads and any(_REMOTE.match(part) for part in parts):
+                self.found.append(f"<{tag} {name}={value!r}>")
+
+
+def remote_loads(html: str) -> list[str]:
+    """What a page loads from another origin; a link a person follows is no load."""
+    parser = _RemoteLoads()
+    parser.feed(html)
+    parser.close()
+    return parser.found
+
+
 def test_the_page_loads_nothing_from_another_origin():
-    remote = re.compile(r"""(?:src|href)\s*=\s*["']?\s*(?:https?:)?//""", re.IGNORECASE)
     imports = re.compile(r"""(?:\bfrom|\bimport)\s*\(?\s*["'](?:https?:)?//""")
     css = re.compile(
         r"""(?:url\(\s*["']?|@import\s+["'])(?:https?:)?//""", re.IGNORECASE
     )
     found = [
-        str(path) for path in PAGES if remote.search(path.read_text(encoding="utf-8"))
+        f"{path}: {tag}"
+        for path in PAGES
+        for tag in remote_loads(path.read_text(encoding="utf-8"))
     ]
     found += [
         str(path)
-        for path in SCRIPTS
+        for path in [*SCRIPTS, *sorted(GUIDE.glob("*.js"))]
         if imports.search(path.read_text(encoding="utf-8"))
     ]
     found += [
-        str(path) for path in STYLES if css.search(path.read_text(encoding="utf-8"))
+        str(path)
+        for path in [*STYLES, *sorted(GUIDE.glob("*.css"))]
+        if css.search(path.read_text(encoding="utf-8"))
     ]
     assert PAGES and SCRIPTS
     assert found == []

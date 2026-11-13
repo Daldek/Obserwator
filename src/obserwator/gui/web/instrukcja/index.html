@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="pl" class="guide-page">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Obserwator: instrukcja</title>
+<link rel="icon" type="image/svg+xml" href="../nogat/marks/obserwator.svg">
+<script src="theme-init.js"></script>
+<link rel="stylesheet" href="../nogat/tokens.css">
+<link rel="stylesheet" href="../css/app.css">
+<link rel="stylesheet" href="../css/map.css">
+<link rel="stylesheet" href="instrukcja.css">
+<script type="module" src="instrukcja.js"></script>
+</head>
+<body>
+<a class="skip" href="#tresc">Przejdź do treści</a>
+
+<!-- The top bar of the GUI: the mark leads back to the app, the theme is shared with it -->
+<header class="topbar">
+  <a class="brand" href="../" aria-label="Obserwator: wróć do aplikacji">
+    <img src="../nogat/marks/obserwator.svg" alt="" width="24" height="24">
+    <span class="name">Obserwator</span>
+  </a>
+  <nav class="crumbs" aria-label="Kontekst">
+    <strong>Instrukcja</strong>
+  </nav>
+  <div class="top-actions">
+    <a class="btn ghost back-btn" href="../" aria-label="Wróć do aplikacji" title="Wróć do aplikacji">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5"/></svg>
+      <span class="label">Wróć do aplikacji</span>
+    </a>
+    <div class="seg theme-switch" role="group" aria-label="Motyw">
+      <button type="button" data-theme-choice="auto" title="Motyw systemu" aria-pressed="false"><svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg><span class="label">Auto</span></button>
+      <button type="button" data-theme-choice="light" title="Jasny" aria-pressed="false"><svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg><span class="label">Jasny</span></button>
+      <button type="button" data-theme-choice="dark" title="Ciemny" aria-pressed="false"><svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg><span class="label">Ciemny</span></button>
+    </div>
+  </div>
+</header>
+
+<main class="guide" id="tresc">
+
+<div class="guide-head">
+  <p class="kicker">Przewodnik użytkownika</p>
+  <h1>Obserwator w przeglądarce</h1>
+  <p class="lead">Stany wody, przepływy, opady i temperatura z polskich i czeskich stacji pomiarowych w jednym miejscu: mapa stacji, wieloletnie szeregi pomiarów z wykresami i tabelami, ich analizy, pomiary bieżące i opady maksymalne PMAXTP.</p>
+  <p class="note-box">To wersja rozwojowa: wygląd, funkcje i liczby mogą się jeszcze zmieniać.</p>
+</div>
+
+<nav class="guide-toc" aria-labelledby="toc-title">
+  <h2 id="toc-title">Spis treści</h2>
+  <p class="toc-hint"><strong>Pierwszy raz?</strong> Wystarczy część „Na start”: kilka minut czytania. Rozdziały 01–08 opisują każdą część strony dokładnie; wracaj do nich, gdy będą potrzebne.</p>
+  <ol class="toc">
+    <li class="toc-start">
+      <a href="#na-start"><span class="toc-num">▶</span> Na start</a>
+      <ol>
+        <li><a href="#czym-jest">Czym jest Obserwator</a></li>
+        <li><a href="#czego-oczekiwac">Czego się spodziewać, a czego nie</a></li>
+        <li><a href="#trzy-kroki">Pierwszy wynik w trzech krokach</a></li>
+      </ol>
+    </li>
+    <li><a href="#ekran"><span class="toc-num">01</span> Ekran i wspólne elementy</a></li>
+    <li><a href="#mapa"><span class="toc-num">02</span> Mapa i lista stacji</a></li>
+    <li><a href="#stacja"><span class="toc-num">03</span> Stacja: dane i analizy</a></li>
+    <li><a href="#pmaxtp"><span class="toc-num">04</span> PMAXTP</a></li>
+    <li><a href="#pobieranie"><span class="toc-num">05</span> Pobieranie i formaty</a></li>
+    <li><a href="#licencje"><span class="toc-num">06</span> Licencje i cytowanie</a></li>
+    <li><a href="#regulamin"><span class="toc-num">07</span> Regulamin, prywatność i „Zgłoś uwagę”</a></li>
+    <li><a href="#slowniczek"><span class="toc-num">08</span> Słowniczek</a></li>
+  </ol>
+</nav>
+
+<div class="guide-text">
+
+<!-- ============================ Na start ============================ -->
+<section class="part" id="na-start" aria-labelledby="na-start-title">
+  <p class="kicker">Na start · bez szczegółów technicznych</p>
+  <h2 id="na-start-title">Na start</h2>
+
+  <section id="czym-jest" aria-labelledby="czym-jest-title">
+    <h3 id="czym-jest-title">Czym jest Obserwator?</h3>
+    <p>Obserwator zbiera pomiary dwóch państwowych służb hydrologicznych i meteorologicznych: polskiego Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego (IMGW-PIB) i Czeskiego Instytutu Hydrometeorologicznego (ČHMÚ). Każda z nich publikuje dane po swojemu: w innych plikach, z innymi nazwami i oznaczeniami braków. Obserwator zapisuje je w jednym formacie, z tymi samymi nazwami zmiennych, jednostkami i oznaczeniami dni bez pomiaru, więc stację polską i czeską czyta się i porównuje tak samo.</p>
+    <p>Ta strona pokazuje w przeglądarce, co Obserwator ma w swoim katalogu danych:</p>
+    <ul>
+      <li><strong>stacje</strong> z katalogów obu służb, na mapie i na liście, także te, które nie mają współrzędnych;</li>
+      <li><strong>szeregi pomiarów</strong>: wartości dobowe stanu wody, przepływu, temperatury wody, opadu, temperatury powietrza i pokrywy śnieżnej, a dla stacji wodowskazowych IMGW-PIB także jego charakterystyki miesięczne i półroczne, jako wykres, tabela i plik;</li>
+      <li><strong>analizy</strong> tych szeregów: stany i przepływy charakterystyczne, krzywą natężenia przepływu, przepływy maksymalne i minimalne, niżówki, reżim, opady, susze, temperaturę, pokrywę śnieżną i trendy. Liczy je <strong>Hydrolog</strong>, aplikacja ekosystemu Nogat do obliczeń hydrologicznych;</li>
+      <li><strong>pomiary bieżące</strong> stacji IMGW-PIB: ostatni stan wody, przepływ, opad i temperaturę;</li>
+      <li><strong>PMAXTP</strong>: tablice opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia, opracowane przez IMGW-PIB, dla dowolnego punktu w Polsce.</li>
+    </ul>
+    <p>Wystarczy przeglądarka na komputerze albo telefonie, bez logowania i bez instalowania programów. Strona tylko czyta dane i niczego w nich nie zmienia.</p>
+  </section>
+
+  <section id="czego-oczekiwac" aria-labelledby="czego-oczekiwac-title">
+    <h3 id="czego-oczekiwac-title">Czego się spodziewać, a czego nie</h3>
+    <div class="cols">
+      <div>
+        <h4 class="col-title">Obserwator da Ci</h4>
+        <div class="card"><strong>Dane w jednym formacie</strong><p>Wartości dobowe obu służb z oznaczeniem dni bez pomiaru, na wykresie i w tabeli, z wersją szeregu, z której pochodzą.</p></div>
+        <div class="card"><strong>Analizy z opisem metody</strong><p>Wyniki Hydrologa z nazwą obliczenia i wersją programu, a przy każdej części objaśnienie <span class="i-mark" aria-hidden="true">i</span>: metoda, źródła i literatura.</p></div>
+        <div class="card"><strong>Pliki z pochodzeniem</strong><p>CSV, JSON i Parquet z informacją o źródle danych i warunkach dostawcy, a obok każdego pliku polecenie, które zrobi ten sam plik poza przeglądarką.</p></div>
+        <div class="card"><strong>Pomiary bieżące i PMAXTP</strong><p>Ostatnie pomiary stacji IMGW-PIB i tablice opadów maksymalnych dla wybranego punktu.</p></div>
+      </div>
+      <div>
+        <h4 class="col-title">Obserwator nie jest</h4>
+        <div class="card"><strong>Źródłem surowych plików</strong><p>Nie udostępnia plików dostawców w postaci, w jakiej je pobrano, ani ich starszych wersji: to zadanie Archiwisty, innej aplikacji ekosystemu Nogat.</p></div>
+        <div class="card"><strong>Prognozą ani ostrzeżeniem</strong><p>Nie przewiduje, czy rzeka wyleje, i nie ostrzega przed burzą. W sytuacji zagrożenia kieruj się komunikatami IMGW-PIB i służb.</p></div>
+        <div class="card"><strong>Źródłem bieżących danych ČHMÚ</strong><p>Pomiary bieżące są tylko ze stacji IMGW-PIB; stacje czeskie mają wyłącznie szeregi dobowe z katalogu danych.</p></div>
+        <div class="card"><strong>Serwisem IMGW-PIB ani ČHMÚ</strong><p>Pokazuje ich dane po przetworzeniu; analizy to obliczenia, a nie oficjalne opracowania tych instytucji. Własne obliczenia, np. wezbrania po ulewie, zrobisz w Hydrologu, któremu Obserwator przekazuje szeregi.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="trzy-kroki" aria-labelledby="trzy-kroki-title">
+    <h3 id="trzy-kroki-title">Pierwszy wynik w trzech krokach</h3>
+    <ol class="steps-3">
+      <li class="card"><span class="number" aria-hidden="true">01</span><strong>Znajdź stację</strong><p>W panelu „Stacje” po lewej wpisz w wyszukiwarkę „Stróża”. Na liście będą dwie stacje o tej nazwie: wybierz hydrologiczną, na Rabie, o kodzie 149190310. Mapa przesunie się do niej, a po prawej otworzy się panel „Stacja”. Na telefonie listę otwiera przycisk „Stacje” nad mapą.</p></li>
+      <li class="card"><span class="number" aria-hidden="true">02</span><strong>Przeczytaj dane</strong><p>Karta „Dane pomiarowo-obserwacyjne” jest już otwarta: wykres stanu wody H i wykres przepływu Q z całego okresu pomiarów. Przeciągnij myszą po wykresie, aby powiększyć kilka lat, a przycisk „Tabela” pokaże wartości dzień po dniu.</p></li>
+      <li class="card"><span class="number" aria-hidden="true">03</span><strong>Pobierz plik</strong><p>Rozwiń kartę „Pobierz” na końcu panelu: przycisk CSV zapisze szereg w pliku, który otworzy arkusz kalkulacyjny, razem z informacją o źródle danych. Pod przyciskami jest polecenie, które zrobi ten sam plik w wierszu poleceń.</p></li>
+    </ol>
+    <p class="hint-box">Ten sam widok otwiera odnośnik z kodem stacji i karty: <a href="../?station=149190310&amp;section=dane">dane pomiarowo-obserwacyjne Stróży</a>. Adres strony zawsze opisuje to, co widać, więc można go zapisać albo wysłać (<a href="#adres">rozdział 01</a>). Skróty, takie jak H, Q czy SNQ, wyjaśnia <a href="#slowniczek">Słowniczek</a>.</p>
+    <p><a class="btn primary" href="../?station=149190310">Otwórz stację Stróża na Rabie</a></p>
+  </section>
+</section>
+
+<!-- ============================ 01 Ekran ============================ -->
+<section class="part" id="ekran" aria-labelledby="ekran-title">
+  <p class="kicker">01 · Orientacja</p>
+  <h2 id="ekran-title">Ekran i wspólne elementy</h2>
+  <figure>
+    <a href="img/ekran.png"><img src="img/ekran.png" width="1440" height="900" alt="Ekran Obserwatora z wybraną stacją Stróża na Rabie: u góry pasek z nazwą widoku i stacji, „Zgłoś uwagę”, „Instrukcja”, „Aplikacje”, przełącznikiem języka PL | EN i motywu; po lewej panel Stacje z wyszukiwaniem „Stróża”, filtrami i dwiema stacjami na liście; w środku mapa ze znakami stacji, legendą i pasek widoków Stacje, Pomiary bieżące, PMAXTP; po prawej panel Stacja z otwartą kartą Dane pomiarowo-obserwacyjne: wybór zbioru, zmiennych H, Q i T, rodzaju roku i lat oraz wykresy stanu wody i przepływu."></a>
+    <figcaption>Widok „Stacje” z wybraną stacją Stróża na Rabie. Kliknij obraz, aby zobaczyć go w pełnym rozmiarze.</figcaption>
+  </figure>
+  <dl class="defs">
+    <div><dt>Górny pasek</dt><dd>Znak Obserwatora (powrót do strony startowej), nazwa widoku i wybrana stacja z rzeką, a po prawej: „Zgłoś uwagę” (zgłoszenie błędu albo pomysłu, <a href="#zglos-uwage">rozdział 07</a>), „Instrukcja” (ten przewodnik w nowej karcie), „Aplikacje” (inne aplikacje ekosystemu Nogat, każda w swojej karcie; przycisk pojawia się, gdy serwer zna adres choć jednej z nich), przełącznik języka „PL | EN” i motyw: Auto (jak w systemie), Jasny albo Ciemny. Przeglądarka zapamiętuje język i motyw; motyw obowiązuje też w tym przewodniku, który jest tylko po polsku. Na węższym ekranie przyciski pokazują same ikony.</dd></div>
+    <div><dt>Pasek nad mapą</dt><dd>Przełącznik widoków: „Stacje” (stacje z katalogów, <a href="#mapa">rozdział 02</a>), „Pomiary bieżące” (ostatnie pomiary IMGW-PIB, <a href="#pomiary-biezace">rozdział 02</a>) i „PMAXTP” (opady maksymalne, <a href="#pmaxtp">rozdział 04</a>), obok podpowiedź, co można kliknąć. Gdy panel boczny jest zamknięty, na końcu paska stoi przycisk z jego nazwą, który go otwiera; na telefonie te przyciski są zawsze.</dd></div>
+    <div><dt>Panel „Stacje”</dt><dd>Po lewej: wyszukiwarka, filtry i lista stacji. W widoku „PMAXTP” w tym miejscu jest formularz punktu.</dd></div>
+    <div><dt>Mapa</dt><dd>Stacje w znakach mapy IMGW-PIB, przycisk „Legenda”, przyciski „Przybliż” i „Oddal”, a pod mapą pasek ze źródłami danych tego, co mapa pokazuje, i z informacją o podkładzie mapy.</dd></div>
+    <div><dt>Panel „Stacja”</dt><dd>Po prawej: wybrana stacja i jej karty (<a href="#stacja">rozdział 03</a>). Gdy żadna stacja nie jest wybrana, panel opisuje katalogi stacji i szeregi w katalogu danych, podaje wersję Obserwatora i Hydrologa i ma kartę „Pobierz listę stacji”. W widoku „PMAXTP” w tym miejscu są „Wyniki PMAXTP”.</dd></div>
+  </dl>
+
+  <h3 id="panele">Szerokość paneli</h3>
+  <p>Przeciągnij krawędź między panelem a mapą, aby poszerzyć albo zwęzić panel. Z klawiatury: przejdź do krawędzi klawiszem <kbd>Tab</kbd> i użyj strzałek (16&nbsp;px, z <kbd>Shift</kbd> 64&nbsp;px), <kbd>Home</kbd> (najwęższy) i <kbd>End</kbd> (najszerszy); <kbd>Enter</kbd> albo dwuklik przywraca szerokość domyślną. Panel „Stacje” ma od 260 do 560&nbsp;px, panel „Stacja” od 340 do 720&nbsp;px, a mapie zostaje co najmniej 480&nbsp;px. Przeglądarka zapamiętuje szerokości. <span class="key-mark" aria-hidden="true">×</span> w nagłówku zamyka panel, a przycisk z jego nazwą na pasku nad mapą otwiera go z powrotem.</p>
+
+  <h3 id="telefon">Telefon i wąski ekran</h3>
+  <p>Do szerokości 860&nbsp;px panele wysuwają się od dołu jako arkusze, jeden naraz: listę otwiera przycisk „Stacje” po lewej stronie paska nad mapą, a panel stacji przycisk po prawej, z nazwą wybranej stacji. Wybór stacji z listy albo z mapy od razu pokazuje jej arkusz. Arkusz zamyka <span class="key-mark" aria-hidden="true">×</span>, klawisz <kbd>Esc</kbd> albo dotknięcie uchwytu u góry arkusza.</p>
+  <figure class="phone-figure">
+    <a href="img/telefon.png"><img src="img/telefon.png" width="390" height="844" loading="lazy" alt="Obserwator na telefonie w ciemnym motywie: mapa z paskiem widoków, a na niej wysunięty od dołu arkusz stacji Stróża z kartami Pomiary bieżące i Dane pomiarowo-obserwacyjne."></a>
+    <figcaption>Telefon, ciemny motyw: arkusz stacji nad mapą.</figcaption>
+  </figure>
+
+  <h3 id="adres">Adres strony zapamiętuje widok</h3>
+  <p>Adres w pasku przeglądarki zmienia się razem z widokiem: <code>?station=149190310</code> to wybrana stacja, <code>&amp;section=dane</code> ostatnio otwarta karta, <code>?view=current</code> widok „Pomiary bieżące”, a <code>?view=pmaxtp&amp;lat=…&amp;lon=…</code> punkt PMAXTP (z <code>&amp;method=AMP</code> dla metody AMP). Taki adres można zapisać w zakładkach albo wysłać: otworzy ten sam widok, a na telefonie od razu arkusz stacji albo wyników PMAXTP. Odnośnik z kartą otwiera tylko tę kartę i przewija do niej panel; bez karty otwierają się „Pomiary bieżące” i „Dane pomiarowo-obserwacyjne”.</p>
+  <div class="table-scroll">
+    <table class="tbl guide-table">
+      <caption>Przykłady odnośników</caption>
+      <thead><tr><th scope="col">Odnośnik</th><th scope="col">Co otwiera</th></tr></thead>
+      <tbody>
+        <tr><td><a href="../?station=149190310&amp;section=stacja"><code>?station=149190310&amp;section=stacja</code></a></td><td>„Informacje o stacji” Stróży na Rabie</td></tr>
+        <tr><td><a href="../?station=149190310&amp;section=teraz"><code>?station=149190310&amp;section=teraz</code></a></td><td>jej „Pomiary bieżące”</td></tr>
+        <tr><td><a href="../?station=149190310&amp;section=pobierz"><code>?station=149190310&amp;section=pobierz</code></a></td><td>jej pliki w karcie „Pobierz”</td></tr>
+        <tr><td><a href="../?view=current"><code>?view=current</code></a></td><td>mapę „Pomiary bieżące”</td></tr>
+        <tr><td><a href="../?view=pmaxtp&amp;lat=52.2300&amp;lon=21.0100"><code>?view=pmaxtp&amp;lat=52.2300&amp;lon=21.0100</code></a></td><td>PMAXTP dla punktu w Warszawie, metoda POT</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 02 Mapa ============================ -->
+<section class="part" id="mapa" aria-labelledby="mapa-title">
+  <p class="kicker">02 · Widoki „Stacje” i „Pomiary bieżące”</p>
+  <h2 id="mapa-title">Mapa i lista stacji</h2>
+  <p>Widok „Stacje” pokazuje wszystkie stacje bieżących katalogów IMGW-PIB i ČHMÚ: hydrologiczne (wodowskazowe) i meteorologiczne. Mapa i lista pokazują te same stacje, wybrane tymi samymi filtrami.</p>
+
+  <h3 id="znaki">Znaki stacji</h3>
+  <p>Stacje wyglądają jak na mapie hydro.imgw.pl, serwisu hydrologicznego IMGW-PIB, więc kto zna tamtą mapę, odczyta tę od razu:</p>
+  <ul class="symbols">
+    <li><span class="sym-box"><svg class="sym hydro g-hydro" width="16.1" height="14" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span><strong>trójkąt</strong>: stacja hydrologiczna;</span></li>
+    <li><span class="sym-box"><svg class="sym meteo g-meteo" width="14" height="14" viewBox="0 0 38 38" aria-hidden="true"><path class="body" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z" fill-rule="evenodd"/><path class="edge" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z"/></svg></span><span><strong>koło</strong>: stacja meteorologiczna;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro hollow g-hydro" width="16.1" height="14" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73ZM10.20 7.19Q9.6 6.15 10.80 6.15L28.20 6.15Q29.4 6.15 28.80 7.19L20.10 22.16Q19.5 23.2 18.90 22.16Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/><path class="edge" d="M10.20 7.19Q9.6 6.15 10.80 6.15L28.20 6.15Q29.4 6.15 28.80 7.19L20.10 22.16Q19.5 23.2 18.90 22.16Z"/></svg></span><span><strong>pusty środek</strong>: stacja „tylko w katalogu”, bez szeregów w katalogu danych;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro dashed g-hydro" width="16.1" height="14" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span><strong>obrys przerywany</strong>: stacja ČHMÚ;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro faded g-hydro" width="16.1" height="14" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span><strong>znak blady</strong>: stacja nieczynna;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-hydro" width="27.5" height="24" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span><strong>znak większy</strong>: stacja wybrana.</span></li>
+  </ul>
+  <p>Na mapie nie ma podpisów: po najechaniu na znak podpowiedź pokazuje nazwę, rzekę, kod, dostawcę i rodzaj stacji oraz lata jej szeregów albo „tylko w katalogu”, a kliknięcie wybiera stację. Legenda w rogu mapy przypomina znaczenie znaków; przycisk „Legenda” zwija ją i rozwija, a na telefonie jest na początku zwinięta.</p>
+
+  <h3 id="lista">Lista, wyszukiwarka i filtry</h3>
+  <ul>
+    <li><strong>Wyszukiwarka</strong> („Nazwa, rzeka albo kod”) szuka fragmentu nazwy albo rzeki i początku kodu, bez względu na wielkość liter i znaki diakrytyczne: „lodz” znajdzie Łódź, a „spindleruv” Špindlerův Mlýn. Zawęża tylko listę, nie mapę.</li>
+    <li><strong>Filtry</strong>: „Dostawca” (Wszyscy, IMGW-PIB, ČHMÚ), „Rodzaj stacji” (Wszystkie, Hydrologiczne, Meteorologiczne), „Szeregi w magazynie” i „tylko czynne”. Chipy „Szeregi w magazynie” to zbiory danych każdego dostawcy, np. „Dobowe” czy „Opadowe”; pełną nazwę zbioru pokazuje podpowiedź. Wybrany chip zostawia stacje, które mają szereg tego zbioru; kilka chipów zostawia stacje z którymkolwiek z nich. Filtry zawężają i listę, i mapę.</li>
+    <li><strong>Liczby nad listą</strong> mówią, ile stacji pasuje, ile z nich jest na mapie, a ile nie ma współrzędnych, np. „6297 stacji · na mapie 4174 · bez współrzędnych 2123”. Gdy nic nie pasuje, „Wyczyść filtry” wraca do wszystkich stacji.</li>
+    <li><strong>Stacje bez współrzędnych</strong> są tylko na liście, z dopiskiem „bez współrzędnych”. Ich dane i analizy otwierają się tak samo, tylko mapa nie ma ich gdzie pokazać; przyczynę braku położenia podaje karta „Informacje o stacji”.</li>
+    <li><strong>Kolejność</strong>: najpierw stacje z szeregami, potem pozostałe. Lista pokazuje po 150 stacji, a „Pokaż kolejne” dokłada następne. Kliknięcie stacji wybiera ją, a mapa przesuwa się do niej, jeśli stacja ma współrzędne.</li>
+  </ul>
+
+  <h3 id="pomiary-biezace">Pomiary bieżące</h3>
+  <p>Widok „Pomiary bieżące” pokazuje tylko stacje IMGW-PIB z ostatnimi pomiarami z jego publicznego API: znaki katalogu znikają, a wracają po wybraniu „Stacje”. Stacji ČHMÚ w tym widoku nie ma, bo Obserwator nie obsługuje bieżących danych ČHMÚ.</p>
+  <figure class="map-figure">
+    <a href="img/pomiary-biezace.png"><img src="img/pomiary-biezace.png" width="740" height="848" loading="lazy" alt="Widok Pomiary bieżące: pasek widoków z czasem migawki IMGW-PIB, mapa Polski bez podkładu, z granicami, ze stacjami hydrologicznymi w kolorach stanu wody i meteorologicznymi w kolorach opadu, otwarta legenda stanów wody i klas opadu z liczbą stacji migawki, a pod mapą wiersze źródła danych IMGW-PIB i hydro.imgw.pl z warunkami."></a>
+    <figcaption>„Pomiary bieżące” z otwartą legendą; tłem są granice Polski i Czech, bo serwer nie ma podkładu mapy.</figcaption>
+  </figure>
+  <p>Stacja hydrologiczna ma kolor stanu wody względem stanów charakterystycznych, jak na mapie hydro.imgw.pl:</p>
+  <ul class="symbols">
+    <li><span class="sym-box"><svg class="sym hydro g-alarm" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>czerwony: „Powyżej stanu alarmowego”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-warning" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>pomarańczowy: „Powyżej stanu ostrzegawczego”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-high" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>żółty: „Strefa stanów wysokich”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-medium" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>niebieski: „Strefa stanów średnich”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-low" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>czarny: „Strefa stanów niskich”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-below" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>bordowy: „Poniżej minimum okresowego”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-no-data" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>jasnofioletowy: „Brak danych stanu wody”;</span></li>
+    <li><span class="sym-box"><svg class="sym hydro g-unknown" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/></svg></span><span>biały: „Brak stanów charakt. / umownych” (stacja nie ma stanów charakterystycznych, z którymi można porównać pomiar).</span></li>
+  </ul>
+  <p>Znak pełny to stan z pomiarów ostatnich 2 godzin, a z pustym środkiem <svg class="sym hydro hollow g-medium" width="14.9" height="13" viewBox="0 0 39 34" aria-hidden="true"><path class="body" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73ZM10.20 7.19Q9.6 6.15 10.80 6.15L28.20 6.15Q29.4 6.15 28.80 7.19L20.10 22.16Q19.5 23.2 18.90 22.16Z" fill-rule="evenodd"/><path class="edge" d="M3.11 4.27Q1.5 1.5 4.70 1.50L34.30 1.50Q37.5 1.5 35.89 4.27L21.11 29.73Q19.5 32.5 17.89 29.73Z"/><path class="edge" d="M10.20 7.19Q9.6 6.15 10.80 6.15L28.20 6.15Q29.4 6.15 28.80 7.19L20.10 22.16Q19.5 23.2 18.90 22.16Z"/></svg> stan z ostatnich 26 godzin.</p>
+  <p>Stacja meteorologiczna ma kolor klasy opadu:</p>
+  <ul class="symbols">
+    <li><span class="sym-box"><svg class="sym meteo g-heavy" width="13" height="13" viewBox="0 0 38 38" aria-hidden="true"><path class="body" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z" fill-rule="evenodd"/><path class="edge" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z"/></svg></span><span>czerwony: „Opad intensywny”, co najmniej silny deszcz w skali Chomicza, czyli ≥&nbsp;3,2&nbsp;mm w 10 minut;</span></li>
+    <li><span class="sym-box"><svg class="sym meteo g-precip" width="13" height="13" viewBox="0 0 38 38" aria-hidden="true"><path class="body" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z" fill-rule="evenodd"/><path class="edge" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z"/></svg></span><span>niebieski: „Opad”;</span></li>
+    <li><span class="sym-box"><svg class="sym meteo g-dry" width="13" height="13" viewBox="0 0 38 38" aria-hidden="true"><path class="body" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z" fill-rule="evenodd"/><path class="edge" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z"/></svg></span><span>zielony: „Brak opadu”;</span></li>
+    <li><span class="sym-box"><svg class="sym meteo g-no-data" width="13" height="13" viewBox="0 0 38 38" aria-hidden="true"><path class="body" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z" fill-rule="evenodd"/><path class="edge" d="M3 19a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z"/></svg></span><span>jasnofioletowy: „Brak danych opadowych”.</span></li>
+  </ul>
+  <p>Mapa hydro.imgw.pl klasyfikuje opad z 6 godzin. Klasa 6-godzinna IMGW-PIB jest tu niedostępna, więc klasę daje ostatnia suma 10-minutowa, z tą samą granicą opadu intensywnego przeliczoną na 10 minut (√10&nbsp;≈&nbsp;3,2&nbsp;mm).</p>
+  <p>Po najechaniu na znak podpowiedź pokazuje wartości z czasem pomiaru: stan wody H, przepływ Q i temperaturę wody, a dla stacji meteorologicznej opad w 10 min, temperaturę powietrza, średni wiatr i wilgotność względną. Kliknięcie wybiera stację; jej karta „Pomiary bieżące” pokazuje te same wartości (<a href="#karty">rozdział 03</a>).</p>
+  <p class="hint-box">Serwer Obserwatora pyta IMGW-PIB najwyżej raz na 10 minut i trzyma odpowiedź, czyli migawkę, tylko w pamięci: niczego nie zapisuje. Otwarty widok odświeża się co 10 minut. Pasek nad mapą podaje czas migawki („Migawka IMGW-PIB z 14:20”) według zegara Twojego komputera, a legenda liczbę stacji. Czasy pomiarów są w UTC, tak jak podaje je IMGW-PIB. Gdy IMGW-PIB nie odpowiada, widok pokazuje ostatnią udaną migawkę. To dane operacyjne: bieżące, niesprawdzone, nie archiwalne.</p>
+
+  <h3 id="podklad">Podkład mapy</h3>
+  <p>Mapa ma szary podkład z nazwami miejscowości po polsku; domyślnie to OpenFreeMap z danymi OpenStreetMap, a serwer może mieć inny. Jego źródło podaje pasek pod mapą, np. „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”. Kafelki podkładu Twoja przeglądarka pobiera wprost z serwera jego dostawcy. Gdy serwer nie ma podkładu albo jego kafelki się nie wczytają, tłem są granice Polski i Czech z pakietu Obserwatora (Natural Earth, domena publiczna), o czym mówi legenda.</p>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 03 Stacja ============================ -->
+<section class="part" id="stacja" aria-labelledby="stacja-title">
+  <p class="kicker">03 · Panel „Stacja”</p>
+  <h2 id="stacja-title">Stacja: dane i analizy</h2>
+  <p>Wybrana stacja otwiera się w panelu „Stacja” po prawej (na telefonie w arkuszu). U góry są nazwa i rzeka, a pod nimi kod, dostawca (pełną nazwę pokazuje podpowiedź), rodzaj, plakietka „czynna” albo „nieczynna” i ewentualnie „bez współrzędnych”. Pod spodem karty w stałej kolejności: kartę rozwija i zwija kliknięcie nagłówka, a otwartych może być kilka naraz. Pod każdą otwartą kartą są wiersze dostawcy danych, których wymaga (<a href="#licencje">rozdział 06</a>).</p>
+
+  <h3 id="karty">Karty każdej stacji</h3>
+  <div class="table-scroll">
+    <table class="tbl guide-table">
+      <caption>Karty w kolejności panelu; w adresie <code>section=…</code></caption>
+      <thead><tr><th scope="col">Karta</th><th scope="col">Adres</th><th scope="col">Co pokazuje</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">„Informacje o stacji”</th><td><code>stacja</code></td><td>„Dane katalogowe”: kod, nazwa, rzeka, dostawca, rodzaj, typ stacji meteorologicznej IMGW-PIB (stacja klimatologiczna albo posterunek opadowy), czy czynna, położenie w WGS84 ze źródłem i niepewnością albo z przyczyną braku, wysokość, zero wodowskazu, kilometr rzeki, kod hydrograficzny i rok założenia, jeśli katalog je ma. Stacja hydrologiczna ČHMÚ ma „Progi ČHMÚ” (stopnie aktywności powodziowej SPA 1–3, próg suszy i q50). „Szeregi w katalogu danych”: dla każdego zbioru i zmiennej pierwszy i ostatni dzień, liczba okresów z wartością, sum z kilku dni i luk.</td></tr>
+        <tr><th scope="row">„Pomiary bieżące”</th><td><code>teraz</code></td><td>Ostatnie wartości stacji IMGW-PIB z migawki serwera. Stacja hydrologiczna: stan wody H, przepływ Q i temperatura wody z czasem pomiaru (UTC) oraz stan wody w znaku i kolorze mapy hydro.imgw.pl. Stacja meteorologiczna: opad z 10 minut z klasą, temperatura powietrza, średni wiatr i wilgotność; stacja synoptyczna dodaje ostatnią depeszę SYNOP. „Odśwież” pyta serwer ponownie. Stacja ČHMÚ: „Dane bieżące ČHMÚ nie są udostępniane”.</td></tr>
+        <tr><th scope="row">„Dane pomiarowo-obserwacyjne”</th><td><code>dane</code></td><td>Szeregi z katalogu danych: wykres i tabela (niżej).</td></tr>
+        <tr><th scope="row">karty analiz</th><td>niżej</td><td>Analizy stacji hydrologicznej albo meteorologicznej; tylko te, na które pozwalają jej dane.</td></tr>
+        <tr><th scope="row">„Pobierz”</th><td><code>pobierz</code></td><td>Pliki szeregów, wyniki analiz w JSON i przekazanie do Hydrologa (<a href="#pobieranie">rozdział 05</a>).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="dane">„Dane pomiarowo-obserwacyjne”</h3>
+  <ul>
+    <li><strong>Zbiór danych</strong>: gdy stacja ma kilka zbiorów, przełącznik u góry wybiera jeden, np. „Dobowe” albo „Półroczne” IMGW-PIB; pod nim stoi pełna nazwa zbioru.</li>
+    <li><strong>Zmienne</strong>: przyciski zmiennych z jednostkami (np. H cm, Q m³/s, T °C, P mm) włączają je na wykresie; nazwę zmiennej pokazuje podpowiedź. Na początku widać stan wody i przepływ albo średnią temperaturę i opad. Każda jednostka ma osobny wykres.</li>
+    <li><strong>„Rodzaj roku”</strong>: rok hydrologiczny albo kalendarzowy. Rok hydrologiczny trwa od 1 listopada do 31 października i nosi numer roku, w którym się kończy. IMGW-PIB publikuje dane hydrologiczne w latach hydrologicznych, a dane meteorologiczne, tak jak ČHMÚ, w latach kalendarzowych; przełącznik zmienia tylko podział na lata wykresu i tabeli.</li>
+    <li><strong>„Lata”</strong> od–do z przyciskiem „Przelicz” zawężają wykres i tabelę, a „Cały okres” wraca do całości.</li>
+    <li><strong>Wykres</strong>: dzień bez wartości przerywa linię, a opad zebrany z kilku dni i podany w ostatnim z nich zaznaczają kreski pod wykresem. Nawet bardzo długi szereg rysuje się od razu, bo wykres pokazuje najmniejszą i największą wartość każdej kolumny pikseli; tabela i pliki mają każdą wartość.</li>
+    <li><strong>„Tabela”</strong> pokazuje wartości dzień po dniu, od najnowszych, po 50 wierszy („‹ Nowsze”, „Starsze ›”, a « i » przeskakują na początek i koniec). Obok wartości stoi jej flaga, gdy inna niż zwykła wartość: „brak” (dzień bez wartości), „brak zjawiska” (zjawisko nie wystąpiło, w szeregu 0) albo „suma z kilku dni”.</li>
+    <li><strong>Charakterystyki miesięczne i półroczne IMGW-PIB</strong> rysują się jako pas od najniższej do najwyższej wartości z linią średniej; półrocza mają przełącznik rok, zima (XI–IV), lato (V–X) i daty ekstremów w tabeli.</li>
+    <li><strong>Pod wykresem</strong>: jednostki, definicja roku i wersja szeregu w katalogu danych, np. <code>szereg series/versions/hydro_daily/…</code>.</li>
+  </ul>
+
+  <h3 id="analizy">Analizy: wynik zapisany i liczony na żądanie</h3>
+  <p>Każdą liczbę analiz policzył Hydrolog z szeregu stacji w katalogu danych. Karta analizy składa się z części z tytułem; przycisk <span class="i-mark" aria-hidden="true">i</span> („Objaśnienie”) przy tytule rozwija opis: co to jest, metoda, źródło danych i literatura. Pod każdą częścią są plakietki pochodzenia:</p>
+  <ul>
+    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · wynik zapisany <i>data</i>”</strong>: wynik policzony wcześniej z domyślnymi opcjami i przechowywany w katalogu danych;</li>
+    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · policzony na żądanie”</strong>: wynik, który serwer policzył przed chwilą, bo wybrałeś inne lata albo opcje (albo katalog danych nie ma zapisanego wyniku). Hydrolog liczy na serwerze, zwykle kilka sekund („Liczę…”); wynik zostaje tylko w pamięci serwera i nie jest nigdzie zapisywany. Serwer bez programu Hydrologa pokazuje tylko wyniki zapisane;</li>
+    <li><strong>„szereg <i>wersja</i>”</strong>: wersja szeregu, z którego liczono. Podpowiedź plakietki Hydrologa pokazuje opcje obliczenia.</li>
+  </ul>
+  <p><strong>Okres.</strong> Analiza liczy domyślnie z całego zapisu stacji; wyjątkiem jest krzywa natężenia przepływu, liczona z ostatnich 10 lat, bo krzywa zmienia się w czasie. Pola „Lata” od–do z przyciskiem „Przelicz” wybierają inny okres. Obok stoi „Zalecany minimalny okres: 30 lat.”, a krótszy okres jest oznaczony: „wyniki są mniej pewne”. Uwagi Hydrologa, np. o latach pominiętych z powodu braków, stoją przy wyniku.</p>
+
+  <h3 id="hydro">Analizy stacji hydrologicznej</h3>
+  <div class="table-scroll">
+    <table class="tbl guide-table">
+      <caption>Karty analiz w kolejności panelu; metoda i źródło według ich objaśnień <span class="i-mark" aria-hidden="true">i</span></caption>
+      <thead><tr><th scope="col">Karta i adres</th><th scope="col">Co pokazuje</th><th scope="col">Metoda i źródło</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">„Stany charakterystyczne” <code>characteristic</code></th><td>Wartości II stopnia (WWQ…NNQ, WWW…NNW) z wybranych lat; wartości I stopnia (NW, SW, WW; NQ, SQ, WQ; NT, ST, WT) w latach, z wykresem; „Progi i dni poza nimi”: progi ČHMÚ (SPA 1–3, Q50, susza) oraz SWW, SSW, SNW (SWQ, SSQ, SNQ) na wykresie dobowym, dni poza progiem w latach i ciągi takich dni.</td><td>Hydrolog „stats characteristic” według metodyki IMGW-PIB, z szeregu dobowego (pogrubione) i z charakterystyk półrocznych IMGW-PIB (mniejsze); dni poza progiem: „stats threshold-events”. Stanów ostrzegawczych i alarmowych IMGW-PIB nie ma w danych archiwalnych, więc ich tu nie ma.</td></tr>
+        <tr><th scope="row">„Krzywa natężenia przepływu” <code>rating</code></th><td>Pary H–Q z tego samego dnia i krzywa Q = a·(H − H₀)^b wybranych lat, z możliwością odrzucenia par odstających (2σ) i z osią Q liniową albo logarytmiczną; „Kolejne okresy”: krzywe kolejnych okresów całego zapisu.</td><td>Hydrolog „hydrometrics rating-curve”, nieliniowa metoda najmniejszych kwadratów. Pary dobowe to nie pomiary hydrometryczne: przepływy wyznaczyła służba z krzywej, więc rozrzut punktów i przesuwanie się krzywych pokazują zmiany krzywej w czasie.</td></tr>
+        <tr><th scope="row">„Przepływy maksymalne i minimalne” <code>extremes</code></th><td>Kwantyle przepływów maksymalnych rocznych Q<sub>p</sub> z wykresem na siatce prawdopodobieństwa, z wyborem rozkładu i metody; jednorodność maksimów; przepływy minimalne NQ<sub>T</sub>.</td><td>Hydrolog „stats flood-frequency”: rozkłady log-normalny, GEV, Pearsona III i Weibulla, domyślnie L-momenty (Hosking i Wallis 1997), miary zgodności KS, A² i AIC; maksima z charakterystyk półrocznych IMGW-PIB, gdzie są, inaczej z pełnych lat hydrologicznych szeregu dobowego. „stats homogeneity” (testy Manna–Whitneya U, Kołmogorowa–Smirnowa i Pettitta, α = 0,05); „stats low-flow” (rozkład Fishera–Tippetta minimów).</td></tr>
+        <tr><th scope="row">„Niżówki” <code>lowflow</code></th><td>Okresy z przepływem poniżej progu w latach: liczba, czas trwania, niedobór w mln m³, najdłuższa niżówka i wykres wybranego roku; próg (SNQ, Q70, Q90 albo podany) i najkrótszy czas trwania do wyboru.</td><td>Hydrolog „stats low-flow-sequences”, metoda progowa (Tallaksen i van Lanen 2004): domyślnie co najmniej 5 dni, ciągi rozdzielone przerwą krótszą niż 4 dni łączone w jedną niżówkę.</td></tr>
+        <tr><th scope="row">„Czas trwania i strefy” <code>duration</code></th><td>Krzywe czasu trwania stanów i przepływów, wartości o danym czasie trwania, częstość klas z klasą najczęstszą i liczebności klas w miesiącach; strefy stanów wody Rybczyńskiego (NTW, STW, WTW).</td><td>Hydrolog „stats duration-curve” (pozycje Weibulla m/(n+1); klasy stanów co 10&nbsp;cm, przepływów 40 klas logarytmicznych) i „hydrometrics water-level-zones”.</td></tr>
+        <tr><th scope="row">„Reżim i sezonowość” <code>regime</code></th><td>Reżim dobowy i statystyki miesięczne z całego zapisu; współczynniki Pardégo i typ reżimu; terminy rocznych maksimów i minimów na wykresie kołowym roku.</td><td>Hydrolog „stats daily”, „stats monthly”, „stats regime” (Pardé 1933; typ wg Dynowskiej 1997 według kryteriów Wrzesińskiego 2018; wskaźnik sezonowości Walsha i Lawlera 1981) i „stats seasonality” (Bayliss i Jones 1993, Burn 1997).</td></tr>
+        <tr><th scope="row">„Temperatura wody” <code>temperature</code></th><td>Cykl roczny temperatury wody i jego dwie harmoniki (amplituda, termin maksimum), średnia i amplituda w latach, dni z temperaturą co najmniej 15, 20, 25&nbsp;°C i poniżej 1&nbsp;°C.</td><td>Hydrolog „stats harmonics” (analiza harmoniczna metodą najmniejszych kwadratów, Wilks 2011), „stats threshold-events” i „stats characteristic”.</td></tr>
+        <tr><th scope="row">„Trendy i bilans” <code>trends</code></th><td>Trendy rocznych maksimów, średnich i minimów z nachyleniem Sena na 10 lat; objętość odpływu w latach i miesiącach z krzywą sumową; przepływ podziemny i wskaźnik BFI.</td><td>Hydrolog „stats mann-kendall” (Kendall 1975, Sen 1968, Gilbert 1987), „stats runoff-volume” i „stats baseflow” (filtr Lyne’a i Hollicka 1979, α = 0,925, trzy przejścia).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <figure class="panel-figure">
+    <a href="img/analiza.png"><img src="img/analiza.png" width="400" height="848" loading="lazy" alt="Karta Przepływy maksymalne i minimalne stacji Stróża: lata hydrologiczne 1956–2025 z przyciskiem Przelicz i notką o zalecanym minimalnym okresie 30 lat, część Przepływy maksymalne roczne z przyciskiem objaśnienia, wyborem rozkładu i metody, kafelkami (liczba lat, WWQ, najlepszy rozkład według AIC, Q1%) i wykresem maksimów rocznych z krzywymi czterech rozkładów na siatce prawdopodobieństwa przewyższenia."></a>
+    <figcaption>„Przepływy maksymalne i minimalne” Stróży: okres, rozkład, metoda i maksima roczne na siatce prawdopodobieństwa.</figcaption>
+  </figure>
+
+  <h3 id="meteo">Analizy stacji meteorologicznej</h3>
+  <div class="table-scroll">
+    <table class="tbl guide-table">
+      <caption>Karty analiz w kolejności panelu; metoda i źródło według ich objaśnień <span class="i-mark" aria-hidden="true">i</span></caption>
+      <thead><tr><th scope="col">Karta i adres</th><th scope="col">Co pokazuje</th><th scope="col">Metoda i źródło</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">„Opady” <code>opady</code></th><td>Sumy miesięczne, sezonowe i roczne z normalną i opadem względnym; reżim i sezonowość opadów; dni z opadem ≥&nbsp;0,1, 1, 10 i 20&nbsp;mm i natężenie dnia mokrego; opady duże R95p i R99p; opady maksymalne 1–10 dni; opad maksymalny o prawdopodobieństwie p obok PMAXTP dla punktu stacji.</td><td>Hydrolog „meteo precipitation” (wskaźniki ETCCDI, WMO-No. 1203) i „stats flood-frequency” na maksimach rocznych; PMAXTP pobrane z IMGW-PIB (<a href="#pmaxtp">rozdział 04</a>).</td></tr>
+        <tr><th scope="row">„Susze i okresy bezopadowe” <code>susze</code></th><td>Okresy bezopadowe i opadowe z progiem do wyboru; wskaźnik SPI dla 1, 3, 6 i 12 miesięcy z klasami McKee; opad względny i jego klasy.</td><td>Hydrolog „meteo spells” (CDD i CWD wg ETCCDI) i „meteo spi” (McKee i in. 1993, WMO-No. 1090; klasy lat wg Kaczorowskiej 1962).</td></tr>
+        <tr><th scope="row">„Temperatura” <code>temperatura</code></th><td>Średnie, ekstrema i normalna z anomalią średniej rocznej; paski klimatyczne; dni charakterystyczne (z przymrozkiem, mroźne, gorące, upalne, noce tropikalne) i stopniodni; cykl roczny i harmoniki; współczynnik hydrotermiczny.</td><td>Hydrolog „meteo temperature”, „stats harmonics” i „meteo hydrothermal” (WMO-No. 1203, ETCCDI; Sielianinow, klasy Skowery i Puły 2004). Paski klimatyczne rysuje metoda Eda Hawkinsa (#ShowYourStripes); ich skala kolorów to prototyp tego serwera, dopóki nie przejmie jej Hydrolog.</td></tr>
+        <tr><th scope="row">„Śnieg” <code>snieg</code></th><td>Dni z pokrywą śnieżną i jej największa grubość w sezonach zimowych (od 1 VIII do 31 VII), pierwszy i ostatni dzień z pokrywą, śnieg świeży na stacjach opadowych.</td><td>Hydrolog „meteo snow” (WMO-No. 1203).</td></tr>
+        <tr><th scope="row">„Trendy” <code>trendy</code></th><td>Test Manna–Kendalla i nachylenie Sena serii rocznych: suma roczna opadu, maksymalny opad dobowy, dni z opadem ≥&nbsp;10&nbsp;mm, najdłuższy okres bezopadowy, średnia roczna temperatura, dni z przymrozkiem i dni gorące.</td><td>Hydrolog „stats mann-kendall” (Kendall 1975, Sen 1968, Gilbert 1987, Conover 1980).</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Posterunek opadowy IMGW-PIB nie mierzy temperatury, więc nie ma karty „Temperatura”, a stacja ČHMÚ nie ma karty „Śnieg”. Karty opadów i temperatury mają „Okres odniesienia” normalnej (domyślnie cały zapis stacji; WMO zaleca co najmniej 30 lat) i „Rodzaj roku”: kalendarzowy albo hydrologiczny XI–X.</p>
+
+  <h3 id="wykresy">Wykresy</h3>
+  <ul>
+    <li><strong>Odczyt</strong>: najedź kursorem na wykres, a linia odczytu pokaże datę i wartości. Z klawiatury: przejdź do wykresu klawiszem <kbd>Tab</kbd> i przesuwaj odczyt strzałkami w lewo i w prawo; <kbd>Shift</kbd> albo <kbd>Page Up</kbd> i <kbd>Page Down</kbd> przesuwają o dziesięć kroków, <kbd>Home</kbd> i <kbd>End</kbd> na początek i koniec, a <kbd>Esc</kbd> ukrywa odczyt.</li>
+    <li><strong>Powiększenie</strong> (wykresy w czasie i część pozostałych): przeciągnij myszą po wykresie, aby pokazać zakres; <kbd>+</kbd> i <kbd>−</kbd> przybliżają i oddalają, a <kbd>0</kbd>, dwuklik albo przycisk „Pokaż całość” pod wykresem wracają do całości. Napis „Widoczne: od – do” mówi, co widać.</li>
+    <li><strong>Wykresy prawdopodobieństwa</strong>, np. przepływów maksymalnych, mają oś prawdopodobieństwa przewyższenia p [%] i okresu powtarzalności T [lata], a odczyt „p = … % · T = … lat”.</li>
+    <li><strong>Obraz</strong>: jako obraz zapisują się paski klimatyczne: PNG i SVG z nazwą stacji, okresem, autorem metody i wierszami dostawcy, a do tego CSV z latami, średnimi i anomaliami. Pozostałe wykresy zapiszesz zrzutem ekranu; ich liczby są w tabelach kart i w plikach „Wyniki analiz (JSON)”.</li>
+  </ul>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 04 PMAXTP ============================ -->
+<section class="part" id="pmaxtp" aria-labelledby="pmaxtp-title">
+  <p class="kicker">04 · Widok „PMAXTP”</p>
+  <h2 id="pmaxtp-title">PMAXTP: opady maksymalne</h2>
+  <p>PMAXTP to opracowanie IMGW-PIB: ile milimetrów deszczu może spaść w czasie t, od 5 minut do 72 godzin, z prawdopodobieństwem przewyższenia p, np. 1&nbsp;% to opad, który zdarza się średnio raz na 100 lat. IMGW-PIB policzył je w siatce punktów w całej Polsce dwiema metodami:</p>
+  <dl class="defs">
+    <div><dt>POT (Peak Over Threshold, wartości szczytowe powyżej progu)</dt><dd>Wszystkie zdarzenia opadowe przekraczające próg, niezależnie od roku wystąpienia. Metoda zalecana do analiz częstości zdarzeń ekstremalnych i domyślna na tej stronie.</dd></div>
+    <div><dt>AMP (Annual Max Precipitation, maksima roczne)</dt><dd>Tylko największy opad każdego roku serii pomiarowej; stosowana w tradycyjnych analizach hydrologicznych.</dd></div>
+  </dl>
+  <figure>
+    <a href="img/pmaxtp.png"><img src="img/pmaxtp.png" width="1440" height="900" loading="lazy" alt="Widok PMAXTP dla punktu 52,2300° N, 21,0100° E: po lewej formularz z metodą POT, współrzędnymi i przykładowymi miejscami, w środku mapa z zaznaczonym punktem, po prawej Wyniki PMAXTP z tabelą kwantyli opadu maksymalnego dla czasów trwania i prawdopodobieństw."></a>
+    <figcaption>PMAXTP dla punktu w Warszawie, metoda POT.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Punkt</strong>: kliknij mapę albo wpisz w panelu po lewej „Szerokość [° N]” i „Długość [° E]” w stopniach dziesiętnych (przecinek albo kropka) i naciśnij „Pokaż wyniki”. „Przykładowe miejsca” (Warszawa, Kraków, Gdańsk, Wrocław, Poznań) wybierają punkt jednym kliknięciem. Zakres to 49–55° N i 14–24,5° E, a IMGW-PIB odpowiada dla punktów swojej siatki w Polsce. Punkt jest zaokrąglany do 4 miejsc po przecinku, jak w adresie API IMGW-PIB. Mapa pokazuje tylko wybrany punkt, bez siatki PMAXTP.</li>
+    <li><strong>Metoda</strong>: przełącznik POT | AMP nad współrzędnymi; „Metody” na dole panelu opisują obie.</li>
+    <li><strong>Tabele</strong> w panelu „Wyniki PMAXTP”: „Kwantyle” opadu maksymalnego, „Górna granica” przedziału ufności kwantyli i „Błąd estymacji” kwantyli, wszystkie w mm. Wiersze to czas trwania opadu t [min], kolumny prawdopodobieństwo przewyższenia p [%]: 16 czasów trwania i 27 prawdopodobieństw, od 0,01 do 99,9&nbsp;%.</li>
+    <li><strong>Pod tabelą</strong>: wiersze źródła danych PMAXTP i warunki IMGW-PIB, odnośnik do monografii projektu PMAXTP (PDF w serwisie IMGW-PIB), pliki CSV i JSON (<a href="#pobieranie">rozdział 05</a>), odnośnik „Odpowiedź API IMGW-PIB (JSON)”, czyli ten punkt wprost z serwisu IMGW-PIB, i polecenie <code>obserwator pmaxtp fetch</code>, które pobiera te same liczby w wierszu poleceń. IMGW-PIB nie publikuje plików PMAXTP pod adresem punktu: jego strona klimat.imgw.pl/opady-maksymalne składa pliki w przeglądarce z tej samej odpowiedzi.</li>
+    <li><strong>„Odpowiedź IMGW-PIB”</strong> podaje czas pobrania. Serwer pyta IMGW-PIB o jeden punkt naraz i trzyma odpowiedź w pamięci do 24 godzin, bez zapisywania: ten sam punkt otwiera się wtedy od razu.</li>
+  </ul>
+  <p>Przykład: <a href="../?view=pmaxtp&amp;lat=52.2300&amp;lon=21.0100">PMAXTP dla punktu 52,2300° N, 21,0100° E</a> (Warszawa, metoda POT).</p>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 05 Pobieranie ============================ -->
+<section class="part" id="pobieranie" aria-labelledby="pobieranie-title">
+  <p class="kicker">05 · Dane poza przeglądarką</p>
+  <h2 id="pobieranie-title">Pobieranie i formaty</h2>
+  <p>Każdy plik ma w sobie informację o źródle danych i warunkach dostawcy (<a href="#licencje">rozdział 06</a>), a obok przycisków stoi polecenie, które robi ten sam plik w wierszu poleceń.</p>
+  <figure class="panel-figure">
+    <a href="img/pobierz.png"><img src="img/pobierz.png" width="400" height="848" loading="lazy" alt="Karta Pobierz stacji Stróża: dla danych hydrologicznych dobowych i charakterystyk półrocznych IMGW-PIB przyciski CSV, JSON i Parquet z nazwami plików, przełącznik formatu polecenia, polecenie obserwator series export z przyciskiem Kopiuj, notka o wersji szeregu i odnośnik Regulamin IMGW-PIB; na dole początek części Wyniki analiz (JSON)."></a>
+    <figcaption>Karta „Pobierz” stacji Stróża.</figcaption>
+  </figure>
+
+  <h3 id="szeregi">Szeregi stacji: karta „Pobierz”</h3>
+  <p>Dla każdego zbioru danych stacji są trzy przyciski, CSV, JSON i Parquet, z nazwą pliku <code>&lt;kod&gt;_&lt;zbiór&gt;.&lt;format&gt;</code>, np. <code>149190310_hydro_daily.csv</code>. Plik ma bieżącą wersję szeregu z katalogu danych serwera, z całego okresu. Pod przyciskami „Format polecenia” wybiera, które polecenie pokazać, a „Kopiuj” kopiuje je do schowka. Niżej odnośnik do warunków dostawcy: „Regulamin IMGW-PIB” albo „Licencja CC BY 4.0” z „wyłączeniem odpowiedzialności” ČHMÚ.</p>
+  <dl class="defs">
+    <div><dt>CSV</dt><dd>Tekst do arkusza kalkulacyjnego: UTF-8, przecinek jako separator, kropka dziesiętna. Kolumny: <code>date</code>, <code>year</code> (rok hydrologiczny albo kalendarzowy, jak w szeregu) i każda zmienna z jednostką i flagą (<code>H [cm]</code>, <code>H_flag</code>, <code>Q [m3/s]</code>, <code>Q_flag</code>…). Pusta komórka to dzień bez wartości; flagi to <code>value</code>, <code>missing</code> (brak), <code>no_phenomenon</code> (brak zjawiska) i <code>accumulated</code> (suma z kilku dni). Kolumny <code>attribution_source</code>, <code>attribution_processed</code>, <code>attribution</code> i <code>terms_notice</code> niosą w pierwszych wierszach wiersze dostawcy i jego warunki.</dd></div>
+    <div><dt>JSON</dt><dd>Jeden dokument <code>obserwator-series-export/1</code>: kolumny (<code>columns</code>), jednostki i opisy zmiennych (<code>variables</code>), wersja szeregu (<code>series_version</code>), rodzaj roku, licencja (<code>license</code>) oraz <code>attribution</code> i <code>terms_notice</code>.</dd></div>
+    <div><dt>Parquet</dt><dd>Te same kolumny co w CSV, z typami (data, liczby, tekst), do pandas, R czy DuckDB; w metadanych pliku wersja szeregu, licencja, jednostki, opisy zmiennych, <code>attribution</code> i <code>terms_notice</code>.</dd></div>
+  </dl>
+
+  <h3 id="lista-stacji">Lista stacji: „Pobierz listę stacji”</h3>
+  <p>Gdy żadna stacja nie jest wybrana, panel „Stacja” (na telefonie jego arkusz) ma kartę „Pobierz listę stacji”: stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez współrzędnych. Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i „tylko czynne” go nie zawężają. Karta podaje, ile stacji ma plik, a pod przyciskami są „GeoJSON z wiersza poleceń”, „CSV z wiersza poleceń”, licencje i wiersze dostawców. Nazwy plików: <code>stations.geojson</code>, a z filtrami np. <code>stations_imgw-pib_hydro.csv</code>.</p>
+  <dl class="defs">
+    <div><dt>GeoJSON</dt><dd>Dokument <code>obserwator-stations-export/1</code>: FeatureCollection z odczytanymi katalogami, szeregami, w których jest każda stacja, i wierszami dostawców. Właściwości stacji: kod (<code>station_code</code>), nazwa, rodzaj, dostawca, rzeka, wysokość, źródło położenia i inne pola katalogu.</dd></div>
+    <div><dt>CSV</dt><dd>Wiersz na stację z jej właściwościami z katalogu, współrzędnymi (<code>latitude</code>, <code>longitude</code>), zbiorami (<code>datasets</code>, rozdzielone średnikiem) i wierszami dostawców.</dd></div>
+  </dl>
+
+  <h3 id="wyniki">Wyniki analiz</h3>
+  <p>„Wyniki analiz (JSON)” w karcie „Pobierz”: każda analiza stacji jako jeden dokument <code>obserwator-analysis/1</code>, w pliku <code>&lt;kod&gt;_&lt;analiza&gt;.json</code>, np. <code>149190310_flood_frequency.Q.json</code>. Dokument podaje obliczenie Hydrologa, jego opcje i wersję, szereg, który Hydrolog przeczytał (wersja i suma SHA-256), wynik albo błąd oraz wiersze dostawców. Przy każdej analizie tabela mówi, czy wynik jest „zapisany”, czy policzony „na żądanie”; plik ma wynik z domyślnymi opcjami.</p>
+
+  <h3 id="pmaxtp-pliki">PMAXTP</h3>
+  <p>Pod tabelami PMAXTP przyciski CSV i JSON, np. <code>pmaxtp_POT_52.2300_21.0100.csv</code>. Pliki składa serwer z odpowiedzi API IMGW-PIB dla tego punktu: trzy tabele (ks, sg, rb), wszystkie czasy trwania i prawdopodobieństwa. CSV: UTF-8, przecinek, kropka dziesiętna, wiersz na tabelę i czas trwania, kolumna na prawdopodobieństwo, a w kolumnach <code>attribution</code> i <code>terms_notice</code> wiersze źródła PMAXTP i regulamin, po jednym w wierszu. JSON: dokument <code>obserwator-pmaxtp-export/1</code> z jednostkami i polami <code>attribution</code> i <code>terms_notice</code>.</p>
+
+  <h3 id="przekazanie">Przekazanie do Hydrologa</h3>
+  <p>Hydrolog, aplikacja ekosystemu Nogat do obliczeń hydrologicznych, policzy z szeregu stacji to samo co Obserwator i więcej, np. przepływ maksymalny o innym prawdopodobieństwie. Szereg przekazujesz mu bez zapisywania plików:</p>
+  <ul>
+    <li><strong>„Kopiuj do Hydrologa”</strong> kopiuje przekazanie do schowka, <strong>„Plik przekazania”</strong> zapisuje je jako plik <code>….handoff.json</code>, a <strong>„Otwórz Hydrologa”</strong> otwiera Hydrologa w nowej karcie, gdy serwer zna jego adres. Gdy przeglądarka nie pozwala skopiować, tekst przekazania pojawia się zaznaczony w polu pod przyciskami: naciśnij <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+    <li><strong>Gdzie</strong>: w karcie „Pobierz” stacji hydrologicznej („Przekazanie do Hydrologa”: przepływ Q i stan wody H, wartości dobowe z całego okresu; gdy katalog danych ma tylko charakterystyki półroczne IMGW-PIB, maksima roczne z analizy częstości przepływów) oraz przy wynikach „Stanów charakterystycznych”, „Krzywej natężenia przepływu”, „Przepływów maksymalnych i minimalnych” i „Niżówek”. Przekazanie przy wyniku ma lata wybrane w analizie i wynik Obserwatora do porównania.</li>
+    <li><strong>W Hydrologu</strong>: „Statystyka przepływów” → „Wczytaj…” → „Wklej ze schowka” albo „Plik przekazania…”. Hydrolog pokazuje liczby Obserwatora obok własnych.</li>
+    <li><strong>Format</strong>: dokument <code>nogat-handoff/1</code> ekosystemu Nogat z szeregiem <code>hydrolog-series/1</code> (dzień bez wartości jako <code>null</code>), z pochodzeniem (stacja, zbiór, wersja szeregu, obliczenie i jego opcje) oraz wierszami i warunkami dostawcy.</li>
+  </ul>
+
+  <h3 id="wiersz-polecen">Wiersz poleceń</h3>
+  <p>Polecenie obok pliku robi ten sam plik programem Obserwator. Program instalujesz z PyPI, np. <code>pip install "obserwator[cli,store]"</code> (szczegóły w <a href="https://github.com/Daldek/Obserwator" target="_blank" rel="noopener noreferrer">README projektu</a>). Polecenia czytają katalog danych Obserwatora: na serwerze to ten sam katalog, z którego czyta strona, a u siebie wskaż własny opcją <code>--root &lt;katalog&gt;</code> albo zmienną <code>OBSERWATOR_ROOT</code>; bez nich polecenie czyta domyślny katalog danych. Plik powstaje w bieżącym katalogu. Przykłady dla Stróży na Rabie:</p>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --output 149190310_hydro_daily.csv</code></pre>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format json --output 149190310_hydro_daily.json</code></pre>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format parquet --output 149190310_hydro_daily.parquet</code></pre>
+  <p>Polecenie ma też opcje, których strona nie ma, np. tylko przepływ ze stycznia 2024 roku:</p>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --variables Q --start 2024-01-01 --end 2024-01-31 --output 149190310_Q_2024-01.csv</code></pre>
+  <p>Lista stacji wszystkich katalogów jako GeoJSON i stacje hydrologiczne IMGW-PIB jako CSV:</p>
+  <pre class="cmd cli-line"><code>obserwator stations export --output stations.geojson</code></pre>
+  <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW-PIB --kind hydro --format csv --output stations_imgw-pib_hydro.csv</code></pre>
+  <p>Każde polecenie wypisuje też wiersze dostawcy i jego warunki, a <code>--help</code> opisuje wszystkie opcje.</p>
+
+  <h3 id="czytanie">Czytanie plików: pandas, R, DuckDB</h3>
+  <p>Python z biblioteką pandas: średni przepływ każdego roku z pliku CSV i wiersze dostawcy z metadanych pliku Parquet.</p>
+  <pre class="cmd"><code>import json
+
+import pandas as pd
+import pyarrow.parquet as pq
+
+szereg = pd.read_csv("149190310_hydro_daily.csv", parse_dates=["date"])
+print(szereg.groupby("year")["Q [m3/s]"].mean())   # średni przepływ roku
+
+tabela = pq.read_table("149190310_hydro_daily.parquet")
+print(json.loads(tabela.schema.metadata[b"attribution"]))   # wiersze dostawcy
+szereg = tabela.to_pandas()
+
+stacje = pd.read_csv("stations_imgw-pib_hydro.csv", dtype={"station_code": str})</code></pre>
+  <p>R (bez dodatkowych pakietów dla CSV; Parquet czyta pakiet arrow):</p>
+  <pre class="cmd"><code>szereg &lt;- read.csv("149190310_hydro_daily.csv", check.names = FALSE, fileEncoding = "UTF-8")
+szereg$date &lt;- as.Date(szereg$date)
+summary(szereg[["Q [m3/s]"]])
+tabela &lt;- arrow::read_parquet("149190310_hydro_daily.parquet")</code></pre>
+  <p>DuckDB czyta plik Parquet wprost w zapytaniu SQL; nazwy kolumn z jednostkami ujmij w cudzysłów:</p>
+  <pre class="cmd"><code>SELECT year, avg("Q [m3/s]") AS q_sredni
+FROM '149190310_hydro_daily.parquet'
+GROUP BY year
+ORDER BY year;</code></pre>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 06 Licencje ============================ -->
+<section class="part" id="licencje" aria-labelledby="licencje-title">
+  <p class="kicker">06 · Warunki dostawców</p>
+  <h2 id="licencje-title">Licencje i cytowanie</h2>
+  <p>Dane pochodzą od IMGW-PIB i ČHMÚ i podlegają ich warunkom. Obserwator dołącza do wszystkiego, co pokazuje i zapisuje, wiersze, których te instytucje wymagają: pod mapą, pod każdą otwartą kartą panelu, pod tabelami PMAXTP i w każdym pliku. Jeśli wykorzystujesz dane albo wyniki dalej, w pracy, raporcie, na stronie czy w zrzucie ekranu, zachowaj te wiersze bez zmian i przestrzegaj warunków dostawców. Poniżej ich dokładne brzmienie.</p>
+
+  <h3 id="imgw">IMGW-PIB: dane publiczne</h3>
+  <p class="legal-label">Źródło</p>
+  <p class="legal">Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy</p>
+  <p class="legal-label">Oznaczenie przetworzenia (dane ujednolicone, przeliczone albo zmienione)</p>
+  <p class="legal">Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone</p>
+  <p class="legal-label">Warunki korzystania i regulamin</p>
+  <p class="legal">Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.</p>
+  <p class="legal">Regulamin: <a href="https://danepubliczne.imgw.pl/regulations" target="_blank" rel="noopener noreferrer">https://danepubliczne.imgw.pl/regulations</a></p>
+
+  <h3 id="hydro-imgw">IMGW-PIB: serwis hydrologiczny hydro.imgw.pl</h3>
+  <p>Stany wody w „Pomiarach bieżących” pochodzą z mapy hydro.imgw.pl, a położenia części stacji z pliku położeń tej mapy w pakiecie Obserwatora (źródło położenia podaje karta „Informacje o stacji”). Wtedy obok źródła, oznaczenia przetworzenia i warunków IMGW-PIB stoją wiersze:</p>
+  <p class="legal">Dane pochodzą z serwisu hydrologicznego IMGW-PIB <a href="https://hydro.imgw.pl" target="_blank" rel="noopener noreferrer">https://hydro.imgw.pl</a></p>
+  <p class="legal">Regulamin: <a href="https://hydro.imgw.pl/#/regulamin" target="_blank" rel="noopener noreferrer">https://hydro.imgw.pl/#/regulamin</a></p>
+
+  <h3 id="pmaxtp-warunki">IMGW-PIB: PMAXTP</h3>
+  <p class="legal-label">Źródło i monografia projektu</p>
+  <p class="legal">Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony <a href="https://klimat.imgw.pl/opady-maksymalne" target="_blank" rel="noopener noreferrer">https://klimat.imgw.pl/opady-maksymalne</a></p>
+  <p class="legal">„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022</p>
+  <p class="legal-label">Oznaczenie przetworzenia</p>
+  <p class="legal">Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony <a href="https://klimat.imgw.pl/opady-maksymalne" target="_blank" rel="noopener noreferrer">https://klimat.imgw.pl/opady-maksymalne</a> zostały przetworzone</p>
+  <p class="legal-label">Warunki korzystania i regulamin</p>
+  <p>Te same warunki korzystania z danych IMGW-PIB co wyżej, z regulaminem strony PMAXTP:</p>
+  <p class="legal">Regulamin: <a href="https://klimat.imgw.pl/opady-maksymalne" target="_blank" rel="noopener noreferrer">https://klimat.imgw.pl/opady-maksymalne</a></p>
+  <p>Monografia jest w otwartym dostępie (Open Access, CC BY 4.0): <a href="https://www.imgw.pl/sites/default/files/2022-12/imgw-pib-monografia_modele-probabilistyczne-opadow-maksymalnych.pdf" target="_blank" rel="noopener noreferrer">PDF w serwisie IMGW-PIB</a>.</p>
+
+  <h3 id="chmi">ČHMÚ</h3>
+  <p class="legal-label">Źródło i licencja</p>
+  <p class="legal">Źródło danych: Český hydrometeorologický ústav (ČHMÚ), <a href="https://opendata.chmi.cz" target="_blank" rel="noopener noreferrer">https://opendata.chmi.cz</a>, licencja CC BY 4.0 (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">https://creativecommons.org/licenses/by/4.0/</a>)</p>
+  <p class="legal-label">Oznaczenie zmian</p>
+  <p class="legal">Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)</p>
+  <p>Licencja CC BY 4.0 pozwala kopiować, zmieniać i wykorzystywać dane, także komercyjnie, pod warunkiem uznania autorstwa ČHMÚ, podania licencji i oznaczenia zmian: to właśnie robią oba wiersze. ČHMÚ publikuje też wyłączenie odpowiedzialności, do którego prowadzi odnośnik „wyłączenie odpowiedzialności” w karcie „Pobierz”.</p>
+
+  <h3 id="mapa-zrodla">Podkład i granice mapy</h3>
+  <p>Źródło podkładu podaje wiersz pod mapą, domyślnie „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”; serwer z innym podkładem podaje jego źródło. Granice Polski i Czech, rysowane bez podkładu, pochodzą z Natural Earth (domena publiczna).</p>
+
+  <h3 id="gdzie-wiersze">Gdzie są te wiersze</h3>
+  <ul>
+    <li><strong>Na stronie</strong>: pod mapą (dane, które mapa pokazuje), pod każdą otwartą kartą panelu i pod tabelami PMAXTP; adresy są odnośnikami. Na telefonie arkusz listy stacji ma je na dole, bo arkusze zasłaniają pasek pod mapą.</li>
+    <li><strong>W plikach</strong>: CSV szeregu w kolumnach <code>attribution_source</code>, <code>attribution_processed</code>, <code>attribution</code> i <code>terms_notice</code>; CSV PMAXTP w kolumnach <code>attribution</code> i <code>terms_notice</code>; JSON, GeoJSON i przekazanie w polach <code>attribution</code> i <code>terms_notice</code>; Parquet w metadanych pliku; obrazy pasków klimatycznych w samym obrazie.</li>
+  </ul>
+
+  <h3 id="cytowanie">Jak cytować</h3>
+  <p>Dostawcy wymagają wierszy podanych wyżej. Do nich dopisz, skąd i kiedy plik pochodzi, żeby dało się go odtworzyć. Proponowany zapis:</p>
+  <ul>
+    <li><strong>Szereg</strong>: wiersze dostawcy, a po nich: „Szereg pl.imgw.hydro_daily stacji 149190310 (Stróża, Raba), wersja series/versions/hydro_daily/…, przygotowany programem Obserwator (https://github.com/Daldek/Obserwator), pobrany 13.11.2026.” Wersję szeregu podaje pole <code>series_version</code> pliku JSON i metadanych Parquet oraz notka w karcie „Pobierz” („plik stąd to wersja … szeregu”).</li>
+    <li><strong>Wynik analizy</strong>: wiersze dostawcy, a po nich: „Kwantyle przepływów maksymalnych rocznych: Hydrolog <i>wersja</i> (https://github.com/Daldek/Hydrolog), obliczenie stats flood-frequency z opcjami podanymi w pliku, szereg pl.imgw.hydro_daily stacji 149190310 w wersji …; za pośrednictwem Obserwatora, 13.11.2026.” Wszystkie te dane są w pliku wyniku <code>obserwator-analysis/1</code>: <code>hydrolog.version</code>, <code>command</code>, <code>options</code>, <code>inputs</code> (wersja i SHA-256 szeregu) i <code>computed_at</code>. Metodę cytuj za literaturą z objaśnienia <span class="i-mark" aria-hidden="true">i</span>.</li>
+    <li><strong>PMAXTP</strong>: wiersze źródła PMAXTP z monografią projektu, punkt, metoda i data odpowiedzi IMGW-PIB.</li>
+  </ul>
+  <p>Wersje Obserwatora i Hydrologa, z którymi działa serwer, podaje panel „Stacja”, gdy żadna stacja nie jest wybrana.</p>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 07 Regulamin ============================ -->
+<section class="part" id="regulamin" aria-labelledby="regulamin-title">
+  <p class="kicker">07 · Zasady</p>
+  <h2 id="regulamin-title">Regulamin, prywatność i „Zgłoś uwagę”</h2>
+
+  <h3 id="serwis-publiczny">Serwis publiczny</h3>
+  <p>Gdy Obserwator działa jako serwis publiczny, dostępny dla każdego bez logowania, pod mapą każdego widoku, obok źródeł danych, jest odnośnik „Regulamin” i oświadczenie:</p>
+  <p class="legal">Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB.</p>
+  <p>Regulamin (strona <code>regulamin.html</code> obok strony startowej) mówi, kto prowadzi serwis, na jakich warunkach pokazuje dane i co dzieje się z danymi osobowymi. Ten sam odnośnik kończy menu „Aplikacje”. Obserwator uruchomiony na własnym komputerze albo dla zespołu za logowaniem nie ma regulaminu ani tego odnośnika.</p>
+
+  <h3 id="prywatnosc">Prywatność</h3>
+  <ul>
+    <li>Nie trzeba się logować ani podawać żadnych danych. Serwis nie ustawia plików cookie i nie korzysta z narzędzi analitycznych ani reklamowych.</li>
+    <li>Serwer liczy użycie tylko w łącznych liczbach dziennych: odwiedzający, odsłony, otwarte stacje, wykonane analizy i pobrania. Adres IP jest tylko w pamięci: do limitu żądań i do policzenia odwiedzających danego dnia (skrót z adresu, oznaczenia przeglądarki i losowej wartości zmienianej o północy UTC); nie trafia na dysk ani do dzienników.</li>
+    <li>Dziennik żądań zapisuje czas, adres strony z parametrami, kod odpowiedzi i oznaczenie przeglądarki, bez adresu IP, i jest usuwany po 14 dniach.</li>
+    <li>Zbyt wiele żądań z jednego adresu w krótkim czasie kończy się komunikatem „Zbyt wiele żądań. Spróbuj ponownie za … s.”.</li>
+    <li>Twoja przeglądarka łączy się tylko z serwerem Obserwatora i z serwerem podkładu mapy, który widzi przy tym Twój adres IP. O pomiary bieżące i PMAXTP pyta IMGW-PIB serwer Obserwatora.</li>
+    <li>W pamięci przeglądarki (localStorage) zostają tylko ustawienia: motyw, język i szerokości paneli.</li>
+  </ul>
+
+  <h3 id="zglos-uwage">„Zgłoś uwagę”</h3>
+  <p>Przycisk na górnym pasku otwiera okno z jednym polem, „Opis problemu lub sugestii”, na 1 do 5000 znaków (licznik pod polem). Zgłoszenie trafi do autora Obserwatora. Pod polem stoi „Nie wpisuj danych osobowych.”, a w serwisie publicznym także adres e-mail operatora („Jeśli chcesz odpowiedzi, napisz na …”): na zgłoszenie z formularza nie da się odpowiedzieć, bo formularz nie ma pól kontaktowych. Okno pokazuje, co zostanie dołączone do zgłoszenia: widok, stację, sekcję, parametry adresu strony i wersję Obserwatora. Adres IP ani oznaczenie przeglądarki nie są zapisywane. „Wyślij” zapisuje zgłoszenie na serwerze („Dziękujemy! Zgłoszenie zostało zapisane.”); z jednego adresu można wysłać najwyżej 5 zgłoszeń w ciągu 10 minut. <kbd>Esc</kbd> albo „Anuluj” zamyka okno bez wysyłania.</p>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+<!-- ============================ 08 Słowniczek ============================ -->
+<section class="part" id="slowniczek" aria-labelledby="slowniczek-title">
+  <p class="kicker">08 · Skróty i pojęcia</p>
+  <h2 id="slowniczek-title">Słowniczek</h2>
+  <dl class="defs glossary">
+    <div><dt>H</dt><dd>Stan wody: wysokość lustra wody nad zerem wodowskazu, w cm.</dd></div>
+    <div><dt>Q</dt><dd>Przepływ: objętość wody płynącej przez przekrój rzeki w sekundzie, w m³/s.</dd></div>
+    <div><dt>T</dt><dd>Temperatura wody, w °C.</dd></div>
+    <div><dt>P</dt><dd>Opad, w mm (1&nbsp;mm to 1 litr wody na metr kwadratowy).</dd></div>
+    <div><dt>Tmax, Tmin, Tmean (Tśr)</dt><dd>Temperatura powietrza maksymalna, minimalna i średnia dobowa, w °C.</dd></div>
+    <div><dt>Rok hydrologiczny (XI–X)</dt><dd>Od 1 listopada do 31 października, nazwany rokiem, w którym się kończy; półrocze zimowe to XI–IV, letnie V–X.</dd></div>
+    <div><dt>NQ, SQ, WQ (NW, SW, WW; NT, ST, WT)</dt><dd>Wartości charakterystyczne I stopnia: najniższy, średni i najwyższy przepływ (stan wody, temperatura wody) roku albo półrocza.</dd></div>
+    <div><dt>SNQ, SSQ, SWQ, NNQ, WWQ</dt><dd>Wartości II stopnia z wielu lat: pierwsza litera to statystyka lat (N najmniejsza, S średnia, Z mediana, W największa), druga to wartość roczna (N minimum, S średnia, W maksimum); np. SNQ to średni z rocznych minimów. Tak samo dla stanów: SNW, SSW, SWW.</dd></div>
+    <div><dt>SPA 1–3</dt><dd>Stopnie aktywności powodziowej ČHMÚ (stupně povodňové aktivity): 1. czujność, 2. gotowość, 3. zagrożenie.</dd></div>
+    <div><dt>Q50</dt><dd>Próg ČHMÚ: przepływ (stan) wody 50-letniej.</dd></div>
+    <div><dt>Q70, Q90</dt><dd>Przepływ osiągany lub przekraczany przez 70 albo 90&nbsp;% dni okresu; progi niżówek.</dd></div>
+    <div><dt>p, T</dt><dd>Prawdopodobieństwo przewyższenia w % i okres powtarzalności w latach, T = 100/p: przepływ o p = 1&nbsp;% zdarza się średnio raz na 100 lat.</dd></div>
+    <div><dt>Q<sub>p</sub>, NQ<sub>T</sub></dt><dd>Kwantyl przepływu maksymalnego rocznego o prawdopodobieństwie przewyższenia p i przepływ minimalny osiągany lub niższy raz na T lat.</dd></div>
+    <div><dt>GEV, L-momenty, KS, A², AIC</dt><dd>Uogólniony rozkład wartości ekstremalnych, metoda szacowania parametrów rozkładu i miary dopasowania: test Kołmogorowa–Smirnowa, statystyka Andersona–Darlinga i kryterium informacyjne Akaike.</dd></div>
+    <div><dt>NTW, STW, WTW</dt><dd>Strefy stanów wody Rybczyńskiego: niskie, średnie i wysokie tło wodne.</dd></div>
+    <div><dt>Współczynnik Pardégo</dt><dd>Średni przepływ miesiąca podzielony przez średni przepływ roczny; opisuje reżim rzeki.</dd></div>
+    <div><dt>BFI</dt><dd>Wskaźnik przepływu podziemnego: udział przepływu podziemnego w całym odpływie.</dd></div>
+    <div><dt>Test Manna–Kendalla, nachylenie Sena</dt><dd>Test, czy wartości z roku na rok rosną albo maleją, i miara tego trendu: mediana nachyleń wszystkich par lat, tu na 10 lat.</dd></div>
+    <div><dt>Normalna</dt><dd>Średnia z okresu odniesienia, np. 1991–2020; opad względny to suma w % normalnej, anomalia to różnica od normalnej.</dd></div>
+    <div><dt>SPI</dt><dd>Wskaźnik standaryzowanego opadu: jak bardzo opad z 1, 3, 6 albo 12 miesięcy odbiega od typowego; wartości ujemne to susza.</dd></div>
+    <div><dt>PCI, SI</dt><dd>Wskaźnik koncentracji opadu i wskaźnik sezonowości: jak nierówno opad rozkłada się na miesiące.</dd></div>
+    <div><dt>R95p, R99p, SDII, CDD, CWD</dt><dd>Wskaźniki klimatyczne ETCCDI: opad dni bardzo mokrych, natężenie opadu dnia mokrego, najdłuższy ciąg dni bez opadu i z opadem.</dd></div>
+    <div><dt>Stopniodni</dt><dd>Suma nadwyżek (albo niedoborów) średniej temperatury dobowej względem progu, np. 5&nbsp;°C dla wzrostu roślin.</dd></div>
+    <div><dt>Współczynnik hydrotermiczny</dt><dd>Współczynnik Sielianinowa: opad miesiąca w stosunku do sumy temperatur; ocenia, czy miesiąc był suchy, czy wilgotny.</dd></div>
+    <div><dt>PMAXTP, POT, AMP</dt><dd>Opracowanie IMGW-PIB opadów maksymalnych o czasie trwania t i prawdopodobieństwie p oraz jego dwie metody: wartości powyżej progu i maksima roczne.</dd></div>
+    <div><dt>ks, sg, rb</dt><dd>Tabele PMAXTP: kwantyle opadu, górne granice ich przedziału ufności i błędy estymacji.</dd></div>
+    <div><dt>SYNOP</dt><dd>Depesza synoptyczna: raport stacji synoptycznej o pogodzie w terminie obserwacji.</dd></div>
+    <div><dt>WGS84, UTC</dt><dd>Układ współrzędnych geograficznych map i GPS oraz uniwersalny czas koordynowany (w Polsce zimą UTC+1, latem UTC+2).</dd></div>
+    <div><dt>Katalog danych, wersja szeregu</dt><dd>Zbiór danych Obserwatora na serwerze: katalogi stacji, szeregi i wyniki analiz. Każde odświeżenie danych tworzy nową wersję szeregu, a strona pokazuje bieżącą.</dd></div>
+    <div><dt>Flagi</dt><dd>Oznaczenie wartości w szeregu: „wartość”, „brak” (dzień bez wartości), „brak zjawiska” (np. dzień bez opadu zapisany jako 0) i „suma z kilku dni” (opad z kilku dni podany w ostatnim z nich).</dd></div>
+  </dl>
+  <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
+</section>
+
+</div>
+</main>
+</body>
+</html>
