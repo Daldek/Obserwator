@@ -4,13 +4,14 @@ error or a Content-Security-Policy violation, in both themes, on a desktop and a
 and the user guide's examples work on the fixture data root.
 
 The views: the start page of both servers, „Pomiary bieżące” and „PMAXTP” with the
-recorded point, each station of FIXTURE_STATIONS with its cards opened, the guide
-(``instrukcja/``) and ``regulamin.html``. The stations open on ``public_url``, which never
-has Hydrolog, so the test does not depend on it: their cards are those that need no
-analysis result (the fixture root stores none), taken from the page's registries. The
-guide's links into the app open their view, a station's with its panel and the card the
-link names; its command lines (``pre.cli-line``) run on the fixture root and write their
-files.
+recorded point, each station of FIXTURE_STATIONS with every card opened, the guide
+(``instrukcja/``) and ``regulamin.html``. The stations open on ``stored_url``, the fixture
+root with its analyses stored and no Hydrolog's program, so the test does not depend on
+it: a card opened shows the stored results, so none of its requests of an analysis names
+an option (a choice of the person is computed on request, which this server refuses),
+and its only errors are those Hydrolog stored. The guide's links into the app open their
+view, a station's with its panel and the card the link names; its command lines
+(``pre.cli-line``) run on the fixture root with stored analyses and write their files.
 """
 
 from __future__ import annotations
@@ -43,6 +44,14 @@ MISSING_ANCHORS = """() => [...document.querySelectorAll('a[href^="#"]')]
   .map((link) => link.getAttribute("href").slice(1))
   .filter((id) => !document.getElementById(id))"""
 """The in-page links of a document whose target is missing."""
+OPEN_CARDS = """async () => {
+  for (const button of document.querySelectorAll(".acc-item:not(.open) .acc-head button")) {
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return [...document.querySelectorAll(".acc-item")].map((item) => item.dataset.section);
+}"""
+"""Open every closed card of the station panel, one after the other; the ids of all."""
 
 
 def guide_links() -> list[str]:
@@ -65,31 +74,61 @@ def settle(page: Any) -> None:
     page.wait_for_load_state("networkidle")
 
 
-def open_cards(page: Any, analysis_ids: set[str]) -> list[str]:
-    """Open every card of the station panel that needs no analysis result."""
+def stored_failures(page: Any, base: str, code: str) -> set[str]:
+    """The messages of the analyses of a station that Hydrolog stored as failed."""
+    listed = page.request.get(f"{base}api/analyses/{code}").json()["analyses"]
+    found = set()
+    for entry in listed:
+        if entry["status"] == "failed":
+            url = f"{base}api/analysis/{code}/{entry['analysis']}"
+            error = page.request.get(url).json()["error"]
+            found.add(error.get("message") or error["title"])
+    return found
+
+
+def open_cards(page: Any) -> tuple[list[str], list[str]]:
+    """
+    Open every card of the station panel and wait until they asked for all they draw.
+
+    Returns the ids of the cards and the addresses of the API asked meanwhile. The page's
+    load state "networkidle" is reached once per page, so the requests are followed here.
+    """
     page.locator(".station-panel .station-head").wait_for(
         state="attached", timeout=WAIT
     )
-    ids = page.locator(".acc-item").evaluate_all(
-        "(items) => items.map((item) => item.dataset.section)"
-    )
-    cards = [card for card in ids if card not in analysis_ids]
-    for card in cards:
-        item = page.locator(f'.acc-item[data-section="{card}"]')
-        if not item.evaluate("(node) => node.classList.contains('open')"):
-            item.locator(".acc-head button").click()
-        item.locator(".acc-body").wait_for(state="attached", timeout=WAIT)
+    # The analysis cards come once api/analyses answered
     settle(page)
-    for card in cards:
-        expect(
-            page.locator(f'.acc-item[data-section="{card}"] .acc-body .ana-error')
-        ).to_have_count(0)
-    return cards
+    asked: list[str] = []
+    running: set[Any] = set()
+
+    def started(request: Any) -> None:
+        if "/api/" in request.url:
+            asked.append(request.url)
+        running.add(request)
+
+    def ended(request: Any) -> None:
+        running.discard(request)
+
+    page.on("request", started)
+    page.on("requestfinished", ended)
+    page.on("requestfailed", ended)
+    cards = page.evaluate(OPEN_CARDS)
+    expect(page.locator(".acc-item.open .acc-body")).to_have_count(len(cards))
+    quiet = 0
+    for _ in range(WAIT // 50):
+        quiet = 0 if running else quiet + 1
+        if quiet == 10:
+            break
+        page.wait_for_timeout(50)
+    assert not running, [request.url for request in running]
+    return cards, asked
 
 
 @pytest.mark.parametrize("theme", THEMES)
 @pytest.mark.parametrize("width", WIDTHS)
-def test_every_view_opens_cleanly(open_page, gui_url, public_url, theme, width):
+def test_every_view_opens_cleanly(
+    open_page, gui_url, public_url, stored_url, theme, width
+):
     options = {"theme": theme, "width": width, "height": 900 if width > 860 else 844}
     for base in (gui_url, public_url):
         page = open_page(base=base, **options)
@@ -111,12 +150,22 @@ def test_every_view_opens_cleanly(open_page, gui_url, public_url, theme, width):
 
     analysis_ids: set[str] | None = None
     for code in FIXTURE_STATIONS.values():
-        page = open_page(f"?station={code}", base=public_url, **options)
+        page = open_page(f"?station={code}", base=stored_url, **options)
         if analysis_ids is None:
             analysis_ids = set(page.evaluate(ANALYSIS_IDS))
-        assert {"stacja", "teraz", "dane", "pobierz"} <= set(
-            open_cards(page, analysis_ids)
-        )
+        cards, asked = open_cards(page)
+        assert {"stacja", "teraz", "dane", "pobierz"} <= set(cards)
+        assert set(cards) & analysis_ids, code
+        # A card opened shows the stored results: no request names an option
+        results = [url for url in asked if "/api/analysis/" in url]
+        assert results, code
+        assert [url for url in results if urlsplit(url).query] == []
+        stored = stored_failures(page, stored_url, code)
+        for text in page.locator(".acc-item .ana-error").all_inner_texts():
+            rest = text
+            for failure in stored:
+                rest = rest.replace(failure, "")
+            assert text.strip() and not rest.strip(), (code, text)
 
     page = open_page("instrukcja/", ready=False, **options)
     page.locator(".guide-toc").wait_for(timeout=WAIT)
@@ -169,7 +218,7 @@ def test_the_guides_links_open_their_views(open_page, public_url):
 
 
 def test_the_guides_command_lines_write_their_files_on_the_fixture_root(
-    gui_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    stored_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     commands = guide_commands()
     assert commands
@@ -177,7 +226,7 @@ def test_the_guides_command_lines_write_their_files_on_the_fixture_root(
     runner = CliRunner()
     for words in commands:
         assert words[0] == "obserwator", words
-        result = runner.invoke(app, [*words[1:], "--root", str(gui_root)])
+        result = runner.invoke(app, [*words[1:], "--root", str(stored_root)])
         assert result.exit_code == 0, f"{shlex.join(words)}\n{result.output}"
         written = tmp_path / words[words.index("--output") + 1]
         assert written.stat().st_size > 0, shlex.join(words)

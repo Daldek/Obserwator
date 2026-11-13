@@ -128,6 +128,8 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert hydro["stations"] == 2
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
+    # The fixture root stores no analyses
+    assert root["analyses"] == {"IMGW-PIB": None, "CHMI": None}
     assert set(session["providers"]) == {"IMGW-PIB", "CHMI"}
     assert session["providers"]["CHMI"]["attribution"] == list(
         attribution("chmi").attribution
@@ -138,6 +140,25 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert session["terms"] is None
     assert session["operator_email"] is None
     assert session["compute"]["available"] is False
+
+
+def test_the_session_names_the_stored_analyses_of_each_provider(
+    make_client, stored_root
+):
+    analyses = make_client(stored_root).get("/api/session").json()["root"]["analyses"]
+
+    for provider, folder, station in (
+        ("IMGW-PIB", "pl.imgw", HYDRO),
+        ("CHMI", "cz.chmi", HYDRO_CHMI),
+    ):
+        (version,) = (stored_root / "analyses" / "versions" / folder).iterdir()
+        stored = obserwator.read_analysis(
+            root=stored_root, station=station, analysis="characteristic.Q"
+        )
+        assert analyses[provider]["version"] == version.name
+        assert stored.analyses_version == version.name
+        assert analyses[provider]["hydrolog"] == stored.hydrolog["version"]
+        assert len(analyses[provider]["sha256"]) == 64
 
 
 def test_a_public_deployment_serves_its_regulamin(make_client):
@@ -328,21 +349,102 @@ def test_an_unknown_dataset_or_a_series_the_station_lacks_is_404(client):
 # --- analyses ------------------------------------------------------------------------------
 
 
-def test_without_hydrolog_the_ids_are_listed_but_not_computed(client):
+def test_without_stored_results_or_hydrolog_nothing_is_listed_or_computed(client):
     listed = client.get(f"/api/analyses/{HYDRO}").json()
     asked = client.get(f"/api/analysis/{HYDRO}/characteristic.Q", headers=EN)
+    files = client.get(f"/api/downloads/{HYDRO}").json()
+    export = client.get(f"/api/files/analyses/{HYDRO}?format=csv", headers=EN)
 
-    assert listed["station"] == HYDRO
-    assert listed["compute"] is False
-    ids = {entry["analysis"] for entry in listed["analyses"]}
-    assert {"characteristic.Q", "flood_frequency.Q"} <= ids
+    assert listed == {"station": HYDRO, "analyses": [], "compute": False}
     problem(asked, 503, "missing_dependency", "en")
+    assert files["analyses"] is None
+    problem(export, 404, "not_found", "en")
+
+
+def test_stored_results_are_listed_and_read_without_hydrolog(make_client, stored_root):
+    client = make_client(stored_root)
+
+    listed = client.get(f"/api/analyses/{HYDRO}").json()
+    first = client.get(f"/api/analysis/{HYDRO}/characteristic.Q")
+    again = client.get(
+        f"/api/analysis/{HYDRO}/characteristic.Q",
+        headers={"If-None-Match": first.headers["etag"]},
+    )
+
+    summaries = obserwator.list_analyses(root=stored_root, station=HYDRO)
+    assert listed["compute"] is False
+    assert [entry["analysis"] for entry in listed["analyses"]] == [
+        summary.analysis for summary in summaries
+    ]
+    by_id = {entry["analysis"]: entry for entry in listed["analyses"]}
+    assert by_id["characteristic.Q"]["schema"] == "obserwator-analysis-summary/1"
+    assert by_id["characteristic.Q"]["stored"] is True
+    assert by_id["characteristic.Q"]["overridable"]["first_year"] == {
+        "type": "integer",
+        "minimum": 1,
+    }
+    stored = obserwator.read_analysis(
+        root=stored_root, station=HYDRO, analysis="characteristic.Q"
+    )
+    document = first.json()
+    assert document["source"] == "stored"
+    assert document["analyses_version"] == stored.analyses_version
+    assert stored.envelope is not None
+    assert document["envelope"]["result"] == stored.envelope["result"]
+    # Hydrolog's envelope names the files it read in a scratch directory: names only
+    assert (
+        document["envelope"]["inputs"]["input_file"]
+        == Path(stored.envelope["inputs"]["input_file"]).name
+    )
+    assert again.status_code == 304
+
+
+@pytest.mark.parametrize("fmt", ["json", "csv"])
+def test_the_stored_results_download_as_analyses_export_makes_them(
+    make_client, stored_root, fmt
+):
+    client = make_client(stored_root)
+
+    files = client.get(f"/api/downloads/{HYDRO}").json()["analyses"]
+    whole = client.get(f"/api/files/analyses/{HYDRO}?format={fmt}")
+    one = client.get(
+        f"/api/files/analyses/{HYDRO}",
+        params={"format": fmt, "analysis": "characteristic.Q"},
+    )
+    unknown = client.get(
+        f"/api/files/analyses/{HYDRO}",
+        params={"format": fmt, "analysis": "regime.Q.nothing"},
+    )
+
+    def exported(**options):
+        return "".join(
+            obserwator.export_analyses(
+                root=stored_root, station=HYDRO, format=fmt, **options
+            )
+        ).encode("utf-8")
+
+    assert files["formats"][fmt] == {
+        "file": f"{HYDRO}_analyses.{fmt}",
+        "url": f"api/files/analyses/{HYDRO}?format={fmt}",
+        "command": (
+            f"obserwator analyses export --station {HYDRO} --format {fmt} "
+            f"--output {HYDRO}_analyses.{fmt}"
+        ),
+    }
+    (version,) = (stored_root / "analyses" / "versions" / "pl.imgw").iterdir()
+    assert files["version"] == version.name
+    assert whole.content == exported()
+    assert whole.headers["content-disposition"].startswith(
+        f'attachment; filename="{HYDRO}_analyses.{fmt}"'
+    )
+    assert one.content == exported(analyses=["characteristic.Q"])
+    problem(unknown, 404, "not_found")
 
 
 def test_an_analysis_is_computed_by_hydrolog_once_and_served_again(
     make_client, hydrolog
 ):
-    client = make_client(hydrolog_command=hydrolog)
+    client = make_client(hydrolog=hydrolog)
     path = f"/api/analysis/{HYDRO}/flood_frequency.Q"
 
     first = client.get(path)
@@ -389,7 +491,7 @@ def test_an_analysis_is_computed_by_hydrolog_once_and_served_again(
 def test_an_analysis_outside_the_registry_or_the_station_is_refused(
     make_client, hydrolog, path, status, code
 ):
-    client = make_client(hydrolog_command=hydrolog)
+    client = make_client(hydrolog=hydrolog)
 
     problem(client.get(path), status, code)
 
@@ -748,7 +850,7 @@ def test_a_meteorological_station_has_no_hydrological_handoff(client):
 def test_the_handoff_of_annual_maxima_takes_them_from_hydrologs_result(
     make_client, hydrolog
 ):
-    client = make_client(hydrolog_command=hydrolog)
+    client = make_client(hydrolog=hydrolog)
 
     answer = client.get(f"/api/handoff/{HYDRO}", params={"resolution": "annual"}).json()
 
@@ -773,9 +875,7 @@ def test_the_handoff_of_annual_maxima_takes_them_from_hydrologs_result(
 def test_a_failed_hydrolog_result_has_no_annual_maxima_to_hand_off(
     make_client, tmp_path
 ):
-    client = make_client(
-        hydrolog_command=write_program(tmp_path / "failing.py", fail=True)
-    )
+    client = make_client(hydrolog=write_program(tmp_path / "failing.py", fail=True))
 
     problem(
         client.get(f"/api/handoff/{HYDRO}", params={"resolution": "annual"}),
@@ -956,9 +1056,7 @@ def test_the_gui_never_writes_under_the_root(
     make_client, fixture_root, hydrolog, tmp_path
 ):
     before = files_of(fixture_root)
-    client = make_client(
-        fixture_root, hydrolog_command=hydrolog, state_dir=tmp_path / "state"
-    )
+    client = make_client(fixture_root, hydrolog=hydrolog, state_dir=tmp_path / "state")
 
     exercise(client)
     client.post("/api/feedback", json=REPORT, headers=SAME_SITE)

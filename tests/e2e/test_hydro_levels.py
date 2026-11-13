@@ -1,13 +1,16 @@
 """
 The hydrological sections „Stany charakterystyczne”, „Krzywa natężenia przepływu” and
-„Przepływy maksymalne i minimalne” on a root with long records, computed by Hydrolog's
-program (GUI plan S5, D11, D13; Nogat plan H1 to H6, H16).
+„Przepływy maksymalne i minimalne” on a root with long records and the analyses
+``obserwator analyses build`` stored (GUI plan S5, D11, D13; Nogat plan H1 to H6, H16).
 
 The page draws the results of the analysis ids of the API (``api/analysis/{code}/{id}``):
-the numbers it shows are compared with those documents, a flood quantile with Hydrolog's
-own call on the same exported series, and the hand-off of the annual maxima with Nogat's
-schema. Kłodzko (IMGW-PIB, 1951–2025, with IMGW-PIB's half-year characteristics) and Děčín
-(ČHMÚ, the Labe since 1888, with ČHMÚ's thresholds in its catalog entry).
+a section opens with the stored results, so the numbers it shows are compared with the
+stored documents (``source: stored``); a person's choice is computed by Hydrolog's program
+on request and compared with the API's document of the same options (``source:
+computed``). A flood quantile is compared with Hydrolog's own call on the same exported
+series, and the hand-off of the annual maxima with Nogat's schema. Kłodzko (IMGW-PIB,
+1951–2025, with IMGW-PIB's half-year characteristics) and Děčín (ČHMÚ, the Labe since
+1888, with ČHMÚ's thresholds in its catalog entry).
 """
 
 from __future__ import annotations
@@ -32,14 +35,19 @@ pytestmark = pytest.mark.hydrolog
 KLODZKO = "150160180"
 DECIN = "0-203-1-240000"
 WAIT = 120_000
-"""How long a section may take: Hydrolog computes every id on request [ms]."""
+"""How long a section may take: Hydrolog computes a person's choice on request [ms]."""
 HANDOFF_SCHEMA = (
     Path(__file__).resolve().parents[2] / "schemas" / "nogat" / "handoff-1.schema.json"
 )
+SOURCE = {True: "wynik zapisany", False: "policzony na żądanie"}
+"""The provenance chip of a stored result and of one computed on request."""
 
 
 def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]:
-    """Hydrolog's result of an id as the API serves it to the page."""
+    """
+    Hydrolog's result of an id as the API serves it to the page: the stored one, or with
+    a person's ``overrides`` the one computed on request.
+    """
     query = urllib.parse.urlencode(overrides)
     url = f"{base}api/analysis/{urllib.parse.quote(code)}/{id_}"
     with urllib.request.urlopen(
@@ -47,6 +55,7 @@ def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]
     ) as answer:
         document: dict[str, Any] = json.load(answer)
     assert document["status"] == "ok", document.get("error")
+    assert document["source"] == ("computed" if overrides else "stored")
     result: dict[str, Any] = document["envelope"]["result"]
     return result
 
@@ -76,10 +85,12 @@ def figure(card: Any, label: str) -> str:
     return text
 
 
-def provenance(card: Any, command: str) -> None:
-    """The section names Hydrolog's command that computed its numbers."""
-    chip = card.locator(".ana-prov .prov-hydrolog code", has_text=command).first
-    chip.wait_for(timeout=WAIT)
+def provenance(card: Any, command: str, *, stored: bool = True) -> None:
+    """The section names Hydrolog's command and whether its result is stored or computed."""
+    chip = card.locator(".ana-prov .prov-hydrolog", has_text=SOURCE[stored]).filter(
+        has=card.page.locator("code", has_text=command)
+    )
+    chip.first.wait_for(timeout=WAIT)
 
 
 def section(open_page: Any, base: str, code: str, name: str, **options: Any) -> Any:
@@ -159,6 +170,7 @@ def test_choosing_the_years_refits_the_rating_curve(
     assert h0 == pytest.approx(fit["h0"], abs=0.05)
     assert b == pytest.approx(fit["b"], abs=5e-4)
     assert number(figure(card, "Par")) == fit["n_points"]
+    provenance(card, "hydrometrics rating-curve", stored=False)
 
 
 def test_a_flood_quantile_equals_hydrologs_own_call(

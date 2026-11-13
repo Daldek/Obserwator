@@ -535,9 +535,9 @@ function Hydrothermal({ state }) {
  * period of the normal in its toolbar; the stripes and the harmonics need the daily mean
  * temperature, the coefficient also precipitation.
  *
- * @param {{station: object, analyses: object[]}} props
+ * @param {{station: object, session: object|null, analyses: object[]}} props
  */
-export function Temperatura({ station, analyses }) {
+export function Temperatura({ station, session, analyses }) {
   const code = station.code;
   const [opt, setOpt] = useOptions({ first_year: undefined, last_year: undefined, reference_first_year: undefined, reference_last_year: undefined }, code);
   const period = { first_year: opt.first_year, last_year: opt.last_year };
@@ -561,7 +561,7 @@ export function Temperatura({ station, analyses }) {
       />
     </div>
     ${means.entry && html`<${Means} station=${station} means=${means} range=${range} />`}
-    ${means.entry && html`<${Stripes} station=${station} />`}
+    ${means.entry && html`<${Stripes} station=${station} session=${session} />`}
     ${(days.entry || degree.entry) && html`<${CharacteristicDays} days=${days} degree=${degree} />`}
     ${entryOf(analyses, "harmonics.Tmean") && html`<${HarmonicsPart} station=${station} analyses=${analyses} />`}
     ${hydrothermal.entry && html`<${Hydrothermal} state=${hydrothermal} />`}

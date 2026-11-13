@@ -61,16 +61,15 @@ src/obserwator/
 └── gui/                  # Web GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013); not in obserwator.__all__
     ├── __init__.py       # create_app, serve, gui_module, GuiModule, WEB_DIR, SECTIONS (imports neither Starlette nor uvicorn)
     ├── _extra.py         # require_gui_extra: missing_dependency without Starlette, uvicorn or pyarrow
-    ├── _config.py        # GuiConfig.resolve: root, own directory, basemap, rate limit, Hydrolog's program, [nogat.gui], [nogat.operator]
+    ├── _config.py        # GuiConfig.resolve: root, own directory, basemap, rate limit, [nogat.gui], [nogat.operator]
     ├── _serving.py       # uvicorn: binds, prints the address on stderr, stops on Ctrl+C or SIGTERM; no access log
-    ├── _app.py           # Starlette app: the private API's routes, SecurityHeaders (headers, CSP, methods), build_app
+    ├── _app.py           # Starlette app: the private API's routes (the files of export_series, export_stations and export_analyses at api/files/series, stations, analyses), SecurityHeaders (headers, CSP, methods), build_app
     ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app
     ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute
     ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only
-    ├── _analyses.py      # Analyses: stored results, else Hydrolog's program on request (2 processes, 30 s, 500 results)
-    ├── _standin/         # Stand-in for the stored analyses until they land: a copy of their registry, Hydrolog's batch runner
+    ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
     ├── _traffic.py       # Traffic: rate limit, daily totals (stats.jsonl), access log (Nogat DEV-15.9 to DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12)
@@ -464,7 +463,7 @@ The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) 
 |`OBSERWATOR_ENV`, `OBSERWATOR_HOST`, `OBSERWATOR_PORT`, `OBSERWATOR_LOG_LEVEL`|`development`, `0.0.0.0`, `8000`, `INFO`|REST server (`obserwator server`); `OBSERWATOR_ENV=production` disables reload|
 |`OBSERWATOR_GUI_BASEMAP_URL`|`https://tiles.openfreemap.org/planet`|TileJSON of the GUI's basemap; `none`, `off` or the variable set and empty: no basemap, the packaged borders (offline)|
 |`OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`|`OpenFreeMap © OpenMapTiles Data from OpenStreetMap`|The basemap's credit line|
-|`OBSERWATOR_HYDROLOG_COMMAND`|unset|`hydrolog_command` (also `[obserwator] hydrolog_command`): Hydrolog's program of `analyses build` and `compute_analysis` (ADR-016), a command line split as a shell splits it; unset → `hydrolog` on `PATH`, none → `missing_dependency` (`details.reason="hydrolog_missing"`); no command option replaces it|
+|`OBSERWATOR_HYDROLOG_COMMAND`|unset|`hydrolog_command` (also `[obserwator] hydrolog_command`): Hydrolog's program of `analyses build`, `compute_analysis` (ADR-016) and the GUI's choices computed on request (looked for once when it starts; without it the GUI shows only stored results), a command line split as a shell splits it; unset → `hydrolog` on `PATH`, none → `missing_dependency` (`details.reason="hydrolog_missing"`); no command option replaces it|
 |`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`|`300`, `60`|The GUI's rate limit: counted requests of one client address in a window of seconds (DEV-15.9)|
 
 `FORWARDED_ALLOW_IPS` is uvicorn's own variable (default `127.0.0.1,::1`): the addresses whose `X-Forwarded-For` the GUI's server trusts.

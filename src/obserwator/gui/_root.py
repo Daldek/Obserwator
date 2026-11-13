@@ -1,12 +1,12 @@
 """
-Obserwator's data root as the GUI reads it: catalogs, series indexes and station series.
+Obserwator's data root as the GUI reads it: catalogs, series, stored analyses' versions.
 
 The GUI never writes under the root (GUI plan D7). It reads it only through the public
-readers (`read_catalog`, `read_series_index`, `read_series`, `current_version`,
-`export_stations`) and asks again at most once a minute whether a current version
-changed, so a new ``series build`` or catalog shows without a restart. In memory: the
-station layer of the current versions, the 32 most recent series documents and the 4
-most recent files of the stations.
+readers of `obserwator.store` (`read_catalog`, `read_series_index`, `read_series`,
+`current_version`, `export_stations`) and asks again at most once a minute whether a
+current version changed, so a new ``series build``, catalog or ``analyses build`` shows
+without a restart. In memory: the station layer of the current versions, the 32 most
+recent series documents and the 4 most recent files of the stations.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -23,14 +23,15 @@ from typing import Any, Literal
 from obserwator.datasets import datasets, get_dataset
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
-from obserwator.store import export_stations
-from obserwator.store.reader import (
+from obserwator.store import (
+    SeriesIndex,
+    StationFeature,
     current_version,
+    export_stations,
     read_catalog,
     read_series,
     read_series_index,
 )
-from obserwator.store.types import SeriesIndex, StationFeature
 
 RELOAD_AFTER_S = 60.0
 """How long the current versions are trusted before the root is asked again [s]."""
@@ -45,6 +46,11 @@ CATALOG_SLOTS: Mapping[str, str] = {
     "CHMI": "catalog:cz.chmi.stations",
 }
 """The catalog of each provider, as `current_version` names it."""
+ANALYSES_SLOTS: Mapping[str, str] = {
+    "IMGW-PIB": "analyses:pl.imgw.analyses",
+    "CHMI": "analyses:cz.chmi.analyses",
+}
+"""The stored analyses of each provider (ADR-016), as `current_version` names them."""
 
 
 def series_datasets() -> tuple[str, ...]:
@@ -73,20 +79,24 @@ def _day(value: date | datetime | None) -> str | None:
 @dataclass(frozen=True)
 class Version:
     """
-    One current version of the root: a catalog or a dataset's series.
+    One current version of the root: a catalog, a dataset's series or stored analyses.
 
     Attributes
     ----------
     slot : str
-        ``catalog:<key>`` or ``series:<key>``.
+        ``catalog:<key>``, ``series:<key>`` or ``analyses:<key>``.
     path : Path
-        The version's main file (``stations.geojson``, ``series.json``).
+        The version's main file (``stations.geojson``, ``series.json``,
+        ``analyses.json``).
     label : str
         The version directory's name, as the panel shows it (``2026-09-21_2a6443c3``).
     sha256 : str
         SHA-256 of the main file, from its sidecar.
     downloaded_at : str or None
         When the version was made, ISO 8601 UTC.
+    hydrolog : str or None
+        The version of Hydrolog that computed stored analyses, as their sidecar
+        records it; None for the other kinds.
     """
 
     slot: str
@@ -94,6 +104,7 @@ class Version:
     label: str
     sha256: str
     downloaded_at: str | None
+    hydrolog: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The version as the API shows it: label, SHA-256 and date."""
@@ -128,6 +139,9 @@ class Snapshot:
         The current series of each dataset the root holds.
     error : ObserwatorError or None
         Why the root could not be read; the other fields are then empty.
+    analyses : Mapping of str to Version
+        The current stored analyses of each provider that has them (ADR-016); not
+        part of `key`, since the answers made from them name their version.
     """
 
     catalogs: Mapping[str, Version] = field(default_factory=dict)
@@ -136,10 +150,11 @@ class Snapshot:
     error: ObserwatorError | None = None
     layer: Mapping[str, Any] = field(default_factory=dict)
     layer_etag: str = ""
+    analyses: Mapping[str, Version] = field(default_factory=dict)
 
     @property
     def key(self) -> tuple[str, ...]:
-        """The SHA-256 of every version in use: the base of the ETags."""
+        """The SHA-256 of every catalog and series version in use: the base of the ETags."""
         return tuple(
             sorted(
                 [f"{slot}={v.sha256}" for slot, v in self.catalogs.items()]
@@ -187,12 +202,14 @@ def _version(slot: str, root: Path) -> Version | None:
     if entry is None or entry.version is None or entry.meta is None:
         return None
     path = Path(entry.version)
+    hydrolog = entry.meta.extra.get("hydrolog_version")
     return Version(
         slot,
         path,
         path.parent.name,
         entry.meta.sha256,
         _iso(entry.meta.downloaded_at),
+        hydrolog if isinstance(hydrolog, str) else None,
     )
 
 
@@ -254,7 +271,7 @@ class DataRoot:
         self._export_lock = threading.Lock()
 
     def _current(self) -> tuple[tuple[str, str], ...]:
-        """The slot and SHA-256 of every current version (cheap: the pointers only)."""
+        """The slot and SHA-256 of every current catalog and series (the pointers only)."""
         found = []
         for slot in (
             *CATALOG_SLOTS.values(),
@@ -265,6 +282,14 @@ class DataRoot:
                 found.append((slot, version.sha256))
         return tuple(found)
 
+    def _analyses(self) -> dict[str, Version]:
+        """The current stored analyses of each provider that has them (ADR-016)."""
+        return {
+            provider: version
+            for provider, slot in ANALYSES_SLOTS.items()
+            if (version := _version(slot, self.path)) is not None
+        }
+
     def snapshot(self) -> Snapshot:
         """
         The current versions, read again when the last read is older than a minute.
@@ -272,8 +297,10 @@ class DataRoot:
         Returns
         -------
         Snapshot
-            The catalogs, series and station layer; ``error`` when the root cannot
-            be read (the GUI then shows the error and serves no stations).
+            The catalogs, series, station layer and stored analyses' versions;
+            ``error`` when the root cannot be read (the GUI then shows the error and
+            serves no stations). A new version of stored analyses alone keeps what
+            was read of the catalogs and series.
         """
         with self._lock:
             now = self._clock()
@@ -285,12 +312,15 @@ class DataRoot:
             self._checked_at = now
             try:
                 versions = self._current()
+                analyses = self._analyses()
             except ObserwatorError as exc:
                 self._snapshot, self._versions = Snapshot(error=exc), None
                 return self._snapshot
             if self._snapshot is None or versions != self._versions:
                 self._snapshot = self._read()
                 self._versions = versions if self._snapshot.error is None else None
+            if self._snapshot.error is None and self._snapshot.analyses != analyses:
+                self._snapshot = replace(self._snapshot, analyses=analyses)
             return self._snapshot
 
     def _read(self) -> Snapshot:

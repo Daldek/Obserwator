@@ -10,6 +10,7 @@ import obserwator
 from obserwator.gui import _root
 from obserwator.gui._root import RELOAD_AFTER_S, DataRoot
 from obserwator.testing import build_fixture_store
+from tests.contract.support import build_served_analyses
 from tests.unit.gui.conftest import HYDRO_CHMI
 
 
@@ -51,6 +52,33 @@ def test_a_new_version_shows_a_minute_later_without_a_restart(
     assert after.layer_etag != before.layer_etag
     document, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
     assert document["dates"][0] == "2023-01-01"
+
+
+def test_new_stored_analyses_show_a_minute_later_and_keep_the_station_layer(
+    fixture_root, tmp_path, clock
+):
+    root = tmp_path / "root"
+    shutil.copytree(fixture_root, root)
+    data = DataRoot(root, clock=clock)
+    before = data.snapshot()
+
+    build_served_analyses(root)
+    clock.now += RELOAD_AFTER_S - 1
+    within = data.snapshot()
+    clock.now += 2
+    after = data.snapshot()
+
+    stored = obserwator.read_analysis(
+        root=root, station=HYDRO_CHMI, analysis="characteristic.Q"
+    )
+    (version,) = (root / "analyses" / "versions" / "cz.chmi").iterdir()
+    assert before.analyses == {}
+    assert within is before
+    assert set(after.analyses) == {"IMGW-PIB", "CHMI"}
+    assert after.analyses["CHMI"].label == version.name
+    assert after.analyses["CHMI"].hydrolog == stored.hydrolog["version"]
+    # The catalogs and series are unchanged: so is the station layer's ETag
+    assert after.layer_etag == before.layer_etag
 
 
 def test_unchanged_versions_keep_the_snapshot_already_read(fixture_root, clock):

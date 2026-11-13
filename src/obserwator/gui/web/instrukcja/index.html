@@ -136,7 +136,7 @@
     <div><dt>Pasek nad mapą</dt><dd>Przełącznik widoków: „Stacje” (stacje z katalogów, <a href="#mapa">rozdział 02</a>), „Pomiary bieżące” (ostatnie pomiary IMGW-PIB, <a href="#pomiary-biezace">rozdział 02</a>) i „PMAXTP” (opady maksymalne, <a href="#pmaxtp">rozdział 04</a>), obok podpowiedź, co można kliknąć. Gdy panel boczny jest zamknięty, na końcu paska stoi przycisk z jego nazwą, który go otwiera; na telefonie te przyciski są zawsze.</dd></div>
     <div><dt>Panel „Stacje”</dt><dd>Po lewej: wyszukiwarka, filtry i lista stacji. W widoku „PMAXTP” w tym miejscu jest formularz punktu.</dd></div>
     <div><dt>Mapa</dt><dd>Stacje w znakach mapy IMGW-PIB, przycisk „Legenda”, przyciski „Przybliż” i „Oddal”, a pod mapą pasek ze źródłami danych tego, co mapa pokazuje, i z informacją o podkładzie mapy.</dd></div>
-    <div><dt>Panel „Stacja”</dt><dd>Po prawej: wybrana stacja i jej karty (<a href="#stacja">rozdział 03</a>). Gdy żadna stacja nie jest wybrana, panel opisuje katalogi stacji i szeregi w katalogu danych, podaje wersję Obserwatora i Hydrologa i ma kartę „Pobierz listę stacji”. W widoku „PMAXTP” w tym miejscu są „Wyniki PMAXTP”.</dd></div>
+    <div><dt>Panel „Stacja”</dt><dd>Po prawej: wybrana stacja i jej karty (<a href="#stacja">rozdział 03</a>). Gdy żadna stacja nie jest wybrana, panel opisuje katalogi stacji, szeregi i zapisane analizy w katalogu danych, podaje wersję Obserwatora i Hydrologa i ma kartę „Pobierz listę stacji”. W widoku „PMAXTP” w tym miejscu są „Wyniki PMAXTP”.</dd></div>
   </dl>
 
   <h3 id="panele">Szerokość paneli</h3>
@@ -244,7 +244,7 @@
         <tr><th scope="row">„Pomiary bieżące”</th><td><code>teraz</code></td><td>Ostatnie wartości stacji IMGW-PIB z migawki serwera. Stacja hydrologiczna: stan wody H, przepływ Q i temperatura wody z czasem pomiaru (UTC) oraz stan wody w znaku i kolorze mapy hydro.imgw.pl. Stacja meteorologiczna: opad z 10 minut z klasą, temperatura powietrza, średni wiatr i wilgotność; stacja synoptyczna dodaje ostatnią depeszę SYNOP. „Odśwież” pyta serwer ponownie. Stacja ČHMÚ: „Dane bieżące ČHMÚ nie są udostępniane”.</td></tr>
         <tr><th scope="row">„Dane pomiarowo-obserwacyjne”</th><td><code>dane</code></td><td>Szeregi z katalogu danych: wykres i tabela (niżej).</td></tr>
         <tr><th scope="row">karty analiz</th><td>niżej</td><td>Analizy stacji hydrologicznej albo meteorologicznej; tylko te, na które pozwalają jej dane.</td></tr>
-        <tr><th scope="row">„Pobierz”</th><td><code>pobierz</code></td><td>Pliki szeregów, wyniki analiz w JSON i przekazanie do Hydrologa (<a href="#pobieranie">rozdział 05</a>).</td></tr>
+        <tr><th scope="row">„Pobierz”</th><td><code>pobierz</code></td><td>Pliki szeregów, zapisane wyniki analiz w JSON i CSV oraz przekazanie do Hydrologa (<a href="#pobieranie">rozdział 05</a>).</td></tr>
       </tbody>
     </table>
   </div>
@@ -262,13 +262,13 @@
   </ul>
 
   <h3 id="analizy">Analizy: wynik zapisany i liczony na żądanie</h3>
-  <p>Każdą liczbę analiz policzył Hydrolog z szeregu stacji w katalogu danych. Karta analizy składa się z części z tytułem; przycisk <span class="i-mark" aria-hidden="true">i</span> („Objaśnienie”) przy tytule rozwija opis: co to jest, metoda, źródło danych i literatura. Pod każdą częścią są plakietki pochodzenia:</p>
+  <p>Każdą liczbę analiz policzył Hydrolog z szeregu stacji w katalogu danych: polecenie <code>obserwator analyses build</code> zapisuje tam wyniki wszystkich analiz każdej stacji z całego jej zapisu, a strona je pokazuje. Karta analizy otwiera się z zapisanymi wynikami; Hydrolog liczy na żądanie dopiero wtedy, gdy zmienisz opcję. Stacja bez zapisanych analiz nie ma kart analiz, a panel mówi o tym notką. Karta analizy składa się z części z tytułem; przycisk <span class="i-mark" aria-hidden="true">i</span> („Objaśnienie”) przy tytule rozwija opis: co to jest, metoda, źródło danych i literatura. Pod każdą częścią są plakietki pochodzenia:</p>
   <ul>
-    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · wynik zapisany <i>data</i>”</strong>: wynik policzony wcześniej z domyślnymi opcjami i przechowywany w katalogu danych;</li>
-    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · policzony na żądanie”</strong>: wynik, który serwer policzył przed chwilą, bo wybrałeś inne lata albo opcje (albo katalog danych nie ma zapisanego wyniku). Hydrolog liczy na serwerze, zwykle kilka sekund („Liczę…”); wynik zostaje tylko w pamięci serwera i nie jest nigdzie zapisywany. Serwer bez programu Hydrologa pokazuje tylko wyniki zapisane;</li>
+    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · wynik zapisany <i>data</i>”</strong>: wynik policzony wcześniej z domyślnymi opcjami i przechowywany w katalogu danych; tak otwiera się każda karta;</li>
+    <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · policzony na żądanie”</strong>: wynik, który serwer policzył przed chwilą, bo wybrałeś inne lata albo opcje. Hydrolog liczy na serwerze, zwykle kilka sekund („Liczę…”); wynik zostaje tylko w pamięci serwera i nie jest nigdzie zapisywany. Serwer bez programu Hydrologa pokazuje tylko wyniki zapisane: zmiana opcji kończy się wtedy komunikatem o braku programu, a paski klimatyczne, których środek Hydrolog liczy na żądanie, nie są rysowane;</li>
     <li><strong>„szereg <i>wersja</i>”</strong>: wersja szeregu, z którego liczono. Podpowiedź plakietki Hydrologa pokazuje opcje obliczenia.</li>
   </ul>
-  <p><strong>Okres.</strong> Analiza liczy domyślnie z całego zapisu stacji; wyjątkiem jest krzywa natężenia przepływu, liczona z ostatnich 10 lat, bo krzywa zmienia się w czasie. Pola „Lata” od–do z przyciskiem „Przelicz” wybierają inny okres. Obok stoi „Zalecany minimalny okres: 30 lat.”, a krótszy okres jest oznaczony: „wyniki są mniej pewne”. Uwagi Hydrologa, np. o latach pominiętych z powodu braków, stoją przy wyniku.</p>
+  <p><strong>Okres.</strong> Zapisany wynik obejmuje cały zapis stacji; wyjątkiem jest krzywa natężenia przepływu, liczona z ostatnich 10 lat, bo krzywa zmienia się w czasie. Pola „Lata” od–do z przyciskiem „Przelicz” wybierają inny okres, który Hydrolog liczy na żądanie. Obok stoi „Zalecany minimalny okres: 30 lat.”, a krótszy okres jest oznaczony: „wyniki są mniej pewne”. Uwagi Hydrologa, np. o latach pominiętych z powodu braków, stoją przy wyniku.</p>
 
   <h3 id="hydro">Analizy stacji hydrologicznej</h3>
   <div class="table-scroll">
@@ -313,7 +313,7 @@
     <li><strong>Odczyt</strong>: najedź kursorem na wykres, a linia odczytu pokaże datę i wartości. Z klawiatury: przejdź do wykresu klawiszem <kbd>Tab</kbd> i przesuwaj odczyt strzałkami w lewo i w prawo; <kbd>Shift</kbd> albo <kbd>Page Up</kbd> i <kbd>Page Down</kbd> przesuwają o dziesięć kroków, <kbd>Home</kbd> i <kbd>End</kbd> na początek i koniec, a <kbd>Esc</kbd> ukrywa odczyt.</li>
     <li><strong>Powiększenie</strong> (wykresy w czasie i część pozostałych): przeciągnij myszą po wykresie, aby pokazać zakres; <kbd>+</kbd> i <kbd>−</kbd> przybliżają i oddalają, a <kbd>0</kbd>, dwuklik albo przycisk „Pokaż całość” pod wykresem wracają do całości. Napis „Widoczne: od – do” mówi, co widać.</li>
     <li><strong>Wykresy prawdopodobieństwa</strong>, np. przepływów maksymalnych, mają oś prawdopodobieństwa przewyższenia p [%] i okresu powtarzalności T [lata], a odczyt „p = … % · T = … lat”.</li>
-    <li><strong>Obraz</strong>: jako obraz zapisują się paski klimatyczne: PNG i SVG z nazwą stacji, okresem, autorem metody i wierszami dostawcy, a do tego CSV z latami, średnimi i anomaliami. Pozostałe wykresy zapiszesz zrzutem ekranu; ich liczby są w tabelach kart i w plikach „Wyniki analiz (JSON)”.</li>
+    <li><strong>Obraz</strong>: jako obraz zapisują się paski klimatyczne: PNG i SVG z nazwą stacji, okresem, autorem metody i wierszami dostawcy, a do tego CSV z latami, średnimi i anomaliami. Pozostałe wykresy zapiszesz zrzutem ekranu; ich liczby są w tabelach kart i w plikach „Wyniki analiz (JSON, CSV)”.</li>
   </ul>
   <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
 </section>
@@ -368,7 +368,7 @@
   </dl>
 
   <h3 id="wyniki">Wyniki analiz</h3>
-  <p>„Wyniki analiz (JSON)” w karcie „Pobierz”: każda analiza stacji jako jeden dokument <code>obserwator-analysis/1</code>, w pliku <code>&lt;kod&gt;_&lt;analiza&gt;.json</code>, np. <code>149190310_flood_frequency.Q.json</code>. Dokument podaje obliczenie Hydrologa, jego opcje i wersję, szereg, który Hydrolog przeczytał (wersja i suma SHA-256), wynik albo błąd oraz wiersze dostawców. Przy każdej analizie tabela mówi, czy wynik jest „zapisany”, czy policzony „na żądanie”; plik ma wynik z domyślnymi opcjami.</p>
+  <p>„Wyniki analiz (JSON, CSV)” w karcie „Pobierz”: wszystkie zapisane analizy stacji w jednym pliku <code>&lt;kod&gt;_analyses.json</code> albo <code>&lt;kod&gt;_analyses.csv</code>, np. <code>149190310_analyses.csv</code>, z poleceniem <code>obserwator analyses export</code>, które robi ten sam plik. JSON to jeden dokument <code>obserwator-analyses-export/1</code>: wersja analiz, wersje szeregów, wersja Hydrologa i wynik albo błąd każdej analizy. CSV to długa tabela, wiersz na jedną wartość wyniku z jej ścieżką JSON Pointer (<code>path</code>, <code>value</code>), obliczeniem, wersją szeregu i Hydrologa oraz wierszami dostawcy w kolumnach <code>attribution</code> i <code>terms_notice</code>. Notka pod przyciskami podaje wersję analiz, wersję Hydrologa i datę obliczenia. Tabela niżej daje każdą analizę osobno: jako dokument <code>obserwator-analysis/1</code> w pliku <code>&lt;kod&gt;_&lt;analiza&gt;.json</code>, np. <code>149190310_flood_frequency.Q.json</code> (obliczenie Hydrologa, jego opcje i wersja, szereg, który Hydrolog przeczytał, z wersją i sumą SHA-256, wynik albo błąd oraz wiersze dostawców), i jako jej wiersze CSV. Pliki mają wyniki zapisane, z domyślnymi opcjami.</p>
 
   <h3 id="pmaxtp-pliki">PMAXTP</h3>
   <p>Pod tabelami PMAXTP przyciski CSV i JSON, np. <code>pmaxtp_POT_52.2300_21.0100.csv</code>. Pliki składa serwer z odpowiedzi API IMGW-PIB dla tego punktu: trzy tabele (ks, sg, rb), wszystkie czasy trwania i prawdopodobieństwa. CSV: UTF-8, przecinek, kropka dziesiętna, wiersz na tabelę i czas trwania, kolumna na prawdopodobieństwo, a w kolumnach <code>attribution</code> i <code>terms_notice</code> wiersze źródła PMAXTP i regulamin, po jednym w wierszu. JSON: dokument <code>obserwator-pmaxtp-export/1</code> z jednostkami i polami <code>attribution</code> i <code>terms_notice</code>.</p>
@@ -392,6 +392,8 @@
   <p>Lista stacji wszystkich katalogów jako GeoJSON i stacje hydrologiczne IMGW-PIB jako CSV:</p>
   <pre class="cmd cli-line"><code>obserwator stations export --output stations.geojson</code></pre>
   <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW-PIB --kind hydro --format csv --output stations_imgw-pib_hydro.csv</code></pre>
+  <p>Zapisane analizy stacji jako CSV:</p>
+  <pre class="cmd cli-line"><code>obserwator analyses export --station 149190310 --format csv --output 149190310_analyses.csv</code></pre>
   <p>Każde polecenie wypisuje też wiersze dostawcy i jego warunki, a <code>--help</code> opisuje wszystkie opcje.</p>
 
   <h3 id="czytanie">Czytanie plików: pandas, R, DuckDB</h3>
@@ -493,7 +495,7 @@ ORDER BY year;</code></pre>
   <h3 id="prywatnosc">Prywatność</h3>
   <ul>
     <li>Nie trzeba się logować ani podawać żadnych danych. Serwis nie ustawia plików cookie i nie korzysta z narzędzi analitycznych ani reklamowych.</li>
-    <li>Serwer liczy użycie tylko w łącznych liczbach dziennych: odwiedzający, odsłony, otwarte stacje, wykonane analizy i pobrania. Adres IP jest tylko w pamięci: do limitu żądań i do policzenia odwiedzających danego dnia (skrót z adresu, oznaczenia przeglądarki i losowej wartości zmienianej o północy UTC); nie trafia na dysk ani do dzienników.</li>
+    <li>Serwer liczy użycie tylko w łącznych liczbach dziennych: odwiedzający, odsłony, otwarte stacje, wyniki analiz policzone na żądanie i pobrania. Adres IP jest tylko w pamięci: do limitu żądań i do policzenia odwiedzających danego dnia (skrót z adresu, oznaczenia przeglądarki i losowej wartości zmienianej o północy UTC); nie trafia na dysk ani do dzienników.</li>
     <li>Dziennik żądań zapisuje czas, adres strony z parametrami, kod odpowiedzi i oznaczenie przeglądarki, bez adresu IP, i jest usuwany po 14 dniach.</li>
     <li>Zbyt wiele żądań z jednego adresu w krótkim czasie kończy się komunikatem „Zbyt wiele żądań. Spróbuj ponownie za … s.”.</li>
     <li>Twoja przeglądarka łączy się tylko z serwerem Obserwatora i z serwerem podkładu mapy, który widzi przy tym Twój adres IP. O pomiary bieżące i PMAXTP pyta IMGW-PIB serwer Obserwatora.</li>

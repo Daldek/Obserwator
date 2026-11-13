@@ -198,7 +198,8 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
   if (state.error) return html`<p class="ana-error" role="alert">${state.error.message}</p>`;
   if (!station) return html`<p class="muted">${t("station.loading")}</p>`;
   // Where the analyses come once listed: after „Dane pomiarowo-obserwacyjne”
-  const waiting = station.datasets.length > 0 && analysisSections(station.properties.kind).length > 0 && !ids;
+  const analysed = station.datasets.length > 0 && analysisSections(station.properties.kind).length > 0;
+  const waiting = analysed && !ids;
   const card = (entry) => html`<${Card}
     key=${entry.id}
     entry=${entry}
@@ -214,6 +215,7 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
       ${sections.slice(0, 3).map(card)}
       ${waiting ? html`<p class="note" role="status">${t("station.analyses_loading")}</p>` : null}
       ${list.error ? html`<p class="ana-error" role="alert">${t("station.analyses_failed", { message: list.error.message })}</p>` : null}
+      ${analysed && ids && ids.size === 0 && !list.error ? html`<p class="note" data-part="no-analyses">${t("station.analyses_none")}</p>` : null}
       ${sections.slice(3).map(card)}
     </div>
   </div>`;
@@ -287,6 +289,7 @@ export function NoStation({ session, stations, provider = "all", kind = "all" })
   const root = session ? session.root : null;
   const held = (root && root.series) || {};
   const catalogs = (root && root.catalogs) || {};
+  const analyses = (root && root.analyses) || {};
   const series = Object.entries(held);
   const missing = Object.keys(DATASET_STEPS).filter((key) => !held[key]);
   return html`<div class="no-station">
@@ -325,6 +328,22 @@ export function NoStation({ session, stations, provider = "all", kind = "all" })
         </table>`
       : html`<p class="muted">${t("station.none.no_series")}</p>`}
     ${series.length && missing.length ? html`<p class="note">${t("station.none.missing", { datasets: missing.map(datasetTitle).join(", ") })}</p>` : null}
+    <h3 class="group-title">${t("station.none.analyses")}</h3>
+    <table class="params compact" data-part="analyses">
+      <tbody>
+        ${PROVIDERS.map(
+          (id) => html`<tr data-provider=${id}>
+            <th scope="row">
+              ${providerName(id)}
+              ${analyses[id]
+                ? html`<span class="row-sub">${t("station.none.analyses_version", { version: analyses[id].version, when: fmtDateTime(analyses[id].downloaded_at) })}</span>`
+                : null}
+            </th>
+            <td>${analyses[id] ? (analyses[id].hydrolog ? `Hydrolog ${analyses[id].hydrolog}` : "–") : t("station.none.no_analyses")}</td>
+          </tr>`,
+        )}
+      </tbody>
+    </table>
     ${session
       ? html`<p class="note">
           Obserwator ${session.version.obserwator} · ${session.version.hydrolog ? `Hydrolog ${session.version.hydrolog}` : t("station.none.no_hydrolog")}

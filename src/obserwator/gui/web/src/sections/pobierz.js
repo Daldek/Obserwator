@@ -1,20 +1,22 @@
 // „Pobierz” (GUI plan D14): every file the server offers for the station
 // (api/downloads/{code}): each series in each format (`export_series`: CSV, JSON, Parquet)
-// with the equivalent command line to copy and the provider's licence; the result of each
-// analysis that applies to the station as its JSON document (`obserwator-analysis/1`,
-// api/files/analysis); for a hydrological station the hand-off of Q or H to Hydrolog (D13).
-// Every file and hand-off carries the provider's lines and terms (Nogat DEV §20), the
-// same the panel draws under the card (part "series").
+// and the stored analyses (`export_analyses`: JSON, CSV; each analysis also as its JSON
+// document `obserwator-analysis/1`, api/files/analysis), each with the equivalent command
+// line to copy and the provider's licence; for a hydrological station the hand-off of Q or
+// H to Hydrolog (D13). Every file and hand-off carries the provider's lines and terms
+// (Nogat DEV §20), the same the panel draws under the card (part "series").
 
 import { copyText } from "../../nogat/nogat-handoff.js";
 import { api } from "../api.js";
-import { html, t, tn, useEffect, useRef, useState } from "../lib.js";
+import { fmtDateTime, html, t, tn, useEffect, useRef, useState } from "../lib.js";
 import { datasetTitle } from "../words.js";
 import { Section, Seg, Table } from "./common.js";
 import { HandoffButtons } from "./handoff.js";
 
 /** The names of the formats of a series file. */
 const FORMATS = { csv: "CSV", json: "JSON", parquet: "Parquet" };
+/** The names of the formats of the stored analyses. */
+const RESULT_FORMATS = { json: "JSON", csv: "CSV" };
 /** The daily hydrological datasets: the hand-off of daily values reads them. */
 const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmi.hydro_daily"];
 
@@ -82,12 +84,33 @@ function SeriesFiles({ entry }) {
   </${Section}>`;
 }
 
-/** The JSON document of each analysis that applies to the station. */
-function ResultFiles({ code, analyses }) {
-  const rows = (analyses || []).map((item) => ({ id: item.analysis, title: item.title || null, command: item.command, stored: item.stored }));
+/** The stored analyses of the station: all in one file, and each on its own. */
+function ResultFiles({ code, analyses, stored }) {
+  const rows = (analyses || []).map((item) => ({ id: item.analysis, command: item.command }));
+  const formats = stored ? Object.keys(stored.formats) : [];
+  const [chosen, setChosen] = useState(formats[0] || "json");
+  const format = stored ? stored.formats[chosen] || stored.formats[formats[0]] : null;
   return html`<${Section} title=${t("station.files.results")} info=${t("station.files.results_info")}>
     ${analyses === null ? html`<p class="muted" role="status">${t("station.analyses_loading")}</p>` : null}
     ${analyses && !rows.length ? html`<p class="muted">${t("station.files.results_none")}</p>` : null}
+    ${stored && format
+      ? html`<div class="btn-row files">
+            ${formats.map(
+              (key) => html`<a class="btn sm" href=${stored.formats[key].url} download=${stored.formats[key].file}>
+                <span class="fmt">${RESULT_FORMATS[key] || key}</span>${stored.formats[key].file}
+              </a>`,
+            )}
+          </div>
+          <${Seg} label=${t("station.files.command_format")} value=${chosen} onChange=${setChosen} options=${formats.map((key) => [key, RESULT_FORMATS[key] || key])} />
+          <${Command} line=${format.command} />
+          <p class="note">
+            ${t("station.files.results_version", {
+              version: stored.version,
+              hydrolog: stored.hydrolog ? stored.hydrolog.version : "?",
+              when: fmtDateTime(stored.computed_at),
+            })}
+          </p>`
+      : null}
     ${rows.length
       ? html`<p class="note">${tn("station.files.results_count", rows.length)}</p>
           <${Table}
@@ -96,9 +119,13 @@ function ResultFiles({ code, analyses }) {
               {
                 key: "id",
                 label: t("station.files.analysis"),
-                format: (id, row) => html`<code>${id}</code><span class="cell-sub">${row.title ? `${row.title} · ` : ""}hydrolog ${row.command} · ${row.stored ? t("station.files.stored") : t("station.files.on_request")}</span>`,
+                format: (id, row) => html`<code>${id}</code><span class="cell-sub">hydrolog ${row.command}</span>`,
               },
-              { key: "file", label: t("station.files.file"), format: (_, row) => html`<a href=${api.analysisFileUrl(code, row.id)} download=${`${code}_${row.id}.json`}>JSON</a>` },
+              {
+                key: "file",
+                label: t("station.files.file"),
+                format: (_, row) => html`<a href=${api.analysisFileUrl(code, row.id)} download=${`${code}_${row.id}.json`}>JSON</a>${" · "}<a href=${api.analysesFileUrl(code, { format: "csv", analysis: row.id })} download=${`${code}_${row.id}.csv`}>CSV</a>`,
+              },
             ]}
             rows=${rows}
           />`
@@ -149,7 +176,7 @@ function Pobierz({ station, session, analyses }) {
     ${state.error ? html`<p class="ana-error" role="alert">${state.error.message}</p>` : null}
     ${!doc && !state.error ? html`<p class="muted" role="status">${t("station.files.loading")}</p>` : null}
     ${doc ? doc.series.map((entry) => html`<${SeriesFiles} key=${entry.dataset} entry=${entry} />`) : null}
-    <${ResultFiles} code=${station.code} analyses=${analyses} />
+    <${ResultFiles} code=${station.code} analyses=${analyses} stored=${doc ? doc.analyses : null} />
     ${station.properties.kind === "hydro" ? html`<${Handoff} station=${station} session=${session} analyses=${analyses} />` : null}
   `;
 }

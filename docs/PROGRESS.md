@@ -17,7 +17,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Single command catalog, CLI and REST (ADR-002) | done (3.0.0) | CLI and REST generated from the catalog |
 | ČHMÚ provider (ADR-003) | done (3.0.0) | questions to ČHMÚ and Archiwista confirmations: open (below) |
 | AI agent support, MCP server (ADR-004) | done (3.0.0) | agent surfaces in English (ADR-006): done, entry in [HISTORY.md](HISTORY.md) |
-| Web GUI: `obserwator gui serve` (ADR-013; plan [`docs/plans/2026-11-12-obserwator-gui.md`](plans/2026-11-12-obserwator-gui.md), the GUI part of Nogat's plan `2026-11-12-station-data-and-analyses.md`, ECO-059) | implemented on `feature/gui`, not merged into `develop` | GUI plan S0–S9 implemented: every station of both providers on a map, the station panel with series, Hydrolog's analyses and downloads, „Pomiary bieżące”, PMAXTP of a point, the hand-off to Hydrolog, Nogat's public-GUI rules (DEV-15.7 to DEV-15.12, kit 0.4.0), the Jinja pages removed, the documentation and the Polish guide `instrukcja/`; open gaps below („GUI: open gaps”). The deployment (`obserwator-public.service` on 127.0.0.1:8060 behind Cloudflare Access) waits for the author's merge and the data root (the Nogat plan's O1) |
+| Web GUI: `obserwator gui serve` (ADR-013; plan [`docs/plans/2026-11-12-obserwator-gui.md`](plans/2026-11-12-obserwator-gui.md), the GUI part of Nogat's plan `2026-11-12-station-data-and-analyses.md`, ECO-059) | implemented on `feature/gui`, not merged into `develop` | GUI plan S0–S9 implemented: every station of both providers on a map, the station panel with series, Hydrolog's stored analyses of the data root (a person's choices computed on request) and downloads (series, stored analyses as JSON and CSV), „Pomiary bieżące”, PMAXTP of a point, the hand-off to Hydrolog, Nogat's public-GUI rules (DEV-15.7 to DEV-15.12, kit 0.4.0), the Jinja pages removed, the documentation and the Polish guide `instrukcja/`; open gaps below („GUI: open gaps”). The deployment (`obserwator-public.service` on 127.0.0.1:8060 behind Cloudflare Access) waits for the author's merge; it serves the target data root once that root's `analyses build` publishes its analyses versions |
 | API key enforcement, per-key limits | planned | backlog in "Next" |
 | Compliance with Nogat standard 1.0 (`chore/nogat-2.1`, merged into `develop`) | in progress | done and to do: below and in "Next" |
 | Data output: plain mode, store, default root (ADR-007, DEV §19) | done (`develop`) | code, tests and documents finished; for consumers: [CHANGELOG "Migration guide: data output"](CHANGELOG.md) |
@@ -69,8 +69,7 @@ Further open backlog items (priority in the text):
 
 ### GUI: open gaps
 
-- No stored analysis results until the store's stored analyses land; meanwhile every result is computed on request.
-- M15 climate stripes: only the colour scale is a prototype (Hydrolog has no stripes yet).
+- M15 climate stripes: only the colour scale is a prototype (Hydrolog has no stripes yet); their centre, Hydrolog's normal of the scale's reference period, is computed on request (no stored analysis holds it), so a server without Hydrolog's program shows no stripes.
 - IMGW-PIB's 6-hour precipitation class is unavailable: the meteorological points of „Pomiary bieżące” are classed by the 10-minute sum.
 - ČHMÚ's published rating curve is not in the store.
 - The source of the annual maxima (half-years or daily) cannot be chosen.

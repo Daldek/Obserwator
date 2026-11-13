@@ -30,7 +30,7 @@ System consists of six main components:
 5. **GUI** [optional: `obserwator[gui]`; the command also needs `obserwator[cli]`]
    - `obserwator gui serve` (ADR-013): a Starlette app of its own on 127.0.0.1:8060 with a private API relative to its page; Nogat's GUI platform finds it through the entry point `nogat.gui`
    - Every station of IMGW-PIB and ČHMÚ on a MapLibre map, the station panel (description, current IMGW-PIB values, series chart and table, Hydrolog's analyses, downloads), PMAXTP of a point; Preact + htm without a build step
-   - Reads the data root read-only through public functions; IMGW-PIB's current data and PMAXTP pass through the server's memory; analyses come from Hydrolog's program
+   - Reads the data root read-only through public functions, Hydrolog's stored analyses (ADR-016) among it; IMGW-PIB's current data and PMAXTP pass through the server's memory; a person's choices are computed by Hydrolog's program on request
 
 6. **CLI** [optional: `obserwator[cli]`]
    - Local client using the library directly (never through the REST API)
@@ -132,7 +132,7 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 
 ## 5. GUI Layer
 
-`obserwator gui serve` (ADR-013; package `obserwator.gui`, outside `obserwator.__all__`; extra `obserwator[gui]` = `[store]` + Starlette + uvicorn, and `[cli]` for the command) is a server of its own, never mounted in the REST app, so only the GUI's routes reach its address. It calls Obserwator's public functions only and computes nothing itself: every number of an analysis is Hydrolog's. Running it, its settings and its public rules: `docs/USAGE.md`, section „GUI”.
+`obserwator gui serve` (ADR-013; package `obserwator.gui`, outside `obserwator.__all__`; extra `obserwator[gui]` = `[store]` + Starlette + uvicorn, and `[cli]` for the command) is a server of its own, never mounted in the REST app, so only the GUI's routes reach its address. It reads Obserwator's data only through its public functions (it uses the internal helpers `_environment`, `_jsonable` and `_hydrolog` for settings, JSON and Hydrolog's program) and computes nothing itself: every number of an analysis is Hydrolog's. Running it, its settings and its public rules: `docs/USAGE.md`, section „GUI”.
 
 ### Technologies (Implemented)
 - **Starlette** under **uvicorn**, one process (FastAPI was rejected: the private routes need neither OpenAPI nor pydantic); blocking reads and exports run in worker threads, at most four at a time
@@ -148,14 +148,14 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 | Route | Method | Answer |
 |-------|--------|-------------|
 | `/` and the other static files of `gui/web/` (`instrukcja/`: the guide in Polish) | GET | the page |
-| `api/session`, `api/texts` | GET | versions, the data root in use, providers and their lines, basemap, `[nogat.gui]`, terms; the texts |
+| `api/session`, `api/texts` | GET | versions, the data root in use (its catalogs, series and stored analyses), providers and their lines, basemap, `[nogat.gui]`, terms; the texts |
 | `api/stations`, `api/stations/{code}` | GET | the station layer of the current catalogs; one station |
 | `api/series/{dataset}/{code}` | GET | a station's series: dates, values, flags |
-| `api/analyses/{code}`, `api/analysis/{code}/{id}` | GET | the analysis ids of a station; one result (`obserwator-analysis/1`), stored or computed with the person's options |
+| `api/analyses/{code}`, `api/analysis/{code}/{id}` | GET | the stored analyses of a station; one result (`obserwator-analysis/1`), the stored one or one computed with the person's options |
 | `api/current`, `api/current/{code}` | GET | IMGW-PIB's current measurements |
 | `api/pmaxtp` | GET | PMAXTP of a point |
-| `api/downloads/{code}`, `api/downloads/stations` | GET | the files offered, each with its command line and licence |
-| `api/files/series/{dataset}/{code}`, `api/files/stations`, `api/files/analysis/{code}/{id}`, `api/files/pmaxtp` | GET | the files |
+| `api/downloads/{code}`, `api/downloads/stations` | GET | the files offered (a station's series and stored analyses, the stations), each with its command line and licence |
+| `api/files/series/{dataset}/{code}`, `api/files/stations`, `api/files/analyses/{code}`, `api/files/analysis/{code}/{id}`, `api/files/pmaxtp` | GET | the files |
 | `api/handoff/{code}` | GET | `nogat-handoff/1` around `hydrolog-series/1` |
 | `api/prototype/stripes/{code}` | GET | the climate stripes (M15), a prototype of their colour scale |
 | `api/feedback` | POST | „Zgłoś uwagę” |
@@ -163,10 +163,10 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 | `data/{poland,czechia}_border_wgs84.geojson` | GET | the packaged borders |
 
 ### Data Flow
-- **Data root**, read-only (`_root.py`): the current catalog of each provider and the current series of each dataset through `current_version`, `read_catalog`, `read_series_index`, `read_series` and `export_stations`; the current versions are asked again at most once a minute, so a new build shows without a restart; in memory the station layer, the 32 most recent series documents and 4 stations files; answers carry a strong ETag (the versions, the query and a token of the run) and `Cache-Control: no-cache`.
+- **Data root**, read-only (`_root.py`): the current catalog of each provider, the current series of each dataset and the current stored analyses of each provider through `current_version`, `read_catalog`, `read_series_index`, `read_series` and `export_stations`; the current versions are asked again at most once a minute, so a new build shows without a restart (new stored analyses alone keep the station layer and its ETag); in memory the station layer, the 32 most recent series documents and 4 stations files; answers carry a strong ETag (the versions, the query and a token of the run) and `Cache-Control: no-cache`.
 - **Live data** (`_live.py`), in memory only: snapshots of IMGW-PIB's current data (water states, hydro, meteo, synop), each fetched on demand at most once per 10 minutes, one request at a time, the last kept when a fetch fails; PMAXTP per method and point at four decimals for 24 hours, at most 1,000 points, one live request at a time.
-- **Analyses** (`_analyses.py`): Hydrolog's results, stored in the data root or computed on request by Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`, `hydrolog commands batch` on series files in a private temporary directory): at most two processes of 30 s, 500 results in memory, never written. Until the store's stored analyses (ADR-016) land, a stand-in (`gui/_standin/`, a copy of their registry) computes every result on request.
-- **Files**: `export_series` and `export_stations` write them byte for byte as the CLI does; PMAXTP of a point is packed by the server (CSV, JSON); a hand-off is built by the server from the data root or from Hydrolog's result.
+- **Analyses** (`_analyses.py`): Hydrolog's results stored in the data root by `analyses build` (`list_analyses`, `read_analysis`), shown as they are; a person's choices (and the climate stripes' reference period) computed on request by `compute_analysis` through Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the app starts; without it only stored results): at most two processes of 30 s, 500 results in memory, never written.
+- **Files**: `export_series`, `export_stations` and `export_analyses` write them byte for byte as the CLI does; PMAXTP of a point is packed by the server (CSV, JSON); a hand-off is built by the server from the data root or from Hydrolog's result.
 - **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl`, `logs/`; none when that directory and the data root are one or one holds the other.
 - The page connects only to its own origin and the basemap's.
 
@@ -413,7 +413,6 @@ Obserwator/
 │   ├── mcp/              # MCP server [optional: obserwator[mcp]]: _tools, _calls, server
 │   └── gui/              # GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013)
 │       ├── _app.py       # Starlette app: private API, headers; _root, _live, _analyses, _traffic, _feedback, _terms
-│       ├── _standin/     # temporary stand-in of the stored analyses (until they land)
 │       └── web/          # the page: Preact + htm modules, charts, MapLibre, Nogat's kit and tokens, instrukcja/
 ├── AGENTS.md, llms.txt   # Agent guide — derived from the catalog (obserwator commands guide)
 ├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp], compose, nginx with /mcp)

@@ -48,7 +48,7 @@ from obserwator.attribution import (
 from obserwator.datasets import get_dataset, get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
-from obserwator.gui._analyses import PROCESSES, TIMEOUT_S, Analyses
+from obserwator.gui._analyses import PROCESSES, TIMEOUT_S, Analyses, definition_of
 from obserwator.gui._config import GuiConfig
 from obserwator.gui._feedback import Feedback, post_feedback
 from obserwator.gui._http import (
@@ -75,8 +75,7 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
-from obserwator.gui._root import DataRoot, Snapshot, StationsFormat
-from obserwator.gui._standin import StandIn
+from obserwator.gui._root import ANALYSES_SLOTS, DataRoot, Snapshot, StationsFormat
 from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
@@ -102,6 +101,8 @@ SERIES_FORMATS: tuple[str, ...] = ("csv", "json", "parquet")
 """The formats of a station's series file (`export_series`, ADR-014)."""
 STATIONS_FORMATS: tuple[str, ...] = ("geojson", "csv")
 """The formats of the stations file (`export_stations`, ADR-014)."""
+ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
+"""The formats of a station's stored analyses (`export_analyses`, ADR-016)."""
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
@@ -245,7 +246,12 @@ async def session(request: Request) -> Response:
                 }
                 for key, series in snapshot.series.items()
             },
-            "analyses": None,
+            "analyses": {
+                provider: None
+                if (version := snapshot.analyses.get(provider)) is None
+                else {**version.to_dict(), "hydrolog": version.hydrolog}
+                for provider in ANALYSES_SLOTS
+            },
             "error": None
             if snapshot.error is None
             else hide_paths(error_body(snapshot.error, lang), state.directories()),
@@ -433,21 +439,29 @@ async def series(request: Request) -> Response:
 
 @_route
 async def analyses(request: Request) -> Response:
-    """The analysis ids of a station: stored summaries, or those that apply (before O2)."""
+    """The stored analyses of a station, each with the options a person may change."""
     params.only(request.query_params, ())
     state = _gui(request)
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
-    found = await _thread(lambda: state.analyses.list(snapshot, code))
+    found = await _thread(lambda: state.analyses.list(code))
     document = {
         "station": code,
         "analyses": list(found),
         "compute": state.analyses.can_compute,
     }
+    versions = sorted({str(item.get("analyses_version")) for item in found})
     return json_response(
         request,
         document,
-        etag=_etag(request, "analyses", snapshot.key, code, state.analyses.can_compute),
+        etag=_etag(
+            request,
+            "analyses",
+            snapshot.key,
+            code,
+            versions,
+            state.analyses.can_compute,
+        ),
     )
 
 
@@ -460,7 +474,8 @@ async def analysis(request: Request) -> Response:
     name = request.path_params["analysis"]
     overrides = state.analyses.overrides(name, params.single(request.query_params))
     result, etag = await state.analyses.get(snapshot, code, name, overrides)
-    state.traffic.count("analyses_run")
+    if result["source"] == "computed":
+        state.traffic.count("analyses_run")
     return json_response(request, result, etag=_etag(request, etag))
 
 
@@ -480,6 +495,65 @@ async def analysis_file(request: Request) -> Response:
         filename=f"{code}_{name}.json",
         media_type="application/json",
         etag=_etag(request, etag),
+    )
+
+
+def _analyses_name(code: str, analysis: str | None, fmt: str) -> str:
+    """The name of a station's stored analyses file: ``<code>_analyses.<format>``."""
+    return f"{code}_{analysis or 'analyses'}.{fmt}"
+
+
+@_route
+async def analyses_file(request: Request) -> Response:
+    """The stored analyses of a station as a file, made by `export_analyses` (CSV or JSON)."""
+    query = request.query_params
+    params.only(query, ("format", "analysis"))
+    fmt = params.choice(query.get("format"), "format", ANALYSES_FORMATS, "json")
+    name = query.get("analysis")
+    state = _gui(request)
+    snapshot = await _thread(lambda: _snapshot(request))
+    code = _station(request, snapshot)
+    if name is not None:
+        definition_of(name)
+    stored = await _thread(lambda: state.analyses.list(code))
+    if not stored:
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_stored_analyses", station=code),
+            details={"option": "station", "value": code},
+        )
+    if name is not None and name not in {item["analysis"] for item in stored}:
+        raise GuiError(
+            "not_found",
+            message("gui.errors.analysis_not_stored", analysis=name, station=code),
+            details={
+                "option": "analysis",
+                "value": name,
+                "allowed": [item["analysis"] for item in stored],
+            },
+        )
+    version = stored[0].get("analyses_version")
+    etag = _etag(request, "analyses-file", version, code, name, fmt)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+    body = await _thread(
+        lambda: "".join(
+            obserwator.export_analyses(
+                root=state.config.root,
+                station=code,
+                analyses=None if name is None else [name],
+                format="csv" if fmt == "csv" else "json",
+            )
+        ).encode("utf-8")
+    )
+    state.traffic.count("downloads")
+    return attachment(
+        request,
+        body,
+        filename=_analyses_name(code, name, fmt),
+        media_type="text/csv" if fmt == "csv" else "application/json",
+        etag=etag,
     )
 
 
@@ -726,8 +800,9 @@ def _series_name(dataset: str, code: str, fmt: str) -> str:
 
 @_route
 async def downloads(request: Request) -> Response:
-    """The files of a station: each series in each format, its command line and licence."""
+    """The files of a station: its series and stored analyses in each format, with commands."""
     params.only(request.query_params, ())
+    state = _gui(request)
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     files = []
@@ -760,10 +835,39 @@ async def downloads(request: Request) -> Response:
                 **attribution(dataset_origin(dataset)).fields(),
             }
         )
+    stored = await _thread(lambda: state.analyses.list(code))
+    analyses = None
+    if stored:
+        formats = {}
+        for fmt in ANALYSES_FORMATS:
+            name = _analyses_name(code, None, fmt)
+            formats[fmt] = {
+                "file": name,
+                "url": f"api/files/analyses/{code}?format={fmt}",
+                "command": _shown_command(
+                    "analyses export",
+                    {"station": code, "format": fmt, "output": name},
+                ),
+            }
+        analyses = {
+            "version": stored[0].get("analyses_version"),
+            "hydrolog": stored[0].get("hydrolog"),
+            "computed_at": stored[0].get("computed_at"),
+            "count": len(stored),
+            "formats": formats,
+            "attribution": stored[0].get("attribution", []),
+            "terms_notice": stored[0].get("terms_notice", []),
+        }
     return json_response(
         request,
-        {"station": code, "series": files},
-        etag=_etag(request, "downloads", snapshot.key, code),
+        {"station": code, "series": files, "analyses": analyses},
+        etag=_etag(
+            request,
+            "downloads",
+            snapshot.key,
+            code,
+            None if analyses is None else analyses["version"],
+        ),
     )
 
 
@@ -1271,11 +1375,10 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
                     root=str(config.root),
                 ),
             )
-        standin = StandIn(config.root, config.hydrolog_command)
         state = GuiState(
             config=config,
             root=DataRoot(config.root),
-            analyses=Analyses(standin),
+            analyses=Analyses(config.root),
             current=CurrentData(),
             pmaxtp=Pmaxtp(),
             traffic=TrafficState(
@@ -1295,7 +1398,6 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
             yield
         finally:
             await state.traffic.stop()
-            state.analyses.backend.close()
 
     routes = [
         Route("/api/session", session),
@@ -1313,6 +1415,7 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
         Route("/api/files/stations", stations_file),
         Route("/api/files/series/{dataset}/{code}", series_file),
         Route("/api/files/analysis/{code}/{analysis}", analysis_file),
+        Route("/api/files/analyses/{code}", analyses_file),
         Route("/api/files/pmaxtp", pmaxtp_file),
         Route("/api/handoff/{code}", handoff),
         Route("/api/prototype/stripes/{code}", _route(stripes_prototype)),

@@ -30,6 +30,12 @@ MESSAGES: dict[str, Text] = {
         "The analyses of the station cannot be listed: {message}",
         "Nie można wczytać listy analiz stacji: {message}",
     ),
+    "station.analyses_none": Text(
+        "The data root holds no stored analyses of this station "
+        "(obserwator analyses build stores them).",
+        "Katalog danych nie ma zapisanych analiz tej stacji "
+        "(zapisuje je obserwator analyses build).",
+    ),
     "station.version": Text("version {version}", "wersja {version}"),
     "station.variable": Text("Variable", "Zmienna"),
     # --- the panel without a station ------------------------------------------------------
@@ -70,6 +76,13 @@ MESSAGES: dict[str, Text] = {
         "The data root holds none of: {datasets}.",
         "Katalog danych nie ma zbiorów: {datasets}.",
     ),
+    "station.none.analyses": Text(
+        "Stored analyses in the data root", "Zapisane analizy w katalogu danych"
+    ),
+    "station.none.analyses_version": Text(
+        "version {version}, computed {when}", "wersja {version}, policzona {when}"
+    ),
+    "station.none.no_analyses": Text("none stored", "brak zapisanych"),
     "station.none.no_hydrolog": Text(
         "no Hydrolog: no analyses computed on request",
         "bez Hydrologa: bez analiz liczonych na żądanie",
@@ -500,37 +513,50 @@ MESSAGES: dict[str, Text] = {
     "station.files.licence": Text("Licence {licence}", "Licencja {licence}"),
     "station.files.disclaimer": Text("disclaimer", "wyłączenie odpowiedzialności"),
     "station.files.results": Text(
-        "Results of the analyses (JSON)", "Wyniki analiz (JSON)"
+        "Results of the analyses (JSON, CSV)", "Wyniki analiz (JSON, CSV)"
     ),
     "station.files.results_info": Text(
-        "Each analysis of the station as one JSON document obserwator-analysis/1: "
-        "Hydrolog's command, options and version, the series it read (version, "
-        "SHA-256), the result or the error, and the providers' lines. Without a stored "
-        "result the server computes it on request, which may take a few seconds.",
-        "Każda analiza stacji jako jeden dokument JSON obserwator-analysis/1: polecenie "
-        "Hydrologa, jego opcje i wersja, szereg, który przeczytał (wersja, SHA-256), "
-        "wynik albo błąd oraz linie dostawców. Bez zapisanego wyniku serwer liczy go na "
-        "żądanie, co może potrwać kilka sekund.",
+        "Hydrolog's results stored in the data root (obserwator analyses build): all "
+        "of them in one file (obserwator analyses export), as a JSON document "
+        "obserwator-analyses-export/1 or a long CSV table with one value per row and "
+        "its JSON Pointer path, or each analysis on its own: its CSV rows, or its JSON "
+        "document obserwator-analysis/1 with Hydrolog's command, options and version, "
+        "the series it read (version, SHA-256), the result or the error, and the "
+        "providers' lines.",
+        "Wyniki Hydrologa zapisane w katalogu danych (obserwator analyses build): "
+        "wszystkie w jednym pliku (obserwator analyses export), jako dokument JSON "
+        "obserwator-analyses-export/1 albo długa tabela CSV z jedną wartością w wierszu "
+        "i jej ścieżką JSON Pointer, albo każda analiza osobno: jej wiersze CSV albo "
+        "jej dokument JSON obserwator-analysis/1 z poleceniem Hydrologa, jego opcjami "
+        "i wersją, szeregiem, który przeczytał (wersja, SHA-256), wynikiem albo błędem "
+        "oraz liniami dostawców.",
     ),
     "station.files.results_count.one": Text(
-        "{n} analysis applies to this station.", "Stacji dotyczy {n} analiza."
+        "{n} analysis of this station is stored.",
+        "Zapisano {n} analizę tej stacji.",
     ),
     "station.files.results_count.few": Text(
-        "{n} analyses apply to this station.", "Stacji dotyczą {n} analizy."
+        "{n} analyses of this station are stored.",
+        "Zapisano {n} analizy tej stacji.",
     ),
     "station.files.results_count.many": Text(
-        "{n} analyses apply to this station.", "Stacji dotyczy {n} analiz."
+        "{n} analyses of this station are stored.",
+        "Zapisano {n} analiz tej stacji.",
     ),
     "station.files.results_count.other": Text(
-        "{n} analyses apply to this station.", "Stacji dotyczy {n} analizy."
+        "{n} analyses of this station are stored.",
+        "Zapisano {n} analizy tej stacji.",
     ),
     "station.files.results_none": Text(
-        "No analysis applies to this station.", "Żadna analiza nie dotyczy tej stacji."
+        "The data root holds no analyses of this station.",
+        "Katalog danych nie ma zapisanych analiz tej stacji.",
+    ),
+    "station.files.results_version": Text(
+        "Analyses version {version}, computed by Hydrolog {hydrolog} on {when}.",
+        "Wersja analiz {version}, policzona Hydrologiem {hydrolog} {when}.",
     ),
     "station.files.analysis": Text("Analysis", "Analiza"),
-    "station.files.file": Text("File", "Plik"),
-    "station.files.stored": Text("stored", "zapisany"),
-    "station.files.on_request": Text("on request", "na żądanie"),
+    "station.files.file": Text("Files", "Pliki"),
     "station.files.handoff": Text("Hand-off to Hydrolog", "Przekazanie do Hydrologa"),
     "station.files.handoff_info": Text(
         "A document nogat-handoff/1 with a series hydrolog-series/1, which Hydrolog "

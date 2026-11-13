@@ -14,9 +14,10 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   `api/current`, `api/current/{code}`, `api/pmaxtp`, `api/downloads/{code}`, `api/files/…`,
   `api/handoff/{code}`, and `POST api/feedback`. It reads the root read-only (the current
   versions again at most once a minute), keeps IMGW-PIB's current data 10 minutes and PMAXTP
-  points 24 hours in memory, never stores either, and runs Hydrolog's program
-  (`OBSERWATOR_HYDROLOG_COMMAND`) for an analysis on request: at most two processes of 30 s,
-  500 results in memory. Errors are `obserwator-error/1` in the page's language; every answer
+  points 24 hours in memory, never stores either, shows the analyses stored in the data root
+  and runs Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`) for a person's choices on
+  request: at most two processes of 30 s, 500 results in memory. Errors are
+  `obserwator-error/1` in the page's language; every answer
   carries the GUI plan's Content-Security-Policy (D16). A public deployment (`[nogat.operator]`
   in `nogat.toml`) follows Nogat's terms: a rate limit per client address
   (`OBSERWATOR_REQUEST_LIMIT` requests in `OBSERWATOR_REQUEST_WINDOW` s, `429` with
@@ -33,13 +34,30 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   filters, „Pomiary bieżące” of IMGW-PIB's hydrological and meteorological stations, the station
   panel („Informacje o stacji”, „Pomiary bieżące”, „Dane pomiarowo-obserwacyjne” with chart and
   table, the hydrological or meteorological analyses, „Pobierz” with series as CSV, JSON and
-  Parquet, the stations as GeoJSON and CSV and analysis results as JSON, each with its command
-  line), the hand-off to Hydrolog (`nogat-handoff/1`), PMAXTP of a point with its CSV and JSON,
-  an SVG chart module with date axis, band, zoom and readout by keys, „PL | EN” and both
-  themes. Every analysis is an id of the stored analyses' registry (O2), computed by Hydrolog
-  on request until stored results land; the climate stripes (M15) are a labelled prototype of
-  their colour scale only. A deployment whose state directory overlaps the root writes none of
-  the GUI's files.
+  Parquet, the stations as GeoJSON and CSV and the stored analyses as JSON and CSV, each with
+  its command line), the hand-off to Hydrolog (`nogat-handoff/1`), PMAXTP of a point with its
+  CSV and JSON, an SVG chart module with date axis, band, zoom and readout by keys, „PL | EN”
+  and both themes. Every analysis is an id of the stored analyses' registry (ADR-016): a card
+  shows the stored result, and Hydrolog computes a person's choice on request; the climate
+  stripes (M15) are a labelled prototype of their colour scale only. A deployment whose state
+  directory overlaps the root writes none of the GUI's files.
+
+- **The GUI on the stored analyses of the data root (ADR-013 D7, ADR-016, ADR-017).**
+  `api/analyses/{code}` lists the analyses `obserwator analyses build` stored for a station
+  (`list_analyses`, with the options a person may change) and `api/analysis/{code}/{id}`
+  answers the stored result (`read_analysis`, `source: stored`); only a person's options are
+  computed, by `compute_analysis` (`source: computed`; two processes, 30 s, 500 results in
+  memory, never written). Every card opens with the stored results. Hydrolog's program
+  (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`) is looked for once when the GUI
+  starts: without it only stored results show, a person's choice is `missing_dependency` and
+  the climate stripes say that they need it. `api/session` names each provider's current
+  analyses version with its Hydrolog version (`root.analyses`, `null` without one), and a new
+  analyses version shows within a minute without a restart and without a new station layer.
+  „Pobierz” offers the station's stored analyses as JSON and CSV
+  (`api/files/analyses/{code}?format=json|csv&analysis=`, made by `export_analyses`, with the
+  `obserwator analyses export` line). The daily total `analyses_run` counts the answers with a
+  result computed on request (a person's choices, also when repeated from the server's memory,
+  and the climate stripes), no longer stored results.
 
 - **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
   is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is

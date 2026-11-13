@@ -38,23 +38,13 @@ MESSAGES: dict[str, Text] = {
     "errors.no_analysis": Text(
         "There is no analysis {analysis}.", "Nie ma analizy {analysis}."
     ),
-    "errors.analysis_not_for_station": Text(
-        "The analysis {analysis} does not apply to the station {station}: it lacks the "
-        "series the analysis needs.",
-        "Analiza {analysis} nie dotyczy stacji {station}: stacja nie ma szeregu, "
-        "którego analiza potrzebuje.",
+    "errors.no_stored_analyses": Text(
+        "The data root holds no analyses of the station {station}.",
+        "Katalog danych nie ma zapisanych analiz stacji {station}.",
     ),
-    "errors.no_hydrolog": Text(
-        "This server computes no analyses on request (no Hydrolog program is set).",
-        "Ten serwer nie liczy analiz na żądanie (nie wskazano programu Hydrologa).",
-    ),
-    "errors.hydrolog_failed": Text(
-        "Hydrolog's program could not compute the analysis: {reason}",
-        "Program Hydrologa nie policzył analizy: {reason}",
-    ),
-    "errors.hydrolog_timeout": Text(
-        "Hydrolog did not finish within {seconds} s; choose a shorter period.",
-        "Hydrolog nie skończył w ciągu {seconds} s; wybierz krótszy okres.",
+    "errors.analysis_not_stored": Text(
+        "The data root holds no analysis {analysis} of the station {station}.",
+        "Katalog danych nie ma zapisanej analizy {analysis} stacji {station}.",
     ),
     "errors.no_station": Text(
         "There is no station {station} in the catalogs.",

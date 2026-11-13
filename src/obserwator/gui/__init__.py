@@ -4,7 +4,8 @@ Obserwator's web GUI (ADR-013): stations on a map, their data and analyses, PMAX
 Every station of the current catalogs is a point on one map; a click opens the station
 in the right panel, with a view for a hydrological and another for a meteorological
 station: its description, current IMGW-PIB measurements, its series as a chart and a
-table, the analyses Hydrolog computes, and downloads. It reads Obserwator's data root and
+table, the analyses Hydrolog computed and the data root stores (a person's choices
+computed by Hydrolog on request), and downloads. It reads Obserwator's data root and
 never writes it; live data (current measurements, PMAXTP) pass through the server only.
 
 * `serve` -- the standalone server (``obserwator gui serve``, ``127.0.0.1:8060`` by

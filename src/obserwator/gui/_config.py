@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,8 +59,6 @@ class GuiConfig:
     request_limit, request_window : int
         At most ``request_limit`` counted requests of one client address in
         ``request_window`` seconds (Nogat DEV-15.9).
-    hydrolog_command : tuple of str or None
-        Hydrolog's program and its leading arguments; None when unset.
     gui : Mapping of str to str
         The deployment's ``[nogat.gui]`` table (DEV-15.4).
     operator : Mapping of str to str or None
@@ -76,7 +73,6 @@ class GuiConfig:
     basemap: Basemap | None
     request_limit: int
     request_window: int
-    hydrolog_command: tuple[str, ...] | None
     gui: Mapping[str, str]
     operator: Mapping[str, str] | None
     operator_problems: tuple[str, ...]
@@ -86,9 +82,11 @@ class GuiConfig:
         """
         Whether the GUI may write its own files: ``state_dir`` and ``root`` are apart.
 
-        ``<data_dir>/obserwator`` is both the GUI's directory and the CLI's default
-        root, and the server never writes under the root (GUI plan D7): when one of
-        the two directories is the other or holds it, the GUI writes none of its files.
+        ``<data_dir>/obserwator`` is both the GUI's directory and the default data root
+        (ADR-017; the default raw root, ``<data_dir>/obserwator-raw``, lies beside it and
+        the GUI never reads it), and the server never writes under the root it serves
+        (GUI plan D7): when one of the two directories is the other or holds it, the GUI
+        writes none of its files.
         """
         return not _overlap(self.state_dir, self.root)
 
@@ -100,8 +98,9 @@ class GuiConfig:
         Parameters
         ----------
         root : Path or None, optional
-            The data root; None takes the CLI's root (``OBSERWATOR_ROOT``,
-            ``[obserwator] root``, else ``<data_dir>/obserwator``).
+            The data root; None takes the default data root of the CLI
+            (`store_root`: ``OBSERWATOR_ROOT``, ``[obserwator] root``, else
+            ``<data_dir>/obserwator``; ADR-017).
 
         Returns
         -------
@@ -109,7 +108,9 @@ class GuiConfig:
             The resolved settings.
         """
         settings = Settings()
-        chosen = (root if root is not None else store_root().root).expanduser()
+        chosen = (
+            root if root is not None else store_root(kind="data").root
+        ).expanduser()
         given = os.environ.get(BASEMAP_ENV)
         url = (settings.gui_basemap_url if given is None else given).strip()
         basemap = None
@@ -125,7 +126,6 @@ class GuiConfig:
                 f"{parts.scheme}://{parts.netloc}",
                 settings.gui_basemap_attribution.strip(),
             )
-        command = (settings.hydrolog_command or "").strip()
         operator = environment.operator()
         return cls(
             root=chosen.absolute(),
@@ -133,7 +133,6 @@ class GuiConfig:
             basemap=basemap,
             request_limit=settings.request_limit,
             request_window=settings.request_window,
-            hydrolog_command=tuple(shlex.split(command)) if command else None,
             gui=environment.gui_addresses(),
             operator=dict(operator.values) if operator.usable else None,
             operator_problems=operator.problems,

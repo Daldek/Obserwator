@@ -44,7 +44,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | Interface | Status | Description |
 |-----------|--------|-------------|
 | CLI | Implemented | `obserwator` command: catalog groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands` plus `version`, `server`, `mcp`, `gui serve`, `admin`; help in Polish or English (`OBSERWATOR_LANG`) |
-| GUI | Implemented (ADR-013) | `obserwator gui serve` (extra `gui`, with `cli` for the command): a Starlette app of its own on the data root, calling public functions only; every station of both providers on a map, the station panel with series, Hydrolog's analyses and downloads, PMAXTP of a point |
+| GUI | Implemented (ADR-013) | `obserwator gui serve` (extra `gui`, with `cli` for the command): a Starlette app of its own on the data root, reading data only through public functions; every station of both providers on a map, the station panel with series, Hydrolog's stored analyses and downloads, PMAXTP of a point |
 | REST API | Implemented | FastAPI with OpenAPI documentation; routes generated from the same command catalog; `Accept-Language`; `GET /llms.txt` |
 | Python command catalog | Implemented (3.0.0) | 31 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
 | MCP server | Implemented (3.0.0) | `obserwator[mcp]`: `obserwator mcp` (stdio, read and plan by default, writes with `--allow-writes`) and `/mcp` in the REST server (read and plan only); tools = catalog commands |
@@ -110,8 +110,8 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | A station's panel by kind: description, current IMGW-PIB measurements, series as a chart and a table (flags, hydrological or calendar year), analyses, downloads | Implemented |
 | „Pomiary bieżące”: IMGW-PIB's current hydrological and meteorological measurements on the map | Implemented |
 | Data charts: an own SVG module with zoom and a readout by pointer and keys | Implemented |
-| The analyses of the Nogat plan, hydrological and meteorological, every number Hydrolog's; a period, distribution or threshold chosen by the person computed on request | Implemented; stored results wait for the store's stored analyses (until then every result is computed on request) |
-| Downloads: series as CSV, JSON or Parquet, the stations as GeoJSON or CSV, analysis results as JSON, PMAXTP of a point as CSV or JSON; each with its provider's lines, series and stations with the command line that writes the same file | Implemented |
+| The analyses of the Nogat plan, hydrological and meteorological, every number Hydrolog's: the results stored in the data root (ADR-016) shown as they are; a period, distribution or threshold chosen by the person computed on request | Implemented |
+| Downloads: series as CSV, JSON or Parquet, the stations as GeoJSON or CSV, the stored analyses as JSON or CSV, an analysis result as JSON, PMAXTP of a point as CSV or JSON; each with its provider's lines, series, stations and stored analyses with the command line that writes the same file | Implemented |
 | Hand-off to Hydrolog (`nogat-handoff/1`) | Implemented |
 | PMAXTP of a point picked on the map or by coordinates, without a layer of the grid | Implemented |
 | Polish and English, light and dark theme, a phone layout; Nogat's identity and app menu | Implemented |
@@ -124,7 +124,6 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | Requirement | Status |
 |-------------|--------|
 | User accounts, sign-in | Not in scope: an authenticating proxy in front of the GUI |
-| Stored analysis results | Waiting for the store's stored analyses |
 | Climate stripes (M15) | A prototype of the colour scale only (Hydrolog has no stripes yet) |
 | IMGW-PIB warnings | Not implemented (warnings name areas, not stations) |
 | ČHMÚ current data | Not supported (Obserwator reads no ČHMÚ current data) |

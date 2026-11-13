@@ -1,11 +1,14 @@
 """
 The hydrological sections „Niżówki”, „Czas trwania i strefy”, „Reżim i sezonowość”,
-„Temperatura wody” and „Trendy i bilans” on a root with long records, computed by
-Hydrolog's program (GUI plan S5, D11, D13; Nogat plan H7 to H18).
+„Temperatura wody” and „Trendy i bilans” on a root with long records and the analyses
+``obserwator analyses build`` stored (GUI plan S5, D11, D13; Nogat plan H7 to H18).
 
-The page draws the results of the analysis ids of the API (``api/analysis/{code}/{id}``);
-the numbers it shows are compared with those documents. Kłodzko (IMGW-PIB, discharge and
-water level 1951–2025) and Słupsk (IMGW-PIB, with water temperature since 1984).
+The page draws the results of the analysis ids of the API (``api/analysis/{code}/{id}``):
+a section opens with the stored results, so the numbers it shows are compared with the
+stored documents (``source: stored``); a person's choice is computed by Hydrolog's program
+on request and compared with the API's document of the same options (``source:
+computed``). Kłodzko (IMGW-PIB, discharge and water level 1951–2025) and Słupsk
+(IMGW-PIB, with water temperature since 1984).
 """
 
 from __future__ import annotations
@@ -26,12 +29,17 @@ pytestmark = pytest.mark.hydrolog
 KLODZKO = "150160180"
 SLUPSK = "154170010"
 WAIT = 120_000
-"""How long a section may take: Hydrolog computes every id on request [ms]."""
+"""How long a section may take: Hydrolog computes a person's choice on request [ms]."""
 MILLION = 1e6
+SOURCE = {True: "wynik zapisany", False: "policzony na żądanie"}
+"""The provenance chip of a stored result and of one computed on request."""
 
 
 def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]:
-    """Hydrolog's result of an id as the API serves it to the page."""
+    """
+    Hydrolog's result of an id as the API serves it to the page: the stored one, or with
+    a person's ``overrides`` the one computed on request.
+    """
     query = urllib.parse.urlencode(overrides)
     url = f"{base}api/analysis/{urllib.parse.quote(code)}/{id_}"
     with urllib.request.urlopen(
@@ -39,6 +47,7 @@ def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]
     ) as answer:
         document: dict[str, Any] = json.load(answer)
     assert document["status"] == "ok", document.get("error")
+    assert document["source"] == ("computed" if overrides else "stored")
     result: dict[str, Any] = document["envelope"]["result"]
     return result
 
@@ -67,10 +76,12 @@ def figure(card: Any, label: str) -> str:
     return text
 
 
-def provenance(card: Any, command: str) -> None:
-    """The section names Hydrolog's command that computed its numbers."""
-    chip = card.locator(".ana-prov .prov-hydrolog code", has_text=command).first
-    chip.wait_for(timeout=WAIT)
+def provenance(card: Any, command: str, *, stored: bool = True) -> None:
+    """The section names Hydrolog's command and whether its result is stored or computed."""
+    chip = card.locator(".ana-prov .prov-hydrolog", has_text=SOURCE[stored]).filter(
+        has=card.page.locator("code", has_text=command)
+    )
+    chip.first.wait_for(timeout=WAIT)
 
 
 def section(open_page: Any, base: str, code: str, name: str, **options: Any) -> Any:
@@ -119,6 +130,7 @@ def test_a_threshold_chosen_by_the_person_recomputes_the_periods(
         re.compile(re.escape(f"{q90['threshold']:.2f}".replace(".", ","))), timeout=WAIT
     )
     assert number(figure(card, "Niżówek")) == q90["n_events"]
+    provenance(card, "stats low-flow-sequences", stored=False)
 
     card.get_by_role("radio", name="wartość").click()
     limits = card.locator("form.hy-limits")
@@ -292,6 +304,7 @@ def test_trends_and_water_balance_are_hydrologs(
     card = section(open_page, analysis_url, KLODZKO, "trends")
     trend = analysis(analysis_url, KLODZKO, "mann_kendall.Q.max")
     row = card.locator("table.tbl tbody tr", has_text="WQ").first
+    expect(row.locator("td").nth(2)).to_have_text(re.compile(r"\d"), timeout=WAIT)
     cells = row.locator("td").all_inner_texts()
     assert number(cells[2]) == trend["s_statistic"]
     assert number(cells[4]) == pytest.approx(trend["p_value"], abs=0.0005)

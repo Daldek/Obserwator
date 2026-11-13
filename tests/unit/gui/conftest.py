@@ -3,9 +3,11 @@ Fixtures of the GUI server's tests: the fixture root, recorded live data, the ap
 
 The data root is the session's ``fixture_root`` (``tests/conftest.py``: the data root of
 ``build_fixture_store(raw, data_root=data, variant="complete_pl_cz")``, IMGW-PIB and
-ČHMÚ) and a read-only copy of it; IMGW-PIB's current data and PMAXTP are the library's
-recorded answers, put into the app's `GuiState`; Hydrolog's program is a small recorded
-program that answers ``config show`` and ``commands batch`` as Hydrolog does.
+ČHMÚ) and a read-only copy of it, also with the analyses that ``build_analyses`` stores
+with the recorded Hydrolog of ``tests/fixtures/hydrolog``; IMGW-PIB's current data and
+PMAXTP are the library's recorded answers, put into the app's `GuiState`; Hydrolog's
+program of the app (``OBSERWATOR_HYDROLOG_COMMAND``) is a small recorded program that
+answers ``config show`` and ``commands batch`` as Hydrolog does, or none.
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
+
+from tests.contract.support import build_served_analyses, command_line
 
 HYDRO = "149190310"
 """IMGW-PIB's hydrological station of the fixture root (daily H, Q, T of 2024)."""
@@ -137,6 +141,17 @@ def read_only_root(fixture_root, tmp_path_factory) -> Iterator[Path]:
 
 
 @pytest.fixture(scope="session")
+def stored_root(fixture_root, tmp_path_factory) -> Iterator[Path]:
+    """A read-only copy of the fixture root with its stored analyses (ADR-016)."""
+    root = tmp_path_factory.mktemp("gui-root-stored") / "root"
+    shutil.copytree(fixture_root, root)
+    build_served_analyses(root)
+    read_only(root)
+    yield root
+    read_only(root, writable=True)
+
+
+@pytest.fixture(scope="session")
 def live() -> Live:
     """IMGW-PIB's current data and PMAXTP from the library's recordings, read once."""
     import obserwator
@@ -201,7 +216,6 @@ def gui_config(root: Path, state_dir: Path, **changes: Any) -> Any:
         basemap=None,
         request_limit=100_000,
         request_window=60,
-        hydrolog_command=None,
         gui={},
         operator=None,
         operator_problems=(),
@@ -210,12 +224,15 @@ def gui_config(root: Path, state_dir: Path, **changes: Any) -> Any:
 
 
 @pytest.fixture
-def make_client(tmp_path, read_only_root, live) -> Iterator[Callable[..., TestClient]]:
+def make_client(
+    tmp_path, read_only_root, live, monkeypatch
+) -> Iterator[Callable[..., TestClient]]:
     """
     Open a client of the app, its lifespan running, until the test ends.
 
-    ``make_client(root=None, *, live=…, headers=…, **config)``: the app on ``root``
-    (the read-only root by default) with the settings changed by ``config`` and the
+    ``make_client(root=None, *, hydrolog=None, live=…, headers=…, **config)``: the app
+    on ``root`` (the read-only root by default) with Hydrolog's program ``hydrolog`` (a
+    command line's words; none by default), the settings changed by ``config`` and the
     live sources of ``live`` (`Live.sources` names; recorded by default).
     """
     from obserwator.gui._app import build_app
@@ -226,11 +243,16 @@ def make_client(tmp_path, read_only_root, live) -> Iterator[Callable[..., TestCl
     def make(
         root: Path | None = None,
         *,
+        hydrolog: tuple[str, ...] | None = None,
         sources: dict[str, Callable[[], Any]] | None = None,
         fetch: Callable[..., Any] | None = None,
         headers: dict[str, str] | None = None,
         **changes: Any,
     ) -> TestClient:
+        monkeypatch.setenv(
+            "OBSERWATOR_HYDROLOG_COMMAND",
+            command_line(*(hydrolog or (str(tmp_path / "no-hydrolog"),))),
+        )
         state_dir = changes.pop("state_dir", tmp_path / f"state-{len(opened)}")
         config = gui_config(root or read_only_root, state_dir, **changes)
         app = build_app(config)

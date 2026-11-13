@@ -6,14 +6,22 @@ Every test of this directory is marked ``e2e`` and is skipped when Chromium cann
 uvicorn in a thread, on a free port of 127.0.0.1:
 
 * ``gui_url``: a read-only copy of the fixture data root (``fixture_root`` of
-  ``tests/conftest.py``, ``complete_pl_cz``), no basemap (the packaged borders),
-  IMGW-PIB's current data and PMAXTP answered from the library's recordings, Hydrolog
-  only when ``OBSERWATOR_HYDROLOG_COMMAND`` is set; not public (no ``[nogat.operator]``).
+  ``tests/conftest.py``, ``complete_pl_cz``, no stored analyses), no basemap (the
+  packaged borders), IMGW-PIB's current data and PMAXTP answered from the library's
+  recordings, Hydrolog only when ``OBSERWATOR_HYDROLOG_COMMAND`` is set; not public (no
+  ``[nogat.operator]``).
 * ``public_url``: the same root as a public deployment: ``[nogat.operator]`` and
   ``[nogat.gui]`` set, so ``regulamin.html`` and the footer's statement are served.
-* ``analysis_url``: the root named by ``OBSERWATOR_GUI_E2E_ROOT`` (a root with long
-  records, e.g. the demo store) with Hydrolog's program of ``OBSERWATOR_HYDROLOG_COMMAND``;
+* ``stored_url``: a read-only copy of the fixture data root with the analyses that
+  ``build_analyses`` stored with the recorded Hydrolog (``tests/fixtures/hydrolog``), the
+  rest as ``gui_url``, and no Hydrolog's program at all: only stored results.
+* ``analysis_url``: the data root named by ``OBSERWATOR_GUI_E2E_ROOT`` (long records and
+  the analyses ``obserwator analyses build`` stored, e.g. a copy of a deployment's root)
+  with Hydrolog's program of ``OBSERWATOR_HYDROLOG_COMMAND`` for a person's choices;
   tests using it are skipped when either is unset (mark them ``hydrolog``).
+
+A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
+it computes nothing for its whole life.
 
 ``open_page`` opens a path of a server in a new browser context with the theme, the
 language and the width chosen, and fails the test at its end on any console error, page
@@ -205,9 +213,18 @@ def _start(
             patch.setenv("OBSERWATOR_HYDROLOG_COMMAND", hydrolog)
         else:
             patch.delenv("OBSERWATOR_HYDROLOG_COMMAND", raising=False)
+            # No program on PATH either while the app looks for it, once (D8)
+            patch.setenv(
+                "PATH",
+                os.pathsep.join(
+                    folder
+                    for folder in os.environ.get("PATH", "").split(os.pathsep)
+                    if shutil.which("hydrolog", path=folder) is None
+                ),
+            )
         config = GuiConfig.resolve(root=root)
-    config = replace(config, request_limit=100_000)
-    app = build_app(config)
+        # The app looks for Hydrolog's program once, as it starts
+        app = build_app(replace(config, request_limit=100_000))
     if recorded:
         records, pmaxtp = _recorded_live()
         state = app.state.gui
@@ -226,6 +243,27 @@ def gui_root(fixture_root, tmp_path_factory) -> Iterator[Path]:
     _read_only(root)
     yield root
     _read_only(root, writable=True)
+
+
+@pytest.fixture(scope="session")
+def stored_root(fixture_root, tmp_path_factory) -> Iterator[Path]:
+    """A read-only copy of the fixture data root with its analyses stored (ADR-016)."""
+    from tests.contract.support import build_served_analyses
+
+    root = tmp_path_factory.mktemp("gui-root-stored") / "root"
+    shutil.copytree(fixture_root, root)
+    build_served_analyses(root)
+    _read_only(root)
+    yield root
+    _read_only(root, writable=True)
+
+
+@pytest.fixture(scope="session")
+def stored_url(stored_root, tmp_path_factory) -> Iterator[str]:
+    """The GUI on the root with stored analyses and no Hydrolog's program."""
+    work = tmp_path_factory.mktemp("gui-stored")
+    with _start(stored_root, work) as server:
+        yield server.url
 
 
 @pytest.fixture(scope="session")

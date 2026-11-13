@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import urllib.request
+from dataclasses import replace
 from importlib.metadata import entry_points
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import pytest
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
+from obserwator.config import store_root
 from obserwator.exceptions import ERROR_CODES, ObserwatorError
 from obserwator.gui import create_app, gui_module, serve
 from obserwator.gui._config import Basemap, GuiConfig
@@ -48,6 +50,7 @@ def settings(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSERWATOR_GUI_BASEMAP_URL", "")
     for name in (
         "OBSERWATOR_ROOT",
+        "OBSERWATOR_RAW_ROOT",
         "OBSERWATOR_DATA_DIR",
         "NOGAT_DATA_DIR",
         "OBSERWATOR_HYDROLOG_COMMAND",
@@ -160,9 +163,6 @@ def test_the_settings_come_from_the_environment_and_nogat_toml(
     monkeypatch.setenv("NOGAT_CONFIG", str(toml))
     monkeypatch.setenv("OBSERWATOR_GUI_BASEMAP_URL", "https://tiles.example/planet")
     monkeypatch.setenv("OBSERWATOR_GUI_BASEMAP_ATTRIBUTION", "© Example")
-    monkeypatch.setenv(
-        "OBSERWATOR_HYDROLOG_COMMAND", "'/opt/hydro log/bin/hydrolog' --quiet"
-    )
     monkeypatch.setenv("OBSERWATOR_REQUEST_LIMIT", "5")
 
     config = GuiConfig.resolve(root=fixture_root)
@@ -173,20 +173,21 @@ def test_the_settings_come_from_the_environment_and_nogat_toml(
     assert config.basemap == Basemap(
         "https://tiles.example/planet", "https://tiles.example", "© Example"
     )
-    assert config.hydrolog_command == ("/opt/hydro log/bin/hydrolog", "--quiet")
     assert config.request_limit == 5
     assert config.gui == {"obserwator": "https://obserwator.example/"}
     assert config.operator is not None
     assert config.operator["email"] == "operator@example.org"
 
 
-def test_the_default_root_is_the_guis_own_directory_so_it_writes_nothing(settings):
+def test_the_default_root_is_the_default_data_root_so_the_gui_writes_nothing(settings):
     config = GuiConfig.resolve()
 
-    assert config.root == config.state_dir == settings / "obserwator"
+    assert config.root == store_root(kind="data").root == settings / "obserwator"
+    assert config.state_dir == config.root
     assert config.writes_state is False
+    assert store_root(kind="raw").root == settings / "obserwator-raw"
+    assert replace(config, root=settings / "obserwator-raw").writes_state is True
     assert config.basemap is None
-    assert config.hydrolog_command is None
 
 
 @pytest.mark.parametrize("value", ["", "none", "OFF"])

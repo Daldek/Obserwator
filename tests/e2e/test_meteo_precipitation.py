@@ -1,11 +1,15 @@
 """
 The meteorological sections „Opady” and „Susze i okresy bezopadowe” on a root with long
-records, computed by Hydrolog's program (GUI plan S6, D11; Nogat plan M1 to M9).
+records and the analyses ``obserwator analyses build`` stored (GUI plan S6, D11; Nogat
+plan M1 to M9).
 
 The page draws the results of the analysis ids of the API (``api/analysis/{code}/{id}``):
-the numbers it shows are compared with those documents. Kraków (IMGW-PIB climate station,
-1961–2025), Praha-Klementinum (ČHMÚ, precipitation since 1804) and Nowogród Bobrzański
-(IMGW-PIB precipitation post with totals of several days after days without a measurement).
+a section opens with the stored results, so the numbers it shows are compared with the
+stored documents (``source: stored``); a person's choice is computed by Hydrolog's program
+on request and compared with the API's document of the same options (``source:
+computed``). Kraków (IMGW-PIB climate station, 1961–2025), Praha-Klementinum (ČHMÚ,
+precipitation since 1804) and Nowogród Bobrzański (IMGW-PIB precipitation post with
+totals of several days after days without a measurement).
 """
 
 from __future__ import annotations
@@ -30,11 +34,16 @@ STATIONS = [
     pytest.param(POST, id="precipitation_post"),
 ]
 WAIT = 180_000
-"""How long a section may take: Hydrolog computes every id on request [ms]."""
+"""How long a section may take: Hydrolog computes a person's choice on request [ms]."""
+SOURCE = {True: "wynik zapisany", False: "policzony na żądanie"}
+"""The provenance chip of a stored result and of one computed on request."""
 
 
 def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]:
-    """Hydrolog's result of an id as the API serves it to the page."""
+    """
+    Hydrolog's result of an id as the API serves it to the page: the stored one, or with
+    a person's ``overrides`` the one computed on request.
+    """
     query = urllib.parse.urlencode(overrides)
     url = f"{base}api/analysis/{urllib.parse.quote(code)}/{id_}"
     with urllib.request.urlopen(
@@ -42,6 +51,7 @@ def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]
     ) as answer:
         document: dict[str, Any] = json.load(answer)
     assert document["status"] == "ok", document.get("error")
+    assert document["source"] == ("computed" if overrides else "stored")
     result: dict[str, Any] = document["envelope"]["result"]
     return result
 
@@ -87,11 +97,12 @@ def note(where: Any, label: str) -> str:
     return text
 
 
-def provenance(where: Any, command: str) -> None:
-    """The part names Hydrolog's command that computed its numbers."""
-    where.locator(".ana-prov .prov-hydrolog code", has_text=command).first.wait_for(
-        timeout=WAIT
+def provenance(where: Any, command: str, *, stored: bool = True) -> None:
+    """The part names Hydrolog's command and whether its result is stored or computed."""
+    chip = where.locator(".ana-prov .prov-hydrolog", has_text=SOURCE[stored]).filter(
+        has=where.page.locator("code", has_text=command)
     )
+    chip.first.wait_for(timeout=WAIT)
 
 
 @pytest.mark.parametrize("code", STATIONS)
@@ -194,9 +205,7 @@ def test_a_dry_spell_threshold_chosen_by_the_person_recomputes(
     assert number(shown) == pytest.approx(
         chosen["period"]["mean_max_duration_days"], abs=0.05
     )
-    spells.locator(
-        ".ana-prov .prov-hydrolog", has_text="policzony na żądanie"
-    ).wait_for(timeout=WAIT)
+    provenance(spells, "meteo spells", stored=False)
 
 
 def test_precipitation_fits_a_phone_in_english_and_the_dark_theme(

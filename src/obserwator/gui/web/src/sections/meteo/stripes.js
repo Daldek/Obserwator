@@ -378,14 +378,16 @@ function Downloads({ data, station, axis }) {
 
 /**
  * The stripes document of a station (`api.stripes`), refetched when the station or an
- * option changes; its lines go to the card like an analysis's.
+ * option changes; its lines go to the card like an analysis's. Nothing is asked while
+ * `wanted` is false.
  */
-function useStripes(code, options) {
+function useStripes(code, options, wanted) {
   const chosen = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined && value !== null && value !== ""));
   const key = JSON.stringify(chosen);
   const report = useContext(ResultLines);
   const [state, setState] = useState({ data: null, error: null, loading: true });
   useEffect(() => {
+    if (!wanted) return undefined;
     const control = new AbortController();
     setState((old) => ({ data: old.data, error: null, loading: true }));
     api.stripes(code, chosen, { signal: control.signal }).then(
@@ -393,7 +395,7 @@ function useStripes(code, options) {
       (error) => !control.signal.aborted && setState({ data: null, error, loading: false }),
     );
     return () => control.abort();
-  }, [code, key]);
+  }, [code, key, wanted]);
   useEffect(() => {
     if (report && state.data) report(state.data);
   }, [report, state.data]);
@@ -429,18 +431,24 @@ function fallbackNote(key, period) {
 
 /**
  * The stripes of a station with the daily mean temperature, in the card „Temperatura”.
+ * Their centre is Hydrolog's normal of a reference period computed on request, so a server
+ * without Hydrolog's program (`session.compute.available` false) asks nothing and says so.
  *
- * @param {{station: object}} props `api/stations/{code}`
+ * @param {{station: object, session: object|null}} props `api/stations/{code}`, `api/session`
  */
-export function Stripes({ station }) {
+export function Stripes({ station, session }) {
   const [opt, setOpt] = useOptions({ scale: undefined, centre_first_year: undefined, centre_last_year: undefined, spread_first_year: undefined, spread_last_year: undefined }, station.code);
   const [view, setView] = useState("plain");
-  const state = useStripes(station.code, opt);
+  const compute = session ? session.compute.available : null;
+  const state = useStripes(station.code, opt, compute === true);
   const doc = state.data;
   const data = doc && doc.status === "ok" ? doc : null;
   const parts = partsOf(state);
   const title = t("meteo.stripes.title");
   const info = t("meteo.stripes.info");
+  if (compute === false) {
+    return html`<${Section} title=${title} info=${info}><p class="note" data-part="stripes-unavailable">${t("meteo.stripes.no_hydrolog")}</p></${Section}>`;
+  }
   if (!data) return html`<${Section} title=${title} info=${info} states=${parts} />`;
   const s = data.scale;
   const c = s.centre;

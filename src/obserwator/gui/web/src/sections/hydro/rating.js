@@ -102,9 +102,11 @@ function Periods({ code, ids, opt, setOpt, axis }) {
   const levels = useAnalysis(code, ids.has("characteristic.H") ? "characteristic.H" : null);
   const result = state.result;
   const range = levels.result;
-  const fitted = result ? result.periods.filter((p) => p.a !== null && p.a !== undefined) : [];
+  // A record shorter than one period has no periods (`periods` null)
+  const periods = (result && result.periods) || [];
+  const fitted = periods.filter((p) => p.a !== null && p.a !== undefined);
   const spec = useMemo(() => {
-    if (!result || !range) return null;
+    if (!fitted.length || !range) return null;
     const name = (p) => `${p.first_year}–${p.last_year}`;
     return {
       x: { label: "Q [m³/s]", short: "Q", scale: axis === "log" ? "log" : "linear", zero: true, digits: 2 },
@@ -126,7 +128,7 @@ function Periods({ code, ids, opt, setOpt, axis }) {
     { key: "discharge_at_reference_m3s", label: t("hydro.rating.col_q_at", { level: fmt(result.reference_level, 0) }), format: (v) => (v === null || v === undefined ? "–" : fmt(v, v >= 100 ? 0 : 2)) },
     { key: "level_at_reference_discharge", label: t("hydro.rating.col_h_at", { flow: fmt(result.reference_discharge_m3s, 2) }), format: (v) => (v === null || v === undefined ? "–" : fmt(v, 0)) },
   ];
-  const rows = result ? result.periods.map((p) => ({ ...p, label: `${p.first_year}–${p.last_year}` })) : [];
+  const rows = periods.map((p) => ({ ...p, label: `${p.first_year}–${p.last_year}` }));
   return html`<${Section} title=${t("hydro.rating.periods_title")} info=${t("hydro.rating.periods_info")} states=${[state]}>
     <${Option} label=${t("hydro.rating.periods")}><${Seg}
       value=${opt.period}
@@ -134,7 +136,8 @@ function Periods({ code, ids, opt, setOpt, axis }) {
       options=${["5", "10", "20"].map((n) => [n, t("hydro.rating.years_n", { n })])}
       onChange=${(v) => setOpt({ period: v })}
     /></${Option}>
-    ${result &&
+    ${result && !periods.length ? html`<p class="muted hy-caption">${t("hydro.rating.no_periods")}</p>` : null}
+    ${periods.length > 0 &&
     html`${spec && html`<${Chart} spec=${spec} />`}
       <${Table} columns=${columns} rows=${rows} className="tbl hy-compact" />
       <p class="muted hy-caption">${t("hydro.rating.periods_caption", { level: fmt(result.reference_level, 0), flow: fmt(result.reference_discharge_m3s, 2) })}</p>`}

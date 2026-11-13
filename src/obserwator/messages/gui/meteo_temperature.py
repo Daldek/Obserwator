@@ -328,6 +328,12 @@ MESSAGES: dict[str, Text] = {
         "Method: Ed Hawkins (University of Reading),",
         "Metoda: Ed Hawkins (University of Reading),",
     ),
+    "meteo.stripes.no_hydrolog": Text(
+        "The stripes are centred on Hydrolog's normal of their reference period, "
+        "computed on request, and this server has no Hydrolog program.",
+        "Środkiem pasków jest normalna Hydrologa z ich okresu odniesienia, liczona na "
+        "żądanie, a ten serwer nie ma programu Hydrolog.",
+    ),
     "meteo.stripes.aria.one": Text(
         "Climate stripes of {station}, {first}–{last}: {n} year, from blue (cooler) to "
         "red (warmer) than the mean of {from}–{to}",

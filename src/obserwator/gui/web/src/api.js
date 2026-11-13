@@ -70,7 +70,7 @@ export const api = {
    */
   series: (dataset, code, { variables, start, end, signal } = {}) =>
     get(`api/series/${enc(dataset)}/${enc(code)}`, { variables, start, end }, { signal }),
-  /** The analysis ids of a station: [{analysis, command, options, overridable, inputs, stored}]. */
+  /** The stored analyses of a station: [{analysis, command, options, overridable, inputs, status}]. */
   analyses: (code) => get(`api/analyses/${enc(code)}`),
   /**
    * One analysis id of a station (`obserwator-analysis/1`): the stored result without
@@ -86,12 +86,20 @@ export const api = {
   /** The address of an analysis id's result as a JSON file. */
   analysisFileUrl: (code, id, overrides = {}) => `api/files/analysis/${enc(code)}/${enc(id)}${query(overrides)}`,
   /**
+   * The address of a station's stored analyses as a file (`analyses export`): `format`
+   * "json" or "csv", and one `analysis` id or all of them.
+   *
+   * @param {string} code
+   * @param {{format?: string, analysis?: string}} [options]
+   */
+  analysesFileUrl: (code, { format, analysis } = {}) => `api/files/analyses/${enc(code)}${query({ format, analysis })}`,
+  /**
    * The M15 climate stripes prototype of a station (`obserwator-gui-stripes/1`): Hydrolog's
    * annual means and normal and the prototype's colour scale; options `scale`,
    * `centre_first_year`, `centre_last_year`, `spread_first_year`, `spread_last_year`.
    */
   stripes: (code, options = {}, { signal } = {}) => get(`api/prototype/stripes/${enc(code)}`, options, { signal }),
-  /** The files of a station: each series in each format, its command line and licence. */
+  /** The files of a station: each series and the stored analyses in each format, with command lines. */
   downloads: (code) => get(`api/downloads/${enc(code)}`),
   /**
    * The stations of the current catalogs as files (`export_stations`): {provider, kind,

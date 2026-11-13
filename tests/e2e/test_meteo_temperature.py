@@ -1,11 +1,14 @@
 """
 The meteorological sections „Temperatura” (with the climate stripes), „Śnieg” and „Trendy”
-on a root with long records, computed by Hydrolog's program (GUI plan S6, D11; Nogat plan
-M10 to M15).
+on a root with long records and the analyses ``obserwator analyses build`` stored (GUI
+plan S6, D11; Nogat plan M10 to M15).
 
 The page draws the results of the analysis ids of the API (``api/analysis/{code}/{id}``)
-and the stripes of the M15 prototype (``api/prototype/stripes/{code}``): the numbers it
-shows are compared with those documents. Kraków (IMGW-PIB climate station, 1961–2025) and
+and the stripes of the M15 prototype (``api/prototype/stripes/{code}``): a section opens
+with the stored results, so the numbers it shows are compared with the stored documents
+(``source: stored``); the stripes' normal of their reference period is computed by
+Hydrolog's program on request and compared with the API's document of the same options
+(``source: computed``). Kraków (IMGW-PIB climate station, 1961–2025) and
 Praha-Klementinum (ČHMÚ, temperature since 1775, no snow cover).
 """
 
@@ -30,7 +33,9 @@ KRAKOW = "250190390"
 PRAHA = "0-203-0-11514"
 STATIONS = [pytest.param(KRAKOW, id="krakow"), pytest.param(PRAHA, id="praha")]
 WAIT = 180_000
-"""How long a section may take: Hydrolog computes every id on request [ms]."""
+"""How long a section may take: Hydrolog computes the stripes' normal on request [ms]."""
+SOURCE = {True: "wynik zapisany", False: "policzony na żądanie"}
+"""The provenance chip of a stored result and of one computed on request."""
 PROTOTYPE = {
     "pl": "Prototyp obliczeń · docelowo Hydrolog (M15)",
     "en": "Computation prototype · to move to Hydrolog (M15)",
@@ -48,9 +53,13 @@ def get(base: str, path: str, **query: Any) -> dict[str, Any]:
 
 
 def analysis(base: str, code: str, id_: str, **overrides: Any) -> dict[str, Any]:
-    """Hydrolog's result of an id as the API serves it to the page."""
+    """
+    Hydrolog's result of an id as the API serves it to the page: the stored one, or with
+    a person's ``overrides`` the one computed on request.
+    """
     document = get(base, f"api/analysis/{urllib.parse.quote(code)}/{id_}", **overrides)
     assert document["status"] == "ok", document.get("error")
+    assert document["source"] == ("computed" if overrides else "stored")
     result: dict[str, Any] = document["envelope"]["result"]
     return result
 
@@ -92,11 +101,12 @@ def figure(where: Any, label: str) -> str:
     return text
 
 
-def provenance(where: Any, command: str) -> None:
-    """The part names Hydrolog's command that computed its numbers."""
-    where.locator(".ana-prov .prov-hydrolog code", has_text=command).first.wait_for(
-        timeout=WAIT
+def provenance(where: Any, command: str, *, stored: bool = True) -> None:
+    """The part names Hydrolog's command and whether its result is stored or computed."""
+    chip = where.locator(".ana-prov .prov-hydrolog", has_text=SOURCE[stored]).filter(
+        has=where.page.locator("code", has_text=command)
     )
+    chip.first.wait_for(timeout=WAIT)
 
 
 @pytest.mark.parametrize("code", STATIONS)
@@ -147,7 +157,7 @@ def test_the_stripes_take_hydrologs_normal_and_are_labelled_a_prototype(
     temperature = card(open_page, analysis_url, code, "temperatura")
     section = part(temperature, "Paski klimatyczne")
     section.locator(".prov-proto", has_text=PROTOTYPE["pl"]).wait_for(timeout=WAIT)
-    provenance(section, "meteo temperature")
+    provenance(section, "meteo temperature", stored=False)
     document = stripes(analysis_url, code)
     centre = document["scale"]["centre"]
     # the centre is Hydrolog's normal of 1961–2010, the scale's reference period

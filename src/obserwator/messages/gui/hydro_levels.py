@@ -314,6 +314,10 @@ _RATING: dict[str, Text] = {
         "whole record (Hydrolog).",
         "H = {level} cm i Q = {flow} m³/s to mediany par całego zapisu (Hydrolog).",
     ),
+    "hydro.rating.no_periods": Text(
+        "Hydrolog gave no periods: the record is shorter than one period.",
+        "Hydrolog nie podał okresów: zapis jest krótszy niż jeden okres.",
+    ),
     "hydro.rating.reason.too_few_pairs": Text(
         "fewer than 30 H–Q pairs", "mniej niż 30 par H–Q"
     ),
