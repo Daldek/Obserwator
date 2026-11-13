@@ -67,7 +67,8 @@ def assert_same(answered, result, command: str, options: dict[str, object]) -> N
         return
     assert answered.status_code == 200, answered.text
     assert result.is_error is False, result.content[0].text
-    if media == "application/json":
+    if ROUTES[command]["result"] != "stream":  # a JSON export is a stream too
+        assert media == "application/json"
         assert result.structured_content == answered.json()
         assert result.content[0].text == answered.text
         return

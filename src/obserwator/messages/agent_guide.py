@@ -223,15 +223,12 @@ MESSAGES = {
         "flagi logiczne ({switches}) nie mają wartości i włączają swoją opcję.",
     ),
     "flags_output": Text(
-        "- Output of the CLI: `--json` (every command) prints the envelope as one JSON "
-        "line on stdout — parse only that; without it stdout carries a short summary for "
-        "a person in the language of `--lang` (`pl`, `en`). The data lines of `store "
-        "export`, `series export` and `commands guide` without `--output` are the same "
-        "in both modes.",
-        "- Wyjście CLI: `--json` (każda komenda) wypisuje kopertę jako jedną linię JSON "
-        "na stdout — parsuj tylko je; bez niego stdout niesie krótkie podsumowanie dla "
-        "człowieka w języku `--lang` (`pl`, `en`). Linie danych `store export`, `series "
-        "export` i `commands guide` bez `--output` są takie same w obu trybach.",
+        "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
+        "only that; without it, a summary for a person in the language of `--lang`. A "
+        "stream without `--output` prints its data lines in both modes.",
+        "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
+        "ją; bez niego podsumowanie dla człowieka w języku `--lang`. Strumień bez "
+        "`--output` wypisuje swoje linie danych w obu trybach.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` "

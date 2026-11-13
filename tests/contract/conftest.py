@@ -2,6 +2,7 @@
 
 The three interfaces run in this process: Python through ``run_command``, the
 ``obserwator`` CLI through Click's runner and REST through the FastAPI test client.
+Hydrolog's program is the recorded fake of ``tests/fixtures/hydrolog``.
 """
 
 import importlib
@@ -20,7 +21,7 @@ from obserwator.api.main import app as rest_app
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
 from obserwator.testing import build_fixture_store
-from tests.contract.support import FakeImgw
+from tests.contract.support import FakeImgw, use_fake_hydrolog
 
 FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 WRITE_TOKEN = "kontrakt-token"
@@ -31,6 +32,7 @@ _CLOCKED = (
     "obserwator.store.catalog",
     "obserwator.store.sync",
     "obserwator.store.pmaxtp",
+    "obserwator.store.analyses",
     "obserwator.commands",
 )
 
@@ -72,6 +74,17 @@ def no_network(monkeypatch):
 def no_obserwator_root(monkeypatch):
     """The developer's OBSERWATOR_ROOT must not reach the commands under test."""
     monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def hydrolog(monkeypatch, tmp_path_factory):
+    """
+    Hydrolog's program is the recorded fake, for this process and the processes it starts.
+
+    Its series files go to one directory per test, so the stored lines, which
+    echo their paths, are the same in Python, the CLI, REST and MCP.
+    """
+    use_fake_hydrolog(monkeypatch, tmp_path_factory.mktemp("hydrolog") / "scratch")
 
 
 @pytest.fixture

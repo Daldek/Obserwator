@@ -392,10 +392,10 @@ MESSAGES = {
         "Strona do odczytu: page.next_cursor poprzedniej strony (nieprzezroczysty)",
     ),
     "commands_guide_description": Text(
-        "Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or "
-        "English. It is rendered from the command catalog and the registries.",
-        "Wygeneruj przewodnik dla agentów AI: AGENTS.md albo llms.txt, po polsku "
-        "albo angielsku. Powstaje z katalogu komend i rejestrów.",
+        "Generate AGENTS.md or llms.txt for AI agents, in Polish or English. It is "
+        "rendered from the command catalog and the registries.",
+        "Wygeneruj AGENTS.md albo llms.txt dla agentów AI, po polsku albo angielsku. "
+        "Powstaje z katalogu komend i rejestrów.",
     ),
     "datasets_list_description": Text(
         "List the datasets of the registry: keys, providers, legacy aliases, "
@@ -420,8 +420,8 @@ MESSAGES = {
     "datasets_providers_description": Text(
         "List the data providers: identifiers, countries, licenses, station code "
         "patterns, datasets.",
-        "Wypisz dostawców danych z rejestru: identyfikatory, kraje, licencje, wzorce "
-        "kodów stacji i zbiory.",
+        "Wypisz dostawców danych: identyfikatory, kraje, licencje, wzorce kodów stacji "
+        "i zbiory.",
     ),
     "stations_find_description": Text(
         "Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.",
@@ -559,6 +559,40 @@ MESSAGES = {
         "Export the series of one station as CSV with the attribution of the data "
         "provider.",
         "Wyeksportuj szereg jednej stacji jako CSV z atrybucją dostawcy danych.",
+    ),
+    "analyses_build_description": Text(
+        "Compute and store the analyses of every station with Hydrolog. Stations "
+        "whose series, thresholds, Hydrolog version and registry are unchanged are "
+        "carried forward without a call.",
+        "Oblicz i zapisz analizy każdej stacji Hydrologiem. Stacje o niezmienionych "
+        "szeregach, progach, wersji Hydrologa i rejestrze przechodzą do nowej wersji "
+        "bez obliczeń.",
+    ),
+    "analyses_list_description": Text(
+        "List the stored analyses of a station. Each names its command, options, "
+        "status and versions.",
+        "Wypisz zapisane analizy stacji. Każda podaje polecenie, opcje, stan i wersje.",
+    ),
+    "analyses_read_description": Text(
+        "Read one stored analysis of a station. Hydrolog's result comes with its "
+        "provenance.",
+        "Odczytaj jedną zapisaną analizę stacji. Wynik Hydrologa ma swoje pochodzenie.",
+    ),
+    "analyses_export_description": Text(
+        "Export the stored analyses of a station as JSON or CSV. The file carries "
+        "the attribution.",
+        "Wyeksportuj zapisane analizy stacji jako JSON albo CSV. Plik niesie atrybucję.",
+    ),
+    "analyses_rule_program": Text(
+        "Hydrolog's program: the setting OBSERWATOR_HYDROLOG_COMMAND, else hydrolog "
+        "on PATH; no option chooses it",
+        "program Hydrolog: ustawienie OBSERWATOR_HYDROLOG_COMMAND, inaczej hydrolog "
+        "z PATH; żadna opcja go nie wybiera",
+    ),
+    "analyses_rule_station": Text(
+        "the station code names the provider: 9 digits IMGW-PIB, a WIGOS "
+        "identifier ČHMÚ",
+        "kod stacji wskazuje dostawcę: 9 cyfr IMGW-PIB, identyfikator WIGOS ČHMÚ",
     ),
     "commands_list_description": Text(
         "List the catalog commands: tool names, effects and routes. Start here, then "
@@ -703,6 +737,48 @@ MESSAGES = {
         "Export format (csv only)",
         "Format eksportu (tylko csv)",
     ),
+    "analyses_version_help": Text(
+        "Analyses version: version directory, analyses.json or sidecar; absolute or "
+        "relative to root (default: the current version of the station's provider)",
+        "Wersja analiz: katalog wersji, analyses.json albo sidecar; bezwzględna albo "
+        "względna do root (domyślnie bieżąca wersja dostawcy stacji)",
+    ),
+    "analyses_root_help": Text(
+        "Data root: base of a relative version or the root whose current analyses "
+        "are read",
+        "Katalog danych: podstawa względnej wersji albo katalog, którego bieżące "
+        "analizy są czytane",
+    ),
+    "analyses_stations_help": Text(
+        "Compute only these stations (comma-separated codes); the others are carried "
+        "forward as they are",
+        "Oblicz tylko te stacje (kody rozdzielone przecinkami); pozostałe przechodzą "
+        "bez zmian",
+    ),
+    "workers_help": Text(
+        "Hydrolog processes run at a time",
+        "Liczba procesów Hydrologa uruchamianych naraz",
+    ),
+    "analysis_help": Text(
+        "Id of the analysis, e.g. flood_frequency.Q",
+        "Identyfikator analizy, np. flood_frequency.Q",
+    ),
+    "analyses_ids_help": Text(
+        "Ids of the analyses to export (default: every stored one)",
+        "Identyfikatory analiz do eksportu (domyślnie wszystkie zapisane)",
+    ),
+    "analyses_export_format_help": Text(
+        "Export format: json (one document) or csv (one row per value)",
+        "Format eksportu: json (jeden dokument) albo csv (wiersz na wartość)",
+    ),
+    "export_station_analyses": Text(
+        "the analyses of the station {station} as {format}",
+        "analizy stacji {station} jako {format}",
+    ),
+    "read_station_analyses": Text(
+        "Reads the analyses of the station {station} in {path}",
+        "Odczyt analiz stacji {station} w {path}",
+    ),
     "commands_schema_command_help": Text(
         "Name of a catalog command; none = the whole obserwator-commands/1 catalog",
         "Nazwa komendy katalogu; brak = cały katalog obserwator-commands/1",
@@ -743,6 +819,10 @@ MESSAGES = {
     "group_series": Text(
         "Station series",
         "Szeregi stacji",
+    ),
+    "group_analyses": Text(
+        "Analyses of the stations computed by Hydrolog",
+        "Analizy stacji obliczone przez Hydrologa",
     ),
     "group_commands": Text(
         "Description of the command catalog",
@@ -964,6 +1044,7 @@ MESSAGES = {
         "Comma-separated values with a header row",
         "Wartości rozdzielone przecinkami, z wierszem nagłówka",
     ),
+    "meaning_format_json": Text("One JSON document", "Jeden dokument JSON"),
     "meaning_format_jsonl": Text(
         "One JSON object per line", "Jeden obiekt JSON w każdym wierszu"
     ),

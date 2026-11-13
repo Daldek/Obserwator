@@ -68,7 +68,7 @@ Symbole pisane wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościam
 2. Kody wyjścia 10 i 11 nie oznaczają awarii programu — przeczytaj kopertę (`items[].status`, `error_code`).
 3. Nie uruchamiaj zapisu (`store sync`, `series build`, `datasets download`) bez planu i zgody użytkownika.
 4. Nie zgaduj stacji ani zbioru: przy kilku trafieniach `stations find` zapytaj; obecność stacji w zbiorze sprawdź `series summary`.
-5. Nie edytuj, nie przenoś i nie usuwaj plików magazynu (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — magazyn jest tylko przyrostowy.
+5. Nie edytuj, nie przenoś i nie usuwaj niczego w katalogu magazynu — magazyn jest tylko przyrostowy.
 6. Nie pobieraj „na zapas”: zawężaj `years`, `months` i `stations`; nie mieszaj dostawców w jednym wywołaniu ze `stations`.
 7. Długie listy czytaj stronami (`limit`, `cursor` = `page.next_cursor`); używaj `series read` albo `series export --output`, nie CSV w kontekście.
 8. Nie odpytuj `current …` w pętli — to API na żywo; zachowaj wynik.

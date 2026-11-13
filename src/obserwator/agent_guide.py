@@ -373,7 +373,11 @@ def _notes(schema: Mapping[str, Any], lang: Lang) -> str:
 def _commands(
     schemas: Iterable[Mapping[str, Any]], summaries: Mapping[str, str], lang: Lang
 ) -> str:
-    """Commands by effect of a run (``read``, ``network``, ``add``, ``replace``)."""
+    """
+    Commands by effect of a run (``read``, ``network``, ``add``, ``replace``).
+
+    A class without commands gets no heading.
+    """
     classes: dict[str, list[str]] = {name: [] for name in _EFFECTS}
     for schema in schemas:
         meta = schema["x-obserwator"]
@@ -387,6 +391,7 @@ def _commands(
     return "\n\n".join(
         f"**{message(_EFFECTS[name], lang=lang)}**\n\n" + "\n".join(lines)
         for name, lines in classes.items()
+        if lines
     )
 
 

@@ -20,8 +20,8 @@ parameters, POST with a JSON body and always ``?check=true``, in English
 
 An envelope ``obserwator-result/1`` is ``structuredContent`` and, as compact JSON,
 the only text content (the CLI ``--json`` stdout line without its line end); a stream
-(``store export``, ``series export``, ``commands guide`` without ``output``) is its
-text, at most 256 KiB, with an envelope whose result is the ``obserwator-stream/1``
+(an export or ``commands guide`` without ``output``, a JSON export too) is its text,
+at most 256 KiB, with an envelope whose result is the ``obserwator-stream/1``
 document ``{schema, format, bytes, lines}``. An error is ``isError`` with the
 ``obserwator-error/1`` document of the CLI error line (`obserwator.error_report`)
 as ``structuredContent`` and as its only text content: in English (AGI-9.2),
@@ -486,7 +486,7 @@ async def _route(
         )
     if status != 200:
         raise RuntimeError(f"The REST route {method} {path} answered {status} {media}")
-    if media.startswith("application/json"):
+    if not stream and media.startswith("application/json"):
         text = data.decode("utf-8")
         return _answer(json.loads(text), text)
     if stopped:

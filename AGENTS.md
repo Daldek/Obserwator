@@ -90,9 +90,12 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `series read` — Read the values and flags of one station's series from the store.
 - `series summary` — Show the coverage of stations and variables of a series from series.json (without pyarrow).
 - `series export` — Export the series of one station as CSV with the attribution of the data provider. [`output`: write; `force`: overwrite]
+- `analyses list` — List the stored analyses of a station.
+- `analyses read` — Read one stored analysis of a station.
+- `analyses export` — Export the stored analyses of a station as JSON or CSV. [`output`: write; `force`: overwrite]
 - `commands list` — List the catalog commands: tool names, effects and routes.
 - `commands schema` — Describe a command or the whole catalog as obserwator-commands/1.
-- `commands guide` — Generate the guide for AI agents: AGENTS.md or llms.txt, in Polish or English. [`output`: write; `force`: overwrite]
+- `commands guide` — Generate AGENTS.md or llms.txt for AI agents, in Polish or English. [`output`: write; `force`: overwrite]
 
 **Network — connects to a source, writes nothing**
 
@@ -113,16 +116,13 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `store sync` — Download new or missing archives into the store, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
 - `store catalog` — Build the versioned station catalog stations.geojson of one provider.
 - `series build` — Build the Parquet series of a dataset from the current archive versions of the store.
-
-**Overwrite — may replace an existing file or manifest; `--check` first**
-
-
+- `analyses build` — Compute and store the analyses of every station with Hydrolog.
 
 ## Flags and values
 
-- Lists (`--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
+- Lists (`--analyses`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
-- Output of the CLI: `--json` (every command) prints the envelope as one JSON line on stdout — parse only that; without it stdout carries a short summary for a person in the language of `--lang` (`pl`, `en`). The data lines of `store export`, `series export` and `commands guide` without `--output` are the same in both modes.
+- CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
 - Environment: `OBSERWATOR_ROOT` — the default `--root`, else `<data_dir>/obserwator` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
 
 ## Typical flows
@@ -151,7 +151,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
-5. Do not edit, move or delete store files (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — the store only grows.
+5. Do not edit, move or delete anything under the store root — the store only grows.
 6. Do not download "just in case": narrow `years`, `months` and `stations`; do not mix providers in one call with `stations`.
 7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.

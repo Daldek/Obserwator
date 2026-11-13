@@ -154,6 +154,7 @@ markers = [
     "live: real network services",
     "slow: more than ~10 s or Docker",
     "db: needs a database",
+    "hydrolog: needs Hydrolog's program (OBSERWATOR_HYDROLOG_COMMAND); skipped without it",
 ]
 
 [tool.coverage.report]

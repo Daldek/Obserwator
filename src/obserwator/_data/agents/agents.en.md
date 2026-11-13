@@ -68,7 +68,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
-5. Do not edit, move or delete store files (`archives/`, `series/`, `stations/`, `pmaxtp/`, `observations/`, `.incoming/`) — the store only grows.
+5. Do not edit, move or delete anything under the store root — the store only grows.
 6. Do not download "just in case": narrow `years`, `months` and `stations`; do not mix providers in one call with `stations`.
 7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.
