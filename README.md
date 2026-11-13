@@ -14,7 +14,7 @@ Until release 2.1.1 the tool was called IMGWTools (`pip install imgwtools`, comm
 - **CLI** - `obserwator`, commands generated from the command catalog
 - **REST API** - FastAPI with OpenAPI/Swagger documentation, routes generated from the same catalog
 - **MCP server** - `obserwator mcp` (extra `obserwator[mcp]`) and the `/mcp` endpoint of the REST server: the catalog commands as tools for AI agents, read-only by default
-- **Web GUI** - download forms, station search and an interactive map (IMGW-PIB data)
+- **GUI** - `obserwator gui serve` (extra `obserwator[gui]`): every station of IMGW-PIB and ČHMÚ on a map, the station panel with its series as a chart and a table, current IMGW-PIB measurements, analyses computed by Hydrolog and downloads (CSV, JSON, Parquet, GeoJSON), PMAXTP of a point
 
 Since 3.0.0 all interfaces use one catalog of 35 commands (`obserwator commands list`, `obserwator commands schema`): the same option name in Python, CLI (`--option-name`), REST (parameter or JSON field) and MCP (tool argument), the same validation, one result envelope `obserwator-result/1` and one error code registry (`ERROR_CODES`). Machine output (envelope, errors, notices, catalog descriptions, the guide for AI agents, the MCP server) is in English; Polish texts are available on request (`--lang pl`, `Accept-Language: pl`), while CLI help and human-readable CLI lines are in Polish (`OBSERWATOR_LANG=en` switches them to English). Guide for AI agents: [`AGENTS.md`](https://github.com/Daldek/Obserwator/blob/main/AGENTS.md) and [`llms.txt`](https://github.com/Daldek/Obserwator/blob/main/llms.txt).
 
@@ -59,7 +59,10 @@ pip install obserwator[pandas]
 # With the MCP server for AI agents (obserwator mcp; includes the CLI)
 pip install obserwator[mcp]
 
-# Full installation (CLI + API + MCP + store + pandas)
+# With the web GUI (obserwator gui serve needs the CLI too; create_app and serve need only [gui])
+pip install "obserwator[cli,gui]"
+
+# Full installation (CLI + API + GUI + MCP + store + pandas)
 pip install obserwator[full]
 
 # For developers (from the repository; uv, environment from uv.lock)
@@ -130,6 +133,15 @@ curl "http://localhost:8000/api/v1/datasets/files?dataset=hydro/dobowe&years=202
 
 Read-only by default (writing commands return a plan); `--allow-writes` enables writes, and only in directories given with `--allow-dir` (e.g. `"args": ["mcp", "--allow-writes", "--allow-dir", "/dane/obserwator", "--allow-dir", "/dane/obserwator-raw"]`); a root outside them ends with the `forbidden` error.
 
+### GUI
+
+```bash
+pip install "obserwator[cli,gui]"
+obserwator gui serve --root /dane/obserwator   # opens http://127.0.0.1:8060/; Ctrl+C stops it
+```
+
+The GUI reads the data root and never writes it: the analyses `obserwator analyses build` stored show as they are, and Hydrolog's program computes on request only a person's choices (another period, a distribution, a threshold) and the normal of the climate stripes' reference period. It has no sign-in: beyond this computer it runs behind an authenticating proxy, and open to others it follows Nogat's rules for a public GUI (terms, rate limit, logs without addresses, „Zgłoś uwagę”). It counts its use in daily totals only, one line per UTC day in `<data_dir>/obserwator/stats.jsonl` (Nogat DEV-15.11): `visitors` (distinct keyed hashes of address and User-Agent, kept in memory only), `page_views` (HTML pages served), `stations_opened` (station descriptions served, one per station the page opens), `analyses_run` (answers with a result computed on request: an analysis with a person's choices, also when repeated from the server's memory, and the climate stripes; stored results are not counted) and `downloads` (files served). The proxy, the settings, the private API and the public rules: [usage guide](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#gui).
+
 ---
 
 ## AI agents: AGENTS.md, llms.txt and the MCP server
@@ -166,7 +178,7 @@ Obserwator does not distribute IMGW-PIB or ČHMÚ data, and the server does not 
 | Station map with coordinates — `hydro-back.imgw.pl/map/stations/hydrologic` (backend of the `hydro.imgw.pl` service) | IMGW-PIB | Terms of the hydro.imgw.pl service (accepted by starting to use it): private use only, the IMGW-PIB source and processed-data lines plus the line naming the service; the water states are operational data, shown as current and never stored. [Terms](https://hydro.imgw.pl/#/regulamin) |
 | Archives and station metadata — `opendata.chmi.cz` (`hydrology/historical`, `hydrology/now/metadata`, `meteorology/climate/historical_csv`, `meteorology/climate/historical/metadata`, `meteorology/climate/now/metadata`) | ČHMÚ (Český hydrometeorologický ústav) | License [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): copying, changes and commercial use provided that ČHMÚ is credited as the author, the license is given and changes are indicated ([ČHMÚ terms](https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti)). ČHMÚ does not prescribe a wording; Obserwator writes "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)" (data source: …, license CC BY 4.0), and for processed forms adds "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)" (ČHMÚ data have been processed (normalization and format change)) |
 
-Every product of Obserwator with provider data carries the lines these terms require, byte for byte as the Nogat standard quotes them (DEV §20, ADR-012): the envelope of a command (`attribution` and `terms_notice`), the CLI summary, CSV, JSONL and Parquet exports and stored series, catalogs and PMAXTP cells, `ATTRIBUTION.txt` of a plain download and the web pages; the texts live in `obserwator.messages.legal` and `obserwator.attribution` composes them. Whoever publishes results made with the data shows the lines with them.
+Every product of Obserwator with provider data carries the lines these terms require, byte for byte as the Nogat standard quotes them (DEV §20, ADR-012): the envelope of a command (`attribution` and `terms_notice`), the CLI summary, CSV, JSONL and Parquet exports and stored series, catalogs and PMAXTP cells, `ATTRIBUTION.txt` of a plain download and every view and file of the GUI; the texts live in `obserwator.messages.legal` and `obserwator.attribution` composes them. Whoever publishes results made with the data shows the lines with them.
 
 ### Reference data (station lists, coordinates, format descriptions)
 
@@ -189,7 +201,7 @@ Usage guide ([docs/USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs
 - [Using as a Python library](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#using-as-a-python-library)
 - [Quick start (CLI)](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#quick-start-cli)
 - [REST API](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#rest-api)
-- [Web GUI](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#web-gui)
+- [GUI](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#gui)
 - [AI agents: language, command effects and the MCP server](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#ai-agents-language-command-effects-and-the-mcp-server)
 - [Source data structure](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#source-data-structure)
 - [Docker](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#docker)

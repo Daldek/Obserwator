@@ -5,12 +5,12 @@
 Obserwator is a tool for downloading, exposing, versioning and basic visualization of hydrological and meteorological data published by IMGW-PIB and, since 3.0.0, by ČHMÚ (Czech Hydrometeorological Institute, opendata.chmi.cz). The product provides:
 - Python library (public API)
 - CLI application
-- Web GUI application
+- Web GUI (`obserwator gui serve`): the stations of both providers on a map, their series, Hydrolog's analyses and downloads, PMAXTP of a point
 - Public REST API
 - MCP server for AI agents (`obserwator mcp`, `/mcp`) and a generated agent guide (`AGENTS.md`, `llms.txt`)
 - Optional versioned data store (ADR-001, `docs/DECISIONS.md`) for consumers such as Archiwista and Retman
 
-Analytical and statistical parts (hydrological calculations, probabilistic models, statistical analyses) live in a separate repository (Hydrolog) and are out of scope for this PRD.
+Analytical and statistical parts (hydrological calculations, probabilistic models, statistical analyses) live in a separate repository (Hydrolog) and are out of scope for this PRD; the GUI shows Hydrolog's results and computes none itself.
 
 ---
 
@@ -43,19 +43,19 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 
 | Interface | Status | Description |
 |-----------|--------|-------------|
-| CLI | Implemented | `obserwator` command: catalog groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands` plus `version`, `server`, `mcp`, `admin`; help in Polish or English (`OBSERWATOR_LANG`) |
-| Web GUI | Implemented | HTMX + Jinja2 web interface on the public library API (IMGW-PIB datasets) |
+| CLI | Implemented | `obserwator` command: catalog groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands` plus `version`, `server`, `mcp`, `gui serve`, `admin`; help in Polish or English (`OBSERWATOR_LANG`) |
+| GUI | Implemented (ADR-013) | `obserwator gui serve` (extra `gui`, with `cli` for the command): a Starlette app of its own on the data root, reading data only through public functions; every station of both providers on a map, the station panel with series, Hydrolog's stored analyses and downloads, PMAXTP of a point |
 | REST API | Implemented | FastAPI with OpenAPI documentation; routes generated from the same command catalog; `Accept-Language`; `GET /llms.txt` |
-| Python command catalog | Implemented (3.0.0) | 30 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
+| Python command catalog | Implemented (3.0.0) | 31 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
 | MCP server | Implemented (3.0.0) | `obserwator[mcp]`: `obserwator mcp` (stdio, read and plan by default, writes with `--allow-writes`) and `/mcp` in the REST server (read and plan only); tools = catalog commands |
 
 ### 3.3. Visualization
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Interactive map | Implemented | Leaflet.js with station markers |
-| Station listings | Implemented | Searchable tables |
-| Data charts | Not Implemented | Future enhancement |
+| Interactive map | Implemented (GUI) | MapLibre GL JS map of every located station of both catalogs, IMGW-PIB's current measurements and a PMAXTP point |
+| Station listings | Implemented (GUI) | The GUI's station list: search by name, river or code ignoring case and diacritics, filters, stations without coordinates included |
+| Data charts | Implemented (GUI) | Series and analysis charts in the GUI's own SVG module (zoom, readout by pointer and keys) |
 
 ### 3.4. Data Export
 
@@ -63,8 +63,8 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |--------|--------|-------------|
 | JSON | Implemented | Envelope `obserwator-result/1` (CLI stdout, REST body, MCP `structuredContent`); errors as `application/problem+json` |
 | URLs | Implemented | Direct links to IMGW-PIB and ČHMÚ servers |
-| CSV | Implemented | PMAXTP export in the Web GUI; station series export (`export_series`, `obserwator series export`) with units and the provider's attribution (IMGW-PIB or ČHMÚ CC BY 4.0); archive export (`export_archive`, CSV or JSONL) |
-| GeoJSON | Implemented (store) | Versioned `stations.geojson` station catalogs per provider (RFC 7946); not yet exposed in REST/GUI |
+| CSV | Implemented | Station series export (`export_series`, `obserwator series export`) with units and the provider's attribution (IMGW-PIB or ČHMÚ CC BY 4.0); the stations (`export_stations`, `obserwator stations export`); archive export (`export_archive`, CSV or JSONL); PMAXTP of a point in the GUI, packed by the server |
+| GeoJSON | Implemented | Versioned `stations.geojson` station catalogs per provider (RFC 7946) in the store; exposed by `export_stations` / `obserwator stations export` / `GET /api/v1/stations/export` (`obserwator-stations-export/1`) and the GUI („Pobierz listę stacji”) |
 | Markdown | Implemented | Agent guide `AGENTS.md`/`llms.txt` (`obserwator commands guide`, `GET /api/v1/commands/guide`, `GET /llms.txt`) |
 | Parquet | Implemented (store) | Station series per dataset (`obserwator-series/1`, `obserwator[store]`) |
 
@@ -78,7 +78,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |-------------|--------|
 | OpenAPI/Swagger documentation | Implemented |
 | API versioning (`/api/v1/`) | Implemented |
-| Catalog routes `/api/v1/<group>/<command>` (datasets, stations, current, pmaxtp, store, series, commands) | Implemented — 28 routes generated from `command_schema()` |
+| Catalog routes `/api/v1/<group>/<command>` (datasets, stations, current, pmaxtp, store, series, commands) | Implemented — 29 routes generated from `command_schema()` |
 | Paging of list commands (`limit`/`cursor`, maximum `OBSERWATOR_API_MAX_LIMIT`) | Implemented |
 | Errors as `application/problem+json` with registry codes | Implemented |
 | Health check | Implemented |
@@ -97,24 +97,37 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 
 ---
 
-## 5. Web GUI — Requirements
+## 5. GUI — Requirements
+
+`obserwator gui serve` (ADR-013; usage: `docs/USAGE.md`, „GUI”).
 
 ### Implemented
 
 | Requirement | Status |
 |-------------|--------|
-| Fully web-based | Implemented |
-| HTTPS communication | Implemented (via Nginx) |
-| Download forms (archives from the dataset registry, PMAXTP) | Implemented |
-| Station search with paging | Implemented |
-| Interactive map | Implemented |
+| A server of its own with a private API relative to its page (not the REST API), on 127.0.0.1:8060 by default; hosted by Nogat's GUI platform through the entry point `nogat.gui`, also under a prefix | Implemented (extra `gui`) |
+| Every located station of IMGW-PIB and ČHMÚ on one map (MapLibre GL JS) in hydro.imgw.pl's symbols; search ignoring case and diacritics; filters by provider, kind, dataset and activity; stations without coordinates listed | Implemented |
+| A station's panel by kind: description, current IMGW-PIB measurements, series as a chart and a table (flags, hydrological or calendar year), analyses, downloads | Implemented |
+| „Pomiary bieżące”: IMGW-PIB's current hydrological and meteorological measurements on the map | Implemented |
+| Data charts: an own SVG module with zoom and a readout by pointer and keys | Implemented |
+| The analyses of the Nogat plan, hydrological and meteorological, every number Hydrolog's: the results stored in the data root (ADR-016) shown as they are; a period, distribution or threshold chosen by the person computed on request | Implemented |
+| Downloads: series as CSV, JSON or Parquet, the stations as GeoJSON or CSV, the stored analyses as JSON or CSV, an analysis result as JSON, PMAXTP of a point as CSV or JSON; each with its provider's lines, series, stations and stored analyses with the command line that writes the same file | Implemented |
+| Hand-off to Hydrolog (`nogat-handoff/1`) | Implemented |
+| PMAXTP of a point picked on the map or by coordinates, without a layer of the grid | Implemented |
+| Polish and English, light and dark theme, a phone layout; Nogat's identity and app menu | Implemented |
+| Offline map without a basemap (the packaged borders) | Implemented |
+| Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms, statement, rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented; „Zgłoś uwagę” without admin routes (a deviation in `CLAUDE.md`) |
+| HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
 
 | Requirement | Status |
 |-------------|--------|
-| Data charts | Not Implemented |
-| User accounts | Not Implemented |
+| User accounts, sign-in | Not in scope: an authenticating proxy in front of the GUI |
+| Climate stripes (M15) | A prototype of the colour scale only (Hydrolog has no stripes yet) |
+| IMGW-PIB warnings | Not implemented (warnings name areas, not stations) |
+| ČHMÚ current data | Not supported (Obserwator reads no ČHMÚ current data) |
+| Other open gaps | `docs/PROGRESS.md`, „GUI: open gaps” |
 
 ---
 
@@ -129,6 +142,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | `obserwator admin` command | Implemented |
 | `obserwator server` command | Implemented |
 | `obserwator mcp` command (MCP server on stdio) | Implemented (3.0.0, `obserwator[mcp]`) |
+| `obserwator gui serve` command (the GUI) | Implemented (extra `gui` with `cli`, ADR-013) |
 | `obserwator store`, `obserwator series`, `obserwator pmaxtp`, `obserwator commands` | Implemented (3.0.0, generated from the command catalog) |
 | `imgw project` | Moved to Archiwista (ADR-008, 2026-10-31) |
 | `--check` (plan only, no writes), `--schema` (command schema) | Implemented |
@@ -144,6 +158,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 obserwator version
 obserwator server [--host] [--port] [--reload]
 obserwator mcp [--allow-writes]
+obserwator gui serve [--host] [--port] [--root] [--no-browser]
 
 # Datasets, stations, live data (lists accept --limit/--cursor)
 obserwator datasets list [-k hydro|meteo] [--provider IMGW-PIB|CHMI]

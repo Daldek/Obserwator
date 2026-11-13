@@ -1,13 +1,13 @@
 # Obserwator — Usage Guide
 
-A detailed guide to the Obserwator interfaces (Python library, CLI, REST, Web GUI, MCP server), configuration, the versioned store and the 3.0.0 changes, moved without content changes from [README.md](../README.md) (Nogat standard 1.0, DOC-2.2). For developers: [CODEBASE.md](CODEBASE.md) (project structure) and [TESTING.md](TESTING.md) (tests).
+A detailed guide to the Obserwator interfaces (Python library, CLI, REST, the GUI, MCP server), configuration, the versioned store and the 3.0.0 changes, moved without content changes from [README.md](../README.md) (Nogat standard 1.0, DOC-2.2). For developers: [CODEBASE.md](CODEBASE.md) (project structure) and [TESTING.md](TESTING.md) (tests).
 
 ## Contents
 
 - [Using as a Python library](#using-as-a-python-library)
 - [Quick start (CLI)](#quick-start-cli)
 - [REST API](#rest-api)
-- [Web GUI](#web-gui)
+- [GUI](#gui)
 - [AI agents: language, command effects and the MCP server](#ai-agents-language-command-effects-and-the-mcp-server)
 - [Source data structure](#source-data-structure)
 - [Docker](#docker)
@@ -493,7 +493,7 @@ Catalog commands (full list: `obserwator commands list`):
 | `obserwator commands schema` | `command_schema` | — | `GET /api/v1/commands/schema` |
 | `obserwator commands guide` | `agent_guide` | `check_command` | `GET /api/v1/commands/guide` |
 
-Outside the catalog: `obserwator version`, `obserwator server`, `obserwator mcp` and `obserwator admin keys|create|revoke|delete|stats`.
+Outside the catalog: `obserwator version`, `obserwator server`, `obserwator mcp`, `obserwator gui serve` (section [GUI](#gui)) and `obserwator admin keys|create|revoke|delete|stats`.
 
 **Options.** Flag = `--` + option name with `-` instead of `_`; short forms: `-d` dataset(s), `-y` years, `-m` months, `-s` station(s), `-k` kind, `-q` query, `-o` plain-file directory (`--output-dir`), `-r` root, `-f` format; `--lat`/`--lon` are aliases of `--latitude`/`--longitude`. Write target (DEV-19.1): `--output-dir` (`-o`) writes plain files into a directory, `--root` (`-r`) writes to the versioned store, the raw root of a download or the data root of a build (the options are mutually exclusive; with neither of them, the default root of the command's kind: ADR-017), `--output` (no short form) writes one export file, and `--force` replaces existing plain files. `--raw-root` names the raw root that `series build` and `store catalog` read and never write (default: the raw root of `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw`). Lists: comma-separated values or a repeated flag. List commands have `--limit` and `--cursor` (the opaque `page.next_cursor` of the previous page; any other text → `validation_error` with `details.option="cursor"`). `--provider` (`IMGW-PIB` or `CHMI`) narrows `datasets list`, `stations find` and `store scan` to one provider (omitted = both) and selects the catalog in `store catalog` (default `IMGW-PIB`). `--check` (only in commands with a `--check` column) prints the plan without writing and without downloading data, `--schema` — the description of the command options without running it, `--json` (every command) — the envelope instead of the summary for a person, `--lang pl|en` (every command) — the language of that summary and of the stderr lines. Dataset-dependent rules (e.g. `--stations` for `cz.chmi.*`) are in `x-obserwator.rules` of the schema. `OBSERWATOR_LANG=en` switches the CLI help and the default `--lang` of the summary to English (a value outside `pl|en` → `validation_error`, code 2).
 
@@ -601,17 +601,163 @@ curl -X POST "http://localhost:8000/api/v1/store/sync?check=true" \
 
 Store routes work only on the server-side, absolute roots (ADR-017; the client passes neither): `OBSERWATOR_RAW_ROOT` is the root of `store check|sync|export` and `pmaxtp check|sync|read`, `OBSERWATOR_ROOT` the root of `store catalog`, `store info|scan`, `stations export`, `stations find?source=store`, `series *` and `analyses *`, and `series build` and `store catalog` also read `OBSERWATOR_RAW_ROOT` as their `raw_root`. A command whose root is not set answers 503 `store_unavailable` (`details.reason="not_configured"`, the message names the variable), a root of the other kind 503 with `details.reason="wrong_root"`; `version` is relative to the command's root. Writing operations additionally require `OBSERWATOR_STORE_WRITES_ENABLED=true`, `OBSERWATOR_STORE_WRITE_TOKEN` and an `X-API-Key` header with that token — they are disabled by default (403 `forbidden`). User coordinate CSV files (`user_locations`) only from the `OBSERWATOR_USER_LOCATIONS_DIR` directory.
 
-## Web GUI
+## GUI
 
-After starting the server, available at http://localhost:8000:
-- `/` - Dashboard
-- `/download` - Selecting data to download; `/download/archives` - links to registry dataset archives, `/download/pmaxtp` - PMAXTP tables (CSV/XLSX/JSON export)
-- `/stations` - Station search (IMGW-PIB lists, pagination)
-- `/map` - Map of hydro stations colored by water state (`GET /api/v1/current/hydro-states`)
+`obserwator gui serve` serves a browser GUI of Obserwator's data root (ADR-013): every located station of IMGW-PIB and ČHMÚ on one map, a station's description, series and current IMGW-PIB measurements, the analyses Hydrolog computed, downloads, and PMAXTP of a point. It is a server of its own that reads Obserwator's data only through its public functions (and uses the internal helpers `_environment`, `_jsonable` and `_hydrolog` for the settings, JSON and Hydrolog's program); `obserwator server` serves the REST API, and its `GET /` redirects to `/docs`. The command needs `pip install "obserwator[cli,gui]"`; the Python API (`obserwator.gui.create_app`, `serve`) needs only the extra `gui` (pyarrow, Starlette, uvicorn). The page is Polish by default and English through „PL | EN”; its texts are the area `gui` of the message catalog. A guide in Polish is served at `instrukcja/` („Instrukcja” in the top bar).
 
-Each station links to the official IMGW page: `https://hydro.imgw.pl/#/station/{type}/{id}`
+```bash
+obserwator gui serve [--host 127.0.0.1] [--port 8060] [--root PATH] [--no-browser]
+```
 
-The Web GUI supports IMGW-PIB datasets only (a form without a station field cannot handle per-station ČHMÚ files); ČHMÚ data are available in Python, the CLI, REST and MCP.
+- `--host` and `--port` give the address, `127.0.0.1:8060` by default (this computer only; port `0` takes a free one); `--root` the data root, else the CLI's root (`OBSERWATOR_ROOT`, `[obserwator] root`, `<data_dir>/obserwator`); `--no-browser` leaves the default browser closed.
+- Once it listens, the command prints `Obserwator GUI: http://127.0.0.1:8060/` on stderr and blocks until Ctrl+C or `SIGTERM`; then it lets open requests end (at most 5 s) and exits with 0. A port in use is `conflict` (`details.reason="port_in_use"`), a host that does not resolve or a basemap address that is no `http`/`https` URL is `validation_error`, a missing package of the extra `missing_dependency`: the error line of every command, with its exit code.
+- Python: `obserwator.gui.serve(host=, port=, root=, open_browser=)` blocks the same way and returns `url`, `started_at` and `stopped_at`; `obserwator.gui.create_app(root=)` returns the ASGI app. Importing `obserwator.gui` imports neither Starlette nor uvicorn.
+
+**The page.** The top bar holds Obserwator's mark, the view with its station or point, „Zgłoś uwagę”, „Instrukcja”, Nogat's app menu „Aplikacje” (the GUIs of `[nogat.gui]`), „PL | EN” and the theme („Auto”, „Jasny”, „Ciemny”). The map's bar switches the views „Stacje | Pomiary bieżące | PMAXTP”:
+
+- „Stacje” draws the stations of the current catalogs in hydro.imgw.pl's symbols: a triangle for a hydrological station, a circle for a meteorological one, a hollow centre when the root holds no series of the station, a dashed outline for ČHMÚ, inactive ones faded. The left panel searches by name, river or code ignoring case and diacritics, filters by provider, kind, dataset and „tylko czynne”, and lists the stations without coordinates too, marked and counted. With no station chosen, the right panel offers „Pobierz listę stacji” (GeoJSON or CSV of the list's provider and kind). A chosen station opens there with „Informacje o stacji”, „Pomiary bieżące” (IMGW-PIB's latest values with their times; for ČHMÚ „Dane bieżące ČHMÚ nie są udostępniane”), „Dane pomiarowo-obserwacyjne” (dataset, variables, hydrological or calendar year, chart and table, flags), the analyses that apply to it and „Pobierz”. Hydrological analyses: „Stany charakterystyczne”, „Krzywa natężenia przepływu”, „Przepływy maksymalne i minimalne”, „Niżówki”, „Czas trwania i strefy”, „Reżim i sezonowość”, „Temperatura wody”, „Trendy i bilans”; meteorological: „Opady”, „Susze i okresy bezopadowe”, „Temperatura”, „Śnieg”, „Trendy”.
+- „Pomiary bieżące” hides the station layer and draws IMGW-PIB's current measurements: hydrological stations filled by their water state, meteorological ones by their latest 10-minute precipitation, each value with its time.
+- „PMAXTP” takes a point clicked on the map or typed as coordinates, POT or AMP, and shows the quantiles (KS), the upper confidence bounds (SG) and the estimation errors (RB), their CSV and JSON and a link to IMGW-PIB's own answer for the point; the map draws no layer of the PMAXTP grid.
+
+Every analysis shows Hydrolog's result with its source (stored, or computed on request), the series version and Hydrolog's version: a card opens with the stored results of the whole record, and a person's choice (another period, under „Zalecany minimalny okres: 30 lat”, a distribution, a threshold) is computed on request. „Pobierz” gives each series as CSV, JSON or Parquet with the `obserwator series export` line that writes the same file, the station's stored analyses as JSON or CSV with the `obserwator analyses export` line (each analysis also on its own) and, for a hydrological station, „Kopiuj do Hydrologa” and „Plik przekazania” (`nogat-handoff/1`); the hand-off also sits beside the characteristic values, the flood quantiles, the low-flow periods and the rating curve. Every view shows the attribution lines and terms of the data it shows (ADR-012). The address keeps the station, its open section, the view and the PMAXTP point (`?station=…&section=…&view=current|pmaxtp&lat=…&lon=…&method=AMP`), so a copied link opens the same view.
+
+**What it reads and writes.**
+
+- The data root, read-only, through Obserwator's public readers: the current catalog of each provider, the current series of each dataset and the current stored analyses of each provider (ADR-016). It asks again at most once a minute whether a current version changed, so a new `store catalog`, `series build` or `analyses build` shows without a restart. Answers from the root carry a strong `ETag` with `Cache-Control: no-cache`, so a browser asks again and gets `304` while nothing changed. It never writes under the root and never downloads archives.
+- IMGW-PIB's current data (water states, hydrological, meteorological and synoptic records), each fetched by the server on demand at most once per 10 minutes, one request at a time (a failed fetch keeps the last snapshot with its time and is not repeated for a minute), and PMAXTP of a point (per method and point at four decimals) for 24 hours, at most 1,000 points: in memory only. The page connects only to its own origin and the basemap's; the link to IMGW-PIB's PMAXTP answer is a navigation the person starts.
+- Analyses: every number is Hydrolog's. The results `obserwator analyses build` stored in the data root are shown as they are (`list_analyses`, `read_analysis`); a station whose provider has none stored shows no analysis. A person's choice (a period, a distribution, a threshold) and the normal of the climate stripes' reference period are computed on request by Hydrolog's program (`compute_analysis`): the program of `OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the server starts; at most two processes at a time, 30 s each, the result kept in memory (500 results) and never written. Without the program only stored results are shown, and a person's choice is refused (`missing_dependency`) until the server starts again with one.
+- Temporary files in `TMPDIR`: the series files Hydrolog's program reads for a computation on request (a directory `obserwator-analyses-*` of each computation, removed when it ends) and a Parquet download (removed at once).
+- Its own files, only in `<data_dir>/obserwator` (directories `0700`, files `0600`): `stats.jsonl`, `feedback.jsonl` and `logs/access-YYYY-MM-DD.jsonl` (section [Public deployment](#public-deployment)). That directory is also the CLI's default root: when it and the data root are one, or one holds the other (also through symbolic links), the GUI writes none of its files (no statistics, no access log, „Zgłoś uwagę” answers `forbidden`) and logs one warning. Serve a root elsewhere, or set another `data_dir`, to keep them.
+
+**Settings** (also in the table of [Configuration](#configuration)):
+
+| Variable (`nogat.toml` key) | Default | Meaning |
+|---|---|---|
+| `OBSERWATOR_GUI_BASEMAP_URL` (`gui_basemap_url`) | `https://tiles.openfreemap.org/planet` | TileJSON of the basemap, drawn in the GUI's own grey style with place names in the page's language where the tiles have them; the TileJSON and its tiles must share one origin, the only remote one the CSP allows. `none` or `off`, or the variable set and empty (`.env` ignores empty values): no basemap, the borders of Poland and Czechia packaged with Obserwator, offline |
+| `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION` (`gui_basemap_attribution`) | `OpenFreeMap © OpenMapTiles Data from OpenStreetMap` | the basemap's credit under the map |
+| `OBSERWATOR_HYDROLOG_COMMAND` (`hydrolog_command`) | unset: `hydrolog` on `PATH` | Hydrolog's program for a person's choices computed on request: a command line, split as a shell splits it, looked for once when the server starts; without a program only stored results are shown |
+| `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW` (`request_limit`, `request_window`) | `300`, `60` | the rate limit: requests of one client address in a window of seconds (Nogat DEV-15.9) |
+
+The tables `[nogat.gui]` and `[nogat.operator]` of `nogat.toml` are no settings (no variable, no default); the GUI reads them when it starts. `[nogat.gui]` lists the GUIs of the deployment for the app menu „Aplikacje” (a registry name in lower case → its address; Nogat DEV-15.4); its `obserwator` entry is this GUI's own public address, which the regulamin and a hand-off name. `[nogat.operator]` names who runs a deployment open to others (section [Public deployment](#public-deployment)).
+
+**Private API.** The page talks to its server at addresses relative to the page (`api/…`), with GET and HEAD, and `POST api/feedback` (Nogat DEV-15.12); any other method is `405` with `Allow`. It serves this GUI only: no `/api/v1`, no OpenAPI, no stability promise (a deviation from Nogat AGI-6.1 recorded in `CLAUDE.md`); scripts and agents use the REST API, the CLI or MCP. Every parameter is checked before the root or Hydrolog is touched, and an unknown or repeated one is `validation_error`; an error is the document `obserwator-error/1` with the registry's HTTP status, in the language of `Accept-Language` (`pl` or `en`, Polish by default), without server paths.
+
+| Route | Answer |
+|---|---|
+| `api/session` | `obserwator-gui-session/1`: Obserwator's and Hydrolog's versions; the catalogs and series in use (version, SHA-256, date) and the current stored analyses of each provider (`root.analyses`: version, SHA-256, date and Hydrolog's version, `null` without them), or the root's error; the providers and their attribution lines; the basemap; `[nogat.gui]`; in a public deployment `terms` and the operator's e-mail; whether a person's choices can be computed |
+| `api/texts?lang=pl\|en` | the area `gui` of the message catalog in one language |
+| `api/stations`, `api/stations/{code}` | the station layer of the current catalogs (code, name, river, provider, kind, active, location, datasets, first and last year); one station's catalog properties and the series holding it with each variable's coverage |
+| `api/series/{dataset}/{code}?variables=&start=&end=` | a station's series: dates, values (`null` = none) and flags |
+| `api/analyses/{code}`, `api/analysis/{code}/{id}?<options>` | the stored analyses of a station (`obserwator-analysis-summary/1`, each with the options a person may change) and whether a choice can be computed; one id's result (`obserwator-analysis/1`): without options the stored one (`source: stored`), with the person's options one computed on request (`source: computed`) |
+| `api/current`, `api/current/{code}` | the points of „Pomiary bieżące”; one IMGW-PIB station's current values with their times (and its synoptic report where it pairs) |
+| `api/pmaxtp?latitude=&longitude=&method=POT\|AMP` | PMAXTP of a point: the KS, SG and RB tables, IMGW-PIB's address of its answer and the equivalent `pmaxtp fetch` line |
+| `api/downloads/{code}`, `api/downloads/stations?provider=&kind=` | the files offered: a station's series and its stored analyses, or the stations; each format with its file name, address, command line and licence |
+| `api/files/series/{dataset}/{code}?format=csv\|json\|parquet` | `export_series`: the file `obserwator series export` writes |
+| `api/files/stations?format=geojson\|csv&provider=&kind=` | `export_stations`: the file `obserwator stations export` writes |
+| `api/files/analyses/{code}?format=json\|csv&analysis=` | `export_analyses`: the file `obserwator analyses export` writes, every stored analysis of the station or the one `analysis` |
+| `api/files/analysis/{code}/{id}?<options>` | one analysis result as a JSON file (`obserwator-analysis/1`), stored or computed with the person's options |
+| `api/files/pmaxtp?latitude=&longitude=&method=&format=csv\|json` | PMAXTP of a point packed by the server: CSV, or JSON `obserwator-pmaxtp-export/1`, with PMAXTP's lines |
+| `api/handoff/{code}?variable=Q\|H&resolution=daily\|annual&…` | `nogat-handoff/1` around `hydrolog-series/1`: Q or H daily over the hydrological years chosen, or the annual maxima of a flood-frequency result with its command, options and numbers |
+| `api/prototype/stripes/{code}` | the climate stripes (M15), a prototype of their colour scale: `obserwator-gui-stripes/1` |
+| `POST api/feedback` | „Zgłoś uwagę” (section [Public deployment](#public-deployment)) |
+| `regulamin.html` | the terms of a public deployment |
+| `data/poland_border_wgs84.geojson`, `data/czechia_border_wgs84.geojson` | the packaged borders of the offline map |
+
+Every other address is a static file of `gui/web/` (`index.html` at `/`, `instrukcja/`); another address under `api/` is `404`.
+
+**Under a prefix and as Nogat's module.** The page uses relative addresses only, so the app answers at `/` or mounted under any prefix of a host, e.g. `Starlette(routes=[Mount("/m/obserwator", app=create_app(root=root))])`. Nogat's GUI platform finds it through the entry point `nogat.gui` (`obserwator = "obserwator.gui:gui_module"`): `gui_module()` returns a `GuiModule` with `name="obserwator"`, `title="Obserwator"`, `web` (the page's directory), `index="index.html"`, `sections` (`stations` „Stacje”, `current` „Pomiary bieżące”, `pmaxtp` „PMAXTP”) and `app=create_app`. `?nogat=1` in the page's address hides Obserwator's own top bar before the first paint, inside a host's shell; the views stay in the map's bar.
+
+### Behind an authenticating proxy
+
+The GUI has no sign-in: whoever reaches its address uses it. Bind it to `127.0.0.1` (the default) and, when others need it, put an authenticating reverse proxy in front of it, e.g. Cloudflare Access through a Cloudflare Tunnel, or a proxy with a sign-in of its own. uvicorn takes the client's address from the proxy's `X-Forwarded-For` only when the connection comes from an address of `FORWARDED_ALLOW_IPS` (uvicorn's variable, default `127.0.0.1,::1`): set it to the proxy's address, so the rate limit and the visitor count see clients, not the proxy. uvicorn's own access log is off, and no `server` header is sent.
+
+Every answer carries:
+
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (the basemap's origin only when a basemap is set);
+- `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (the tile server learns no page), `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`;
+- `Cache-Control: no-cache` unless the answer sets another, and `X-Request-Id`, the id of its access-log line.
+
+There are no cookies, sessions or CORS headers; answers of 1 KiB or more are compressed with gzip for a client that accepts it. `curl -sI http://127.0.0.1:8060/` shows the headers.
+
+A systemd user unit, e.g. `~/.config/systemd/user/obserwator-gui.service`, where `<checkout>` holds a virtual environment with the extras (`uv sync --locked --extra cli --extra gui`):
+
+```ini
+[Unit]
+Description=Obserwator GUI
+
+[Service]
+Environment=TMPDIR=/home/<user>/data/tmp
+Environment=OBSERWATOR_HYDROLOG_COMMAND=/path/to/hydrolog
+Environment=FORWARDED_ALLOW_IPS=127.0.0.1
+WorkingDirectory=<checkout>
+ExecStart=<checkout>/.venv/bin/obserwator gui serve --no-browser --host 127.0.0.1 --port 8060 --root <data root>
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target
+```
+
+`systemctl --user enable --now obserwator-gui.service` starts it; `systemctl --user stop obserwator-gui.service` sends `SIGTERM`, after which the GUI writes the day's statistics and exits with 0. `TMPDIR` takes the temporary series and Parquet files. The GUI's warnings and errors go to stderr, under systemd to the journal, which must keep them at most 14 days (Nogat DEV-15.10): e.g. `MaxRetentionSec=14day` in a drop-in of `/etc/systemd/journald.conf.d/` (journald's settings hold for the whole journal). A user's services run while the user is logged in unless lingering is on (`loginctl enable-linger <user>`).
+
+### Public deployment
+
+A deployment open to others names its operator in `[nogat.operator]` of `nogat.toml` (Nogat DEV-18.1, DEV-15.7) and the GUI's own public address as `obserwator` in `[nogat.gui]`:
+
+```toml
+[nogat.gui]          # the GUIs of the deployment, listed in the app menu „Aplikacje”
+obserwator = "https://obserwator.example.org/"
+hydrolog = "https://hydrolog.example.org/"
+
+[nogat.operator]     # who runs the deployment (Nogat kit 0.4.0)
+name = "Jan Kowalski"
+email = "obserwator@example.org"
+terms_effective = 2026-11-13               # a date
+processor = "Example Hosting sp. z o.o."   # carries the traffic and processes IP addresses
+mail_provider = "iCloud Mail (Apple)"      # holds the operator's mailbox
+processor_transfer = ""                    # the processor's transfers outside the EEA
+processor_cookie = ""                      # the processor's cookie against bots
+mail_transfer = "Mogą być przetwarzane poza Europejskim Obszarem Gospodarczym."
+```
+
+`name`, `email`, `terms_effective`, `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` are sentences of the terms, empty or left out when they do not apply. A table with a required key missing or empty is not used. With a usable `[nogat.operator]` and the `obserwator` address the GUI is public:
+
+- **Terms (DEV-15.7).** `regulamin.html` beside the start page: the `nogat-terms.html` of Nogat's kit 0.4.0 (regulamin 1.0, copied into `gui/web/nogat/`), filled from `[nogat.operator]`, the `obserwator` address and Obserwator's own values (name, MIT licence, source address), with the blocks of its data sources kept (IMGW-PIB, hydro.imgw.pl, PMAXTP, ČHMÚ, and OpenStreetMap with a basemap). Every view links „Regulamin” beside the attribution lines, and the app menu passes it. Without the two tables there is neither page (`404`) nor link; a template that cannot be filled is logged and not served.
+- **Statement (DEV-15.8).** Beside „Regulamin”, under the map of every view and in the list's foot: „Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB.” (in English with „EN”).
+
+The other rules hold in every deployment whose own directory lies apart from the data root:
+
+- **Rate limit (DEV-15.9).** API calls and HTML pages (`/`, `index.html`, `regulamin.html`, `instrukcja/`) of one client address are counted in a sliding window: 300 requests in 60 s by default (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`); static files (scripts, styles, images, the borders) are not counted. Over the limit the answer is `429` with `Retry-After` in seconds: the error document `rate_limited` for an API call, the page „Zbyt wiele żądań. Spróbuj ponownie za <n> s.” for a page. The address stays in memory for the window only. „Zgłoś uwagę” has a limit of its own: 5 reports of one address in 10 minutes.
+- **Logs (DEV-15.10).** No log holds the client's address. The access log is one JSON line per request in `<data_dir>/obserwator/logs/access-YYYY-MM-DD.jsonl` (the UTC day): `time`, `method`, `path` with the query, `status`, `size`, `duration_ms`, `request_id` (the answer's `X-Request-Id`) and `user_agent`; the files of the 14 most recent UTC days are kept, older ones deleted at the start and at each day's change. uvicorn's access log is off, and the app's loggers write no client field or request scope; their warnings and errors go to stderr, kept 14 days at most as above. A reverse proxy's logs fall under the same rule.
+- **Daily totals (DEV-15.11).** One JSON object per UTC day and line of `<data_dir>/obserwator/stats.jsonl`, in date order, rewritten atomically every 5 minutes, at the day's change and at shutdown; a restart adds to the day's line:
+
+  | Key | What the GUI counts |
+  |---|---|
+  | `date` | the UTC day, `YYYY-MM-DD` |
+  | `visitors` | distinct visitors: for each request the rate limit counts, the HMAC-SHA-256 of the client's address and User-Agent under a random 32-byte salt drawn at the start and at 00:00 UTC; salt and hashes stay in memory, and a restart counts anew |
+  | `page_views` | HTML pages answered with `200`: `/`, `index.html`, `regulamin.html`, `instrukcja/` |
+  | `stations_opened` | station descriptions served, `api/stations/{code}`: the page asks once for each station it opens |
+  | `analyses_run` | answers with a result computed on request: `api/analysis/{code}/{id}` with a person's options (also when the result is repeated from the server's memory) and the climate stripes, `api/prototype/stripes/{code}`; a stored result is not counted |
+  | `downloads` | files served by `api/files/…`: series, stations, stored analyses, analysis results, PMAXTP |
+
+- **„Zgłoś uwagę” (DEV-15.12).** The top bar's button opens a dialog with one text field of 1 to 5,000 characters, „Nie wpisuj danych osobowych.” and, in a public deployment, „Jeśli chcesz odpowiedzi, napisz na <e-mail>” with `[nogat.operator] email`. `POST api/feedback` takes `{"message": text, "context": {"view", "station", "parameters"}}` as `application/json` of at most 112 KiB from the GUI's own page only (`Sec-Fetch-Site: same-origin`, else a matching `Origin`), checks it, appends one line to `<data_dir>/obserwator/feedback.jsonl` and answers `{"id": <id>, "status": "ok"}`. A report never holds an IP address or a User-Agent:
+
+  | Field | Value |
+  |---|---|
+  | `id` | one more than the largest id in the file |
+  | `created_at` | the UTC time of receipt, ISO 8601 with offset |
+  | `message` | the text, stripped |
+  | `context` | `view` (`stations`, `current` or `pmaxtp`), `station` (a code of the catalog, or `null`), `parameters` (the address's parameters, at most 50), `app_version`; at most 100 KB |
+  | `is_read` | `false` |
+
+  There are no admin routes (`/api/admin/feedback`): Obserwator has no operator sign-in and no database (a deviation from DEV-15.12 recorded in `CLAUDE.md`). The operator reads the reports with `jq` and marks or deletes them by rewriting the file in place under its lock, which the server takes for each report (`flock`):
+
+  ```bash
+  cd ~/.local/share/nogat/obserwator    # <data_dir>/obserwator
+  jq -c 'select(.is_read | not)' feedback.jsonl                       # the unread reports
+  flock feedback.jsonl sh -c 'jq -c "select(.id != 3) | if .id == 4 then .is_read = true else . end" feedback.jsonl > feedback.new && cat feedback.new > feedback.jsonl && rm feedback.new'   # delete 3, mark 4 read
+  ```
 
 ## AI agents: language, command effects and the MCP server
 
@@ -734,7 +880,12 @@ api_max_limit = 500
 | `OBSERWATOR_MCP_ENABLED` | `mcp_enabled` | `false` | `/mcp` in `obserwator server` (read and plan only) |
 | `OBSERWATOR_MCP_ALLOWED_HOSTS` | `mcp_allowed_hosts` | `127.0.0.1,localhost` | `Host` names served by `/mcp` |
 | `OBSERWATOR_MCP_ALLOW_WRITES` | `mcp_allow_writes` | `false` | `obserwator mcp` in write mode (`--allow-writes`, `--no-allow-writes`) |
-| `OBSERWATOR_HYDROLOG_COMMAND` | `hydrolog_command` | none (`hydrolog` on `PATH`) | Hydrolog's program for `analyses build` and `compute_analysis` (ADR-016): a command line split as a shell splits it, e.g. `/opt/hydrolog/.venv/bin/hydrolog`; no command option replaces it |
+| `OBSERWATOR_GUI_BASEMAP_URL` | `gui_basemap_url` | `https://tiles.openfreemap.org/planet` | TileJSON of the GUI's basemap; `none` or `off` (or the variable set and empty): the packaged borders, offline (section [GUI](#gui)) |
+| `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION` | `gui_basemap_attribution` | `OpenFreeMap © OpenMapTiles Data from OpenStreetMap` | the basemap's credit line |
+| `OBSERWATOR_HYDROLOG_COMMAND` | `hydrolog_command` | none (`hydrolog` on `PATH`) | Hydrolog's program for `analyses build`, `compute_analysis` (ADR-016) and the GUI's choices computed on request (looked for once when it starts): a command line split as a shell splits it, e.g. `/opt/hydrolog/.venv/bin/hydrolog`; no command option replaces it |
+| `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW` | `request_limit`, `request_window` | `300`, `60` | the GUI's rate limit: requests of one client address in seconds |
+
+`[nogat.gui]` (GUI addresses, Nogat DEV-15.4) and `[nogat.operator]` (the operator of a public deployment, DEV-15.7) are tables of `[nogat]` in `nogat.toml` only, with no variable and no default; section [GUI](#gui).
 
 `obserwator config show --json` prints one `obserwator-config/1` document: every key with its value and source (`default`, `env`, `dotenv`, `file` and the variable or table name), every credential variable as `present` or `missing` (without the value) and both roots, `store` the data root and `raw_store` the raw root, each with its source, whether it exists and its size (hard-linked files counted once); without `--json` the same description as text (the lines "Data root" and "Raw root").
 

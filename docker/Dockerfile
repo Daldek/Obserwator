@@ -1,4 +1,5 @@
-# Obserwator Docker image: REST API, web GUI and MCP over HTTP (/mcp)
+# Obserwator Docker image: REST API and MCP over HTTP (/mcp); "/" redirects to /docs.
+# The web GUI is a server of its own (obserwator gui serve, extra gui), not in this image.
 FROM python:3.12-slim
 
 # Set environment variables

@@ -1,0 +1,33 @@
+/*
+ * The view „PMAXTP” (src/pmaxtp/): the form of the left panel (method, coordinates,
+ * examples, the methods) and the results of the right one (the tables of durations by
+ * probabilities with a sticky first row and column, the lines, the files, the link to
+ * IMGW-PIB's answer, the command line). Colours from the tokens only.
+ */
+
+.pmaxtp-form { display: grid; gap: var(--space-2); }
+.pmaxtp-form .hint-box, .pmaxtp-form .note { margin: 0; }
+.pmaxtp-form .group-title { margin: var(--space-3) 0 0; }
+.pm-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pm-label { display: block; font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2); }
+.pm-row .pm-label { min-width: 70px; }
+.pm-coords { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.pm-coords label { display: grid; gap: 4px; min-width: 0; }
+.pm-coords input { width: 100%; font-variant-numeric: tabular-nums; }
+.pm-coords input[aria-invalid="true"] { border-color: var(--bad-ink); }
+.pmaxtp-form .ana-error { margin: 0; }
+.pm-method { font-size: var(--text-sm); color: var(--text-2); }
+.pm-method summary { cursor: pointer; font-weight: var(--weight-bold); color: var(--text); }
+.pm-method p { margin: 4px 0 0; line-height: 1.45; }
+
+.pmaxtp-result { display: grid; gap: var(--space-2); }
+.pmaxtp-result > * { margin-top: 0; margin-bottom: 0; }
+.pmaxtp-result.is-loading { opacity: 0.6; }
+.pmaxtp-result .group-title { margin: var(--space-2) 0 0; }
+.pm-table-wrap { max-height: 60vh; }
+.pm-table th, .pm-table td { padding: 3px 6px; }
+.pm-table tbody th[scope="row"] {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface-2); color: var(--text-2); font-weight: var(--weight-bold); text-align: right;
+}
+.pm-table thead th:first-child { left: 0; z-index: 2; }

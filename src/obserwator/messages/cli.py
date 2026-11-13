@@ -311,4 +311,34 @@ MESSAGES = {
         "Katalog, który serwer MCP może czytać i zapisywać (opcja powtarzalna); bez "
         "niego narzędzie zapisujące tylko planuje",
     ),
+    "gui_help": Text(
+        "Obserwator's web GUI: stations on a map, their data and analyses, PMAXTP.",
+        "Web GUI Obserwatora: stacje na mapie, ich dane i analizy, PMAXTP.",
+    ),
+    "gui_serve_help": Text(
+        "Serve the web GUI until Ctrl+C or SIGTERM; it reads the data root and never "
+        "writes it. Without sign-in: beyond this computer only as a public GUI "
+        "([nogat.operator]) or behind an authenticating proxy.",
+        "Udostępnij web GUI do Ctrl+C albo SIGTERM; czyta katalog danych i nigdy go "
+        "nie zapisuje. Bez logowania: poza tym komputerem tylko jako publiczne GUI "
+        "([nogat.operator]) albo za uwierzytelniającym serwerem pośredniczącym.",
+    ),
+    "gui_host_help": Text(
+        "Listening address (127.0.0.1: this computer only)",
+        "Adres nasłuchu (127.0.0.1: tylko ten komputer)",
+    ),
+    "gui_port_help": Text(
+        "TCP port (0: a free one, named on standard error)",
+        "Port TCP (0: wolny, podany na standardowym wyjściu błędów)",
+    ),
+    "gui_root_help": Text(
+        "Obserwator's data root, read only (default: OBSERWATOR_ROOT, [obserwator] "
+        "root of nogat.toml, else <data_dir>/obserwator)",
+        "Katalog danych Obserwatora, tylko do odczytu (domyślnie: OBSERWATOR_ROOT, "
+        "[obserwator] root z nogat.toml, inaczej <data_dir>/obserwator)",
+    ),
+    "gui_no_browser_help": Text(
+        "Do not open the page in the browser",
+        "Nie otwieraj strony w przeglądarce",
+    ),
 }

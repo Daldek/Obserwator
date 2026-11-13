@@ -1,27 +1,27 @@
 """
-Main FastAPI application of Obserwator: catalog routes, system routes, web GUI, MCP.
+Main FastAPI application of Obserwator: catalog routes, system routes, MCP.
 
 The catalog routes ``/api/v1/<group>/<command>`` come from
 `obserwator.api.routes.commands`; ``GET /health`` and ``GET /api/v1`` describe the
 server, ``GET /llms.txt`` is the agent guide in the llms.txt format in the
-language of ``Accept-Language`` (spec 2026-10-19 §5.8). With
-``OBSERWATOR_MCP_ENABLED=true`` and the ``mcp`` extra, ``/mcp`` serves the MCP server
-in mode ``http`` (Streamable HTTP, spec §6.2, §6.9), in English like every MCP
-server; its session manager runs in the lifespan of this application.
+language of ``Accept-Language`` (spec 2026-10-19 §5.8), and ``GET /`` redirects to
+the documentation ``/docs``. With ``OBSERWATOR_MCP_ENABLED=true`` and the ``mcp``
+extra, ``/mcp`` serves the MCP server in mode ``http`` (Streamable HTTP, spec §6.2,
+§6.9), in English like every MCP server; its session manager runs in the lifespan of
+this application. The web GUI is a server of its own, ``obserwator gui serve``
+(ADR-013), which this application does not serve.
 """
 
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, nullcontext
-from pathlib import Path
 from typing import cast
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.routing import APIRoute
-from fastapi.staticfiles import StaticFiles
 from starlette.applications import Starlette
 
 from obserwator._version import __version__
@@ -31,12 +31,8 @@ from obserwator.api.routes import commands
 from obserwator.api.schemas import HealthCheck
 from obserwator.commands import command_schema
 from obserwator.config import check_config, settings
-from obserwator.web.app import router as web_router
 
 _LOG = logging.getLogger(__name__)
-
-# Static files directory
-STATIC_DIR = Path(__file__).parent.parent / "web" / "static"
 
 # API metadata
 API_TITLE = "Obserwator API"
@@ -161,16 +157,16 @@ app.add_middleware(
 # Catalog routes /api/v1/<group>/<command>
 app.include_router(commands.router)
 
-# Include Web GUI router
-app.include_router(web_router)
-
-# Mount static files
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 if _MCP is not None:
     # Only the /mcp route: a mount at "/" would answer unknown paths with a
     # plain 404 instead of the problem document.
     app.router.routes.extend(_MCP.routes)
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """The start page is the API's documentation (the web GUI is `obserwator gui serve`)."""
+    return RedirectResponse("/docs")
 
 
 @app.get("/health", response_model=HealthCheck, tags=["System"], summary="Server state")

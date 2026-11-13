@@ -8,8 +8,9 @@ keys ``data_dir``, ``cache_dir`` and ``lang``), the section ``[obserwator]`` of
 built-in default (DEV-18.1, ECO-028). The file is ``nogat.toml`` in
 ``platformdirs.user_config_path("nogat")`` or the path in ``NOGAT_CONFIG``; it
 is read with ``tomllib`` and its absence is no error. Credentials come from the
-environment only, never from the file (DEV-18.4). The table ``gui`` of ``[nogat]``
-(GUI addresses, DEV-15.4) is no setting: the file alone gives it (`gui_addresses`).
+environment only, never from the file (DEV-18.4). The tables ``gui`` (GUI addresses,
+DEV-15.4) and ``operator`` (who runs a deployment open to others, DEV-15.7) of
+``[nogat]`` are no settings: the file alone gives them (`gui_addresses`, `operator`).
 
 `obserwator.config.Settings` (``pydantic-settings``, a core dependency) adds ``.env``
 files and the typed settings on top of the same sources; this module needs
@@ -22,6 +23,7 @@ import os
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -132,3 +134,76 @@ def gui_addresses() -> dict[str, str]:
         for name, address in table.items()
         if isinstance(address, str)
     }
+
+
+OPERATOR_KEYS: tuple[str, ...] = (
+    "name",
+    "email",
+    "terms_effective",
+    "processor",
+    "processor_transfer",
+    "processor_cookie",
+    "mail_provider",
+    "mail_transfer",
+)
+"""Keys of ``[nogat.operator]`` (DEV-18.1, DEV-15.7), in the order of the standard."""
+OPERATOR_OPTIONAL: frozenset[str] = frozenset(
+    {"processor_transfer", "processor_cookie", "mail_transfer"}
+)
+"""The keys that may be empty or left out (a sentence only some deployments need)."""
+
+
+@dataclass(frozen=True)
+class Operator:
+    """
+    Who runs a deployment open to others: the table ``operator`` of ``[nogat]``.
+
+    Attributes
+    ----------
+    values : Mapping of str to str
+        Every key of `OPERATOR_KEYS` as text (``terms_effective`` as ``YYYY-MM-DD``;
+        an optional key left out as empty text); empty when the table is missing
+        or unusable.
+    problems : tuple of str
+        The keys that are missing, empty (those not in `OPERATOR_OPTIONAL`) or not
+        text or a date; empty when the table is usable or simply absent.
+    """
+
+    values: Mapping[str, str]
+    problems: tuple[str, ...]
+
+    @property
+    def usable(self) -> bool:
+        """Whether every key has a value: the deployment is open to others."""
+        return bool(self.values) and not self.problems
+
+
+def operator() -> Operator:
+    """
+    The table ``operator`` of ``[nogat]`` in ``nogat.toml`` (DEV-18.1, DEV-15.7).
+
+    Returns
+    -------
+    Operator
+        Its values as text, or the keys that keep it from being used; a missing
+        table gives an empty `Operator` without problems (a deployment run only by
+        its operator).
+    """
+    table = config_file().sections.get(APP, {}).get("operator")
+    if table is None:
+        return Operator({}, ())
+    if not isinstance(table, dict):
+        return Operator({}, ("operator",))
+    values: dict[str, str] = {}
+    problems: list[str] = []
+    for key in OPERATOR_KEYS:
+        value = table.get(key, "" if key in OPERATOR_OPTIONAL else None)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            value = value.isoformat()
+        if not isinstance(value, str) or (
+            key not in OPERATOR_OPTIONAL and not value.strip()
+        ):
+            problems.append(key)
+            continue
+        values[key] = value.strip()
+    return Operator(values if not problems else {}, tuple(problems))

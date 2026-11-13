@@ -6,6 +6,91 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Web GUI: `obserwator gui serve` (ADR-013, GUI plan S1 and S2).** A Starlette app of its own
+  (extra `gui`: Starlette and uvicorn; entry point `nogat.gui` → `obserwator.gui:gui_module`;
+  `create_app`, `serve`) serves the page and a private API relative to it, GET and HEAD only:
+  `api/session`, `api/texts?lang=pl|en`, `api/stations`, `api/stations/{code}`,
+  `api/series/{dataset}/{code}`, `api/analyses/{code}`, `api/analysis/{code}/{id}`,
+  `api/current`, `api/current/{code}`, `api/pmaxtp`, `api/downloads/{code}`, `api/files/…`,
+  `api/handoff/{code}`, and `POST api/feedback`. It reads the root read-only (the current
+  versions again at most once a minute), keeps IMGW-PIB's current data 10 minutes and PMAXTP
+  points 24 hours in memory, never stores either, shows the analyses stored in the data root
+  and runs Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`) for a person's choices on
+  request: at most two processes of 30 s, 500 results in memory. Errors are
+  `obserwator-error/1` in the page's language; every answer
+  carries the GUI plan's Content-Security-Policy (D16). A public deployment (`[nogat.operator]`
+  in `nogat.toml`) follows Nogat's terms: a rate limit per client address
+  (`OBSERWATOR_REQUEST_LIMIT` requests in `OBSERWATOR_REQUEST_WINDOW` s, `429` with
+  `Retry-After`), daily access logs without the address deleted after 14 days, daily totals in
+  `<data_dir>/obserwator/stats.jsonl`, `regulamin.html` from Nogat's kit 0.4.0 (regulamin 1.0;
+  `[nogat.operator]` needs `name`, `email`, `terms_effective`, `processor` and `mail_provider`,
+  and may give `processor_transfer`, `processor_cookie` and `mail_transfer`), and „Zgłoś
+  uwagę” reports appended to `<data_dir>/obserwator/feedback.jsonl` (no admin routes). Texts are
+  the area `gui` of the message catalog. Settings: `OBSERWATOR_GUI_BASEMAP_URL` (empty: the
+  packaged borders only) and `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`. The page vendors Preact,
+  htm and MapLibre GL JS (Archiwista's bytes) and copies Nogat's kit and tokens byte for byte.
+  The page (GUI plan S2 to S7): every station of the catalogs on a MapLibre map with
+  hydro.imgw.pl's symbols and legend, the list with search ignoring case and diacritics and
+  filters, „Pomiary bieżące” of IMGW-PIB's hydrological and meteorological stations, the station
+  panel („Informacje o stacji”, „Pomiary bieżące”, „Dane pomiarowo-obserwacyjne” with chart and
+  table, the hydrological or meteorological analyses, „Pobierz” with series as CSV, JSON and
+  Parquet, the stations as GeoJSON and CSV and the stored analyses as JSON and CSV, each with
+  its command line), the hand-off to Hydrolog (`nogat-handoff/1`), PMAXTP of a point with its
+  CSV and JSON, an SVG chart module with date axis, band, zoom and readout by keys, „PL | EN”
+  and both themes. Every analysis is an id of the stored analyses' registry (ADR-016): a card
+  shows the stored result, and Hydrolog computes a person's choice on request; the climate
+  stripes (M15) are a labelled prototype of their colour scale only. A deployment whose state
+  directory overlaps the root writes none of the GUI's files.
+
+- **The GUI on the stored analyses of the data root (ADR-013 D7, ADR-016, ADR-017).**
+  `api/analyses/{code}` lists the analyses `obserwator analyses build` stored for a station
+  (`list_analyses`, with the options a person may change) and `api/analysis/{code}/{id}`
+  answers the stored result (`read_analysis`, `source: stored`); only a person's options are
+  computed, by `compute_analysis` (`source: computed`; two processes, 30 s, 500 results in
+  memory, never written). Every card opens with the stored results. Hydrolog's program
+  (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`) is looked for once when the GUI
+  starts: without it only stored results show, a person's choice is `missing_dependency` and
+  the climate stripes say that they need it. `api/session` names each provider's current
+  analyses version with its Hydrolog version (`root.analyses`, `null` without one), and a new
+  analyses version shows within a minute without a restart and without a new station layer.
+  „Pobierz” offers the station's stored analyses as JSON and CSV
+  (`api/files/analyses/{code}?format=json|csv&analysis=`, made by `export_analyses`, with the
+  `obserwator analyses export` line). The daily total `analyses_run` counts the answers with a
+  result computed on request (a person's choices, also when repeated from the server's memory,
+  and the climate stripes), no longer stored results.
+
+- **GUI: fixes of the acceptance on the target data root.** A part of an analysis section that
+  shows several results names the failure of one of them above the others it still shows (it
+  dropped it silently, e.g. Hydrolog's 30 s limit for the intensity beside the days with
+  precipitation, or the duration curve of H beside Rybczyński's zones); „Trendy” keeps naming
+  each failure in its table. The provenance of an analysis names its series version by its
+  label, as „Dane” does, with the version's directory in the data root as the tooltip.
+  „Stany charakterystyczne” reads the daily series of its chart once, for the years of its
+  result, instead of the whole record first. The list's filter and the explanations of the
+  rating curve and the flood maxima name the data root („Szeregi w katalogu danych”, „Series
+  in the data root”), no longer the store, which since the split of the roots is Archiwista's.
+
+- **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
+  is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
+  gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still
+  brings python-multipart).
+
+- **Documentation of the GUI (GUI plan S8, S9).** `README.md`: the GUI among the interfaces,
+  `pip install "obserwator[cli,gui]"` (the command needs the CLI too; `create_app` and `serve`
+  only the extra `gui`) and a quick start that names what each daily total counts (Nogat
+  DEV-15.11). `docs/USAGE.md` „GUI” replaces „Web GUI”: starting it, the page, what it reads and
+  writes, the settings, the private API, hosting under a prefix and as Nogat's module, „Behind
+  an authenticating proxy” (the headers and the CSP, `FORWARDED_ALLOW_IPS`, a systemd user unit,
+  journald kept 14 days) and „Public deployment” (DEV-15.7 to DEV-15.12, a `nogat.toml` example
+  with `[nogat.operator]` of kit 0.4.0 and `[nogat.gui]`, reading `feedback.jsonl` with `jq`).
+  `docs/ARCHITECTURE.md` section 5, the component diagram and the file tree; `docs/CODEBASE.md`:
+  the `gui/` and `messages/gui/` trees, the five settings, `[nogat.gui]`, `[nogat.operator]` and
+  the deployment notes; `docs/PRD.md` section 5 and the visualization and export rows;
+  `CLAUDE.md` with the deviations from AGI-6.1 (the private API) and DEV-15.12 (no admin routes);
+  ADR-013 in `docs/DECISIONS.md`; `docs/TESTING.md` with the GUI's tests and markers;
+  `docs/PROGRESS.md` with the GUI's status and open gaps; a GUI block in `.env.example`. The GUI
+  serves its guide in Polish at `instrukcja/`, and `tests/e2e/test_smoke.py` opens every view.
+
 - **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
   2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,
   `Attribution` with `attribution`, `terms_notice`, `|`, `fields()`, `from_lines()`), composes the

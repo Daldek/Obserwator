@@ -1,0 +1,147 @@
+/*
+ * The meteorological sections (src/sections/meteo/): option rows, sub-headings, class
+ * colours of cells, swatches and bars. Colours come from Nogat's tokens only (both themes):
+ * dry classes on --warn and --bad, wet ones on --info, warm anomalies on --bad, cold on --info.
+ */
+
+:root {
+  --me-dry-3: color-mix(in srgb, var(--bad) 50%, var(--surface));
+  --me-dry-2: color-mix(in srgb, var(--warn) 45%, var(--surface));
+  --me-dry-1: color-mix(in srgb, var(--warn) 22%, var(--surface));
+  --me-norm: color-mix(in srgb, var(--line) 35%, var(--surface));
+  --me-wet-1: color-mix(in srgb, var(--info) 16%, var(--surface));
+  --me-wet-2: color-mix(in srgb, var(--info) 32%, var(--surface));
+  --me-wet-3: color-mix(in srgb, var(--info) 50%, var(--surface));
+  --me-bar-dry: color-mix(in srgb, var(--warn) 78%, var(--surface));
+  --me-bar-wet: color-mix(in srgb, var(--info) 62%, var(--surface));
+  --me-bar-warm: color-mix(in srgb, var(--bad) 66%, var(--surface));
+  --me-bar-cold: color-mix(in srgb, var(--info) 66%, var(--surface));
+  /* McKee's seven classes of the SPI, driest first: bars and their legend */
+  --me-spi-0: color-mix(in srgb, var(--bad) 85%, var(--surface));
+  --me-spi-1: color-mix(in srgb, var(--warn) 90%, var(--surface));
+  --me-spi-2: color-mix(in srgb, var(--warn) 55%, var(--surface));
+  --me-spi-3: var(--line-2);
+  --me-spi-4: color-mix(in srgb, var(--info) 40%, var(--surface));
+  --me-spi-5: color-mix(in srgb, var(--info) 65%, var(--surface));
+  --me-spi-6: color-mix(in srgb, var(--info) 90%, var(--surface));
+}
+
+/* Layout of a card: its options on top, then the sections */
+.me-card { display: flex; flex-direction: column; gap: var(--space-3); }
+.me-toolbar, .me-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.me-toolbar { padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
+.me-options { margin: 0 0 var(--space-3); }
+.me-option { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-2); }
+.me-label { font-size: var(--text-xs); color: var(--text-3); }
+.me-select { font: inherit; font-size: var(--text-sm); padding: 2px 6px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); }
+.me-sub { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2); }
+.me-source { margin: 0 0 var(--space-2); font-size: var(--text-xs); }
+.me-caption { display: block; margin: var(--space-1) 0 var(--space-2); font-size: var(--text-xs); }
+.me-caption a { color: var(--accent); }
+.me-details { margin: var(--space-3) 0 0; font-size: var(--text-sm); }
+.me-details > summary { cursor: pointer; color: var(--text-2); }
+.me-details[open] > summary { margin-bottom: var(--space-2); }
+.me-cli { margin: 0; padding: var(--space-2); white-space: pre-wrap; word-break: break-all; font: var(--text-xs) var(--font-mono); background: var(--code-bg); color: var(--code-text); border-radius: var(--radius-sm); }
+.me-card .sec-attrib { margin: 0 0 var(--space-2); }
+
+/* The threshold of the spells: presets, a number of the person's own and „Przelicz” (that
+   form takes the look of the period's form, .years of app.css) */
+.me-threshold { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.me-number { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Tables of many columns: compact cells, scrolled sideways in a narrow panel */
+.me-wide, .me-heat { font-variant-numeric: tabular-nums; }
+.me-wide th, .me-wide td, .me-heat th, .me-heat td { padding: 3px 5px; text-align: right; white-space: nowrap; }
+.me-heat th[scope="row"] { text-align: left; }
+.me-heat td.me-year { font-weight: var(--weight-bold); }
+
+/* Classes from driest to wettest (relative precipitation): cell backgrounds and swatches */
+.me-dw0 { background: var(--me-dry-3); }
+.me-dw1 { background: var(--me-dry-2); }
+.me-dw2 { background: var(--me-dry-1); }
+.me-dw3 { background: var(--me-norm); }
+.me-dw4 { background: var(--me-wet-1); }
+.me-dw5 { background: var(--me-wet-2); }
+.me-dw6 { background: var(--me-wet-3); }
+
+/* Sielianinov's nine classes (Skowera and Puła 2004) */
+.me-k90 { background: var(--me-dry-3); }
+.me-k91 { background: var(--me-dry-2); }
+.me-k92 { background: var(--me-dry-1); }
+.me-k93 { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+.me-k94 { background: color-mix(in srgb, var(--ok) 24%, var(--surface)); }
+.me-k95 { background: color-mix(in srgb, var(--info) 10%, var(--surface)); }
+.me-k96 { background: var(--me-wet-1); }
+.me-k97 { background: var(--me-wet-2); }
+.me-k98 { background: var(--me-wet-3); }
+
+/* Temperature anomalies of months */
+.me-a1 { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
+.me-a2 { background: color-mix(in srgb, var(--bad) 26%, var(--surface)); }
+.me-a3 { background: color-mix(in srgb, var(--bad) 42%, var(--surface)); }
+.me-a-1 { background: color-mix(in srgb, var(--info) 12%, var(--surface)); }
+.me-a-2 { background: color-mix(in srgb, var(--info) 26%, var(--surface)); }
+.me-a-3 { background: color-mix(in srgb, var(--info) 42%, var(--surface)); }
+
+.me-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0; font-size: var(--text-xs); color: var(--text-2); }
+.me-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.me-sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px; border: 1px solid var(--line-2); }
+.me-sw.me-spi0 { background: var(--me-spi-0); }
+.me-sw.me-spi1 { background: var(--me-spi-1); }
+.me-sw.me-spi2 { background: var(--me-spi-2); }
+.me-sw.me-spi3 { background: var(--me-spi-3); }
+.me-sw.me-spi4 { background: var(--me-spi-4); }
+.me-sw.me-spi5 { background: var(--me-spi-5); }
+.me-sw.me-spi6 { background: var(--me-spi-6); }
+
+/* Bars of charts coloured by sign or class (after charts.css, so these win) */
+.chart .bars rect.me-wet { fill: var(--me-bar-wet); }
+.chart .bars rect.me-dry { fill: var(--me-bar-dry); }
+.chart .bars rect.me-warm { fill: var(--me-bar-warm); }
+.chart .bars rect.me-cold { fill: var(--me-bar-cold); }
+.chart .bars.me-bar-dry rect { fill: var(--me-bar-dry); }
+.chart .bars.me-bar-warm rect { fill: var(--me-bar-warm); }
+.chart .bars.me-bar-cold rect { fill: var(--me-bar-cold); }
+.chart .bars rect.me-spi0 { fill: var(--me-spi-0); }
+.chart .bars rect.me-spi1 { fill: var(--me-spi-1); }
+.chart .bars rect.me-spi2 { fill: var(--me-spi-2); }
+.chart .bars rect.me-spi3 { fill: var(--me-spi-3); }
+.chart .bars rect.me-spi4 { fill: var(--me-spi-4); }
+.chart .bars rect.me-spi5 { fill: var(--me-spi-5); }
+.chart .bars rect.me-spi6 { fill: var(--me-spi-6); }
+.chart .bars rect.me-k90 { fill: color-mix(in srgb, var(--bad) 85%, var(--surface)); }
+.chart .bars rect.me-k91 { fill: color-mix(in srgb, var(--warn) 90%, var(--surface)); }
+.chart .bars rect.me-k92 { fill: color-mix(in srgb, var(--warn) 60%, var(--surface)); }
+.chart .bars rect.me-k93 { fill: color-mix(in srgb, var(--warn) 35%, var(--surface)); }
+.chart .bars rect.me-k94 { fill: color-mix(in srgb, var(--ok) 60%, var(--surface)); }
+.chart .bars rect.me-k95 { fill: color-mix(in srgb, var(--info) 30%, var(--surface)); }
+.chart .bars rect.me-k96 { fill: color-mix(in srgb, var(--info) 50%, var(--surface)); }
+.chart .bars rect.me-k97 { fill: color-mix(in srgb, var(--info) 70%, var(--surface)); }
+.chart .bars rect.me-k98 { fill: color-mix(in srgb, var(--info) 90%, var(--surface)); }
+
+/* Trends: one small chart per series */
+.me-trends { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+.me-trend h5 { margin: 0 0 var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2); }
+.me-trend p { margin: 0 0 var(--space-1); font-size: var(--text-xs); color: var(--text-3); }
+.me-trend .chart { margin: 0; }
+.me-sig { color: var(--text); font-weight: var(--weight-bold); }
+
+/* Warming stripes (M15): Hawkins's ColorBrewer colours are fixed in both themes, as the
+   original's; only the axis, the cursor and the texts follow the theme. */
+.stripes-host { margin: 0 0 var(--space-2); }
+.stripes { display: block; max-width: 100%; border-radius: var(--radius-xs); }
+.stripes-axis { cursor: crosshair; }
+.stripes-ticks line { stroke: var(--text-3); }
+.stripes-ticks text { fill: var(--text-2); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.stripes-focus { fill: none; stroke: var(--text); stroke-width: 1.5; }
+.stripes-readout { min-height: 1.5em; margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.stripes-credit { margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-2); }
+.stripes-legend { margin: 0 0 var(--space-2); max-width: 420px; }
+.stripes-bar { display: flex; height: 12px; border-radius: 2px; overflow: hidden; }
+.stripes-bar span { flex: 1; }
+.stripes-ticks-html { display: flex; justify-content: space-between; margin-top: 2px; font-size: var(--text-xs); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.stripes-ticks-html span { display: flex; flex-direction: column; }
+.stripes-ticks-html span:nth-child(2) { align-items: center; }
+.stripes-ticks-html span:last-child { align-items: flex-end; }
+.stripes-ticks-html small { color: var(--text-3); }
+.stripes-grey { background: repeating-linear-gradient(45deg, #a3a3a3 0 3px, #dadada 3px 5px); }

@@ -4,7 +4,8 @@ Entry point of the ``obserwator`` command line.
 The groups ``datasets``, ``stations``, ``current``, ``pmaxtp``, ``store``,
 ``series`` and ``commands`` are generated from the command catalog
 by `obserwator.cli._dispatch` (spec §13.10); ``obserwator version``, ``obserwator server``,
-``obserwator mcp`` and ``obserwator admin`` stay outside the catalog. Examples::
+``obserwator mcp``, ``obserwator gui`` and ``obserwator admin`` stay outside the catalog.
+Examples::
 
     obserwator datasets download -d hydro/dobowe -y 2023 -m 1
     obserwator stations find -k hydro -q raba --limit 20
@@ -13,6 +14,7 @@ by `obserwator.cli._dispatch` (spec §13.10); ``obserwator version``, ``obserwat
     obserwator series summary --root /dane/obserwator -d pl.imgw.hydro_daily -s 149190310
     obserwator commands schema --command "store sync"
     obserwator mcp --allow-writes --allow-dir /dane
+    obserwator gui serve --root /dane/obserwator --no-browser
     obserwator admin create --name "User1"
 
 ``obserwator mcp`` serves the catalog to AI agents over MCP on stdin and stdout
@@ -26,7 +28,7 @@ import typer
 from rich.console import Console
 
 from obserwator._version import __version__
-from obserwator.cli import admin, config_cmd
+from obserwator.cli import admin, config_cmd, gui_cmd
 from obserwator.cli._dispatch import (
     _HELP,
     _LANG,
@@ -51,6 +53,7 @@ console = Console()
 register_catalog(app)
 app.add_typer(admin.app, name="admin", help=message("cli.admin_group_help", lang=_LANG))
 app.add_typer(config_cmd.app, name="config")
+app.add_typer(gui_cmd.app, name="gui")
 
 
 @app.command(cls=ObserwatorCommand, help=message("cli.version_help", lang=_LANG))
