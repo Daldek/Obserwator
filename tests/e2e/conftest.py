@@ -170,6 +170,7 @@ def _nogat_toml(path: Path, data_dir: Path, *, public_url: str | None) -> Path:
             "terms_effective = 2026-11-13",
             'processor = "Example Processor"',
             'processor_transfer = ""',
+            'mail_provider = "Example Mail"',
             "",
         ]
     path.write_text("\n".join(lines), encoding="utf-8")

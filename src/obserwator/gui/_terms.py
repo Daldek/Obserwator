@@ -50,14 +50,19 @@ PLACEHOLDERS: frozenset[str] = frozenset(
         "terms_effective",
         "processor",
         "processor_transfer",
+        "processor_cookie",
+        "mail_provider",
+        "mail_transfer",
         "software_licence",
         "source_url",
         "tokens_href",
         "kit_href",
     }
 )
-"""Every field of the template (Nogat's ``PLACEHOLDERS``)."""
-OPTIONAL: frozenset[str] = frozenset({"processor_transfer"})
+"""Every field of the template (Nogat's ``PLACEHOLDERS``, kit 0.4.0)."""
+OPTIONAL: frozenset[str] = frozenset(
+    {"processor_transfer", "processor_cookie", "mail_transfer"}
+)
 """The only fields whose value may be empty (it must still be given)."""
 OPERATOR_FIELDS: Mapping[str, str] = {
     "name": "operator_name",
@@ -65,6 +70,9 @@ OPERATOR_FIELDS: Mapping[str, str] = {
     "terms_effective": "terms_effective",
     "processor": "processor",
     "processor_transfer": "processor_transfer",
+    "processor_cookie": "processor_cookie",
+    "mail_provider": "mail_provider",
+    "mail_transfer": "mail_transfer",
 }
 """The field of each key of ``[nogat.operator]``."""
 TEMPLATE = Path("nogat") / "nogat-terms.html"
@@ -117,8 +125,8 @@ def fill(template: str, values: Mapping[str, str], blocks: Iterable[str]) -> str
     template : str
         The kit's ``nogat-terms.html``.
     values : Mapping of str to str
-        A value for every field of the template; only ``processor_transfer`` may
-        be empty.
+        A value for every field of the template; only those of `OPTIONAL` may be
+        empty.
     blocks : iterable of str
         The blocks to keep; every other block goes with its marker lines.
 
@@ -183,9 +191,9 @@ def terms_page(config: GuiConfig, web: Path) -> bytes | None:
         "service_name": "Obserwator",
         "service_url": service_url,
         **{
-            field: config.operator[key]
+            field: config.operator.get(key, "")
             for key, field in OPERATOR_FIELDS.items()
-            if key in config.operator
+            if key in config.operator or field in OPTIONAL
         },
         "software_licence": "MIT",
         "source_url": "https://github.com/Daldek/Obserwator",

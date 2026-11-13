@@ -19,6 +19,9 @@ OPERATOR = {
     "terms_effective": "2026-11-20",
     "processor": "Cloudflare, Inc.",
     "processor_transfer": "Transfers to the USA under the EU-U.S. DPF.",
+    "processor_cookie": "",
+    "mail_provider": "iCloud Mail (Apple)",
+    "mail_transfer": "Mogą być przetwarzane poza Europejskim Obszarem Gospodarczym.",
 }
 BASEMAP = Basemap("https://tiles.example/planet", "https://tiles.example", "OSM")
 
@@ -64,6 +67,9 @@ def values(**changes: str) -> dict[str, str]:
         "terms_effective": "2026-11-20",
         "processor": "Cloudflare, Inc.",
         "processor_transfer": "",
+        "processor_cookie": "",
+        "mail_provider": "iCloud Mail (Apple)",
+        "mail_transfer": "",
         "software_licence": "MIT",
         "source_url": "https://github.com/Daldek/Obserwator",
         "tokens_href": "nogat/tokens.css",
@@ -86,6 +92,7 @@ def test_the_page_keeps_obserwators_blocks_and_fills_every_field(tmp_path):
     assert '<a href="mailto:jan@example.org">jan@example.org</a>' in text
     assert "obowiązuje od 2026-11-20" in text
     assert "Transfers to the USA under the EU-U.S. DPF." in text
+    assert "w usłudze iCloud Mail (Apple). Mogą być przetwarzane poza" in text
     assert "na licencji MIT" in text
     assert '<a href="https://github.com/Daldek/Obserwator">' in text
     assert '<link rel="stylesheet" href="nogat/tokens.css">' in text
@@ -113,8 +120,11 @@ def test_values_are_html_escaped(tmp_path):
     assert "<Syn>" not in text
 
 
-def test_an_empty_processor_transfer_is_allowed(tmp_path):
-    operator = {**OPERATOR, "processor_transfer": ""}
+@pytest.mark.parametrize(
+    "key", ["processor_transfer", "processor_cookie", "mail_transfer"]
+)
+def test_an_empty_sentence_of_the_operator_is_allowed(tmp_path, key):
+    operator = {**OPERATOR, key: ""}
 
     assert terms_page(config(tmp_path, operator=operator), WEB) is not None
 
@@ -162,6 +172,7 @@ def test_fill_refuses_a_block_that_cannot_be_listed(listed):
     ("changes", "named"),
     [
         ({"operator_email": "  "}, "operator_email"),
+        ({"mail_provider": ""}, "mail_provider"),
         ({"service_name": ""}, "service_name"),
         ({"surplus": "x"}, "surplus"),
     ],

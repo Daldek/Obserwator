@@ -142,8 +142,15 @@ OPERATOR_KEYS: tuple[str, ...] = (
     "terms_effective",
     "processor",
     "processor_transfer",
+    "processor_cookie",
+    "mail_provider",
+    "mail_transfer",
 )
 """Keys of ``[nogat.operator]`` (DEV-18.1, DEV-15.7), in the order of the standard."""
+OPERATOR_OPTIONAL: frozenset[str] = frozenset(
+    {"processor_transfer", "processor_cookie", "mail_transfer"}
+)
+"""The keys that may be empty or left out (a sentence only some deployments need)."""
 
 
 @dataclass(frozen=True)
@@ -154,10 +161,11 @@ class Operator:
     Attributes
     ----------
     values : Mapping of str to str
-        Every key of `OPERATOR_KEYS` as text (``terms_effective`` as ``YYYY-MM-DD``);
-        empty when the table is missing or unusable.
+        Every key of `OPERATOR_KEYS` as text (``terms_effective`` as ``YYYY-MM-DD``;
+        an optional key left out as empty text); empty when the table is missing
+        or unusable.
     problems : tuple of str
-        The keys that are missing, empty (all but ``processor_transfer``) or not
+        The keys that are missing, empty (those not in `OPERATOR_OPTIONAL`) or not
         text or a date; empty when the table is usable or simply absent.
     """
 
@@ -189,11 +197,11 @@ def operator() -> Operator:
     values: dict[str, str] = {}
     problems: list[str] = []
     for key in OPERATOR_KEYS:
-        value = table.get(key)
+        value = table.get(key, "" if key in OPERATOR_OPTIONAL else None)
         if isinstance(value, date) and not isinstance(value, datetime):
             value = value.isoformat()
         if not isinstance(value, str) or (
-            key != "processor_transfer" and not value.strip()
+            key not in OPERATOR_OPTIONAL and not value.strip()
         ):
             problems.append(key)
             continue

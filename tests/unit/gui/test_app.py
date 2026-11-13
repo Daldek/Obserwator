@@ -62,6 +62,7 @@ OPERATOR = {
     "terms_effective": "2026-11-13",
     "processor": "Example Processor",
     "processor_transfer": "",
+    "mail_provider": "Example Mail",
 }
 REPORT = {"message": "The chart is empty.", "context": {"view": "stations"}}
 

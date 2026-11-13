@@ -151,6 +151,7 @@ def test_the_settings_come_from_the_environment_and_nogat_toml(
                 "terms_effective = 2026-11-13",
                 'processor = "Example Processor"',
                 'processor_transfer = ""',
+                'mail_provider = "Example Mail"',
                 "",
             ]
         ),
