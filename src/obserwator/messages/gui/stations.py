@@ -37,7 +37,6 @@ MESSAGES: dict[str, Text] = {
     "stations.inactive": Text("inactive", "nieczynna"),
     # The map (src/map.js)
     "stations.map.label": Text("Station map", "Mapa stacji"),
-    "stations.map.credits": Text("Sources of the map's data", "Źródła danych mapy"),
     "stations.map.basemap_credit": Text("Basemap: {credit}", "Podkład mapy: {credit}"),
     "stations.map.failure": Text(
         "This browser does not draw the map", "Ta przeglądarka nie rysuje mapy"

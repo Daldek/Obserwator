@@ -333,10 +333,11 @@ def open_page(browser, gui_url) -> Iterator[Callable[..., Any]]:
     Open a path of a GUI server in a fresh context; fail on console errors at the end.
 
     ``open_page(path="", *, base=None, theme="light", width=1440, height=900, lang="pl",
-    ready=True)`` returns the Playwright ``Page``: ``base`` is a server's URL
-    (``gui_url`` by default, or ``public_url``, ``analysis_url``), ``theme`` and ``lang``
-    are stored before the first script runs unless the page stored its own, and
-    ``ready`` waits until the app has drawn its first element.
+    ready=True, welcome=False)`` returns the Playwright ``Page``: ``base`` is a server's
+    URL (``gui_url`` by default, or ``public_url``, ``analysis_url``), ``theme`` and
+    ``lang`` are stored before the first script runs unless the page stored its own,
+    ``ready`` waits until the app has drawn its first element, and without ``welcome`` the
+    welcome window of a first visit counts as seen.
     """
     opened: list[tuple[Any, Any, list[str]]] = []
 
@@ -349,6 +350,7 @@ def open_page(browser, gui_url) -> Iterator[Callable[..., Any]]:
         height: int = 900,
         lang: str = "pl",
         ready: bool = True,
+        welcome: bool = False,
     ) -> Any:
         context = browser.new_context(
             viewport={"width": width, "height": height}, accept_downloads=True
@@ -358,6 +360,7 @@ def open_page(browser, gui_url) -> Iterator[Callable[..., Any]]:
             f"localStorage.setItem('nogat-theme', {json.dumps(theme)});"
             "if (!localStorage.getItem('obserwator-lang')) "
             f"localStorage.setItem('obserwator-lang', {json.dumps(lang)});"
+            + ("" if welcome else "localStorage.setItem('obserwator-welcome', '1');")
             + _CSP_LISTENER
         )
         page = context.new_page()

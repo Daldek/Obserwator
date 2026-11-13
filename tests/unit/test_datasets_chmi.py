@@ -101,13 +101,13 @@ def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked
         "i użycie komercyjne pod warunkiem uznania autorstwa ČHMÚ, podania licencji i "
         "oznaczenia zmian."
     )
-    # IMGW-PIB data: the lines, then N with its terms (ADR-012 D8); the English
-    # text glosses N after the Polish lines.
+    # IMGW-PIB data: the lines, then the links to the terms, never a summary of
+    # them (Nogat DEV-20.7, ECO-065), in either language.
     lines = attribution("imgw")
     terms = " ".join(lines.terms_notice)
     imgw_notice = imgw.license_notice(lines)
-    assert imgw_notice.localized("pl") == f"{'. '.join(lines.attribution)}. {terms}"
-    assert str(imgw_notice).startswith(f"{'. '.join(lines.attribution)}. {terms} (")
+    expected = f"{'. '.join(lines.attribution)}. {terms}"
+    assert imgw_notice.localized("pl") == str(imgw_notice) == expected
 
 
 def test_provider_lookup_by_id_or_key_prefix():

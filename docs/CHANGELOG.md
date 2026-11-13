@@ -6,6 +6,27 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Provider lines of Nogat ECO-065 (kit 0.6.0).** Products link the providers' terms instead
+  of restating them: the line H of hydro.imgw.pl and the notice N, a summary of the IMGW-PIB
+  terms, are gone from every product, and the terms lines name what they link: „Regulamin
+  danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations”, „Regulamin serwisu
+  hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin” and „Regulamin danych PMAXTP:
+  https://klimat.imgw.pl/opady-maksymalne”. `terms_notice` holds only them; the IMGW-PIB
+  `license_terms` notice has no English summary. New `obserwator.attribution.carried`: the
+  readers of stored analyses and catalogs derive the lines from the data's provider and kind
+  and keep only Hydrolog's own lines, so a data root written before shows and exports the
+  current lines without a rebuild; `Attribution.from_lines` skips the retired lines of an
+  `ATTRIBUTION.txt` written before. The regulamin comes from kit 0.6.0 without the block
+  `imgw-terms`; the kit and `schemas/nogat/handoff-1.schema.json` are copied byte for byte.
+- **GUI: one compact strip of provider lines per view (Nogat DEV-20.5, ECO-064, kit 0.5.1).**
+  The lines under the map, under every open card of the station panel and under PMAXTP's tables
+  give way to one `<nogat-sources>` of the kit across the page under the map and both panels,
+  fed the union of the `attribution` and `terms_notice` of what the list, the map and the right
+  panel show, the basemap's credit after it; S, P, PS, PP and „Źródło: ČHMÚ, CC BY 4.0” on
+  screen, every line, the terms and „Regulamin” in the dialog of „Źródła i warunki”. On a phone
+  the sheets stop above it. A first visit opens a welcome window with the same full content.
+  Files, PNG and SVG images, hand-offs and the API's `attribution` and `terms_notice` keep the
+  full lines.
 - **Web GUI: `obserwator gui serve` (ADR-013, GUI plan S1 and S2).** A Starlette app of its own
   (extra `gui`: Starlette and uvicorn; entry point `nogat.gui` → `obserwator.gui:gui_module`;
   `create_app`, `serve`) serves the page and a private API relative to it, GET and HEAD only:

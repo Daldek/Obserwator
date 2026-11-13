@@ -21,13 +21,13 @@
 // tooltip names the station and its latest values with their times; a click selects it.
 // Colours come from css/map.css (tokens), read again when the theme changes.
 //
-// Under the map, a strip carries the providers' lines and terms of the data the view draws
-// (Nogat DEV §20, attribution.js) and the basemap's credit. It never folds: MapLibre's own
-// attribution control, which collapses after the first drag, is left out. The zoom buttons
-// are the page's own, so their names follow the page's language. The map's element keeps
-// the MapLibre map as `maplibre`, for a test or a console asking what is drawn.
+// The basemap's credit goes to the view's one strip under the map and the panels
+// (`onCredit`, main.js), with the providers' lines (Nogat DEV-20.5). It never folds:
+// MapLibre's own attribution control, which collapses after the first drag, is left out.
+// The zoom buttons are the page's own, so their names follow the page's language. The
+// map's element keeps the MapLibre map as `maplibre`, for a test or a console asking what
+// is drawn.
 
-import { Attribution } from "./attribution.js";
 import { REFRESH_MS, clock, measuredAt } from "./current.js";
 import { has } from "./i18n.js";
 import { fmt, html, lang, t, tn, useEffect, useRef, useState } from "./lib.js";
@@ -393,16 +393,16 @@ function repaintLayers(map, colors) {
  *   fly: {code: string, n: number}|null, view: "stations"|"current"|"pmaxtp",
  *   current: {doc: object|null, error: Error|null, loading: boolean},
  *   pick: {lat: number, lon: number}|null, pickFly: {n: number}|null,
- *   credits: {attribution: string[], terms_notice: string[]}|null, session: object|null,
+ *   onCredit: (credit: string|null) => void, session: object|null,
  *   onSelect: (code: string) => void, onPick: (point: {lat: number, lon: number}) => void}} props
  *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
  *   the selected one, a request to fly to a station, the view, the current measurements
- *   (current.js), the point picked for PMAXTP and a request to fly to it, the lines and
- *   terms of the data drawn, api/session (null until it answers: its `basemap`), the
- *   selection's and the pick's handlers
- * @returns {object} the map with its legend, its zoom buttons and the providers' strip
+ *   (current.js), the point picked for PMAXTP and a request to fly to it, where the
+ *   basemap's credit goes while the basemap is drawn, api/session (null until it answers:
+ *   its `basemap`), the selection's and the pick's handlers
+ * @returns {object} the map with its legend and its zoom buttons
  */
-export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, credits, session, onSelect, onPick }) {
+export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onCredit, session, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
@@ -625,9 +625,8 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   } else if (tip && byCode.get(tip.code)) {
     tipBody = html`<${StationTip} station=${byCode.get(tip.code)} />`;
   }
-  const lines = [...((credits && credits.attribution) || [])];
-  if (background === "basemap" && basemap && basemap.attribution) lines.push(t("stations.map.basemap_credit", { credit: basemap.attribution }));
-  const strip = lines.length ? { attribution: lines, terms_notice: (credits && credits.terms_notice) || [] } : null;
+  const credit = background === "basemap" && basemap && basemap.attribution ? t("stations.map.basemap_credit", { credit: basemap.attribution }) : null;
+  useEffect(() => onCredit(credit), [credit]);
   return html`<div class="map-wrap">
     <div class="map-stage">
       <div class="map" ref=${box}></div>
@@ -641,7 +640,6 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
       <${Legend} view=${view} background=${background} current=${current} />
       ${ready ? html`<${ZoomButtons} map=${mapRef.current} />` : null}
     </div>
-    ${strip ? html`<footer class="map-credits" aria-label=${t("stations.map.credits")}><${Attribution} fields=${strip} inline=${true} /></footer>` : null}
   </div>`;
 }
 

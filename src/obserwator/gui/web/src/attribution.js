@@ -1,18 +1,21 @@
-// Provider attribution in the GUI (Nogat DEV §20, ECO-060). The lines come byte for byte
-// from the server's one place for them, obserwator.attribution: in the `attribution` and
-// `terms_notice` fields of every response with data or results, and for each origin of
-// data in the session's `attribution` (api/session: `origins.{imgw, imgw_hydro, pmaxtp,
-// chmi}`, the standard's `order` and `terms_order`). This module merges the lines of a view
-// that shows data of several origins, in the standard's order, each once, as
-// `Attribution.__or__` does on the server. It draws them visibly, never in a tooltip: the
-// lines, then the notice N and the terms, each URL a link with the same text. A public
-// deployment (the session's `terms`) also shows „Regulamin” and the service's statement
-// beside them (Nogat DEV-15.7, DEV-15.8): `PublicNotice`.
+// Provider attribution in the GUI (Nogat DEV §20, DEV-20.5, ECO-064). The lines come byte
+// for byte from the server's one place for them, obserwator.attribution: in the
+// `attribution` and `terms_notice` fields of every response with data or results, and for
+// each origin of data in the session's `attribution` (api/session: `origins.{imgw,
+// imgw_hydro, pmaxtp, chmi}`, the standard's `order` and `terms_order`). This module merges
+// the lines of what a view shows, in the standard's order, each once, as
+// `Attribution.__or__` does on the server, and hands them to the kit's <nogat-sources>
+// (`Sources`): a 12 px strip with S, P, PS, PP and the short ČHMÚ line, then „Źródła i
+// warunki”, a dialog with every line, the terms and „Regulamin” where the deployment serves
+// one. A view has one strip, across the page under the map and both panels, never one per
+// panel or card. A public deployment also shows „Regulamin” and the service's statement
+// under it (Nogat DEV-15.7, DEV-15.8): `PublicNotice`.
 //
 // main.js hands the session's `attribution` over with `setTexts` once api/session answers;
 // `useTexts` gives it to every component that composes lines (null until then).
 
-import { html, t, useEffect, useState } from "./lib.js";
+import "../nogat/nogat-sources.js";
+import { html, t, useEffect, useMemo, useState } from "./lib.js";
 
 let known = null;
 const listeners = new Set();
@@ -73,6 +76,39 @@ export function compose(texts, sources) {
   return { attribution: ordered(texts.order, lines), terms_notice: ordered(texts.terms_order, terms) };
 }
 
+/**
+ * Every line of a session: what the page may show, for the welcome window.
+ *
+ * @param {object|null} texts from useTexts
+ * @returns {{attribution: string[], terms_notice: string[]}|null} null without texts
+ */
+export function allLines(texts) {
+  return texts ? compose(texts, Object.keys(texts.origins)) : null;
+}
+
+/**
+ * The lines and terms of several sets, each line once: those the standard orders in its
+ * order, any other after them in the order it first appears.
+ *
+ * @param {object|null} texts from useTexts; without them the order the lines come in
+ * @param {({attribution?: string[], terms_notice?: string[]}|null)[]} sets
+ * @returns {{attribution: string[], terms_notice: string[]}|null} null without a line
+ */
+export function merge(texts, sets) {
+  const lines = [];
+  const terms = [];
+  for (const set of sets) {
+    if (!set) continue;
+    lines.push(...(set.attribution || []));
+    terms.push(...(set.terms_notice || []));
+  }
+  if (!lines.length && !terms.length) return null;
+  return {
+    attribution: ordered(texts ? texts.order : [], lines),
+    terms_notice: ordered(texts ? texts.terms_order : [], terms),
+  };
+}
+
 /** The origin of a provider's catalog and archives (obserwator.attribution.provider_origin). */
 const PROVIDER_ORIGINS = { "IMGW-PIB": "imgw", CHMI: "chmi" };
 
@@ -95,31 +131,27 @@ export function catalogSources(stations) {
   return [...out];
 }
 
-const URL_PART = /(https?:\/\/[^\s),”]+)/;
-
-/** A line with each URL a link; the text stays the line's. */
-function linked(line) {
-  return line.split(URL_PART).map((part, index) =>
-    index % 2 ? html`<a href=${part} target="_blank" rel="noopener noreferrer">${part}</a>` : part,
-  );
+/** The arrays of a set, the same objects while their lines stay: <nogat-sources> redraws, and
+ * closes its dialog, whenever it is handed a new array. */
+function useStable(lines) {
+  const key = JSON.stringify(lines);
+  return useMemo(() => lines, [key]);
 }
 
 /**
- * The lines and the terms, visible.
+ * The kit's strip of the lines (`<nogat-sources>`, Nogat DEV-20.5): S, P, PS, PP and the
+ * short ČHMÚ line on screen, every line and the terms in its dialog; nothing without lines.
  *
- * @param {{fields: {attribution: string[], terms_notice?: string[]}|null, inline?: boolean,
- *   className?: string}} props the fields of a response or of compose; `inline` runs the
- *   lines on with a separator (the map's strip), otherwise each line is its own row
- * @returns {object|null}
+ * @param {{fields: {attribution?: string[], terms_notice?: string[]}|null, session:
+ *   object|null}} props the fields of a response, of compose or of merge; the session
+ *   (its `terms`, the regulamin of a public deployment, linked from the dialog)
+ * @returns {object}
  */
-export function Attribution({ fields, inline = false, className = "" }) {
-  if (!fields || !(fields.attribution || []).length) return null;
-  const terms = fields.terms_notice || [];
-  const classes = ["attrib", inline ? "inline" : "", className].filter(Boolean).join(" ");
-  return html`<div class=${classes} role="note" aria-label=${t("shell.attribution")}>
-    <p class="attrib-lines">${fields.attribution.map((line) => html`<span class="attrib-line">${linked(line)}</span>`)}</p>
-    ${terms.length ? html`<p class="attrib-terms">${terms.map((line) => html`<span class="attrib-line">${linked(line)}</span>`)}</p>` : null}
-  </div>`;
+export function Sources({ fields, session }) {
+  const attribution = useStable((fields && fields.attribution) || []);
+  const termsNotice = useStable((fields && fields.terms_notice) || []);
+  const terms = session && session.terms ? session.terms : undefined;
+  return html`<nogat-sources attribution=${attribution} termsNotice=${termsNotice} terms=${terms}></nogat-sources>`;
 }
 
 /**

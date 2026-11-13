@@ -41,6 +41,7 @@ from obserwator._version import __version__
 from obserwator.attribution import (
     Attribution,
     attribution,
+    carried,
     dataset_origin,
     provider_origin,
 )
@@ -2970,15 +2971,24 @@ def _sync_lines(options: Options, result: object) -> Attribution:
 
 
 def _catalog_lines(options: Options, result: object) -> Attribution:
-    """The lines the built (or the equal current) catalog document carries."""
+    """
+    The lines of the built (or the equal current) catalog, derived from what it holds.
+
+    The provider's lines, and hydro.imgw.pl's when a station was located from there
+    (``location_source`` "static"); the strings the document was written with are
+    not trusted, since a catalog written before ECO-065 holds retired lines.
+    """
     report = cast(CatalogReport, result)
-    lines = attribution(provider_origin(report.provider))
     if report.version is None:
         return Attribution()
     document = json.loads(report.version.read_bytes())
-    return lines | Attribution(
-        tuple(document.get("attribution", ())), tuple(document.get("terms_notice", ()))
-    )
+    lines = attribution(provider_origin(report.provider))
+    if any(
+        (feature.get("properties") or {}).get("location_source") == "static"
+        for feature in document.get("features", ())
+    ):
+        lines |= attribution("imgw_hydro")
+    return lines
 
 
 def _stations_lines(options: Options, result: object) -> Attribution:
@@ -3026,15 +3036,21 @@ def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
 
 
 def _analyses_build_lines(options: Options, result: object) -> Attribution:
-    """The lines of the analyses versions a build wrote or kept."""
+    """
+    The lines of the analyses versions a build wrote or kept.
+
+    Derived from each provider's data; of the stored lines only Hydrolog's own stay
+    (`carried`), as a version kept from before ECO-065 holds retired lines.
+    """
     lines = Attribution()
     for item in cast(_analyses.AnalysesReport, result).providers:
         if item.version is not None and item.status in _DONE:
             document = json.loads(item.version.read_bytes())
-            lines |= Attribution(
+            stored = Attribution(
                 tuple(document.get("attribution", ())),
                 tuple(document.get("terms_notice", ())),
             )
+            lines |= carried(stored, provider_origin(item.provider))
     return lines
 
 

@@ -288,7 +288,7 @@ def test_without_a_basemap_the_packaged_borders_are_the_background(open_page):
     expect(page.locator(".map-legend")).to_contain_text(
         "Tło: granice Polski i Czech z pakietu Obserwatora"
     )
-    expect(page.locator(".map-credits")).not_to_contain_text("Podkład mapy")
+    expect(page.locator(".view-foot")).not_to_contain_text("Podkład mapy")
 
 
 def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):

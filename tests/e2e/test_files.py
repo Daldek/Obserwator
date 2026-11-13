@@ -247,4 +247,9 @@ def test_the_station_list_files_are_the_export_of_the_list_selection(
         line = card.locator(f'[data-format="{fmt}"] pre.code').inner_text()
         assert line == offered["formats"][fmt]["command"]
     assert offered["attribution"]
-    expect(card.locator(".sec-attrib")).to_contain_text(offered["attribution"][0])
+    # the files' lines are in the view's one strip, not in the card
+    strip = page.locator(".view-foot nogat-sources")
+    expect(strip.locator(".nogat-sources-more")).to_be_attached()
+    shown = strip.evaluate("(element) => element.attribution")
+    assert set(offered["attribution"]) <= set(shown)
+    expect(card.locator("nogat-sources")).to_have_count(0)

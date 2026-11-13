@@ -73,7 +73,7 @@ src/obserwator/
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
     ├── _traffic.py       # Traffic: rate limit, daily totals (stats.jsonl), access log (Nogat DEV-15.9 to DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12)
-    ├── _terms.py         # regulamin.html: the terms of Nogat's kit 0.4.0 filled for the deployment (DEV-15.7)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit 0.6.0 filled for the deployment (DEV-15.7)
     └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)

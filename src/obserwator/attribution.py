@@ -1,9 +1,9 @@
 """
-The attribution lines and the terms notice that the data providers require (ADR-012).
+The attribution lines and the terms lines that the data providers require (ADR-012).
 
 A product is anything Obserwator shows, writes or returns with a provider's data
-or with values derived from them (Nogat DEV §20, ECO-060): an envelope of a
-command, a line of the CLI, an export, a stored series, catalog or PMAXTP cell, a
+or with values derived from them (Nogat DEV §20, ECO-060, ECO-065): an envelope of
+a command, a line of the CLI, an export, a stored series, catalog or PMAXTP cell, a
 plain download, a web page. Every product takes its lines from here, and the
 texts come from the one catalog area ``legal`` (`obserwator.messages.legal`):
 
@@ -20,10 +20,14 @@ chmi        ČHMÚ open data (CC BY 4.0)
 A verbatim copy of a provider file carries the source lines (IMGW-PIB ``S``,
 PMAXTP ``PS`` and ``M``, ČHMÚ ``C``); data that were parsed, harmonised,
 reformatted, aggregated or used to compute a result also carry the processed
-lines (``P``, ``PP``, ``CP``); data of hydro.imgw.pl add ``H``. IMGW-PIB data of
-any origin carry the terms notice ``N`` with the terms that apply (``RD``,
-``RH``, ``RK``). Lines of several origins merge in the order of the standard,
-each once, so equal lines of different tools merge byte for byte.
+lines (``P``, ``PP``, ``CP``). IMGW-PIB data of any origin carry the links to the
+terms that apply (``RD``, ``RH``, ``RK``), never a summary of them. Lines of several
+origins merge in the order of the standard, each once, so equal lines of different
+tools merge byte for byte.
+
+A stored product (a series, catalog or analysis written before ECO-065) may hold lines
+the standard has retired: `carried` derives the lines of a stored product from the
+origins of its data and keeps only another tool's own lines from what was stored.
 """
 
 from __future__ import annotations
@@ -33,12 +37,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 from obserwator.messages import message
+from obserwator.messages.legal import RETIRED_LINES
 
 __all__ = [
     "ORIGINS",
     "Attribution",
     "Origin",
     "attribution",
+    "carried",
     "dataset_origin",
     "provider_origin",
 ]
@@ -51,25 +57,25 @@ ORIGINS: tuple[Origin, ...] = ("imgw", "imgw_hydro", "pmaxtp", "chmi")
 # Plain text: the legal wordings are one text in every language.
 _S = str(message("legal.imgw_attribution"))
 _P = str(message("legal.imgw_processed_attribution"))
-_H = str(message("legal.imgw_hydro_attribution"))
 _PS = str(message("legal.pmaxtp_attribution"))
 _PP = str(message("legal.pmaxtp_processed_attribution"))
 _M = str(message("legal.pmaxtp_monograph"))
 _C = str(message("legal.chmi_attribution"))
 _CP = str(message("legal.chmi_processed_attribution"))
-_N = str(message("legal.imgw_terms_notice"))
 _RD = str(message("legal.imgw_terms_danepubliczne"))
 _RH = str(message("legal.imgw_terms_hydro"))
 _RK = str(message("legal.imgw_terms_pmaxtp"))
 
-# The order of DEV-20.4 (attribution) and DEV-20.7 (terms notice).
-_ATTRIBUTION_ORDER = (_S, _P, _H, _PS, _PP, _M, _C, _CP)
-_TERMS_ORDER = (_N, _RD, _RH, _RK)
+# The order of DEV-20.4 (attribution) and DEV-20.7 (terms lines).
+_ATTRIBUTION_ORDER = (_S, _P, _PS, _PP, _M, _C, _CP)
+_TERMS_ORDER = (_RD, _RH, _RK)
+# Lines earlier versions of the standard required (ECO-065), never carried on.
+_RETIRED = frozenset(RETIRED_LINES)
 # Lines of an origin: of a verbatim copy, added by processing, the terms notice.
 _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {
-    "imgw": ((_S,), (_P,), (_N, _RD)),
-    "imgw_hydro": ((_S, _H), (_P,), (_N, _RH)),
-    "pmaxtp": ((_PS, _M), (_PP,), (_N, _RK)),
+    "imgw": ((_S,), (_P,), (_RD,)),
+    "imgw_hydro": ((_S,), (_P,), (_RH,)),
+    "pmaxtp": ((_PS, _M), (_PP,), (_RK,)),
     "chmi": ((_C,), (_CP,), ()),
 }
 _PROVIDERS: dict[str, Origin] = {"IMGW-PIB": "imgw", "CHMI": "chmi"}
@@ -84,6 +90,15 @@ def _ordered(order: tuple[str, ...], lines: Iterable[str]) -> tuple[str, ...]:
     )
 
 
+# „Regulamin <whose terms>: <address>”: the first word of every terms line (DEV §20).
+_TERMS_WORD = _RD.split(" ", 1)[0] + " "
+
+
+def _is_terms(line: str) -> bool:
+    """Whether a line is a terms line: one of the standard's or of its form."""
+    return line in _TERMS_ORDER or (line.startswith(_TERMS_WORD) and ": " in line)
+
+
 @dataclass(frozen=True)
 class Attribution:
     """
@@ -95,12 +110,11 @@ class Attribution:
     Attributes
     ----------
     attribution : tuple of str
-        The attribution lines in the order ``S, P, H, PS, PP, M, C, CP``;
+        The attribution lines in the order ``S, P, PS, PP, M, C, CP``;
         empty for a product without provider data.
     terms_notice : tuple of str
-        The terms-of-use notice of IMGW-PIB data, ``N`` followed by the
-        terms that apply (``RD``, ``RH``, ``RK``); empty without IMGW-PIB
-        data.
+        The links to the terms of IMGW-PIB data that apply (``RD``, ``RH``,
+        ``RK``); empty without IMGW-PIB data.
     """
 
     attribution: tuple[str, ...] = ()
@@ -119,7 +133,7 @@ class Attribution:
 
     @property
     def lines(self) -> tuple[str, ...]:
-        """The attribution lines followed by the terms notice, as a file shows them."""
+        """The attribution lines followed by the terms lines, as a file shows them."""
         return self.attribution + self.terms_notice
 
     @classmethod
@@ -131,17 +145,18 @@ class Attribution:
         ----------
         lines : iterable of str
             Lines of an ``ATTRIBUTION.txt`` or of another tool's product;
-            empty lines are skipped.
+            empty lines and lines the standard retired (ECO-065) are skipped.
 
         Returns
         -------
         Attribution
-            The known terms lines as ``terms_notice``, the rest as
-            ``attribution``, each once in the order of the standard (lines
-            the standard does not know follow the known ones).
+            The terms lines („Regulamin <whose terms>: <address>”) as
+            ``terms_notice``, the rest as ``attribution``, each once in the
+            order of the standard (lines the standard does not know follow the
+            known ones).
         """
-        given = [line for line in lines if line]
-        terms = [line for line in given if line in _TERMS_ORDER]
+        given = [line for line in lines if line and line not in _RETIRED]
+        terms = [line for line in given if _is_terms(line)]
         return cls(
             _ordered(_ATTRIBUTION_ORDER, (line for line in given if line not in terms)),
             _ordered(_TERMS_ORDER, terms),
@@ -199,6 +214,51 @@ def attribution(*origins: Origin, processed: bool = True) -> Attribution:
     return Attribution(
         _ordered(_ATTRIBUTION_ORDER, lines), _ordered(_TERMS_ORDER, terms)
     )
+
+
+def carried(
+    stored: Attribution, *origins: Origin, processed: bool = True
+) -> Attribution:
+    """
+    The lines of a stored product, derived from the origins of its data.
+
+    A series, catalog or analysis result keeps the lines it was written with, and
+    those of a product stored before ECO-065 are partly retired (H, N, the terms
+    lines before they named their terms). The lines of its data are derived anew
+    from their origins; of what was stored only the attribution lines another tool
+    added and the standard does not derive stay, e.g. Hydrolog's ČHMÚ line naming
+    its computation (DEV-20.6). Stored terms lines never stay: they are derived.
+
+    Parameters
+    ----------
+    stored : Attribution
+        The lines the stored product holds.
+    *origins : {"imgw", "imgw_hydro", "pmaxtp", "chmi"}
+        Origins of the data in the product.
+    processed : bool, optional
+        Whether the data were processed (see `attribution`).
+
+    Returns
+    -------
+    Attribution
+        The derived lines and another tool's own attribution lines, each once in
+        the order of the standard.
+
+    Examples
+    --------
+    >>> old = Attribution(("Dane pochodzą z serwisu hydrologicznego IMGW-PIB "
+    ...     "https://hydro.imgw.pl",), ("Regulamin: https://hydro.imgw.pl/#/regulamin",))
+    >>> carried(old, "imgw") == attribution("imgw")
+    True
+    """
+    derived = attribution(*origins, processed=processed)
+    known = frozenset(_ATTRIBUTION_ORDER)
+    own = tuple(
+        line
+        for line in stored.attribution
+        if line not in known and line not in _RETIRED and not _is_terms(line)
+    )
+    return derived | Attribution(own)
 
 
 def dataset_origin(key: str, /) -> Origin:

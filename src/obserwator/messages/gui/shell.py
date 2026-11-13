@@ -67,11 +67,18 @@ MESSAGES: dict[str, Text] = {
     "shell.theme.auto": Text("The system's theme", "Motyw systemu"),
     "shell.theme.light": Text("Light", "Jasny"),
     "shell.theme.dark": Text("Dark", "Ciemny"),
-    # The providers' lines and, in a public deployment, the terms and the statement
-    # (Nogat DEV-15.7, DEV-15.8; the statement opens § 3 of the terms)
-    "shell.attribution": Text(
-        "Data sources and terms of use", "Źródło danych i warunki korzystania"
+    # The welcome window of a first visit, with the kit's full provider lines (Nogat
+    # DEV-20.5); in a public deployment the terms and the statement (Nogat DEV-15.7,
+    # DEV-15.8; the statement opens § 3 of the terms)
+    "shell.welcome.title": Text("Welcome to Obserwator", "Witaj w Obserwatorze"),
+    "shell.welcome.intro": Text(
+        "Obserwator shows the hydrological and meteorological stations of IMGW-PIB and"
+        " ČHMÚ on a map: choose one to see its measurements, analyses and files.",
+        "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne IMGW-PIB"
+        " i ČHMÚ: wybierz stację, aby zobaczyć jej pomiary, analizy i pliki.",
     ),
+    "shell.welcome.start": Text("Got it", "Rozumiem"),
+    "shell.welcome.close": Text("Close", "Zamknij"),
     "shell.terms": Text("Terms of service", "Regulamin"),
     "shell.statement": Text(
         "The service is non-commercial and free of charge, carries no advertising and"

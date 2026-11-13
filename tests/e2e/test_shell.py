@@ -151,6 +151,8 @@ def test_feedback_shows_the_servers_refusal_and_keeps_the_text(browser, gui_url)
     # A refused request is a console error of Chromium's own: this page is checked for
     # errors of its scripts only
     context = browser.new_context(viewport={"width": 1440, "height": 900})
+    # the welcome window of a first visit counts as seen
+    context.add_init_script("localStorage.setItem('obserwator-welcome', '1');")
     errors: list[str] = []
     try:
         page = context.new_page()
@@ -211,7 +213,11 @@ def test_on_a_phone_the_panels_are_bottom_sheets(open_page):
     expect(sheet).to_be_visible()
     expect(sheet).to_have_css("transform", "none")
     box = sheet.bounding_box()
-    assert box is not None
-    assert round(box["width"]) == 390 and round(box["y"] + box["height"]) == 844
+    # the sheet stops above the view's foot, the strip of provider lines
+    foot = page.locator(".view-foot").bounding_box()
+    assert box is not None and foot is not None
+    assert round(box["width"]) == 390
+    assert round(box["y"] + box["height"]) == round(foot["y"])
+    assert round(foot["y"] + foot["height"]) == 844
     page.keyboard.press("Escape")
     expect(sheet).to_be_hidden()

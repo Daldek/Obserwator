@@ -1,4 +1,4 @@
-"""The attribution lines and the terms notice of provider data (ADR-012, Nogat DEV §20).
+"""The attribution lines and the terms lines of provider data (ADR-012, Nogat DEV §20).
 
 The texts are a legal contract: the IMGW-PIB terms, the PMAXTP terms and CC BY 4.0
 of ČHMÚ prescribe them, so one test pins them byte for byte against the table of
@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 
 from obserwator import current_version, run_command
 from obserwator.api.main import app
-from obserwator.attribution import ORIGINS, Attribution, attribution
+from obserwator.attribution import ORIGINS, Attribution, attribution, carried
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
 from obserwator.datasets import archive_files
@@ -69,7 +69,7 @@ def table_of(lines) -> list[dict[str, str]]:
 # --------------------------------------------------------------------------
 
 
-def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
+def test_the_ten_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
     imgw = "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy"
     imgw_of = (
         "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
@@ -79,7 +79,6 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
     table = {
         "S": f"Źródłem pochodzenia danych jest {imgw}",
         "P": f"{imgw_of} zostały przetworzone",
-        "H": "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl",
         "PS": f"Źródłem pochodzenia danych jest {imgw}, dane pochodzą ze strony {pmaxtp}",
         "PP": f"{imgw_of} pochodzące ze strony {pmaxtp} zostały przetworzone",
         "M": (
@@ -93,35 +92,31 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
             "(https://creativecommons.org/licenses/by/4.0/)"
         ),
         "CP": "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)",
-        "N": (
-            "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych "
-            "(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach "
-            "z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w "
-            "gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
+        "RD": "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations",
+        "RH": (
+            "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
         ),
-        "RD": "Regulamin: https://danepubliczne.imgw.pl/regulations",
-        "RH": "Regulamin: https://hydro.imgw.pl/#/regulamin",
-        "RK": f"Regulamin: {pmaxtp}",
+        "RK": f"Regulamin danych PMAXTP: {pmaxtp}",
     }
 
     every = attribution(*ORIGINS)
 
-    marks = ("S", "P", "H", "PS", "PP", "M", "C", "CP")
+    marks = ("S", "P", "PS", "PP", "M", "C", "CP")
     assert every.attribution == tuple(table[mark] for mark in marks)
-    assert every.terms_notice == tuple(table[mark] for mark in ("N", "RD", "RH", "RK"))
+    assert every.terms_notice == tuple(table[mark] for mark in ("RD", "RH", "RK"))
 
 
 def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs():
-    s, p, h, ps, pp, m, c, cp = attribution(*ORIGINS).attribution
-    n, rd, rh, rk = attribution(*ORIGINS).terms_notice
+    s, p, ps, pp, m, c, cp = attribution(*ORIGINS).attribution
+    rd, rh, rk = attribution(*ORIGINS).terms_notice
 
     assert [
         (attribution(origin, processed=False), attribution(origin))
         for origin in ORIGINS
     ] == [
-        (Attribution((s,), (n, rd)), Attribution((s, p), (n, rd))),
-        (Attribution((s, h), (n, rh)), Attribution((s, p, h), (n, rh))),
-        (Attribution((ps, m), (n, rk)), Attribution((ps, pp, m), (n, rk))),
+        (Attribution((s,), (rd,)), Attribution((s, p), (rd,))),
+        (Attribution((s,), (rh,)), Attribution((s, p), (rh,))),
+        (Attribution((ps, m), (rk,)), Attribution((ps, pp, m), (rk,))),
         (Attribution((c,)), Attribution((c, cp))),
     ]
     assert attribution() == Attribution() and not attribution()
@@ -152,6 +147,41 @@ def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
     for lines in (every, IMGW, CHMI, foreign | IMGW, Attribution()):
         assert Attribution.from_lines([*lines.lines, ""]) == lines
         assert Attribution.from_lines(reversed(lines.lines)) == lines
+    # Another tool's terms line, of the form of DEV §20, is read back as one
+    theirs = "Regulamin danych X: https://example.org/terms"
+    assert Attribution.from_lines([*IMGW.lines, theirs]).terms_notice == (
+        *IMGW.terms_notice,
+        theirs,
+    )
+
+
+# The lines of IMGW-PIB data of hydro.imgw.pl as products stored before ECO-065 hold
+# them: H, N and the terms lines that did not name their terms
+H = "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
+N = (
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych "
+    "(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach "
+    "z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w "
+    "gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
+)
+OLD = Attribution(
+    (*IMGW.attribution, H),
+    (
+        N,
+        "Regulamin: https://danepubliczne.imgw.pl/regulations",
+        "Regulamin: https://hydro.imgw.pl/#/regulamin",
+    ),
+)
+
+
+def test_a_stored_product_carries_the_derived_lines_and_its_producers_own_only():
+    hydrolog = "Dane ČHMÚ zostały przetworzone (obliczenia w programie Hydrolog)"
+    stored = Attribution((*OLD.attribution, hydrolog), OLD.terms_notice)
+
+    assert carried(OLD, "imgw", "imgw_hydro") == attribution("imgw", "imgw_hydro")
+    assert carried(stored, "chmi") == attribution("chmi") | Attribution((hydrolog,))
+    # An ATTRIBUTION.txt written before ECO-065 is read back without its retired lines
+    assert Attribution.from_lines(OLD.lines) == Attribution(IMGW.attribution)
 
 
 # --------------------------------------------------------------------------
@@ -174,11 +204,12 @@ def test_csv_of_series_export_has_one_line_per_cell_and_joins_the_rest_into_one_
     )
 
     assert len(imgw_rows) > 2 and trailing_lines(imgw_rows) == IMGW
-    assert (imgw_rows[0]["attribution"], imgw_rows[1]["terms_notice"]) == (
-        IMGW.attribution[0],
-        IMGW.terms_notice[1],
-    )
-    # CC BY 4.0 data: C and CP, no IMGW-PIB terms notice.
+    assert [(row["attribution"], row["terms_notice"]) for row in imgw_rows[:3]] == [
+        (IMGW.attribution[0], IMGW.terms_notice[0]),
+        (IMGW.attribution[1], ""),
+        ("", ""),
+    ]
+    # CC BY 4.0 data: C and CP, no IMGW-PIB terms lines.
     assert trailing_lines(chmi_rows) == CHMI
     assert not any(row["terms_notice"] for row in chmi_rows)
     # A table of one row holds every line of a column in its one cell.

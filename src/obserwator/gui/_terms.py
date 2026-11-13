@@ -39,8 +39,6 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
     }
 )
 """The blocks a GUI may list (Nogat's ``BLOCKS``)."""
-IMGW_BLOCKS: frozenset[str] = frozenset({"imgw", "imgw-hydro", "pmaxtp"})
-"""The blocks that bring the derived block ``imgw-terms`` with them."""
 PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "service_name",
@@ -87,7 +85,7 @@ BLOCK = re.compile(
 
 def kept(listed: Iterable[str]) -> set[str]:
     """
-    The blocks kept for the ``listed`` ones, with the derived block ``imgw-terms``.
+    The blocks kept for the ``listed`` ones.
 
     Parameters
     ----------
@@ -102,8 +100,7 @@ def kept(listed: Iterable[str]) -> set[str]:
     Raises
     ------
     ValueError
-        When a name is no block of the terms (``imgw-terms`` included: it is
-        derived, never listed).
+        When a name is no block of the terms.
     """
     chosen = set(listed)
     unknown = sorted(chosen - KNOWN_BLOCKS)
@@ -111,8 +108,6 @@ def kept(listed: Iterable[str]) -> set[str]:
         raise ValueError(
             message("gui.public.terms_unknown_blocks", blocks=", ".join(unknown))
         )
-    if chosen & IMGW_BLOCKS:
-        chosen.add("imgw-terms")
     return chosen
 
 

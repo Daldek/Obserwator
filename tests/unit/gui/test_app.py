@@ -654,7 +654,7 @@ def test_pmaxtp_files_hold_the_tables_and_pmaxtp_lines(client):
     ]
     lines = attribution("pmaxtp")
     assert [row[6] for row in rows[1:]] == list(lines.attribution)
-    assert [row[7] for row in rows[1:]] == [*lines.terms_notice, ""]
+    assert [row[7] for row in rows[1:]] == [*lines.terms_notice, "", ""]
     exported = json.loads(document.content)
     assert exported["schema"] == "obserwator-pmaxtp-export/1"
     assert exported["data"]["rb"] == {"15": {"50": 0.3}}

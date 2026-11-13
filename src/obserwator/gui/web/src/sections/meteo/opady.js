@@ -5,10 +5,9 @@
 // `precipitation_quantiles[.Nd]`) or of IMGW-PIB's PMAXTP (api/pmaxtp); the page picks,
 // sorts for display, formats and draws.
 
-import { Attribution } from "../../attribution.js";
-import { Chart, fmt, html, lang, t, tn, useMemo, useState } from "../../lib.js";
+import { Chart, fmt, html, lang, t, tn, useContext, useEffect, useMemo, useState } from "../../lib.js";
 import { pmaxtpQuery, usePmaxtp } from "../../pmaxtp/state.js";
-import { Figures, Notices, Section, Seg, Table } from "../common.js";
+import { Figures, Notices, ResultLines, Section, Seg, Table } from "../common.js";
 import {
   Option,
   Periods,
@@ -564,6 +563,12 @@ function QuantilesBody({ station, quantiles, maxima, days, pmaxtp }) {
   }
   const pmKey = lines.map((l) => `${l.method}${l.points.length}`).join(" ");
   const pm = useMemo(() => lines, [pmKey, r]);
+  // PMAXTP's lines go to the view's strip while its quantiles are drawn
+  const report = useContext(ResultLines);
+  const pmaxtpDoc = lines.length ? lines[0].doc : null;
+  useEffect(() => {
+    if (report && pmaxtpDoc) report(pmaxtpDoc);
+  }, [report, pmaxtpDoc]);
   const rowOf = (years) => {
     const at = atPeriod(best.return_periods, years);
     const p = at < 0 ? 100 / years : Math.round(100 * best.exceedance_probabilities[at] * 1e4) / 1e4;
@@ -625,8 +630,7 @@ function QuantilesBody({ station, quantiles, maxima, days, pmaxtp }) {
       ? html`<p class="muted me-caption">
             ${t("meteo.opady.quantiles.pmaxtp_caption", { hours: pmaxtp.hours, point: `${fmt(point.lat, 4)}° N, ${fmt(point.lon, 4)}° E` })}
             ${" "}<a href=${`?${new URLSearchParams({ view: "pmaxtp", ...pmaxtpQueryPoint(point) }).toString()}`}>${t("meteo.opady.quantiles.pmaxtp_link")}</a>
-          </p>
-          <${Attribution} fields=${lines[0].doc} className="sec-attrib" />`
+          </p>`
       : null}
     <details class="me-details">
       <summary>${t("meteo.opady.quantiles.all")}</summary>

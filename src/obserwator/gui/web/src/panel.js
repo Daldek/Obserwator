@@ -10,16 +10,16 @@
 // shows its catalog data and says the data root holds none. A section that throws shows
 // its error in its card; the others go on.
 //
-// Under each open card the panel draws the provider's lines and terms (Nogat DEV §20):
-// those of the station's `attribution_parts` named by the entry's `part` ("catalog",
-// "series", by default "results"), joined with the lines of every analysis document the
-// card's sections receive (`ResultLines` of sections/common.js; ČHMÚ's line of results
-// computed by Hydrolog exists only there). `part: null` means the section draws its own
-// („Pomiary bieżące”).
+// The panel hands the lines and terms of what it shows (Nogat DEV §20, DEV-20.5) to the
+// view's one strip (`onLines`, main.js): the station's catalog lines of its header,
+// and for each open card the station's `attribution_parts` named by the entry's `part`
+// ("catalog", "series", by default "results"; `null` for none) joined with the lines of
+// every document the card's sections receive (`ResultLines` of sections/common.js; ČHMÚ's
+// line of results computed by Hydrolog exists only there). No card draws lines of its own.
 
 import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
-import { Attribution, catalogSources, compose, useTexts } from "./attribution.js";
+import { catalogSources, compose, merge, useTexts } from "./attribution.js";
 import { fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { ResultLines, Section } from "./sections/common.js";
 import { DANE } from "./sections/dane.js";
@@ -88,20 +88,16 @@ function Chevron() {
 }
 
 /**
- * The lines and terms of several sets, each line once, in the order it first appears.
+ * Hand the lines of a component to the panel's foot while it is drawn, and none once it is
+ * gone.
  *
- * @param {({attribution?: string[], terms_notice?: string[]}|null)[]} sets
- * @returns {{attribution: string[], terms_notice: string[]}|null}
+ * @param {(lines: object|null) => void} onLines where the lines go
+ * @param {{attribution: string[], terms_notice: string[]}|null} lines
  */
-function joinLines(sets) {
-  const attribution = [];
-  const terms = [];
-  for (const set of sets) {
-    if (!set) continue;
-    for (const line of set.attribution || []) if (!attribution.includes(line)) attribution.push(line);
-    for (const line of set.terms_notice || []) if (!terms.includes(line)) terms.push(line);
-  }
-  return attribution.length ? { attribution, terms_notice: terms } : null;
+function useLines(onLines, lines) {
+  const key = JSON.stringify(lines);
+  useEffect(() => onLines(lines), [key]);
+  useEffect(() => () => onLines(null), []);
 }
 
 /** The header of the station. */
@@ -123,8 +119,8 @@ function StationHead({ station }) {
   </div>`;
 }
 
-/** One card of the accordion: its header, and when open its section and the lines under it. */
-function Card({ entry, station, session, analyses, open, onToggle }) {
+/** One card of the accordion: its header, and when open its section; its lines go to `onLines`. */
+function Card({ entry, station, session, analyses, open, onToggle, onLines }) {
   const [reported, setReported] = useState([]);
   const seen = useRef(new Set());
   // Stable for the card's life, so the sections' effects that call it run once per document
@@ -135,9 +131,13 @@ function Card({ entry, station, session, analyses, open, onToggle }) {
     seen.current.add(key);
     setReported((old) => [...old, { attribution: doc.attribution, terms_notice: doc.terms_notice || [] }]);
   }, []);
+  const own = entry.part === null ? null : (station.attribution_parts || {})[entry.part || "results"];
+  const lines = open ? merge(null, [own, ...reported]) : null;
+  const key = JSON.stringify(lines);
+  useEffect(() => onLines(entry.id, lines), [key]);
+  useEffect(() => () => onLines(entry.id, null), []);
   const Body = entry.component;
   const body = `sec-${entry.id}`;
-  const lines = entry.part === null ? null : joinLines([(station.attribution_parts || {})[entry.part || "results"], ...reported]);
   return html`<section class=${`acc-item${open ? " open" : ""}`} data-section=${entry.id}>
     <h3 class="acc-head">
       <button type="button" aria-expanded=${open} aria-controls=${open ? body : undefined} onClick=${() => onToggle(entry.id)}>
@@ -150,7 +150,6 @@ function Card({ entry, station, session, analyses, open, onToggle }) {
           <${ResultLines.Provider} value=${collect}>
             <${Guard}><${Body} station=${station} session=${session} analyses=${analyses} /></${Guard}>
           </${ResultLines.Provider}>
-          <${Attribution} fields=${lines} className="sec-attrib" />
         </div>`
       : null}
   </section>`;
@@ -160,14 +159,18 @@ function Card({ entry, station, session, analyses, open, onToggle }) {
  * The panel's body for a selected station.
  *
  * @param {{code: string, session: object|null, open: string[], focus?: string|null,
- *   onToggle: (id: string) => void}} props the station, api/session, the open sections,
- *   the section the address named (scrolled into view once) and the toggle
+ *   onToggle: (id: string) => void, onLines: (lines: object|null) => void}} props the
+ *   station, api/session, the open sections, the section the address named (scrolled into
+ *   view once), the toggle and where the lines of what the panel shows go
  * @returns {object}
  */
-export function StationPanel({ code, session, open, focus, onToggle }) {
+export function StationPanel({ code, session, open, focus, onToggle, onLines }) {
+  const texts = useTexts();
   const [state, setState] = useState({ station: null, error: null });
   const [list, setList] = useState({ analyses: null, error: null });
+  const [cards, setCards] = useState({});
   const focused = useRef(false);
+  const cardLines = useCallback((id, lines) => setCards((old) => (old[id] === lines ? old : { ...old, [id]: lines })), []);
   useEffect(() => {
     let live = true;
     setState({ station: null, error: null });
@@ -195,6 +198,8 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
     if (card && focus !== sections[0].id) card.scrollIntoView({ block: "start" });
     if (card || ids) focused.current = true;
   }, [station, ids]);
+  const parts = (station && station.attribution_parts) || {};
+  useLines(onLines, station ? merge(texts, [parts.catalog, ...sections.map((entry) => cards[entry.id])]) : null);
   if (state.error) return html`<p class="ana-error" role="alert">${state.error.message}</p>`;
   if (!station) return html`<p class="muted">${t("station.loading")}</p>`;
   // Where the analyses come once listed: after „Dane pomiarowo-obserwacyjne”
@@ -208,6 +213,7 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
     analyses=${list.analyses}
     open=${open.includes(entry.id)}
     onToggle=${onToggle}
+    onLines=${cardLines}
   />`;
   return html`<div class="station-panel">
     <${StationHead} station=${station} />
@@ -223,13 +229,15 @@ export function StationPanel({ code, session, open, focus, onToggle }) {
 
 /**
  * „Pobierz listę stacji”: the stations of the list's provider and kind as the files of
- * `export_stations` (api/downloads/stations), each format's command line, the licences and
- * the lines; fetched again when the provider or the kind changes.
+ * `export_stations` (api/downloads/stations), each format's command line and the licences;
+ * fetched again when the provider or the kind changes. Its answer, with its lines, goes to
+ * `onDoc`.
  *
- * @param {{provider: string|null, kind: string|null}} props null for every one
+ * @param {{provider: string|null, kind: string|null, onDoc: (doc: object|null) => void}}
+ *   props null for every one
  * @returns {object}
  */
-function StationsFiles({ provider, kind }) {
+function StationsFiles({ provider, kind, onDoc }) {
   const [state, setState] = useState({ doc: null, error: null });
   useEffect(() => {
     let live = true;
@@ -243,6 +251,7 @@ function StationsFiles({ provider, kind }) {
     };
   }, [provider, kind]);
   const { doc, error } = state;
+  useEffect(() => onDoc(doc), [doc]);
   const formats = doc ? Object.keys(doc.formats) : [];
   return html`<div class="stations-files">
     <${Section} title=${t("station.none.files")} info=${t("station.none.files_info")}>
@@ -267,8 +276,7 @@ function StationsFiles({ provider, kind }) {
               ${formats.map(
                 (key) => html`<div data-format=${key}><${Command} line=${doc.formats[key].command} label=${t("station.none.files_cli", { format: STATIONS_FORMATS[key] || key })} /></div>`,
               )}
-              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} />`)}
-              <${Attribution} fields=${doc} className="sec-attrib" />`
+              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} />`)}`
           : html`<p class="muted" role="status">${t("station.files.loading")}</p>`}
     </${Section}>
   </div>`;
@@ -278,13 +286,16 @@ function StationsFiles({ provider, kind }) {
  * The panel without a station: how to choose one, what the data root holds and the
  * stations of the list's provider and kind to download.
  *
- * @param {{session: object|null, stations: object[], provider?: string, kind?: string}}
- *   props api/session, the stations of api/stations and the list's provider and kind
- *   filters ("all" or none for every one)
+ * @param {{session: object|null, stations: object[], provider?: string, kind?: string,
+ *   onLines: (lines: object|null) => void}} props api/session, the stations of
+ *   api/stations, the list's provider and kind filters ("all" or none for every one) and
+ *   where the lines of the catalogs and of the stations files go
  * @returns {object}
  */
-export function NoStation({ session, stations, provider = "all", kind = "all" }) {
+export function NoStation({ session, stations, provider = "all", kind = "all", onLines }) {
   const texts = useTexts();
+  const [files, setFiles] = useState(null);
+  useLines(onLines, merge(texts, [compose(texts, catalogSources(stations)), files]));
   const count = (test) => fmt(stations.filter(test).length);
   const root = session ? session.root : null;
   const held = (root && root.series) || {};
@@ -313,7 +324,7 @@ export function NoStation({ session, stations, provider = "all", kind = "all" })
         <tr><th scope="row">${t("station.none.without_location")}</th><td>${count((s) => s.lon === null)}</td></tr>
       </tbody>
     </table>
-    <${StationsFiles} provider=${provider === "all" ? null : provider} kind=${kind === "all" ? null : kind} />
+    <${StationsFiles} provider=${provider === "all" ? null : provider} kind=${kind === "all" ? null : kind} onDoc=${setFiles} />
     <h3 class="group-title">${t("station.none.series")}</h3>
     ${series.length
       ? html`<table class="params compact">
@@ -349,6 +360,5 @@ export function NoStation({ session, stations, provider = "all", kind = "all" })
           Obserwator ${session.version.obserwator} · ${session.version.hydrolog ? `Hydrolog ${session.version.hydrolog}` : t("station.none.no_hydrolog")}
         </p>`
       : null}
-    <${Attribution} fields=${compose(texts, catalogSources(stations))} className="sec-attrib" />
   </div>`;
 }

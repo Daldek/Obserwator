@@ -771,7 +771,9 @@ def test_api_stream_notices_follow_accept_language_and_the_data_does_not(
     assert [item["message"] for item in notices["en"]] == [
         n.message for n in expected.notices
     ]
-    assert notices["pl"] != notices["en"]
+    # IMGW-PIB data: the lines and the links to the terms, no summary to translate
+    # (Nogat DEV-20.7, ECO-065), so one text in both languages
+    assert notices["pl"] == notices["en"]
     for response, lang in ((english, "en"), (polish, "pl")):
         assert response.headers["content-language"] == lang
         assert "accept-language" in response.headers["vary"].lower()

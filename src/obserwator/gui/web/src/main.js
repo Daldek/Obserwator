@@ -4,18 +4,21 @@
 // bar switches the views: „Stacje” (the catalogs), „Pomiary bieżące” (IMGW-PIB's current
 // measurements, current.js) and „PMAXTP” (plan D12: the form takes the left panel and the
 // results the right one; no layer of the PMAXTP grid). The address keeps the station, its
-// open section, the view and the PMAXTP point (state.js). Every view with provider data
-// shows their lines and terms (attribution.js): the strip under the map for what it draws,
-// the panels for what they show; on a phone, where the sheets cover the strip, the station
-// list's sheet has them in its foot. A public deployment adds „Regulamin” and the service's
-// statement under the map of every view and in the list's foot. „Zgłoś uwagę”
-// (ui/feedback.js) sends the view, the station and the address's parameters.
+// open section, the view and the PMAXTP point (state.js). Every view shows the lines of its
+// data in one compact strip across the page under the map and both panels (attribution.js
+// `Sources`, Nogat DEV-20.5; the layout's `foot`): the union of the lines of what the list
+// and the map show and of what the right panel shows (the station's cards, the stations'
+// files, PMAXTP's tables), with the basemap's credit after them; never one per card. On a
+// phone the sheets stop above it. A first visit opens the welcome window with every line
+// (ui/welcome.js). A public deployment adds „Regulamin” and the service's statement under
+// the strip. „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's
+// parameters.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
 
 import { api } from "./api.js";
-import { Attribution, PublicNotice, catalogSources, compose, setTexts, useTexts } from "./attribution.js";
+import { PublicNotice, Sources, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
 import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
@@ -32,6 +35,7 @@ import { openPanel } from "./ui/sheet.js";
 import { ToastHost, toast } from "./ui/toast.js";
 import { TopBar } from "./ui/top-bar.js";
 import { ViewLayout } from "./ui/view-layout.js";
+import { WelcomeDialog } from "./ui/welcome.js";
 
 /** The sections open on a first visit: the current measurements and the measurement data. */
 const FIRST_OPEN = ["teraz", "dane"];
@@ -74,6 +78,10 @@ function App({ lang: language }) {
   const [method, setMethod] = useState(start.method);
   const current = useCurrent(view === "current");
   const pmaxtp = usePmaxtp(pick, method);
+  // The lines of what the station panel shows (panel.js `onLines`) and the basemap's credit
+  // (map.js `onCredit`)
+  const [panelLines, setPanelLines] = useState(null);
+  const [credit, setCredit] = useState(null);
 
   useEffect(() => {
     api.stations().then((doc) => setStations(prepareStations(doc.stations)), setFailure);
@@ -108,11 +116,12 @@ function App({ lang: language }) {
   const station = selected ? byCode.get(selected) || null : null;
   const texts = useTexts();
   const listed = useMemo(() => compose(texts, catalogSources(drawn)), [texts, drawn]);
-  const credits = { stations: listed, current: current.doc, pmaxtp: null }[view];
   const pmaxtpView = view === "pmaxtp";
+  // The view's lines: what the list and the map show and what the right panel shows
+  const shown = pmaxtpView ? [pmaxtp.doc] : [listed, view === "current" ? current.doc : null, panelLines];
+  const lines = merge(texts, shown);
   const viewItems = views();
   const viewName = viewItems.find((item) => item.value === view).label;
-  const notice = html`<${PublicNotice} session=${session} />`;
   // What „Zgłoś uwagę” shows and sends: the view and, outside PMAXTP, the station of the
   // catalog with its open section, read when the dialog opens
   const captureFeedback = () => {
@@ -156,10 +165,6 @@ function App({ lang: language }) {
           : stations
             ? html`<${StationList} stations=${all} filters=${filters} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted" role="status">${t("shell.stations_loading")}</p>`,
-        foot:
-          listed || (session && session.terms)
-            ? html`<${Attribution} fields=${listed} inline=${true} />${notice}`
-            : null,
       };
   const hints = {
     stations: t("shell.hint.stations"),
@@ -179,13 +184,22 @@ function App({ lang: language }) {
       current=${current}
       pick=${pick}
       pickFly=${pickFly}
-      credits=${credits}
+      onCredit=${setCredit}
       session=${session}
       onSelect=${(code) => select(code)}
       onPick=${choosePoint}
     />`,
-    foot: session && session.terms ? notice : null,
   };
+  const foot =
+    lines || credit || (session && session.terms)
+      ? html`${lines || credit
+            ? html`<div class="view-sources">
+                <${Sources} fields=${lines} session=${session} />
+                ${credit ? html`<span class="map-basemap">${credit}</span>` : null}
+              </div>`
+            : null}
+          <${PublicNotice} session=${session} />`
+      : null;
   const right = pmaxtpView
     ? {
         title: t("shell.panel.pmaxtp"),
@@ -198,8 +212,8 @@ function App({ lang: language }) {
         sub: station ? station.code : null,
         short: station ? station.name || station.code : t("shell.panel.station"),
         body: selected
-          ? html`<${StationPanel} key=${selected} code=${selected} session=${session} open=${open} focus=${start.station === selected ? start.section : null} onToggle=${toggle} />`
-          : html`<${NoStation} session=${session} stations=${all} provider=${filters.provider} kind=${filters.kind} />`,
+          ? html`<${StationPanel} key=${selected} code=${selected} session=${session} open=${open} focus=${start.station === selected ? start.section : null} onToggle=${toggle} onLines=${setPanelLines} />`
+          : html`<${NoStation} session=${session} stations=${all} provider=${filters.provider} kind=${filters.kind} onLines=${setPanelLines} />`,
       };
   return html`
     <${TopBar}
@@ -209,9 +223,10 @@ function App({ lang: language }) {
       context=${pmaxtpView && pick ? `${method} · ${pointLabel(pick)}` : null}
     />
     <main class="main">
-      <${ViewLayout} left=${left} center=${center} right=${right} />
+      <${ViewLayout} left=${left} center=${center} right=${right} foot=${foot} />
     </main>
     <${FeedbackDialog} capture=${captureFeedback} session=${session} />
+    <${WelcomeDialog} session=${session} />
     <${ToastHost} />
   `;
 }

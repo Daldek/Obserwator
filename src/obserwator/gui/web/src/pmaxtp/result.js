@@ -1,15 +1,14 @@
 // The results of the view „PMAXTP” (plan D12): the tables of the old page
 // (partials/pmaxtp_result.html, removed with the GUI's S8) for every duration and
 // probability IMGW-PIB gives: the quantiles (ks), the upper bounds of their confidence
-// interval (sg) and the estimation errors (rb). Right under the table, PMAXTP's own lines
-// and terms (PS, PP, the monograph M, N, RK; Nogat DEV-20.2), then the files, packed by the
-// server from the API's answer for the point (api/files/pmaxtp: CSV and JSON with the same
-// lines), the link to that answer at IMGW-PIB, which is the only address IMGW-PIB has for a
-// point (klimat.imgw.pl/opady-maksymalne builds its own files in the browser), and the
-// command line that gives the same numbers.
+// interval (sg) and the estimation errors (rb). Under the table the monograph, then the
+// files, packed by the server from the API's answer for the point (api/files/pmaxtp: CSV and
+// JSON with PMAXTP's lines and terms), the link to that answer at IMGW-PIB, which is the
+// only address IMGW-PIB has for a point (klimat.imgw.pl/opady-maksymalne builds its own
+// files in the browser), and the command line that gives the same numbers. PMAXTP's lines
+// (PS, PP, the monograph M, N, RK; Nogat DEV-20.2) are in the view's strip (main.js).
 
 import { api } from "../api.js";
-import { Attribution } from "../attribution.js";
 import { fmt, fmtDateTime, html, t, useState } from "../lib.js";
 import { Seg } from "../sections/common.js";
 import { Command } from "../sections/pobierz.js";
@@ -96,7 +95,6 @@ export function PmaxtpResult({ point, method, state }) {
         </tbody>
       </table>
     </div>
-    <${Attribution} fields=${doc} className="sec-attrib" />
     <p class="note">
       ${t("pmaxtp.result.monograph")}${" "}
       <a href=${MONOGRAPH_URL} target="_blank" rel="noopener noreferrer">${t("pmaxtp.result.monograph_link")}</a>
