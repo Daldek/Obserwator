@@ -17,7 +17,9 @@ MESSAGES: dict[str, Text] = {
     "stations.list.kind_all": Text("All", "Wszystkie"),
     "stations.list.kind_hydro": Text("Hydrological", "Hydrologiczne"),
     "stations.list.kind_meteo": Text("Meteorological", "Meteorologiczne"),
-    "stations.list.datasets": Text("Series in the store", "Szeregi w magazynie"),
+    "stations.list.datasets": Text(
+        "Series in the data root", "Szeregi w katalogu danych"
+    ),
     "stations.list.active_only": Text("active only", "tylko czynne"),
     "stations.list.found.one": Text("station", "stacja"),
     "stations.list.found.few": Text("stations", "stacje"),

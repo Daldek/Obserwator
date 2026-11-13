@@ -188,7 +188,7 @@
   <h3 id="lista">Lista, wyszukiwarka i filtry</h3>
   <ul>
     <li><strong>Wyszukiwarka</strong> („Nazwa, rzeka albo kod”) szuka fragmentu nazwy albo rzeki i początku kodu, bez względu na wielkość liter i znaki diakrytyczne: „lodz” znajdzie Łódź, a „spindleruv” Špindlerův Mlýn. Zawęża tylko listę, nie mapę.</li>
-    <li><strong>Filtry</strong>: „Dostawca” (Wszyscy, IMGW-PIB, ČHMÚ), „Rodzaj stacji” (Wszystkie, Hydrologiczne, Meteorologiczne), „Szeregi w magazynie” i „tylko czynne”. Chipy „Szeregi w magazynie” to zbiory danych każdego dostawcy, np. „Dobowe” czy „Opadowe”; pełną nazwę zbioru pokazuje podpowiedź. Wybrany chip zostawia stacje, które mają szereg tego zbioru; kilka chipów zostawia stacje z którymkolwiek z nich. Filtry zawężają i listę, i mapę.</li>
+    <li><strong>Filtry</strong>: „Dostawca” (Wszyscy, IMGW-PIB, ČHMÚ), „Rodzaj stacji” (Wszystkie, Hydrologiczne, Meteorologiczne), „Szeregi w katalogu danych” i „tylko czynne”. Chipy „Szeregi w katalogu danych” to zbiory danych każdego dostawcy, np. „Dobowe” czy „Opadowe”; pełną nazwę zbioru pokazuje podpowiedź. Wybrany chip zostawia stacje, które mają szereg tego zbioru; kilka chipów zostawia stacje z którymkolwiek z nich. Filtry zawężają i listę, i mapę.</li>
     <li><strong>Liczby nad listą</strong> mówią, ile stacji pasuje, ile z nich jest na mapie, a ile nie ma współrzędnych, np. „6297 stacji · na mapie 4174 · bez współrzędnych 2123”. Gdy nic nie pasuje, „Wyczyść filtry” wraca do wszystkich stacji.</li>
     <li><strong>Stacje bez współrzędnych</strong> są tylko na liście, z dopiskiem „bez współrzędnych”. Ich dane i analizy otwierają się tak samo, tylko mapa nie ma ich gdzie pokazać; przyczynę braku położenia podaje karta „Informacje o stacji”.</li>
     <li><strong>Kolejność</strong>: najpierw stacje z szeregami, potem pozostałe. Lista pokazuje po 150 stacji, a „Pokaż kolejne” dokłada następne. Kliknięcie stacji wybiera ją, a mapa przesuwa się do niej, jeśli stacja ma współrzędne.</li>
@@ -258,7 +258,7 @@
     <li><strong>Wykres</strong>: dzień bez wartości przerywa linię, a opad zebrany z kilku dni i podany w ostatnim z nich zaznaczają kreski pod wykresem. Nawet bardzo długi szereg rysuje się od razu, bo wykres pokazuje najmniejszą i największą wartość każdej kolumny pikseli; tabela i pliki mają każdą wartość.</li>
     <li><strong>„Tabela”</strong> pokazuje wartości dzień po dniu, od najnowszych, po 50 wierszy („‹ Nowsze”, „Starsze ›”, a « i » przeskakują na początek i koniec). Obok wartości stoi jej flaga, gdy inna niż zwykła wartość: „brak” (dzień bez wartości), „brak zjawiska” (zjawisko nie wystąpiło, w szeregu 0) albo „suma z kilku dni”.</li>
     <li><strong>Charakterystyki miesięczne i półroczne IMGW-PIB</strong> rysują się jako pas od najniższej do najwyższej wartości z linią średniej; półrocza mają przełącznik rok, zima (XI–IV), lato (V–X) i daty ekstremów w tabeli.</li>
-    <li><strong>Pod wykresem</strong>: jednostki, definicja roku i wersja szeregu w katalogu danych, np. <code>szereg series/versions/hydro_daily/…</code>.</li>
+    <li><strong>Pod wykresem</strong>: jednostki, definicja roku i wersja szeregu w katalogu danych, np. <code>szereg 2026-09-21_95988ba3</code>.</li>
   </ul>
 
   <h3 id="analizy">Analizy: wynik zapisany i liczony na żądanie</h3>
@@ -266,7 +266,7 @@
   <ul>
     <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · wynik zapisany <i>data</i>”</strong>: wynik policzony wcześniej z domyślnymi opcjami i przechowywany w katalogu danych; tak otwiera się każda karta;</li>
     <li><strong>„Hydrolog <i>wersja</i> · <i>obliczenie</i> · policzony na żądanie”</strong>: wynik, który serwer policzył przed chwilą, bo wybrałeś inne lata albo opcje. Hydrolog liczy na serwerze, zwykle kilka sekund („Liczę…”); wynik zostaje tylko w pamięci serwera i nie jest nigdzie zapisywany. Serwer bez programu Hydrologa pokazuje tylko wyniki zapisane: zmiana opcji kończy się wtedy komunikatem o braku programu, a paski klimatyczne, których środek Hydrolog liczy na żądanie, nie są rysowane;</li>
-    <li><strong>„szereg <i>wersja</i>”</strong>: wersja szeregu, z którego liczono. Podpowiedź plakietki Hydrologa pokazuje opcje obliczenia.</li>
+    <li><strong>„szereg <i>wersja</i>”</strong>: wersja szeregu, z którego liczono, nazwana tak samo jak pod wykresem „Dane”; jej podpowiedź pokazuje katalog tej wersji w katalogu danych. Podpowiedź plakietki Hydrologa pokazuje opcje obliczenia. Gdy jeden z wyników części się nie powiódł, nad pozostałymi stoi komunikat Hydrologa albo serwera, np. o przekroczeniu 30 s.</li>
   </ul>
   <p><strong>Okres.</strong> Zapisany wynik obejmuje cały zapis stacji; wyjątkiem jest krzywa natężenia przepływu, liczona z ostatnich 10 lat, bo krzywa zmienia się w czasie. Pola „Lata” od–do z przyciskiem „Przelicz” wybierają inny okres, który Hydrolog liczy na żądanie. Obok stoi „Zalecany minimalny okres: 30 lat.”, a krótszy okres jest oznaczony: „wyniki są mniej pewne”. Uwagi Hydrologa, np. o latach pominiętych z powodu braków, stoją przy wyniku.</p>
 

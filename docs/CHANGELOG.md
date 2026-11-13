@@ -59,6 +59,17 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   result computed on request (a person's choices, also when repeated from the server's memory,
   and the climate stripes), no longer stored results.
 
+- **GUI: fixes of the acceptance on the target data root.** A part of an analysis section that
+  shows several results names the failure of one of them above the others it still shows (it
+  dropped it silently, e.g. Hydrolog's 30 s limit for the intensity beside the days with
+  precipitation, or the duration curve of H beside Rybczyński's zones); „Trendy” keeps naming
+  each failure in its table. The provenance of an analysis names its series version by its
+  label, as „Dane” does, with the version's directory in the data root as the tooltip.
+  „Stany charakterystyczne” reads the daily series of its chart once, for the years of its
+  result, instead of the whole record first. The list's filter and the explanations of the
+  rating curve and the flood maxima name the data root („Szeregi w katalogu danych”, „Series
+  in the data root”), no longer the store, which since the split of the roots is Archiwista's.
+
 - **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
   is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
   gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still

@@ -105,16 +105,18 @@ export function failure(state) {
  * the numbers come from. The card's header already names the section, so `title` names this
  * part only and is left out where the part is the whole card.
  *
- * @param {{title?: string, info?: string|object, states?: object[], children}} props
- *   `states` from useAnalysis: while one loads the body dims, a failure replaces it, and
- *   the provenance of every result is shown under it
+ * @param {{title?: string, info?: string|object, states?: object[], failures?: boolean, children}} props
+ *   `states` from useAnalysis: while one loads the body dims, the failure of every one
+ *   replaces it, the failure of some is said above it (`failures: false` where the body
+ *   names each failure itself), and the provenance of every result is shown under it
  */
-export function Section({ title, info, states = [], children }) {
+export function Section({ title, info, states = [], failures = true, children }) {
   const [open, setOpen] = useState(false);
   const loading = states.some((s) => s.loading);
-  const failed = states.map(failure).filter(Boolean);
+  const failed = [...new Set(states.map(failure).filter(Boolean))];
   const done = states.filter((s) => s.data);
   const empty = states.length > 0 && done.length === 0;
+  const none = failed.length > 0 && done.every((s) => s.data.status !== "ok");
   return html`<section class="ana">
     ${(title || info) &&
     html`<header class="ana-head">
@@ -125,11 +127,12 @@ export function Section({ title, info, states = [], children }) {
       ${info && !title && html`<span class="muted small">${t("sections.info_methods")}</span>`}
     </header>`}
     ${open && html`<div class="ana-info">${info}</div>`}
-    ${failed.length > 0 && done.every((s) => s.data.status !== "ok")
+    ${none
       ? html`<p class="ana-error">${failed.join(" ")}</p>`
-      : html`<div class=${loading ? "ana-body is-loading" : "ana-body"}>
-          ${loading && empty ? html`<p class="muted">${t("sections.computing")}</p>` : children}
-        </div>`}
+      : html`${failures && failed.length > 0 ? html`<p class="ana-error">${failed.join(" ")}</p>` : null}
+          <div class=${loading ? "ana-body is-loading" : "ana-body"}>
+            ${loading && empty ? html`<p class="muted">${t("sections.computing")}</p>` : children}
+          </div>`}
     ${done.length > 0 && html`<${Provenance} results=${done.map((s) => s.data)} />`}
   </section>`;
 }
@@ -137,6 +140,8 @@ export function Section({ title, info, states = [], children }) {
 /**
  * Who computed it: Hydrolog's command and version, the series version, and whether the
  * result was stored or computed on request; a prototype names the Hydrolog step it awaits.
+ * A series version is named by its label, as „Dane” names it; the input's identifier (the
+ * version's directory in the data root) is its tooltip.
  *
  * @param {{results: object[]}} props `obserwator-analysis/1` documents (or a prototype's
  *   `{engine: "prototype", method, target}`)
@@ -165,8 +170,14 @@ export function Provenance({ results }) {
   for (const doc of results) for (const input of (doc && doc.inputs) || []) versions.add(input.series_version);
   return html`<footer class="ana-prov">
     ${items}
-    ${[...versions].map((v) => html`<span class="prov">${t("sections.series_version", { version: v })}</span>`)}
+    ${[...versions].map((v) => html`<span class="prov" title=${v}>${t("sections.series_version", { version: versionLabel(v) })}</span>`)}
   </footer>`;
+}
+
+/** The label of a series version (`2026-09-21_95988ba3`) from an input's identifier, the
+ * version's directory in the data root (`series/versions/hydro_daily/2026-09-21_95988ba3`). */
+function versionLabel(id) {
+  return String(id).split("/").filter(Boolean).pop() || String(id);
 }
 
 /**

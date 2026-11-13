@@ -77,6 +77,8 @@ Further open backlog items (priority in the text):
 - Regime curves and Rybczyński's zones over a chosen period are not offered (Hydrolog's ids take no period).
 - No circular chart in the shared chart module (`regime.js` draws its own).
 - No XLSX and no „Kopiuj JSON” for PMAXTP (XLSX rejected, plan G6).
+- A result computed on request cannot be downloaded from its section: plan D14 offers it as its JSON, and `api/files/analysis/{code}/{id}` takes the options, but only „Pobierz” links the stored results.
+- On-request computations of the longest records come close to the 30 s limit (plan D8) on a busy server: at the acceptance of 2026-11-13 (4 CPUs, load about 12) a chain for Praha-Klementinum (1775–2025, `mann_kendall.temperature.summer_days`) took 28 s alone and passed 30 s beside other computations; the part then names Hydrolog's limit.
 
 ### AI agent support (after 3.0.0, ADR-004)
 

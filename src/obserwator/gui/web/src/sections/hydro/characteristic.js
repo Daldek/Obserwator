@@ -188,7 +188,10 @@ function Levels({ station, code, session, ids, years, choice, setChoice }) {
   const dataset = dailyDataset(station);
   const from = own ? own.first_year : years.first_year;
   const to = own ? own.last_year : years.last_year;
-  const series = useSeries(dataset, code, variable ? [variable] : [], from && to ? { start: `${from - 1}-11-01`, end: `${to}-10-31` } : {});
+  // The chart shows the years of the result: none is asked for before the first result (or
+  // its failure) answers, so the whole record is not read twice
+  const waiting = characteristic.loading && !own;
+  const series = useSeries(waiting ? null : dataset, code, variable ? [variable] : [], from && to ? { start: `${from - 1}-11-01`, end: `${to}-10-31` } : {});
   const unitText = unit(series.data ? series.data.units[variable] : variable === "H" ? "cm" : "m3/s");
   const daily = useMemo(() => {
     if (!series.data) return null;

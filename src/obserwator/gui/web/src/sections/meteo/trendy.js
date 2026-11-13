@@ -123,7 +123,7 @@ export function Trendy({ station, analyses }) {
     html`<div class="me-toolbar">
       <${YearRange} first=${record.first} last=${record.last} from=${from} to=${to} onApply=${onRange} />
     </div>`}
-    <${Section} title=${t("meteo.trends.title")} info=${t("meteo.trends.info")} states=${sectionStates}>
+    <${Section} title=${t("meteo.trends.title")} info=${t("meteo.trends.info")} states=${sectionStates} failures=${false}>
       <${Notices} states=${sectionStates} />
       <${Table} columns=${columns} rows=${items} />
       <div class="me-trends">${items.filter((item) => item.values.length > 0).map((item) => html`<${SeriesChart} key=${item.key} item=${item} />`)}</div>

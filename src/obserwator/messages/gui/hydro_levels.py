@@ -251,7 +251,7 @@ _RATING: dict[str, Text] = {
         "rozrzut punktów i przesuwanie się krzywych w kolejnych okresach pokazuje "
         "zmiany krzywej (np. erozję lub zamulanie koryta, zmianę zera wodowskazu), a "
         "nie błąd pomiaru. H₀ jest w centymetrach, a w m³/s na cm^b. Opublikowanej "
-        "krzywej ČHMÚ nie ma jeszcze w magazynie.",
+        "krzywej ČHMÚ nie ma jeszcze w katalogu danych.",
     ),
     "hydro.rating.default_note": Text(
         "By default the last 10 years: the rating curve changes over time (see the "
@@ -276,12 +276,12 @@ _RATING: dict[str, Text] = {
     "hydro.rating.pairs_note": Text(
         "Daily water level–discharge pairs are not hydrometric measurements: the "
         "points of one year lie on the curve the service computed the discharges "
-        "with. ČHMÚ's published curve is not in the store yet. The hand-off carries "
+        "with. ČHMÚ's published curve is not in the data root yet. The hand-off carries "
         "the daily discharges of these years with the fitted curve as Obserwator's "
         "result.",
         "Pary dobowe stan–przepływ to nie pomiary hydrometryczne: punkty z jednego "
         "roku leżą na krzywej, z której służba wyliczyła przepływy. Krzywej "
-        "opublikowanej przez ČHMÚ nie ma jeszcze w magazynie. Przekazanie niesie "
+        "opublikowanej przez ČHMÚ nie ma jeszcze w katalogu danych. Przekazanie niesie "
         "przepływy dobowe tych lat z dopasowaną krzywą jako wynikiem Obserwatora.",
     ),
     "hydro.rating.periods_title": Text("Successive periods", "Kolejne okresy"),
@@ -335,7 +335,7 @@ _EXTREMES: dict[str, Text] = {
         "flood-frequency”): the log-normal, GEV, Pearson III and Weibull "
         "distributions, by default by L-moments (Hosking and Wallis 1997), with the "
         "goodness of fit by KS, Anderson–Darling's A² and AIC; the distributions are "
-        "ranked by AIC. The maxima: where the store has IMGW-PIB's half-year "
+        "ranked by AIC. The maxima: where the data root has IMGW-PIB's half-year "
         "characteristics, the larger of the published half-year maxima (they may "
         "be instantaneous values); at other stations Hydrolog takes the maxima of "
         "the complete hydrological years (November–October) of the daily series "
@@ -346,7 +346,7 @@ _EXTREMES: dict[str, Text] = {
         "flood-frequency”): rozkłady log-normalny, GEV, Pearsona III i Weibulla, "
         "domyślnie metodą L-momentów (Hosking i Wallis 1997), z miarami zgodności "
         "KS, A² Andersona–Darlinga i AIC; rozkłady są ułożone wg AIC. Maksima: tam, "
-        "gdzie magazyn ma charakterystyki półroczne IMGW-PIB, większe z "
+        "gdzie katalog danych ma charakterystyki półroczne IMGW-PIB, większe z "
         "opublikowanych maksimów półrocznych (mogą być wartościami chwilowymi); na "
         "pozostałych stacjach Hydrolog bierze maksima pełnych lat hydrologicznych "
         "(XI–X) szeregu dobowego i pomija lata niepełne. Punkty empiryczne mają "
@@ -378,9 +378,9 @@ _EXTREMES: dict[str, Text] = {
     ),
     "hydro.extremes.source_daily": Text(
         "Maxima: Hydrolog's maxima of the complete hydrological years (XI–X) of the "
-        "daily series (the store has no half-year characteristics of this station).",
+        "daily series (the data root has no half-year characteristics of this station).",
         "Maksima: maksima pełnych lat hydrologicznych (XI–X) szeregu dobowego, "
-        "wybrane przez Hydrologa (magazyn nie ma charakterystyk półrocznych tej "
+        "wybrane przez Hydrologa (katalog danych nie ma charakterystyk półrocznych tej "
         "stacji).",
     ),
     "hydro.extremes.fig_years": Text("Years", "Lat"),
