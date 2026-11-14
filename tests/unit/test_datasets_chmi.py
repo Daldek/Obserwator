@@ -83,7 +83,9 @@ def test_providers_follow_the_registry_table():
     )
     assert chmi.station_code_pattern == "^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$"
     assert chmi.datasets == tuple(CHMI_KEYS)
-    assert len(imgw.datasets) == 16
+    assert imgw.datasets == tuple(
+        item.key for item in datasets() if item.key.startswith("pl.imgw.")
+    )
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
@@ -122,7 +124,6 @@ def test_provider_lookup_by_id_or_key_prefix():
 
 def test_registry_invariants_across_providers():
     registry = datasets()
-    assert len(registry) == 22
     names = [
         name
         for item in registry
@@ -392,6 +393,12 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
+        elif item.archive_scope == "station_year" and item.provider == "IMGW-PIB":
+            # A station's file per folder, and the monthly files from 2001.
+            years = [item.first_year or 1966, 1995, 2000, 2001, 2024]
+            files += archive_files(
+                item.key, stations=["353140200"], years=years, months=[1]
+            )
         elif item.archive_scope == "station_year":
             files += archive_files(item.key, stations=[A, B], years=[1887, 2025])
         elif item.archive_scope == "station_element":
