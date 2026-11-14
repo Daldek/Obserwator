@@ -364,6 +364,28 @@ def test_second_build_is_reused_without_writing(root, data):
     ]
 
 
+def test_a_series_whose_cp_names_the_processing_stays_current(root, data):
+    store_hydro(root, H1_2023, H2_2004)
+    first = build_series(data, raw_root=root, dataset=HYDRO)
+    # As built before ECO-071: CP with the processing in parentheses
+    document = index_of(first)
+    document["attribution"][-1] += " (normalizacja i zmiana formatu)"
+    content = json.dumps(document, ensure_ascii=False).encode("utf-8")
+    first.version.write_bytes(content)
+    sidecar = sidecar_of(first)
+    sidecar["sha256"] = hashlib.sha256(content).hexdigest()
+    (first.version.parent / "series.json.meta.json").write_text(
+        json.dumps(sidecar, ensure_ascii=False), encoding="utf-8"
+    )
+
+    again = build_series(data, raw_root=root, dataset=HYDRO)
+
+    assert (again.status, again.version) == ("unchanged", first.version)
+    assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
+        "chmi_hydro_daily": "current"
+    }
+
+
 def test_quality_outside_the_parquet_range_fails_without_a_version(root, data):
     archive = next(item for item in METEO_GETS if item.station_code == RAIN)
     content = payload(CASES[METEO_GETS[archive]]).replace(b",0.0,\n", b",300.0,\n", 1)

@@ -79,8 +79,8 @@ src/obserwator/
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl, next id in feedback.next_id (DEV-15.12), rewritten atomically under flock
     ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
-    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 0.7.0) filled for the deployment (DEV-15.7)
-    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 0.7.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 0.7.1, regulamin 1.1) filled for the deployment (DEV-15.7)
+    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 0.7.1), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```

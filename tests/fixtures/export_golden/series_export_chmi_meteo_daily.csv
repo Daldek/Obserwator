@@ -1,6 +1,6 @@
 date,year,P [mm],P_flag,P_quality,P_source_flag,Tmean [degC],Tmean_flag,Tmean_quality,Tmean_source_flag,Tmax [degC],Tmax_flag,Tmax_quality,Tmax_source_flag,Tmin [degC],Tmin_flag,Tmin_quality,Tmin_source_flag,attribution_source,attribution_processed,attribution,terms_notice
-2023-10-20,2023,0.0,no_phenomenon,0,,8.5,value,0,,11.8,value,0,,5.1,value,0,,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu),"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
-2023-10-21,2023,2.4,value,0,,8.6,value,0,,12.3,value,0,,5.1,value,0,,,,Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu),
+2023-10-20,2023,0.0,no_phenomenon,0,,8.5,value,0,,11.8,value,0,,5.1,value,0,,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",Dane ČHMÚ zostały przetworzone,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+2023-10-21,2023,2.4,value,0,,8.6,value,0,,12.3,value,0,,5.1,value,0,,,,Dane ČHMÚ zostały przetworzone,
 2023-10-22,2023,0.0,value,0,T,8.8,value,0,,12.9,value,0,,5.2,value,0,,,,,
 2023-10-23,2023,12.3,value,0,M,8.0,value,0,,11.4,value,0,,4.7,value,0,,,,,
 2023-10-24,2023,5.1,value,3,,8.2,value,0,,11.9,value,0,,4.7,value,0,,,,,

@@ -32,7 +32,9 @@ _CHMI_ATTRIBUTION = (
     "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
     "licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
-_CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
+# CP never names the processing (ECO-071); `obserwator.attribution` reads an older
+# „Dane ČHMÚ zostały przetworzone (…)” as this line.
+_CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone"
 _GUGIK_ATTRIBUTION = (
     "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products} (wytworzono "
     "{period}, pozyskano {date}); dane przetworzone"
