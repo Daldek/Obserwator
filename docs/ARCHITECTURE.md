@@ -7,7 +7,7 @@ System consists of six main components:
 1. **Python Library** (v3.0.0)
    - `pip install obserwator` for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
-   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (21 descriptors: 15 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
+   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (22 descriptors: 16 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
    - Command catalog (`obserwator.commands`): 35 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); Polish texts with an English variant, declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
 
@@ -224,7 +224,7 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
 ## 8. Versioned Store Layer
 
 ### Layers (two roots, ADR-017)
-1. **Raw root** (marker `obserwator-store.json`) — the source archives: IMGW-PIB ZIP/CSV and ČHMÚ JSON/CSV bytes 1:1 under their server path; the station sources of the catalogs are archives too (station lists, ČHMÚ `now` metadata). The one exception: of IMGW-PIB's current-data API answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`) the store keeps a derived file with each station's code, name, river and coordinates, because operational data are never archived (ADR-015 D5). The PMAXTP cells (`cell.json`, `obserwator-pmaxtp/1`, beside the answer `response.json`) are downloads and live here too. Downloads write only this root.
+1. **Raw root** (marker `obserwator-store.json`) — the source archives: IMGW-PIB ZIP/CSV and ČHMÚ JSON/CSV bytes 1:1 under their server path; the station sources of the catalogs are archives too (station lists, ČHMÚ `now` metadata). The one exception: of IMGW-PIB's current-data API answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`) the store keeps a derived file with each station's code, name, river and coordinates, because operational data are never archived (ADR-015 D5), and of the station pages of hydro.imgw.pl (`pl.imgw.hydro_details`) one derived file with each station's reference data (gauge zero and datum, river km, catchment area, year of establishment, province, district, warning and alarm levels, absolute extremes; ADR-021). The PMAXTP cells (`cell.json`, `obserwator-pmaxtp/1`, beside the answer `response.json`) are downloads and live here too. Downloads write only this root.
 2. **Data root** (marker `obserwator-data.json`) — what is built from the raw root, which the builders open read-only (no marker, staging or clean-up there): Parquet series per dataset/station (`obserwator-series/1`), `stations.geojson` catalog per provider, analyses per provider (`obserwator-analyses/1`: Hydrolog's answer lines byte for byte with the series versions, options and Hydrolog version they came from; ADR-016). In Nogat this is the root Obserwator's GUI, REST and MCP serve, and a public host gets the data root only (Nogat plan 2026-11-12 D2).
 3. A rebuildable local index is out of scope; no `.db` file is ever part of either root.
 
@@ -270,10 +270,10 @@ Every writing command has one of two ways of writing, with the same names in Pyt
 
 ### Flow
 ```
-check_store   ── raw root; IMGW-PIB: listing + HEAD; ČHMÚ: one directory listing (no HEAD/GET); station sources: lists by HEAD, `now` metadata unverifiable ──▶ StorePlan (obserwator-plan/1, saved outside the roots; series_state {})
+check_store   ── raw root; IMGW-PIB: listing + HEAD; ČHMÚ: one directory listing (no HEAD/GET); station sources: lists by HEAD, `now` metadata and hydro.imgw.pl details unverifiable ──▶ StorePlan (obserwator-plan/1, saved outside the roots; series_state {})
 sync_store    ── HEAD again; changed → stale_plan; GET only new/missing ──▶ archive versions only, in the raw root (ČHMÚ: content_unchanged + observation; ADR-015)
 build_series  ── current archive versions of the raw root (read-only) → Parquet snapshot in the data root (`unchanged` if the current series version has the same inputs); ČHMÚ: per-station periods
-build_catalog ── one provider, offline: the station sources stored in the raw root (lists and `now` metadata; missing → not_found) + static/user locations + series indexes of the data root → stations.geojson in the data root
+build_catalog ── one provider, offline: the station sources stored in the raw root (lists and `now` metadata; missing → not_found; IMGW-PIB's hydro.imgw.pl details optional, ADR-021) + static/user locations + series indexes of the data root → stations.geojson in the data root
 build_analyses ── current series and catalogs of the data root → Hydrolog's batch in a separate process → one analyses version per provider in the data root (ADR-016)
 read_*        ── offline, read-only, each in the root of its kind; problems reported as StoreEntry(kind="problem"), observations as kind="observation"
 ```

@@ -68,6 +68,7 @@ _REGISTRY = [
     ("pl.imgw.meteo_stations", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_now", "meteo", True, "station_list", "none", None, None),
+    ("pl.imgw.hydro_details", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.pmaxtp", None, True, "cell", "none", None, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
@@ -107,7 +108,7 @@ _REGISTRY = [
         "meteo/terminowe/klimat",
     ),
 ]
-# ČHMÚ datasets after the 13 IMGW-PIB ones (spec 2026-10-18 §2.2).
+# ČHMÚ datasets after the IMGW-PIB ones (spec 2026-10-18 §2.2).
 _CHMI_KEYS = [
     "cz.chmi.hydro_daily",
     "cz.chmi.meteo_daily",
@@ -118,7 +119,7 @@ _CHMI_KEYS = [
 ]
 
 
-def test_registry_has_fifteen_imgw_descriptors_with_spec_fields():
+def test_registry_has_the_imgw_descriptors_with_spec_fields():
     descriptors = datasets(provider="IMGW-PIB")
     assert [
         (

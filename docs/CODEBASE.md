@@ -11,7 +11,7 @@ src/obserwator/
 ├── fetch.py              # PUBLIC: live data (fetch_*), PMAXTP, download_archives, download_*_data
 ├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, NormalizedRecord, Measurement, ...)
 ├── stations.py           # PUBLIC: find_stations (live lists of IMGW-PIB and ČHMÚ, or the current catalogs of a data root)
-├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 21 dataset descriptors, archive_files
+├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 22 dataset descriptors, archive_files
 ├── commands.py           # PUBLIC: Command catalog (35 commands, PL + EN texts, effects), run_command, command_schema, list_commands
 ├── agent_guide.py        # PUBLIC: agent_guide (AGENTS.md / llms.txt), MCP server instructions
 ├── coverage.py           # PUBLIC: summarize_coverage (per-station periods for ČHMÚ)
@@ -140,7 +140,7 @@ Every live function has an `*_async` twin with identical arguments.
 |Function|Description|
 |---|---|
 |`providers()`, `get_provider(id or key_prefix)`|Provider registry (`ProviderDescriptor`: `IMGW-PIB`, `CHMI`)|
-|`datasets(*, kind=None, provider=None)`|Dataset descriptors (`DatasetDescriptor`; 21)|
+|`datasets(*, kind=None, provider=None)`|Dataset descriptors (`DatasetDescriptor`; 22)|
 |`get_dataset(dataset)`|Descriptor by key, slug or legacy alias|
 |`archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)`|Archive files with URLs (`ArchiveFile`; `stations` required for `cz.chmi.*`)|
 |`build_pmaxtp_url(latitude, longitude, *, method="POT")`|PMAXTP API URL|
@@ -249,6 +249,12 @@ The command catalog is the single source of options, validation, help texts and 
   - Requires headers: `User-Agent`, `Referer: https://hydro.imgw.pl/`
   - Returns: 900+ stations with lat/lon and water state (alarm, warning, high, medium, low, etc.)
   - Public access: `fetch_hydro_states()`, `obserwator current hydro-states`, `GET /api/v1/current/hydro-states`
+- **Hydro station details** (`pl.imgw.hydro_details`, ADR-021): `https://hydro-back.imgw.pl/station/hydro/status?id=<code>`, the data of a station page of hydro.imgw.pl
+  - Same headers (`User-Agent: Obserwator/<version>`, `Referer: https://hydro.imgw.pl/`; without the Referer the backend answers 403); an unknown code answers `200` with `null`
+  - `store sync` asks the map above for the codes, then each station once, in map order and one request at a time (about 910 requests, a few minutes); a `null` answer is skipped, any HTTP error fails the item (`source_unavailable`, nothing written, no retries); `cancel` is polled before each station
+  - Kept (dotted `kept_fields`, a derived JSON list sorted by `id`): `id`, `properties.{maximumStateValue, maximumStateDate, minimumStateValue, minimumStateDate, district, waterGaugeZeroOrdinate, waterGaugeZeroOrdinateReferrenceSystem, yearOfEstablishment}`, `status.{riverCourseKm, catchmentArea, province, alarmValue, warningValue}`; never the water states and trends (operational, DEV-20.8), `status.notes`, `properties.dataClause`, the internal `status.id` or the coordinates
+  - No freshness signal (`update_signal="none"`): `store check` → `unverifiable`, `store sync` always downloads; license = the hydro.imgw.pl terms (`https://hydro.imgw.pl/#/regulamin`), lines S, P, RH
+  - Catalog properties of IMGW-PIB features (optional source of `store catalog`): `established_year`, `gauge_zero_m` (0 → null), `gauge_zero_datum` (only with a gauge zero), `river_km`, `catchment_area_km2` (0 → null), `province`, `district`, `warning_level_cm`, `alarm_level_cm`, `absolute_min_level_cm`, `absolute_min_level_dates`, `absolute_max_level_cm`, `absolute_max_level_dates`, `details_source` (`"hydro_details"` or null); all null without details (docs/USAGE.md, "Station data sources")
 
 ### Station Pages
 - **Hydro**: `https://hydro.imgw.pl/#/station/hydro/{station_code}`
@@ -358,7 +364,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 
 ## Data Structure
 
-### Dataset registry (21 descriptors, 2 providers)
+### Dataset registry (22 descriptors, 2 providers)
 
 |Key|Legacy alias|Store|
 |---|---|---|
@@ -369,6 +375,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.meteo_precip_daily`|`meteo/dobowe/opad`|yes|
 |`pl.imgw.hydro_stations`, `pl.imgw.meteo_stations`|—|yes (station lists)|
 |`pl.imgw.hydro_now`, `pl.imgw.meteo_now`|—|yes (station metadata of the current-data API, derived: code, name, river, coordinates; ADR-015 D5)|
+|`pl.imgw.hydro_details`|—|yes (station details of hydro.imgw.pl, derived: gauge zero and datum, river km, catchment area, year, province, district, warning and alarm levels, absolute extremes; ADR-021)|
 |`pl.imgw.pmaxtp`|—|yes (grid cells)|
 |`pl.imgw.hydro_phenomena`|— (`hydro/dobowe` with month 13)|download only|
 |`pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`|`meteo/miesieczne/klimat\|opad\|synop`|download only|
@@ -378,7 +385,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|
 |`cz.chmi.hydro_now`, `cz.chmi.meteo_now`|—|yes (`now` station metadata, canonical form `chmi-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 12 datasets, `store check|sync` the 7 measurement datasets and the 8 station sources (lists and metadata, `time_unit="station_list"`, a call of their own; ADR-015), series commands 7. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 12 datasets, `store check|sync` the 7 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 7. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):
@@ -526,7 +533,7 @@ src/obserwator/
 ├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
-├── datasets.py   # Registry of providers and 21 datasets (pl.imgw.*, cz.chmi.*), archive file generator
+├── datasets.py   # Registry of providers and 22 datasets (pl.imgw.*, cz.chmi.*), archive file generator
 ├── commands.py   # Catalog of 35 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads

@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Any, Literal, cast
 
 from obserwator._version import __version__
+from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
     DatasetDescriptor,
@@ -111,16 +112,43 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _field(row: Mapping[str, Any], name: str) -> tuple[bool, object]:
+    """Whether a station has a kept field, and its value; a dotted name reaches into objects."""
+    value: object = row
+    for part in name.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return False, None
+        value = value[part]
+    return True, value
+
+
+def _kept(row: Mapping[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
+    """The kept fields a station has, in the order of ``fields``, nested as in the answer."""
+    kept: dict[str, Any] = {}
+    for name in fields:
+        found, value = _field(row, name)
+        if not found:
+            continue
+        *parents, leaf = name.split(".")
+        target = kept
+        for part in parents:
+            target = target.setdefault(part, {})
+        target[leaf] = value
+    return kept
+
+
 def _station_metadata(data: bytes, fields: tuple[str, ...], *, url: str) -> bytes:
     """
-    The station metadata of a current-data answer: each station with ``fields`` only.
+    The station metadata of an answer with operational data: each station with ``fields`` only.
 
-    The answer of IMGW-PIB's current-data API also carries operational data
-    (measurements, their times, warning and alarm levels), which are never
-    archived (ADR-015 D5). The file keeps the fields of ``fields`` that a
-    station has, in that order, the stations ordered by the first field (the
-    station code), as compact UTF-8 JSON with a final line feed, so an answer
-    whose station metadata did not change gives the same bytes.
+    The answers of IMGW-PIB's current-data API also carry measurements and
+    their times, and hydro.imgw.pl's station details the water states, which
+    are never archived (ADR-015 D5, ADR-021). The file keeps the fields of
+    ``fields`` that a station has, in that order (a dotted name keeps a field
+    of an object of the answer inside an object of the same name), the
+    stations ordered by the first field (the station code), as compact UTF-8
+    JSON with a final line feed, so an answer whose station metadata did not
+    change gives the same bytes.
 
     Raises
     ------
@@ -139,8 +167,8 @@ def _station_metadata(data: bytes, fields: tuple[str, ...], *, url: str) -> byte
             message("writer.station_answer_not_list", url=url), details={"url": url}
         )
     kept = sorted(
-        ({name: row[name] for name in fields if name in row} for row in rows),
-        key=lambda row: str(row.get(fields[0]) or ""),
+        (_kept(row, fields) for row in rows),
+        key=lambda row: str(_field(row, fields[0])[1] or ""),
     )
     return (json.dumps(kept, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
         "utf-8"
@@ -1533,8 +1561,9 @@ def write_archive(
     nothing is ever replaced, and a version is complete once its sidecar
     exists. The label is the UTC date of ``Last-Modified`` (or of the
     download when absent); identical bytes with a different HTTP signal on
-    the same day get a stable ``+<8 hex>`` suffix. Country, provider and
-    license of the sidecar come from the provider registry.
+    the same day get a stable ``+<8 hex>`` suffix. Country and provider of the
+    sidecar come from the provider registry, its license from the dataset's
+    (the terms of hydro.imgw.pl for its station details, ADR-021).
 
     For a dataset with a canonical form (``DatasetDescriptor.content_form``,
     ADR-003 D17) the sidecar also records ``content_sha256`` and
@@ -1558,7 +1587,8 @@ def write_archive(
     on_notice : NoticeHook or None, optional
         Called with a ``leftover_incoming`` warning for every abandoned
         staging directory removed from ``.incoming``, with the
-        ``license_terms`` notice of the provider after publication, and with
+        ``license_terms`` notice of the dataset's origin after publication (the
+        processed lines for the station metadata of ``kept_fields``), and with
         the ``content_unchanged`` notice for other bytes of the same
         canonical content.
     cancel : Cancel or None, optional
@@ -1733,7 +1763,7 @@ def write_archive(
             "country": provider.country,
             "provider": provider.id,
             "request": request,
-            "license": _license_document(provider.license),
+            "license": _license_document(descriptor.license),
             "downloaded_at": stamp,
             "sha256": sha,
             "size_bytes": len(response.data),
@@ -1783,13 +1813,12 @@ def write_archive(
                 )
             )
         if on_notice is not None:
-            on_notice(
-                Notice(
-                    "info",
-                    _ATTRIBUTION_CODE,
-                    provider.license_notice(),
-                )
+            # The lines of the dataset's origin; the station metadata kept of an
+            # answer with operational data are processed data.
+            lines = attribution(
+                dataset_origin(descriptor.key), processed=bool(descriptor.kept_fields)
             )
+            on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
         return VersionResult(
             "relabeled" if matching else "new", target / filename, sha, label
         )

@@ -2977,7 +2977,8 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
 
     The provider's lines, those of the packaged border its locations were checked
     against (ADR-018), and hydro.imgw.pl's when a station was located from there
-    (``location_source`` "static"); the strings the document was written with are
+    (``location_source`` "static") or has the station details of its pages
+    (``details_source``, ADR-021); the strings the document was written with are
     not trusted, since a catalog written before ECO-065 holds retired lines.
     """
     report = cast(CatalogReport, result)
@@ -2988,8 +2989,11 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
         provider_origin(report.provider), border_origin(report.provider)
     )
     if any(
-        (feature.get("properties") or {}).get("location_source") == "static"
-        for feature in document.get("features", ())
+        properties.get("location_source") == "static"
+        or properties.get("details_source") is not None
+        for properties in (
+            feature.get("properties") or {} for feature in document.get("features", ())
+        )
     ):
         lines |= attribution("imgw_hydro")
     return lines

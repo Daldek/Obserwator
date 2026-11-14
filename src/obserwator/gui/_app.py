@@ -222,15 +222,27 @@ def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
 
 
 def _station_origins(
-    provider: str, properties: Mapping[str, Any], *, location: bool
+    provider: str,
+    properties: Mapping[str, Any],
+    *,
+    location: bool,
+    details: bool = False,
 ) -> Attribution:
     """
     The lines of what is shown of a station from its catalog.
 
     Its provider's; with its location, those of the packaged border the catalog
-    checked it against (ADR-018) and hydro.imgw.pl's for a location taken from there.
+    checked it against (ADR-018) and hydro.imgw.pl's for a location taken from there;
+    with its details, hydro.imgw.pl's for an IMGW-PIB station whose catalog feature
+    carries them (``details_source``, ADR-021).
     """
     lines = attribution(provider_origin(provider))
+    if (
+        details
+        and provider == "IMGW-PIB"
+        and properties.get("details_source") is not None
+    ):
+        lines = lines | attribution("imgw_hydro")
     if not location:
         return lines
     lines = lines | attribution(border_origin(provider))
@@ -354,7 +366,7 @@ async def station(request: Request) -> Response:
     props = dict(feature.properties)
     held = snapshot.datasets_of(code)
     lon, lat = feature.geometry if feature.geometry else (None, None)
-    catalog = _station_origins(feature.provider, props, location=True)
+    catalog = _station_origins(feature.provider, props, location=True, details=True)
     series_lines = Attribution()
     for entry in held:
         series_lines = series_lines | attribution(dataset_origin(entry["dataset"]))
@@ -987,7 +999,7 @@ async def stations_downloads(request: Request) -> Response:
     lines = Attribution()
     for feature in chosen:
         lines = lines | _station_origins(
-            feature.provider, feature.properties, location=True
+            feature.provider, feature.properties, location=True, details=True
         )
     selection = {
         key: value for key, value in (("provider", provider), ("kind", kind)) if value

@@ -11,8 +11,8 @@ texts come from the one catalog area ``legal`` (`obserwator.messages.legal`):
 Origin      Data
 ==========  ==================================================================
 imgw        IMGW-PIB archives and current data of danepubliczne.imgw.pl
-imgw_hydro  operational data and station locations of hydro.imgw.pl (and of
-            its backend hydro-back.imgw.pl)
+imgw_hydro  operational data, station locations and station details of
+            hydro.imgw.pl (and of its backend hydro-back.imgw.pl)
 pmaxtp      PMAXTP of powietrze.imgw.pl and klimat.imgw.pl (own terms)
 chmi        ČHMÚ open data (CC BY 4.0)
 gugik       the state border of Poland from PRG of GUGiK (ADR-018)
@@ -87,6 +87,12 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
 }
 _PROVIDERS: dict[str, Origin] = {"IMGW-PIB": "imgw", "CHMI": "chmi"}
 _PREFIXES: dict[str, Origin] = {"pl.imgw": "imgw", "cz.chmi": "chmi"}
+# Datasets of an IMGW-PIB origin other than danepubliczne.imgw.pl: PMAXTP's own
+# pages and hydro.imgw.pl's station details (ADR-021).
+_DATASET_ORIGINS: dict[str, Origin] = {
+    "pl.imgw.pmaxtp": "pmaxtp",
+    "pl.imgw.hydro_details": "imgw_hydro",
+}
 # The origin of the data of each packaged border.
 _BORDER_ORIGINS: dict[str, Origin] = {POLAND: "gugik", CZECHIA: "cuzk"}
 
@@ -319,9 +325,10 @@ def dataset_origin(key: str, /) -> Origin:
 
     Returns
     -------
-    {"imgw", "pmaxtp", "chmi"}
-        ``"pmaxtp"`` for ``pl.imgw.pmaxtp``, ``"imgw"`` for the other
-        ``pl.imgw.*`` keys and ``"chmi"`` for ``cz.chmi.*``.
+    {"imgw", "imgw_hydro", "pmaxtp", "chmi"}
+        ``"pmaxtp"`` for ``pl.imgw.pmaxtp``, ``"imgw_hydro"`` for the station
+        details of hydro.imgw.pl (``pl.imgw.hydro_details``), ``"imgw"`` for the
+        other ``pl.imgw.*`` keys and ``"chmi"`` for ``cz.chmi.*``.
 
     Raises
     ------
@@ -329,8 +336,8 @@ def dataset_origin(key: str, /) -> Origin:
         If the key belongs to no known provider (a program error: keys come
         from the registry).
     """
-    if key == "pl.imgw.pmaxtp":
-        return "pmaxtp"
+    if key in _DATASET_ORIGINS:
+        return _DATASET_ORIGINS[key]
     try:
         return _PREFIXES[key.rpartition(".")[0]]
     except KeyError:

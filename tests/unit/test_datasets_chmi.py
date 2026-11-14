@@ -83,7 +83,7 @@ def test_providers_follow_the_registry_table():
     )
     assert chmi.station_code_pattern == "^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$"
     assert chmi.datasets == tuple(CHMI_KEYS)
-    assert len(imgw.datasets) == 15
+    assert len(imgw.datasets) == 16
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
@@ -122,7 +122,7 @@ def test_provider_lookup_by_id_or_key_prefix():
 
 def test_registry_invariants_across_providers():
     registry = datasets()
-    assert len(registry) == 21
+    assert len(registry) == 22
     names = [
         name
         for item in registry
@@ -134,13 +134,20 @@ def test_registry_invariants_across_providers():
     for item in registry:
         provider = by_provider[item.provider]
         assert item.key.startswith(provider.key_prefix + ".")
-        # PMAXTP has the terms of its project page (ADR-012 D8).
+        # PMAXTP has the terms of its project page (ADR-012 D8), hydro.imgw.pl's
+        # station details those of that service (ADR-021).
         expected = provider.license
         if item.key == "pl.imgw.pmaxtp":
             expected = License(
                 "IMGW-PIB",
                 attribution("pmaxtp", processed=False).attribution[0],
                 "https://klimat.imgw.pl/opady-maksymalne",
+            )
+        if item.key == "pl.imgw.hydro_details":
+            expected = License(
+                "IMGW-PIB",
+                attribution("imgw_hydro", processed=False).attribution[0],
+                "https://hydro.imgw.pl/#/regulamin",
             )
         assert item.license == expected
         assert item.key in provider.datasets
@@ -155,9 +162,10 @@ def test_registry_invariants_across_providers():
         }
         for provider in by_provider
     }
-    # The current-data API of IMGW-PIB lies below its site, not below the archive.
+    # The current-data API of IMGW-PIB lies below its site, not below the archive,
+    # and hydro.imgw.pl's station pages below its backend (ADR-021).
     assert roots == {
-        "IMGW-PIB": {"dane_hydrologiczne", "dane_meteorologiczne", "api"},
+        "IMGW-PIB": {"dane_hydrologiczne", "dane_meteorologiczne", "api", "station"},
         "CHMI": {"hydrology", "meteorology"},
     }
     imgw, chmi = (re.compile(p.station_code_pattern) for p in providers())

@@ -559,16 +559,83 @@
                       "null"
                     ]
                   },
+                  "gauge_zero_datum": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "river_km": {
                     "type": [
                       "number",
                       "null"
                     ]
                   },
+                  "catchment_area_km2": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "exclusiveMinimum": 0
+                  },
                   "elevation_m": {
                     "type": [
                       "number",
                       "null"
+                    ]
+                  },
+                  "province": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "district": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "warning_level_cm": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "alarm_level_cm": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "absolute_min_level_cm": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "absolute_min_level_dates": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "absolute_max_level_cm": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "absolute_max_level_dates": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "details_source": {
+                    "enum": [
+                      "hydro_details",
+                      null
                     ]
                   }
                 },
@@ -1331,10 +1398,21 @@
             "location_uncertainty_m": null,
             "location_missing_reason": "zero",
             "active": true,
-            "established_year": null,
-            "gauge_zero_m": null,
-            "river_km": null,
-            "elevation_m": null
+            "established_year": 1897,
+            "gauge_zero_m": 297.158,
+            "gauge_zero_datum": "EVRF2007",
+            "river_km": 77.97,
+            "catchment_area_km2": 643.79,
+            "elevation_m": null,
+            "province": "małopolskie",
+            "district": "myślenicki",
+            "warning_level_cm": 220.0,
+            "alarm_level_cm": 290.0,
+            "absolute_min_level_cm": 19.0,
+            "absolute_min_level_dates": "2018-09, 2018-10",
+            "absolute_max_level_cm": 516.0,
+            "absolute_max_level_dates": "1934-07-16",
+            "details_source": "hydro_details"
           }
         }
       ]

@@ -3,8 +3,8 @@
 // (`characteristic.{H,Q,T}.half_years`): first degree per year and half-year, second degree
 // over the chosen years; `stats threshold-events` (`threshold_events.{H,Q}.<level>`) for
 // ČHMÚ's thresholds of the station's catalog entry and the characteristic levels SWW, SSW,
-// SNW (SWQ, SSQ, SNQ). IMGW-PIB's warning and alarm levels are operational data that are
-// not archived (GUI plan D11), so they are not here.
+// SNW (SWQ, SSQ, SNQ). IMGW-PIB's warning and alarm levels (hydro.imgw.pl, current values,
+// pl.imgw.hydro_details) are shown in „Informacje o stacji” and are not used here.
 
 import { Chart, dayNumber, fmt, html, lang, t, tn, unit, useMemo } from "../../lib.js";
 import { periodName } from "../../words.js";

@@ -13,6 +13,7 @@ import pytest
 import respx
 
 from obserwator import fetch, store
+from obserwator.attribution import attribution
 from obserwator.commands import (
     check_command,
     data_commands,
@@ -51,6 +52,7 @@ from tests.contract.support import (
     stamps,
     use_fake_hydrolog,
 )
+from tests.unit.test_store_catalog import sync_details, sync_sources
 
 DAILY = "pl.imgw.hydro_daily"
 SEMIANNUAL = "pl.imgw.hydro_semiannual"
@@ -1176,3 +1178,28 @@ def test_check_of_store_sync_with_a_plan_returns_it_for_the_same_store(
     with pytest.raises(ObserwatorValidationError) as error:
         check_command("store sync", options={"root": tmp_path, "plan": saved})
     assert error.value.details["option"] == "plan"
+
+
+def test_store_catalog_envelope_has_the_lines_of_hydro_imgw_pl_with_station_details(
+    tmp_path, isolated_reference_dir
+):
+    raw = store.init_store(tmp_path / "raw")
+    data = store.init_store(tmp_path / "data", kind="data")
+    options = {"root": data.root, "raw_root": raw.root}
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(raw, router)
+        plain = run_command("store catalog", options=options)
+        sync_details(raw, router)
+        detailed = run_command("store catalog", options=options)
+    # No location of the static file here: only the details add RH.
+    without = attribution("imgw", "gugik")
+    lines = without | attribution("imgw_hydro")
+    assert (plain.status, detailed.status) == ("ok", "ok")
+    assert (plain.attribution, plain.terms_notice) == (
+        without.attribution,
+        without.terms_notice,
+    )
+    assert (detailed.attribution, detailed.terms_notice) == (
+        lines.attribution,
+        lines.terms_notice,
+    )

@@ -117,10 +117,12 @@ MESSAGES = {
         "output_dir",
     ),
     "station_sources_alone": Text(
-        "Station sources (station lists and station metadata, *_stations and *_now) "
-        "are synchronized in a call of their own, without measurement datasets",
-        "Źródła stacji (listy i metadane stacji, *_stations i *_now) synchronizuje "
-        "osobne wywołanie, bez zbiorów pomiarowych",
+        "Station sources (station lists and station metadata, *_stations, *_now and "
+        "pl.imgw.hydro_details) are synchronized in a call of their own, without "
+        "measurement datasets",
+        "Źródła stacji (listy i metadane stacji, *_stations, *_now i "
+        "pl.imgw.hydro_details) synchronizuje osobne wywołanie, bez zbiorów "
+        "pomiarowych",
     ),
     "option_not_for_station_sources": Text(
         "The option {option} does not apply to station sources: each is one file of "

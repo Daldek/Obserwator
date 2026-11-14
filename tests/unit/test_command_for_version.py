@@ -221,15 +221,16 @@ def test_catalog_version_gives_the_offline_store_catalog_of_its_provider(
         entry.version.relative_to(raw).as_posix()
         for entry in iter_store(raw, kind="archive", provider=provider)
         if entry.meta is not None
-        and entry.meta.dataset_key.endswith(("_stations", "_now"))
+        and entry.meta.dataset_key.endswith(("_stations", "_now", "_details"))
     }
-    # The sidecar names the stored file of every station source, API answers too.
+    # The sidecar names the stored file of every station source, API answers too;
+    # an absent optional source (IMGW-PIB's station details, ADR-021 D8) has none.
     named = {
         source["file"]
         for source in json.loads(sidecar(data, relative).read_text(encoding="utf-8"))[
             "extra"
         ]["catalog"]
-        if source["file"].startswith("archives/")
+        if source["file"] is not None and source["file"].startswith("archives/")
     }
     assert named == stored
     plan = check_command(call.command, options=call.options).result

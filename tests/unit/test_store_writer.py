@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from obserwator._version import __version__
-from obserwator.datasets import archive_files
+from obserwator.datasets import _station_files, archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorCancelledError,
     ObserwatorStoreConflictError,
@@ -505,3 +505,73 @@ def test_write_archive_results_ignore_the_observation_register_of_the_slot(tmp_p
         "new",
         "unchanged",
     ]
+
+
+def test_dotted_kept_fields_keep_nested_values_in_the_listed_order(tmp_path):
+    # hydro.imgw.pl's station details: kept fields inside the answer's objects.
+    (details,) = _station_files("pl.imgw.hydro_details")
+    answer = [
+        {
+            "status": {
+                "warningValue": 700.0,
+                "id": 105950800,
+                "currentState": {"date": "2026-11-14T09:50:00Z", "value": 114.0},
+                "province": "mazowieckie",
+                "alarmValue": 750.0,
+                "riverCourseKm": 421.68,
+            },
+            "stateCode": "low",
+            "id": "152210170",
+            "properties": {
+                "district": "Warszawa",
+                "dataClause": None,
+                "minimumStateDate": "2025-09-02, 2025-09-03",
+                "maximumStateValue": 873,
+            },
+        },
+        # No status object; a kept field present as null is kept.
+        {
+            "id": "150160180",
+            "properties": {"yearOfEstablishment": "1884", "maximumStateValue": None},
+        },
+        # An object that is null holds no kept field.
+        {"properties": None, "id": "153140010", "status": {"warningValue": None}},
+    ]
+    data = json.dumps(answer, ensure_ascii=False).encode("utf-8")
+
+    result = write_archive(
+        init_store(tmp_path / "store"),
+        archive=details,
+        response=DownloadResult(data, details.url, None, None, None),
+    )
+
+    expected = [
+        {
+            "id": "150160180",
+            "properties": {"maximumStateValue": None, "yearOfEstablishment": "1884"},
+        },
+        {
+            "id": "152210170",
+            "properties": {
+                "maximumStateValue": 873,
+                "minimumStateDate": "2025-09-02, 2025-09-03",
+                "district": "Warszawa",
+            },
+            "status": {
+                "riverCourseKm": 421.68,
+                "province": "mazowieckie",
+                "alarmValue": 750.0,
+                "warningValue": 700.0,
+            },
+        },
+        {"id": "153140010", "status": {"warningValue": None}},
+    ]
+    # Byte equality pins the order of the keys too: that of kept_fields.
+    assert result.path.read_bytes() == (
+        json.dumps(expected, ensure_ascii=False, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    meta = json.loads(
+        result.path.with_name(result.path.name + ".meta.json").read_text("utf-8")
+    )
+    fields = get_dataset("pl.imgw.hydro_details").kept_fields
+    assert meta["extra"]["kept_fields"] == list(fields)

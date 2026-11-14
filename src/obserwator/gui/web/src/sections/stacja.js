@@ -1,8 +1,10 @@
 // „Informacje o stacji” (GUI plan D11): the catalog's properties of the station (its
-// location with the source and the uncertainty, elevation, gauge zero, river kilometre,
-// hydrographic code, year established; ČHMÚ's thresholds of a hydrological station) and the
-// coverage of each dataset and variable in the data root. The panel draws the catalog's
-// lines under the card (part "catalog").
+// location with the source and the uncertainty, elevation, gauge zero with its datum, river
+// kilometre, catchment area, voivodeship and county, hydrographic code, year established),
+// IMGW-PIB's warning and alarm levels and absolute extremes of a hydrological station
+// (hydro.imgw.pl, ADR-021), ČHMÚ's thresholds of a hydrological station and the coverage of
+// each dataset and variable in the data root. The panel draws the catalog's lines under the
+// card (part "catalog").
 
 import { has } from "../i18n.js";
 import { fmt, fmtDate, fmtDateTime, html, t, unit } from "../lib.js";
@@ -11,6 +13,14 @@ import { Section, Table } from "./common.js";
 
 /** ČHMÚ's thresholds of a hydrological station, in their order. */
 const THRESHOLDS = ["spa1", "spa2", "spa3", "drought", "q50"];
+
+/** IMGW-PIB's levels and extremes of a hydrological station: catalog keys, in their order. */
+const LEVELS = [
+  { key: "warning", value: "warning_level_cm", dates: null },
+  { key: "alarm", value: "alarm_level_cm", dates: null },
+  { key: "minimum", value: "absolute_min_level_cm", dates: "absolute_min_level_dates" },
+  { key: "maximum", value: "absolute_max_level_cm", dates: "absolute_max_level_dates" },
+];
 
 function Row({ label, value, sub }) {
   return html`<tr><th scope="row">${label}</th><td>${value ?? "–"}${sub ? html`<span class="row-sub">${sub}</span>` : null}</td></tr>`;
@@ -72,8 +82,20 @@ function Catalog({ station }) {
           sub=${located ? where : missingReason(p.location_missing_reason)}
         />
         ${given(p.elevation_m) ? html`<${Row} label=${t("station.info.elevation")} value=${t("station.info.metres_asl", { value: fmt(p.elevation_m, 1) })} />` : null}
-        ${given(p.gauge_zero_m) ? html`<${Row} label=${t("station.info.gauge_zero")} value=${t("station.info.metres_asl", { value: fmt(p.gauge_zero_m, 3) })} />` : null}
+        ${given(p.gauge_zero_m)
+          ? html`<${Row}
+              label=${t("station.info.gauge_zero")}
+              value=${p.gauge_zero_datum
+                ? t("station.info.metres_asl_datum", { value: fmt(p.gauge_zero_m, 3), datum: p.gauge_zero_datum })
+                : t("station.info.metres_asl", { value: fmt(p.gauge_zero_m, 3) })}
+            />`
+          : null}
         ${given(p.river_km) ? html`<${Row} label=${t("station.info.river_km")} value=${fmt(p.river_km, 2)} />` : null}
+        ${p.kind === "hydro" && given(p.catchment_area_km2)
+          ? html`<${Row} label=${t("station.info.catchment_area")} value=${`${fmt(p.catchment_area_km2, 2)} km²`} />`
+          : null}
+        ${p.kind === "hydro" && p.province ? html`<${Row} label=${t("station.info.province")} value=${p.province} />` : null}
+        ${p.kind === "hydro" && p.district ? html`<${Row} label=${t("station.info.district")} value=${p.district} />` : null}
         ${p.hydrographic_code ? html`<${Row} label=${t("station.info.hydrographic_code")} value=${html`<code>${p.hydrographic_code}</code>`} />` : null}
         ${given(p.river_order) ? html`<${Row} label=${t("station.info.river_order")} value=${p.river_order} sub=${t("station.info.river_order_note")} />` : null}
         ${p.established_year ? html`<${Row} label=${t("station.info.established")} value=${p.established_year} />` : null}
@@ -87,6 +109,26 @@ function asGiven(value) {
   if (!given(value)) return "–";
   const decimals = (String(value).split(".")[1] || "").length;
   return fmt(value, Math.min(decimals, 3));
+}
+
+/** IMGW-PIB's warning and alarm levels and absolute extremes; nothing without a value. */
+function Levels({ properties }) {
+  const rows = LEVELS.map((level) => ({
+    label: t(`station.info.level.${level.key}`),
+    H: properties[level.value],
+    dates: level.dates ? properties[level.dates] : null,
+  })).filter((row) => given(row.H) || given(row.dates));
+  if (!rows.length) return null;
+  return html`<${Section} title=${t("station.info.levels")} info=${t("station.info.levels_info")}>
+    <${Table}
+      columns=${[
+        { key: "label", label: t("station.info.level") },
+        { key: "H", label: "H [cm]", format: asGiven },
+        { key: "dates", label: t("station.info.level_date"), format: (dates) => (given(dates) ? dates : "–") },
+      ]}
+      rows=${rows}
+    />
+  </${Section}>`;
 }
 
 function Thresholds({ thresholds }) {
@@ -142,6 +184,7 @@ function Stacja({ station }) {
   const thresholds = station.properties.thresholds;
   return html`
     <${Catalog} station=${station} />
+    ${station.properties.kind === "hydro" ? html`<${Levels} properties=${station.properties} />` : null}
     ${thresholds && typeof thresholds === "object" ? html`<${Thresholds} thresholds=${thresholds} />` : null}
     <${Coverage} station=${station} />
   `;

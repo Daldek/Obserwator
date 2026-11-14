@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import json
@@ -10,7 +11,9 @@ import shlex
 import shutil
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient
@@ -65,6 +68,16 @@ OPERATOR = {
     "mail_provider": "Example Mail",
 }
 REPORT = {"message": "The chart is empty.", "context": {"view": "stations"}}
+DETAILS_RECORDINGS = (
+    Path(__file__).parents[2] / "fixtures" / "store" / "hydro_details_recordings.json"
+)
+DETAILS = {
+    item["case"]: item
+    for item in json.loads(DETAILS_RECORDINGS.read_text(encoding="utf-8"))[
+        "interactions"
+    ]
+}
+"""The recorded answers of hydro.imgw.pl (``pl.imgw.hydro_details``) by case."""
 
 
 def problem(answer, status, code, lang="pl"):
@@ -102,6 +115,39 @@ def files_of(root: Path) -> dict[str, tuple[int, int]]:
 
 def parsed_csv(data: bytes) -> list[list[str]]:
     return list(csv.reader(io.StringIO(data.decode("utf-8"), newline="")))
+
+
+@pytest.fixture(scope="module")
+def details_root(fixture_raw_root, fixture_root, tmp_path_factory):
+    """
+    A copy of the fixture root whose IMGW-PIB catalog has the details of ``HYDRO``.
+
+    The recorded page of Kłodzko (150160180) re-keyed to ``HYDRO`` is synced from a
+    map holding ``HYDRO`` alone into a copy of the raw root, and the IMGW-PIB catalog
+    is built again from it.
+    """
+    base = tmp_path_factory.mktemp("gui-root-details")
+    raw, data = base / "raw", base / "data"
+    shutil.copytree(fixture_raw_root, raw)
+    shutil.copytree(fixture_root, data)
+    page = copy.deepcopy(DETAILS["status_150160180"]["json"])
+    page["id"] = HYDRO
+    page["status"]["name"] = HYDRO
+    recorded = DETAILS["map"]
+    station = {**recorded["json"]["stations"][0], "id": HYDRO}
+    with respx.mock(assert_all_mocked=True) as router:
+        router.get(recorded["url"]).mock(
+            return_value=httpx.Response(
+                200, json={**recorded["json"], "stations": [station]}
+            )
+        )
+        router.get(DETAILS["status_unknown"]["url"].replace("999999999", HYDRO)).mock(
+            return_value=httpx.Response(200, json=page)
+        )
+        synced = obserwator.sync_store(raw, datasets=["pl.imgw.hydro_details"])
+    assert [item.status for item in synced.items] == ["new"]
+    obserwator.build_catalog(data, raw_root=raw)
+    return data
 
 
 # --- the session and the texts ----------------------------------------------------------
@@ -270,6 +316,74 @@ def test_a_station_answers_its_properties_series_and_lines(client):
     assert "terms_notice" not in chmi["attribution_parts"]["series"]
     assert empty["datasets"] == []
     assert empty["attribution_parts"]["series"] is None
+
+
+def test_a_station_with_details_names_hydro_imgw_pl_and_carries_them(
+    make_client, client, details_root
+):
+    detailed = make_client(details_root).get(f"/api/stations/{HYDRO}").json()
+    plain = client.get(f"/api/stations/{HYDRO}").json()
+    lines = attribution("imgw", "gugik", "imgw_hydro")
+
+    assert detailed["attribution"] == list(lines.attribution)
+    assert detailed["terms_notice"] == list(lines.terms_notice)
+    assert detailed["attribution_parts"]["catalog"] == lines.fields()
+    assert {
+        key: detailed["properties"][key]
+        for key in (
+            "established_year",
+            "gauge_zero_m",
+            "gauge_zero_datum",
+            "river_km",
+            "catchment_area_km2",
+            "province",
+            "district",
+            "warning_level_cm",
+            "alarm_level_cm",
+            "absolute_min_level_cm",
+            "absolute_min_level_dates",
+            "absolute_max_level_cm",
+            "absolute_max_level_dates",
+            "details_source",
+        )
+    } == {
+        "established_year": 1884,
+        "gauge_zero_m": 281.617,
+        "gauge_zero_datum": "EVRF2007",
+        "river_km": 130.04,
+        "catchment_area_km2": 1082.27,
+        "province": "dolnośląskie",
+        "district": "kłodzki",
+        "warning_level_cm": 160,
+        "alarm_level_cm": 240,
+        "absolute_min_level_cm": 28,
+        "absolute_min_level_dates": "1950-08-31",
+        "absolute_max_level_cm": 890,
+        "absolute_max_level_dates": "1997-07-08",
+        "details_source": "hydro_details",
+    }
+    assert plain["properties"]["details_source"] is None
+    assert (
+        plain["attribution_parts"]["catalog"] == attribution("imgw", "gugik").fields()
+    )
+
+
+def test_the_lines_of_stations_files_name_hydro_imgw_pl_for_stations_with_details(
+    make_client, client, details_root
+):
+    detailed = make_client(details_root)
+    hydro = {"provider": "IMGW-PIB", "kind": "hydro"}
+    meteo = {"provider": "IMGW-PIB", "kind": "meteo"}
+    with_details = detailed.get("/api/downloads/stations", params=hydro).json()
+    without = detailed.get("/api/downloads/stations", params=meteo).json()
+    before = client.get("/api/downloads/stations", params=hydro).json()
+
+    assert "hydro.imgw.pl" in " ".join(with_details["terms_notice"])
+    assert with_details["attribution"] == list(
+        attribution("imgw", "gugik", "imgw_hydro").attribution
+    )
+    assert without["attribution"] == list(attribution("imgw", "gugik").attribution)
+    assert before["attribution"] == list(attribution("imgw", "gugik").attribution)
 
 
 def test_an_unknown_station_is_404_and_a_malformed_code_400(client):

@@ -645,13 +645,13 @@ def test_api_list_limit_defaults_to_and_is_capped_by_the_server_maximum(
 
     default = client.get("/api/v1/datasets/list").json()
     last = client.get(
-        "/api/v1/datasets/list", params={"limit": 3, "cursor": page_cursor(20)}
+        "/api/v1/datasets/list", params={"limit": 3, "cursor": page_cursor(21)}
     )
     above = client.get("/api/v1/datasets/list", params={"limit": 4})
     zero = client.get("/api/v1/datasets/list", params={"limit": 0})
 
     assert len(default["result"]) == 3
-    assert (default["page"]["total"], default["page"]["truncated"]) == (21, True)
+    assert (default["page"]["total"], default["page"]["truncated"]) == (22, True)
     assert len(last.json()["result"]) == 1
     assert problem(above, 400, "validation_error")["details"] == {
         "option": "limit",
@@ -670,8 +670,8 @@ def test_api_list_next_cursor_answers_the_next_page(client):
     whole = client.get("/api/v1/datasets/list", params={"limit": 30}).json()
 
     assert first["page"]["truncated"] is True
-    assert len(second["result"]) == 10
-    assert second["page"] == {"total": 21, "next_cursor": None, "truncated": False}
+    assert len(second["result"]) == 11
+    assert second["page"] == {"total": 22, "next_cursor": None, "truncated": False}
     assert first["result"] + second["result"] == whole["result"]
 
 

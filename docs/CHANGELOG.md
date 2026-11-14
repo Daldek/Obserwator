@@ -6,6 +6,37 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Station details of hydro.imgw.pl (ADR-021).** Added: the store dataset
+  `pl.imgw.hydro_details` (22 datasets, 16 of IMGW-PIB; slug `hydro_details`, `time_unit`
+  `station_list`, no update signal, licence = the hydro.imgw.pl terms, lines S, P, RH):
+  `store sync --datasets pl.imgw.hydro_details` reads the hydro.imgw.pl map for the codes and
+  then the station page of each, `hydro-back.imgw.pl/station/hydro/status?id=<code>`, one
+  request at a time with `User-Agent` and `Referer` (about 910 requests, a few minutes; a `null`
+  answer is skipped, any HTTP error fails the item and writes nothing; `cancel` polled before each
+  station); `store check` reports it `unverifiable`. The store keeps one derived file of the
+  station reference data only: gauge zero and its datum, river km, catchment area, year of
+  establishment, province, district, warning and alarm levels, absolute minimum and maximum with
+  their dates; never water states, trends, notes or data clauses. `DatasetDescriptor.kept_fields`
+  takes dotted names (`status.alarmValue`), kept nested; the sidecar of a derived file carries the
+  dataset's licence and its `license_terms` notice the dataset origin's lines. The IMGW-PIB
+  catalog takes the details as an optional source: every IMGW-PIB feature gains
+  `gauge_zero_datum`, `catchment_area_km2`, `province`, `district`, `warning_level_cm`,
+  `alarm_level_cm`, `absolute_min_level_cm`, `absolute_min_level_dates`,
+  `absolute_max_level_cm`, `absolute_max_level_dates` and `details_source` (null for meteo
+  stations and without details; ČHMÚ features unchanged), typed in the contract schema of
+  `stations.geojson`. Without stored details the build goes on: the sidecar's `sources` entry
+  `hydro_details` has `available: false` and an `info` notice `source_missing` names the sync.
+  GUI: „Informacje o stacji” shows the gauge zero with its datum („281,617 m n.p.m.
+  (EVRF2007)”), „Powierzchnia zlewni”, „Województwo”, „Powiat” and the section „Progi i stany
+  ekstremalne IMGW-PIB” (warning and alarm levels, absolute extremes, „H [cm]” and „Data”).
+  Changed: IMGW-PIB `gauge_zero_m`, `river_km` and `established_year`, always null since
+  ADR-015 D5, are filled from the details (a gauge zero or catchment area of 0 is null); the
+  warning and alarm levels count as station reference data, not operational data; `store
+  catalog` of IMGW-PIB reports 7 progress steps (was 6; step 5 the details) and its check one
+  more action (`current`, `newer` or `missing`); the lines of the catalog, of `stations
+  export` and of the `store catalog` envelope add RH when a feature has details, the GUI's
+  station panel too (not its map layer); the hydro levels card's info points to „Informacje o
+  stacji” for IMGW-PIB's levels. Rebuild the IMGW-PIB catalog after the sync to fill them.
 - **GUI admin panel (Nogat DEV-15.13, ECO-067, kit 0.7.0, ADR-020).** `admin/` (`admin` answers
   `308`) is the kit's `<nogat-admin>` with „Zgłoszenia”, „Statystyki” and „Stan”. Its API under
   `api/admin/` checks `X-Admin-Key` in constant time against `OBSERWATOR_ADMIN_API_KEY` or the
@@ -208,7 +239,7 @@ repository in line with the Nogat standard 1.0 (then the draft 2.1): the user en
 and in the store with a default root (ADR-007), and projects moved to Archiwista (ADR-008). The
 downloads write raw data only, into a raw root, and the series, catalogs and analyses built from
 them live in a data root of their own (ADR-015, ADR-017). The stations' analyses are computed by
-Hydrolog and stored as its answers (ADR-016). The registry has 21 datasets of two providers, and
+Hydrolog and stored as its answers (ADR-016). The registry has 22 datasets of two providers, and
 the catalog 35 commands. Decisions: `docs/DECISIONS.md`; contracts:
 `docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
 §13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
