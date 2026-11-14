@@ -16,9 +16,8 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   Hydrolog's results; `carried` no longer keeps Hydrolog's old line as its own. A series
   version whose CP names the processing stays current (`series build` does not rebuild it for
   this line); versions already written keep their bytes. Nogat's kit is 0.7.1 (byte for byte):
-  `nogat-sources.js` knows CP and shows an old one as CP, and the regulamin is 1.1 with the
-  ČHMÚ block's CP without parentheses; a public deployment publishing 1.1 sets its own
-  `terms_effective` in `[nogat.operator]`. Tests: the CP line of the standard, an old CP read
+  `nogat-sources.js` knows CP and shows an old one as CP, and the regulamin stays 1.0, corrected in
+  place with the ČHMÚ block's CP without parentheses (no new `terms_effective`). Tests: the CP line of the standard, an old CP read
   as CP once (from `Attribution`, `from_lines`, `carried` and a merge), a ČHMÚ series with an
   old CP kept current; the golden CSV of ČHMÚ series exports regenerated. ADR-003, ADR-012
   and ADR-013 errata.

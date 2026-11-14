@@ -111,10 +111,17 @@ def test_a_public_deployment_links_its_terms_at_the_bottom_of_the_left_panel(
     expect(terms).to_have_attribute("href", "regulamin.html")
     expect(terms).to_have_attribute("target", "_blank")
     expect(terms).to_have_attribute("rel", "noopener")
-    # the panel's last item; the view's foot holds only the providers' strip
-    box, panel = rail.bounding_box(), page.locator("#panel-left").bounding_box()
-    assert box is not None and panel is not None
-    assert abs(box["y"] + box["height"] - (panel["y"] + panel["height"])) <= 1
+    # the panel's last item; the view's foot holds only the providers' strip. Measured
+    # once the layout settles (the filter's rows and the sheet's slide change the panel).
+    gap = None
+    for _ in range(50):
+        box, panel = rail.bounding_box(), page.locator("#panel-left").bounding_box()
+        assert box is not None and panel is not None
+        gap = abs(box["y"] + box["height"] - (panel["y"] + panel["height"]))
+        if gap <= 1:
+            break
+        page.wait_for_timeout(100)
+    assert gap is not None and gap <= 1
     foot = page.locator(".view-foot")
     expect(foot.get_by_role("link", name="Regulamin", exact=True)).to_have_count(0)
     expect(foot).not_to_contain_text("niekomercyjny")
