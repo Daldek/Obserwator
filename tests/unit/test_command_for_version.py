@@ -293,8 +293,11 @@ def test_analyses_version_and_its_files_give_the_analyses_build(data_copy):
 
     assert call == CommandCall("analyses build", {"root": str(data_copy)}, {})
     round_trips(call)
-    station = next((directory / "stations").iterdir())
-    for given in (relative.parent, sidecar(data_copy, relative), station):
+    # Both station files of the layout: the record and one of Hydrolog's answers
+    # (`stations/` also holds the `<code>/` directories, which are no file).
+    record = min((directory / "stations").glob("*.json"))
+    answer = min((directory / "stations").glob("*/*.json"))
+    for given in (relative.parent, sidecar(data_copy, relative), record, answer):
         if given.is_absolute():
             given = given.relative_to(data_copy)
         assert command_for_version(given, root=data_copy) == call
