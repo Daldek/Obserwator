@@ -5,9 +5,10 @@ The attribution lines and the terms lines are the only source of the texts the d
 providers require (ADR-012, Nogat DEV §20): they are persisted in sidecars, series,
 catalogs, PMAXTP cells and exports and printed on every surface with provider data,
 and their wordings are prescribed (the IMGW-PIB terms, the PMAXTP terms, CC BY 4.0
-of ČHMÚ), so a file must not depend on the language of the person or program that
-wrote it; an institution has one official name. The Polish text is the English one
-by design (the guard test allows it for this area only).
+of ČHMÚ and of ČÚZK, GUGiK's conditions of reuse), so a file must not depend on the
+language of the person or program that wrote it; an institution has one official name.
+The Polish text is the English one by design (the guard test allows it for this area
+only).
 """
 
 from obserwator.messages import Text
@@ -32,6 +33,15 @@ _CHMI_ATTRIBUTION = (
     "licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
 _CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
+_GUGIK_ATTRIBUTION = (
+    "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products} (wytworzono "
+    "{period}, pozyskano {date}); dane przetworzone"
+)
+_CUZK_ATTRIBUTION = (
+    "Źródło: Český úřad zeměměřický a katastrální (ČÚZK), {products} (pozyskano "
+    "{date}), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); "
+    "dane przetworzone"
+)
 _TERMS_DANEPUBLICZNE = (
     "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
 )
@@ -77,6 +87,10 @@ MESSAGES = {
     # C and CP of DEV-20.3 (ČHMÚ data, CC BY 4.0).
     "chmi_attribution": Text(_CHMI_ATTRIBUTION, _CHMI_ATTRIBUTION),
     "chmi_processed_attribution": Text(_CHMI_PROCESSED, _CHMI_PROCESSED),
+    # G of DEV-20.9 and Z of DEV-20.11 (GUGiK and ČÚZK data: the packaged state borders,
+    # ADR-018); `obserwator.attribution` fills in the products and days of the files.
+    "gugik_attribution": Text(_GUGIK_ATTRIBUTION, _GUGIK_ATTRIBUTION),
+    "cuzk_attribution": Text(_CUZK_ATTRIBUTION, _CUZK_ATTRIBUTION),
     # The terms lines RD, RH, RK of DEV-20.7 (every product with IMGW-PIB data).
     "imgw_terms_danepubliczne": Text(_TERMS_DANEPUBLICZNE, _TERMS_DANEPUBLICZNE),
     "imgw_terms_hydro": Text(_TERMS_HYDRO, _TERMS_HYDRO),

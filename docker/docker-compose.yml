@@ -10,18 +10,29 @@ services:
     volumes:
       - ../data:/app/data:ro
       - api_keys:/app/keys
+      # The access, application and lifecycle logs, deleted by the server after 14
+      # days (Nogat DEV-12.6): <state_dir>/obserwator of the host, writable by the
+      # image's appuser (UID 1000; the default ../state/obserwator too)
+      - ${NOGAT_STATE_DIR:-../state}/obserwator:/state/obserwator
     environment:
       - OBSERWATOR_ENV=production
       - OBSERWATOR_HOST=0.0.0.0
       - OBSERWATOR_PORT=8000
-      - OBSERWATOR_LOG_LEVEL=INFO
       - OBSERWATOR_API_KEYS_FILE=/app/keys/api_keys.json
+      # The server's logs are /state/obserwator/logs, mounted above (Nogat DEV-12.6)
+      - NOGAT_STATE_DIR=/state
       # MCP over Streamable HTTP at /mcp (read and plan only, English). Behind
       # nginx the Host is the public name: add it to
       # OBSERWATOR_MCP_ALLOWED_HOSTS (comma-separated, any port), e.g.
       # OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d
       - OBSERWATOR_MCP_ENABLED=${OBSERWATOR_MCP_ENABLED:-false}
       - OBSERWATOR_MCP_ALLOWED_HOSTS=${OBSERWATOR_MCP_ALLOWED_HOSTS:-127.0.0.1,localhost}
+    # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -39,6 +50,12 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
+    # nginx keeps no log (nginx.conf, Nogat DEV-12.8); the cap holds what it prints
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "3"
     depends_on:
       app:
         condition: service_healthy

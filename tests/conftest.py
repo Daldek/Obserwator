@@ -2,7 +2,24 @@
 Shared pytest fixtures for Obserwator tests.
 """
 
+import atexit
+import os
+import shutil
+import tempfile
+
 import pytest
+
+# Keep the servers' logs of the whole session out of the user's state directory.
+# ``obserwator.config.settings`` and the log of ``obserwator.api.main``
+# (``<state_dir>/obserwator/logs``) are made when first imported, which the conftest
+# files below this one do before any hook or fixture runs, so the variable is set when
+# this file is imported; the servers that tests start as programs inherit it. A test
+# that checks the logs gives its own ``OBSERWATOR_STATE_DIR`` or ``ServerLog``. The
+# directory goes when the session's process ends, also after a collection error.
+_STATE_ENV = "OBSERWATOR_STATE_DIR"
+_SESSION_STATE = tempfile.mkdtemp(prefix="obserwator-tests-state-")
+os.environ[_STATE_ENV] = _SESSION_STATE
+atexit.register(shutil.rmtree, _SESSION_STATE, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

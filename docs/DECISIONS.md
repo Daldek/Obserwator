@@ -23,6 +23,8 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-015](#adr-015-raw-data-only-in-store-sync-station-sources-archived-catalogs-offline) | Raw data only in `store sync`, station sources archived, catalogs offline | 2026-11-13 | Accepted |
 | [ADR-016](#adr-016-stored-analyses-computed-by-hydrolog) | Stored analyses computed by Hydrolog | 2026-11-13 | Accepted |
 | [ADR-017](#adr-017-the-data-root) | The data root | 2026-11-13 | Accepted |
+| [ADR-018](#adr-018-state-borders-from-prg-and-rúian) | State borders from PRG and RÚIAN | 2026-11-14 | Accepted |
+| [ADR-019](#adr-019-nogat-server-logs) | Nogat server logs | 2026-11-14 | Accepted |
 
 ---
 
@@ -765,3 +767,47 @@ Nogat's ECO-059 gives the raw data of IMGW-PIB and ČHMÚ to Archiwista, which o
 ### Consequences
 
 Breaking for every caller of a store that held both kinds (`docs/CHANGELOG.md`, `[Unreleased]`, with the migration); no released interface breaks, because 3.0.0 is untagged. Archiwista configures both roots, orders its downloads into the raw root and reads the series and catalogs from the data root (the Nogat plan's step R2); Retman's command list gives every command the root of its kind and `series build` and `store catalog` their `--raw-root` (R2); the new GUI (Obserwator's GUI plan) reads the data root only. A store written before this decision is split once (D8); the deployment's roots start afresh with one full download (the plan's answer 2). Kartograf (frozen) checks only the marker names of its own list (`kartograf-store.json`, `obserwator-store.json`), so it does not see `obserwator-data.json` and would not refuse a store of its own inside a data root or around one; Obserwator's own nesting check knows all three names. `AGENTS.md` and `llms.txt` are regenerated with the raw and data roots and `OBSERWATOR_RAW_ROOT`. ČHMÚ's rating curves and long-term characteristics (the plan's D10) are still not datasets of the registry.
+
+---
+
+## ADR-018: State borders from PRG and RÚIAN
+
+**Date:** 2026-11-14  
+**Status:** Accepted (Nogat plan `2026-11-13-terms-fix.md`, approved by the author)  
+**Standard:** Nogat DEV-20.9 (line G), DEV-20.11 (line Z), ECO-066; changes the catalog's country check of ADR-015 and the map background of ADR-013  
+
+### Context and options
+
+The packaged outlines of Poland and Czechia came from Natural Earth 1:10m, which generalises a border by up to about 1 km: the catalog had to accept a location up to 1,500 m outside the outline (`BORDER_TOLERANCE_M`), and a foreign point that close passed as domestic. Options: (a) keep Natural Earth with its tolerance; (b) fetch a border at runtime (a network call in an offline build); (c) package the official state borders of the national registers, PRG of GUGiK and RÚIAN of ČÚZK, simplified once by a script.
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Packaged official borders.** `src/obserwator/_data/poland_border_wgs84.geojson` (PRG, layer `A00_Granice_panstwa`) and `czechia_border_wgs84.geojson` (RÚIAN, layer `STATY_P`) are built only by `scripts/build_borders.py` from the national files Kartograf downloads into a temporary directory: dissolved, simplified by Douglas-Peucker to 50 m in a metric CRS (EPSG:2180, EPSG:5514), WGS 84, one RFC 7946 feature whose properties name the product, source, creation and acquisition days, licence and `simplify_tolerance_m`. `obserwator._borders` reads them. | (a), (b) |
+| D2 | **Tolerance = the border's error + the location's.** A location is in its provider's country when it lies inside the border or closer to it than the simplification tolerance (50 m) plus the location's uncertainty (at least 150 m). Against the catalogs of 2026-11-13 every real gauge outside the outline lay within 51 m of it, the nearest foreign point 1,084 m away. | a fixed 1,500 m |
+| D3 | **Attribution.** Products that checked locations against a border carry the line G (GUGiK, „dane przetworzone”) or Z (ČÚZK, CC BY 4.0) of Nogat DEV §20, filled from the file's properties (`obserwator.attribution`, `messages/legal.py`); the GUI map, whose background is the borders, shows them as GK and ZK in the strip of `<nogat-sources>`. | — |
+
+### Consequences
+
+Catalogs built before carry no G/Z line; a rebuild adds them. The borders change only by a run of the script (about 630 MB of national files); the same files give the same bytes.
+
+---
+
+## ADR-019: Nogat server logs
+
+**Date:** 2026-11-14  
+**Status:** Accepted (Nogat ECO-066, plan `2026-11-13-terms-fix.md`)  
+**Standard:** Nogat DEV-12.4 to DEV-12.9, DEV-15.6, DEV-18.2  
+
+### Context and options
+
+`obserwator server` logged through uvicorn's access log (client addresses, unbounded in Docker's `json-file`) and `OBSERWATOR_LOG_LEVEL`; the GUI kept access logs of its own. Nogat ECO-066 gives every server one format, `nogat-log/1`. Options: (a) keep each server's own logging; (b) copy Nogat's reference module.
+
+### Decision
+
+Option (b). `src/obserwator/nogat_logging.py` is Nogat's reference module copied byte for byte and never edited (DEV-12.9, DEV-15.6): `ServerLog` and the middleware `AccessLog` serve both `obserwator server` and `obserwator gui serve`. Records `access`, `app` and `lifecycle` go to `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl` (`Settings.log_dir`, `OBSERWATOR_STATE_DIR`, shared `NOGAT_STATE_DIR`), without client addresses, and are deleted after 14 days; stderr carries only the lifecycle records. uvicorn runs without its access log; fixed levels (DEV-12.7) replace `OBSERWATOR_LOG_LEVEL`, which is removed. Docker mounts the state directory and uses the `local` logging driver; nginx keeps no log.
+
+### Consequences
+
+`OBSERWATOR_LOG_LEVEL` is ignored. A container created before keeps its old `json-file` log until it is rebuilt (`docs/CODEBASE.md`, deployment). A change of the module is made in Nogat and copied again.

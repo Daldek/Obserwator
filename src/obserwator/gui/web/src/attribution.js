@@ -1,15 +1,15 @@
-// Provider attribution in the GUI (Nogat DEV §20, DEV-20.5, ECO-064). The lines come byte
-// for byte from the server's one place for them, obserwator.attribution: in the
+// Provider attribution in the GUI (Nogat DEV §20, DEV-20.5, ECO-064, ECO-068). The lines
+// come byte for byte from the server's one place for them, obserwator.attribution: in the
 // `attribution` and `terms_notice` fields of every response with data or results, and for
 // each origin of data in the session's `attribution` (api/session: `origins.{imgw,
-// imgw_hydro, pmaxtp, chmi}`, the standard's `order` and `terms_order`). This module merges
-// the lines of what a view shows, in the standard's order, each once, as
+// imgw_hydro, pmaxtp, chmi, gugik, cuzk}`, the standard's `order` and `terms_order`). This
+// module merges the lines of what a view shows, in the standard's order, each once, as
 // `Attribution.__or__` does on the server, and hands them to the kit's <nogat-sources>
-// (`Sources`): a 12 px strip with S, P, PS, PP and the short ČHMÚ line, then „Źródła i
-// warunki”, a dialog with every line, the terms and „Regulamin” where the deployment serves
-// one. A view has one strip, across the page under the map and both panels, never one per
-// panel or card. A public deployment also shows „Regulamin” and the service's statement
-// under it (Nogat DEV-15.7, DEV-15.8): `PublicNotice`.
+// (`Sources`): a 12 px strip with S, P, PS, PP and the short forms of ČHMÚ's, GUGiK's and
+// ČÚZK's lines, then „Źródła i warunki”, a dialog with every line, the terms and „Regulamin”
+// where the deployment serves one. A view has one strip, across the page under the map and
+// both panels, never one per panel or card. A public deployment also shows „Regulamin” and
+// the service's statement under it (Nogat DEV-15.7, DEV-15.8): `PublicNotice`.
 //
 // main.js hands the session's `attribution` over with `setTexts` once api/session answers;
 // `useTexts` gives it to every component that composes lines (null until then).
@@ -111,14 +111,20 @@ export function merge(texts, sets) {
 
 /** The origin of a provider's catalog and archives (obserwator.attribution.provider_origin). */
 const PROVIDER_ORIGINS = { "IMGW-PIB": "imgw", CHMI: "chmi" };
+/** The origin of the packaged border a provider's catalog was checked against
+ * (obserwator.attribution.border_origin, ADR-018). */
+const BORDER_ORIGINS = { "IMGW-PIB": "gugik", CHMI: "cuzk" };
+/** The origins of the packaged borders, PRG of GUGiK and RÚIAN of ČÚZK, while the map draws
+ * them as its background. */
+export const BORDER_SOURCES = ["gugik", "cuzk"];
 
 /**
  * The origins of a set of catalog stations, as the server counts a station's: its
- * provider's, and hydro.imgw.pl's for an IMGW-PIB station located from there
- * (`location_source` "static").
+ * provider's, the border's its location was checked against, and hydro.imgw.pl's for an
+ * IMGW-PIB station located from there (`location_source` "static").
  *
  * @param {object[]} stations entries of api/stations
- * @returns {string[]} e.g. ["imgw", "imgw_hydro", "chmi"]
+ * @returns {string[]} e.g. ["imgw", "gugik", "imgw_hydro", "chmi", "cuzk"]
  */
 export function catalogSources(stations) {
   const out = new Set();
@@ -126,6 +132,7 @@ export function catalogSources(stations) {
     const origin = PROVIDER_ORIGINS[station.provider];
     if (!origin) continue;
     out.add(origin);
+    out.add(BORDER_ORIGINS[station.provider]);
     if (origin === "imgw" && station.location_source === "static" && station.lon !== null) out.add("imgw_hydro");
   }
   return [...out];
@@ -140,7 +147,8 @@ function useStable(lines) {
 
 /**
  * The kit's strip of the lines (`<nogat-sources>`, Nogat DEV-20.5): S, P, PS, PP and the
- * short ČHMÚ line on screen, every line and the terms in its dialog; nothing without lines.
+ * short forms of ČHMÚ's, GUGiK's and ČÚZK's lines on screen (CK, GK, ZK), every line and
+ * the terms in its dialog; nothing without lines.
  *
  * @param {{fields: {attribution?: string[], terms_notice?: string[]}|null, session:
  *   object|null}} props the fields of a response, of compose or of merge; the session

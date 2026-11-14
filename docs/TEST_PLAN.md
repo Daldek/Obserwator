@@ -357,7 +357,6 @@ Store settings from `IMGW_*` are already covered by `test_api_store.py::test_sto
 - `test_settings_ignores_unprefixed_env` – `PORT=1` has no effect.
 - `test_settings_station_file_paths_follow_data_dir` – `hydro_stations_file`, `meteo_stations_file`.
 - `test_settings_is_production` – `IMGW_ENV=production`.
-- `test_settings_invalid_log_level_raises` – `ValidationError`.
 
 ### 4.9 Versioned store (replaces the former DB-layer 4.9–4.13; the tests exist)
 

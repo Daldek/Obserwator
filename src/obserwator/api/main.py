@@ -10,6 +10,15 @@ extra, ``/mcp`` serves the MCP server in mode ``http`` (Streamable HTTP, spec §
 §6.9), in English like every MCP server; its session manager runs in the lifespan of
 this application. The web GUI is a server of its own, ``obserwator gui serve``
 (ADR-013), which this application does not serve.
+
+The server keeps Nogat's logs (DEV-12.4 to DEV-12.9) with `SERVER_LOG`: the access log
+of the outermost middleware `obserwator.nogat_logging.AccessLog` (no client address,
+the static documents of `QUIET` logged only from status 400), the application log and
+the lifecycle records ``start`` and ``stop`` of the lifespan, in
+``<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl``, deleted after 14 days;
+standard error gets only the lifecycle records and the errors reduced to their type.
+uvicorn runs with ``access_log=False`` and ``log_config=None`` (`run_server`; on its
+command line ``--no-access-log --log-level warning``).
 """
 
 import logging
@@ -24,6 +33,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.routing import APIRoute
 from starlette.applications import Starlette
 
+from obserwator import _environment as environment
 from obserwator._version import __version__
 from obserwator.agent_guide import agent_guide
 from obserwator.api.errors import EXCEPTION_HANDLERS, accept_language
@@ -31,8 +41,19 @@ from obserwator.api.routes import commands
 from obserwator.api.schemas import HealthCheck
 from obserwator.commands import command_schema
 from obserwator.config import check_config, settings
+from obserwator.nogat_logging import AccessLog, ServerLog
 
 _LOG = logging.getLogger(__name__)
+
+SERVER_LOG = ServerLog(environment.TOOL, __version__, settings.log_dir)
+"""The server's logs in ``<state_dir>/obserwator/logs`` (Nogat DEV-12.6)."""
+QUIET = (
+    r"^/(docs|redoc)(/|$)|^/openapi\.json$|^/llms\.txt$|^/health$"
+    r"|^/api/v1(/commands/schema)?$"
+)
+"""The static content of the access log (Nogat DEV-12.5): the documentation, the OpenAPI
+document, the guide, the list of routes, the catalog's schema and the health answer, the
+same for every client, are logged only when answered with 400 or more."""
 
 # API metadata
 API_TITLE = "Obserwator API"
@@ -93,11 +114,7 @@ def _mcp_app() -> Starlette | None:
     try:
         from obserwator.mcp.server import http_app
     except ImportError:
-        _LOG.warning(
-            "OBSERWATOR_MCP_ENABLED=true, but the MCP server needs the extra: pip install "
-            "obserwator[mcp]; the route /mcp does not exist"
-        )
-        return None
+        return None  # the lifespan logs the missing extra
     return http_app()
 
 
@@ -106,11 +123,37 @@ _MCP = _mcp_app()
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Check ``nogat.toml``, then run the session manager of ``/mcp`` with the app."""
-    check_config()  # an unusable settings file stops the server instead of being ignored
-    # A route of another application never runs its lifespan by itself.
-    async with nullcontext() if _MCP is None else _MCP.router.lifespan_context(_MCP):
-        yield
+    """
+    Start the logs, check ``nogat.toml``, run the session manager of ``/mcp`` with the app.
+
+    The lifecycle record ``start`` sums up the settings (`SERVER_LOG`); ``stop`` follows
+    the end of serving, also when the start fails.
+    """
+    SERVER_LOG.start(
+        {
+            "host": settings.host,
+            "port": settings.port,
+            "env": settings.env,
+            "root": settings.root,
+            "raw_root": settings.raw_root,
+            "store_writes_enabled": settings.store_writes_enabled,
+            "mcp": _MCP is not None,
+        }
+    )
+    try:
+        if settings.mcp_enabled and _MCP is None:
+            _LOG.warning(
+                "OBSERWATOR_MCP_ENABLED=true, but the MCP server needs the extra: pip "
+                "install obserwator[mcp]; the route /mcp does not exist"
+            )
+        check_config()  # an unusable settings file stops the server instead of being ignored
+        # A route of another application never runs its lifespan by itself.
+        async with (
+            nullcontext() if _MCP is None else _MCP.router.lifespan_context(_MCP)
+        ):
+            yield
+    finally:
+        SERVER_LOG.stop()
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -153,6 +196,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Outermost: the access log records every answer, the middleware's own too (DEV-12.8).
+app.add_middleware(AccessLog, log=SERVER_LOG, quiet=QUIET)
 
 # Catalog routes /api/v1/<group>/<command>
 app.include_router(commands.router)
@@ -214,15 +259,40 @@ async def llms_txt(request: Request) -> Response:
     return response
 
 
-def run_server() -> None:
-    """Run the API server."""
+def run_server(
+    *, host: str | None = None, port: int | None = None, reload: bool | None = None
+) -> None:
+    """
+    Run the API server with uvicorn until it is stopped.
+
+    uvicorn keeps no log of its own (``access_log=False``, ``log_config=None``): the
+    app's `SERVER_LOG` writes every record (Nogat DEV-12.8). A given ``host`` or
+    ``port`` goes before the settings (DEV-18.1) and into them, so the lifecycle record
+    ``start`` names the address served; with ``reload`` the server runs in a process
+    of its own, which reads the settings again (``OBSERWATOR_HOST``,
+    ``OBSERWATOR_PORT``) for that record.
+
+    Parameters
+    ----------
+    host, port : str and int, optional
+        The address to listen on; ``OBSERWATOR_HOST`` and ``OBSERWATOR_PORT`` when
+        omitted.
+    reload : bool, optional
+        Restart when the code changes; by default unless ``OBSERWATOR_ENV=production``.
+    """
     import uvicorn
 
+    if host is not None:
+        settings.host = host
+    if port is not None:
+        settings.port = port
     uvicorn.run(
         "obserwator.api.main:app",
         host=settings.host,
         port=settings.port,
-        reload=not settings.is_production,
+        reload=not settings.is_production if reload is None else reload,
+        access_log=False,
+        log_config=None,
     )
 
 

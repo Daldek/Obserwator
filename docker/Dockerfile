@@ -36,5 +36,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application (one worker: MCP sessions live in the process)
-CMD ["uvicorn", "obserwator.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (one worker: MCP sessions live in the process). uvicorn keeps
+# no log of its own: the app writes Nogat's logs to $NOGAT_STATE_DIR/obserwator/logs
+# and prints only its lifecycle records (Nogat DEV-12.7, DEV-12.8)
+CMD ["uvicorn", "obserwator.api.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--no-access-log", "--log-level", "warning"]

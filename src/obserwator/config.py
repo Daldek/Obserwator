@@ -3,7 +3,7 @@ Settings of the servers and the CLI: environment, ``.env`` and ``nogat.toml`` (D
 
 A setting comes from the first of: the environment variable ``OBSERWATOR_<KEY>``, the
 same key in a ``.env`` file of the working directory, the shared variable
-``NOGAT_<KEY>`` (keys ``data_dir``, ``cache_dir``, ``lang``), the section
+``NOGAT_<KEY>`` (keys ``data_dir``, ``cache_dir``, ``state_dir``, ``lang``), the section
 ``[obserwator]`` of ``nogat.toml``, the section ``[nogat]`` of it (shared keys), the
 default; a command-line option goes before all of them. The store write token is
 a credential: only the environment (and ``.env``) may give it, never the file
@@ -48,7 +48,7 @@ __all__ = [
 
 
 class _NogatEnvSource(PydanticBaseSettingsSource):
-    """The shared variables ``NOGAT_DATA_DIR``, ``NOGAT_CACHE_DIR``, ``NOGAT_LANG``."""
+    """The shared variables ``NOGAT_<KEY>`` of the keys of `environment.SHARED_KEYS`."""
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         """Not used: `__call__` reads the shared keys at once."""
@@ -121,13 +121,15 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Directories (DEV-18.2): stores live in <data_dir>/obserwator (the data root) and
-    # <data_dir>/obserwator-raw (the raw root), caches in <cache_dir>/obserwator.
-    # Neither is the working directory. The reference data of
+    # <data_dir>/obserwator-raw (the raw root), caches in <cache_dir>/obserwator and
+    # the servers' logs in <state_dir>/obserwator/logs (Nogat DEV-12.6, `log_dir`).
+    # None is the working directory. The reference data of
     # IMGW-PIB (hydro_stations_locations.csv, desc/) is fetched again at will,
     # so it lives in the cache, and the state of the REST server (API keys) in
     # the data directory of the tool.
     data_dir: Path = Field(default_factory=environment.default_data_dir)
     cache_dir: Path = Field(default_factory=environment.default_cache_dir)
+    state_dir: Path = Field(default_factory=environment.default_state_dir)
     reference_dir: Path = Field(
         default_factory=lambda data: data["cache_dir"] / environment.TOOL / "reference"
     )
@@ -196,9 +198,6 @@ class Settings(BaseSettings):
     # `analyses build` stores its results; the GUI runs it for a person's choices.
     hydrolog_command: str | None = None
 
-    # Logging
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-
     @classmethod
     def settings_customise_sources(
         cls,
@@ -221,6 +220,17 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.env == "production"
+
+    @property
+    def log_dir(self) -> Path:
+        """
+        The directory of the servers' logs: ``<state_dir>/obserwator/logs``.
+
+        ``obserwator server`` and ``obserwator gui serve`` write their access,
+        application and lifecycle records there, one file per kind and UTC day,
+        deleted after 14 days (Nogat DEV-12.6); absolute, ``~`` expanded.
+        """
+        return (self.state_dir / environment.TOOL / "logs").expanduser().absolute()
 
     @field_validator("mcp_allowed_hosts", mode="before")
     @classmethod

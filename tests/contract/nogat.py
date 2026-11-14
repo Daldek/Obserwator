@@ -1,8 +1,9 @@
 """Validation against the vendored Nogat schemas (``schemas/nogat/``, D6).
 
 ``validate(document, "commands-1")`` raises when a document of Obserwator does not
-follow the schema of Nogat's standard 1.0; the message lists every error with its
-path, so a failing test names all of them at once.
+follow the schema of Nogat's standard 1.0 (``record-1``: a record of the servers'
+logs, ``nogat-log/1``); the message lists every error with its path, so a failing
+test names all of them at once.
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ import jsonschema
 from referencing import Registry, Resource
 
 SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas" / "nogat"
-SchemaName = Literal["result-1", "error-1", "commands-1"]
-SCHEMA_NAMES: tuple[SchemaName, ...] = ("result-1", "error-1", "commands-1")
+SchemaName = Literal["result-1", "error-1", "commands-1", "record-1"]
+SCHEMA_NAMES: tuple[SchemaName, ...] = ("result-1", "error-1", "commands-1", "record-1")
 
 
 def load_schema(name: SchemaName) -> dict[str, Any]:

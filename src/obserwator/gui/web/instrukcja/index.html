@@ -224,7 +224,7 @@
   <p class="hint-box">Serwer Obserwatora pyta IMGW-PIB najwyżej raz na 10 minut i trzyma odpowiedź, czyli migawkę, tylko w pamięci: niczego nie zapisuje. Otwarty widok odświeża się co 10 minut. Pasek nad mapą podaje czas migawki („Migawka IMGW-PIB z 14:20”) według zegara Twojego komputera, a legenda liczbę stacji. Czasy pomiarów są w UTC, tak jak podaje je IMGW-PIB. Gdy IMGW-PIB nie odpowiada, widok pokazuje ostatnią udaną migawkę. To dane operacyjne: bieżące, niesprawdzone, nie archiwalne.</p>
 
   <h3 id="podklad">Podkład mapy</h3>
-  <p>Mapa ma szary podkład z nazwami miejscowości po polsku; domyślnie to OpenFreeMap z danymi OpenStreetMap, a serwer może mieć inny. Jego źródło podaje pasek źródeł danych u dołu widoku, np. „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”. Kafelki podkładu Twoja przeglądarka pobiera wprost z serwera jego dostawcy. Gdy serwer nie ma podkładu albo jego kafelki się nie wczytają, tłem są granice Polski i Czech z pakietu Obserwatora (Natural Earth, domena publiczna), o czym mówi legenda.</p>
+  <p>Mapa ma szary podkład z nazwami miejscowości po polsku; domyślnie to OpenFreeMap z danymi OpenStreetMap, a serwer może mieć inny. Jego źródło podaje pasek źródeł danych u dołu widoku, np. „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”. Kafelki podkładu Twoja przeglądarka pobiera wprost z serwera jego dostawcy. Gdy serwer nie ma podkładu albo jego kafelki się nie wczytają, tłem są granice państwowe Polski i Czech z pakietu Obserwatora, z państwowych rejestrów granic (<a href="#granice">PRG i RÚIAN</a>), o czym mówi legenda; pasek źródeł danych podaje wtedy „Źródło: GUGiK (PRG)” i „Źródło: ČÚZK, CC BY 4.0”.</p>
   <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
 </section>
 
@@ -428,7 +428,7 @@ ORDER BY year;</code></pre>
 <section class="part" id="licencje" aria-labelledby="licencje-title">
   <p class="kicker">06 · Warunki dostawców</p>
   <h2 id="licencje-title">Licencje i cytowanie</h2>
-  <p>Dane pochodzą od IMGW-PIB i ČHMÚ i podlegają ich warunkom. Obserwator dołącza do wszystkiego, co pokazuje i zapisuje, wiersze, których te instytucje wymagają: na stronie w wąskim pasku u dołu każdego widoku, w pełnym brzmieniu w oknie „Źródła i warunki”, w każdym pliku w całości. Jeśli wykorzystujesz dane albo wyniki dalej, w pracy, raporcie, na stronie czy w zrzucie ekranu, zachowaj te wiersze bez zmian i przestrzegaj warunków dostawców. Poniżej ich dokładne brzmienie.</p>
+  <p>Dane pochodzą od IMGW-PIB i ČHMÚ, a granice państw od GUGiK i ČÚZK, i podlegają ich warunkom. Obserwator dołącza do wszystkiego, co pokazuje i zapisuje, wiersze, których te instytucje wymagają: na stronie w wąskim pasku u dołu każdego widoku, w pełnym brzmieniu w oknie „Źródła i warunki”, w każdym pliku w całości. Jeśli wykorzystujesz dane albo wyniki dalej, w pracy, raporcie, na stronie czy w zrzucie ekranu, zachowaj te wiersze bez zmian i przestrzegaj warunków dostawców. Poniżej ich dokładne brzmienie.</p>
 
   <h3 id="imgw">IMGW-PIB: dane publiczne</h3>
   <p class="legal-label">Źródło</p>
@@ -459,12 +459,20 @@ ORDER BY year;</code></pre>
   <p class="legal">Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)</p>
   <p>Licencja CC BY 4.0 pozwala kopiować, zmieniać i wykorzystywać dane, także komercyjnie, pod warunkiem uznania autorstwa ČHMÚ, podania licencji i oznaczenia zmian: to właśnie robią oba wiersze. ČHMÚ publikuje też wyłączenie odpowiedzialności, do którego prowadzi odnośnik „wyłączenie odpowiedzialności” w karcie „Pobierz”.</p>
 
+  <h3 id="granice">Granice państw: GUGiK i ČÚZK</h3>
+  <p>Pakiet Obserwatora ma granice państwowe Polski z Państwowego Rejestru Granic (PRG) Głównego Urzędu Geodezji i Kartografii (GUGiK) i Czech z rejestru RÚIAN, który prowadzi ČÚZK (Český úřad zeměměřický a katastrální), uproszczone tak, że odbiegają od granic z rejestrów najwyżej o 50&nbsp;m. Katalog stacji sprawdza nimi położenie każdej stacji: punkt za granicą kraju dostawcy dalej niż te 50&nbsp;m wraz z niepewnością położenia nie trafia na mapę, a karta „Informacje o stacji” podaje przyczynę „stacja poza krajem dostawcy”. Mapa rysuje te granice jako tło, gdy nie ma podkładu. Dlatego katalog stacji, lista stacji i jej pliki niosą też wiersze obu urzędów; rok wytworzenia i dzień pozyskania to daty pliku krajowego, z którego zbudowano granice w pakiecie.</p>
+  <p class="legal-label">GUGiK: źródło i oznaczenie przetworzenia</p>
+  <p class="legal">Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono <i>rok</i>, pozyskano <i>dzień</i>); dane przetworzone</p>
+  <p>Warunki ponownego wykorzystywania danych GUGiK: <a href="https://www.gov.pl/web/gugik/ponowne-wykorzystanie-informacji-sektora-publicznego" target="_blank" rel="noopener noreferrer">https://www.gov.pl/web/gugik/ponowne-wykorzystanie-informacji-sektora-publicznego</a>.</p>
+  <p class="legal-label">ČÚZK: źródło, licencja i oznaczenie przetworzenia</p>
+  <p class="legal">Źródło: Český úřad zeměměřický a katastrální (ČÚZK), RÚIAN (pozyskano <i>dzień</i>), licencja CC BY 4.0 (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">https://creativecommons.org/licenses/by/4.0/</a>); dane przetworzone</p>
+
   <h3 id="mapa-zrodla">Podkład i granice mapy</h3>
-  <p>Źródło podkładu podaje pasek źródeł danych u dołu widoku, domyślnie „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”; serwer z innym podkładem podaje jego źródło. Granice Polski i Czech, rysowane bez podkładu, pochodzą z Natural Earth (domena publiczna).</p>
+  <p>Źródło podkładu podaje pasek źródeł danych u dołu widoku, domyślnie „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”; serwer z innym podkładem podaje jego źródło. Gdy tłem są granice Polski i Czech z pakietu, pasek podaje ich źródła skrótami „Źródło: GUGiK (PRG)” i „Źródło: ČÚZK, CC BY 4.0”.</p>
 
   <h3 id="gdzie-wiersze">Gdzie są te wiersze</h3>
   <ul>
-    <li><strong>Na stronie</strong>: jeden pasek u dołu widoku, pod mapą i oboma panelami, ze źródłami wszystkiego, co widok pokazuje (stacje na mapie i liście, stacja z otwartymi kartami, pliki listy stacji albo tabele PMAXTP). Pasek podaje wiersze IMGW-PIB i PMAXTP dosłownie, a ČHMÚ skrótem „Źródło: ČHMÚ, CC BY 4.0”; przycisk „Źródła i warunki” otwiera okno z każdym wierszem, warunkami i regulaminem. To samo okno pokazuje się przy pierwszej wizycie. Na telefonie arkusze kończą się nad paskiem, więc zostaje widoczny.</li>
+    <li><strong>Na stronie</strong>: jeden pasek u dołu widoku, pod mapą i oboma panelami, ze źródłami wszystkiego, co widok pokazuje (stacje na mapie i liście, stacja z otwartymi kartami, pliki listy stacji albo tabele PMAXTP, granice państw jako tło mapy). Pasek podaje wiersze IMGW-PIB i PMAXTP dosłownie, a ČHMÚ, GUGiK i ČÚZK skrótami „Źródło: ČHMÚ, CC BY 4.0”, „Źródło: GUGiK (PRG)” i „Źródło: ČÚZK, CC BY 4.0”; przycisk „Źródła i warunki” otwiera okno z każdym wierszem, warunkami i regulaminem. To samo okno pokazuje się przy pierwszej wizycie. Na telefonie arkusze kończą się nad paskiem, więc zostaje widoczny.</li>
     <li><strong>W plikach</strong>: CSV szeregu w kolumnach <code>attribution_source</code>, <code>attribution_processed</code>, <code>attribution</code> i <code>terms_notice</code>; CSV PMAXTP w kolumnach <code>attribution</code> i <code>terms_notice</code>; JSON, GeoJSON i przekazanie w polach <code>attribution</code> i <code>terms_notice</code>; Parquet w metadanych pliku; obrazy pasków klimatycznych w samym obrazie.</li>
   </ul>
 
@@ -493,7 +501,7 @@ ORDER BY year;</code></pre>
   <ul>
     <li>Nie trzeba się logować ani podawać żadnych danych. Serwis nie ustawia plików cookie i nie korzysta z narzędzi analitycznych ani reklamowych.</li>
     <li>Serwer liczy użycie tylko w łącznych liczbach dziennych: odwiedzający, odsłony, otwarte stacje, wyniki analiz policzone na żądanie i pobrania. Adres IP jest tylko w pamięci: do limitu żądań i do policzenia odwiedzających danego dnia (skrót z adresu, oznaczenia przeglądarki i losowej wartości zmienianej o północy UTC); nie trafia na dysk ani do dzienników.</li>
-    <li>Dziennik żądań zapisuje czas, adres strony z parametrami, kod odpowiedzi i oznaczenie przeglądarki, bez adresu IP, i jest usuwany po 14 dniach.</li>
+    <li>Dziennik żądań zapisuje czas, metodę i adres strony z parametrami (bez wartości parametrów, które mogą zawierać wpisany tekst albo dane osobowe), kod i rozmiar odpowiedzi, czas obsługi, losowy identyfikator żądania i rodzaj programu, który je wysłał (przeglądarka, robot albo inny program), bez adresu IP, i jest usuwany po 14 dniach.</li>
     <li>Zbyt wiele żądań z jednego adresu w krótkim czasie kończy się komunikatem „Zbyt wiele żądań. Spróbuj ponownie za … s.”.</li>
     <li>Twoja przeglądarka łączy się tylko z serwerem Obserwatora i z serwerem podkładu mapy, który widzi przy tym Twój adres IP. O pomiary bieżące i PMAXTP pyta IMGW-PIB serwer Obserwatora.</li>
     <li>W pamięci przeglądarki (localStorage) zostają tylko ustawienia: motyw, język i szerokości paneli.</li>

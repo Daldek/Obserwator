@@ -1,5 +1,5 @@
 """
-„Zgłoś uwagę” of the public GUI (Nogat DEV-15.12): reports in ``<state_dir>/feedback.jsonl``.
+„Zgłoś uwagę” of the public GUI (Nogat DEV-15.12): reports in ``<data_dir>/obserwator/feedback.jsonl``.
 
 ``POST api/feedback`` takes ``{"message": text, "context": {"view", "station",
 "parameters"}}`` from the GUI's own page only, adds the app's version and stores one
@@ -64,10 +64,10 @@ class Feedback:
     Parameters
     ----------
     path : Path
-        ``<state_dir>/feedback.jsonl``.
+        ``<data_dir>/obserwator/feedback.jsonl`` (`GuiConfig.gui_dir`).
     writes : bool, optional
         Take reports (default); False keeps them off: ``POST api/feedback`` answers
-        ``forbidden`` and nothing is written (GUI plan D7: the state directory
+        ``forbidden`` and nothing is written (GUI plan D7: the GUI's own directory
         overlaps the data root).
     monotonic : callable, optional
         Monotonic time in seconds (the limit's window).

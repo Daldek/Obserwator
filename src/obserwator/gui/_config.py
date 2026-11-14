@@ -50,10 +50,11 @@ class GuiConfig:
     ----------
     root : Path
         Obserwator's data root, read only.
-    state_dir : Path
-        ``<data_dir>/obserwator``: the GUI's statistics (``stats.jsonl``), reports
-        of „Zgłoś uwagę” (``feedback.jsonl``) and access logs (``logs/``),
-        Nogat DEV-15.10 to DEV-15.12; never under ``root`` (`writes_state`).
+    gui_dir : Path
+        ``<data_dir>/obserwator``: the GUI's statistics (``stats.jsonl``) and reports
+        of „Zgłoś uwagę” (``feedback.jsonl``), Nogat DEV-15.11 and DEV-15.12; never
+        under ``root`` (`writes_own_files`). Its logs are not there but in
+        ``<state_dir>/obserwator/logs`` (`obserwator.config.Settings.log_dir`).
     basemap : Basemap or None
         The basemap, or None for the offline map (the borders only).
     request_limit, request_window : int
@@ -69,7 +70,7 @@ class GuiConfig:
     """
 
     root: Path
-    state_dir: Path
+    gui_dir: Path
     basemap: Basemap | None
     request_limit: int
     request_window: int
@@ -78,9 +79,9 @@ class GuiConfig:
     operator_problems: tuple[str, ...]
 
     @property
-    def writes_state(self) -> bool:
+    def writes_own_files(self) -> bool:
         """
-        Whether the GUI may write its own files: ``state_dir`` and ``root`` are apart.
+        Whether the GUI may write its own files: ``gui_dir`` and ``root`` are apart.
 
         ``<data_dir>/obserwator`` is both the GUI's directory and the default data root
         (ADR-017; the default raw root, ``<data_dir>/obserwator-raw``, lies beside it and
@@ -88,7 +89,7 @@ class GuiConfig:
         (GUI plan D7): when one of the two directories is the other or holds it, the GUI
         writes none of its files.
         """
-        return not _overlap(self.state_dir, self.root)
+        return not _overlap(self.gui_dir, self.root)
 
     @classmethod
     def resolve(cls, *, root: Path | None = None) -> GuiConfig:
@@ -129,7 +130,7 @@ class GuiConfig:
         operator = environment.operator()
         return cls(
             root=chosen.absolute(),
-            state_dir=(settings.data_dir / environment.TOOL).expanduser().absolute(),
+            gui_dir=(settings.data_dir / environment.TOOL).expanduser().absolute(),
             basemap=basemap,
             request_limit=settings.request_limit,
             request_window=settings.request_window,

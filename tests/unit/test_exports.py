@@ -295,7 +295,7 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
         f["properties"]["provider"] for f in document["features"] if not f["geometry"]
     }
     assert unlocated == {"IMGW-PIB", "CHMI"}
-    imgw, chmi = attribution("imgw"), attribution("chmi")
+    imgw, chmi = attribution("imgw", "gugik"), attribution("chmi", "cuzk")
     assert {key: document[key] for key in ("attribution", "terms_notice")} == (
         imgw | chmi
     ).fields()
@@ -392,10 +392,13 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
         assert (json.loads(row["thresholds"]) if row["thresholds"] else None) == (
             thresholds
         )
-    for provider, origin in (("IMGW-PIB", "imgw"), ("CHMI", "chmi")):
+    for provider, origins in (
+        ("IMGW-PIB", ("imgw", "gugik")),
+        ("CHMI", ("chmi", "cuzk")),
+    ):
         block = [row for row in rows if row["provider"] == provider]
         owner = get_provider(provider)
-        assert trailing_lines(block) == attribution(origin)
+        assert trailing_lines(block) == attribution(*origins)
         assert (block[0]["attribution_source"], block[0]["attribution_processed"]) == (
             owner.license.attribution,
             owner.processed_attribution,
@@ -442,7 +445,7 @@ def test_a_location_of_the_hydro_imgw_pl_map_adds_its_lines(
     envelope = run_command("stations export", options={"root": store.root})
     text(envelope.result)
 
-    lines = attribution("imgw") | attribution("imgw_hydro")
+    lines = attribution("imgw", "gugik") | attribution("imgw_hydro")
     assert {key: document[key] for key in lines.fields()} == lines.fields()
     assert document["catalogs"][0]["attribution"] == list(lines.attribution)
     assert (envelope.attribution, envelope.terms_notice) == (

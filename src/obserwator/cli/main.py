@@ -78,20 +78,15 @@ def server(
         False, help=message("cli.server_reload_help", lang=_LANG)
     ),
 ) -> None:
-    """Start the API server: REST, the web GUI and /mcp (with OBSERWATOR_MCP_ENABLED=true)."""
-    import uvicorn
+    """
+    Start the API server: REST and /mcp (with OBSERWATOR_MCP_ENABLED=true).
 
-    console.print(
-        message("cli.server_starting", lang=_LANG, host=host, port=port),
-        style="bold green",
-        markup=False,
-    )
-    uvicorn.run(
-        "obserwator.api.main:app",
-        host=host,
-        port=port,
-        reload=reload,
-    )
+    It prints nothing of its own: the lifecycle record ``start`` on standard error names
+    the address (Nogat DEV-12.7); the logs are in ``<state_dir>/obserwator/logs``.
+    """
+    from obserwator.api.main import run_server
+
+    run_server(host=host, port=port, reload=reload)
 
 
 @app.command(cls=ObserwatorCommand, help=message("cli.mcp_help", lang=_LANG))

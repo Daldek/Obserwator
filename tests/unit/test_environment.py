@@ -28,6 +28,7 @@ def user_environment(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(platformdirs, "user_data_path", lambda *a, **k: home / "data")
     monkeypatch.setattr(platformdirs, "user_cache_path", lambda *a, **k: home / "cache")
+    monkeypatch.setattr(platformdirs, "user_state_path", lambda *a, **k: home / "state")
     work = tmp_path / "work"
     work.mkdir()
     monkeypatch.chdir(work)
@@ -137,6 +138,22 @@ def test_directories_stay_out_of_the_working_directory(user_environment, monkeyp
     assert Settings().reference_dir == Path("/elsewhere/obserwator/reference")
     monkeypatch.setenv("OBSERWATOR_REFERENCE_DIR", "/reference")
     assert Settings().reference_dir == Path("/reference")
+
+
+def test_the_servers_logs_follow_the_shared_state_dir(
+    user_environment, tmp_path, monkeypatch
+):
+    home = user_environment
+    assert Settings().log_dir == home / "state" / "obserwator" / "logs"
+    assert source_of("state_dir") == (str(home / "state"), "default", None)
+
+    write_config(tmp_path, monkeypatch, '[nogat]\nstate_dir = "/nogat-file"\n')
+    assert Settings().log_dir == Path("/nogat-file/obserwator/logs").absolute()
+    monkeypatch.setenv("NOGAT_STATE_DIR", "/nogat-env")
+    assert Settings().log_dir == Path("/nogat-env/obserwator/logs").absolute()
+    monkeypatch.setenv("OBSERWATOR_STATE_DIR", "~/state")
+    assert Settings().log_dir == Path.home() / "state" / "obserwator" / "logs"
+    assert source_of("state_dir")[1:] == ("env", "OBSERWATOR_STATE_DIR")
 
 
 def test_a_file_that_cannot_be_used_is_reported_and_not_applied(tmp_path, monkeypatch):

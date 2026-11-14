@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 import obserwator
 from obserwator.cli import main as cli_main
+from obserwator.config import settings
 
 RUNNER = CliRunner()
 
@@ -18,7 +19,14 @@ def uvicorn_calls(monkeypatch):
     monkeypatch.setattr(
         "uvicorn.run", lambda app, **kwargs: calls.append((app, kwargs))
     )
+    # `obserwator server` puts its address into the process's settings: give them back.
+    monkeypatch.setattr(settings, "host", settings.host)
+    monkeypatch.setattr(settings, "port", settings.port)
     return calls
+
+
+def address_of(calls):
+    return [(app, kw["host"], kw["port"], kw["reload"]) for app, kw in calls]
 
 
 def test_cli_main_version_prints_package_version():
@@ -32,12 +40,9 @@ def test_cli_main_server_defaults_start_api_on_all_interfaces(uvicorn_calls):
     result = RUNNER.invoke(cli_main.app, ["server"])
 
     assert result.exit_code == 0, result.output
-    assert "Uruchamiam serwer na 0.0.0.0:8000" in result.output
-    assert uvicorn_calls == [
-        (
-            "obserwator.api.main:app",
-            {"host": "0.0.0.0", "port": 8000, "reload": False},
-        )
+    assert result.output == ""  # the lifecycle record names the address (DEV-12.7)
+    assert address_of(uvicorn_calls) == [
+        ("obserwator.api.main:app", "0.0.0.0", 8000, False)
     ]
 
 
@@ -48,12 +53,9 @@ def test_cli_main_server_options_reach_uvicorn(uvicorn_calls):
     )
 
     assert result.exit_code == 0, result.output
-    assert "Uruchamiam serwer na 127.0.0.1:9123" in result.output
-    assert uvicorn_calls == [
-        (
-            "obserwator.api.main:app",
-            {"host": "127.0.0.1", "port": 9123, "reload": True},
-        )
+    assert result.output == ""
+    assert address_of(uvicorn_calls) == [
+        ("obserwator.api.main:app", "127.0.0.1", 9123, True)
     ]
 
 

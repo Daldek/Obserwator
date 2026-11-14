@@ -567,30 +567,18 @@ def test_missing_static_file_is_reported_and_recorded(
 
 
 BORDER_POINTS = {
-    # code: (lon, lat, accepted as located in Poland)
-    "150000001": (
-        14.5617,
-        52.3492,
-        True,
-    ),  # Słubice: outside the generalised outline, within tolerance
-    "150000002": (
-        21.50508,
-        54.390779,
-        True,
-    ),  # 1200 m beyond the straight border with Kaliningrad Oblast
-    "150000003": (18.6320, 49.7500, True),  # Cieszyn
-    "150000004": (
-        21.505574,
-        54.396162,
-        False,
-    ),  # 1800 m beyond the same border: past the 1500 m tolerance
-    "150000005": (
-        20.5000,
-        54.7000,
-        False,
-    ),  # Kaliningrad: inside the old lat/lon rectangle
-    "150000006": (24.0300, 49.8400, False),  # Lviv: inside the old lat/lon rectangle
-    "150000007": (52.3492, 14.5617, False),  # Słubice with lon/lat swapped
+    # code: (longitude, latitude as published, accepted as located in Poland). The border
+    # of PRG with the Kaliningrad Oblast crosses 21.5° E at 54.3239° N (ADR-018).
+    "150000001": ("14.5617", "52.3492", True),  # Słubice, on the Odra
+    "150000002": ("21.5000", "54.3250", True),  # 120 m beyond it: within 50 + 150 m
+    "150000003": ("18.6320", "49.7500", True),  # Cieszyn
+    "150000004": ("21.5000", "54.3270", False),  # 340 m beyond it
+    # 368 m beyond it, published to 0.01°: within 50 m and its uncertainty (557 m) ...
+    "150000008": ("20.46", "54.39", True),
+    "150000009": ("20.4600", "54.3900", False),  # ... but not to 0.0001° (150 m)
+    "150000005": ("20.5000", "54.7000", False),  # Kaliningrad
+    "150000006": ("24.0300", "49.8400", False),  # Lviv
+    "150000007": ("52.3492", "14.5617", False),  # Słubice with lon/lat swapped
 }
 
 
@@ -602,7 +590,7 @@ def test_border_points_are_checked_against_polygon(store, data, tmp_path):
     user.write_text(
         "station_code,latitude,longitude,source\n"
         + "".join(
-            f"{code},{lat:.4f},{lon:.4f},test\n"
+            f"{code},{lat},{lon},test\n"
             for code, (lon, lat, _) in BORDER_POINTS.items()
         ),
         encoding="utf-8",
@@ -623,7 +611,7 @@ def test_border_check_needs_no_gis_packages():
         "for name in ('pyproj', 'shapefile', 'osgeo', 'shapely', 'pandas'): sys.modules[name] = None\n"
         "from obserwator.store.catalog import _evaluate\n"
         "assert _evaluate('14.5617', '52.3492')[0] == (14.5617, 52.3492)\n"
-        "assert _evaluate('21.505574', '54.396162') == 'outside_country'\n"
+        "assert _evaluate('21.5000', '54.3270') == 'outside_country'\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -720,7 +708,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     # A location from the static file of the hydro.imgw.pl map adds H and RH.
     static_station = next(f for f in document["features"] if f["id"] == "149190312")
     assert static_station["properties"]["location_source"] == "static"
-    lines = attribution("imgw") | attribution("imgw_hydro")
+    lines = attribution("imgw", "gugik") | attribution("imgw_hydro")
     assert {key: document[key] for key in lines.fields()} == lines.fields()
     meta = json.loads(
         report.version.with_name("stations.geojson.meta.json").read_text(

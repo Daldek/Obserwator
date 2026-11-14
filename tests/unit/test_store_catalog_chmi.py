@@ -14,6 +14,7 @@ import httpx
 import pytest
 import respx
 
+from obserwator._borders import CZECHIA
 from obserwator._version import __version__
 from obserwator.attribution import attribution
 from obserwator.datasets import archive_files, get_dataset
@@ -33,7 +34,6 @@ from obserwator.store import (
     write_archive,
 )
 from obserwator.store.catalog import (
-    CZECHIA_BORDER_RESOURCE,
     _evaluate,
     build_catalog,
     check_catalog,
@@ -85,7 +85,8 @@ CODES = [
     "0-203-1-CB900003",
 ]
 # The sidecar keeps one text: C. CP (ADR-012 D4).
-CHMI_ATTRIBUTION = ". ".join(attribution("chmi").attribution)
+# The catalog's lines: ČHMÚ's and those of the border of RÚIAN (ADR-018)
+CHMI_ATTRIBUTION = ". ".join(attribution("chmi", "cuzk").attribution)
 
 
 def body(case):
@@ -888,18 +889,19 @@ def test_provider_is_validated_and_key_prefix_names_it(store):
 
 def test_czech_outline_validates_points_of_czechia_only():
     ring = json.loads(
-        (
-            Path(__file__).parents[2] / "src/obserwator/_data" / CZECHIA_BORDER_RESOURCE
-        ).read_text(encoding="utf-8")
+        (Path(__file__).parents[2] / "src/obserwator/_data" / CZECHIA).read_text(
+            encoding="utf-8"
+        )
     )["features"][0]["geometry"]["coordinates"][0]
     west_lon, west_lat = min(ring)
 
     def czech(lon, lat):
-        return _evaluate(lon, lat, border=CZECHIA_BORDER_RESOURCE)
+        return _evaluate(lon, lat, border=CZECHIA)
 
     assert czech("14.4378", "50.0755")[0] == (14.4378, 50.0755)  # Praha
-    assert czech(str(west_lon - 0.005), str(west_lat)) != "outside_country"  # ~360 m
-    assert czech(str(west_lon - 0.05), str(west_lat)) == "outside_country"  # ~3.6 km
+    # West of the westernmost point: within the outline's 50 m and 150 m, or not
+    assert czech(str(west_lon - 0.002), str(west_lat)) != "outside_country"  # ~142 m
+    assert czech(str(west_lon - 0.004), str(west_lat)) == "outside_country"  # ~285 m
     assert czech("-21.9", "64.1") == "outside_country"  # Reykjavik
     assert czech("17.0385", "51.1079") == "outside_country"  # Wrocław
     assert _evaluate("17.0385", "51.1079")[0] == (17.0385, 51.1079)  # Polish outline

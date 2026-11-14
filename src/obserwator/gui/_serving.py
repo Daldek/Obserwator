@@ -1,13 +1,17 @@
 """
 uvicorn for `obserwator.gui.serve` (imported with the ``gui`` extra).
 
-The server binds the address, announces ``Obserwator GUI: <url>`` on standard error once
-it listens and stops gracefully on Ctrl+C or ``SIGTERM``, returning, so the command ends
-with exit code 0. uvicorn's own access log is off: it would write the client's address,
-which the GUI never keeps (Nogat DEV-15.10); the app writes its own lines. Behind a
-reverse proxy uvicorn takes the client's address from ``X-Forwarded-For`` only when the
-proxy is one of ``FORWARDED_ALLOW_IPS`` (default ``127.0.0.1``), so the rate limit counts
-clients, not the proxy.
+The server binds the address and listens, starts its logs, whose lifecycle record
+``start`` on standard error names the address (``settings.url``), builds the app and
+serves it until Ctrl+C or ``SIGTERM`` stops it gracefully, returning, so the command
+ends with exit code 0 after the record ``stop``. The logs are Nogat's (DEV-12.4 to
+DEV-12.9, `obserwator.nogat_logging.ServerLog`): access, application and lifecycle
+records in ``<state_dir>/obserwator/logs``, deleted after 14 days; standard error gets
+only the lifecycle records and the errors reduced to their type. uvicorn runs with
+``log_config=None`` and ``access_log=False`` (its access line names the client). Behind
+a reverse proxy uvicorn takes the client's address from ``X-Forwarded-For`` only when
+the proxy is one of ``FORWARDED_ALLOW_IPS`` (default ``127.0.0.1``), so the rate limit
+counts clients, not the proxy; no log holds the address.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ import socket
 import sys
 import threading
 import webbrowser
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,6 +32,7 @@ from starlette.applications import Starlette
 
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
 from obserwator.messages import message
+from obserwator.nogat_logging import ServerLog
 
 _GRACE_S = 5
 """How long open requests may take to end at a stop [s]."""
@@ -77,7 +82,7 @@ def _bind(host: str, port: int) -> socket.socket:
 
 
 class _Server(uvicorn.Server):
-    """uvicorn's server that announces its address and stops quietly on a signal."""
+    """uvicorn's server that opens the browser and stops quietly on a signal."""
 
     def __init__(self, config: uvicorn.Config, *, url: str, open_browser: bool) -> None:
         super().__init__(config)
@@ -101,22 +106,46 @@ class _Server(uvicorn.Server):
                 signal.signal(number, handler)
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
-        """Start, then announce the address (and open the browser)."""
+        """Start, then open the browser."""
         await super().startup(sockets=sockets)
         if self.should_exit:
             return
-        print(
-            message("gui.server.listening", url=self._url), file=sys.stderr, flush=True
-        )
         if self._open_browser:
             threading.Thread(
                 target=webbrowser.open, args=(self._url,), daemon=True
             ).start()
 
 
-def run(app: Starlette, *, host: str, port: int, open_browser: bool) -> dict[str, Any]:
+def run(
+    build: Callable[[], Starlette],
+    *,
+    log: ServerLog,
+    settings: Mapping[str, object],
+    host: str,
+    port: int,
+    open_browser: bool,
+) -> dict[str, Any]:
     """
-    Serve ``app`` on ``host:port`` until a signal stops it.
+    Serve the app of ``build`` on ``host:port`` until a signal stops it.
+
+    ``log`` starts once the socket listens, with ``url`` and ``settings`` in its record
+    ``start``, so a client that reads the record may connect at once; the app is built
+    after it, so its warnings are application records, and ``log`` stops after uvicorn.
+
+    Parameters
+    ----------
+    build : callable
+        Returns the app; called once, after ``log`` starts.
+    log : ServerLog
+        The server's logs.
+    settings : Mapping
+        The summary of the settings for the record ``start``, beside ``url``.
+    host : str
+        The address to listen on.
+    port : int
+        The port (``0``: a free one).
+    open_browser : bool
+        Open the page in the default browser once the server serves.
 
     Returns
     -------
@@ -125,18 +154,23 @@ def run(app: Starlette, *, host: str, port: int, open_browser: bool) -> dict[str
     """
     listener = _bind(host, port)
     try:
+        listener.listen()
         url = url_of(host, listener.getsockname()[1])
         started_at = _now()
-        config = uvicorn.Config(
-            app,
-            log_config=None,
-            access_log=False,
-            proxy_headers=True,
-            server_header=False,
-            lifespan="on",
-            timeout_graceful_shutdown=_GRACE_S,
-        )
-        _Server(config, url=url, open_browser=open_browser).run(sockets=[listener])
+        log.start({"url": url, **settings})
+        try:
+            config = uvicorn.Config(
+                build(),
+                log_config=None,
+                access_log=False,
+                proxy_headers=True,
+                server_header=False,
+                lifespan="on",
+                timeout_graceful_shutdown=_GRACE_S,
+            )
+            _Server(config, url=url, open_browser=open_browser).run(sockets=[listener])
+        finally:
+            log.stop()
     finally:
         listener.close()
     return {"url": url, "started_at": started_at, "stopped_at": _now()}

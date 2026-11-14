@@ -286,9 +286,14 @@ def test_without_a_basemap_the_packaged_borders_are_the_background(open_page):
         "() => document.querySelector('.map').maplibre.getSource('basemap') === undefined"
     )
     expect(page.locator(".map-legend")).to_contain_text(
-        "Tło: granice Polski i Czech z pakietu Obserwatora"
+        "Tło: granice państwowe Polski (PRG, GUGiK) i Czech (RÚIAN, ČÚZK)"
     )
     expect(page.locator(".view-foot")).not_to_contain_text("Podkład mapy")
+    # The borders' providers stay on the strip in a view without any station (ADR-018)
+    page.get_by_role("radio", name="PMAXTP").click()
+    strip = page.locator(".view-foot .nogat-sources-strip")
+    expect(strip).to_contain_text("Źródło: GUGiK (PRG)")
+    expect(strip).to_contain_text("Źródło: ČÚZK, CC BY 4.0")
 
 
 def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):

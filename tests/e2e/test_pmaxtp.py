@@ -87,7 +87,21 @@ def test_typed_coordinates_show_the_tables_with_the_link_to_imgw(
     expect(strip.locator(".nogat-sources-strip")).to_contain_text(
         answer["attribution"][0]
     )
-    assert strip.evaluate("(element) => element.attribution") == answer["attribution"]
+    # without a basemap the map draws the packaged borders, whose lines (GUGiK's PRG,
+    # ČÚZK's RÚIAN; attribution.js BORDER_SOURCES) join the strip after PMAXTP's
+    session = page.request.get(urljoin(page.url, "api/session")).json()
+    origins = session["attribution"]["origins"]
+    borders = [
+        line
+        for name in ("gugik", "cuzk")
+        for line in origins[name]["attribution"]
+        if line not in answer["attribution"]
+    ]
+    assert borders
+    assert (
+        strip.evaluate("(element) => element.attribution")
+        == answer["attribution"] + borders
+    )
     assert strip.evaluate("(element) => element.termsNotice") == answer["terms_notice"]
 
 

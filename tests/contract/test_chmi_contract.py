@@ -49,6 +49,7 @@ from obserwator import (
     store_info,
     sync_store,
 )
+from obserwator.attribution import attribution
 from obserwator.datasets import get_dataset
 from obserwator.store.types import page_cursor
 from obserwator.testing import build_fixture_store, fixture_files
@@ -1582,6 +1583,9 @@ def test_imgw_19_k3_every_chmi_sidecar_and_export_names_cc_by_and_chmi(pl_cz):
         ), sidecar
         derived = meta["extra"].get("derived")
         expected = SOURCE if derived is None else f"{SOURCE}. {PROCESSED}"
+        if derived == "catalog":
+            # its locations were checked against the packaged border of RÚIAN (ADR-018)
+            expected += ". " + attribution("cuzk").attribution[0]
         assert license_["attribution"] == expected, sidecar
 
     terms = f"{SOURCE}. {PROCESSED}. {CHMI_PROVIDER.notice}"

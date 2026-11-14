@@ -32,8 +32,8 @@ HEADINGS = {
     "pmaxtp": "<h3>IMGW-PIB: opady maksymalne PMAXTP</h3>",
     "chmi": "<h3>ČHMÚ</h3>",
     "gugik": "<h3>GUGiK</h3>",
+    "cuzk": "<h3>ČÚZK</h3>",
     "osm": "<h3>OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)</h3>",
-    "esri": "<h3>Esri World Imagery</h3>",
 }
 
 
@@ -46,7 +46,7 @@ def config(
 ) -> GuiConfig:
     return GuiConfig(
         root=tmp_path / "root",
-        state_dir=tmp_path / "state",
+        gui_dir=tmp_path / "state",
         basemap=basemap,
         request_limit=300,
         request_window=60,
@@ -83,8 +83,7 @@ def test_the_page_keeps_obserwators_blocks_and_fills_every_field(tmp_path):
     text = page.decode("utf-8")
     for block in BLOCKS:
         assert HEADINGS[block] in text
-    for block in ("gugik", "osm", "esri"):
-        assert HEADINGS[block] not in text
+    assert HEADINGS["osm"] not in text
     assert "{{" not in text and "<!-- block" not in text and "<!-- /block" not in text
     assert "Regulamin serwisu Obserwator" in text
     assert '<a href="mailto:jan@example.org">jan@example.org</a>' in text
@@ -155,8 +154,9 @@ def test_fill_drops_unlisted_blocks_with_their_markers():
     assert "\n\n\n" not in text
 
 
-# A name that is no block of the kit (``imgw-terms`` was a derived one before ECO-065)
-@pytest.mark.parametrize("listed", ["nope", "imgw-terms"])
+# A name that is no block of the kit: ``imgw-terms`` was a derived one before ECO-065,
+# ``esri`` left the kit with 0.6.2 (Nogat ECO-068)
+@pytest.mark.parametrize("listed", ["nope", "imgw-terms", "esri"])
 def test_fill_refuses_a_block_that_cannot_be_listed(listed):
     with pytest.raises(ValueError, match=listed):
         fill(TEMPLATE, values(), [listed])
