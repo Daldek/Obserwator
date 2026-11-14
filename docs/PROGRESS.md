@@ -94,6 +94,18 @@ Further open backlog items (priority in the text):
 - A result computed on request cannot be downloaded from its section: plan D14 offers it as its JSON, and `api/files/analysis/{code}/{id}` takes the options, but only „Pobierz” links the stored results.
 - On-request computations of the longest records come close to the 30 s limit (plan D8) on a busy server: at the acceptance of 2026-11-13 (4 CPUs, load about 12) a chain for Praha-Klementinum (1775–2025, `mann_kendall.temperature.summer_days`) took 28 s alone and passed 30 s beside other computations; the part then names Hydrolog's limit.
 
+### Release 3.0.1 (after 3.0.0; the author's decision of 2026-11-14)
+
+Not before 3.0.0 is released; these changes make 3.0.1. Found on 2026-11-14 while checking how the GUI serves „Pomiary bieżące”: the browser asks only this server (`api/current`, CSP `connect-src 'self'` and the tile host), which fetches IMGW-PIB and keeps each source in process memory for `CURRENT_TTL_S` (600 s), shared by all users (`gui/_live.py`). That stays: direct requests from browsers would multiply the load on IMGW-PIB (its answers are `no-store`), send every user's address to it and duplicate the parsers in JS.
+
+- [ ] Honest request headers to hydro-back.imgw.pl: `_MAP_HEADERS` (`stations.py`) drop the `Referer: https://hydro.imgw.pl/` that passes this program off as IMGW-PIB's own page, and the `User-Agent` names the program and its project address (`Obserwator/<version> (+<URL>)`, no personal data); the docstrings that say the backend requires both headers are corrected. Checked on 2026-11-14: the map (`map/stations/hydrologic`) and a station's card (`station/hydro/status`) answer 200 to `Obserwator/<version>` without a `Referer`, and 403 only to the default user agents of curl and httpx.
+- [ ] Refresh in the background: when an entry of `_live.py` expires, the requests get the last good data while one refresh runs, instead of all waiting on the lock for the upstream call (up to 30 s per source).
+- [ ] Fetch the sources of `/api/current` in parallel: today `states`, `hydro` and `meteo` are fetched one after another, so a cold first request can take up to about 90 s.
+- [ ] `ETag` and `304 Not Modified` on `/api/current` and `/api/current/{code}`: today every poll of every open tab (each 10 minutes) downloads the whole answer (about 287 KB).
+- [ ] Log every upstream fetch of `_live.py` (source, duration, outcome, error code) in the app log (`nogat-log/1`), so that failures of IMGW-PIB and the number of requests to it can be seen.
+
+Not taken (2026-11-14): a request to IMGW-PIB for permission to use hydro-back.imgw.pl, which is the undocumented backend of hydro.imgw.pl and not a public API, and a move of the water states to danepubliczne.imgw.pl.
+
 ### AI agent support (after 3.0.0, ADR-004)
 
 - [ ] Filter MCP tools by group or provider (`--groups`, `--provider`, `data_commands(provider=…)`), if the context cost of the tool list (about 53 KB for 35 tools since ADR-016) turns out to be a problem (ADR-004, question 4). Priority: low.
