@@ -59,17 +59,6 @@ export function closePanel(side) {
   emit();
 }
 
-/**
- * Open a closed panel, close an open one.
- *
- * @param {"left"|"right"} side the panel
- */
-export function togglePanel(side) {
-  const isOpen = phoneQuery.matches ? state.sheet === side : state.open[side];
-  if (isOpen) closePanel(side);
-  else openPanel(side);
-}
-
 /** Close the phone sheet, whichever it is. */
 export function closeSheet() {
   if (state.sheet === null) return;

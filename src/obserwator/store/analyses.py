@@ -94,6 +94,7 @@ from obserwator.store.reader import (
     ANALYSES_FILE,
     ANALYSES_SCHEMA,
     _open,
+    _relative,
     current_version,
     read_catalog,
     read_meta,
@@ -121,6 +122,7 @@ from obserwator.store.writer import (
     _utc,
     _validate_slot,
     _write_json,
+    _write_new,
     refuse_root,
     root_conflict_plan,
     version_file,
@@ -388,10 +390,6 @@ class _Catalog:
     version: str
     sha256: str
     properties: Mapping[str, Mapping[str, Any]]
-
-
-def _relative(root: Path, path: Path) -> str:
-    return path.relative_to(root).as_posix()
 
 
 def _current_series(root: Path, keys: Iterable[str]) -> dict[str, _Series]:
@@ -1212,10 +1210,7 @@ def _chunks(stations: Sequence[_Station], workers: int) -> list[list[_Station]]:
 
 def _write(path: Path, data: bytes) -> str:
     """Write a new staged file, flushed and fsynced; its SHA-256."""
-    with path.open("xb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+    _write_new(path, data)
     return hashlib.sha256(data).hexdigest()
 
 

@@ -78,6 +78,7 @@ from obserwator.store.writer import (
     _OBSERVATIONS,
     _SCHEMAS,
     OBSERVATION_SCHEMA,
+    _archive_slot_dir,
     _is_register,
     _is_seen_at,
     _missing_hint,
@@ -1533,11 +1534,9 @@ def _slot_location(
             raise _invalid_slot(
                 slot, message("reader.invalid_file_path_dataset", key=descriptor.key)
             )
-        relative = PurePosixPath(server_path)
-        directory = _validate_slot(
-            root, f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
-        )
-        return "archive", directory, relative.name, {"server_path": server_path}
+        directory = _validate_slot(root, _archive_slot_dir(server_path))
+        name = PurePosixPath(server_path).name
+        return "archive", directory, name, {"server_path": server_path}
     if has_selector:
         cell = re.fullmatch(r"(POT|AMP)/([0-9]+_[0-9]+)", selector)
         if kind != "pmaxtp" or key != _PMAXTP_KEY or cell is None:

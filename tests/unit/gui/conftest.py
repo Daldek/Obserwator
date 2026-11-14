@@ -218,7 +218,6 @@ def gui_config(root: Path, gui_dir: Path, **changes: Any) -> Any:
         request_window=60,
         gui={},
         operator=None,
-        operator_problems=(),
     )
     return replace(config, **changes)
 

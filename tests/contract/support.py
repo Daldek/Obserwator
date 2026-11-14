@@ -43,7 +43,6 @@ RABA, BEZ_Q = "149190310", "149190311"  # fictional stations of the synthetic fi
 SOURCE, PROCESSED = attribution("imgw").attribution
 (H2023,) = archive_files(DAILY, years=[2023])
 (H2024,) = archive_files(DAILY, years=[2024])
-(O1995,) = archive_files(PRECIP, years=[1995])
 (O2001,) = archive_files(PRECIP, years=[2001], months=[1])
 # ``--allow-dir`` of an MCP server that may touch every path of a test: the root
 # of the file system. On Windows ``/`` is only the root of the working drive, so

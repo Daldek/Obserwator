@@ -105,11 +105,20 @@ _SUFFIXES = {"IMGW-PIB": (".zip", ".csv"), "CHMI": (".json", ".csv")}
 _COUNTRY_LAYOUT = "IMGW-PIB"
 
 
+def _canonical_text(value: object) -> str:
+    """JSON with sorted keys, no whitespace and unescaped non-ASCII characters."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
 def _canonical(value: object) -> bytes:
-    return (
-        json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        + "\n"
-    ).encode("utf-8")
+    """`_canonical_text` in UTF-8 with a final line feed: a JSON file of the store."""
+    return (_canonical_text(value) + "\n").encode("utf-8")
+
+
+def _archive_slot_dir(server_path: str) -> str:
+    """The slot directory of an archive file: ``archives/versions/<folder>/<stem>``."""
+    relative = PurePosixPath(server_path)
+    return f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
 
 
 def _field(row: Mapping[str, Any], name: str) -> tuple[bool, object]:
@@ -175,11 +184,16 @@ def _station_metadata(data: bytes, fields: tuple[str, ...], *, url: str) -> byte
     )
 
 
-def _write_json(path: Path, value: object) -> None:
+def _write_new(path: Path, data: bytes) -> None:
+    """Write a file that does not exist yet, flushed and fsynced."""
     with path.open("xb") as stream:
-        stream.write(_canonical(value))
+        stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def _write_json(path: Path, value: object) -> None:
+    _write_new(path, _canonical(value))
 
 
 # os.link failures meaning "this file system cannot hard link" (as Kartograf D22).
@@ -1171,13 +1185,10 @@ def _existing(
             if source.is_symlink() or meta_path.is_symlink():
                 raise ValueError("link in the version")
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            digest = hashlib.sha256()
-            with source.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
+            digest = _sha256_file(source)
             if (
                 meta["schema"] != "obserwator-meta/1"
-                or digest.hexdigest() != meta["sha256"]
+                or digest != meta["sha256"]
                 or not isinstance(meta["extra"]["version"]["label"], str)
             ):
                 raise ValueError("inconsistent checksum, schema or label")
@@ -1255,16 +1266,13 @@ def _observation_name(observation: Observation) -> str:
     str
         File name inside ``observations/``.
     """
-    signal = json.dumps(
+    signal = _canonical_text(
         {
             "etag": observation.etag,
             "last_modified": observation.last_modified,
             "size_bytes": observation.size_bytes,
             "url": observation.url,
-        },
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
+        }
     )
     digest = hashlib.sha256(signal.encode("utf-8")).hexdigest()[:8]
     return f"{observation.seen_at[:10]}_{digest}.json"
@@ -1649,7 +1657,7 @@ def write_archive(
         raise ObserwatorValidationError(
             message("writer.disallowed_type_archive", relative=relative)
         )
-    slot_dir = f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
+    slot_dir = _archive_slot_dir(archive.server_path)
     slot = _validate_slot(path, slot_dir)
     filename = relative.name
     form = descriptor.content_form

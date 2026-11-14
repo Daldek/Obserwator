@@ -24,7 +24,7 @@ from starlette.responses import Response
 from obserwator._jsonable import jsonable
 from obserwator.error_report import ERROR_SCHEMA, error_document
 from obserwator.exceptions import ERROR_CODES, ErrorCode, ObserwatorError
-from obserwator.messages import Lang, Message, localize, message
+from obserwator.messages import Lang, localize, message
 
 JSON = "application/json"
 NO_CACHE = "no-cache"
@@ -277,8 +277,3 @@ def error_response(
         media_type=JSON,
         headers={"Cache-Control": NO_CACHE, "Content-Language": lang, **headers},
     )
-
-
-def text_of(value: Message | str, lang: Lang) -> str:
-    """A catalog message in ``lang``; another text unchanged."""
-    return localize(value, lang)

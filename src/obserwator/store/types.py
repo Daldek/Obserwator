@@ -461,13 +461,10 @@ class StorePlan:
         payload["checked_at"] = (
             self.checked_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
         )
-        target.write_text(
-            json.dumps(
-                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        # The writer imports this module, so it is imported at call time.
+        from obserwator.store.writer import _canonical_text
+
+        target.write_text(_canonical_text(payload) + "\n", encoding="utf-8")
         return target
 
     @classmethod

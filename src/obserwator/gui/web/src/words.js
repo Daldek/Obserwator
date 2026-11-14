@@ -73,11 +73,6 @@ export function variableInfo(name) {
   };
 }
 
-/** The word of a statistic of a monthly or half-year series: "highest" for "max". */
-export function statName(stat) {
-  return word(`words.stat.${stat}`, stat);
-}
-
 /** The flags of the harmonized records, beside `value`, in the order they are explained. */
 export const FLAGS = ["value", "missing", "no_phenomenon", "accumulated"];
 

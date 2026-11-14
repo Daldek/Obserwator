@@ -65,8 +65,6 @@ class GuiConfig:
     operator : Mapping of str to str or None
         The deployment's ``[nogat.operator]`` table when it is usable: the GUI is
         public and serves ``regulamin.html`` (DEV-15.7); None otherwise.
-    operator_problems : tuple of str
-        The keys of a ``[nogat.operator]`` table that keep it from being used.
     """
 
     root: Path
@@ -76,7 +74,6 @@ class GuiConfig:
     request_window: int
     gui: Mapping[str, str]
     operator: Mapping[str, str] | None
-    operator_problems: tuple[str, ...]
 
     @property
     def writes_own_files(self) -> bool:
@@ -136,7 +133,6 @@ class GuiConfig:
             request_window=settings.request_window,
             gui=environment.gui_addresses(),
             operator=dict(operator.values) if operator.usable else None,
-            operator_problems=operator.problems,
         )
 
 

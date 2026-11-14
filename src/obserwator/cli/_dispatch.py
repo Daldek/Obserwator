@@ -55,6 +55,7 @@ from typer.core import TyperCommand, TyperGroup
 
 from obserwator.cli._render import render
 from obserwator.commands import (
+    _has_lang_option,
     check_command,
     command_schema,
     data_commands,
@@ -682,10 +683,6 @@ def _lang_option() -> inspect.Parameter:
         ),
         annotation=str | None,
     )
-
-
-def _has_lang_option(spec: DataCommand) -> bool:
-    return any(option.name == "lang" for option in spec.options)
 
 
 def _parameters(spec: DataCommand) -> list[inspect.Parameter]:

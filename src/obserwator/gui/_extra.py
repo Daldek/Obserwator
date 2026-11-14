@@ -8,8 +8,6 @@ from typing import Final
 from obserwator.exceptions import ObserwatorError
 from obserwator.messages import message
 
-REQUIREMENTS: Final = ("starlette>=1.9,<2", "uvicorn[standard]>=0.24")
-"""Requirements of the extra beside ``obserwator[store]``; ``pyproject.toml`` says the same."""
 INSTALL_HINT: Final = 'pip install "obserwator[gui]"'
 """The command that installs the extra, as the ``missing_dependency`` error shows it."""
 _MODULES: Final = ("starlette", "uvicorn", "pyarrow")

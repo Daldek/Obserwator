@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Literal, cast, overload
 
 from obserwator._parsing.meteo import DATASET_ATTRIBUTES
-from obserwator.attribution import Attribution, attribution, dataset_origin
+from obserwator.attribution import Attribution
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -54,7 +54,7 @@ from obserwator.store.reader import (
     read_series,
     read_series_index,
 )
-from obserwator.store.series import _pyarrow
+from obserwator.store.series import _lines, _pyarrow
 from obserwator.store.types import (
     Cancel,
     Meta,
@@ -66,7 +66,7 @@ from obserwator.store.types import (
     StationFeature,
     StationSeriesIndex,
 )
-from obserwator.store.writer import _canonical, _fsync_dir
+from obserwator.store.writer import _canonical_text, _fsync_dir
 
 SERIES_EXPORT_SCHEMA = "obserwator-series-export/1"
 """Schema of the JSON export of one station's series (Parquet: ``obserwator_schema``)."""
@@ -163,11 +163,6 @@ def _needs_output(format: object, output: object) -> None:
             message("export.binary_format_needs_output", format=format.strip()),
             details={"option": "output", "reason": "output_required"},
         )
-
-
-def _lines(descriptor: DatasetDescriptor) -> Attribution:
-    """The lines of the records of a dataset: parsed and reformatted (ADR-012)."""
-    return attribution(dataset_origin(descriptor.key))
 
 
 def _license(descriptor: DatasetDescriptor, on_notice: NoticeHook | None) -> None:
@@ -814,7 +809,7 @@ def _series_parquet(
         "variable_notes": {name: item["note"] for name, item in variables.items()},
     }
     metadata = {
-        key: value if isinstance(value, str) else _canonical(value).decode().rstrip()
+        key: value if isinstance(value, str) else _canonical_text(value)
         for key, value in fields.items()
     }
     sink = pa.BufferOutputStream()

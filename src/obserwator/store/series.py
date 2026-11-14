@@ -58,7 +58,9 @@ from obserwator.store.types import (
     StorePlan,
 )
 from obserwator.store.writer import (
+    _archive_slot_dir,
     _canonical,
+    _canonical_text,
     _cleanup,
     _fsync_dir,
     _is_register,
@@ -150,11 +152,6 @@ def _series_descriptor(dataset: str) -> DatasetDescriptor:
     return descriptor
 
 
-def _slot_of(archive: ArchiveFile) -> str:
-    relative = PurePosixPath(archive.server_path)
-    return f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
-
-
 def _parse_time(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -239,7 +236,11 @@ def _pick_current(versions: Iterable[_Version]) -> _Version | None:
 
 def _current_version(root: Path, archive: ArchiveFile) -> _Version | None:
     return _pick_current(
-        _read_versions(root, _slot_of(archive), PurePosixPath(archive.server_path).name)
+        _read_versions(
+            root,
+            _archive_slot_dir(archive.server_path),
+            PurePosixPath(archive.server_path).name,
+        )
     )
 
 
@@ -315,7 +316,7 @@ def _scan_inputs(
                     )
                 )
             archive = _restore_archive(descriptor.key, current.meta)
-            if _slot_of(archive) != slot:
+            if _archive_slot_dir(archive.server_path) != slot:
                 raise ObserwatorDataError(
                     message(
                         "series.version_does_not_match_slot",
@@ -864,15 +865,13 @@ def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) ->
     metadata = {
         "obserwator_schema": SERIES_SCHEMA,
         "dataset": descriptor.key,
-        "units": _canonical(dict(descriptor.variables)).decode("utf-8").rstrip("\n"),
+        "units": _canonical_text(dict(descriptor.variables)),
     }
     if descriptor.variable_notes:
-        metadata["variable_notes"] = (
-            _canonical(dict(descriptor.variable_notes)).decode("utf-8").rstrip("\n")
-        )
+        metadata["variable_notes"] = _canonical_text(dict(descriptor.variable_notes))
     # The lines of the provider as JSON arrays (ADR-012, Nogat DEV-20.5).
     metadata.update(
-        (name, _canonical(value).decode("utf-8").rstrip("\n"))
+        (name, _canonical_text(value))
         for name, value in _lines(descriptor).fields().items()
     )
     return pa.table(columns).replace_schema_metadata(metadata)
