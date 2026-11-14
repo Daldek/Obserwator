@@ -25,6 +25,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-017](#adr-017-the-data-root) | The data root | 2026-11-13 | Accepted |
 | [ADR-018](#adr-018-state-borders-from-prg-and-rúian) | State borders from PRG and RÚIAN | 2026-11-14 | Accepted |
 | [ADR-019](#adr-019-nogat-server-logs) | Nogat server logs | 2026-11-14 | Accepted |
+| [ADR-020](#adr-020-the-guis-admin-panel) | The GUI's admin panel | 2026-11-14 | Accepted |
 
 ---
 
@@ -654,6 +655,10 @@ Additive changes of `/1` contracts (no version changes): the envelope fields and
 
 For the library additive: `obserwator.gui` lies outside `obserwator.__all__`, and no public function changes; new are the extra `gui`, the entry point `nogat.gui`, five settings (`OBSERWATOR_GUI_BASEMAP_URL`, `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`, `OBSERWATOR_HYDROLOG_COMMAND`, `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`), the table `[nogat.operator]` and the GUI's own files in `<data_dir>/obserwator`. The REST server loses its pages (no released interface breaks: 3.0.0 is untagged); the app menu of ADR-011 and the page lines of ADR-012 D7 now live in the GUI. Archiwista keeps its station views, and Hydrolog's GUI reads the hand-off. A deployment runs one uvicorn process behind an authenticating proxy; until IMGW-PIB's terms for a public instance are answered, the test deployment stays behind Cloudflare Access (`docs/PROGRESS.md`, open questions). What the GUI does not do yet is listed in `docs/PROGRESS.md`, „GUI: open gaps”.
 
+### Errata
+
+**2026-11-14 — D4, D15, D16 (the admin panel, ADR-020).** The GUI serves the admin panel of Nogat DEV-15.13 beside the routes of D4: `admin` (308), `admin/`, `api/admin/feedback`, `api/admin/feedback/{id}` (PATCH, DELETE), `api/admin/stats` and `api/admin/status`, behind the key of `OBSERWATOR_ADMIN_API_KEY`; their answers carry `Cache-Control: no-store` and a CSP without the basemap (D15). The operator no longer reads `feedback.jsonl` with a text tool, and the deviation from DEV-15.12 is gone (D16).
+
 ## ADR-014: Harmonized exports
 
 **Date:** 2026-11-13  
@@ -811,3 +816,30 @@ Option (b). `src/obserwator/nogat_logging.py` is Nogat's reference module copied
 ### Consequences
 
 `OBSERWATOR_LOG_LEVEL` is ignored. A container created before keeps its old `json-file` log until it is rebuilt (`docs/CODEBASE.md`, deployment). A change of the module is made in Nogat and copied again.
+
+---
+
+## ADR-020: The GUI's admin panel
+
+**Date:** 2026-11-14  
+**Status:** Accepted (the author approved the Nogat plan `docs/plans/2026-11-13-admin-panel.md` on 2026-11-13; this is its step 4)  
+**Standard:** Nogat DEV-15.13 (ECO-067, kit 0.7.0), DEV-15.11, DEV-15.12, DEV-15.9, DEV-18.4, DEV-18.6, AGI-6.3; changes ADR-013 D4, D15 and D16 (erratum there)
+
+### Context and options
+
+The GUI kept the reports of „Zgłoś uwagę” in `<data_dir>/obserwator/feedback.jsonl` without admin routes: the operator read them with `jq` and rewrote the file by hand under its lock, a deviation from DEV-15.12 recorded in `CLAUDE.md`, and the daily totals of `stats.jsonl` had no view. Nogat DEV-15.13 gives every GUI that keeps reports or statistics one admin panel at `/admin/` with one core API and the kit's shell. Options for the reports: (a) keep the file and the deviation; (b) a database of the GUI, as Hydrolog's SQLite; (c) the file, rewritten by the server under the lock it already takes. Options for the key: (d) read once with the settings at start; (e) read on every request.
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Routes.** `admin` answers `308` to `admin/`, the kit's `<nogat-admin app="Obserwator" project="obserwator">` alone (`gui/web/admin/`); `api/admin/feedback`, `api/admin/feedback/{id}` (PATCH, DELETE), `api/admin/stats`, `api/admin/status`; any other address under `api/admin` is `404` once the key is checked. Relative like the rest of the GUI (ADR-013 D3), so a prefix holds. | Routes in `obserwator server`. |
+| D2 | **Key.** (e): `OBSERWATOR_ADMIN_API_KEY`, else the text of the file `OBSERWATOR_ADMIN_API_KEY_FILE` names, read on every request from the environment and `.env` (two credentials of `Settings`, never from `nogat.toml`; `config show` reports each present or missing), compared in constant time with the bytes of `X-Admin-Key`. A refusal is `401` with the error document of `unauthorized`, a code of Nogat's registry that only HTTP answers use and that stays outside `ERROR_CODES` as `rate_limited` does, with `details.reason` `admin_key_not_configured`, `admin_key_missing` or `admin_key_invalid`. No key is generated or logged. It is separate from the REST API keys of `obserwator admin` (`api_keys.json`) and from the store write token. | (d): a new key would need a restart; one key for REST and the GUI. |
+| D3 | **Reports.** (c). A list reads the file under a shared `flock`; marking or deleting writes the new text to a temporary file beside it, syncs it and renames it over the file while the exclusive lock of the old file is held, and whoever waited for the lock opens the path again when it names another file, so no report is lost to a rewrite, also of another process. Unchanged lines and lines that hold no report keep their bytes; a change to the value a report already has writes nothing. Ids stay one more than the largest in the file, so deleting the newest frees its number. With the GUI's directory in the data root (ADR-013 D7) the panel sees no report and writes nothing. | (a); (b): a second store format for one table. |
+| D4 | **Statistics.** The lines of `stats.jsonl` between two UTC days (default the last 30 up to today), today's from memory with the earlier runs of the day, `totals` of every number but `visitors`. The panel's requests stay under the rate limit but are never counted (DEV-15.11). | — |
+| D5 | **Status.** `data_dir` is the GUI's own directory, `<data_dir>/obserwator`, with the space of its disk; the checks are `data_root_marker` (`failed` without `obserwator-data.json` or when the root cannot be read), `stored_analyses` (`warning` when a provider with a catalog has no stored analyses) and `hydrolog_command` (`warning` when the server started without Hydrolog's program, `failed` when it does not answer `config show` now); details in the page's language. | — |
+| D6 | **Headers.** Every answer of `admin`, `admin/…` and `api/admin/…`: `Cache-Control: no-store` and the CSP `'self'` without the basemap; a `429` of the rate limit is never kept either. | — |
+
+### Consequences
+
+The deviation from DEV-15.12 and the `jq` instructions are gone. A deployment sets the key (a file of mode `0600` named by the unit through `OBSERWATOR_ADMIN_API_KEY_FILE`) and protects exactly `/admin`, `/admin/*` and `/api/admin/*` (Cloudflare Access on the test deployment). `config show` lists two more credentials. Kit 0.7.0 is copied byte for byte.

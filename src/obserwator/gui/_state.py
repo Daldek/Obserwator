@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import secrets
 import tempfile
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +52,10 @@ class GuiState:
     boot : str
         A random token of this run, part of every ETag: an answer cached by a browser
         is made again after a restart, when the server's code may have changed.
+    started_at : datetime
+        When the app was made, in UTC: the start of the admin panel's „Stan”.
+    started : float
+        The same moment in monotonic seconds, from which the uptime counts.
     """
 
     config: GuiConfig
@@ -63,6 +69,8 @@ class GuiState:
     version: str = __version__
     hidden: tuple[Path, ...] = field(default_factory=tuple)
     boot: str = field(default_factory=lambda: secrets.token_hex(8))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    started: float = field(default_factory=time.monotonic)
 
     def directories(self) -> tuple[Path, ...]:
         """The server's directories hidden in answers (D6): root, own, temporary, working."""

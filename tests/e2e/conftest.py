@@ -19,6 +19,9 @@ uvicorn in a thread, on a free port of 127.0.0.1:
   the analyses ``obserwator analyses build`` stored, e.g. a copy of a deployment's root)
   with Hydrolog's program of ``OBSERWATOR_HYDROLOG_COMMAND`` for a person's choices;
   tests using it are skipped when either is unset (mark them ``hydrolog``).
+* ``admin_site``: the GUI on the fixture root as ``gui_url`` but its own server, with the
+  admin key `ADMIN_KEY` set and its own directory (``feedback.jsonl``, ``stats.jsonl``)
+  given to the test, for the admin panel of Nogat DEV-15.13.
 
 A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
 it computes nothing for its whole life.
@@ -60,6 +63,8 @@ FIXTURE_STATIONS = {
     "meteo_chmi": "0-203-0-90001",
 }
 """Stations of the fixture root: IMGW-PIB and ČHMÚ, hydrological and meteorological."""
+ADMIN_KEY = "klucz-e2e-0123"
+"""The admin key of ``admin_site`` (``OBSERWATOR_ADMIN_API_KEY``, read on every request)."""
 
 _CSP_LISTENER = """
 document.addEventListener("securitypolicyviolation", (event) => {
@@ -295,6 +300,18 @@ def analysis_url(tmp_path_factory) -> Iterator[str]:
     work = tmp_path_factory.mktemp("gui-analyses")
     with _start(Path(root), work, hydrolog=hydrolog) as server:
         yield server.url
+
+
+@pytest.fixture
+def admin_site(gui_root, tmp_path, monkeypatch) -> Iterator[tuple[str, Path]]:
+    """The GUI with its admin key, and its own directory: ``(url, directory)``."""
+    monkeypatch.setenv("OBSERWATOR_ADMIN_API_KEY", ADMIN_KEY)
+    monkeypatch.delenv("OBSERWATOR_ADMIN_API_KEY_FILE", raising=False)
+    work = tmp_path / "gui-admin"
+    directory = work / "data" / "obserwator"  # <data_dir>/obserwator of its nogat.toml
+    directory.mkdir(parents=True)
+    with _start(gui_root, work, recorded=False) as server:
+        yield server.url, directory
 
 
 # --- the browser -------------------------------------------------------------------------

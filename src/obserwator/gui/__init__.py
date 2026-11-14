@@ -75,7 +75,7 @@ class GuiModule:
 
 def create_app(*, root: Path | None = None) -> Starlette:
     """
-    Create the ASGI app of the GUI: the page and its private API (GUI plan D4 to D8).
+    Create the ASGI app of the GUI: the page, its private API and its admin panel.
 
     Parameters
     ----------
@@ -86,7 +86,8 @@ def create_app(*, root: Path | None = None) -> Starlette:
     Returns
     -------
     starlette.applications.Starlette
-        The app: the page at its root, the API under ``api/``.
+        The app: the page at its root, the API under ``api/``, the admin panel of Nogat
+        DEV-15.13 at ``admin/`` with its API under ``api/admin/``.
 
     Raises
     ------
@@ -111,10 +112,12 @@ def serve(
     """
     Serve the GUI until Ctrl+C or ``SIGTERM``.
 
-    It has no sign-in: anyone who reaches the address uses it, so a public instance
-    follows Nogat's public-GUI rules (rate limit, logs without addresses, daily
-    statistics, „Zgłoś uwagę”, the regulamin of ``[nogat.operator]``). Its logs are
-    Nogat's (DEV-12.4 to DEV-12.9): access, application and lifecycle records in
+    Its page has no sign-in: anyone who reaches the address uses it, so a public
+    instance follows Nogat's public-GUI rules (rate limit, logs without addresses, daily
+    statistics, „Zgłoś uwagę”, the regulamin of ``[nogat.operator]``); only its admin
+    panel (``admin/``, Nogat DEV-15.13) asks for the key of ``OBSERWATOR_ADMIN_API_KEY``
+    or ``OBSERWATOR_ADMIN_API_KEY_FILE``. Its logs are Nogat's (DEV-12.4 to DEV-12.9):
+    access, application and lifecycle records in
     ``<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl``, deleted after 14 days;
     standard error gets only the lifecycle records (the record ``start`` names the
     address) and the errors reduced to their type.

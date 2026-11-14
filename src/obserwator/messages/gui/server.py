@@ -34,6 +34,9 @@ MESSAGES: dict[str, Text] = {
         "Invalid value of {option}: {value}", "Niepoprawna wartość {option}: {value}"
     ),
     "errors.title_rate_limited": Text("Too many requests", "Zbyt wiele żądań"),
+    "errors.title_unauthorized": Text(
+        "Authentication required", "Wymagane uwierzytelnienie"
+    ),
     "errors.no_analysis": Text(
         "There is no analysis {analysis}.", "Nie ma analizy {analysis}."
     ),

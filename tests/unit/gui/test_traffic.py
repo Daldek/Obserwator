@@ -6,7 +6,7 @@ import asyncio
 import json
 import stat
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from starlette.applications import Starlette
@@ -87,6 +87,8 @@ def make_app(state: TrafficState) -> Starlette:
             Route("/regulamin.html", page),
             Route("/instrukcja/", page),
             Route("/instrukcja/index.html", missing_page),
+            Route("/admin", page),
+            Route("/admin/", page),
             Route("/api/broken", broken),
             Route("/api/{rest:path}", api),
             Route("/app.js", static),
@@ -218,9 +220,57 @@ def test_the_limit_classifies_paths_relative_to_the_mount(tmp_path):
     assert '<link rel="stylesheet" href="/gui/nogat/tokens.css">' in refused.text
 
 
+def test_the_admin_panel_is_limited_but_never_counted(tmp_path):
+    clock = Clock()
+    state = make_state(tmp_path, clock, limit=3, window=60)
+    client = client_of(make_app(state))
+
+    within = [client.get(path) for path in ("/admin", "/admin/", "/api/admin/stats")]
+    api_over = client.get("/api/admin/status")
+    page_over = client.get("/admin/")
+    other = client_of(make_app(state), "198.51.100.9").get("/")
+
+    assert [answer.status_code for answer in within] == [200, 200, 200]
+    assert api_over.status_code == 429 and api_over.json()["code"] == "rate_limited"
+    assert page_over.status_code == 429
+    assert page_over.headers["content-type"].startswith("text/html")
+    for answer in (api_over, page_over):
+        assert answer.headers["cache-control"] == "no-store"
+    assert other.status_code == 200
+    snapshot = state.snapshot()
+    assert (snapshot["visitors"], snapshot["page_views"]) == (1, 1)
+
+
 # --------------------------------------------------------------------------
 # Statistics (DEV-15.11)
 # --------------------------------------------------------------------------
+
+
+def test_the_days_between_two_days_take_today_from_memory(tmp_path):
+    clock = Clock()
+    stats = tmp_path / "state" / "stats.jsonl"
+    stats.parent.mkdir()
+    stats.write_text(
+        '{"date":"2026-11-11","visitors":2,"page_views":4}\n'
+        '{"date":"2026-11-13","visitors":5,"page_views":7}\n',
+        encoding="utf-8",
+    )
+    state = make_state(tmp_path, clock)
+    state.page_view()
+    off = TrafficState(
+        limit=1, window=60, directory=tmp_path / "state", writes=False, clock=clock.time
+    )
+
+    days = state.days(date(2026, 11, 1), date(2026, 11, 30))
+    alone = off.days(date(2026, 11, 1), date(2026, 11, 30))
+
+    zero = {"stations_opened": 0, "analyses_run": 0, "downloads": 0}
+    assert days == [
+        {"date": "2026-11-11", "visitors": 2, "page_views": 4, **zero},
+        {"date": "2026-11-13", "visitors": 5, "page_views": 8, **zero},
+    ]
+    assert alone == [{"date": "2026-11-13", "visitors": 0, "page_views": 0, **zero}]
+    assert state.days(date(2026, 11, 12), date(2026, 11, 12)) == []
 
 
 def test_the_day_counts_visitors_pages_and_totals(tmp_path):

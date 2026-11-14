@@ -3,7 +3,7 @@ The public GUI's traffic: rate limit and daily statistics (Nogat DEV-15.9, DEV-1
 
 `Traffic` wraps the app as a pure ASGI middleware and `TrafficState` holds what it
 counts. A request is an API call (``/api/…``), a page (the start page, the regulamin,
-the manual) or a static file, by its path relative to the mount.
+the manual, the admin page) or a static file, by its path relative to the mount.
 
 - Rate limit (DEV-15.9): API calls and pages, not static files, of one client address
   (the one the proxy reports, put in place by uvicorn) are counted in a sliding window
@@ -15,7 +15,8 @@ the manual) or a static file, by its path relative to the mount.
   hashes stay in memory. Each UTC day is one line of ``<data_dir>/obserwator/stats.jsonl``
   (``date``, ``visitors``, ``page_views``, ``stations_opened``, ``analyses_run``,
   ``downloads``), rewritten atomically every `FLUSH_INTERVAL_S`, at the day's end and at
-  shutdown; a restart adds to the day's line.
+  shutdown; a restart adds to the day's line. The requests of the admin panel
+  (DEV-15.13, `is_admin`) stay under the rate limit but are not counted.
 
 The access log is not this module's: ``obserwator gui serve`` wraps the app in
 `obserwator.nogat_logging.AccessLog`, outside `Traffic`, so the answers of the rate
@@ -38,7 +39,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from html import escape
 from pathlib import Path
 from typing import Literal
@@ -62,6 +63,9 @@ PAGES = frozenset(
     {"/", "/index.html", "/regulamin.html", "/instrukcja/", "/instrukcja/index.html"}
 )
 """The paths of the GUI's HTML pages, relative to its mount."""
+ADMIN_PAGES = frozenset({"/admin", "/admin/", "/admin/index.html"})
+"""The paths of the admin page (Nogat DEV-15.13), relative to the mount: pages the rate
+limit counts and the statistics do not (`is_admin`)."""
 STATS_FILE = "stats.jsonl"
 FLUSH_INTERVAL_S = 300.0
 """How often the day's statistics line is rewritten [s] (DEV-15.11: at most 10 min)."""
@@ -101,17 +105,55 @@ def classify(path: str) -> Kind:
     Returns
     -------
     {"api", "page", "static"}
-        ``api`` below ``/api/``, ``page`` for one of `PAGES`, ``static`` otherwise.
+        ``api`` below ``/api/``, ``page`` for one of `PAGES` and `ADMIN_PAGES`,
+        ``static`` otherwise.
     """
     if path.startswith("/api/"):
         return "api"
-    if (path or "/") in PAGES:
+    if (path or "/") in PAGES or path in ADMIN_PAGES:
         return "page"
     return "static"
 
 
+def is_admin(path: str) -> bool:
+    """
+    Whether a request is the admin panel's (Nogat DEV-15.13), by its path.
+
+    Parameters
+    ----------
+    path : str
+        The path without the mount's prefix (``scope["root_path"]``).
+
+    Returns
+    -------
+    bool
+        True for ``/admin``, ``/api/admin`` and every path below them: the three
+        paths a deployment protects, whose answers are never kept (``no-store``) and
+        whose requests the statistics do not count (DEV-15.11).
+    """
+    return path in ("/admin", "/api/admin") or path.startswith(
+        ("/admin/", "/api/admin/")
+    )
+
+
 def _utc_day(moment: float) -> str:
     return datetime.fromtimestamp(moment, UTC).date().isoformat()
+
+
+def _is_day(value: object) -> bool:
+    """Whether a value is a UTC day as ``stats.jsonl`` writes it, ``YYYY-MM-DD``."""
+    if not isinstance(value, str) or len(value) != 10 or value[4::3] != "--":
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _count(value: object) -> int:
+    """A number of a stored line: a whole number from 0, else 0."""
+    return value if type(value) is int and value >= 0 else 0
 
 
 class TrafficState:
@@ -244,6 +286,57 @@ class TrafficState:
         with self._lock:
             return self._line()
 
+    def today(self) -> date:
+        """The current UTC day, by the state's clock."""
+        return datetime.fromtimestamp(self.clock(), UTC).date()
+
+    def days(self, first: date, last: date) -> list[dict[str, str | int]]:
+        """
+        The days of ``stats.jsonl`` between two UTC days, the current one as counted so far.
+
+        Parameters
+        ----------
+        first, last : date
+            The first and the last UTC day, both included.
+
+        Returns
+        -------
+        list of dict
+            One line per day that has one, in date order: ``date`` and the numbers of
+            `COUNTERS` (0 where a stored line lacks one or holds no whole number from
+            0). The current day is `snapshot`'s, never its stored line, which lags
+            behind; with `writes` off it is the only one.
+        """
+        self._roll()
+        start, end = first.isoformat(), last.isoformat()
+        found: dict[str, dict[str, str | int]] = {}
+        with self._io:
+            for raw in self._stored_lines():
+                document = _object(raw)
+                day = document.get("date") if document is not None else None
+                if document is None or not _is_day(day) or not start <= str(day) <= end:
+                    continue
+                line: dict[str, str | int] = {"date": str(day)}
+                line.update({key: _count(document.get(key)) for key in COUNTERS})
+                found[str(day)] = line
+            with self._lock:
+                current = self._line()
+        if start <= str(current["date"]) <= end:
+            found[str(current["date"])] = current
+        return [found[day] for day in sorted(found)]
+
+    def _stored_lines(self) -> list[str]:
+        """The lines of ``stats.jsonl``: none without it, with `writes` off or unreadable."""
+        if not self.writes:
+            return []
+        try:
+            return self.stats_path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return []
+        except OSError as exc:
+            self._warn(STATS_FILE, exc)
+            return []
+
     def _line(self) -> dict[str, str | int]:
         line: dict[str, str | int] = {"date": self._day}
         for key in COUNTERS:
@@ -278,16 +371,7 @@ class TrafficState:
 
     def _read_line(self, day: str) -> dict[str, int]:
         """The numbers of ``day`` in ``stats.jsonl``, written by an earlier run."""
-        if not self.writes:
-            return {}
-        try:
-            text = self.stats_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return {}
-        except OSError as exc:
-            self._warn(STATS_FILE, exc)
-            return {}
-        for raw in text.splitlines():
+        for raw in self._stored_lines():
             document = _object(raw)
             if document is not None and document.get("date") == day:
                 return {
@@ -370,10 +454,10 @@ def _object(raw: str) -> dict[str, object] | None:
 
 
 def _refusal(scope: Scope, kind: Kind, seconds: int) -> Response:
-    """The ``429`` of a request over the limit: the error document or a short page."""
+    """The ``429`` of a request over the limit, never kept: the error document or a short page."""
     request = Request(scope)
     if kind == "api":
-        return error_response(
+        response = error_response(
             request,
             GuiError(
                 "rate_limited",
@@ -382,6 +466,8 @@ def _refusal(scope: Scope, kind: Kind, seconds: int) -> Response:
                 headers={"Retry-After": str(seconds)},
             ),
         )
+        response.headers["Cache-Control"] = "no-store"
+        return response
     lang = page_lang(request)
     title = message("gui.errors.title_rate_limited", lang=lang)
     text = message("gui.public.rate_limited", lang=lang, seconds=seconds)
@@ -420,14 +506,16 @@ class Traffic:
         self.state = state
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Serve one request: refused over the limit, else counted."""
+        """Serve one request: refused over the limit, else counted (not the admin panel's)."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         state = self.state
         path: str = scope["path"]
         root: str = scope.get("root_path", "")
-        kind = classify(path[len(root) :] if root and path.startswith(root) else path)
+        relative = path[len(root) :] if root and path.startswith(root) else path
+        kind = classify(relative)
+        counted = not is_admin(relative)
         status = 0
 
         async def send_counted(event: Message) -> None:
@@ -440,12 +528,13 @@ class Traffic:
             if kind != "static":
                 client = scope.get("client")
                 address = str(client[0]) if client else ""
-                state.visit(address, Headers(scope=scope).get("user-agent", ""))
+                if counted:
+                    state.visit(address, Headers(scope=scope).get("user-agent", ""))
                 wait = state.admit(address)
                 if wait is not None:
                     await _refusal(scope, kind, wait)(scope, receive, send)
                     return
             await self.app(scope, receive, send_counted)
         finally:
-            if kind == "page" and status == 200:
+            if kind == "page" and counted and status == 200:
                 state.page_view()

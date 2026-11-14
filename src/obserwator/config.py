@@ -5,10 +5,10 @@ A setting comes from the first of: the environment variable ``OBSERWATOR_<KEY>``
 same key in a ``.env`` file of the working directory, the shared variable
 ``NOGAT_<KEY>`` (keys ``data_dir``, ``cache_dir``, ``state_dir``, ``lang``), the section
 ``[obserwator]`` of ``nogat.toml``, the section ``[nogat]`` of it (shared keys), the
-default; a command-line option goes before all of them. The store write token is
-a credential: only the environment (and ``.env``) may give it, never the file
-(DEV-18.4). `environment_report` is the document of ``obserwator config show --json``
-(DEV-18.6); `check_config` rejects an unusable ``nogat.toml``.
+default; a command-line option goes before all of them. The store write token and the
+GUI's admin key are credentials: only the environment (and ``.env``) may give them,
+never the file (DEV-18.4). `environment_report` is the document of ``obserwator config
+show --json`` (DEV-18.6); `check_config` rejects an unusable ``nogat.toml``.
 """
 
 import os
@@ -191,6 +191,13 @@ class Settings(BaseSettings):
     gui_basemap_attribution: str = "OpenFreeMap © OpenMapTiles Data from OpenStreetMap"
     request_limit: int = Field(default=300, ge=1)
     request_window: int = Field(default=60, ge=1)
+    # The key of the GUI's admin panel (Nogat DEV-15.13, ADR-020): the header X-Admin-Key
+    # of api/admin/... must equal OBSERWATOR_ADMIN_API_KEY or, without it, the text of the
+    # file OBSERWATOR_ADMIN_API_KEY_FILE names (a secret file of the service). Credentials:
+    # environment only; the GUI reads them on every admin request. Not the REST API keys
+    # of `obserwator admin` (api_keys_file).
+    admin_api_key: SecretStr | None = None
+    admin_api_key_file: Path | None = None
 
     # Hydrolog's program of the analyses (ADR-016; OBSERWATOR_HYDROLOG_COMMAND,
     # [obserwator] hydrolog_command): a command line, split as a shell splits it

@@ -1,10 +1,12 @@
 """
-The GUI's Starlette app: the page, its private GET API and ``POST api/feedback``.
+The GUI's Starlette app: the page, its private API and its admin panel.
 
-Routes are relative to the page, so the app works at ``/`` and mounted under any prefix
-(GUI plan D5, D6). They serve this GUI only: no ``/api/v1``, no OpenAPI, no stability
-promise (a deviation from AGI-6.1 recorded in ``CLAUDE.md``). Every parameter is checked
-before the data root or Hydrolog is touched; an error is ``obserwator-error/1`` with the
+The private API answers GET and HEAD and ``POST api/feedback``; the admin panel is
+``admin/`` with ``api/admin/…`` (Nogat DEV-15.13, `obserwator.gui._admin`). Routes are
+relative to the page, so the app works at ``/`` and mounted under any prefix (GUI plan
+D5, D6). They serve this GUI only: no ``/api/v1``, no OpenAPI, no stability promise (a
+deviation from AGI-6.1 recorded in ``CLAUDE.md``). Every parameter is checked before
+the data root or Hydrolog is touched; an error is ``obserwator-error/1`` with the
 registry's status, in the page's language, without server paths.
 """
 
@@ -16,6 +18,7 @@ import csv
 import functools
 import io
 import logging
+import re
 import shlex
 import shutil
 import tempfile
@@ -50,6 +53,14 @@ from obserwator.attribution import (
 from obserwator.datasets import get_dataset, get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
+from obserwator.gui._admin import (
+    admin_feedback,
+    admin_not_found,
+    admin_page,
+    admin_report,
+    admin_stats,
+    admin_status,
+)
 from obserwator.gui._analyses import PROCESSES, TIMEOUT_S, Analyses, definition_of
 from obserwator.gui._config import GuiConfig
 from obserwator.gui._feedback import Feedback, post_feedback
@@ -81,7 +92,7 @@ from obserwator.gui._root import ANALYSES_SLOTS, DataRoot, Snapshot, StationsFor
 from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
-from obserwator.gui._traffic import Traffic, TrafficState
+from obserwator.gui._traffic import Traffic, TrafficState, is_admin
 from obserwator.messages import LANGS, Lang, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
@@ -113,11 +124,12 @@ SEXT = {
     "geojson": "application/geo+json",
 }
 QUIET = (
-    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/theme-init\.js$|^/regulamin\.html$"
+    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/(admin/)?theme-init\.js$"
+    r"|^/regulamin\.html$"
 )
 """The static content of the access log (Nogat DEV-12.5), paths at the origin's root: the
-page's files, the packaged borders, the guide and the regulamin, the same for every
-client, are logged only when answered with 400 or more."""
+page's files, the admin page's script, the packaged borders, the guide and the regulamin,
+the same for every client, are logged only when answered with 400 or more."""
 
 Handler = Callable[[Request], Awaitable[Response]]
 StationKind = Literal["hydro", "meteo"]
@@ -1290,20 +1302,72 @@ def csp(config: GuiConfig) -> str:
     )
 
 
+ADMIN_CSP = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self'",
+        "img-src 'self'",
+        "connect-src 'self'",
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+"""The admin panel's Content-Security-Policy (DEV-15.13): its own origin alone."""
+_REPORT_PATH = re.compile(r"/api/admin/feedback/[^/]+")
+
+
+def methods(path: str) -> tuple[str, ...]:
+    """
+    The methods a path takes, relative to the mount.
+
+    Parameters
+    ----------
+    path : str
+        The path without the mount's prefix.
+
+    Returns
+    -------
+    tuple of str
+        ``POST`` for ``api/feedback``, ``PATCH`` and ``DELETE`` for a report of the
+        admin panel (``api/admin/feedback/{id}``), ``GET`` and ``HEAD`` for the rest.
+    """
+    if path == "/api/feedback":
+        return ("POST",)
+    if _REPORT_PATH.fullmatch(path):
+        return ("PATCH", "DELETE")
+    return ("GET", "HEAD")
+
+
+def _security(policy: str) -> list[tuple[bytes, bytes]]:
+    """The headers of D16 with a Content-Security-Policy."""
+    return [
+        (b"content-security-policy", policy.encode()),
+        (b"x-frame-options", b"DENY"),
+        (b"x-content-type-options", b"nosniff"),
+        (b"referrer-policy", b"no-referrer"),
+        (b"cross-origin-opener-policy", b"same-origin"),
+        (b"cross-origin-resource-policy", b"same-origin"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+    ]
+
+
 class SecurityHeaders:
-    """GET and HEAD only (``POST api/feedback`` alone), and the headers of D16 on every answer."""
+    """
+    The methods of each path (`methods`) and the headers of D16 on every answer.
+
+    An answer of the admin panel (`is_admin`, Nogat DEV-15.13) carries `ADMIN_CSP`
+    and ``Cache-Control: no-store`` whatever its route set; any other answer the
+    page's policy and ``Cache-Control: no-cache`` unless its route set another.
+    """
 
     def __init__(self, app: ASGIApp, *, policy: str) -> None:
         self.app = app
-        self.headers = [
-            (b"content-security-policy", policy.encode()),
-            (b"x-frame-options", b"DENY"),
-            (b"x-content-type-options", b"nosniff"),
-            (b"referrer-policy", b"no-referrer"),
-            (b"cross-origin-opener-policy", b"same-origin"),
-            (b"cross-origin-resource-policy", b"same-origin"),
-            (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
-        ]
+        self.headers = _security(policy)
+        self.admin_headers = _security(ADMIN_CSP)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -1314,16 +1378,23 @@ class SecurityHeaders:
             if scope["path"].startswith(scope.get("root_path", ""))
             else scope["path"]
         )
-        allowed = ("POST",) if path == "/api/feedback" else ("GET", "HEAD")
-        headers = self.headers
+        allowed = methods(path)
+        admin = is_admin(path)
+        headers = self.admin_headers if admin else self.headers
 
         async def wrapped(message: Message) -> None:
             if message["type"] == "http.response.start":
                 given = list(message.get("headers", []))
+                if admin:
+                    given = [
+                        pair for pair in given if pair[0].lower() != b"cache-control"
+                    ]
                 names = {name.lower() for name, _ in given}
                 given += [pair for pair in headers if pair[0] not in names]
                 if b"cache-control" not in names:
-                    given.append((b"cache-control", b"no-cache"))
+                    given.append(
+                        (b"cache-control", b"no-store" if admin else b"no-cache")
+                    )
                 message["headers"] = given
             await send(message)
 
@@ -1441,7 +1512,14 @@ def build_app(
         Route("/api/handoff/{code}", handoff),
         Route("/api/prototype/stripes/{code}", _route(stripes_prototype)),
         Route("/api/feedback", post_feedback, methods=["POST"]),
+        Route("/api/admin/feedback", admin_feedback),
+        Route("/api/admin/feedback/{id}", admin_report, methods=["PATCH", "DELETE"]),
+        Route("/api/admin/stats", admin_stats),
+        Route("/api/admin/status", admin_status),
+        Route("/api/admin", admin_not_found),
+        Route("/api/admin/{rest:path}", admin_not_found),
         Route("/api/{rest:path}", api_not_found),
+        Route("/admin", admin_page),
         Route("/regulamin.html", regulamin),
         Route("/data/{name}", border),
         Mount("/", StaticFiles(directory=WEB, html=True)),

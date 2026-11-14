@@ -35,7 +35,7 @@ System consists of six main components:
 6. **CLI** [optional: `obserwator[cli]`]
    - Local client using the library directly (never through the REST API)
    - Groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses`, `commands` generated from the command catalog; help in Polish or English (`OBSERWATOR_LANG`)
-   - `obserwator mcp`, `obserwator server`, `obserwator gui serve`, API key management (`obserwator admin`)
+   - `obserwator mcp`, `obserwator server`, `obserwator gui serve`, REST API key management (`obserwator admin`; not the GUI's admin key)
 
 ---
 
@@ -160,6 +160,9 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 | `api/handoff/{code}` | GET | `nogat-handoff/1` around `hydrolog-series/1` |
 | `api/prototype/stripes/{code}` | GET | the climate stripes (M15), a prototype of their colour scale |
 | `api/feedback` | POST | „Zgłoś uwagę” |
+| `admin` (308), `admin/` | GET | the admin panel: the kit's `<nogat-admin>` (Nogat DEV-15.13, ADR-020) |
+| `api/admin/feedback`, `api/admin/feedback/{id}` | GET; PATCH, DELETE | the reports, newest first; one marked read or unread, or deleted |
+| `api/admin/stats`, `api/admin/status` | GET | the days of `stats.jsonl` with today; the app, its directory and disk, its checks |
 | `regulamin.html` | GET | the terms of a public deployment |
 | `data/{poland,czechia}_border_wgs84.geojson` | GET | the packaged borders |
 
@@ -168,7 +171,7 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 - **Live data** (`_live.py`), in memory only: snapshots of IMGW-PIB's current data (water states, hydro, meteo, synop), each fetched on demand at most once per 10 minutes, one request at a time, the last kept when a fetch fails; PMAXTP per method and point at four decimals for 24 hours, at most 1,000 points, one live request at a time.
 - **Analyses** (`_analyses.py`): Hydrolog's results stored in the data root by `analyses build` (`list_analyses`, `read_analysis`), shown as they are; a person's choices (and the climate stripes' reference period) computed on request by `compute_analysis` through Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the app starts; without it only stored results): at most two processes of 30 s, 500 results in memory, never written.
 - **Files**: `export_series`, `export_stations` and `export_analyses` write them byte for byte as the CLI does; PMAXTP of a point is packed by the server (CSV, JSON); a hand-off is built by the server from the data root or from Hydrolog's result.
-- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl`; neither when that directory and the data root are one or one holds the other.
+- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl` (rewritten atomically under its `flock` when the admin panel marks or deletes a report); neither when that directory and the data root are one or one holds the other.
 - **Logs** in `<state_dir>/obserwator/logs` (Nogat DEV-12.4 to DEV-12.9): `obserwator gui serve` starts a `ServerLog` of `obserwator.nogat_logging` (Nogat's reference module, copied byte for byte and shared with `obserwator server`) and `build_app` adds its `AccessLog` as the outermost middleware, outside `Traffic`, so the rate limit's `429` is logged too; static content (`QUIET` of `_app.py`) only from status 400; stderr gets only the lifecycle records and reduced errors.
 - The page connects only to its own origin and the basemap's.
 
@@ -176,11 +179,11 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 - Every answer (`SecurityHeaders` of `_app.py`): `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cache-Control: no-cache` unless the answer sets another
 - No cookies, sessions or CORS headers; no inline script or style and no remote resource but the basemap
 - Every parameter is checked against the registries before the data root or Hydrolog is touched (DEV-13.3); errors are `obserwator-error/1` in the page's language with the server's directories hidden (root, own directory, TMPDIR, CWD); Hydrolog gets only checked options and series files the server wrote
-- No sign-in: the GUI binds `127.0.0.1` by default and is reachable beyond it only behind an authenticating proxy (`FORWARDED_ALLOW_IPS` names the proxy to uvicorn)
+- No sign-in but the admin panel's: the GUI binds `127.0.0.1` by default and is reachable beyond it only behind an authenticating proxy (`FORWARDED_ALLOW_IPS` names the proxy to uvicorn); `admin/` and `api/admin/…` (`_admin.py`) check `X-Admin-Key` in constant time against `OBSERWATOR_ADMIN_API_KEY` or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every request (`401 unauthorized` otherwise), and answer with `Cache-Control: no-store` under CSP `'self'`
 
 ### Public Rules (Nogat DEV-15.7 to DEV-15.12)
 - `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory); the access log is `AccessLog`'s, outside it (Logs above); uvicorn keeps no log of its own
-- `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl`; no admin routes (a deviation in `CLAUDE.md`)
+- `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl`; `_admin.py` (DEV-15.13) lists, marks and deletes reports, shows the daily totals and the status checks `data_root_marker`, `stored_analyses`, `hydrolog_command`; the panel's requests stay under the rate limit and out of the totals
 - `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from kit 0.6.0 (its source blocks link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
 
 ---
@@ -411,11 +414,11 @@ Obserwator/
 │   │   ├── gui_cmd.py    # obserwator gui serve
 │   │   ├── _dispatch.py  # Catalog-driven command generation (only adapter), OBSERWATOR_LANG
 │   │   ├── _render.py    # Summary for a person of the envelope (without --json)
-│   │   └── admin.py      # API key management
+│   │   └── admin.py      # REST API key management (api_keys.json)
 │   ├── mcp/              # MCP server [optional: obserwator[mcp]]: _tools, _calls, server
 │   └── gui/              # GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013)
-│       ├── _app.py       # Starlette app: private API, headers; _root, _live, _analyses, _traffic, _feedback, _terms
-│       └── web/          # the page: Preact + htm modules, charts, MapLibre, Nogat's kit and tokens, instrukcja/
+│       ├── _app.py       # Starlette app: private API, headers; _root, _live, _analyses, _traffic, _feedback, _admin, _terms
+│       └── web/          # the page: Preact + htm modules, charts, MapLibre, Nogat's kit and tokens, instrukcja/, admin/
 ├── AGENTS.md, llms.txt   # Agent guide — derived from the catalog (obserwator commands guide)
 ├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp], compose, nginx with /mcp)
 ├── tests/                # Tests (unit, contract, e2e, live; fixtures/store with synthetic IMGW-PIB and ČHMÚ archives, recordings; fixtures/export_golden)
