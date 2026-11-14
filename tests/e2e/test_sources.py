@@ -50,7 +50,9 @@ def test_a_view_has_one_strip_with_the_lines_of_the_map_and_the_panel(
         box = on_screen.bounding_box()
         assert box is not None and box["height"] < 3 * 12 * 1.4
     else:
-        # the station's sheet stops above the strip, which stays in sight
+        # the station's sheet stops above the strip, which stays in sight; measured once
+        # its 0.25 s slide-in has ended, or its box is still lower by the transform
+        expect(panel).to_have_css("transform", "none")
         sheet = panel.bounding_box()
         foot = page.locator(".view-foot").bounding_box()
         assert sheet is not None and foot is not None

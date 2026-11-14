@@ -18,6 +18,10 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   the writer, reader, catalog and series), the file checksum of the writer, `_next_month`,
   `_relative`, the lines of a dataset (`_lines`), `_has_lang_option` and the GUI's UTC time
   (`utc_now`).
+  Tests: the phone case of the view's one strip of provider lines (`test_sources.py`)
+  measured the station's sheet during its 0.25 s slide-in, up to ~31 px below the strip
+  when the run was slow; it now waits for the sheet's `transform: none` first, as the
+  shell's sheet test does.
 
 - **CI fixes of `develop` (2026-11-14).** Security: `opentelemetry-api` 1.45.1 → 1.45.2 in
   `uv.lock` (CVE-2026-126360; `pip-audit` of CI). The GUI's report file lock (`_locked` in
