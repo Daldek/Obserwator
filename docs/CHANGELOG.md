@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **The Windows runs of the gate (2026-11-14).** Since the GUI and the data root were merged,
+  the gate failed six tests on Windows (Python 3.12 and 3.15). The GUI's page scripts (`.js`,
+  `.mjs`) are `text/javascript` (RFC 9239) on every system: `build_app` registers both in
+  `mimetypes`, whose table Starlette's static files read and which on Windows comes from the
+  registry (`application/javascript` on the runners, `text/plain` on some machines, which
+  `X-Content-Type-Options: nosniff` keeps a browser from running). `obserwator gui serve` also
+  stops gracefully on Ctrl+Break on Windows (`SIGBREAK`, which uvicorn, and so `obserwator
+  server`, handles already): Windows delivers no `SIGTERM` to another program, so a supervisor
+  sends Ctrl+Break to the console process group the server leads. Tests: the servers of
+  `test_serve.py` and `test_api_main.py` are stopped that way on Windows (`SERVER_FLAGS` and
+  `STOP_SIGNAL` of `tests/contract/support.py`), the modes `0600` and `0700` of
+  `feedback.jsonl`, `stats.jsonl` and their directory are checked where permission bits exist,
+  the plan of `store catalog` is compared with the POSIX paths of the stored files, and a new
+  test serves the scripts as `text/javascript` when the system registers other types for them.
+
 - **Info texts by Nogat DEV-15.14 (2026-11-14).** Every explanation of the GUI, the „(i)” of the
   analysis parts, of „Informacje o stacji”, „Pomiary bieżące”, „Pobierz” and the station list and
   the PMAXTP methods, is rewritten in Polish and English in the shape of DEV-15.14 (ECO-069): a

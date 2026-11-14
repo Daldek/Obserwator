@@ -19,6 +19,7 @@ import tempfile
 from collections.abc import Iterator, Mapping
 from datetime import date
 from pathlib import Path
+from signal import Signals
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
@@ -53,6 +54,17 @@ ANYWHERE = tuple(
         for directory in (Path.cwd(), tempfile.gettempdir())
     )
 )
+
+# How a supervisor stops a server: SIGTERM, or Ctrl+Break on Windows, which delivers no
+# SIGTERM to another program (Popen.send_signal(SIGTERM) is TerminateProcess, so no
+# handler runs); Ctrl+Break goes to the console process group that the server's process
+# leads when created with SERVER_FLAGS.
+if sys.platform == "win32":
+    SERVER_FLAGS = subprocess.CREATE_NEW_PROCESS_GROUP
+    STOP_SIGNAL = Signals.CTRL_BREAK_EVENT
+else:
+    SERVER_FLAGS = 0
+    STOP_SIGNAL = Signals.SIGTERM
 
 
 def trailing_lines(table: list[dict[str, str]]) -> Attribution:

@@ -3,7 +3,6 @@
 import http.client
 import json
 import runpy
-import signal
 import socket
 import subprocess
 import sys
@@ -19,6 +18,7 @@ from obserwator import agent_guide
 from obserwator.api.main import app, run_server
 from obserwator.config import settings
 from tests.contract.nogat import validate
+from tests.contract.support import SERVER_FLAGS, STOP_SIGNAL
 
 DEADLINE_S = 60.0
 """The longest wait for the server to start or to stop [s]."""
@@ -153,6 +153,7 @@ def test_obserwator_server_logs_requests_and_prints_only_its_lifecycle(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        creationflags=SERVER_FLAGS,
     )
     try:
         start = json.loads(process.stderr.readline())
@@ -167,7 +168,7 @@ def test_obserwator_server_logs_requests_and_prints_only_its_lifecycle(
                 time.sleep(0.05)
         redirect = _answer(port, "/", "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0")
         missing = _answer(port, "/nothing?q=Krak%C3%B3w&limit=5", "curl/8.5.0")
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(STOP_SIGNAL)  # SIGTERM; Ctrl+Break on Windows
         stdout, stderr = process.communicate(timeout=DEADLINE_S)
     finally:
         if process.poll() is None:  # pragma: no cover - only when the test fails

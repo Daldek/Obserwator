@@ -527,7 +527,7 @@ def test_store_catalog_of_chmi_is_planned_alike_offline_in_python_cli_and_rest(
     # indexes and the catalog: no catalog yet, so nothing is current.
     assert len(synced.items) == 5
     assert [action.status for action in python.result.actions] == ["missing"] * 7
-    stored = [str(item.version.relative_to(raw)) for item in synced.items]
+    stored = [item.version.relative_to(raw).as_posix() for item in synced.items]
     assert all(
         path in action.detail
         for path, action in zip(stored, python.result.actions[:5], strict=True)

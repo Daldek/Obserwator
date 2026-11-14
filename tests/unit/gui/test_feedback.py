@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -98,8 +99,9 @@ def test_a_report_is_stored_as_one_line_with_the_servers_context(client, path):
     assert report["is_read"] is False
     text = path.read_bytes()
     assert IP.encode() not in text and b"Firefox" not in text
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    if os.name != "nt":  # Windows has no permission bits
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
 
 
 def test_a_report_without_a_station_stores_null_and_empty_parameters(client, path):
