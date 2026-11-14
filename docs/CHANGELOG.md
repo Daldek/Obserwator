@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **State borders from PRG and RÚIAN (ADR-018).** The packaged borders of Poland and Czechia
+  come from PRG (GUGiK) and RÚIAN (ČÚZK) instead of Natural Earth, built by
+  `scripts/build_borders.py` (simplified to 50 m). A catalog keeps a location within the
+  border's tolerance (50 m) plus its uncertainty (at least 150 m) instead of 1,500 m. Catalogs
+  carry the new lines G („Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, …”) and Z
+  („Źródło: Český úřad zeměměřický a katastrální (ČÚZK), …, licencja CC BY 4.0”); the GUI's
+  strip shows them as GK and ZK. Rebuild catalogs to add the lines.
+- **Server logs of Nogat ECO-066 (ADR-019).** `obserwator server` and `obserwator gui serve`
+  write `nogat-log/1` records (access, app, lifecycle) to `<state_dir>/obserwator/logs`
+  through Nogat's reference module `obserwator.nogat_logging`, deleted after 14 days, without
+  client addresses; uvicorn keeps no access log. New setting `OBSERWATOR_STATE_DIR`;
+  `OBSERWATOR_LOG_LEVEL` is removed (fixed levels, DEV-12.7). Docker: state volume, logging
+  driver `local`, nginx without logs.
+- **Nogat kit 0.6.2 (ECO-068).** The regulamin 1.0 corrected in place (`nogat-terms.md`,
+  `nogat-terms.html`) and `nogat-sources.js` copied byte for byte.
 - **Provider lines of Nogat ECO-065 (kit 0.6.0).** Products link the providers' terms instead
   of restating them: the line H of hydro.imgw.pl and the notice N, a summary of the IMGW-PIB
   terms, are gone from every product, and the terms lines name what they link: „Regulamin

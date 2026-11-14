@@ -37,7 +37,7 @@ class GuiState:
     pmaxtp : Pmaxtp
         PMAXTP of points.
     traffic : TrafficState
-        Rate limit, daily statistics and access log (Nogat DEV-15.9 to DEV-15.11).
+        Rate limit and daily statistics (Nogat DEV-15.9, DEV-15.11).
     feedback : Feedback
         Reports of „Zgłoś uwagę” (DEV-15.12).
     terms : bytes or None
@@ -65,10 +65,10 @@ class GuiState:
     boot: str = field(default_factory=lambda: secrets.token_hex(8))
 
     def directories(self) -> tuple[Path, ...]:
-        """The server's directories hidden in answers (D6): root, state, temporary, working."""
+        """The server's directories hidden in answers (D6): root, own, temporary, working."""
         return (
             self.config.root,
-            self.config.state_dir,
+            self.config.gui_dir,
             Path(tempfile.gettempdir()),
             Path.cwd(),
             *self.hidden,

@@ -601,6 +601,8 @@ curl -X POST "http://localhost:8000/api/v1/store/sync?check=true" \
 
 Store routes work only on the server-side, absolute roots (ADR-017; the client passes neither): `OBSERWATOR_RAW_ROOT` is the root of `store check|sync|export` and `pmaxtp check|sync|read`, `OBSERWATOR_ROOT` the root of `store catalog`, `store info|scan`, `stations export`, `stations find?source=store`, `series *` and `analyses *`, and `series build` and `store catalog` also read `OBSERWATOR_RAW_ROOT` as their `raw_root`. A command whose root is not set answers 503 `store_unavailable` (`details.reason="not_configured"`, the message names the variable), a root of the other kind 503 with `details.reason="wrong_root"`; `version` is relative to the command's root. Writing operations additionally require `OBSERWATOR_STORE_WRITES_ENABLED=true`, `OBSERWATOR_STORE_WRITE_TOKEN` and an `X-API-Key` header with that token — they are disabled by default (403 `forbidden`). User coordinate CSV files (`user_locations`) only from the `OBSERWATOR_USER_LOCATIONS_DIR` directory.
 
+The server prints nothing but its lifecycle records on stderr (the record `start` names `host` and `port`) and writes its access, application and lifecycle logs to `<state_dir>/obserwator/logs`: section [Server logs](#server-logs).
+
 ## GUI
 
 `obserwator gui serve` serves a browser GUI of Obserwator's data root (ADR-013): every located station of IMGW-PIB and ČHMÚ on one map, a station's description, series and current IMGW-PIB measurements, the analyses Hydrolog computed, downloads, and PMAXTP of a point. It is a server of its own that reads Obserwator's data only through its public functions (and uses the internal helpers `_environment`, `_jsonable` and `_hydrolog` for the settings, JSON and Hydrolog's program); `obserwator server` serves the REST API, and its `GET /` redirects to `/docs`. The command needs `pip install "obserwator[cli,gui]"`; the Python API (`obserwator.gui.create_app`, `serve`) needs only the extra `gui` (pyarrow, Starlette, uvicorn). The page is Polish by default and English through „PL | EN”; its texts are the area `gui` of the message catalog. A guide in Polish is served at `instrukcja/` („Instrukcja” in the top bar).
@@ -610,7 +612,7 @@ obserwator gui serve [--host 127.0.0.1] [--port 8060] [--root PATH] [--no-browse
 ```
 
 - `--host` and `--port` give the address, `127.0.0.1:8060` by default (this computer only; port `0` takes a free one); `--root` the data root, else the CLI's root (`OBSERWATOR_ROOT`, `[obserwator] root`, `<data_dir>/obserwator`); `--no-browser` leaves the default browser closed.
-- Once it listens, the command prints `Obserwator GUI: http://127.0.0.1:8060/` on stderr and blocks until Ctrl+C or `SIGTERM`; then it lets open requests end (at most 5 s) and exits with 0. A port in use is `conflict` (`details.reason="port_in_use"`), a host that does not resolve or a basemap address that is no `http`/`https` URL is `validation_error`, a missing package of the extra `missing_dependency`: the error line of every command, with its exit code.
+- Once it listens, the command writes the lifecycle record `start` on stderr, one JSON line whose `settings.url` is the address (e.g. `http://127.0.0.1:8060/`), and blocks until Ctrl+C or `SIGTERM`; then it lets open requests end (at most 5 s), writes the record `stop` and exits with 0. Nothing else goes to stdout or stderr while it serves (section [Server logs](#server-logs)). A port in use is `conflict` (`details.reason="port_in_use"`), a host that does not resolve or a basemap address that is no `http`/`https` URL is `validation_error`, a missing package of the extra `missing_dependency`: the error line of every command, with its exit code.
 - Python: `obserwator.gui.serve(host=, port=, root=, open_browser=)` blocks the same way and returns `url`, `started_at` and `stopped_at`; `obserwator.gui.create_app(root=)` returns the ASGI app. Importing `obserwator.gui` imports neither Starlette nor uvicorn.
 
 **The page.** The top bar holds Obserwator's mark, the view with its station or point, „Zgłoś uwagę”, „Instrukcja”, Nogat's app menu „Aplikacje” (the GUIs of `[nogat.gui]`), „PL | EN” and the theme („Auto”, „Jasny”, „Ciemny”). The map's bar switches the views „Stacje | Pomiary bieżące | PMAXTP”:
@@ -627,7 +629,8 @@ Every analysis shows Hydrolog's result with its source (stored, or computed on r
 - IMGW-PIB's current data (water states, hydrological, meteorological and synoptic records), each fetched by the server on demand at most once per 10 minutes, one request at a time (a failed fetch keeps the last snapshot with its time and is not repeated for a minute), and PMAXTP of a point (per method and point at four decimals) for 24 hours, at most 1,000 points: in memory only. The page connects only to its own origin and the basemap's; the link to IMGW-PIB's PMAXTP answer is a navigation the person starts.
 - Analyses: every number is Hydrolog's. The results `obserwator analyses build` stored in the data root are shown as they are (`list_analyses`, `read_analysis`); a station whose provider has none stored shows no analysis. A person's choice (a period, a distribution, a threshold) and the normal of the climate stripes' reference period are computed on request by Hydrolog's program (`compute_analysis`): the program of `OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the server starts; at most two processes at a time, 30 s each, the result kept in memory (500 results) and never written. Without the program only stored results are shown, and a person's choice is refused (`missing_dependency`) until the server starts again with one.
 - Temporary files in `TMPDIR`: the series files Hydrolog's program reads for a computation on request (a directory `obserwator-analyses-*` of each computation, removed when it ends) and a Parquet download (removed at once).
-- Its own files, only in `<data_dir>/obserwator` (directories `0700`, files `0600`): `stats.jsonl`, `feedback.jsonl` and `logs/access-YYYY-MM-DD.jsonl` (section [Public deployment](#public-deployment)). That directory is also the CLI's default root: when it and the data root are one, or one holds the other (also through symbolic links), the GUI writes none of its files (no statistics, no access log, „Zgłoś uwagę” answers `forbidden`) and logs one warning. Serve a root elsewhere, or set another `data_dir`, to keep them.
+- Its own files, only in `<data_dir>/obserwator` (directories `0700`, files `0600`): `stats.jsonl` and `feedback.jsonl` (section [Public deployment](#public-deployment)). That directory is also the CLI's default root: when it and the data root are one, or one holds the other (also through symbolic links), the GUI writes neither (no statistics, „Zgłoś uwagę” answers `forbidden`) and logs one warning. Serve a root elsewhere, or set another `data_dir`, to keep them.
+- Its logs, in `<state_dir>/obserwator/logs` (section [Server logs](#server-logs)), written by `obserwator gui serve` and `obserwator.gui.serve`; an app of `create_app` mounted by a host writes none, the host keeps its own.
 
 **Settings** (also in the table of [Configuration](#configuration)):
 
@@ -669,13 +672,13 @@ Every other address is a static file of `gui/web/` (`index.html` at `/`, `instru
 
 ### Behind an authenticating proxy
 
-The GUI has no sign-in: whoever reaches its address uses it. Bind it to `127.0.0.1` (the default) and, when others need it, put an authenticating reverse proxy in front of it, e.g. Cloudflare Access through a Cloudflare Tunnel, or a proxy with a sign-in of its own. uvicorn takes the client's address from the proxy's `X-Forwarded-For` only when the connection comes from an address of `FORWARDED_ALLOW_IPS` (uvicorn's variable, default `127.0.0.1,::1`): set it to the proxy's address, so the rate limit and the visitor count see clients, not the proxy. uvicorn's own access log is off, and no `server` header is sent.
+The GUI has no sign-in: whoever reaches its address uses it. Bind it to `127.0.0.1` (the default) and, when others need it, put an authenticating reverse proxy in front of it, e.g. Cloudflare Access through a Cloudflare Tunnel, or a proxy with a sign-in of its own. uvicorn takes the client's address from the proxy's `X-Forwarded-For` only when the connection comes from an address of `FORWARDED_ALLOW_IPS` (uvicorn's variable, default `127.0.0.1,::1`): set it to the proxy's address, so the rate limit and the visitor count see clients, not the proxy; no log holds the address. uvicorn keeps no log of its own, and no `server` header is sent.
 
 Every answer carries:
 
 - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (the basemap's origin only when a basemap is set);
 - `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (the tile server learns no page), `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`;
-- `Cache-Control: no-cache` unless the answer sets another, and `X-Request-Id`, the id of its access-log line.
+- `Cache-Control: no-cache` unless the answer sets another. No answer names its request id: the id stays in the server's logs (Nogat DEV-12.4).
 
 There are no cookies, sessions or CORS headers; answers of 1 KiB or more are compressed with gzip for a client that accepts it. `curl -sI http://127.0.0.1:8060/` shows the headers.
 
@@ -699,7 +702,7 @@ UMask=0077
 WantedBy=default.target
 ```
 
-`systemctl --user enable --now obserwator-gui.service` starts it; `systemctl --user stop obserwator-gui.service` sends `SIGTERM`, after which the GUI writes the day's statistics and exits with 0. `TMPDIR` takes the temporary series and Parquet files. The GUI's warnings and errors go to stderr, under systemd to the journal, which must keep them at most 14 days (Nogat DEV-15.10): e.g. `MaxRetentionSec=14day` in a drop-in of `/etc/systemd/journald.conf.d/` (journald's settings hold for the whole journal). A user's services run while the user is logged in unless lingering is on (`loginctl enable-linger <user>`).
+`systemctl --user enable --now obserwator-gui.service` starts it; `systemctl --user stop obserwator-gui.service` sends `SIGTERM`, after which the GUI writes the day's statistics and exits with 0. `TMPDIR` takes the temporary series and Parquet files. The journal gets only the lifecycle records and the errors reduced to their type, which name no request (Nogat DEV-12.7), so it needs no retention of its own; the logs themselves are in `<state_dir>/obserwator/logs`, deleted by the GUI after 14 days (section [Server logs](#server-logs)). A user's services run while the user is logged in unless lingering is on (`loginctl enable-linger <user>`).
 
 ### Public deployment
 
@@ -729,7 +732,7 @@ mail_transfer = "Mogą być przetwarzane poza Europejskim Obszarem Gospodarczym.
 The other rules hold in every deployment whose own directory lies apart from the data root:
 
 - **Rate limit (DEV-15.9).** API calls and HTML pages (`/`, `index.html`, `regulamin.html`, `instrukcja/`) of one client address are counted in a sliding window: 300 requests in 60 s by default (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`); static files (scripts, styles, images, the borders) are not counted. Over the limit the answer is `429` with `Retry-After` in seconds: the error document `rate_limited` for an API call, the page „Zbyt wiele żądań. Spróbuj ponownie za <n> s.” for a page. The address stays in memory for the window only. „Zgłoś uwagę” has a limit of its own: 5 reports of one address in 10 minutes.
-- **Logs (DEV-15.10).** No log holds the client's address. The access log is one JSON line per request in `<data_dir>/obserwator/logs/access-YYYY-MM-DD.jsonl` (the UTC day): `time`, `method`, `path` with the query, `status`, `size`, `duration_ms`, `request_id` (the answer's `X-Request-Id`) and `user_agent`; the files of the 14 most recent UTC days are kept, older ones deleted at the start and at each day's change. uvicorn's access log is off, and the app's loggers write no client field or request scope; their warnings and errors go to stderr, kept 14 days at most as above. A reverse proxy's logs fall under the same rule.
+- **Logs (DEV-15.10, DEV-12.4 to DEV-12.9).** No log holds the client's address, a header but the User-Agent's class, a cookie or a body; the access log is one record per answered request, the rate limit's `429` included, in `<state_dir>/obserwator/logs`, deleted after 14 days (section [Server logs](#server-logs)). A reverse proxy keeps no log (`access_log off;`, `error_log /dev/null;` for nginx; Cloudflare's own processing is the operator's processor, named in the regulamin).
 - **Daily totals (DEV-15.11).** One JSON object per UTC day and line of `<data_dir>/obserwator/stats.jsonl`, in date order, rewritten atomically every 5 minutes, at the day's change and at shutdown; a restart adds to the day's line:
 
   | Key | What the GUI counts |
@@ -843,11 +846,37 @@ docker compose up -d
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d
 ```
 
-The image (`python:3.12-slim`) installs `.[api,mcp]` and runs a single uvicorn process (MCP sessions live in the process). `docker-compose.yml` passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) from the environment; `nginx.conf` has `location = /mcp` with a request limit and no buffering.
+The image (`python:3.12-slim`) installs `.[api,mcp]` and runs a single uvicorn process (MCP sessions live in the process) with `--no-access-log --log-level warning`. `docker-compose.yml` passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) from the environment and `NOGAT_STATE_DIR=/state`, mounts the host's `${NOGAT_STATE_DIR:-../state}/obserwator` (relative to `docker/`) as `/state/obserwator`, where the server writes its logs (section [Server logs](#server-logs); the directory must be writable by the image's `appuser`, UID 1000: `mkdir -p <state_dir>/obserwator && chown 1000 <state_dir>/obserwator`), and gives both containers the logging driver `local` (`max-size: "1m"`, `max-file: "3"`). `nginx.conf` has `location = /mcp` with a request limit and no buffering, keeps no log (`access_log off;`, `error_log /dev/null;`, so a rejection of `limit_req` is not logged either) and passes no `X-Request-ID`.
+
+**Migrating a container.** A container created before 3.0.0's logging change keeps Docker's default `json-file` log: uncapped, with uvicorn's access lines and the client addresses in them (on the VPS: `imgwtools-api`). Docker deletes that file with the container: rebuild it from this code (`docker compose up -d --build` in `docker/`) or remove it (`docker rm -f <name>`); both need the `docker` group.
+
+## Server logs
+
+`obserwator server` and `obserwator gui serve` keep the logs of Nogat DEV-12.4 to DEV-12.9 with Nogat's reference module, copied byte for byte as `obserwator.nogat_logging`. Every record is one JSON object per line, valid against `schemas/nogat/record-1.schema.json` (`nogat-log/1`): `time` (UTC), `level`, `app` (`obserwator`), `version`, `kind`, `request_id` (16 random hexadecimal digits, never sent to the client), and by kind:
+
+| File | One record per | Keys |
+|---|---|---|
+| `access-YYYY-MM-DD.jsonl` | answered HTTP request | `method`, `path` (with the query; the values of free-text, personal and secret parameters such as `q`, `query`, `name`, `email`, `token`, `key` dropped, an IP address written `[ip]`), `status`, `bytes`, `duration_ms`, `agent` (`browser`, `bot`, `script` or `none`: the class of the User-Agent, never the header) |
+| `app-YYYY-MM-DD.jsonl` | warning, error or exception of the server | `event` (a stable code or the logger's name), `message`, `error` (`type`, `message`, `stack`, or `null`) |
+| `lifecycle-YYYY-MM-DD.jsonl` | start, stop, deletion of old files | `event` (`start`, `stop`, `prune`), `message`, and in `start` the `settings` (the GUI: `url`, `root`, `public`, `own_files`, `basemap`, `request_limit`, `request_window`; the REST server: `host`, `port`, `env`, `root`, `raw_root`, `store_writes_enabled`, `mcp`) |
+
+- **Where.** `<state_dir>/obserwator/logs`, `state_dir` resolved as every setting (`OBSERWATOR_STATE_DIR`, `.env`, `NOGAT_STATE_DIR`, `[obserwator]`/`[nogat] state_dir`, default the user state directory of `nogat`, `~/.local/state/nogat` on Linux), by the UTC date of `time`. In a container `NOGAT_STATE_DIR` names the directory where the host's `<state_dir>/obserwator` is mounted ([Docker](#docker)).
+- **What is not logged.** No client address, cookie, header, request body or uploaded file name; static content the same for every client answered below `400`: the GUI's page files (`css/`, `src/`, `vendor/`, `nogat/`, `theme-init.js`), its guide `instrukcja/`, the packaged borders `data/` and `regulamin.html`; the REST server's `/docs`, `/redoc`, `/openapi.json`, `/llms.txt`, `/health`, `/api/v1` and `/api/v1/commands/schema`.
+- **Deletion.** The server deletes a file once its date is 14 days old, at start and at each 00:00 UTC; no cron, journald or Docker setting is needed.
+- **Standard output and error** get only the lifecycle records and the `error` and `critical` app records reduced to their `event` and error `type` (no request id, no message), whatever else is configured: the journal or a container's log names no request. No setting changes a level: `OBSERWATOR_LOG_LEVEL` is gone (it configured nothing; a value left in the environment is ignored).
+- **Use** is counted only by the GUI's daily totals in `<data_dir>/obserwator/stats.jsonl` (DEV-15.11), never from the logs.
+
+The operator reads the logs with `jq` (not installed on every host: `apt install jq` as root once, or its static release binary in `~/.local/bin`): every record but the ordinary requests, in time order:
+
+```bash
+jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' ~/.local/state/nogat/obserwator/logs/*.jsonl
+```
+
+**Migration from earlier 3.0.0 development builds.** The GUI's access log moves from `<data_dir>/obserwator/logs/access-YYYY-MM-DD.jsonl` to `<state_dir>/obserwator/logs/` in the format above: `size` is `bytes`, `user_agent` is `agent` (a class), and answers carry no `X-Request-Id`. The GUI deletes the old directory's files no more; remove `<data_dir>/obserwator/logs/` by hand. A unit that runs uvicorn directly (such as the mockup behind `obserwator-public.service` until the GUI replaces it) keeps `--no-access-log` and adds `--log-level warning`.
 
 ## Configuration
 
-A setting comes from the first of: a command-line option, the `OBSERWATOR_<KEY>` variable, the same key in the `.env` file of the working directory, the `NOGAT_<KEY>` variable (only the shared keys `data_dir`, `cache_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file (in this order; `[nogat]` holds only shared keys), the default value. `nogat.toml` lies in the user configuration directory (`platformdirs.user_config_path("nogat")`, e.g. `~/.config/nogat/nogat.toml`) or at the path from `NOGAT_CONFIG`; a missing file is not an error, an unreadable or invalid file ends every `obserwator` call with a `validation_error`. Credentials (`OBSERWATOR_STORE_WRITE_TOKEN`) come only from the environment, never from the file. The tool writes nothing into the working directory: the roots of the store lie under `data_dir` (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), the cache under `cache_dir` (`<cache_dir>/obserwator`).
+A setting comes from the first of: a command-line option, the `OBSERWATOR_<KEY>` variable, the same key in the `.env` file of the working directory, the `NOGAT_<KEY>` variable (only the shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file (in this order; `[nogat]` holds only shared keys), the default value. `nogat.toml` lies in the user configuration directory (`platformdirs.user_config_path("nogat")`, e.g. `~/.config/nogat/nogat.toml`) or at the path from `NOGAT_CONFIG`; a missing file is not an error, an unreadable or invalid file ends every `obserwator` call with a `validation_error`. Credentials (`OBSERWATOR_STORE_WRITE_TOKEN`) come only from the environment, never from the file. The tool writes nothing into the working directory: the roots of the store lie under `data_dir` (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), the cache under `cache_dir` (`<cache_dir>/obserwator`) and the servers' logs under `state_dir` (`<state_dir>/obserwator/logs`).
 
 ```toml
 [nogat]   # keys shared by all tools of the ecosystem
@@ -862,8 +891,9 @@ api_max_limit = 500
 
 | Variable | Key in `nogat.toml` | Default | Meaning |
 |---|---|---|---|
-| `OBSERWATOR_DATA_DIR` (also `NOGAT_DATA_DIR`) | `data_dir` | `nogat` user data directory (`~/.local/share/nogat`) | parent directory of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`) and the server state; **before 3.0.0 `IMGW_DATA_DIR` meant the reference data** (see `OBSERWATOR_REFERENCE_DIR`) |
+| `OBSERWATOR_DATA_DIR` (also `NOGAT_DATA_DIR`) | `data_dir` | `nogat` user data directory (`~/.local/share/nogat`) | parent directory of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`), of the API keys and of the GUI's `stats.jsonl` and `feedback.jsonl`; **before 3.0.0 `IMGW_DATA_DIR` meant the reference data** (see `OBSERWATOR_REFERENCE_DIR`) |
 | `OBSERWATOR_CACHE_DIR` (also `NOGAT_CACHE_DIR`) | `cache_dir` | `nogat` cache directory (`~/.cache/nogat`) | cache (`<cache_dir>/obserwator`) |
+| `OBSERWATOR_STATE_DIR` (also `NOGAT_STATE_DIR`) | `state_dir` | `nogat` user state directory (`~/.local/state/nogat`) | state kept between runs: the servers' logs in `<state_dir>/obserwator/logs` (section [Server logs](#server-logs)) |
 | `OBSERWATOR_REFERENCE_DIR` | `reference_dir` | `<cache_dir>/obserwator/reference` | IMGW-PIB reference data (`python -m obserwator.reference_data`) |
 | `OBSERWATOR_LANG` (also `NOGAT_LANG`) | `lang` | `pl` | `pl` or `en`: CLI help, progress lines, the summary without `--json` and the default `--lang` (the last error line and the envelope of `--json` are always in English; Polish descriptions in it via `--lang pl`) |
 | `OBSERWATOR_ROOT` | `root` | `<data_dir>/obserwator` | the data root (series, station catalogs, analyses; ADR-017): `--root` of its commands and of `store info\|scan` for the CLI, the library and `obserwator mcp`; the data root of the REST server (without it the routes of those commands answer 503, never the default directory) |
@@ -876,7 +906,6 @@ api_max_limit = 500
 | `OBSERWATOR_RATE_LIMIT` | `rate_limit` | `100` | requests per hour (0 = no limit) |
 | `OBSERWATOR_ENV` | `env` | `development` | `development` or `production` |
 | `OBSERWATOR_HOST`, `OBSERWATOR_PORT` | `host`, `port` | `0.0.0.0`, `8000` | address and port of `obserwator server` |
-| `OBSERWATOR_LOG_LEVEL` | `log_level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `OBSERWATOR_MCP_ENABLED` | `mcp_enabled` | `false` | `/mcp` in `obserwator server` (read and plan only) |
 | `OBSERWATOR_MCP_ALLOWED_HOSTS` | `mcp_allowed_hosts` | `127.0.0.1,localhost` | `Host` names served by `/mcp` |
 | `OBSERWATOR_MCP_ALLOW_WRITES` | `mcp_allow_writes` | `false` | `obserwator mcp` in write mode (`--allow-writes`, `--no-allow-writes`) |

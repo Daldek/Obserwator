@@ -3,7 +3,7 @@ User environment of Obserwator: ``nogat.toml``, ``NOGAT_*`` variables, user dire
 
 Every setting comes from the first of: the command-line option, the environment
 variable ``OBSERWATOR_<KEY>``, the shared variable ``NOGAT_<KEY>`` (only the shared
-keys ``data_dir``, ``cache_dir`` and ``lang``), the section ``[obserwator]`` of
+keys ``data_dir``, ``cache_dir``, ``state_dir`` and ``lang``), the section ``[obserwator]`` of
 ``nogat.toml``, the section ``[nogat]`` of it (shared keys only) and the
 built-in default (DEV-18.1, ECO-028). The file is ``nogat.toml`` in
 ``platformdirs.user_config_path("nogat")`` or the path in ``NOGAT_CONFIG``; it
@@ -35,7 +35,7 @@ PREFIX = "OBSERWATOR_"
 SHARED_PREFIX = "NOGAT_"
 CONFIG_ENV = "NOGAT_CONFIG"
 CONFIG_FILENAME = "nogat.toml"
-SHARED_KEYS: tuple[str, ...] = ("data_dir", "cache_dir", "lang")
+SHARED_KEYS: tuple[str, ...] = ("data_dir", "cache_dir", "state_dir", "lang")
 """Keys of ``[nogat]`` and ``NOGAT_<KEY>``: the same for every tool of the ecosystem."""
 CREDENTIAL_KEYS: tuple[str, ...] = ("store_write_token",)
 """Settings that only the environment may give (DEV-18.4)."""
@@ -78,6 +78,11 @@ def default_data_dir() -> Path:
 def default_cache_dir() -> Path:
     """Default ``cache_dir``: the user cache directory of ``nogat`` (DEV-18.2)."""
     return platformdirs.user_cache_path(APP)
+
+
+def default_state_dir() -> Path:
+    """Default ``state_dir``: the user state directory of ``nogat`` (DEV-18.2)."""
+    return platformdirs.user_state_path(APP)
 
 
 def config_file() -> ConfigFile:

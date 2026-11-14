@@ -15,6 +15,12 @@ refresh the copies from `std-1.0` at the tag when it does):
 - `handoff-1.schema.json` (Nogat `schemas/exchange/`): the hand-off envelope
   `nogat-handoff/1` the GUI builds; copied again from Nogat commit `b29eada`
   (ECO-065: its examples carry RK alone).
+- `record-1.schema.json` (Nogat `schemas/log/`): a record of the servers' logs,
+  `nogat-log/1` (DEV-12.4), copied from Nogat commit `f370afe`. The module that
+  writes the records, Nogat `standards/reference/nogat_logging.py`, is copied byte
+  for byte from the same commit to `src/obserwator/nogat_logging.py`, shared by
+  `obserwator server` and `obserwator gui serve`; `tests/unit/test_api_main.py`
+  and `tests/unit/gui/` validate the records both servers write against the schema.
 
 Do not edit these files; copy them again when the standard changes (DEV-15.6).
 On 2026-11-12 all four were byte for byte equal to Nogat commit `7786271`.

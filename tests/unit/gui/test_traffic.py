@@ -1,13 +1,12 @@
-"""Rate limit, daily statistics and access log of the public GUI (Nogat DEV-15.9 to DEV-15.11)."""
+"""Rate limit and daily statistics of the public GUI (Nogat DEV-15.9, DEV-15.11)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-import re
 import stat
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from starlette.applications import Starlette
@@ -29,16 +28,6 @@ KEYS = [
     "analyses_run",
     "downloads",
 ]
-LOG_KEYS = {
-    "time",
-    "method",
-    "path",
-    "status",
-    "size",
-    "duration_ms",
-    "request_id",
-    "user_agent",
-}
 
 
 class Clock:
@@ -63,7 +52,7 @@ def make_state(tmp_path, clock, *, limit=300, window=60) -> TrafficState:
     return TrafficState(
         limit=limit,
         window=window,
-        state_dir=tmp_path / "state",
+        directory=tmp_path / "state",
         clock=clock.time,
         monotonic=clock.monotonic,
     )
@@ -114,11 +103,6 @@ def client_of(app, address: str = IP, **kwargs) -> TestClient:
 def stats_lines(tmp_path):
     text = (tmp_path / "state" / "stats.jsonl").read_text(encoding="utf-8")
     return [json.loads(line) for line in text.splitlines()]
-
-
-def log_lines(tmp_path, day: str = "2026-11-13"):
-    path = tmp_path / "state" / "logs" / f"access-{day}.jsonl"
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 # --------------------------------------------------------------------------
@@ -190,7 +174,6 @@ def test_a_page_over_the_limit_is_a_short_page_in_the_readers_language(tmp_path)
     assert " style=" not in polish.text
     assert '<link rel="stylesheet" href="/nogat/tokens.css">' in polish.text
     assert "Too many requests. Try again in 60 s." in english.text
-    assert re.fullmatch(r"[0-9a-f]{16}", polish.headers["X-Request-Id"])
 
 
 def test_static_files_are_not_counted_nor_refused(tmp_path):
@@ -380,46 +363,6 @@ def test_an_unknown_total_is_a_program_error(tmp_path):
         make_state(tmp_path, Clock()).count("pages")
 
 
-# --------------------------------------------------------------------------
-# Access log (DEV-15.10)
-# --------------------------------------------------------------------------
-
-
-def test_every_request_is_one_log_line_without_the_address(tmp_path):
-    clock = Clock()
-    app = make_app(make_state(tmp_path, clock, limit=2))
-
-    with client_of(app, raise_server_exceptions=False) as client:
-        page = client.get("/?a=1&b=%C5%BC", headers={"User-Agent": "Firefox/140"})
-        static = client.get("/app.js")
-        client.get("/api/broken")
-        refused = client.get("/api/x")
-
-    lines = log_lines(tmp_path)
-    assert [line["path"] for line in lines] == [
-        "/?a=1&b=%C5%BC",
-        "/app.js",
-        "/api/broken",
-        "/api/x",
-    ]
-    assert [line["status"] for line in lines] == [200, 200, 500, 429]
-    assert all(set(line) == LOG_KEYS for line in lines)
-    first = lines[0]
-    assert first["time"] == "2026-11-13T12:00:00.000Z"
-    assert first["method"] == "GET"
-    assert first["size"] == len(page.content)
-    assert first["user_agent"] == "Firefox/140"
-    assert first["request_id"] == page.headers["X-Request-Id"]
-    assert lines[1]["request_id"] == static.headers["X-Request-Id"]
-    assert lines[3]["request_id"] == refused.headers["X-Request-Id"]
-    assert lines[3]["size"] == len(refused.content)
-    assert len({line["request_id"] for line in lines}) == 4
-    assert all(re.fullmatch(r"[0-9a-f]{16}", line["request_id"]) for line in lines)
-    log = tmp_path / "state" / "logs" / "access-2026-11-13.jsonl"
-    assert stat.S_IMODE(log.stat().st_mode) == 0o600
-    assert stat.S_IMODE(log.parent.stat().st_mode) == 0o700
-
-
 def test_no_written_file_holds_the_client_address(tmp_path):
     clock = Clock()
     state = make_state(tmp_path, clock, limit=1)
@@ -429,53 +372,10 @@ def test_no_written_file_holds_the_client_address(tmp_path):
         client.get("/")  # refused
         client.get("/api/broken")
         client.get("/app.js")
-        clock.advance(86400)  # a new day: the old line and a new log
+        clock.advance(86400)  # a new day: the old day's line and a new one
         client.get("/api/a")
 
     files = [path for path in (tmp_path / "state").rglob("*") if path.is_file()]
-    assert len(files) == 3  # stats.jsonl and two access logs
-    for path in files:
-        assert IP.encode() not in path.read_bytes(), path.name
-
-
-def _touch_logs(tmp_path, *days: date) -> None:
-    logs = tmp_path / "state" / "logs"
-    logs.mkdir(parents=True, exist_ok=True)
-    for day in days:
-        (logs / f"access-{day.isoformat()}.jsonl").write_text("{}\n", encoding="utf-8")
-    (logs / "notes.txt").write_text("kept", encoding="utf-8")
-
-
-def _log_days(tmp_path) -> set[str]:
-    return {path.name for path in (tmp_path / "state" / "logs").iterdir()}
-
-
-def test_logs_older_than_14_days_are_deleted_at_start(tmp_path):
-    today = date(2026, 11, 13)
-    _touch_logs(tmp_path, today - timedelta(days=14), today - timedelta(days=13))
-
-    with client_of(make_app(make_state(tmp_path, Clock()))):
-        remaining = _log_days(tmp_path)
-
-    assert remaining == {"access-2026-10-31.jsonl", "notes.txt"}
-
-
-def test_logs_older_than_14_days_are_deleted_at_the_day_change(tmp_path):
-    clock = Clock()
-    today = date(2026, 11, 13)
-    _touch_logs(tmp_path, today - timedelta(days=13))
-    state = make_state(tmp_path, clock)
-
-    with client_of(make_app(state)) as client:
-        client.get("/app.js")
-        kept_today = _log_days(tmp_path)
-        clock.advance(86400)
-        client.get("/app.js")
-        after = _log_days(tmp_path)
-
-    assert "access-2026-10-31.jsonl" in kept_today
-    assert after == {
-        "access-2026-11-13.jsonl",
-        "access-2026-11-14.jsonl",
-        "notes.txt",
-    }
+    assert [path.name for path in files] == ["stats.jsonl"]
+    assert len(stats_lines(tmp_path)) == 2
+    assert IP.encode() not in files[0].read_bytes()

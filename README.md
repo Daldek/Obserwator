@@ -142,6 +142,16 @@ obserwator gui serve --root /dane/obserwator   # opens http://127.0.0.1:8060/; C
 
 The GUI reads the data root and never writes it: the analyses `obserwator analyses build` stored show as they are, and Hydrolog's program computes on request only a person's choices (another period, a distribution, a threshold) and the normal of the climate stripes' reference period. It has no sign-in: beyond this computer it runs behind an authenticating proxy, and open to others it follows Nogat's rules for a public GUI (terms, rate limit, logs without addresses, „Zgłoś uwagę”). It counts its use in daily totals only, one line per UTC day in `<data_dir>/obserwator/stats.jsonl` (Nogat DEV-15.11): `visitors` (distinct keyed hashes of address and User-Agent, kept in memory only), `page_views` (HTML pages served), `stations_opened` (station descriptions served, one per station the page opens), `analyses_run` (answers with a result computed on request: an analysis with a person's choices, also when repeated from the server's memory, and the climate stripes; stored results are not counted) and `downloads` (files served). The proxy, the settings, the private API and the public rules: [usage guide](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#gui).
 
+### Server logs
+
+`obserwator server` and `obserwator gui serve` keep Nogat's logs (DEV-12.4 to DEV-12.9): one JSON record per line (`nogat-log/1`) in `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl` — `access` (one record per answered request: method, path with personal query values dropped, status, bytes, duration and the class of the User-Agent; never the client's address, a header or a body; the page's files, the guide, the borders, the API documentation and `/health` only when answered with 400 or more), `app` (warnings, errors, exceptions) and `lifecycle` (start with the settings, stop, deletion). The servers delete the files after 14 days themselves; standard output and error get only the lifecycle records and errors reduced to their type. `state_dir` defaults to `~/.local/state/nogat` on Linux (`OBSERWATOR_STATE_DIR`, `NOGAT_STATE_DIR`, `state_dir` of `nogat.toml`). Read the logs, with the errors and without the ordinary requests:
+
+```bash
+jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' ~/.local/state/nogat/obserwator/logs/*.jsonl
+```
+
+(`jq`: `apt install jq`, or its static release binary in `~/.local/bin`.) Use is counted only in the GUI's daily totals above, never from the logs.
+
 ---
 
 ## AI agents: AGENTS.md, llms.txt and the MCP server
@@ -160,7 +170,7 @@ Language, command effects and MCP server configuration (stdio and `/mcp`): [usag
 
 ## Configuration
 
-A setting comes from the first of: the command-line option, the `OBSERWATOR_<KEY>` variable, the `.env` file, the `NOGAT_<KEY>` variable (shared keys `data_dir`, `cache_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file, the default value. The most important variables: `OBSERWATOR_ROOT` (the data root), `OBSERWATOR_RAW_ROOT` (the raw root), `OBSERWATOR_LANG` (`pl` or `en`), `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`, `OBSERWATOR_HYDROLOG_COMMAND` (Hydrolog's program for the analyses; default `hydrolog` on `PATH`). `obserwator config show --json` prints every key with its value and source.
+A setting comes from the first of: the command-line option, the `OBSERWATOR_<KEY>` variable, the `.env` file, the `NOGAT_<KEY>` variable (shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file, the default value. The most important variables: `OBSERWATOR_ROOT` (the data root), `OBSERWATOR_RAW_ROOT` (the raw root), `OBSERWATOR_LANG` (`pl` or `en`), `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_STATE_DIR` (the servers' logs in `<state_dir>/obserwator/logs`), `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`, `OBSERWATOR_HYDROLOG_COMMAND` (Hydrolog's program for the analyses; default `hydrolog` on `PATH`). `obserwator config show --json` prints every key with its value and source.
 
 Full table of variables, a `nogat.toml` example and store backup: [Configuration](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#configuration).
 
@@ -190,7 +200,7 @@ python -m obserwator.reference_data
 
 The downloaded files go to the reference data directory (`OBSERWATOR_REFERENCE_DIR`, by default `<cache_dir>/obserwator/reference`, e.g. `~/.cache/nogat/obserwator/reference`; see "Configuration") and come from IMGW-PIB — they are subject to the IMGW-PIB terms (not the project's MIT license).
 
-The only geographic datasets bundled with the package are the border outlines of Poland `src/obserwator/_data/poland_border_wgs84.geojson` and Czechia `src/obserwator/_data/czechia_border_wgs84.geojson` (position checks in station catalogs) from Natural Earth 1:10m Admin 0 – Countries v5.1.2 — public domain ([terms](https://www.naturalearthdata.com/about/terms-of-use/)), not IMGW-PIB or ČHMÚ data.
+The only geographic datasets bundled with the package are the border outlines of Poland `src/obserwator/_data/poland_border_wgs84.geojson` and Czechia `src/obserwator/_data/czechia_border_wgs84.geojson` (position checks in station catalogs) from the state border of PRG (GUGiK) and of RÚIAN (ČÚZK, CC BY 4.0), simplified to 50 m by `scripts/build_borders.py` (ADR-018); products checked against them carry the lines G and Z of Nogat DEV §20. They are not IMGW-PIB or ČHMÚ data.
 
 ---
 
@@ -215,7 +225,7 @@ Other documents:
 - [`docs/CODEBASE.md`](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) - Code and module reference (public API, command catalog, data formats; [project structure](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md#project-structure-from-readme))
 - [`docs/TESTING.md`](https://github.com/Daldek/Obserwator/blob/main/docs/TESTING.md) - Tests: layout, markers, running ([test instructions from the README](https://github.com/Daldek/Obserwator/blob/main/docs/TESTING.md#tests-from-readme))
 - [`docs/CHANGELOG.md`](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) - Change history (including BREAKING 3.0.0)
-- [`docs/DECISIONS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) - Decision log (ADR-001: versioned store, ADR-002: one command catalog, ADR-003: ČHMÚ provider, ADR-004: AI agent support, ADR-005: user environment, ADR-006: message catalog, ADR-007: writing data, ADR-008: projects moved to Archiwista, ADR-009: the tool is called Obserwator, ADR-016: stored analyses computed by Hydrolog, ADR-017: the data root)
+- [`docs/DECISIONS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) - Decision log (ADR-001: versioned store, ADR-002: one command catalog, ADR-003: ČHMÚ provider, ADR-004: AI agent support, ADR-005: user environment, ADR-006: message catalog, ADR-007: writing data, ADR-008: projects moved to Archiwista, ADR-009: the tool is called Obserwator, ADR-016: stored analyses computed by Hydrolog, ADR-017: the data root, ADR-018: state borders from PRG and RÚIAN, ADR-019: Nogat server logs)
 - [`docs/ARCHITECTURE.md`](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) - System architecture
 - [`docs/PRD.md`](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) - Product requirements
 - [`docs/PROGRESS.md`](https://github.com/Daldek/Obserwator/blob/main/docs/PROGRESS.md) - Current status, next steps, open questions

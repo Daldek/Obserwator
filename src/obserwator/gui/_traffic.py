@@ -1,5 +1,5 @@
 """
-The public GUI's traffic: rate limit, daily statistics and access log (Nogat DEV-15.9 to DEV-15.11).
+The public GUI's traffic: rate limit and daily statistics (Nogat DEV-15.9, DEV-15.11).
 
 `Traffic` wraps the app as a pure ASGI middleware and `TrafficState` holds what it
 counts. A request is an API call (``/api/…``), a page (the start page, the regulamin,
@@ -12,14 +12,14 @@ the manual) or a static file, by its path relative to the mount.
   address lives in memory only, for the window only.
 - Statistics (DEV-15.11): a visitor is the HMAC-SHA-256 of the address and the
   User-Agent under a random 32-byte salt drawn at start and at each 00:00 UTC; salt and
-  hashes stay in memory. Each UTC day is one line of ``<state_dir>/stats.jsonl``
+  hashes stay in memory. Each UTC day is one line of ``<data_dir>/obserwator/stats.jsonl``
   (``date``, ``visitors``, ``page_views``, ``stations_opened``, ``analyses_run``,
   ``downloads``), rewritten atomically every `FLUSH_INTERVAL_S`, at the day's end and at
   shutdown; a restart adds to the day's line.
-- Access log (DEV-15.10): one JSON line per request (time, method, path with query,
-  status, size, duration, request id, User-Agent; never the address) in
-  ``<state_dir>/logs/access-YYYY-MM-DD.jsonl``, kept `LOG_DAYS` days; every answer
-  carries its id in ``X-Request-Id``.
+
+The access log is not this module's: ``obserwator gui serve`` wraps the app in
+`obserwator.nogat_logging.AccessLog`, outside `Traffic`, so the answers of the rate
+limit are logged too (Nogat DEV-12.4 to DEV-12.8).
 """
 
 from __future__ import annotations
@@ -32,19 +32,18 @@ import json
 import logging
 import math
 import os
-import re
 import secrets
 import tempfile
 import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
-from typing import IO, Literal
+from typing import Literal
 
-from starlette.datastructures import Headers, MutableHeaders
+from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -64,16 +63,11 @@ PAGES = frozenset(
 )
 """The paths of the GUI's HTML pages, relative to its mount."""
 STATS_FILE = "stats.jsonl"
-LOG_DIR = "logs"
-LOG_DAYS = 14
-"""How many UTC days of access logs are kept: today's and the 13 before it."""
 FLUSH_INTERVAL_S = 300.0
 """How often the day's statistics line is rewritten [s] (DEV-15.11: at most 10 min)."""
 SWEEP_INTERVAL_S = 1.0
 """How often addresses whose window has passed are forgotten [s]."""
 SALT_BYTES = 32
-
-_LOG_NAME = re.compile(r"access-(\d{4}-\d{2}-\d{2})\.jsonl")
 
 Kind = Literal["api", "page", "static"]
 
@@ -122,7 +116,7 @@ def _utc_day(moment: float) -> str:
 
 class TrafficState:
     """
-    The rate limit, the day's statistics and the access log of one GUI app.
+    The rate limit and the day's statistics of one GUI app.
 
     Parameters
     ----------
@@ -130,16 +124,16 @@ class TrafficState:
         At most this many counted requests of one address in ``window`` seconds.
     window : int
         The sliding window of the rate limit [s].
-    state_dir : Path
-        The GUI's own directory: ``stats.jsonl`` and ``logs/`` go there.
+    directory : Path
+        The GUI's own directory, ``<data_dir>/obserwator``: ``stats.jsonl`` goes there.
     writes : bool, optional
-        Keep ``stats.jsonl`` and the access log (default); False keeps both off, so
-        nothing under ``state_dir`` is read, written or deleted and the day's numbers
-        stay in memory (GUI plan D7: ``state_dir`` overlaps the data root).
+        Keep ``stats.jsonl`` (default); False keeps it off, so nothing under
+        ``directory`` is read or written and the day's numbers stay in memory (GUI plan
+        D7: ``directory`` overlaps the data root).
     clock : callable, optional
-        Wall-clock time in seconds since the epoch (the UTC day, the log's time).
+        Wall-clock time in seconds since the epoch (the UTC day).
     monotonic : callable, optional
-        Monotonic time in seconds (the rate limit's window, the durations).
+        Monotonic time in seconds (the rate limit's window).
     """
 
     def __init__(
@@ -147,22 +141,20 @@ class TrafficState:
         *,
         limit: int,
         window: int,
-        state_dir: Path,
+        directory: Path,
         writes: bool = True,
         clock: Callable[[], float] = time.time,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.limit = limit
         self.window = window
-        self.state_dir = state_dir
-        self.stats_path = state_dir / STATS_FILE
-        self.log_dir = state_dir / LOG_DIR
+        self.directory = directory
+        self.stats_path = directory / STATS_FILE
         self.writes = writes
         self.clock = clock
         self.monotonic = monotonic
         self._lock = threading.Lock()  # windows, salt, visitors, counters
         self._io = threading.Lock()  # stats.jsonl; taken before _lock
-        self._log_lock = threading.Lock()  # the access log file
         self._windows: dict[str, deque[float]] = {}
         self._swept = monotonic()
         self._day = _utc_day(clock())
@@ -170,8 +162,6 @@ class TrafficState:
         self._visitors: set[bytes] = set()
         self._counts = dict.fromkeys(COUNTERS, 0)
         self._base = self._read_line(self._day)
-        self._log_file: IO[str] | None = None
-        self._log_day: str | None = None
         self._task: asyncio.Task[None] | None = None
 
     # --- rate limit -----------------------------------------------------------------
@@ -277,8 +267,6 @@ class TrafficState:
                 self._counts = dict.fromkeys(COUNTERS, 0)
                 self._base = {}
             self._write_line(old)
-        with self._log_lock:
-            self._prune_logs(date.fromisoformat(day))
 
     def flush(self) -> None:
         """Rewrite the day's line of ``stats.jsonl`` (after a day change, if one is due)."""
@@ -326,9 +314,9 @@ class TrafficState:
                     lines.append((day, raw.strip()))
             lines.sort(key=lambda item: item[0])
             data = "".join(f"{raw}\n" for _, raw in lines)
-            self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             handle, temporary = tempfile.mkstemp(
-                dir=self.state_dir, prefix=".stats-", suffix=".tmp"
+                dir=self.directory, prefix=".stats-", suffix=".tmp"
             )
             try:
                 with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as file:
@@ -344,85 +332,11 @@ class TrafficState:
         except OSError as exc:
             self._warn(STATS_FILE, exc)
 
-    # --- access log -----------------------------------------------------------------
-
-    def log(self, entry: Mapping[str, object]) -> None:
-        """
-        Append one line to the access log of the UTC day of ``entry["time"]``.
-
-        Parameters
-        ----------
-        entry : Mapping
-            The line: ``time`` (UTC, ISO 8601 with ``Z``) first; never an address.
-        """
-        if not self.writes:
-            return
-        day = str(entry["time"])[:10]
-        line = json.dumps(entry, separators=(",", ":")) + "\n"
-        with self._log_lock:
-            try:
-                file = self._log_file
-                if file is None or self._log_day != day:
-                    file = self._open_log(day)
-                file.write(line)
-                file.flush()
-            except OSError as exc:
-                self._warn(f"{LOG_DIR}/access-{day}.jsonl", exc)
-
-    def _open_log(self, day: str) -> IO[str]:
-        self._close_log()
-        self.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.log_dir.mkdir(mode=0o700, exist_ok=True)
-        path = self.log_dir / f"access-{day}.jsonl"
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
-        handle = os.open(path, flags, 0o600)
-        file = os.fdopen(handle, "a", encoding="utf-8", newline="\n")
-        self._log_file, self._log_day = file, day
-        self._prune_logs(date.fromisoformat(day))
-        return file
-
-    def _close_log(self) -> None:
-        if self._log_file is not None:
-            with contextlib.suppress(OSError):
-                self._log_file.close()
-        self._log_file = None
-        self._log_day = None
-
-    def _prune_logs(self, today: date) -> None:
-        """Delete the access logs of days `LOG_DAYS` or more before ``today``."""
-        if not self.writes:
-            return
-        oldest = today - timedelta(days=LOG_DAYS - 1)
-        try:
-            names = [path for path in self.log_dir.iterdir() if path.is_file()]
-        except FileNotFoundError:
-            return
-        except OSError as exc:
-            self._warn(LOG_DIR, exc)
-            return
-        for path in names:
-            found = _LOG_NAME.fullmatch(path.name)
-            if found is None:
-                continue
-            try:
-                if date.fromisoformat(found[1]) < oldest:
-                    path.unlink(missing_ok=True)
-            except ValueError:
-                continue
-            except OSError as exc:
-                self._warn(f"{LOG_DIR}/{path.name}", exc)
-
     # --- lifespan -------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Delete old access logs and rewrite the day's line every `FLUSH_INTERVAL_S`."""
-        today = date.fromisoformat(_utc_day(self.clock()))
-        await asyncio.to_thread(self._prune_under_lock, today)
+        """Rewrite the day's line every `FLUSH_INTERVAL_S` from now on."""
         self._task = asyncio.create_task(self._run())
-
-    def _prune_under_lock(self, today: date) -> None:
-        with self._log_lock:
-            self._prune_logs(today)
 
     async def _run(self) -> None:
         while True:
@@ -430,15 +344,13 @@ class TrafficState:
             await asyncio.to_thread(self.flush)
 
     async def stop(self) -> None:
-        """Stop the periodic rewrite, write the day's line and close the access log."""
+        """Stop the periodic rewrite and write the day's line."""
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
         await asyncio.to_thread(self.flush)
-        with self._log_lock:
-            self._close_log()
 
     @staticmethod
     def _warn(file: str, exc: OSError) -> None:
@@ -493,7 +405,7 @@ def _refusal(scope: Scope, kind: Kind, seconds: int) -> Response:
 
 class Traffic:
     """
-    ASGI middleware: rate limit, statistics and access log of every HTTP request.
+    ASGI middleware: the rate limit and the statistics of every HTTP request.
 
     Parameters
     ----------
@@ -508,62 +420,32 @@ class Traffic:
         self.state = state
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Serve one request: refused over the limit, counted and logged."""
+        """Serve one request: refused over the limit, else counted."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         state = self.state
-        started = state.monotonic()
-        moment = state.clock()
         path: str = scope["path"]
         root: str = scope.get("root_path", "")
         kind = classify(path[len(root) :] if root and path.startswith(root) else path)
-        request_id = secrets.token_hex(8)
-        user_agent = Headers(scope=scope).get("user-agent")
         status = 0
-        size = 0
 
-        async def send_with_id(event: Message) -> None:
-            nonlocal status, size
+        async def send_counted(event: Message) -> None:
+            nonlocal status
             if event["type"] == "http.response.start":
                 status = event["status"]
-                MutableHeaders(scope=event)["X-Request-Id"] = request_id
-            elif event["type"] == "http.response.body":
-                size += len(event.get("body", b""))
-            elif event["type"] == "http.response.pathsend":
-                with contextlib.suppress(OSError):
-                    size += os.path.getsize(event["path"])
             await send(event)
 
         try:
             if kind != "static":
                 client = scope.get("client")
                 address = str(client[0]) if client else ""
-                state.visit(address, user_agent or "")
+                state.visit(address, Headers(scope=scope).get("user-agent", ""))
                 wait = state.admit(address)
                 if wait is not None:
-                    await _refusal(scope, kind, wait)(scope, receive, send_with_id)
+                    await _refusal(scope, kind, wait)(scope, receive, send)
                     return
-            await self.app(scope, receive, send_with_id)
-        except BaseException:
-            if status == 0:
-                status = 500
-            raise
+            await self.app(scope, receive, send_counted)
         finally:
             if kind == "page" and status == 200:
                 state.page_view()
-            query = scope.get("query_string", b"").decode("latin-1")
-            state.log(
-                {
-                    "time": datetime.fromtimestamp(moment, UTC)
-                    .isoformat(timespec="milliseconds")
-                    .replace("+00:00", "Z"),
-                    "method": scope.get("method", ""),
-                    "path": f"{path}?{query}" if query else path,
-                    "status": status,
-                    "size": size,
-                    "duration_ms": round((state.monotonic() - started) * 1000, 3),
-                    "request_id": request_id,
-                    "user_agent": user_agent,
-                }
-            )

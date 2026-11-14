@@ -168,17 +168,18 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 - **Live data** (`_live.py`), in memory only: snapshots of IMGW-PIB's current data (water states, hydro, meteo, synop), each fetched on demand at most once per 10 minutes, one request at a time, the last kept when a fetch fails; PMAXTP per method and point at four decimals for 24 hours, at most 1,000 points, one live request at a time.
 - **Analyses** (`_analyses.py`): Hydrolog's results stored in the data root by `analyses build` (`list_analyses`, `read_analysis`), shown as they are; a person's choices (and the climate stripes' reference period) computed on request by `compute_analysis` through Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the app starts; without it only stored results): at most two processes of 30 s, 500 results in memory, never written.
 - **Files**: `export_series`, `export_stations` and `export_analyses` write them byte for byte as the CLI does; PMAXTP of a point is packed by the server (CSV, JSON); a hand-off is built by the server from the data root or from Hydrolog's result.
-- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl`, `logs/`; none when that directory and the data root are one or one holds the other.
+- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl`; neither when that directory and the data root are one or one holds the other.
+- **Logs** in `<state_dir>/obserwator/logs` (Nogat DEV-12.4 to DEV-12.9): `obserwator gui serve` starts a `ServerLog` of `obserwator.nogat_logging` (Nogat's reference module, copied byte for byte and shared with `obserwator server`) and `build_app` adds its `AccessLog` as the outermost middleware, outside `Traffic`, so the rate limit's `429` is logged too; static content (`QUIET` of `_app.py`) only from status 400; stderr gets only the lifecycle records and reduced errors.
 - The page connects only to its own origin and the basemap's.
 
 ### Security
-- Every answer (`SecurityHeaders` of `_app.py`, `Traffic` of `_traffic.py`): `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cache-Control: no-cache` unless the answer sets another, `X-Request-Id`
+- Every answer (`SecurityHeaders` of `_app.py`): `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cache-Control: no-cache` unless the answer sets another
 - No cookies, sessions or CORS headers; no inline script or style and no remote resource but the basemap
 - Every parameter is checked against the registries before the data root or Hydrolog is touched (DEV-13.3); errors are `obserwator-error/1` in the page's language with the server's directories hidden (root, own directory, TMPDIR, CWD); Hydrolog gets only checked options and series files the server wrote
 - No sign-in: the GUI binds `127.0.0.1` by default and is reachable beyond it only behind an authenticating proxy (`FORWARDED_ALLOW_IPS` names the proxy to uvicorn)
 
 ### Public Rules (Nogat DEV-15.7 to DEV-15.12)
-- `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory), the access log `logs/access-YYYY-MM-DD.jsonl` without addresses, kept 14 days; uvicorn's access log is off
+- `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory); the access log is `AccessLog`'s, outside it (Logs above); uvicorn keeps no log of its own
 - `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl`; no admin routes (a deviation in `CLAUDE.md`)
 - `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from kit 0.6.0 (its source blocks link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
 
@@ -397,7 +398,7 @@ Obserwator/
 │   ├── reference_data.py # Fetch IMGW-PIB reference data into reference_dir (OBSERWATOR_REFERENCE_DIR)
 │   ├── config.py         # Settings (incl. hydrolog_command)
 │   ├── _hydrolog.py      # Hydrolog's program: `commands batch` in a separate process (ADR-016)
-│   ├── _data/            # Poland and Czechia borders (Natural Earth), agents/ templates, packaged fixtures, recordings, contract schemas
+│   ├── _data/            # Poland and Czechia borders (PRG of GUGiK, RÚIAN of ČÚZK; ADR-018), agents/ templates, packaged fixtures, recordings, contract schemas
 │   ├── _parsing/         # common.py, hydro.py, meteo.py, stations.py, chmi.py
 │   ├── store/            # types, writer, content, sync, series, catalog, pmaxtp, reader, export, plain (plan of a plain write), analyses and analysis_registry (ADR-016)
 │   ├── api/              # REST API [optional]

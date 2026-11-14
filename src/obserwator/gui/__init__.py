@@ -113,14 +113,18 @@ def serve(
 
     It has no sign-in: anyone who reaches the address uses it, so a public instance
     follows Nogat's public-GUI rules (rate limit, logs without addresses, daily
-    statistics, „Zgłoś uwagę”, the regulamin of ``[nogat.operator]``).
+    statistics, „Zgłoś uwagę”, the regulamin of ``[nogat.operator]``). Its logs are
+    Nogat's (DEV-12.4 to DEV-12.9): access, application and lifecycle records in
+    ``<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl``, deleted after 14 days;
+    standard error gets only the lifecycle records (the record ``start`` names the
+    address) and the errors reduced to their type.
 
     Parameters
     ----------
     host : str, optional
         Address to listen on (``127.0.0.1``: this computer only).
     port : int, optional
-        TCP port (``0`` takes a free one; the line on standard error names it).
+        TCP port (``0`` takes a free one; the record ``start`` names it).
     root : Path or None, optional
         The data root (`create_app`).
     open_browser : bool, optional
@@ -138,9 +142,32 @@ def serve(
         in use, ``validation_error`` when the host cannot be resolved.
     """
     require_gui_extra()
+    from obserwator import _environment as environment
+    from obserwator._version import __version__
+    from obserwator.config import Settings
+    from obserwator.gui._app import build_app
+    from obserwator.gui._config import GuiConfig
     from obserwator.gui._serving import run
+    from obserwator.nogat_logging import ServerLog
 
-    return run(create_app(root=root), host=host, port=port, open_browser=open_browser)
+    config = GuiConfig.resolve(root=root)
+    log = ServerLog(environment.TOOL, __version__, Settings().log_dir)
+    settings = {
+        "root": str(config.root),
+        "public": config.operator is not None,
+        "own_files": config.writes_own_files,
+        "basemap": None if config.basemap is None else config.basemap.origin,
+        "request_limit": config.request_limit,
+        "request_window": config.request_window,
+    }
+    return run(
+        lambda: build_app(config, log=log),
+        log=log,
+        settings=settings,
+        host=host,
+        port=port,
+        open_browser=open_browser,
+    )
 
 
 def gui_module() -> GuiModule:

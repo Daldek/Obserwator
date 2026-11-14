@@ -206,13 +206,13 @@ def hydrolog(tmp_path_factory) -> tuple[str, ...]:
     return write_program(tmp_path_factory.mktemp("hydrolog") / "hydrolog.py")
 
 
-def gui_config(root: Path, state_dir: Path, **changes: Any) -> Any:
+def gui_config(root: Path, gui_dir: Path, **changes: Any) -> Any:
     """Settings of a private GUI on ``root`` without basemap and Hydrolog."""
     from obserwator.gui._config import GuiConfig
 
     config = GuiConfig(
         root=root,
-        state_dir=state_dir,
+        gui_dir=gui_dir,
         basemap=None,
         request_limit=100_000,
         request_window=60,
@@ -230,10 +230,12 @@ def make_client(
     """
     Open a client of the app, its lifespan running, until the test ends.
 
-    ``make_client(root=None, *, hydrolog=None, live=…, headers=…, **config)``: the app
-    on ``root`` (the read-only root by default) with Hydrolog's program ``hydrolog`` (a
-    command line's words; none by default), the settings changed by ``config`` and the
-    live sources of ``live`` (`Live.sources` names; recorded by default).
+    ``make_client(root=None, *, hydrolog=None, live=…, headers=…, log=None,
+    address="testclient", **config)``: the app on ``root`` (the read-only root by
+    default) with Hydrolog's program ``hydrolog`` (a command line's words; none by
+    default), the settings changed by ``config``, the live sources of ``live``
+    (`Live.sources` names; recorded by default), the access log of ``log`` (a
+    ``ServerLog``; none by default) and requests from the client address ``address``.
     """
     from obserwator.gui._app import build_app
     from obserwator.gui._live import CurrentData, Pmaxtp
@@ -247,18 +249,20 @@ def make_client(
         sources: dict[str, Callable[[], Any]] | None = None,
         fetch: Callable[..., Any] | None = None,
         headers: dict[str, str] | None = None,
+        log: Any = None,
+        address: str = "testclient",
         **changes: Any,
     ) -> TestClient:
         monkeypatch.setenv(
             "OBSERWATOR_HYDROLOG_COMMAND",
             command_line(*(hydrolog or (str(tmp_path / "no-hydrolog"),))),
         )
-        state_dir = changes.pop("state_dir", tmp_path / f"state-{len(opened)}")
-        config = gui_config(root or read_only_root, state_dir, **changes)
-        app = build_app(config)
+        gui_dir = changes.pop("gui_dir", tmp_path / f"state-{len(opened)}")
+        config = gui_config(root or read_only_root, gui_dir, **changes)
+        app = build_app(config, log=log)
         app.state.gui.current = CurrentData(sources=sources or live.sources())
         app.state.gui.pmaxtp = Pmaxtp(fetch=fetch or live.fetch)
-        client = TestClient(app, headers=headers)
+        client = TestClient(app, headers=headers, client=(address, 50000))
         client.__enter__()
         opened.append(client)
         return client

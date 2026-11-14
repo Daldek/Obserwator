@@ -26,9 +26,10 @@ src/obserwator/
 ├── _examples.py          # Example calls of the catalog (examples of command_schema): canonical line + result excerpt
 ├── output.py             # Plain output (ADR-007): resolve_target, plan_plain, refuse, Staging, FileResult, OutputReport, STORE_MARKERS, DATA_MARKER
 ├── reference_data.py     # python -m obserwator.reference_data (reference files in OBSERWATOR_REFERENCE_DIR)
-├── config.py             # Settings (pydantic-settings, OBSERWATOR_*)
+├── config.py             # Settings (pydantic-settings, OBSERWATOR_*), log_dir = <state_dir>/obserwator/logs
+├── nogat_logging.py      # Nogat's reference module, copied byte for byte (DEV-12.9): ServerLog, AccessLog of both servers; never edited
 ├── _hydrolog.py          # Hydrolog's program (setting hydrolog_command): open_hydrolog, Hydrolog.batch (`commands batch` in a separate process; ADR-016)
-├── _data/                # Poland/Czechia borders (Natural Earth), agents/ guide templates, packaged fixtures
+├── _data/                # Poland/Czechia borders (PRG, RÚIAN; ADR-018), agents/ guide templates, packaged fixtures
 ├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmi.py (ČHMÚ files, listings, metadata)
 ├── store/                # Versioned store in two roots, raw and data (ADR-017) [Parquet: obserwator[store]]
 │   ├── types.py          # Dataclasses: StorePlan, CommandResult, Page, StoreEntry, StoreHandle, ...; RootKind
@@ -61,9 +62,9 @@ src/obserwator/
 └── gui/                  # Web GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013); not in obserwator.__all__
     ├── __init__.py       # create_app, serve, gui_module, GuiModule, WEB_DIR, SECTIONS (imports neither Starlette nor uvicorn)
     ├── _extra.py         # require_gui_extra: missing_dependency without Starlette, uvicorn or pyarrow
-    ├── _config.py        # GuiConfig.resolve: root, own directory, basemap, rate limit, [nogat.gui], [nogat.operator]
-    ├── _serving.py       # uvicorn: binds, prints the address on stderr, stops on Ctrl+C or SIGTERM; no access log
-    ├── _app.py           # Starlette app: the private API's routes (the files of export_series, export_stations and export_analyses at api/files/series, stations, analyses), SecurityHeaders (headers, CSP, methods), build_app
+    ├── _config.py        # GuiConfig.resolve: root, own directory (gui_dir), basemap, rate limit, [nogat.gui], [nogat.operator]
+    ├── _serving.py       # uvicorn: binds, starts the ServerLog (record start with the address), stops on Ctrl+C or SIGTERM; no uvicorn log
+    ├── _app.py           # Starlette app: the private API's routes (the files of export_series, export_stations and export_analyses at api/files/series, stations, analyses), SecurityHeaders (headers, CSP, methods), QUIET, build_app (AccessLog outermost when given a ServerLog)
     ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app
@@ -71,7 +72,7 @@ src/obserwator/
     ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only
     ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
-    ├── _traffic.py       # Traffic: rate limit, daily totals (stats.jsonl), access log (Nogat DEV-15.9 to DEV-15.11)
+    ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12)
     ├── _terms.py         # regulamin.html: the terms of Nogat's kit 0.6.0 filled for the deployment (DEV-15.7)
     └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit), instrukcja/ (the guide in Polish)
@@ -408,7 +409,11 @@ docker compose up -d
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d  # with /mcp
 ```
 
-Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process), nginx (reverse proxy, `location = /mcp` with the `api_limit` zone, no buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`). No Redis needed. The GUI is not part of the image.
+Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process with `--no-access-log --log-level warning`), nginx (reverse proxy, `location = /mcp` with the `api_limit` zone, no buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`). No Redis needed. The GUI is not part of the image.
+
+Logs (Nogat DEV-12.6 to DEV-12.8): the app writes its access, application and lifecycle records to `/state/obserwator/logs` (`NOGAT_STATE_DIR=/state`), the host's `${NOGAT_STATE_DIR:-../state}/obserwator` (relative to `docker/`; writable by the image's `appuser`, UID 1000), and deletes them after 14 days; both containers use the logging driver `local` (`max-size: "1m"`, `max-file: "3"`), which holds only the lifecycle records and errors reduced to their type. nginx keeps no log (`access_log off;`, `error_log /dev/null;`, so the rejections of `limit_req` are not logged either) and passes no `X-Request-ID`.
+
+Operator note: a container created before this change keeps Docker's default `json-file` log, uncapped and with the client addresses of uvicorn's access lines (e.g. `imgwtools-api` on the VPS). Docker deletes that file with the container: rebuild it from this code (`docker compose up -d --build` in `docker/`) or remove it (`docker rm -f <name>`); both need the `docker` group. Create the host's state directory first (`mkdir -p <state_dir>/obserwator && chown 1000 <state_dir>/obserwator`).
 
 ## Cloud & Deployment Details
 
@@ -416,7 +421,7 @@ Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvic
 Application hosted on a private server. Components:
 - **Nginx** — reverse proxy + HTTPS + rate limiting
 - **FastAPI (Uvicorn)** — backend API
-- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes only `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl,logs/}`, none of them when that directory and the data root are one or one holds the other; unit, headers and public rules: `docs/USAGE.md` „GUI”
+- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl}` (neither when that directory and the data root are one or one holds the other) and its logs in `<state_dir>/obserwator/logs`; unit, headers and public rules: `docs/USAGE.md` „GUI”
 
 ### Rate limiting
 - Nginx: `limit_req_zone` (10 req/s per IP)
@@ -437,7 +442,7 @@ The store has two roots (ADR-017), each readable offline, also from network shar
 
 ### Configuration
 
-Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from the file, never printed. Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
+Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from the file, never printed. Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
 
 The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. The GUI reads it when its app starts (`_environment.gui_addresses`) and gives it to the page in `api/session`, which hands it to Nogat's `<nogat-app-menu>` in the top bar; with no other GUI in it the menu is not drawn. Its `obserwator` entry is the GUI's own public address, named by the regulamin and by a hand-off.
 
@@ -451,16 +456,17 @@ The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) 
 |`OBSERWATOR_STORE_WRITE_TOKEN`|unset|Token required in `X-API-Key` for REST writes (else 403 `forbidden`)|
 |`OBSERWATOR_USER_LOCATIONS_DIR`|unset|Directory of user location CSVs allowed in REST `user_locations`|
 |`OBSERWATOR_API_MAX_LIMIT`|`1000`|Default and maximum `limit` of REST list commands|
-|`OBSERWATOR_DATA_DIR`|user data dir of `nogat`|DEV-18.2 meaning since this change: parent of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`) and of the server state; shared key (also `NOGAT_DATA_DIR`, `[nogat] data_dir`). Until 3.0.0 `IMGW_DATA_DIR` held the reference data: that is `OBSERWATOR_REFERENCE_DIR` now|
+|`OBSERWATOR_DATA_DIR`|user data dir of `nogat`|DEV-18.2 meaning since this change: parent of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`), of the API keys and of the GUI's `stats.jsonl` and `feedback.jsonl`; shared key (also `NOGAT_DATA_DIR`, `[nogat] data_dir`). Until 3.0.0 `IMGW_DATA_DIR` held the reference data: that is `OBSERWATOR_REFERENCE_DIR` now|
 |`OBSERWATOR_REFERENCE_DIR`|`<cache_dir>/obserwator/reference`|IMGW-PIB reference data (`hydro_stations_locations.csv`, `desc/`; `python -m obserwator.reference_data`); `settings.reference_dir`|
 |`OBSERWATOR_LANG`|`pl`|`pl`\|`en`: CLI help, progress and notice lines only (`--lang` of `commands list\|schema\|guide` defaults to English whatever it says; REST answers follow `Accept-Language`, English without it; MCP is always English; the CLI error line and the envelope are English)|
 |`OBSERWATOR_MCP_ENABLED`|`false`|Serve MCP Streamable HTTP at `/mcp` in `obserwator server` (needs `obserwator[mcp]`; read and plan only)|
 |`OBSERWATOR_MCP_ALLOWED_HOSTS`|`127.0.0.1,localhost`|Allowed `Host` values of `/mcp` (comma-separated; behind nginx add the public host name)|
 |`OBSERWATOR_MCP_ALLOW_WRITES`|`false`|Envvar of `obserwator mcp --allow-writes`: writing tools still default to `check: true` (plan) and write only with `check: false`|
 |`OBSERWATOR_CACHE_DIR`|user cache dir of `nogat`|Caches `<cache_dir>/obserwator`; shared key (also `NOGAT_CACHE_DIR`, `[nogat] cache_dir`)|
+|`OBSERWATOR_STATE_DIR`|user state dir of `nogat` (`~/.local/state/nogat` on Linux)|State kept between runs (DEV-18.2): the logs of `obserwator server` and `obserwator gui serve` in `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl` (`access`, `app`, `lifecycle`; Nogat DEV-12.6), deleted by the servers after 14 days; `Settings.log_dir`; shared key (also `NOGAT_STATE_DIR`, `[nogat] state_dir`). In a container `NOGAT_STATE_DIR` names the directory where the host's `<state_dir>/obserwator` is mounted|
 |`OBSERWATOR_API_KEYS_FILE`|`<data_dir>/obserwator/api_keys.json`|File of the API keys of `obserwator admin`|
 |`OBSERWATOR_RATE_LIMIT`|`100`|Requests per hour (0 = unlimited)|
-|`OBSERWATOR_ENV`, `OBSERWATOR_HOST`, `OBSERWATOR_PORT`, `OBSERWATOR_LOG_LEVEL`|`development`, `0.0.0.0`, `8000`, `INFO`|REST server (`obserwator server`); `OBSERWATOR_ENV=production` disables reload|
+|`OBSERWATOR_ENV`, `OBSERWATOR_HOST`, `OBSERWATOR_PORT`|`development`, `0.0.0.0`, `8000`|REST server (`obserwator server`); `OBSERWATOR_ENV=production` disables reload. No log-level setting: the servers log at the fixed levels of Nogat DEV-12.7 (`OBSERWATOR_LOG_LEVEL`, which configured nothing, is gone and ignored)|
 |`OBSERWATOR_GUI_BASEMAP_URL`|`https://tiles.openfreemap.org/planet`|TileJSON of the GUI's basemap; `none`, `off` or the variable set and empty: no basemap, the packaged borders (offline)|
 |`OBSERWATOR_GUI_BASEMAP_ATTRIBUTION`|`OpenFreeMap © OpenMapTiles Data from OpenStreetMap`|The basemap's credit line|
 |`OBSERWATOR_HYDROLOG_COMMAND`|unset|`hydrolog_command` (also `[obserwator] hydrolog_command`): Hydrolog's program of `analyses build`, `compute_analysis` (ADR-016) and the GUI's choices computed on request (looked for once when it starts; without it the GUI shows only stored results), a command line split as a shell splits it; unset → `hydrolog` on `PATH`, none → `missing_dependency` (`details.reason="hydrolog_missing"`); no command option replaces it|
@@ -515,7 +521,7 @@ src/obserwator/
 ├── cli/          # CLI: _dispatch.py (commands from the catalog), admin.py, gui_cmd.py (gui serve), main.py (version, server, mcp, gui)
 ├── mcp/          # MCP server (extra obserwator[mcp]): tools from the catalog, stdio and /mcp
 ├── _parsing/     # Parsers of IMGW-PIB and ČHMÚ archives, listings and station lists (public: obserwator.parsers)
-├── _data/        # Borders of Poland and Czechia (Natural Earth), guide templates agents/, test fixtures
+├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
 ├── datasets.py   # Registry of providers and 21 datasets (pl.imgw.*, cz.chmi.*), archive file generator

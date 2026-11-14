@@ -23,7 +23,7 @@ from obserwator.exceptions import ERROR_CODES, ObserwatorError
 from obserwator.gui import create_app, gui_module, serve
 from obserwator.gui._config import Basemap, GuiConfig
 from obserwator.gui._serving import url_of
-from obserwator.messages import message
+from tests.contract.nogat import validate
 
 DEADLINE_S = 60.0
 """The longest wait for a server to start or to stop [s]."""
@@ -63,37 +63,68 @@ def settings(tmp_path, monkeypatch):
 # --- the command and the server ----------------------------------------------------------------
 
 
-def test_gui_serve_answers_until_sigterm_and_ends_with_exit_code_0(
-    fixture_root, settings
+def test_gui_serve_answers_until_sigterm_logs_and_ends_with_exit_code_0(
+    fixture_root, settings, tmp_path, monkeypatch
 ):
+    monkeypatch.setenv("OBSERWATOR_STATE_DIR", str(tmp_path / "state"))
     program = Path(sys.executable).with_name("obserwator")
     port = free_port()
     url = f"http://127.0.0.1:{port}/"
     process = subprocess.Popen(
         [program, "gui", "serve", "--no-browser", "--port", str(port)]
         + ["--root", str(fixture_root)],
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     lines: queue.Queue[str] = queue.Queue()
-    threading.Thread(
+    reader = threading.Thread(
         target=lambda: [lines.put(line) for line in process.stderr], daemon=True
-    ).start()
+    )
+    reader.start()
     try:
-        announced = lines.get(timeout=DEADLINE_S)
+        start = json.loads(lines.get(timeout=DEADLINE_S))
+        with urllib.request.urlopen(url, timeout=10) as page:
+            headers = dict(page.headers)
+        with urllib.request.urlopen(url + "css/app.css", timeout=10):
+            pass
         status, session = answer_of(url + "api/session")
         process.send_signal(signal.SIGTERM)
         code = process.wait(timeout=DEADLINE_S)
+        stdout = process.stdout.read()
+        reader.join(timeout=DEADLINE_S)
     finally:
         if process.poll() is None:  # pragma: no cover - only when the test fails
             process.kill()
             process.wait()
+    printed = [start] + [json.loads(line) for line in list(lines.queue)]
 
-    assert announced.strip() == message("gui.server.listening", url=url)
     assert status == 200
     assert set(session["root"]["catalogs"]) == {"IMGW-PIB", "CHMI"}
     assert code == 0
+    # Standard output and error: the lifecycle records only (Nogat DEV-12.7).
+    assert stdout == ""
+    assert [(r["kind"], r["event"]) for r in printed] == [
+        ("lifecycle", "start"),
+        ("lifecycle", "stop"),
+    ]
+    assert start["settings"]["url"] == url
+    assert start["settings"]["root"] == str(fixture_root)
+    assert "x-request-id" not in {name.lower() for name in headers}
+    # The files: <state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl (DEV-12.6).
+    logs = tmp_path / "state" / "obserwator" / "logs"
+    written = {
+        path.name.split("-")[0]: [json.loads(x) for x in path.read_text().splitlines()]
+        for path in logs.iterdir()
+    }
+    assert sorted(written) == ["access", "lifecycle"]
+    assert written["lifecycle"] == printed
+    assert [(r["path"], r["status"]) for r in written["access"]] == [
+        ("/", 200),
+        ("/api/session", 200),
+    ]  # the style sheet is static content (DEV-12.5)
+    for record in written["access"] + written["lifecycle"]:
+        validate(record, "record-1")
 
 
 def test_a_port_in_use_is_a_conflict(fixture_root, settings):
@@ -168,8 +199,8 @@ def test_the_settings_come_from_the_environment_and_nogat_toml(
     config = GuiConfig.resolve(root=fixture_root)
 
     assert config.root == fixture_root
-    assert config.state_dir == tmp_path / "data" / "obserwator"
-    assert config.writes_state is True
+    assert config.gui_dir == tmp_path / "data" / "obserwator"
+    assert config.writes_own_files is True
     assert config.basemap == Basemap(
         "https://tiles.example/planet", "https://tiles.example", "© Example"
     )
@@ -183,10 +214,10 @@ def test_the_default_root_is_the_default_data_root_so_the_gui_writes_nothing(set
     config = GuiConfig.resolve()
 
     assert config.root == store_root(kind="data").root == settings / "obserwator"
-    assert config.state_dir == config.root
-    assert config.writes_state is False
+    assert config.gui_dir == config.root
+    assert config.writes_own_files is False
     assert store_root(kind="raw").root == settings / "obserwator-raw"
-    assert replace(config, root=settings / "obserwator-raw").writes_state is True
+    assert replace(config, root=settings / "obserwator-raw").writes_own_files is True
     assert config.basemap is None
 
 

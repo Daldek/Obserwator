@@ -10,7 +10,6 @@ contract case with REST is in ``tests/contract/test_mcp_http_contract.py``.
 import functools
 import importlib
 import json
-import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -307,19 +306,26 @@ def test_without_obserwator_mcp_enabled_mcp_is_an_unknown_route(monkeypatch):
 
 
 def test_without_the_mcp_extra_an_enabled_mcp_is_an_unknown_route_and_a_warning(
-    monkeypatch, caplog
+    monkeypatch, tmp_path, capsys
 ):
     monkeypatch.setitem(sys.modules, "mcp", None)  # the extra is not installed
     for name in [name for name in sys.modules if name.startswith("obserwator.mcp.")]:
         monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(settings, "state_dir", tmp_path)
 
-    with caplog.at_level(logging.WARNING, logger="obserwator.api.main"):
-        app = enabled(monkeypatch)
+    app = enabled(monkeypatch)
     with TestClient(app) as client:
         response = client.post("/mcp", json=INITIALIZE)
 
     assert (response.status_code, response.json()["code"]) == (404, "not_found")
-    assert "pip install obserwator[mcp]" in caplog.text
+    # The warning is an application record of the server's logs (Nogat DEV-12.4),
+    # not a line on standard error, which gets only the lifecycle records.
+    (path,) = (tmp_path / "obserwator" / "logs").glob("app-*.jsonl")
+    (record,) = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+    assert (record["level"], record["event"]) == ("warning", "obserwator.api.main")
+    assert "pip install obserwator[mcp]" in record["message"]
+    printed = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    assert [r["event"] for r in printed] == ["start", "stop"]
 
 
 async def test_an_enabled_mcp_does_not_read_obserwator_lang(monkeypatch):

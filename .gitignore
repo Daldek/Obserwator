@@ -40,3 +40,7 @@ htmlcov/
 *.db
 *.db-shm
 *.db-wal
+
+# The default NOGAT_STATE_DIR of docker/docker-compose.yml: the server's logs,
+# state/obserwator/logs
+/state/

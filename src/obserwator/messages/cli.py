@@ -178,9 +178,6 @@ MESSAGES = {
         "Reload the server when the code changes (development mode)",
         "Przeładuj serwer po zmianie kodu (tryb deweloperski)",
     ),
-    "server_starting": Text(
-        "Starting the server on {host}:{port}", "Uruchamiam serwer na {host}:{port}"
-    ),
     "mcp_help": Text(
         "Run the MCP server for AI agents on the standard input and output.\n\n"
         "The tools of the server are the catalog commands. Without --allow-writes "

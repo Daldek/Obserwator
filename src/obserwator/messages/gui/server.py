@@ -13,7 +13,6 @@ MESSAGES: dict[str, Text] = {
         "Adres mapy podkładowej {url} nie jest adresem http ani https; ustaw "
         "gui_basemap_url na adres TileJSON albo none",
     ),
-    "server.listening": Text("Obserwator GUI: {url}", "GUI Obserwatora: {url}"),
     "server.bad_host": Text(
         "Cannot listen on {host}: {reason}", "Nie można nasłuchiwać na {host}: {reason}"
     ),
@@ -23,13 +22,13 @@ MESSAGES: dict[str, Text] = {
         "Port {port} adresu {host} jest zajęty; zatrzymaj program, który go używa, "
         "albo wybierz inny opcją --port.",
     ),
-    "server.state_in_root": Text(
-        "The GUI keeps its own files in {state_dir}, which overlaps the data root "
-        "{root}: it writes none of them (no statistics, no access log, no reports). "
-        "Serve a root outside {state_dir} or set another data_dir.",
-        "GUI trzyma własne pliki w {state_dir}, który pokrywa się z katalogiem danych "
-        "{root}: nie zapisuje żadnego z nich (bez statystyk, dziennika dostępu i "
-        "zgłoszeń). Wskaż katalog danych poza {state_dir} albo ustaw inny data_dir.",
+    "server.gui_dir_in_root": Text(
+        "The GUI keeps its own files in {gui_dir}, which overlaps the data root "
+        "{root}: it writes none of them (no statistics, no reports). "
+        "Serve a root outside {gui_dir} or set another data_dir.",
+        "GUI trzyma własne pliki w {gui_dir}, który pokrywa się z katalogiem danych "
+        "{root}: nie zapisuje żadnego z nich (bez statystyk i zgłoszeń). "
+        "Wskaż katalog danych poza {gui_dir} albo ustaw inny data_dir.",
     ),
     "errors.bad_parameter": Text(
         "Invalid value of {option}: {value}", "Niepoprawna wartość {option}: {value}"
