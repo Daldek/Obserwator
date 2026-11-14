@@ -32,7 +32,7 @@ from obserwator.fetch import DownloadResult
 from obserwator.store import build_catalog, build_series, write_archive
 from obserwator.store.export import _number
 from tests.contract.support import trailing_lines
-from tests.unit.test_store_catalog import sync_sources
+from tests.unit.test_store_catalog import DETAILS_PROPERTIES, sync_details, sync_sources
 
 SCHEMAS = Path(__file__).parents[2] / "schemas"
 GOLDEN = Path(__file__).parents[1] / "fixtures" / "export_golden"
@@ -452,6 +452,75 @@ def test_a_location_of_the_hydro_imgw_pl_map_adds_its_lines(
         lines.attribution,
         lines.terms_notice,
     )
+
+
+def test_the_station_details_of_hydro_imgw_pl_are_exported_with_their_lines(
+    tmp_path, isolated_reference_dir
+):
+    raw_root = init_store(tmp_path / "raw")
+    store = init_store(tmp_path / "data", kind="data")
+
+    def exported():
+        document = json.loads(text(export_stations(store, series=False)))
+        rows = table(export_stations(store, series=False, format="csv"))
+        return document, rows
+
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(raw_root, router)
+        build_catalog(store, raw_root=raw_root.root)
+        plain_document, plain_rows = exported()
+        sync_details(raw_root, router)
+        build_catalog(store, raw_root=raw_root.root)
+        document, rows = exported()
+
+    # Every property of the details is a column and a GeoJSON property, with or
+    # without details; the values of the CSV are those of the GeoJSON.
+    for found, table_rows, detailed in (
+        (plain_document, plain_rows, False),
+        (document, rows, True),
+    ):
+        assert set(DETAILS_PROPERTIES) <= set(table_rows[0])
+        for row, feature in zip(table_rows, found["features"], strict=True):
+            properties = feature["properties"]
+            assert {key: row[key] for key in DETAILS_PROPERTIES} == {
+                key: cell(properties[key]) for key in DETAILS_PROPERTIES
+            }, feature["id"]
+        assert (
+            any(
+                f["properties"]["details_source"] == "hydro_details"
+                for f in found["features"]
+            )
+            is detailed
+        )
+    # Kłodzko's page, re-keyed to the fixture station 149190310.
+    page = next(f for f in document["features"] if f["id"] == RABA)["properties"]
+    assert {key: page[key] for key in DETAILS_PROPERTIES} == {
+        "established_year": 1884,
+        "gauge_zero_m": 281.617,
+        "gauge_zero_datum": "EVRF2007",
+        "river_km": 130.04,
+        "catchment_area_km2": 1082.27,
+        "province": "dolnośląskie",
+        "district": "kłodzki",
+        "warning_level_cm": 160,
+        "alarm_level_cm": 240,
+        "absolute_min_level_cm": 28,
+        "absolute_min_level_dates": "1950-08-31",
+        "absolute_max_level_cm": 890,
+        "absolute_max_level_dates": "1997-07-08",
+        "details_source": "hydro_details",
+    }
+    # No location of the static file here: the lines of hydro.imgw.pl (RH) come
+    # with the details only.
+    plain = attribution("imgw", "gugik")
+    lines = plain | attribution("imgw_hydro")
+    for found, table_rows, expected in (
+        (plain_document, plain_rows, plain),
+        (document, rows, lines),
+    ):
+        assert {key: found[key] for key in expected.fields()} == expected.fields()
+        assert found["catalogs"][0]["attribution"] == list(expected.attribution)
+        assert trailing_lines(table_rows) == expected
 
 
 def test_the_file_equals_the_lines_and_the_default_root_is_the_store_root(

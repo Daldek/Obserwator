@@ -40,7 +40,7 @@ from obserwator.exceptions import (
 from obserwator.messages import message
 from obserwator.models import Measurement, NormalizedRecord
 from obserwator.output import OutputReport, Staging, plan_plain, refuse
-from obserwator.store.catalog import RootArg, _catalog_lines
+from obserwator.store.catalog import DETAILS_SOURCE, RootArg, _catalog_lines
 from obserwator.store.reader import (
     _archive_main,
     _open,
@@ -1140,7 +1140,7 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
     Stations are sorted by code, those without geometry included. The lines of
     a catalog are those its builder gives it (ADR-012): the provider's processed
     lines, and the lines of hydro.imgw.pl when a station is located by the
-    static file of its map.
+    static file of its map or has the station details of its pages (ADR-021).
 
     Raises
     ------
@@ -1171,6 +1171,10 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
             feature.properties.get("location_source") == "static"
             for feature in features
         )
+        detailed = sum(
+            feature.properties.get("details_source") == DETAILS_SOURCE
+            for feature in features
+        )
         chosen = (
             feature
             for feature in features
@@ -1183,7 +1187,7 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
                 entry.version.parent.relative_to(base).as_posix(),
                 entry.meta,
                 tuple(sorted(chosen, key=lambda feature: feature.station_code)),
-                _catalog_lines(owner, {"static": static}),
+                _catalog_lines(owner, {"static": static, DETAILS_SOURCE: detailed}),
             )
         )
     if not found:

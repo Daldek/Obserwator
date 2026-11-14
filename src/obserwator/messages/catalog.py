@@ -224,6 +224,30 @@ MESSAGES = {
         "source {source}: {file}",
         "źródło {source}: {file}",
     ),
+    "details_not_stored": Text(
+        "source {source}: not in the store ({dataset}); optional, without it the "
+        "catalog has no station details of hydro.imgw.pl",
+        "źródło {source}: brak w katalogu surowym ({dataset}); nieobowiązkowe, bez "
+        "niego katalog nie ma szczegółów stacji z hydro.imgw.pl",
+    ),
+    "details_absent": Text(
+        "Station source {server_path}: not in the store (optional)",
+        "Źródło stacji {server_path}: brak w katalogu surowym (nieobowiązkowe)",
+    ),
+    "details_missing": Text(
+        "The store {root} holds no station details of hydro.imgw.pl ({dataset}): the "
+        "catalog has no warning and alarm levels, absolute extremes, gauge zero, "
+        "river kilometre, catchment area, year of establishment, province or "
+        "district of IMGW-PIB's hydrological stations. obserwator store sync --root "
+        "{root} --datasets {dataset} stores them (one request per station of the "
+        "hydro.imgw.pl map)",
+        "Katalog surowy {root} nie ma szczegółów stacji z hydro.imgw.pl ({dataset}): "
+        "katalog nie poda stanów ostrzegawczych i alarmowych, absolutnych ekstremów, "
+        "zera wodowskazu, kilometra rzeki, powierzchni zlewni, roku założenia, "
+        "województwa ani powiatu stacji hydrologicznych IMGW-PIB. Zapisze je "
+        "obserwator store sync --root {root} --datasets {dataset} (jedno zapytanie "
+        "na stację mapy hydro.imgw.pl)",
+    ),
     "no_static_locations": Text(
         "No local location file {static_path}; the static source was skipped (python "
         "-m obserwator.reference_data downloads the IMGW-PIB data)",

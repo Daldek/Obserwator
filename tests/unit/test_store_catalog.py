@@ -1,5 +1,6 @@
 """Offline scenarios for the versioned station catalog (recorded HTTP only)."""
 
+import copy
 import hashlib
 import io
 import json
@@ -64,8 +65,19 @@ PROPERTIES = {
     "active",
     "established_year",
     "gauge_zero_m",
+    "gauge_zero_datum",
     "river_km",
+    "catchment_area_km2",
     "elevation_m",
+    "province",
+    "district",
+    "warning_level_cm",
+    "alarm_level_cm",
+    "absolute_min_level_cm",
+    "absolute_min_level_dates",
+    "absolute_max_level_cm",
+    "absolute_max_level_dates",
+    "details_source",
 }
 
 
@@ -113,6 +125,98 @@ def sync_sources(store, router, **overrides):
     report = sync_store(store, datasets=IMGW_SOURCES)
     assert [item.status for item in report.items if item.status == "failed"] == []
     return routes
+
+
+DETAILS_RECORDINGS = {
+    item["case"]: item
+    for item in json.loads(
+        (FIXTURES / "hydro_details_recordings.json").read_text(encoding="utf-8")
+    )["interactions"]
+}
+DETAILS_DATASET = "pl.imgw.hydro_details"
+DETAILS_URL = DETAILS_RECORDINGS["status_unknown"]["url"].split("?", 1)[0]
+# Catalog properties taken from the station details of hydro.imgw.pl (ADR-021).
+DETAILS_PROPERTIES = (
+    "established_year",
+    "gauge_zero_m",
+    "gauge_zero_datum",
+    "river_km",
+    "catchment_area_km2",
+    "province",
+    "district",
+    "warning_level_cm",
+    "alarm_level_cm",
+    "absolute_min_level_cm",
+    "absolute_min_level_dates",
+    "absolute_max_level_cm",
+    "absolute_max_level_dates",
+    "details_source",
+)
+
+
+def details_answer(recorded, code, properties=None, **status):
+    """A recorded station page re-keyed to ``code``, with fields replaced."""
+    answer = copy.deepcopy(DETAILS_RECORDINGS[f"status_{recorded}"]["json"])
+    answer["id"] = code
+    answer["properties"].update(properties or {})
+    answer["status"].update(name=code, **status)
+    return answer
+
+
+def details_answers(**status):
+    """
+    Station pages of hydro.imgw.pl by the code of the map, from the recordings.
+
+    The fixture station lists hold fictional codes, so the recorded pages of
+    Kłodzko and Świnoujście are re-keyed here (not in the shared recordings) to
+    the fixture hydro stations 149190310 and 149190311; 149190312 gets the page
+    of Warszawa-Bulwary without warning and alarm levels, with a gauge zero of 0
+    (none) and its minimum's dates spread over lines. Warszawa-Bulwary keeps its
+    own code, which no fixture list holds, and 999999999 is the recorded null
+    answer of a code the backend does not know. ``status`` replaces fields of
+    Kłodzko's ``status``.
+    """
+    return {
+        "149190310": details_answer("150160180", "149190310", **status),
+        "149190311": details_answer("153140010", "149190311"),
+        "149190312": details_answer(
+            "152210170",
+            "149190312",
+            properties={
+                "waterGaugeZeroOrdinate": 0.0,
+                "minimumStateDate": "2025-09-02,\n 2025-09-03,  2025-09-04, 2025-09-05 ",
+            },
+            warningValue=None,
+            alarmValue=None,
+        ),
+        "152210170": DETAILS_RECORDINGS["status_152210170"]["json"],
+        "999999999": DETAILS_RECORDINGS["status_unknown"]["json"],
+    }
+
+
+def sync_details(store, router, answers=None):
+    """Put the station details of hydro.imgw.pl into the store as ``store sync`` does."""
+    answers = details_answers() if answers is None else answers
+    recorded = DETAILS_RECORDINGS["map"]
+    template = recorded["json"]["stations"][0]
+    stations = [{**template, "id": code} for code in answers]
+    router.get(recorded["url"]).mock(
+        return_value=httpx.Response(
+            200, json={**recorded["json"], "stations": stations}
+        )
+    )
+    for code, answer in answers.items():
+        # ``json=None`` would send no body: the recorded null is the body "null".
+        router.get(f"{DETAILS_URL}?id={code}").mock(
+            return_value=httpx.Response(
+                200,
+                content=json.dumps(answer).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+        )
+    report = sync_store(store, datasets=[DETAILS_DATASET])
+    assert [item.status for item in report.items] == ["new"], report.items
+    return report.items[0].version
 
 
 def source_actions(plan):
@@ -249,6 +353,7 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
         "meteo_stations": "current",
         "api_hydro": "current",
         "api_meteo": "current",
+        "hydro_details": "current",  # stored by neither side: nothing to pick up
     }
     assert stale.actions[-1].status == "newer"
     assert second.status == "new"
@@ -730,6 +835,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
         "api_hydro",
         "api_meteo",
         "static",
+        "hydro_details",
     }
     assert (
         by_source["hydro_stations"]["sha256"] == hashlib.sha256(HYDRO_CSV).hexdigest()
@@ -741,7 +847,11 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert by_source["api_hydro"]["count"] == 4 and by_source["api_hydro"][
         "fetched_at"
     ].endswith("Z")
-    assert all(len(entry["sha256"]) == 64 for entry in by_source.values())
+    assert all(
+        len(entry["sha256"]) == 64
+        for source, entry in by_source.items()
+        if source != "hydro_details"
+    )
     assert by_source["static"] == {
         "source": "static",
         "url": None,
@@ -751,6 +861,195 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
         "sha256": hashlib.sha256(static.read_bytes()).hexdigest(),
         "available": True,
     }
+    # Without the station details of hydro.imgw.pl the source is recorded as absent.
+    assert by_source["hydro_details"] == {
+        "source": "hydro_details",
+        "url": None,
+        "file": None,
+        "fetched_at": None,
+        "count": 0,
+        "sha256": None,
+        "available": False,
+    }
+
+
+def details_of(feature):
+    return {key: feature["properties"][key] for key in DETAILS_PROPERTIES}
+
+
+def sidecar(report):
+    return json.loads(
+        report.version.with_name("stations.geojson.meta.json").read_text("utf-8")
+    )
+
+
+def test_station_details_of_hydro_imgw_pl_fill_the_hydro_stations_only(
+    store, data, isolated_reference_dir
+):
+    notices, progress = [], []
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        without = build_catalog(
+            data, raw_root=store, on_notice=notices.append, on_progress=progress.append
+        )
+        stored = sync_details(store, router)
+        detailed_notices, detailed_progress = [], []
+        report = build_catalog(
+            data,
+            raw_root=store,
+            on_notice=detailed_notices.append,
+            on_progress=detailed_progress.append,
+        )
+    before, found = features(without), features(report)
+    nothing = dict.fromkeys(DETAILS_PROPERTIES)
+    assert all(details_of(feature) == nothing for feature in before.values())
+    # The details add no station (Warszawa-Bulwary is on no fixture list) and
+    # change no other property.
+    assert list(found) == list(before)
+    for code, feature in found.items():
+        assert feature["geometry"] == before[code]["geometry"], code
+        assert {
+            key: value
+            for key, value in feature["properties"].items()
+            if key not in DETAILS_PROPERTIES
+        } == {
+            key: value
+            for key, value in before[code]["properties"].items()
+            if key not in DETAILS_PROPERTIES
+        }, code
+    # Kłodzko's page.
+    assert details_of(found["149190310"]) == {
+        "established_year": 1884,
+        "gauge_zero_m": 281.617,
+        "gauge_zero_datum": "EVRF2007",
+        "river_km": 130.04,
+        "catchment_area_km2": 1082.27,
+        "province": "dolnośląskie",
+        "district": "kłodzki",
+        "warning_level_cm": 160,
+        "alarm_level_cm": 240,
+        "absolute_min_level_cm": 28,
+        "absolute_min_level_dates": "1950-08-31",
+        "absolute_max_level_cm": 890,
+        "absolute_max_level_dates": "1997-07-08",
+        "details_source": "hydro_details",
+    }
+    # Świnoujście's page: a sea gauge has no catchment area (0 on the page).
+    assert details_of(found["149190311"]) == {
+        "established_year": 1810,
+        "gauge_zero_m": -4.915,
+        "gauge_zero_datum": "EVRF2007",
+        "river_km": 0.0,
+        "catchment_area_km2": None,
+        "province": "zachodniopomorskie",
+        "district": "Świnoujście",
+        "warning_level_cm": 560,
+        "alarm_level_cm": 580,
+        "absolute_min_level_cm": 366,
+        "absolute_min_level_dates": "18.10.1967",
+        "absolute_max_level_cm": 696,
+        "absolute_max_level_dates": "1874-02-10",
+        "details_source": "hydro_details",
+    }
+    # A page without levels and with a gauge zero of 0: no levels, no gauge zero
+    # and no datum; the dates as published, white space collapsed.
+    assert details_of(found["149190312"]) == {
+        "established_year": 2017,
+        "gauge_zero_m": None,
+        "gauge_zero_datum": None,
+        "river_km": 421.68,
+        "catchment_area_km2": 84855.61,
+        "province": "mazowieckie",
+        "district": "Warszawa",
+        "warning_level_cm": None,
+        "alarm_level_cm": None,
+        "absolute_min_level_cm": 104,
+        "absolute_min_level_dates": "2025-09-02, 2025-09-03, 2025-09-04, 2025-09-05",
+        "absolute_max_level_cm": 873,
+        "absolute_max_level_dates": "1960-07-31",
+        "details_source": "hydro_details",
+    }
+    # A hydro station without a page and every meteo station have no details.
+    assert details_of(found["149190313"]) == nothing
+    assert [
+        code
+        for code, feature in found.items()
+        if feature["properties"]["kind"] == "meteo" and details_of(feature) != nothing
+    ] == []
+    assert {f["properties"]["kind"] for f in found.values()} == {"hydro", "meteo"}
+
+    # The lines of hydro.imgw.pl (RH) only with details.
+    plain = attribution("imgw", "gugik")
+    lines = plain | attribution("imgw_hydro")
+    assert lines != plain
+    first = json.loads(without.version.read_bytes())
+    second = json.loads(report.version.read_bytes())
+    assert {key: first[key] for key in plain.fields()} == plain.fields()
+    assert {key: second[key] for key in lines.fields()} == lines.fields()
+    assert sidecar(without)["license"]["attribution"] == ". ".join(plain.attribution)
+    assert sidecar(report)["license"]["attribution"] == ". ".join(lines.attribution)
+
+    absent = next(
+        e
+        for e in sidecar(without)["extra"]["catalog"]
+        if e["source"] == "hydro_details"
+    )
+    assert absent == {
+        "source": "hydro_details",
+        "url": None,
+        "file": None,
+        "fetched_at": None,
+        "count": 0,
+        "sha256": None,
+        "available": False,
+    }
+    entry = next(
+        e for e in sidecar(report)["extra"]["catalog"] if e["source"] == "hydro_details"
+    )
+    # Every stored page counts, also the one of no catalog station; the null is not stored.
+    assert (entry["available"], entry["count"], entry["url"]) == (True, 4, DETAILS_URL)
+    assert entry["file"] == stored.relative_to(store.root).as_posix()
+    assert entry["file"].startswith("archives/versions/station/hydro/status/")
+    assert entry["sha256"] == hashlib.sha256(stored.read_bytes()).hexdigest()
+    assert entry["fetched_at"].endswith("Z")
+
+    (missing,) = [n for n in notices if n.code == "source_missing"]
+    assert missing.level == "info"
+    assert "store sync" in missing.message
+    assert f"--datasets {DETAILS_DATASET}" in missing.message
+    assert not any(n.code == "source_missing" for n in detailed_notices)
+    # Seven steps: four sources, the details, the assembly and the publication.
+    for steps, details_status in ((progress, "missing"), (detailed_progress, "done")):
+        assert [(p.current, p.total) for p in steps] == [(i, 7) for i in range(1, 8)]
+        assert steps[4].status == details_status
+
+
+def test_check_catalog_follows_the_station_details(store, data, tmp_path):
+    def check():
+        progress = []
+        plan = check_catalog(data, raw_root=store, on_progress=progress.append)
+        # Four sources, the details, then the location file, series and catalog.
+        assert {p.total for p in progress} == {7}
+        (step,) = [p for p in progress if p.current == 5]
+        assert step.status == source_actions(plan)["hydro_details"]
+        return source_actions(plan)["hydro_details"], plan.actions[-1].status
+
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        build_catalog(data, raw_root=store)
+        # Neither the raw root nor the catalog has details: nothing to pick up.
+        assert check() == ("current", "current")
+        sync_details(store, router)
+        assert check() == ("newer", "newer")
+        build_catalog(data, raw_root=store)
+        assert check() == ("current", "current")
+        # A page changed on the service: a new stored version is newer again.
+        sync_details(store, router, details_answers(alarmValue=250.0))
+        assert check() == ("newer", "newer")
+    # Without a catalog the build is due.
+    other = init_store(tmp_path / "other", kind="data")
+    plan = check_catalog(other, raw_root=store)
+    assert source_actions(plan)["hydro_details"] == "missing"
 
 
 def test_identical_content_next_day_is_unchanged(store, data, tmp_path, monkeypatch):
@@ -791,8 +1090,17 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
         plan = check_catalog(data, raw_root=store, on_notice=notices.append)
         assert not offline.calls
     assert plan.items == ()
+    # The station details of hydro.imgw.pl are optional: without a catalog their
+    # action is missing too, but no source_missing notice is given for them.
     assert source_actions(plan) == dict.fromkeys(
-        ("hydro_stations", "meteo_stations", "api_hydro", "api_meteo"), "missing"
+        (
+            "hydro_stations",
+            "meteo_stations",
+            "api_hydro",
+            "api_meteo",
+            "hydro_details",
+        ),
+        "missing",
     )
     assert plan.actions[-1].status == "missing"
     assert [n.code for n in notices] == ["source_missing"] * 4
