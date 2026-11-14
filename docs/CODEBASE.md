@@ -386,6 +386,9 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.hydro_phenomena`|— (`hydro/dobowe` with month 13)|download only|
 |`pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`|`meteo/miesieczne/klimat\|opad\|synop`|download only|
 |`pl.imgw.meteo_climate_terms`|`meteo/terminowe/klimat`|download only|
+|`pl.imgw.meteo_synop_terms`|`meteo/terminowe/synop`|download only (per station × folder, `stations` or `months`)|
+|`pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive`|—|download only (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`)|
+|`pl.imgw.actinometric`|—|download only (files of the folder index, ADR-023)|
 |`cz.chmi.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
 |`cz.chmi.meteo_daily`|—|yes (4 files per station: SRA, T, TMA, TMI; no `years`)|
 |`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|

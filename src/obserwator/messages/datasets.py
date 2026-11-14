@@ -86,6 +86,19 @@ MESSAGES = {
         "Miesięczne pliki zbioru {key} obejmują lata od 2001; wcześniejsze roczniki "
         "wymagają opcji stations",
     ),
+    "stations_folders_without_codes": Text(
+        "The folders of the dataset {key} are named after the stations, without "
+        "their codes, so the option stations does not apply: years select the "
+        "files of every station",
+        "Foldery zbioru {key} noszą nazwy stacji, bez ich kodów, więc opcja "
+        "stations go nie dotyczy: roczniki wybierają pliki wszystkich stacji",
+    ),
+    "files_named_in_folder_index": Text(
+        "The files of the dataset {key} are named only in the server's folder "
+        "index: datasets download finds them (its --check lists them)",
+        "Pliki zbioru {key} są nazwane wyłącznie w indeksie folderów serwera: "
+        "znajduje je datasets download (jego --check je wypisuje)",
+    ),
     "dataset_needs_option_years_years": Text(
         "The dataset {key} needs the option years (the years of the archives)",
         "Zbiór {key} wymaga opcji years (roczniki archiwów)",
@@ -204,6 +217,22 @@ MESSAGES = {
     "title_meteo_climate_terms": Text(
         "Meteorological data at observation times from climate stations",
         "Dane meteorologiczne terminowe ze stacji klimatycznych",
+    ),
+    "title_meteo_synop_terms": Text(
+        "Meteorological data at observation times from synoptic stations",
+        "Dane meteorologiczne terminowe ze stacji synoptycznych",
+    ),
+    "title_warnings_hydro_archive": Text(
+        "Archive of hydrological warnings (monthly files)",
+        "Archiwum ostrzeżeń hydrologicznych (pliki miesięczne)",
+    ),
+    "title_warnings_meteo_archive": Text(
+        "Archive of meteorological warnings (monthly files)",
+        "Archiwum ostrzeżeń meteorologicznych (pliki miesięczne)",
+    ),
+    "title_actinometric": Text(
+        "Actinometric data (solar radiation) of the actinometric stations",
+        "Dane aktynometryczne (promieniowanie słoneczne) ze stacji aktynometrycznych",
     ),
     # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
     # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt,

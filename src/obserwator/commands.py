@@ -1747,8 +1747,9 @@ def _rules_archives(options: Options) -> None:
 
 
 def _rules_download(options: Options) -> None:
-    # The selection of the files first; the store takes only the datasets it holds.
-    _archives(options)
+    # The selection of the files first (offline, also for a dataset named in the
+    # folder index); the store takes only the datasets it holds.
+    _download_selection(options, index=False)
     descriptor = get_dataset(options["dataset"])
     if "output_dir" not in options and not descriptor.in_store:
         _fail(
@@ -3277,8 +3278,21 @@ def _verbatim_lines(files: Sequence[ArchiveFile]) -> Attribution | None:
     return _of_datasets([file.dataset for file in files], processed=False)
 
 
+def _download_selection(
+    options: Options, *, index: bool = True
+) -> tuple[ArchiveFile, ...]:
+    return _fetch._download_files(
+        options["dataset"],
+        years=options.get("years"),
+        months=options.get("months"),
+        params=options.get("params"),
+        stations=options.get("stations"),
+        index=index,
+    )
+
+
 def _check_download(options: Options, hooks: Hooks) -> StorePlan:
-    files = _archives(options)
+    files = _download_selection(options)
     if "output_dir" in options:
         directory = cast(Path, options["output_dir"])
         targets = [(file.server_path, file.url) for file in files]

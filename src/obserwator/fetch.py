@@ -7,11 +7,13 @@ Data is fetched directly from IMGW servers - nothing is stored locally.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import quote, unquote, urlsplit
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -21,9 +23,14 @@ from obserwator._version import __version__
 from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
+    DatasetDescriptor,
     MonthsArg,
     ProviderDescriptor,
     YearsArg,
+    _indexed,
+    _indexed_file,
+    _indexed_years,
+    _year_folder,
     archive_files,
     get_dataset,
     get_provider,
@@ -82,6 +89,8 @@ UNPUBLISHED = message("common.unpublished")
 # §4.5); IMGW-PIB archive traffic keeps the default headers of 3.0.0.
 _IDENTIFY = {"User-Agent": f"obserwator/{__version__}"}
 _NOT_PUBLISHED = (404, 410)
+# Links of a server's folder index (Apache autoindex of IMGW-PIB).
+_HREF = re.compile(r"""href\s*=\s*["']([^"'#?]+)""", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -1028,6 +1037,90 @@ def _zipped(archive: ArchiveFile) -> bool:
     return archive.server_path.lower().endswith(".zip")
 
 
+def _index_names(client: httpx.Client, url: str) -> list[str]:
+    """
+    Names of a folder index: files, and sub-folders with a trailing ``/``.
+
+    The links are percent-decoded (UTF-8); the parent folder, absolute links and
+    the sorting links of the index are no entries.
+
+    Raises
+    ------
+    ObserwatorConnectionError
+        If the index cannot be read (``source_unavailable``).
+    """
+    try:
+        response = client.get(url)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise _source_error(exc, url) from exc
+    names = (
+        unquote(href)
+        for href in _HREF.findall(response.text)
+        if not href.startswith("/") and not urlsplit(href).scheme
+    )
+    return list(dict.fromkeys(name for name in names if name.strip("/")))
+
+
+def _indexed_archives(
+    descriptor: DatasetDescriptor, years: Iterable[int], *, timeout: float
+) -> tuple[ArchiveFile, ...]:
+    """
+    Files of a dataset named only in the folder index (ADR-023), in index order.
+
+    The tree below ``server_dir`` is walked folder by folder, whatever the
+    names and spelling of the folders; a year folder (``2015``, ``1991-1992``)
+    is entered only when it holds a selected year, and every file outside the
+    year folders (the summary of the dataset, a station's documents) belongs
+    to every selection.
+    """
+    assert descriptor.server_dir is not None
+    selected = set(years)
+    base = f"{get_provider(descriptor.provider).base_url}{descriptor.server_dir}/"
+    found: list[ArchiveFile] = []
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+
+        def walk(relative: str) -> None:
+            for name in _index_names(client, base + quote(relative)):
+                if not name.endswith("/"):
+                    found.append(_indexed_file(descriptor, relative + name))
+                    continue
+                span = _year_folder(name[:-1])
+                if span is None or selected.intersection(range(span[0], span[1] + 1)):
+                    walk(relative + name)
+
+        walk("")
+    return tuple(found)
+
+
+def _download_files(
+    dataset: str,
+    /,
+    *,
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    params: Iterable[Literal["H", "Q", "T"]] | None,
+    stations: Iterable[str] | None,
+    index: bool = True,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> tuple[ArchiveFile, ...]:
+    """
+    Files of a download: `archive_files`, or the folder index of a dataset named there.
+
+    With ``index=False`` the selection of an indexed dataset is only checked
+    (offline) and no file is returned.
+    """
+    descriptor = get_dataset(dataset)
+    if not _indexed(descriptor):
+        return archive_files(
+            dataset, years=years, months=months, params=params, stations=stations
+        )
+    selected = _indexed_years(descriptor, years=years, params=params, stations=stations)
+    if not index:
+        return ()
+    return _indexed_archives(descriptor, selected, timeout=timeout)
+
+
 def _stage(
     client: httpx.Client,
     archive: ArchiveFile,
@@ -1336,27 +1429,33 @@ def download_archives(
     default raw root when ``root`` is not given: ``OBSERWATOR_RAW_ROOT``,
     ``[obserwator] raw_root`` of ``nogat.toml`` or ``<data_dir>/obserwator-raw``);
     only the datasets of the store are accepted. A failed file becomes a
-    ``failed`` item and the remaining files are still downloaded. ČHMÚ files
-    are candidates that are fetched without a listing (spec 2026-10-18 §4.4):
-    a candidate the server answers with HTTP 404 or 410 is a successful
-    ``not_published`` item.
+    ``failed`` item and the remaining files are still downloaded. Per-station
+    files (ČHMÚ, the per-station synop archives of IMGW-PIB) are candidates
+    that are fetched without a listing (spec 2026-10-18 §4.4): a candidate the
+    server answers with HTTP 404 or 410 is a successful ``not_published``
+    item. The files of ``pl.imgw.actinometric`` are found in the server's
+    folder index before the first file is fetched (ADR-023): every station,
+    the year folders of the selected years and the files outside the year
+    folders. Only names ending with ``.zip`` must be ZIP archives.
 
     Parameters
     ----------
     dataset : str
-        Key, slug or legacy alias of one of the twelve archive datasets.
+        Key, slug or legacy alias of an archive dataset.
     years : YearsArg or None, optional
         Archive years: a number, a range ``"a-b"``, a list ``"a,b"`` or an
         iterable of these. Required except for ``cz.chmi.meteo_daily``, which
         rejects it.
     months : MonthsArg or None, optional
         Months 1-12 of physically monthly files; None selects all months.
-        Rejected for ČHMÚ datasets.
+        Rejected for ČHMÚ datasets; for the per-station synop archives of
+        IMGW-PIB the monthly files of the whole country (see `archive_files`).
     params : iterable of {"H", "Q", "T"} or None, optional
         Parameters of ``pl.imgw.hydro_semiannual``; None selects all three.
     stations : iterable of str or None, optional
-        ČHMÚ station codes (WIGOS identifiers); required for ČHMÚ datasets
-        and rejected for IMGW-PIB datasets.
+        Station codes: ČHMÚ WIGOS identifiers, required for ČHMÚ datasets;
+        9-digit IMGW-PIB codes for the per-station synop archives; rejected for
+        other IMGW-PIB datasets.
     output_dir : str or os.PathLike or None, optional
         Plain mode: directory of the files, created when missing. Excludes
         ``root``.
@@ -1422,14 +1521,34 @@ def download_archives(
     >>> [file.status for file in report.files]
     ['written']
     """
-    files = archive_files(
-        dataset, years=years, months=months, params=params, stations=stations
+    # The selection is checked offline first; the folder index is read only for
+    # a download that can take place.
+    files = _download_files(
+        dataset,
+        years=years,
+        months=months,
+        params=params,
+        stations=stations,
+        index=False,
     )
     descriptor = get_dataset(dataset)
     target = resolve_target(output_dir=output_dir, root=root)
     # store.types is imported lazily: the obserwator.store package imports this module.
     from obserwator.store.types import DownloadReport
 
+    if target.mode != "plain" and not descriptor.in_store:
+        raise ObserwatorValidationError(
+            message("fetch.not_in_store", dataset=descriptor.key),
+            details={
+                "option": "dataset",
+                "value": descriptor.key,
+                "reason": "not_in_store",
+            },
+        )
+    if _indexed(descriptor):
+        files = _download_files(
+            dataset, years=years, months=months, params=params, stations=stations
+        )
     if target.mode == "plain":
         items, written = _download_plain(
             files,
@@ -1442,15 +1561,6 @@ def download_archives(
         )
         directory, store = target.path, None
     else:
-        if not descriptor.in_store:
-            raise ObserwatorValidationError(
-                message("fetch.not_in_store", dataset=descriptor.key),
-                details={
-                    "option": "dataset",
-                    "value": descriptor.key,
-                    "reason": "not_in_store",
-                },
-            )
         items, written = _download_store(
             files,
             target.path,

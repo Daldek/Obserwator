@@ -12,6 +12,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     License,
     _archive_from_path,
+    _indexed_file,
     _station_file,
     _station_files,
     archive_files,
@@ -164,9 +165,17 @@ def test_registry_invariants_across_providers():
         for provider in by_provider
     }
     # The current-data API of IMGW-PIB lies below its site, not below the archive,
-    # and hydro.imgw.pl's station pages below its backend (ADR-021).
+    # hydro.imgw.pl's station pages below its backend (ADR-021) and the warning
+    # archives below the published files (ADR-023).
     assert roots == {
-        "IMGW-PIB": {"dane_hydrologiczne", "dane_meteorologiczne", "api", "station"},
+        "IMGW-PIB": {
+            "dane_hydrologiczne",
+            "dane_meteorologiczne",
+            "dane_aktynometryczne",
+            "api",
+            "station",
+            "arch",
+        },
         "CHMI": {"hydrology", "meteorology"},
     }
     imgw, chmi = (re.compile(p.station_code_pattern) for p in providers())
@@ -393,6 +402,12 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
+        elif item.update_signal == "listing" and item.provider == "IMGW-PIB":
+            # Files named in the folder index: one in a range folder, the summary.
+            files += [
+                _indexed_file(item, "Kłodzko/Źródłowe/1991-1992/Klodzko1991-1992.xls"),
+                _indexed_file(item, "Promieniowanie słoneczne_zakres danych.xlsx"),
+            ]
         elif item.archive_scope == "station_year" and item.provider == "IMGW-PIB":
             # A station's file per folder, and the monthly files from 2001.
             years = [item.first_year or 1966, 1995, 2000, 2001, 2024]
@@ -405,7 +420,8 @@ def _every_file() -> list[ArchiveFile]:
             files += archive_files(item.key, stations=[M, "0-20000-0-11406"])
         else:
             first = item.first_year or 1951
-            files += archive_files(item.key, years=[first, 1995, 2000, 2001, 2024])
+            years = [year for year in (1995, 2000, 2001, 2024) if year > first]
+            files += archive_files(item.key, years=[first, *years])
     return files
 
 

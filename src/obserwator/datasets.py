@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from types import MappingProxyType
 from typing import ClassVar, Literal
+from urllib.parse import quote
 
 from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.exceptions import ObserwatorValidationError
@@ -68,11 +69,18 @@ _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
 _FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
 # Site of IMGW-PIB's public data: the current-data API (``IMGW_API_URL``) lies below it.
 _IMGW_SITE = "https://danepubliczne.imgw.pl/"
+# Root of the published files; the warning archives (``arch/``) lie outside the
+# measurement data (``IMGW_PUBLIC_DATA_URL``) below it.
+_IMGW_DATA = f"{_IMGW_SITE}data/"
 # Per-station synop archives of IMGW-PIB (``meteo/dobowe|terminowe/synop``): the
 # folder's period and the station number (the last three digits of its code); the
 # running year is published as monthly files of the whole country instead.
 _IMGW_STATION_FILE = re.compile(r"^(?:([0-9]{4})_)?([0-9]{4})_([0-9]{3})_s\.zip$")
 _IMGW_MONTH_FILE = re.compile(r"^([0-9]{4})_([0-9]{2})_s\.zip$")
+# Monthly archives of the warnings, ``<year>/<MM>.zip`` from September 2017.
+_WARNING_ARCHIVES = ("pl.imgw.warnings_hydro_archive", "pl.imgw.warnings_meteo_archive")
+# Year folder of the actinometric index: a year or a range of years.
+_INDEX_YEARS = re.compile(r"([0-9]{4})(?:-([0-9]{4}))?")
 # Backend of IMGW-PIB's hydrological service hydro.imgw.pl (its map and station pages).
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
@@ -821,6 +829,76 @@ _DATASETS = (
         in_store=False,
     ),
     DatasetDescriptor(
+        key="pl.imgw.meteo_synop_terms",
+        slug="meteo_synop_terms",
+        kind="meteo",
+        title=message("datasets.title_meteo_synop_terms"),
+        server_dir="dane_meteorologiczne/terminowe/synop",
+        parser=None,
+        variables={},
+        time_unit="term",
+        year_type="calendar",
+        first_year=1966,
+        update_signal="http",
+        license=_LICENSE,
+        legacy_alias="meteo/terminowe/synop",
+        in_store=False,
+        archive_scope="station_year",
+    ),
+    # The monthly archives of the warnings, outside the measurement data (ADR-023).
+    DatasetDescriptor(
+        key="pl.imgw.warnings_hydro_archive",
+        slug="warnings_hydro_archive",
+        kind="hydro",
+        title=message("datasets.title_warnings_hydro_archive"),
+        server_dir="arch/ost_hydro",
+        parser=None,
+        variables={},
+        time_unit="month",
+        year_type="calendar",
+        first_year=2017,
+        update_signal="http",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=False,
+        base_url=_IMGW_DATA,
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.warnings_meteo_archive",
+        slug="warnings_meteo_archive",
+        kind="meteo",
+        title=message("datasets.title_warnings_meteo_archive"),
+        server_dir="arch/ost_meteo",
+        parser=None,
+        variables={},
+        time_unit="month",
+        year_type="calendar",
+        first_year=2017,
+        update_signal="http",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=False,
+        base_url=_IMGW_DATA,
+    ),
+    # Solar radiation of the actinometric stations: folders named after the stations
+    # (no codes), their files found in the server's folder index (ADR-023).
+    DatasetDescriptor(
+        key="pl.imgw.actinometric",
+        slug="actinometric",
+        kind="meteo",
+        title=message("datasets.title_actinometric"),
+        server_dir="dane_aktynometryczne",
+        parser=None,
+        variables={},
+        time_unit="term",
+        year_type="calendar",
+        first_year=1990,
+        update_signal="listing",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=False,
+    ),
+    DatasetDescriptor(
         key="cz.chmi.hydro_daily",
         slug="chmi_hydro_daily",
         kind="hydro",
@@ -1013,6 +1091,7 @@ _METEO_LAYOUT = {
     "pl.imgw.meteo_precip_monthly": ("o", 1955),
     "pl.imgw.meteo_synop_monthly": ("s", 1965),
     "pl.imgw.meteo_climate_terms": ("k", 1955),
+    "pl.imgw.meteo_synop_terms": ("s", 1970),
 }
 
 
@@ -1086,9 +1165,8 @@ def datasets(
     Returns
     -------
     tuple of DatasetDescriptor
-        Descriptors in registry order: the 16 IMGW-PIB datasets (the eleven of
-        the store, then the five download-only ones), then the six ČHMÚ
-        datasets.
+        Descriptors in registry order: the IMGW-PIB datasets (those of the
+        store, then the download-only ones), then the six ČHMÚ datasets.
 
     Raises
     ------
@@ -1411,7 +1489,8 @@ def _archive(
     return ArchiveFile(
         descriptor.key,
         path,
-        (descriptor.base_url or get_provider(descriptor.provider).base_url) + path,
+        (descriptor.base_url or get_provider(descriptor.provider).base_url)
+        + quote(path),
         year,
         month,
         param,
@@ -1450,6 +1529,12 @@ def archive_files(
     the result lists candidates, and whether a file is published is decided
     by the server (its listing or a 404 answer).
 
+    The warning archives (``pl.imgw.warnings_hydro_archive``,
+    ``pl.imgw.warnings_meteo_archive``) are monthly files, one per month.
+    The files of ``pl.imgw.actinometric`` follow no name rule: they are
+    found in the server's folder index by `download_archives`, so they are
+    refused here.
+
     Parameters
     ----------
     dataset : str
@@ -1485,16 +1570,23 @@ def archive_files(
     ------
     ObserwatorValidationError
         If the dataset is unknown or has no archives (station lists,
-        PMAXTP), a required option is missing or a rejected one is given,
-        the years or months are empty, malformed or out of range, a station
-        code does not follow the provider's grammar, or ``params`` is
-        invalid; ``details.option`` names the option.
+        PMAXTP) or its files are named only in the server's folder index
+        (``details.reason="listed"``), a required option is missing or a
+        rejected one is given, the years or months are empty, malformed or out
+        of range, a station code does not follow the provider's grammar, or
+        ``params`` is invalid; ``details.option`` names the option.
     """
     descriptor = get_dataset(dataset)
     if descriptor.server_dir is None or descriptor.time_unit == "station_list":
         raise ObserwatorValidationError(
             message("datasets.dataset_has_no_annual_archives", key=descriptor.key),
             details={"option": "dataset", "value": descriptor.key},
+        )
+    if _indexed(descriptor):
+        _indexed_years(descriptor, years=years, params=params, stations=stations)
+        raise ObserwatorValidationError(
+            message("datasets.files_named_in_folder_index", key=descriptor.key),
+            details={"option": "dataset", "value": descriptor.key, "reason": "listed"},
         )
     if descriptor.archive_scope == "country":
         return _country_archives(
@@ -1583,6 +1675,16 @@ def _country_archives(
             result.append(
                 _archive(descriptor, f"{directory}/{year}/mies_{year}.zip", year)
             )
+        elif key in _WARNING_ARCHIVES:
+            for month in selected_months:
+                result.append(
+                    _archive(
+                        descriptor,
+                        f"{directory}/{year}/{month:02d}.zip",
+                        year,
+                        month,
+                    )
+                )
         elif key == "pl.imgw.hydro_semiannual":
             for param in selected_params:
                 result.append(
@@ -1846,6 +1948,65 @@ def _imgw_station_path(
     return archive if archive.server_path == f"{directory}/{name}" else None
 
 
+def _indexed(descriptor: DatasetDescriptor) -> bool:
+    """Whether the dataset's files are named only in the server's folder index."""
+    return descriptor.provider == "IMGW-PIB" and descriptor.update_signal == "listing"
+
+
+def _indexed_years(
+    descriptor: DatasetDescriptor,
+    *,
+    years: YearsArg | None,
+    params: Iterable[Literal["H", "Q", "T"]] | None,
+    stations: Iterable[str] | None,
+) -> tuple[int, ...]:
+    """
+    Years of a dataset named in the folder index, checked offline.
+
+    Its folders are named after the stations, without their codes, so a
+    selection takes every station; months select nothing (the file names
+    follow no rule), as for the yearly archives.
+    """
+    key = descriptor.key
+    if stations is not None:
+        raise ObserwatorValidationError(
+            message("datasets.stations_folders_without_codes", key=key),
+            details={"option": "stations", "value": key},
+        )
+    if params is not None:
+        _parse_params(params, descriptor)
+    if years is None:
+        raise ObserwatorValidationError(
+            message("datasets.dataset_needs_option_years_years", key=key),
+            details={"option": "years", "value": None},
+        )
+    selected = parse_years(years)
+    _minimum_year(selected, descriptor)
+    return selected
+
+
+def _year_folder(name: str) -> tuple[int, int] | None:
+    """First and last year of a year folder of the folder index (``2015``, ``1991-1992``)."""
+    span = _INDEX_YEARS.fullmatch(name)
+    if span is None:
+        return None
+    return int(span[1]), int(span[2] or span[1])
+
+
+def _indexed_file(descriptor: DatasetDescriptor, relative: str) -> ArchiveFile:
+    """
+    The archive of a file found in the folder index, by its path below ``server_dir``.
+
+    A file in a year folder covers that folder's years; any other file (the
+    summary of the dataset, a station's documents) has no year.
+    """
+    path = f"{descriptor.server_dir}/{relative}"
+    for part in relative.split("/")[:-1]:
+        if (span := _year_folder(part)) is not None:
+            return _archive(descriptor, path, span[0], last_year=span[1])
+    return _archive(descriptor, path, None)
+
+
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
 # daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmi.meteo_now`` is the newest of its listing.
@@ -1963,6 +2124,11 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
         return _station_file(descriptor, name)
     if descriptor.server_dir is None:
         return None
+    if _indexed(descriptor):
+        prefix = f"{descriptor.server_dir}/"
+        if not server_path.startswith(prefix) or server_path.endswith("/"):
+            return None
+        return _indexed_file(descriptor, server_path.removeprefix(prefix))
     if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW-PIB":
         return _imgw_station_path(descriptor, directory, name)
     if descriptor.archive_scope == "station_year":
