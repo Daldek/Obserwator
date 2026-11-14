@@ -44,9 +44,10 @@ MESSAGES = {
         "lokalna",
     ),
     "outside_store": Text(
-        "Outside the store (`datasets files` and `datasets download` only):",
-        "Poza magazynem (tylko `datasets files` i `datasets download`):",
+        "Download only (`datasets download`):",
+        "Do pobrania (`datasets download`):",
     ),
+    "more_variables": Text("… ({count})", "… ({count})"),
     "header_status": Text(
         "Status",
         "Status",
@@ -174,10 +175,11 @@ MESSAGES = {
     ),
     "flow_precipitation_summary": Text(
         "the station is missing → repeat steps 3–6 with "
-        "`pl.imgw.meteo_climate_daily`; missing from both → tell the user, do not "
-        "substitute another station.",
-        "brak stacji → powtórz kroki 3–6 z `pl.imgw.meteo_climate_daily`; brak w obu "
-        "→ powiedz to użytkownikowi, nie podstawiaj innej stacji.",
+        "`pl.imgw.meteo_{{climate,synop}}_daily` in turn; missing from all → tell "
+        "the user, do not substitute another station.",
+        "brak stacji → powtórz kroki 3–6 z `pl.imgw.meteo_{{climate,synop}}_daily` "
+        "po kolei; brak we wszystkich → powiedz to użytkownikowi, nie podstawiaj "
+        "innej stacji.",
     ),
     "flow_czech_discharge_title": Text(
         "Daily discharge of a Czech station (ČHMÚ)",

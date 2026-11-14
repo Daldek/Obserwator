@@ -568,6 +568,33 @@ def test_meteo_kind_comes_from_the_climate_and_precipitation_series(store, data)
     assert set(kinds(climate, "hydro").values()) == {None}
 
 
+def test_meteo_kind_of_a_station_in_the_synop_series_is_synop(store, data):
+    # Recorded IMGW-PIB files (tests/fixtures/synop): the monthly synop file of
+    # January 2026 (349190600, 353140200) and the climate year 1965 (353140200).
+    recorded = Path(__file__).parents[1] / "fixtures" / "synop" / "archives"
+    for archive in (
+        archive_files("pl.imgw.meteo_synop_daily", years=[2026], months=[1])[0],
+        archive_files("pl.imgw.meteo_climate_daily", years=[1965])[0],
+    ):
+        content = (recorded / archive.server_path).read_bytes()
+        response = DownloadResult(
+            content, archive.url, '"s1"', "Sat, 17 Oct 2026 12:00:00 GMT", len(content)
+        )
+        write_archive(store, archive=archive, response=response)
+    for dataset in ("pl.imgw.meteo_climate_daily", "pl.imgw.meteo_synop_daily"):
+        assert build_series(data, raw_root=store, dataset=dataset).status == "new"
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        report = build_catalog(data, raw_root=store)
+
+    kinds = {
+        code: feature["properties"]["meteo_kind"]
+        for code, feature in features(report).items()
+    }
+    # A synoptic station's programme includes the climate one: synop wins.
+    assert (kinds["353140200"], kinds["349190600"]) == ("synop", "synop")
+
+
 def test_location_precedence_rejections_and_reasons(
     store, data, tmp_path, isolated_reference_dir
 ):

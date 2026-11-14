@@ -316,10 +316,15 @@ export function Susze({ station, analyses }) {
   const threshold = opt.threshold_mm ?? defaultThreshold;
   const spiResult = spi.result;
   const k = spiResult ? (opt.scale ?? Math.max(0, spiResult.scales_months.indexOf(3))) : 0;
+  // The last day with P in any dataset of the (joined, ADR-022) record the analysis read.
   const recordLast = (() => {
-    const input = spells.data && (spells.data.inputs || [])[0];
-    const set = input && (station.datasets || []).find((d) => d.dataset === input.dataset);
-    return set && set.variables.P ? set.variables.P.last : null;
+    const inputs = (spells.data && spells.data.inputs) || [];
+    const lasts = inputs
+      .map((input) => (station.datasets || []).find((d) => d.dataset === input.dataset))
+      .map((set) => (set && set.variables.P ? set.variables.P.last : null))
+      .filter(Boolean)
+      .sort();
+    return lasts.length ? lasts[lasts.length - 1] : null;
   })();
   const first = spells.data ? spells : spi;
   return html`<div class="me-card">

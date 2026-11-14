@@ -18,12 +18,16 @@ from obserwator._parsing.chmi import ListingEntry, parse_listing
 from obserwator.datasets import (
     _CHMI_HYDRO_FILE,
     _CHMI_METEO_FILE,
+    _IMGW_STATION_FILE,
+    _METEO_LAYOUT,
     HYDRO_DETAILS,
     ArchiveFile,
     DatasetDescriptor,
     MonthsArg,
     YearsArg,
     _archive_from_path,
+    _meteo_folder,
+    _minimum_year,
     _parse_stations,
     _station_file,
     _station_files,
@@ -50,6 +54,7 @@ from obserwator.fetch import (
     _archive_response,
     _archive_slot,
     _download_plain,
+    _zipped,
     download_hydro_data,
     download_meteo_data,
 )
@@ -727,6 +732,76 @@ def _station_request(
     return codes, candidates
 
 
+_Scope = Literal["country", "folders", "stations"]
+
+
+def _scope(descriptor: DatasetDescriptor) -> _Scope:
+    """
+    How the files of a measurement dataset are found and checked.
+
+    ``country``: IMGW-PIB archives of the whole country, enumerated offline
+    and checked by HEAD; ``folders``: the per-station synop archives of
+    IMGW-PIB, named in the index of each folder and checked by HEAD;
+    ``stations``: ČHMÚ station files, checked by their listing.
+    """
+    if descriptor.archive_scope == "country":
+        return "country"
+    return "folders" if descriptor.provider == "IMGW-PIB" else "stations"
+
+
+def _folders(descriptor: DatasetDescriptor, years: Iterable[int]) -> list[str]:
+    """Server directories of the selected years of a dataset in folders, by year."""
+    assert descriptor.server_dir is not None and descriptor.first_year is not None
+    _, first_folder_end = _METEO_LAYOUT[descriptor.key]
+    return list(
+        dict.fromkeys(
+            f"{descriptor.server_dir}/"
+            + _meteo_folder(
+                year,
+                first_year=descriptor.first_year,
+                first_folder_end=first_folder_end,
+            )
+            for year in years
+        )
+    )
+
+
+def _folder_request(
+    descriptors: list[DatasetDescriptor],
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    stations: Iterable[str] | None,
+) -> tuple[tuple[str, ...], dict[str, tuple[ArchiveFile, ...] | None]]:
+    """
+    Station codes of a request of the per-station synop archives of IMGW-PIB.
+
+    The files come from the folder index (`_check_folders`), so no dataset has
+    offline candidates.
+
+    Returns
+    -------
+    tuple of (tuple of str, dict)
+        Sorted unique station codes (none: every station of the folder index)
+        and None for every dataset key.
+    """
+    if years is None:
+        raise ObserwatorValidationError(
+            message("sync.imgw_pib_datasets_need_option"),
+            details={"option": "years", "value": None},
+        )
+    selected = parse_years(years, option="years")
+    if months is not None:
+        parse_months(months, option="months")
+    codes = (
+        _parse_stations(stations, get_provider("IMGW-PIB"))
+        if stations is not None
+        else ()
+    )
+    for descriptor in descriptors:
+        _minimum_year(selected, descriptor)
+    return codes, dict.fromkeys(descriptor.key for descriptor in descriptors)
+
+
 def _selection(
     datasets: Iterable[str],
     years: YearsArg | None,
@@ -749,10 +824,12 @@ def _selection(
     tuple
         The datasets without repetitions, then for per-station datasets
         (ČHMÚ) the station codes and the candidates of each dataset (see
-        `_station_request`) with no archives, for country datasets
-        (IMGW-PIB) no codes, no candidates and the archives, or for station
-        sources (lists and station metadata, ADR-015) no codes, no candidates
-        and their files with a fixed name.
+        `_station_request`) with no archives, for the per-station synop
+        archives of IMGW-PIB the station codes and no candidates (see
+        `_folder_request`) with no archives, for country datasets (IMGW-PIB)
+        no codes, no candidates and the archives, or for station sources
+        (lists and station metadata, ADR-015) no codes, no candidates and
+        their files with a fixed name.
     """
     if not isinstance(datasets, str):
         datasets = tuple(datasets)
@@ -779,8 +856,8 @@ def _selection(
             [file for d in sources for file in _station_files(d.key)],
         )
     descriptors = _descriptors(datasets)
-    per_station = {descriptor.archive_scope != "country" for descriptor in descriptors}
-    if len(per_station) > 1:
+    scopes = {_scope(descriptor) for descriptor in descriptors}
+    if len(scopes) > 1:
         raise ObserwatorValidationError(
             message(
                 "sync.one_call_covers_datasets_one",
@@ -788,8 +865,11 @@ def _selection(
             ),
             details={"option": "stations", "value": None},
         )
-    if per_station == {True}:
+    if scopes == {"stations"}:
         codes, candidates = _station_request(descriptors, years, months, stations)
+        return descriptors, codes, candidates, []
+    if scopes == {"folders"}:
+        codes, candidates = _folder_request(descriptors, years, months, stations)
         return descriptors, codes, candidates, []
     return descriptors, (), {}, _country_archives(descriptors, years, months, stations)
 
@@ -830,20 +910,24 @@ def check_store(
     Nothing is written to the store, not even staging files, and no archive is
     fetched. IMGW-PIB country archives are enumerated offline and checked with
     the listing of their parent directory and an HTTP ``HEAD`` request (a file
-    is published when its name appears in the listing). ČHMÚ per-station files
-    are checked with a single GET of each server directory listing, without
-    any ``HEAD``: the listing's time (to the minute) and size are compared with
-    the reference signal of the slot (the newest observation of its current
-    version, or that version's ``Last-Modified`` and size). Per-archive errors
-    are recorded in the plan, never raised.
+    is published when its name appears in the listing). The per-station synop
+    archives of IMGW-PIB (``pl.imgw.meteo_synop_daily``) are the files the
+    index of each folder of the selected years names, checked by ``HEAD`` the
+    same way (ADR-022). ČHMÚ per-station files are checked with a single GET
+    of each server directory listing, without any ``HEAD``: the listing's time
+    (to the minute) and size are compared with the reference signal of the
+    slot (the newest observation of its current version, or that version's
+    ``Last-Modified`` and size). Per-archive errors are recorded in the plan,
+    never raised.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
         Raw root (ADR-017) or an open handle of one.
     datasets : Iterable[str]
-        Dataset keys, slugs or legacy aliases of measurement series datasets,
-        either all IMGW-PIB or all ČHMÚ. A bare string is rejected.
+        Dataset keys, slugs or legacy aliases of measurement series datasets
+        of one kind: IMGW-PIB country archives, the IMGW-PIB synop archives or
+        ČHMÚ station files. A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
@@ -852,11 +936,14 @@ def check_store(
         the stations); rejected for ``cz.chmi.meteo_daily``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
-        IMGW-PIB files only; yearly archives are returned once regardless of
-        this filter. Rejected for ČHMÚ datasets.
+        IMGW-PIB files only (also the running year's monthly synop files);
+        yearly archives are returned once regardless of this filter. Rejected
+        for ČHMÚ datasets.
     stations : Iterable[str] or None, optional
-        ČHMÚ station codes (WIGOS identifiers); required for ČHMÚ datasets and
-        rejected for IMGW-PIB datasets.
+        Station codes: ČHMÚ WIGOS identifiers, required for ČHMÚ datasets;
+        nine-digit IMGW-PIB codes selecting the synop station archives whose
+        number is a code's last three digits (None: every station of the
+        folder index); rejected for the other IMGW-PIB datasets.
     plan : str, os.PathLike or None, optional
         File to save the plan to (``obserwator-plan/1``, see `StorePlan.to_json`); it
         must lie outside the store in an existing directory.
@@ -916,7 +1003,8 @@ def check_store(
         return refused
     path = lenient_store(root, kind="raw").root
     sources = descriptors[0].time_unit == "station_list"
-    listed = sources or descriptors[0].archive_scope != "country"
+    scope = None if sources else _scope(descriptors[0])
+    listed = sources or scope == "stations"
     target = _plan_target(path, plan) if plan is not None else None
     made = 0
 
@@ -935,6 +1023,19 @@ def check_store(
                 client,
                 path,
                 descriptors,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
+        elif scope == "folders":
+            assert years is not None
+            items, actions, cancelled = _check_folders(
+                client,
+                path,
+                descriptors,
+                years,
+                months,
+                codes,
                 on_progress=on_progress,
                 on_notice=on_notice,
                 cancel=cancel,
@@ -978,6 +1079,114 @@ def check_store(
     return result
 
 
+def _check_folders(
+    client: httpx.Client,
+    root: Path,
+    descriptors: list[DatasetDescriptor],
+    years: YearsArg,
+    months: MonthsArg | None,
+    codes: tuple[str, ...],
+    *,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[list[PlanItem], list[PlanAction], bool]:
+    """
+    Check the per-station synop archives of IMGW-PIB named in the folder index.
+
+    One GET reads the index of every folder of the selected years (a
+    five-year folder until 2000, then a year). The station archives it names
+    (with ``codes`` only those whose number, the last three digits of a code,
+    is requested) and the monthly files of the whole country of the running
+    year (with ``months`` only those months) are then checked like country
+    archives, by HEAD, in folder order. A folder that is not published is an
+    ``unverifiable`` action, one whose index cannot be read a
+    ``check_failed`` action; a requested station without an archive in the
+    folders read is an ``unverifiable`` action unless a monthly file of the
+    whole country was found.
+    """
+    selected = parse_years(years, option="years")
+    chosen = set(parse_months(months, option="months")) if months is not None else None
+    numbers = {code[-3:] for code in codes}
+    listings: dict[str, set[str] | Exception | None] = {}
+    archives: list[ArchiveFile] = []
+    actions: list[PlanAction] = []
+    for descriptor in descriptors:
+        found: set[str] = set()
+        monthly = False
+        for directory in _folders(descriptor, selected):
+            if cancel is not None and cancel():
+                return (
+                    [_item(item, "unverifiable", error=CANCELLED) for item in archives],
+                    actions,
+                    True,
+                )
+            try:
+                names = _listing(client, directory)
+            except httpx.HTTPError as exc:
+                actions.append(
+                    PlanAction(
+                        _SYNC,
+                        "check_failed",
+                        message(
+                            "sync.folder_error",
+                            directory=directory,
+                            error=_http_error(exc),
+                        ),
+                    )
+                )
+                continue
+            listings[directory] = names
+            if names is None:
+                actions.append(
+                    PlanAction(
+                        _SYNC,
+                        "unverifiable",
+                        message(
+                            "sync.folder_unpublished",
+                            directory=directory,
+                            key=descriptor.key,
+                        ),
+                    )
+                )
+                continue
+            for name in sorted(names):
+                archive = _archive_from_path(descriptor.key, f"{directory}/{name}")
+                if archive is None:
+                    continue
+                station = _IMGW_STATION_FILE.fullmatch(name)
+                if station is not None:
+                    if numbers and station[3] not in numbers:
+                        continue
+                    found.add(station[3])
+                elif chosen is not None and archive.month not in chosen:
+                    continue
+                else:
+                    monthly = True
+                archives.append(archive)
+        if not monthly:
+            actions.extend(
+                _no_files(descriptor, code) for code in codes if code[-3:] not in found
+            )
+    if on_notice is not None:
+        for action in actions:
+            on_notice(
+                Notice("warning", "source_unverifiable", action.detail)
+                if action.status == "unverifiable"
+                else Notice("warning", "archive_failed", action.detail)
+            )
+    items, cancelled = _check_country(
+        client,
+        root,
+        archives,
+        on_progress=on_progress,
+        on_notice=on_notice,
+        cancel=cancel,
+        listings=listings,
+    )
+    return items, actions, cancelled
+
+
 def _check_country(
     client: httpx.Client,
     root: Path,
@@ -986,9 +1195,15 @@ def _check_country(
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
+    listings: dict[str, set[str] | Exception | None] | None = None,
 ) -> tuple[list[PlanItem], bool]:
-    """Check country archives by directory listings and HEAD, in request order."""
-    listings: dict[str, set[str] | Exception | None] = {}
+    """
+    Check archives by directory listings and HEAD, in request order.
+
+    ``listings`` holds the names of directories already listed (the folder
+    index of the synop archives); the other directories are listed once.
+    """
+    listings = {} if listings is None else listings
     items: list[PlanItem] = []
     cancelled = False
     for index, archive in enumerate(archives, start=1):
@@ -1183,10 +1398,11 @@ def _download(
     """
     GET one archive for a store version.
 
-    IMGW-PIB ZIP archives go through the 2.1.1 download functions. A
-    per-station file (ČHMÚ) is taken as it is, through ``client`` when given.
-    The station details of hydro.imgw.pl are one request per station of its
-    map (ADR-021); ``cancel`` is polled between them.
+    IMGW-PIB country archives go through the 2.1.1 download functions. A
+    per-station file (ČHMÚ, the synop archives of IMGW-PIB) is fetched by its
+    URL, through ``client`` when given, and must be a ZIP when its name says
+    so. The station details of hydro.imgw.pl are one request per station of
+    its map (ADR-021); ``cancel`` is polled between them.
 
     Raises
     ------
@@ -1207,7 +1423,9 @@ def _download(
         if descriptor.key == HYDRO_DETAILS:
             return _hydro_details(client, archive.url, cancel=cancel)
         source = get_provider(descriptor.provider).short_name
-        return _archive_response(client, archive.url, source=source, zipped=False)
+        return _archive_response(
+            client, archive.url, source=source, zipped=_zipped(archive)
+        )
     slug = descriptor.slug
     assert archive.year is not None
     if slug.startswith("hydro_"):
@@ -1332,7 +1550,8 @@ def sync_store(
     months : MonthsArg or None, optional
         Months (1-12) filtering physically monthly IMGW-PIB files.
     stations : Iterable[str] or None, optional
-        ČHMÚ station codes, as in :func:`check_store`.
+        Station codes (ČHMÚ WIGOS identifiers, nine-digit codes of the IMGW-PIB
+        synop archives), as in :func:`check_store`.
     plan : StorePlan, str, os.PathLike or None, optional
         Plan from :func:`check_store`, or the path of its ``obserwator-plan/1`` JSON file.
         Must refer to the same store root. Store mode only.
@@ -1506,13 +1725,18 @@ def _plain_archives(
     """
     The archives a plain sync writes: the selection of the store, resolved offline.
 
+    The per-station synop archives of IMGW-PIB are the candidates of
+    `archive_files`: the stations' archives and the monthly files of
+    ``months`` (the store reads the folder index instead).
+
     Raises
     ------
     ObserwatorValidationError
         If the selectors are invalid (see `_selection`), name station sources
-        (stored only, ``details.reason`` ``store_only_dataset``), or a ČHMÚ
-        dataset of station-year files has no ``years``: the store reads them
-        from the server listing, which a plain write does not use.
+        (stored only, ``details.reason`` ``store_only_dataset``), a ČHMÚ
+        dataset of station-year files has no ``years`` (the store reads them
+        from the server listing, which a plain write does not use), or the
+        synop archives have neither ``stations`` nor ``months``.
     """
     descriptors, _, candidates, archives = _selection(datasets, years, months, stations)
     if descriptors[0].time_unit == "station_list":
@@ -1522,6 +1746,13 @@ def _plain_archives(
         )
     if not candidates:
         return archives
+    if _scope(descriptors[0]) == "folders":
+        candidates = {
+            descriptor.key: archive_files(
+                descriptor.key, years=years, months=months, stations=stations
+            )
+            for descriptor in descriptors
+        }
     unnamed = [d.key for d in descriptors if candidates[d.key] is None]
     if unnamed:
         raise ObserwatorValidationError(

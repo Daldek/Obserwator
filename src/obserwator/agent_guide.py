@@ -322,8 +322,20 @@ def _errors(document: Mapping[str, Any]) -> str:
     )
 
 
-def _variables(variables: Iterable[str]) -> str:
-    """Variable names as code; ``X_min``, ``X_mean`` and ``X_max`` fold into braces."""
+# Variables of a dataset the table names: up to six, or the first three and the
+# number of all of them (``datasets list`` gives every one).
+_SHOWN_VARIABLES = 6
+_FIRST_VARIABLES = 3
+
+
+def _variables(variables: Iterable[str], lang: Lang) -> str:
+    """
+    Variable names as code; ``X_min``, ``X_mean`` and ``X_max`` fold into braces.
+
+    A list longer than ``_SHOWN_VARIABLES`` names its first ones and the number
+    of all, so one dataset (the 37 of ``pl.imgw.meteo_synop_daily``) does not
+    take the guide's budget (DOC-1.7).
+    """
     names = tuple(variables)
     if not names:
         return _DASH
@@ -333,7 +345,11 @@ def _variables(variables: Iterable[str]) -> str:
         f"{base}_{statistic}" for base in bases for statistic in _STATISTICS
     ):
         return _code(f"{{{','.join(bases)}}}_{{{','.join(_STATISTICS)}}}")
-    return ", ".join(_code(name) for name in names)
+    if len(names) <= _SHOWN_VARIABLES:
+        return ", ".join(_code(name) for name in names)
+    shown = ", ".join(_code(name) for name in names[:_FIRST_VARIABLES])
+    more = message("agent_guide.more_variables", lang=lang, count=len(names))
+    return f"{shown}, {more}"
 
 
 def _datasets(lang: Lang) -> str:
@@ -341,14 +357,25 @@ def _datasets(lang: Lang) -> str:
     rows = [
         (
             _code(descriptor.key),
-            _variables(descriptor.variables),
+            _variables(descriptor.variables, lang),
             _DASH if descriptor.first_year is None else str(descriptor.first_year),
         )
         for descriptor in datasets()
         if descriptor.in_store
     ]
+    # The keys outside the store fold by their prefix: ``pl.imgw.{a,b}``.
+    names: dict[str, list[str]] = {}
+    for descriptor in datasets():
+        if not descriptor.in_store:
+            prefix, _, name = descriptor.key.rpartition(".")
+            names.setdefault(prefix, []).append(name)
     outside = ", ".join(
-        _code(descriptor.key) for descriptor in datasets() if not descriptor.in_store
+        _code(
+            f"{prefix}.{group[0]}"
+            if len(group) == 1
+            else f"{prefix}.{{{','.join(group)}}}"
+        )
+        for prefix, group in names.items()
     )
     outside_store = message("agent_guide.outside_store", lang=lang)
     return f"{_table(_header('datasets', lang), rows)}\n\n{outside_store} {outside}."

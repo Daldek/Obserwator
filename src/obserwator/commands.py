@@ -1747,8 +1747,9 @@ def _rules_archives(options: Options) -> None:
 
 
 def _rules_download(options: Options) -> None:
-    # The selection of the files first; the store takes only the datasets it holds.
-    _archives(options)
+    # The selection of the files first (offline, also for a dataset named in the
+    # folder index); the store takes only the datasets it holds.
+    _download_selection(options, index=False)
     descriptor = get_dataset(options["dataset"])
     if "output_dir" not in options and not descriptor.in_store:
         _fail(
@@ -2631,7 +2632,9 @@ def _archive_call(
                 relative, f"request.{field}", request[field], getattr(archive, field)
             )
     options: Options = {"datasets": [key]}
-    if descriptor.archive_scope == "country":
+    if descriptor.archive_scope == "country" or archive.station_code is None:
+        # Country archives, and the synop archives of IMGW-PIB found in the index
+        # of the folder of their year (their names carry no station code).
         options["years"] = [archive.year]
         if archive.month is not None:
             options["months"] = [archive.month]
@@ -2648,6 +2651,9 @@ def _archive_call(
         )
     except ObserwatorValidationError:
         _not_rebuildable(unselected, relative, server_path=server_path)
+    if candidates and candidates.get(key) is None:
+        # The folder index of the year names the file; nothing to compare offline.
+        return "store sync", options
     offered = (candidates.get(key) or ()) if candidates else archives
     if server_path not in {item.server_path for item in offered}:
         _not_rebuildable(unselected, relative, server_path=server_path)
@@ -3277,8 +3283,21 @@ def _verbatim_lines(files: Sequence[ArchiveFile]) -> Attribution | None:
     return _of_datasets([file.dataset for file in files], processed=False)
 
 
+def _download_selection(
+    options: Options, *, index: bool = True
+) -> tuple[ArchiveFile, ...]:
+    return _fetch._download_files(
+        options["dataset"],
+        years=options.get("years"),
+        months=options.get("months"),
+        params=options.get("params"),
+        stations=options.get("stations"),
+        index=index,
+    )
+
+
 def _check_download(options: Options, hooks: Hooks) -> StorePlan:
-    files = _archives(options)
+    files = _download_selection(options)
     if "output_dir" in options:
         directory = cast(Path, options["output_dir"])
         targets = [(file.server_path, file.url) for file in files]

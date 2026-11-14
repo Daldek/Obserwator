@@ -20,7 +20,7 @@ export function isoOfDay(day) {
   return new Date(day * 86400000).toISOString().slice(0, 10);
 }
 
-/** Units as shown: m3/s → m³/s, degC → °C. */
+/** Units as shown: m3/s → m³/s, degC → °C, J/cm2 → J/cm². */
 export function unit(text) {
-  return { "m3/s": "m³/s", degC: "°C" }[text] || text || "";
+  return { "m3/s": "m³/s", degC: "°C", "J/cm2": "J/cm²" }[text] || text || "";
 }

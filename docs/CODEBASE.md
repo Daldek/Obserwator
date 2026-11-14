@@ -222,7 +222,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`ObserwatorStoreDependencyError`|`missing_dependency`|pyarrow missing|
 |`ObserwatorCancelledError`|`cancelled`|Cancelled operation|
 
-**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_chmi_hydro_daily`, `parse_chmi_meteo_daily`, `parse_chmi_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
+**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_meteo_synop_daily` (`s_d` and `s_d_t`, ADR-022), `parse_chmi_hydro_daily`, `parse_chmi_meteo_daily`, `parse_chmi_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
 
 ## Key Module: `commands.py`
 
@@ -370,7 +370,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 
 ## Data Structure
 
-### Dataset registry (22 descriptors, 2 providers)
+### Dataset registry (27 descriptors, 2 providers)
 
 |Key|Legacy alias|Store|
 |---|---|---|
@@ -379,6 +379,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.hydro_semiannual`|`hydro/polroczne_i_roczne`|yes|
 |`pl.imgw.meteo_climate_daily`|`meteo/dobowe/klimat`|yes|
 |`pl.imgw.meteo_precip_daily`|`meteo/dobowe/opad`|yes|
+|`pl.imgw.meteo_synop_daily`|`meteo/dobowe/synop`|yes (per station × folder, found in the folder index; `stations` optional, 9 digits; ADR-022)|
 |`pl.imgw.hydro_stations`, `pl.imgw.meteo_stations`|—|yes (station lists)|
 |`pl.imgw.hydro_now`, `pl.imgw.meteo_now`|—|yes (station metadata of the current-data API, derived: code, name, river, coordinates; ADR-015 D5)|
 |`pl.imgw.hydro_details`|—|yes (station details of hydro.imgw.pl, derived: gauge zero and datum, river km, catchment area, year, province, district, warning and alarm levels, absolute extremes; ADR-021)|
@@ -386,12 +387,15 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.hydro_phenomena`|— (`hydro/dobowe` with month 13)|download only|
 |`pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`|`meteo/miesieczne/klimat\|opad\|synop`|download only|
 |`pl.imgw.meteo_climate_terms`|`meteo/terminowe/klimat`|download only|
+|`pl.imgw.meteo_synop_terms`|`meteo/terminowe/synop`|download only (per station × folder, `stations` or `months`)|
+|`pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive`|—|download only (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`)|
+|`pl.imgw.actinometric`|—|download only (files of the folder index, ADR-023)|
 |`cz.chmi.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
 |`cz.chmi.meteo_daily`|—|yes (4 files per station: SRA, T, TMA, TMI; no `years`)|
 |`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|
 |`cz.chmi.hydro_now`, `cz.chmi.meteo_now`|—|yes (`now` station metadata, canonical form `chmi-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 12 datasets, `store check|sync` the 7 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 7. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):
@@ -405,12 +409,12 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 Real IMGW layout, verified against live server listings (2026-07-05):
 
 **Folders:** 5-year ranges until 2000 (e.g. `1996_2000`), yearly from 2001 (e.g. `2023`).
-First folder differs per subtype: klimat `1951_1955`, opad `1950_1955`, synop `1960_1965` (six years); from `1966_1970` all subtypes share the same grid.
+First folder differs per subtype: klimat `1951_1955`, opad `1950_1955`, monthly synop `1960_1965` (six years), daily and term synop `1966_1970`; from `1966_1970` all subtypes share the same grid.
 
 **Files per interval/subtype:**
 - `miesieczne` (all subtypes): ONE file per folder — `{folder}_m_{k|o|s}.zip` (e.g. `1996_2000_m_s.zip`, `2023_m_s.zip`)
 - `dobowe`/`terminowe` klimat & opad: yearly `{year}_{k|o}.zip` until 2000, monthly `{year}_{month:02d}_{k|o}.zip` from 2001
-- `dobowe`/`terminowe` synop: PER-STATION files `{folder}_{station}_s.zip` — `get_dataset`/`archive_files` raise `ObserwatorValidationError` (`details.reason=per_station`)
+- `dobowe`/`terminowe` synop: PER-STATION files `{folder}_{station}_s.zip` (`{station}` = the last three digits of the code), and for the running year monthly files of the whole country `{year}/{year}_{month:02d}_s.zip`: `pl.imgw.meteo_synop_daily` (store; `store check|sync` read the folder index, ADR-022) and `pl.imgw.meteo_synop_terms` (download only, ADR-023); `archive_files` needs `stations` or `months`
 - `terminowe` opad: dataset does not exist — `ObserwatorValidationError` (`details.reason=not_published`)
 
 **Subtypes:** `k` (klimat), `o` (opad), `s` (synop)
@@ -539,7 +543,7 @@ src/obserwator/
 ├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
-├── datasets.py   # Registry of providers and 22 datasets (pl.imgw.*, cz.chmi.*), archive file generator
+├── datasets.py   # Registry of providers and 27 datasets (pl.imgw.*, cz.chmi.*), archive file generator
 ├── commands.py   # Catalog of 35 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads

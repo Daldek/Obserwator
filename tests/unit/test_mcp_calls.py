@@ -40,6 +40,7 @@ from obserwator import (
     validate_command,
 )
 from obserwator.config import settings
+from obserwator.datasets import datasets
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.mcp._calls import STREAM_LIMIT
 from obserwator.mcp._tools import Mode
@@ -239,12 +240,15 @@ async def test_list_commands_page_by_50_and_at_most_obserwator_api_max_limit(
 
 
 async def test_a_list_tool_follows_next_cursor_to_the_next_page():
-    # 21 datasets: a page of 11 and the last page of 10.
-    first = (await call("obserwator_datasets_list", {"limit": 11})).structured_content
+    # The registry in two pages: the first half (rounded up), then the rest.
+    limit = (len(datasets()) + 1) // 2
+    first = (
+        await call("obserwator_datasets_list", {"limit": limit})
+    ).structured_content
     second = (
         await call(
             "obserwator_datasets_list",
-            {"limit": 11, "cursor": first["page"]["next_cursor"]},
+            {"limit": limit, "cursor": first["page"]["next_cursor"]},
         )
     ).structured_content
     whole = (await call("obserwator_datasets_list", {})).structured_content

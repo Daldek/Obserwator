@@ -4,7 +4,7 @@ from collections.abc import Iterator
 
 from obserwator._parsing.chmi import parse_chmi_hydro_daily, parse_chmi_meteo_daily
 from obserwator._parsing.hydro import normalize_hydro_archive
-from obserwator._parsing.meteo import normalize_meteo_archive
+from obserwator._parsing.meteo import normalize_meteo_archive, normalize_synop_archive
 from obserwator.datasets import ArchiveFile
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
@@ -20,9 +20,10 @@ def normalize_archive(
     IMGW-PIB hydrological datasets (``pl.imgw.hydro_daily``,
     ``pl.imgw.hydro_monthly``, ``pl.imgw.hydro_semiannual``), IMGW-PIB daily
     meteorological datasets (``pl.imgw.meteo_climate_daily``,
-    ``pl.imgw.meteo_precip_daily``) and the ČHMÚ daily datasets
-    (``cz.chmi.hydro_daily``, ``cz.chmi.meteo_daily``) are supported.
-    Parsing is strict: malformed rows raise instead of being skipped.
+    ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``) and the
+    ČHMÚ daily datasets (``cz.chmi.hydro_daily``, ``cz.chmi.meteo_daily``)
+    are supported. Parsing is strict: malformed rows raise instead of being
+    skipped.
 
     Parameters
     ----------
@@ -30,7 +31,8 @@ def normalize_archive(
         Catalog entry of the archive; its ``dataset`` selects the parser,
         ``server_path`` names it in error messages (for ČHMÚ its file name
         also gives the station code and the year or element) and, for IMGW
-        meteorological data, ``year``/``month`` define the expected period.
+        meteorological data, ``year``/``month`` (synop: ``period_start`` and
+        ``period_end``) define the expected period.
     data : bytes
         Archive content: a ZIP archive (IMGW-PIB) or the JSON/CSV file
         (ČHMÚ).
@@ -40,8 +42,8 @@ def normalize_archive(
     NormalizedRecord
         Normalized measurements with value/flag pairs; see
         ``normalize_hydro_archive``, ``normalize_meteo_archive``,
-        ``parse_chmi_hydro_daily`` and ``parse_chmi_meteo_daily`` for the
-        per-dataset record layout.
+        ``normalize_synop_archive``, ``parse_chmi_hydro_daily`` and
+        ``parse_chmi_meteo_daily`` for the per-dataset record layout.
 
     Raises
     ------
@@ -68,6 +70,13 @@ def normalize_archive(
             data,
             year=archive.year,
             month=archive.month,
+        )
+    elif archive.dataset == "pl.imgw.meteo_synop_daily":
+        yield from normalize_synop_archive(
+            archive.server_path,
+            data,
+            start=archive.period_start,
+            end=archive.period_end,
         )
     elif archive.dataset == "cz.chmi.hydro_daily":
         yield from parse_chmi_hydro_daily(data, filename=archive.server_path)

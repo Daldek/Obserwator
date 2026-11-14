@@ -319,10 +319,13 @@ function cell(value) {
 
 /** The years as CSV: UTF-8, comma, dot decimal, CRLF; the method and the provider's lines in columns. */
 export function stripesCsv(data, station) {
-  const input = (data.analysis && data.analysis.inputs && data.analysis.inputs[0]) || {};
+  // A joined record (ADR-022) names every dataset it was read from, with its version.
+  const inputs = (data.analysis && data.analysis.inputs) || [];
+  const dataset = inputs.map((input) => input.dataset).join(" + ") || "–";
+  const version = inputs.map((input) => input.series_version).join(" + ") || "–";
   const method = [
     `${credit()} ${CREDIT_URL}`,
-    t("meteo.stripes.csv_station", { name: nameOf(station), code: station.code, dataset: input.dataset || "–", version: input.series_version || "–" }),
+    t("meteo.stripes.csv_station", { name: nameOf(station), code: station.code, dataset, version }),
     ...scaleText(data),
     t("meteo.stripes.csv_colours"),
   ];

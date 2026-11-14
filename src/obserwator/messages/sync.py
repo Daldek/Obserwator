@@ -13,9 +13,9 @@ MESSAGES = {
     ),
     "imgw_pib_archives_cover_whole": Text(
         "The IMGW-PIB archives cover the whole country; the option stations applies "
-        "only to ČHMÚ station datasets",
+        "only to station datasets (ČHMÚ, the IMGW-PIB synop archives)",
         "Archiwa IMGW-PIB obejmują cały kraj; opcja stations dotyczy wyłącznie "
-        "zbiorów stacji ČHMÚ",
+        "zbiorów stacji (ČHMÚ, archiwa synop IMGW-PIB)",
     ),
     "imgw_pib_datasets_need_option": Text(
         "The IMGW-PIB datasets need the option years",
@@ -34,11 +34,11 @@ MESSAGES = {
     ),
     "one_call_covers_datasets_one": Text(
         "One call covers datasets of one kind: national IMGW-PIB archives (without "
-        "the option stations) or ČHMÚ station files (with the option stations); "
-        "given {names}",
+        "the option stations), the IMGW-PIB synop station archives (stations "
+        "optional) or ČHMÚ station files (with the option stations); given {names}",
         "Jedno wywołanie obejmuje zbiory jednego rodzaju: archiwa krajowe IMGW-PIB "
-        "(bez opcji stations) albo pliki stacji ČHMÚ (z opcją stations); podano "
-        "{names}",
+        "(bez opcji stations), archiwa stacji synoptycznych IMGW-PIB (stations "
+        "opcjonalne) albo pliki stacji ČHMÚ (z opcją stations); podano {names}",
     ),
     "plan_must_written_outside_store": Text(
         "The plan must be written outside the store: {target}",
@@ -75,6 +75,14 @@ MESSAGES = {
     "listing_without_dataset_files": Text(
         "Unreadable listing {base_url}{directory}/: no files of the dataset {key}",
         "Nieczytelny listing {base_url}{directory}/: brak plików zbioru {key}",
+    ),
+    "folder_unpublished": Text(
+        "folder {directory}: not published, no files of the dataset {key}",
+        "folder {directory}: nieopublikowany, brak plików zbioru {key}",
+    ),
+    "folder_error": Text(
+        "folder {directory} of the server: {error}",
+        "folder {directory} serwera: {error}",
     ),
     "station_error": Text(
         "station {code}: {error}",

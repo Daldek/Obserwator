@@ -20,6 +20,7 @@ from obserwator import (
     check_command,
     command_schema,
     data_commands,
+    datasets,
     providers,
     run_command,
     validate_command,
@@ -122,7 +123,7 @@ def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
     assert [action.status for action in planned.result.actions] == ["current"]
     chmi = run_command("datasets list", options={"provider": "CHMI"}).result
     assert [descriptor.key for descriptor in chmi] == [HYDRO, METEO, *STATION_SOURCES]
-    assert run_command("datasets list", options={}).page.total == 22
+    assert run_command("datasets list", options={}).page.total == len(datasets())
 
 
 def _entry(name):
@@ -156,7 +157,12 @@ def test_command_schema_publishes_provider_stations_and_their_rules():
         assert any("stations" in rule and "cz.chmi" in rule for rule in rules)
         assert any("years" in rule and METEO in rule for rule in rules)
     archive = _values(_options("datasets files")["dataset"])
-    assert len(archive) == 12 and {HYDRO, METEO} <= set(archive)
+    assert archive == [
+        item.key
+        for item in datasets()
+        if item.server_dir is not None and item.time_unit != "station_list"
+    ]
+    assert {HYDRO, METEO} <= set(archive)
     entry = _entry("datasets providers")
     assert (
         entry["function"],

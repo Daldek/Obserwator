@@ -6,7 +6,7 @@
 
 Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego katalogu surowego (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi, katalogi stacji i analizy powstają z niego w katalogu danych i czyta się je offline.
 
-Czyta archiwalne i bieżące dane stacji IMGW-PIB i ČHMÚ, lokalne kopie i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
+Czyta archiwalne i bieżące dane stacji IMGW-PIB i ČHMÚ, lokalne kopie i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
 
 <!-- obserwator:providers -->
 
@@ -43,7 +43,7 @@ Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i ali
 
 <!-- obserwator:datasets -->
 
-- `stations` (identyfikatory WIGOS): wymagane dla `cz.chmi.*`, niedozwolone dla `pl.imgw.*` w `datasets files|download` i `store check|sync`; jedno wywołanie obejmuje zbiory jednego rodzaju (`pl.imgw.*` albo `cz.chmi.*`).
+- `stations`: WIGOS (wymagane dla `cz.chmi.*`) albo 9 cyfr (`pl.imgw.meteo_synop_*`, opcjonalne w `store check|sync`); jeden rodzaj plików na wywołanie.
 - `years`: wymagane w `datasets files|download` (poza `cz.chmi.meteo_daily`) i, dla `pl.imgw.*`, w `store check|sync`; tam opcjonalne dla `cz.chmi.hydro_daily` (brak = lata opublikowane); nigdy dla `cz.chmi.meteo_daily`; nie wcześniej niż „Od roku”. `months` wyłącznie dla `pl.imgw.*`, `params` wyłącznie dla `pl.imgw.hydro_semiannual`.
 
 ## Komendy

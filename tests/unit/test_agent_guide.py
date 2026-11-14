@@ -143,7 +143,12 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         f"`{descriptor.key}`" for descriptor in datasets() if descriptor.in_store
     ]
     for descriptor in datasets():
-        assert f"`{descriptor.key}`" in held
+        prefix, _, name = descriptor.key.rpartition(".")
+        # Keys outside the store are folded by prefix: `pl.imgw.{a,b}`.
+        folded = re.search(rf"`{re.escape(prefix)}\.\{{([a-z0-9_,]+)\}}`", held)
+        assert f"`{descriptor.key}`" in held or (
+            folded is not None and name in folded[1].split(",")
+        ), descriptor.key
     statuses = {
         tuple(cells[:2]) for cells in rows(envelope) if cells[0].startswith("`")
     }

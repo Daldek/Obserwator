@@ -133,11 +133,7 @@ def test_ambiguous_legacy_arguments_are_validation_errors(
 
 @pytest.mark.parametrize(
     "arguments, reason",
-    [
-        (("terminowe", "opad", 2023, 1), "not_published"),
-        (("dobowe", "synop", 2023, 1), "per_station"),
-        (("terminowe", "synop", 2023, 1), "per_station"),
-    ],
+    [(("terminowe", "opad", 2023, 1), "not_published")],
 )
 async def test_unpublished_meteo_combinations_fail_before_request(
     respx_mock, arguments, reason

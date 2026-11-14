@@ -37,6 +37,7 @@ MESSAGES: dict[str, Text] = {
         "(zapisuje je obserwator analyses build).",
     ),
     "station.version": Text("version {version}", "wersja {version}"),
+    "station.record": Text("Data {years}:", "Dane {years}:"),
     "station.variable": Text("Variable", "Zmienna"),
     # --- the panel without a station ------------------------------------------------------
     "station.none.hint": Text(
@@ -134,6 +135,7 @@ MESSAGES: dict[str, Text] = {
     "station.info.meteo_kind.precipitation": Text(
         "precipitation post", "posterunek opadowy"
     ),
+    "station.info.meteo_kind.synop": Text("synoptic station", "stacja synoptyczna"),
     "station.info.active": Text("Active", "Czynna"),
     "station.info.yes": Text("yes", "tak"),
     "station.info.no": Text("no", "nie"),

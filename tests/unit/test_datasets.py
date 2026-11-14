@@ -64,6 +64,15 @@ _REGISTRY = [
         1950,
         "meteo/dobowe/opad",
     ),
+    (
+        "pl.imgw.meteo_synop_daily",
+        "meteo",
+        True,
+        "day",
+        "calendar",
+        1966,
+        "meteo/dobowe/synop",
+    ),
     ("pl.imgw.hydro_stations", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_stations", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
@@ -107,6 +116,18 @@ _REGISTRY = [
         1951,
         "meteo/terminowe/klimat",
     ),
+    (
+        "pl.imgw.meteo_synop_terms",
+        "meteo",
+        False,
+        "term",
+        "calendar",
+        1966,
+        "meteo/terminowe/synop",
+    ),
+    ("pl.imgw.warnings_hydro_archive", "hydro", False, "month", "calendar", 2017, None),
+    ("pl.imgw.warnings_meteo_archive", "meteo", False, "month", "calendar", 2017, None),
+    ("pl.imgw.actinometric", "meteo", False, "term", "calendar", 1990, None),
 ]
 # ČHMÚ datasets after the IMGW-PIB ones (spec 2026-10-18 §2.2).
 _CHMI_KEYS = [
@@ -150,7 +171,6 @@ def test_datasets_kind_filter():
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
     ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
-    assert len(meteo) == 11
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
@@ -201,11 +221,7 @@ def test_renamed_key_resolves_to_the_current_key(monkeypatch):
 
 @pytest.mark.parametrize(
     ("alias", "reason"),
-    [
-        ("meteo/dobowe/synop", "per_station"),
-        ("meteo/terminowe/synop", "per_station"),
-        ("meteo/terminowe/opad", "not_published"),
-    ],
+    [("meteo/terminowe/opad", "not_published")],
 )
 def test_aliases_without_descriptor_explain_reason(alias, reason):
     with pytest.raises(ObserwatorValidationError) as exc:
@@ -432,3 +448,183 @@ def test_station_lists_are_real_csv_sources():
 def test_invalid_choices_raise_validation_error(dataset, years, months):
     with pytest.raises(ObserwatorValidationError):
         archive_files(dataset, years=years, months=months)
+
+
+_SYNOP_TERMS = "pl.imgw.meteo_synop_terms"
+_SYNOP_DIR = f"{_BASE}/dane_meteorologiczne/terminowe/synop"
+
+
+def test_synop_terms_station_files_follow_the_folders_and_the_station_number():
+    # ŚWINOUJŚCIE 353140200 and ŁEBA 354170120: the files carry the last 3 digits.
+    files = archive_files(
+        "meteo/terminowe/synop",
+        years="1966-1971,2000,2001",
+        stations=["354170120", "353140200"],
+    )
+    assert [item.url for item in files] == [
+        f"{_SYNOP_DIR}/1966_1970/1966_1970_200_s.zip",
+        f"{_SYNOP_DIR}/1971_1975/1971_1975_200_s.zip",
+        f"{_SYNOP_DIR}/1996_2000/1996_2000_200_s.zip",
+        f"{_SYNOP_DIR}/2001/2001_200_s.zip",
+        f"{_SYNOP_DIR}/1966_1970/1966_1970_120_s.zip",
+        f"{_SYNOP_DIR}/1971_1975/1971_1975_120_s.zip",
+        f"{_SYNOP_DIR}/1996_2000/1996_2000_120_s.zip",
+        f"{_SYNOP_DIR}/2001/2001_120_s.zip",
+    ]
+    folder, year = files[0], files[3]
+    assert (folder.year, folder.period_start, folder.period_end) == (
+        1966,
+        date(1966, 1, 1),
+        date(1970, 12, 31),
+    )
+    assert (year.year, year.month, year.period_end) == (2001, None, date(2001, 12, 31))
+    # The name has only the station number, so the file carries no station code.
+    assert {item.station_code for item in files} == {None}
+
+
+def test_synop_terms_codes_of_one_station_number_name_one_file():
+    files = archive_files(_SYNOP_TERMS, years=2024, stations=["353140200", "253140200"])
+    assert [item.server_path.rsplit("/", 1)[1] for item in files] == ["2024_200_s.zip"]
+
+
+def test_synop_terms_months_select_the_monthly_country_files_from_2001():
+    files = archive_files(_SYNOP_TERMS, years="2000-2026", months="10,1")
+    assert [item.url for item in files][-2:] == [
+        f"{_SYNOP_DIR}/2026/2026_01_s.zip",
+        f"{_SYNOP_DIR}/2026/2026_10_s.zip",
+    ]
+    assert len(files) == 2 * 26 and files[0].server_path.endswith("/2001/2001_01_s.zip")
+    assert (files[-1].period_start, files[-1].period_end) == (
+        date(2026, 10, 1),
+        date(2026, 10, 31),
+    )
+    with pytest.raises(ObserwatorValidationError) as exc:
+        archive_files(_SYNOP_TERMS, years="1990-2000", months=1)
+    assert exc.value.details["option"] == "months"
+
+
+@pytest.mark.parametrize(
+    ("options", "option"),
+    [
+        ({"years": 2024}, "stations"),
+        ({"stations": ["353140200"]}, "years"),
+        ({"years": 1965, "stations": ["353140200"]}, "years"),
+        ({"years": 2024, "stations": ["200"]}, "stations"),
+        ({"years": 2024, "stations": ["0-203-1-001000"]}, "stations"),
+    ],
+)
+def test_synop_terms_selection_errors(options, option):
+    with pytest.raises(ObserwatorValidationError) as exc:
+        archive_files(_SYNOP_TERMS, **options)
+    assert exc.value.details["option"] == option
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "1966_1970/1966_1970_200_s.zip",
+        "1996_2000/1996_2000_120_s.zip",
+        "2024/2024_200_s.zip",
+        "2026/2026_03_s.zip",
+    ],
+)
+def test_synop_terms_paths_map_back_to_their_files(name):
+    archive = DATASETS_MODULE._archive_from_path(
+        _SYNOP_TERMS, f"dane_meteorologiczne/terminowe/synop/{name}"
+    )
+    assert archive is not None and archive.url == f"{_SYNOP_DIR}/{name}"
+    selection = (
+        {"months": archive.month}
+        if archive.month is not None
+        else {"stations": ["353140200", "354170120"]}
+    )
+    assert archive in archive_files(_SYNOP_TERMS, years=archive.year, **selection)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "1966_1970/1971_1975_200_s.zip",  # the name's period is not the folder's
+        "1999/1999_200_s.zip",  # a year until 2000 lies in a five-year folder
+        "1961_1965/1961_1965_200_s.zip",  # before the first year
+        "1996_2000/1996_2000_03_s.zip",  # monthly files only from 2001
+        "2026/2026_13_s.zip",
+        "2024/2024_200_k.zip",
+    ],
+)
+def test_synop_terms_foreign_paths_are_no_files(name):
+    assert (
+        DATASETS_MODULE._archive_from_path(
+            _SYNOP_TERMS, f"dane_meteorologiczne/terminowe/synop/{name}"
+        )
+        is None
+    )
+
+
+def test_warning_archives_are_monthly_files_outside_the_measurement_data():
+    files = archive_files(
+        "pl.imgw.warnings_hydro_archive", years="2017-2018", months=12
+    )
+    assert [item.url for item in files] == [
+        "https://danepubliczne.imgw.pl/data/arch/ost_hydro/2017/12.zip",
+        "https://danepubliczne.imgw.pl/data/arch/ost_hydro/2018/12.zip",
+    ]
+    assert [item.server_path for item in files][0] == "arch/ost_hydro/2017/12.zip"
+    assert (files[1].month, files[1].period_start, files[1].period_end) == (
+        12,
+        date(2018, 12, 1),
+        date(2018, 12, 31),
+    )
+    meteo = archive_files("pl.imgw.warnings_meteo_archive", years=2024)
+    assert [item.server_path for item in meteo] == [
+        f"arch/ost_meteo/2024/{month:02d}.zip" for month in range(1, 13)
+    ]
+    assert (
+        DATASETS_MODULE._archive_from_path(
+            "pl.imgw.warnings_meteo_archive", "arch/ost_meteo/2024/05.zip"
+        )
+        == meteo[4]
+    )
+    for options in ({"years": 2016}, {"years": 2024, "stations": ["353140200"]}):
+        with pytest.raises(ObserwatorValidationError):
+            archive_files("pl.imgw.warnings_hydro_archive", **options)
+
+
+def test_actinometric_files_are_named_only_in_the_folder_index():
+    with pytest.raises(ObserwatorValidationError) as exc:
+        archive_files("pl.imgw.actinometric", years=2015)
+    assert exc.value.details["reason"] == "listed"
+    # The selection is checked first: its folders carry station names, no codes.
+    for options, option in (
+        ({"years": 2015, "stations": ["351160424"]}, "stations"),
+        ({}, "years"),
+        ({"years": 1989}, "years"),
+    ):
+        with pytest.raises(ObserwatorValidationError) as exc:
+            archive_files("pl.imgw.actinometric", **options)
+        assert exc.value.details["option"] == option
+
+
+def test_actinometric_paths_take_the_years_of_their_year_folder():
+    def path(relative):
+        return DATASETS_MODULE._archive_from_path(
+            "pl.imgw.actinometric", f"dane_aktynometryczne/{relative}"
+        )
+
+    ranged = path("Kłodzko/Źródłowe/1991-1992/Klodzko1991-1992.xls")
+    assert (ranged.year, ranged.period_start, ranged.period_end) == (
+        1991,
+        date(1991, 1, 1),
+        date(1992, 12, 31),
+    )
+    assert ranged.url == (
+        f"{_BASE}/dane_aktynometryczne/K%C5%82odzko/%C5%B9r%C3%B3d%C5%82owe/"
+        "1991-1992/Klodzko1991-1992.xls"
+    )
+    summary = path("Promieniowanie słoneczne_zakres danych.xlsx")
+    assert (summary.year, summary.year_type, summary.period_start) == (
+        None,
+        "none",
+        None,
+    )
+    assert path("Kłodzko/") is None
