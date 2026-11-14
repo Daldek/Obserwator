@@ -79,8 +79,8 @@ src/obserwator/
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl, next id in feedback.next_id (DEV-15.12), rewritten atomically under flock
     ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
-    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 0.7.1, regulamin 1.0) filled for the deployment (DEV-15.7)
-    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 0.7.1), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.0.0, regulamin 1.0) filled for the deployment (DEV-15.7)
+    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.0.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```
@@ -460,7 +460,7 @@ Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command
 
 The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. The GUI reads it when its app starts (`_environment.gui_addresses`) and gives it to the page in `api/session`, which hands it to Nogat's `<nogat-app-menu>` in the top bar; with no other GUI in it the menu is not drawn. Its `obserwator` entry is the GUI's own public address, named by the regulamin and by a hand-off.
 
-The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) names who runs a deployment open to others, from the file only: `name`, `email`, `terms_effective` (a TOML date or `YYYY-MM-DD`), `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` may be empty or left out (Nogat kit 0.4.0). A table with a required key missing or empty is not used. With a usable table and the `obserwator` address of `[nogat.gui]`, the GUI is public and serves `regulamin.html` (`docs/USAGE.md` „GUI”, „Public deployment”).
+The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) names who runs a deployment open to others, from the file only: `name`, `email`, `terms_effective` (a TOML date or `YYYY-MM-DD`), `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` may be empty or left out (Nogat kit 1.0.0). A table with a required key missing or empty is not used. With a usable table and the `obserwator` address of `[nogat.gui]`, the GUI is public and serves `regulamin.html` (`docs/USAGE.md` „GUI”, „Public deployment”).
 
 |Variable|Default|Description|
 |---|---|---|

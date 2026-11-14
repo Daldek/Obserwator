@@ -667,7 +667,7 @@ class SyncReport:
     Report of a store synchronisation.
 
     A sync writes only raw data (ADR-015), so the report has no series:
-    ``obserwator-sync-report/2`` drops the ``series`` of ``/1``.
+    ``obserwator-sync-report/1`` has no ``series``.
 
     Attributes
     ----------
@@ -682,7 +682,7 @@ class SyncReport:
         written (``written``, ``replaced``).
     """
 
-    SCHEMA: ClassVar[str] = "obserwator-sync-report/2"
+    SCHEMA: ClassVar[str] = "obserwator-sync-report/1"
 
     items: tuple[OperationResult, ...]
     cancelled: bool

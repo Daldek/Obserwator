@@ -696,6 +696,8 @@ For the library additive: `obserwator.gui` lies outside `obserwator.__all__`, an
 
 **2026-11-14 — D14, D16 (Nogat kit 0.7.1, ECO-071).** The copy of Nogat's kit in `gui/web/nogat/` is 0.7.1: `nogat-sources.js` adds CP to `LINES` and shows an older „Dane ČHMÚ zostały przetworzone (…)” as CP, and the regulamin stays version 1.0 (`nogat-terms.md`, `nogat-terms.html`), corrected in place: its ČHMÚ block quotes CP without parentheses; no new `terms_effective`.
 
+**2026-11-14 — D14, D16 (Nogat kit 1.0.0, REL-1.4, ECO-072).** Until Nogat's first release the kit and the regulamin are version 1: the copy of Nogat's kit in `gui/web/nogat/` is 1.0.0 (`nogat-kit.json` byte for byte, the files of 0.7.1 unchanged), and the regulamin stays version 1.0.
+
 ## ADR-014: Harmonized exports
 
 **Date:** 2026-11-13  
@@ -750,6 +752,8 @@ Breaking for the callers of `store sync`: Archiwista's actions drop `series` and
 ### Errata
 
 **2026-11-14 — D5 (ADR-021).** D5 kept of `pl.imgw.hydro_now` only `id_stacji`, `stacja`, `rzeka`, `lon` and `lat`, while the catalog still read `gauge_zero_m`, `river_km` and `established_year` of an IMGW-PIB station from the fields `rzedna_zerawodowskazu`, `kilometr_biegu_rzeki` and `rok_zalozenia_stacji` of the same answer: since D5 these three properties were null for every IMGW-PIB station, which D5 did not say. ADR-021 fills them from the station pages of hydro.imgw.pl (`pl.imgw.hydro_details`), not from the current-data API, whose kept fields stay as D5 lists them. D5's mechanism is extended: a name of `kept_fields` may be dotted (`status.alarmValue`), reaches into a nested object and is kept nested. The warning and alarm levels, which D5 counts with the content of the answers that is never stored, are station reference data under ADR-021 D6 and are kept from the station pages; measurements and their times stay out.
+
+**2026-11-14 — D1, D6 (Nogat REL-1.4, ECO-072).** Until the first release every document id is version 1: the sync report is `obserwator-sync-report/1` again (still `items`, `cancelled`, `files`, archive versions only, without the `series` of the old `/1`). It is a result document only, never written to a store, so nothing written before needs migrating.
 
 ## ADR-016: Stored analyses computed by Hydrolog
 

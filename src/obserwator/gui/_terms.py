@@ -38,7 +38,7 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "osm",
     }
 )
-"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 0.6.2)."""
+"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 1.0.0)."""
 PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "service_name",
@@ -57,7 +57,7 @@ PLACEHOLDERS: frozenset[str] = frozenset(
         "kit_href",
     }
 )
-"""Every field of the template (Nogat's ``PLACEHOLDERS``, kit 0.4.0)."""
+"""Every field of the template (Nogat's ``PLACEHOLDERS``, kit 1.0.0)."""
 OPTIONAL: frozenset[str] = frozenset(
     {"processor_transfer", "processor_cookie", "mail_transfer"}
 )
