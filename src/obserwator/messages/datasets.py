@@ -3,18 +3,6 @@
 from obserwator.messages import Text
 
 MESSAGES = {
-    "meteo_dobowe_synop_archives_published": Text(
-        "The meteo/dobowe/synop archives are published per station and have no "
-        "dataset in the registry; use pl.imgw.meteo_synop_monthly",
-        "Archiwa meteo/dobowe/synop są publikowane osobno dla każdej stacji i nie "
-        "mają zbioru w rejestrze; użyj pl.imgw.meteo_synop_monthly",
-    ),
-    "meteo_terminowe_synop_archives_published": Text(
-        "The meteo/terminowe/synop archives are published per station and have no "
-        "dataset in the registry; use pl.imgw.meteo_synop_monthly",
-        "Archiwa meteo/terminowe/synop są publikowane osobno dla każdej stacji i nie "
-        "mają zbioru w rejestrze; użyj pl.imgw.meteo_synop_monthly",
-    ),
     "meteo_terminowe_opad_data_do": Text(
         "The meteo/terminowe/opad data do not exist on the IMGW servers",
         "Dane meteo/terminowe/opad nie istnieją na serwerach IMGW",

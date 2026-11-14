@@ -960,7 +960,10 @@ def download_meteo_data(
     year : int
         Calendar year.
     month : int or None, optional
-        Month 1-12, required for daily and hourly data from 2001.
+        Month 1-12, required for daily and hourly data from 2001; for synop it
+        names the monthly file of the whole country that IMGW-PIB publishes
+        for the running year (the closed years are per-station archives, see
+        `download_archives`).
     timeout : float, optional
         Request timeout in seconds.
 
@@ -972,9 +975,9 @@ def download_meteo_data(
     Raises
     ------
     ObserwatorValidationError
-        If the combination is not published as a single archive (daily or
-        hourly synop, hourly precipitation; ``details["reason"]``), the year
-        or month is invalid, or a required month is missing.
+        If the combination is not published as a single archive (hourly
+        precipitation; ``details["reason"]``), synop is asked for without a
+        month, the year or month is invalid, or a required month is missing.
     ObserwatorConnectionError
         If the download fails (``source_unavailable``; ``details`` ``url``,
         ``reason`` and, for HTTP errors, ``status``).
