@@ -116,7 +116,8 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | PMAXTP of a point picked on the map or by coordinates, without a layer of the grid | Implemented |
 | Polish and English, light and dark theme, a phone layout; Nogat's identity and app menu | Implemented |
 | Offline map without a basemap (the packaged borders) | Implemented |
-| Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms, statement, rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented; „Zgłoś uwagę” without admin routes (a deviation in `CLAUDE.md`) |
+| Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms, statement, rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented |
+| Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` | Implemented (ADR-020) |
 | HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
@@ -139,7 +140,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |-------------|--------|
 | pip installation | Implemented |
 | `obserwator datasets`, `obserwator stations`, `obserwator current` (replace `imgw fetch`/`imgw list` of 2.x) | Implemented (3.0.0, generated from the command catalog; `--provider`, `--stations` for ČHMÚ) |
-| `obserwator admin` command | Implemented |
+| `obserwator admin` command (REST API keys) | Implemented |
 | `obserwator server` command | Implemented |
 | `obserwator mcp` command (MCP server on stdio) | Implemented (3.0.0, `obserwator[mcp]`) |
 | `obserwator gui serve` command (the GUI) | Implemented (extra `gui` with `cli`, ADR-013) |
@@ -172,7 +173,7 @@ obserwator current warnings [-k hydro|meteo]
 obserwator current hydro-states [--main-only]
 obserwator pmaxtp fetch|url --lat <lat> --lon <lon> [--method POT|AMP]
 
-# Admin
+# REST API keys (not the GUI's admin key)
 obserwator admin keys
 obserwator admin create --name <name> [--limit]
 obserwator admin revoke <key_id>

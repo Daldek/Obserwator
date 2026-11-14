@@ -6,6 +6,22 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **GUI admin panel (Nogat DEV-15.13, ECO-067, kit 0.7.0, ADR-020).** `admin/` (`admin` answers
+  `308`) is the kit's `<nogat-admin>` with „Zgłoszenia”, „Statystyki” and „Stan”. Its API under
+  `api/admin/` checks `X-Admin-Key` in constant time against `OBSERWATOR_ADMIN_API_KEY` or the
+  file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every request (environment only;
+  `config show` lists both as credentials); a missing, wrong or unset key is `401 unauthorized`
+  with `details.reason` `admin_key_missing`, `admin_key_invalid` or `admin_key_not_configured`.
+  `GET api/admin/feedback?limit=&offset=` lists the reports of `feedback.jsonl` newest first,
+  `PATCH api/admin/feedback/{id}` with `{"is_read": bool}` marks one and `DELETE` deletes one,
+  the file rewritten atomically under its `flock`; `GET api/admin/stats?from=&to=` gives the days
+  of `stats.jsonl` with today as counted so far and their totals; `GET api/admin/status` the
+  version, start, uptime, own directory with its free disk and the checks `data_root_marker`,
+  `stored_analyses`, `hydrolog_command`. Admin answers and every `429` are `Cache-Control:
+  no-store`, the panel under CSP `'self'`; its requests count against the rate limit, not in the
+  statistics. The deviation from DEV-15.12 and the `jq` instructions are gone. Deployment: set the
+  key (a file of mode 0600 named by the unit) and protect `/admin`, `/admin/*`, `/api/admin/*`.
+  The REST API keys of `obserwator admin` are unchanged and separate.
 - **State borders from PRG and RÚIAN (ADR-018).** The packaged borders of Poland and Czechia
   come from PRG (GUGiK) and RÚIAN (ČÚZK) instead of Natural Earth, built by
   `scripts/build_borders.py` (simplified to 50 m). A catalog keeps a location within the

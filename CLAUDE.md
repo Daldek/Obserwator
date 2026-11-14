@@ -9,11 +9,11 @@ Obserwator (`obserwator` on PyPI, v3.0.0, profiles `tool` and `app`) is a Python
 ## 2. Critical rules
 
 - Write only where the user says: `--output-dir` (plain files) or `--root`; without `--root`, downloads go to the raw root (`OBSERWATOR_RAW_ROOT`, default `<data_dir>/obserwator-raw`) and the series, catalogs and analyses to the data root (`OBSERWATOR_ROOT`, default `<data_dir>/obserwator`) (DEV-19.2, ADR-007, ADR-017). A build reads the raw root (`--raw-root`) and never writes it; a function needing one kind of root refuses the other (`wrong_root`). A server writes only to its configured `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, never to a default. No database.
-- Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`. Outside the catalog stay only `version`, `server`, `mcp`, `admin`, `config show` and `gui serve` (`cli/main.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`).
+- Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`. Outside the catalog stay only `version`, `server`, `mcp`, `admin` (the REST API keys of `api_keys.json`), `config show` and `gui serve` (`cli/main.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`).
 - Never edit `AGENTS.md` and `llms.txt` by hand: they are derived from the catalog. A change of catalog texts, of the dataset/provider/error registries or of the templates in `src/obserwator/_data/agents/` regenerates both in the same change (commands in section 3); `tests/unit/test_agent_guide.py` compares the bytes.
 - Keep the contract Python = CLI = REST = MCP (`tests/contract/`); one option name per parameter, one envelope `obserwator-result/1`, one error registry `ERROR_CODES`.
 - Never run tests with the global Python (a non-editable `obserwator` there shadows `src/`): use `uv run`.
-- `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from a file, never printed.
+- `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from a file, never printed. So is the GUI's admin key (Nogat DEV-15.13, ADR-020): `OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every admin request, never generated, logged or taken from `nogat.toml`; it is not one of the REST API keys of `obserwator admin`.
 - Text for a person (an error `detail`, a notice, a progress or plan line, a printed line, a command description or option help) is never inline: it is an entry of `obserwator.messages.<area>` (`Text(en, pl)`, English first) rendered by `message("<area>.<name>", value=…)` (ADR-006); `tests/unit/test_messages.py` checks both languages, the call sites and that no Polish literal is left outside the catalog.
 - Every functional change updates the Markdown docs, docstrings and OpenAPI where affected; no change without tests.
 - Approvals (DEV-3.3): without the author's approval in the current session never merge a pull request, create or move tags, publish a release, force-push a shared branch or rewrite the history of `main`/`develop`. A change of a public interface or across more than one module starts with a plan approved by the author (DEV-17.4).
@@ -54,7 +54,7 @@ src/obserwator/
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
-└── gui/                  # web GUI server (Starlette) and web/ (the page)    [obserwator[gui]]
+└── gui/                  # web GUI server (Starlette), web/ (the page), admin/  [obserwator[gui]]
 tests/{unit,contract,e2e,live}  AGENTS.md, llms.txt (derived)  docker/  scripts/  docs/
 ```
 
@@ -70,7 +70,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..019) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..020) | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
@@ -96,6 +96,5 @@ Obserwator is a tool of the Nogat ecosystem; its entry (interfaces, provided con
 Deviations from the Nogat standard (DEV-1.2), one line each.
 
 - DEV-7.3: `tests/` is checked by mypy with the `tests.*` override of `pyproject.toml` (`disallow_untyped_defs`, `disallow_incomplete_defs`, `disallow_untyped_calls`, `disallow_untyped_decorators`, `check_untyped_defs` off): the test functions and fixtures are not annotated. `src/` is `strict` without overrides, except `pyarrow` (no type information: `ignore_missing_imports`).
-- DEV-15.12: no `/api/admin/feedback` routes: Obserwator has no operator sign-in and no database; the operator reads, marks and deletes the reports of `<data_dir>/obserwator/feedback.jsonl` with a text tool (`jq`; `docs/USAGE.md` „GUI”).
 - DEV-19.5, DEV-19.6: the two files of `obserwator pmaxtp sync --output-dir` are named by the cell indices of the answer, so only a call that gives `--ind-x` and `--ind-y` is refused before the request; any other is checked after the one small answer and before the first file is written (ADR-007 D3).
 - AGI-6.1: the GUI's private API (`api/…` relative to its page, `obserwator gui serve`) is no REST interface: no `/api/v1`, no OpenAPI, no stability promise, as Hydrolog's GUI; scripts and agents use REST, the CLI or MCP (ADR-013).

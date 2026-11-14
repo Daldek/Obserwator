@@ -20,6 +20,7 @@ from types import MappingProxyType
 
 from obserwator.messages import Text
 from obserwator.messages.gui import (
+    admin,
     charts,
     hydro_levels,
     hydro_regime,
@@ -38,6 +39,7 @@ from obserwator.messages.gui import (
 _PARTS: tuple[Mapping[str, Text], ...] = (
     server.MESSAGES,
     public.MESSAGES,
+    admin.MESSAGES,
     shell.MESSAGES,
     stations.MESSAGES,
     station.MESSAGES,

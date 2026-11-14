@@ -5,6 +5,8 @@ import jsonschema
 import pytest
 
 from obserwator.exceptions import ERROR_CODES
+from obserwator.gui._http import HTTP_ONLY
+from obserwator.messages import message
 from tests.contract.nogat import SCHEMA_NAMES, load_registry, load_schema
 
 REGISTRY = {entry["code"]: entry for entry in load_registry()["errors"]}
@@ -21,6 +23,16 @@ def test_every_error_code_has_the_exit_code_status_and_titles_of_the_registry(co
     )
     assert spec.title.localized("en") == entry["title_en"]
     assert spec.title.localized("pl") == entry["title_pl"]
+
+
+@pytest.mark.parametrize("code", list(HTTP_ONLY))
+def test_the_guis_http_only_codes_have_the_status_and_titles_of_the_registry(code):
+    status, title = HTTP_ONLY[code]
+    entry = REGISTRY[code]
+
+    assert (entry["exit_code"], entry["http_status"]) == (None, status)
+    assert message(title, lang="en") == entry["title_en"]
+    assert message(title, lang="pl") == entry["title_pl"]
 
 
 def test_the_envelope_exit_codes_are_the_outcomes_of_the_registry():

@@ -105,24 +105,37 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
     write_config(
         tmp_path,
         monkeypatch,
-        '[obserwator]\nstore_write_token = "from-file"\nport = 1\nfoo = 2\n',
+        '[obserwator]\nstore_write_token = "from-file"\nport = 1\n'
+        'admin_api_key = "admin-from-file"\nfoo = 2\n',
     )
 
     missing = environment_report()
     assert Settings().store_write_token is None
-    assert missing["credentials"] == {"OBSERWATOR_STORE_WRITE_TOKEN": "missing"}
+    assert Settings().admin_api_key is None
+    assert missing["credentials"] == {
+        "OBSERWATOR_STORE_WRITE_TOKEN": "missing",
+        "OBSERWATOR_ADMIN_API_KEY": "missing",
+        "OBSERWATOR_ADMIN_API_KEY_FILE": "missing",
+    }
     assert "store_write_token" not in missing["keys"]
+    assert "admin_api_key" not in missing["keys"]
     assert missing["config_file"]["ignored"] == [
         {"key": "store_write_token", "reason": "credential"},
+        {"key": "admin_api_key", "reason": "credential"},
         {"key": "foo", "reason": "unknown"},
     ]
 
     monkeypatch.setenv("OBSERWATOR_STORE_WRITE_TOKEN", "from-env")
+    monkeypatch.setenv("OBSERWATOR_ADMIN_API_KEY_FILE", str(tmp_path / "admin.key"))
     present = environment_report()
-    assert present["credentials"] == {"OBSERWATOR_STORE_WRITE_TOKEN": "present"}
-    assert "from-env" not in json.dumps(present) and "from-file" not in json.dumps(
-        present
-    )
+    assert present["credentials"] == {
+        "OBSERWATOR_STORE_WRITE_TOKEN": "present",
+        "OBSERWATOR_ADMIN_API_KEY": "missing",
+        "OBSERWATOR_ADMIN_API_KEY_FILE": "present",
+    }
+    text = json.dumps(present)
+    assert "from-env" not in text and "from-file" not in text
+    assert "admin.key" not in text
 
 
 def test_directories_stay_out_of_the_working_directory(user_environment, monkeypatch):

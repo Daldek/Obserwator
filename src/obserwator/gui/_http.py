@@ -30,6 +30,12 @@ JSON = "application/json"
 NO_CACHE = "no-cache"
 DEFAULT_LANG: Lang = "pl"
 """The page's language when the request names none: the GUI is Polish by default (DEV-2.2)."""
+HTTP_ONLY: Mapping[str, tuple[int, str]] = {
+    "rate_limited": (429, "gui.errors.title_rate_limited"),
+    "unauthorized": (401, "gui.errors.title_unauthorized"),
+}
+"""The codes of Nogat's registry that only HTTP answers use (AGI-6.3), outside
+`ERROR_CODES`: their status and the key of their title (DEV-15.9, DEV-15.13)."""
 
 
 class GuiError(Exception):
@@ -39,8 +45,8 @@ class GuiError(Exception):
     Parameters
     ----------
     code : str
-        A code of the error registry (`ERROR_CODES`), or ``rate_limited`` (429,
-        Nogat DEV-15.9).
+        A code of the error registry (`ERROR_CODES`), or one of `HTTP_ONLY`:
+        ``rate_limited`` (429, Nogat DEV-15.9), ``unauthorized`` (401, DEV-15.13).
     text : str
         What happened: a catalog `Message`, rendered in the page's language.
     details : Mapping or None, optional
@@ -67,8 +73,8 @@ class GuiError(Exception):
     @property
     def status(self) -> int:
         """The HTTP status of the code."""
-        if self.code == "rate_limited":
-            return 429
+        if self.code in HTTP_ONLY:
+            return HTTP_ONLY[self.code][0]
         spec = ERROR_CODES.get(self.code)  # type: ignore[call-overload]
         return (spec.http_status if spec is not None else None) or 500
 
@@ -223,11 +229,11 @@ def error_body(exc: GuiError | ObserwatorError, lang: Lang) -> dict[str, Any]:
         return error_document(
             exc.code, exc.detail, exc.details, hint=exc.hint, lang=lang
         ).to_dict()
-    if exc.code == "rate_limited":
+    if exc.code in HTTP_ONLY:
         return {
             "schema": ERROR_SCHEMA,
-            "code": "rate_limited",
-            "title": str(message("gui.errors.title_rate_limited", lang=lang)),
+            "code": exc.code,
+            "title": str(message(HTTP_ONLY[exc.code][1], lang=lang)),
             "message": localize(exc.text, lang),
             "details": exc.details,
             "exit_code": None,

@@ -54,6 +54,7 @@ def test_each_answered_request_is_one_access_record_without_the_client(
             "/src/main.js",
             "/nogat/tokens.css",
             "/theme-init.js",
+            "/admin/theme-init.js",
             "/instrukcja/",
             f"/data/{next(iter(BORDERS))}",
         )
@@ -100,3 +101,27 @@ def test_the_answers_of_the_rate_limit_are_logged(make_client, tmp_path):
     ]
     assert records[1]["bytes"] == len(refused.content)
     validate(records[1], "record-1")
+
+
+def test_no_log_holds_the_admin_key(make_client, tmp_path, monkeypatch):
+    key = "klucz-administratora-42"
+    monkeypatch.setenv("OBSERWATOR_ADMIN_API_KEY", key)
+    log = server_log(tmp_path)
+    client = make_client(log=log, gui_dir=tmp_path / "state")
+
+    answers = [
+        client.get("/api/admin/status", headers={"X-Admin-Key": key}),
+        client.get("/api/admin/feedback", headers={"X-Admin-Key": f"{key}-wrong"}),
+        client.delete("/api/admin/feedback/7", headers={"X-Admin-Key": key}),
+    ]
+
+    assert [answer.status_code for answer in answers] == [200, 401, 404]
+    assert [
+        (r["method"], r["path"], r["status"]) for r in access_records(tmp_path)
+    ] == [
+        ("GET", "/api/admin/status", 200),
+        ("GET", "/api/admin/feedback", 401),
+        ("DELETE", "/api/admin/feedback/7", 404),
+    ]
+    written = b"".join(path.read_bytes() for path in (tmp_path / "logs").iterdir())
+    assert key.encode() not in written

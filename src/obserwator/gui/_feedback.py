@@ -6,22 +6,27 @@
 JSON line ``{"id", "created_at", "message", "context", "is_read"}``: never an IP
 address or a User-Agent. The address serves only the in-memory limit of `RATE_COUNT`
 reports in `RATE_WINDOW_S`. The first report creates the file (directory 0700, file
-0600); a line is written in one ``write`` under a lock. There are no admin routes: the
-operator reads the file with ``jq``.
+0600); a line is written in one ``write`` under the file's lock (``flock``), and ids are
+never reused: `NEXT_ID_FILE` beside it keeps the next one. The admin panel (DEV-15.13,
+``obserwator.gui._admin``) lists the reports and marks or deletes one: the file is then
+rewritten atomically, a temporary file renamed over it under the same lock, so a report
+is never lost to a rewrite, also of another process.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -53,6 +58,10 @@ RATE_COUNT = 5
 RATE_WINDOW_S = 600.0
 BODY_KEYS = frozenset({"message", "context"})
 CONTEXT_KEYS = frozenset({"view", "station", "parameters"})
+NEXT_ID_FILE = "feedback.next_id"
+"""Beside ``feedback.jsonl``: the next report's id, written under its lock, so an id stays
+given once its report is deleted (DEV-15.12: ascending); without it, the largest id in the
+file plus one."""
 
 _SURROGATE = re.compile("[\ud800-\udfff]")
 
@@ -61,14 +70,17 @@ class Feedback:
     """
     The reports of one GUI app and the limit of reports per address.
 
+    Every read and write of the file takes its lock (``flock``: shared to read,
+    exclusive to write), so the GUI's processes, and a person's ``flock``, take turns.
+
     Parameters
     ----------
     path : Path
         ``<data_dir>/obserwator/feedback.jsonl`` (`GuiConfig.gui_dir`).
     writes : bool, optional
         Take reports (default); False keeps them off: ``POST api/feedback`` answers
-        ``forbidden`` and nothing is written (GUI plan D7: the GUI's own directory
-        overlaps the data root).
+        ``forbidden``, the admin panel sees no report, and the file is neither read
+        nor written (GUI plan D7: the GUI's own directory overlaps the data root).
     monotonic : callable, optional
         Monotonic time in seconds (the limit's window).
     """
@@ -81,9 +93,11 @@ class Feedback:
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.path = path
+        self.next_id = path.with_name(NEXT_ID_FILE)
         self.writes = writes
         self.monotonic = monotonic
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # the limit
+        self._io = threading.Lock()  # the file, within this process
         self._times: dict[str, deque[float]] = {}
 
     def take(self, address: str) -> int | None:
@@ -118,7 +132,7 @@ class Feedback:
 
     def append(self, text: str, context: Mapping[str, Any]) -> int:
         """
-        Store a report as one line: its id is one more than the largest in the file.
+        Store a report as one line, its id never given before (`NEXT_ID_FILE`).
 
         Parameters
         ----------
@@ -137,41 +151,294 @@ class Feedback:
         OSError
             When the file cannot be read or written.
         """
-        with self._lock:
+        with self._io:
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
-            handle = os.open(self.path, flags, 0o600)
+            handle = _locked(self.path, os.O_RDWR | os.O_APPEND | os.O_CREAT)
             try:
-                if sys.platform != "win32":
-                    fcntl.flock(handle, fcntl.LOCK_EX)
                 with open(handle, "rb", closefd=False) as file:
-                    largest = max(map(_id_of, file), default=0)
+                    stored = _reports(file)
+                largest = max((found["id"] for found in stored), default=0)
+                number = max(largest + 1, self._issued())
                 report = {
-                    "id": largest + 1,
+                    "id": number,
                     "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
                     "message": text,
                     "context": dict(context),
                     "is_read": False,
                 }
-                line = json.dumps(report, ensure_ascii=False, separators=(",", ":"))
-                data = (line + "\n").encode("utf-8")
+                data = _encoded(report) + b"\n"
                 written = os.write(handle, data)
                 if written != len(data):
                     raise OSError(f"short write: {written} of {len(data)} bytes")
                 os.fsync(handle)
+                self._issue(number + 1)
             finally:
                 os.close(handle)
-        return largest + 1
+        return number
+
+    def reports(self) -> list[dict[str, Any]]:
+        """
+        The stored reports in the file's order (ascending ids).
+
+        Returns
+        -------
+        list of dict
+            Each line that is a JSON object with a positive whole-number ``id``, as
+            stored; empty without the file or when reports are off (`writes`).
+
+        Raises
+        ------
+        OSError
+            When the file cannot be read.
+        """
+        if not self.writes:
+            return []
+        with self._io:
+            try:
+                handle = _locked(self.path, os.O_RDONLY, shared=True)
+            except FileNotFoundError:
+                return []
+            try:
+                with open(handle, "rb", closefd=False) as file:
+                    lines = file.read().split(b"\n")
+            finally:
+                os.close(handle)
+        return _reports(lines)
+
+    def mark(self, report: int, is_read: bool) -> dict[str, Any] | None:
+        """
+        Mark a report read or unread, rewriting the file (`rewrite`).
+
+        Parameters
+        ----------
+        report : int
+            The report's id.
+        is_read : bool
+            Its new ``is_read``.
+
+        Returns
+        -------
+        dict or None
+            The report as now stored; None when no report has the id. A report that
+            already has the value leaves the file untouched.
+
+        Raises
+        ------
+        OSError
+            When the file cannot be read or written.
+        """
+        found: dict[str, Any] | None = None
+
+        def change(lines: list[bytes]) -> list[bytes] | None:
+            nonlocal found
+            changed = False
+            for number, raw in enumerate(lines):
+                document = _report(raw)
+                if document is None or document["id"] != report:
+                    continue
+                if document.get("is_read") is not is_read:
+                    document["is_read"] = is_read
+                    lines[number] = _encoded(document)
+                    changed = True
+                found = document
+            return lines if changed else None
+
+        self.rewrite(change)
+        return found
+
+    def delete(self, report: int) -> bool:
+        """
+        Delete a report, rewriting the file (`rewrite`).
+
+        Its id is never given again: `NEXT_ID_FILE` keeps the next one, also when
+        the newest report goes.
+
+        Parameters
+        ----------
+        report : int
+            The report's id.
+
+        Returns
+        -------
+        bool
+            Whether a report had the id.
+
+        Raises
+        ------
+        OSError
+            When the file cannot be read or written.
+        """
+        deleted = False
+
+        def change(lines: list[bytes]) -> list[bytes] | None:
+            nonlocal deleted
+            kept = [
+                raw
+                for raw in lines
+                if (document := _report(raw)) is None or document["id"] != report
+            ]
+            deleted = len(kept) < len(lines)
+            return kept if deleted else None
+
+        self.rewrite(change)
+        return deleted
+
+    def rewrite(self, change: Callable[[list[bytes]], list[bytes] | None]) -> None:
+        """
+        Rewrite the file atomically under its lock.
+
+        The new text goes to a temporary file beside it (``0600``), synced, then
+        renamed over it while the lock of the old file is held, so a reader sees the
+        old file or the new one, never a part, and a report waiting for the lock is
+        appended to the new file (`_locked`). Lines nobody changed keep their bytes.
+
+        Parameters
+        ----------
+        change : callable
+            Takes the file's lines without their line ends and returns the new ones,
+            or None to leave the file as it is. Not called without the file or when
+            reports are off (`writes`).
+
+        Raises
+        ------
+        OSError
+            When the file cannot be read or written; it is then left as it was.
+        """
+        if not self.writes:
+            return
+        with self._io:
+            try:
+                handle = _locked(self.path, os.O_RDWR)
+            except FileNotFoundError:
+                return
+            try:
+                with open(handle, "rb", closefd=False) as file:
+                    lines = file.read().split(b"\n")
+                if lines[-1] == b"":
+                    lines.pop()
+                largest = max((found["id"] for found in _reports(lines)), default=0)
+                if self._issued() <= largest:  # a file of an older GUI: no counter yet
+                    self._issue(largest + 1)
+                new = change(lines)
+                if new is None:
+                    return
+                data = b"".join(raw + b"\n" for raw in new)
+                temporary = _synced(self.path.parent, data)
+                try:
+                    if sys.platform == "win32":
+                        # Windows renames over no open file: this process's lock holds
+                        os.close(handle)
+                        handle = -1
+                    os.replace(temporary, self.path)
+                except BaseException:
+                    with contextlib.suppress(OSError):
+                        os.unlink(temporary)
+                    raise
+            finally:
+                if handle >= 0:
+                    os.close(handle)
+
+    def _issued(self) -> int:
+        """The next id `NEXT_ID_FILE` holds; 0 without it or when it holds no number."""
+        try:
+            text = self.next_id.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, UnicodeDecodeError):
+            return 0
+        return int(text) if text.isascii() and text.isdigit() else 0
+
+    def _issue(self, number: int) -> None:
+        """Keep ``number`` as the next id: a temporary file renamed over `NEXT_ID_FILE`."""
+        temporary = _synced(self.path.parent, f"{number}\n".encode())
+        try:
+            os.replace(temporary, self.next_id)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
 
 
-def _id_of(raw: bytes) -> int:
-    """The id of a stored line, 0 for a line that has none."""
+def _locked(path: Path, flags: int, *, shared: bool = False) -> int:
+    """
+    ``path`` opened with ``flags`` and locked (POSIX ``flock``), the file the path names.
+
+    A rewrite renames a new file over the path while it holds the lock of the old one,
+    so a lock that comes once the path names another file is the old file's: the path
+    is then opened and locked again. On Windows, without ``flock``, the instance's lock
+    alone orders the reads and writes of one process.
+
+    Parameters
+    ----------
+    path : Path
+        The file.
+    flags : int
+        The flags of ``os.open`` (a new file gets mode ``0600``).
+    shared : bool, optional
+        A shared lock (to read) instead of an exclusive one (to write).
+
+    Returns
+    -------
+    int
+        The open, locked file descriptor; the caller closes it, which unlocks it.
+
+    Raises
+    ------
+    OSError
+        ``FileNotFoundError`` when the file does not exist and ``flags`` do not
+        create it.
+    """
+    flags |= getattr(os, "O_BINARY", 0)
+    while True:
+        handle = os.open(path, flags, 0o600)
+        if sys.platform == "win32":
+            return handle
+        try:
+            fcntl.flock(handle, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+            if os.path.samestat(os.fstat(handle), os.stat(path)):
+                return handle
+        except FileNotFoundError:
+            pass  # removed while this waited: open the path again
+        except BaseException:
+            os.close(handle)
+            raise
+        os.close(handle)
+
+
+def _synced(directory: Path, data: bytes) -> str:
+    """``data`` in a new temporary file of ``directory`` (``0600``), synced: its name."""
+    handle, name = tempfile.mkstemp(dir=directory, prefix=".feedback-", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(name)
+        raise
+    return name
+
+
+def _encoded(report: Mapping[str, Any]) -> bytes:
+    """A report as its line, compact UTF-8 JSON without the line end."""
+    text = json.dumps(report, ensure_ascii=False, separators=(",", ":"))
+    return _clean(text).encode("utf-8")
+
+
+def _reports(lines: Iterable[bytes]) -> list[dict[str, Any]]:
+    """The reports of stored lines, in their order; other lines left out."""
+    return [found for found in map(_report, lines) if found is not None]
+
+
+def _report(raw: bytes) -> dict[str, Any] | None:
+    """The report of a stored line: a JSON object with a positive whole-number ``id``."""
     try:
         document = json.loads(raw)
     except ValueError:
-        return 0
-    value = document.get("id") if isinstance(document, dict) else None
-    return value if type(value) is int else 0
+        return None
+    if not isinstance(document, dict):
+        return None
+    value = document.get("id")
+    return document if type(value) is int and value > 0 else None
 
 
 def _clean(text: str) -> str:
@@ -277,15 +544,15 @@ def _same_origin(request: Request) -> bool:
     return origin is not None and origin == f"{request.url.scheme}://{host}"
 
 
-async def _body(request: Request) -> bytes | None:
-    """The body, read in chunks; None when it is larger than `BODY_MAX_BYTES`."""
+async def read_body(request: Request, limit: int = BODY_MAX_BYTES) -> bytes | None:
+    """The body, read in chunks; None when it is larger than ``limit`` bytes."""
     length = request.headers.get("content-length", "")
-    if length.isdigit() and int(length) > BODY_MAX_BYTES:
+    if length.isdigit() and int(length) > limit:
         return None
     body = bytearray()
     async for chunk in request.stream():
         body += chunk
-        if len(body) > BODY_MAX_BYTES:
+        if len(body) > limit:
             return None
     return bytes(body)
 
@@ -326,7 +593,7 @@ async def post_feedback(request: Request) -> Response:
             raise _invalid(
                 message("gui.public.feedback_content_type"), reason="content_type"
             )
-        body = await _body(request)
+        body = await read_body(request)
         if body is None:
             response = error_response(
                 request,

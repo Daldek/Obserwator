@@ -7,7 +7,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Field | Value |
 |------|---------|
 | **Version** | 3.0.0 |
-| **Date** | 2026-11-13 |
+| **Date** | 2026-11-14 |
 | **Working branch** | `develop` (formerly `slave`, ECO-008). On 2026-11-03 the finished `feature/archiwista-projects` stack `0e0bc3a` (tree as after the green gate `8cd6844c`) was merged into it (`--no-ff`, the author's decision, without a pull request): projects moved to Archiwista and `command_for_version` (ADR-008), data output (`feature/data-output`, ADR-007), Nogat standard 1.0 (`chore/nogat-2.1`), Archiwista compatibility fixes (`fix/archiwista-compat-2`), and earlier `feature/chmi-agents` (ADR-003, ADR-004) and `feature/versioned-store` (ADR-001, ADR-002); these branches were deleted locally and on GitHub. Remaining: `main` (releases, v2.1.1); `fix/archiwista-compat` — superseded by `fix/archiwista-compat-2` (`e77a6f9` and `c280088` cherry-picked over), but `e9d8886` (publication without hard links, rejected in favour of `cb6af4f`) and `2e78eb6` are not in any other branch, so its deletion awaits the author's decision; the local `backup/versioned-store-master-base` `7263212` (a copy of `feature/versioned-store` from before the rework, 8 commits not present elsewhere, not on GitHub) — also the author's decision. Next: merge `develop` → `main` and tag 3.0.0 with the author's approval |
 | **Python** | >=3.12 |
 
@@ -20,6 +20,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Web GUI: `obserwator gui serve` (ADR-013; plan [`docs/plans/2026-11-12-obserwator-gui.md`](plans/2026-11-12-obserwator-gui.md), the GUI part of Nogat's plan `2026-11-12-station-data-and-analyses.md`, ECO-059) | implemented on `feature/gui`, not merged into `develop` | GUI plan S0–S9 implemented: every station of both providers on a map, the station panel with series, Hydrolog's stored analyses of the data root (a person's choices computed on request) and downloads (series, stored analyses as JSON and CSV), „Pomiary bieżące”, PMAXTP of a point, the hand-off to Hydrolog, Nogat's public-GUI rules (DEV-15.7 to DEV-15.12, kit 0.4.0), the Jinja pages removed, the documentation and the Polish guide `instrukcja/`; open gaps below („GUI: open gaps”). The deployment (`obserwator-public.service` on 127.0.0.1:8060 behind Cloudflare Access) waits for the author's merge; it serves the target data root once that root's `analyses build` publishes its analyses versions |
 | State borders from PRG and RÚIAN, lines G and Z (ADR-018; Nogat plan `2026-11-13-terms-fix.md`) | done (`fix/terms-1.0`) | `scripts/build_borders.py`, `obserwator._borders`, catalog tolerance 50 m + location uncertainty; GK/ZK in the GUI strip |
 | Nogat server logs (ADR-019, ECO-066) and kit 0.6.2 (ECO-068) | done (`fix/terms-1.0`) | `nogat_logging.py` in both servers, `<state_dir>/obserwator/logs`; regulamin 1.0 corrected |
+| GUI admin panel (ADR-020; Nogat DEV-15.13, ECO-067, kit 0.7.0; plan `2026-11-13-admin-panel.md`, step 4) | done (`feat/admin-panel`), not merged | `admin/` with „Zgłoszenia”, „Statystyki”, „Stan”; key `OBSERWATOR_ADMIN_API_KEY` or `…_FILE`; the DEV-15.12 deviation removed. Deployment (plan step 6): the key file and Cloudflare Access on `/admin`, `/admin/*`, `/api/admin/*` |
 | API key enforcement, per-key limits | planned | backlog in "Next" |
 | Compliance with Nogat standard 1.0 (`chore/nogat-2.1`, merged into `develop`) | in progress | done and to do: below and in "Next" |
 | Data output: plain mode, store, default root (ADR-007, DEV §19) | done (`develop`) | code, tests and documents finished; for consumers: [CHANGELOG "Migration guide: data output"](CHANGELOG.md) |
@@ -57,7 +58,7 @@ Further open backlog items (priority in the text):
 
 ### Features
 
-- [ ] API key enforcement — middleware validating the `X-API-Key` header. `docs/CODEBASE.md` (section "Cloud & Deployment Details") notes that keys are managed by the CLI (`obserwator admin`) but not enforced on API requests — this is a missing security layer, not a new feature. Priority: high.
+- [ ] REST API key enforcement — middleware validating the `X-API-Key` header. `docs/CODEBASE.md` (section "Cloud & Deployment Details") notes that the REST API keys are managed by the CLI (`obserwator admin`) but not enforced on API requests — this is a missing security layer, not a new feature; the GUI's admin key (ADR-020) is separate. Priority: high.
 - [ ] Per-key rate limiting — tracking and limiting requests per API key. Depends on API key enforcement. Priority: medium.
 - [x] GeoJSON in REST/GUI — done 2026-11-13 (ADR-014, GUI plan S0): `export_stations` / `obserwator stations export` / `GET /api/v1/stations/export` export the current catalogs as GeoJSON (`obserwator-stations-export/1`) or CSV with the series of each station, and `series export` gained JSON and Parquet; the GUI draws the same catalogs on its map and offers the stations as GeoJSON and CSV („Pobierz listę stacji”, ADR-013).
 - [x] Data charts — done by the GUI (ADR-013): series and analysis charts in its own SVG module (`gui/web/src/charts/`).
@@ -215,4 +216,4 @@ Author's decisions of 2026-11-09.
 
 ---
 
-**Last updated:** 2026-11-13
+**Last updated:** 2026-11-14

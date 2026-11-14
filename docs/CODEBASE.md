@@ -54,7 +54,7 @@ src/obserwator/
 │   ├── gui_cmd.py        # obserwator gui serve (outside the catalog, ADR-013)
 │   ├── _dispatch.py      # ObserwatorGroup + register_catalog: the only CLI adapter of the catalog (OBSERWATOR_LANG)
 │   ├── _render.py        # Summary for a person of the envelope (without --json): one renderer, key-field hints
-│   └── admin.py          # API key management
+│   └── admin.py          # REST API key management (api_keys.json; not the GUI's admin key)
 ├── mcp/                  # MCP adapter [optional: obserwator[mcp]]; not in obserwator.__all__
 │   ├── _tools.py         # Tools from the catalog (modes read/write/http, schemas, annotations)
 │   ├── _calls.py         # Calls: stdio (check_command/run_command), http (REST routes in process)
@@ -73,7 +73,8 @@ src/obserwator/
     ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
-    ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12)
+    ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl (DEV-15.12), rewritten atomically under flock
+    ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
     ├── _terms.py         # regulamin.html: the terms of Nogat's kit 0.6.0 filled for the deployment (DEV-15.7)
     └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit), instrukcja/ (the guide in Polish)
 
@@ -108,11 +109,11 @@ obserwator commands schema --command "store sync" --lang pl  # Readable, Polish 
 obserwator store sync --schema                       # Same, via the command itself
 obserwator commands guide --format agents --output AGENTS.md --force  # Regenerate AGENTS.md (English)
 obserwator mcp [--allow-writes --allow-dir DIR]      # MCP server on stdio, English; writes only inside --allow-dir (obserwator[mcp])
-obserwator admin keys                                # List API keys
-obserwator admin create --name "User1"               # Create API key
-obserwator admin revoke <key_id>                     # Revoke API key
-obserwator admin delete <key_id>                     # Delete API key
-obserwator admin stats                               # Show API key statistics
+obserwator admin keys                                # List REST API keys
+obserwator admin create --name "User1"               # Create a REST API key
+obserwator admin revoke <key_id>                     # Revoke a REST API key
+obserwator admin delete <key_id>                     # Delete a REST API key
+obserwator admin stats                               # Show REST API key statistics
 ```
 
 ## Public Library API
@@ -421,7 +422,7 @@ Operator note: a container created before this change keeps Docker's default `js
 Application hosted on a private server. Components:
 - **Nginx** — reverse proxy + HTTPS + rate limiting
 - **FastAPI (Uvicorn)** — backend API
-- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl}` (neither when that directory and the data root are one or one holds the other) and its logs in `<state_dir>/obserwator/logs`; unit, headers and public rules: `docs/USAGE.md` „GUI”
+- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl,feedback.next_id}` (none when that directory and the data root are one or one holds the other) and its logs in `<state_dir>/obserwator/logs`; its admin panel (`/admin/`, `/api/admin/`, DEV-15.13) needs `OBSERWATOR_ADMIN_API_KEY_FILE` (a key file of mode 0600 named by the unit) or `OBSERWATOR_ADMIN_API_KEY`, and a public deployment protects `/admin`, `/admin/*` and `/api/admin/*`; unit, headers and public rules: `docs/USAGE.md` „GUI”
 
 ### Rate limiting
 - Nginx: `limit_req_zone` (10 req/s per IP)
@@ -464,7 +465,8 @@ The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) 
 |`OBSERWATOR_MCP_ALLOW_WRITES`|`false`|Envvar of `obserwator mcp --allow-writes`: writing tools still default to `check: true` (plan) and write only with `check: false`|
 |`OBSERWATOR_CACHE_DIR`|user cache dir of `nogat`|Caches `<cache_dir>/obserwator`; shared key (also `NOGAT_CACHE_DIR`, `[nogat] cache_dir`)|
 |`OBSERWATOR_STATE_DIR`|user state dir of `nogat` (`~/.local/state/nogat` on Linux)|State kept between runs (DEV-18.2): the logs of `obserwator server` and `obserwator gui serve` in `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl` (`access`, `app`, `lifecycle`; Nogat DEV-12.6), deleted by the servers after 14 days; `Settings.log_dir`; shared key (also `NOGAT_STATE_DIR`, `[nogat] state_dir`). In a container `NOGAT_STATE_DIR` names the directory where the host's `<state_dir>/obserwator` is mounted|
-|`OBSERWATOR_API_KEYS_FILE`|`<data_dir>/obserwator/api_keys.json`|File of the API keys of `obserwator admin`|
+|`OBSERWATOR_API_KEYS_FILE`|`<data_dir>/obserwator/api_keys.json`|File of the REST API keys of `obserwator admin`|
+|`OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE`|unset|Credentials (environment only): the key of the GUI's admin panel in `X-Admin-Key`, or a file holding it; read on every admin request; unset, every admin route answers `401 admin_key_not_configured`|
 |`OBSERWATOR_RATE_LIMIT`|`100`|Requests per hour (0 = unlimited)|
 |`OBSERWATOR_ENV`, `OBSERWATOR_HOST`, `OBSERWATOR_PORT`|`development`, `0.0.0.0`, `8000`|REST server (`obserwator server`); `OBSERWATOR_ENV=production` disables reload. No log-level setting: the servers log at the fixed levels of Nogat DEV-12.7 (`OBSERWATOR_LOG_LEVEL`, which configured nothing, is gone and ignored)|
 |`OBSERWATOR_GUI_BASEMAP_URL`|`https://tiles.openfreemap.org/planet`|TileJSON of the GUI's basemap; `none`, `off` or the variable set and empty: no basemap, the packaged borders (offline)|
