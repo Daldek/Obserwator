@@ -1066,6 +1066,7 @@ def test_the_gui_never_writes_under_the_root(
     assert files_of(fixture_root) == before
     assert sorted(path.name for path in (tmp_path / "state").iterdir()) == [
         "feedback.jsonl",
+        "feedback.next_id",
         "stats.jsonl",
     ]
 

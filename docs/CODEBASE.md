@@ -422,7 +422,7 @@ Operator note: a container created before this change keeps Docker's default `js
 Application hosted on a private server. Components:
 - **Nginx** — reverse proxy + HTTPS + rate limiting
 - **FastAPI (Uvicorn)** — backend API
-- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl}` (neither when that directory and the data root are one or one holds the other) and its logs in `<state_dir>/obserwator/logs`; its admin panel (`/admin/`, `/api/admin/`, DEV-15.13) needs `OBSERWATOR_ADMIN_API_KEY_FILE` (a key file of mode 0600 named by the unit) or `OBSERWATOR_ADMIN_API_KEY`, and a public deployment protects `/admin`, `/admin/*` and `/api/admin/*`; unit, headers and public rules: `docs/USAGE.md` „GUI”
+- **GUI (Uvicorn)** — `obserwator gui serve` as a service of its own (e.g. a systemd user unit) on 127.0.0.1 behind an authenticating proxy (e.g. Cloudflare Access through a tunnel); it writes `<data_dir>/obserwator/{stats.jsonl,feedback.jsonl,feedback.next_id}` (none when that directory and the data root are one or one holds the other) and its logs in `<state_dir>/obserwator/logs`; its admin panel (`/admin/`, `/api/admin/`, DEV-15.13) needs `OBSERWATOR_ADMIN_API_KEY_FILE` (a key file of mode 0600 named by the unit) or `OBSERWATOR_ADMIN_API_KEY`, and a public deployment protects `/admin`, `/admin/*` and `/api/admin/*`; unit, headers and public rules: `docs/USAGE.md` „GUI”
 
 ### Rate limiting
 - Nginx: `limit_req_zone` (10 req/s per IP)

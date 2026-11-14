@@ -751,7 +751,7 @@ The other rules hold in every deployment whose own directory lies apart from the
 
   | Field | Value |
   |---|---|
-  | `id` | one more than the largest id in the file |
+  | `id` | ascending and never reused: the next id is kept in `feedback.next_id` beside the file, under its lock (without that file, one more than the largest id in the file) |
   | `created_at` | the UTC time of receipt, ISO 8601 with offset |
   | `message` | the text, stripped |
   | `context` | `view` (`stations`, `current` or `pmaxtp`), `station` (a code of the catalog, or `null`), `parameters` (the address's parameters, at most 50), `app_version`; at most 100 KB |
@@ -773,7 +773,7 @@ The other rules hold in every deployment whose own directory lies apart from the
 | `GET api/admin/stats?from=&to=` | `{days, totals}`: the lines of `stats.jsonl` between two UTC days (`YYYY-MM-DD`, both included; by default the last 30 days up to today) in date order, today's as counted so far; `totals` sums every number but `visitors` |
 | `GET api/admin/status` | `{app, version, started_at, uptime_s, data_dir, disk: {free_bytes, total_bytes}, checks: [{name, status, detail}]}`: `data_dir` is the GUI's own directory `<data_dir>/obserwator`, `disk` the space of its disk |
 
-An id no report has is `404 not_found`; any other address under `api/admin/` is `404` once the key is checked. Marking or deleting rewrites `feedback.jsonl` atomically under the lock `POST api/feedback` takes (`flock`): the new text goes to a temporary file beside it, synced and renamed over it, so a report that waited for the lock is appended to the new file and none is lost; lines that hold no report stay as they are. The next report takes one more than the largest id left, so deleting the newest frees its number. The panel's requests count against the rate limit, not in the daily totals.
+An id no report has is `404 not_found`; any other address under `api/admin/` is `404` once the key is checked. Marking or deleting rewrites `feedback.jsonl` atomically under the lock `POST api/feedback` takes (`flock`): the new text goes to a temporary file beside it, synced and renamed over it, so a report that waited for the lock is appended to the new file and none is lost; lines that hold no report stay as they are. Ids are never reused: `feedback.next_id` beside the file keeps the next one under the same lock, so deleting the newest report does not free its number. The panel's requests count against the rate limit, not in the daily totals.
 
 The checks of „Stan”, each `ok`, `warning` or `failed` with a detail in the page's language:
 

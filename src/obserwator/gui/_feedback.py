@@ -6,10 +6,11 @@
 JSON line ``{"id", "created_at", "message", "context", "is_read"}``: never an IP
 address or a User-Agent. The address serves only the in-memory limit of `RATE_COUNT`
 reports in `RATE_WINDOW_S`. The first report creates the file (directory 0700, file
-0600); a line is written in one ``write`` under the file's lock (``flock``). The admin
-panel (DEV-15.13, ``obserwator.gui._admin``) lists the reports and marks or deletes
-one: the file is then rewritten atomically, a temporary file renamed over it under the
-same lock, so a report is never lost to a rewrite, also of another process.
+0600); a line is written in one ``write`` under the file's lock (``flock``), and ids are
+never reused: `NEXT_ID_FILE` beside it keeps the next one. The admin panel (DEV-15.13,
+``obserwator.gui._admin``) lists the reports and marks or deletes one: the file is then
+rewritten atomically, a temporary file renamed over it under the same lock, so a report
+is never lost to a rewrite, also of another process.
 """
 
 from __future__ import annotations
@@ -57,6 +58,10 @@ RATE_COUNT = 5
 RATE_WINDOW_S = 600.0
 BODY_KEYS = frozenset({"message", "context"})
 CONTEXT_KEYS = frozenset({"view", "station", "parameters"})
+NEXT_ID_FILE = "feedback.next_id"
+"""Beside ``feedback.jsonl``: the next report's id, written under its lock, so an id stays
+given once its report is deleted (DEV-15.12: ascending); without it, the largest id in the
+file plus one."""
 
 _SURROGATE = re.compile("[\ud800-\udfff]")
 
@@ -88,6 +93,7 @@ class Feedback:
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.path = path
+        self.next_id = path.with_name(NEXT_ID_FILE)
         self.writes = writes
         self.monotonic = monotonic
         self._lock = threading.Lock()  # the limit
@@ -126,7 +132,7 @@ class Feedback:
 
     def append(self, text: str, context: Mapping[str, Any]) -> int:
         """
-        Store a report as one line: its id is one more than the largest in the file.
+        Store a report as one line, its id never given before (`NEXT_ID_FILE`).
 
         Parameters
         ----------
@@ -152,8 +158,9 @@ class Feedback:
                 with open(handle, "rb", closefd=False) as file:
                     stored = _reports(file)
                 largest = max((found["id"] for found in stored), default=0)
+                number = max(largest + 1, self._issued())
                 report = {
-                    "id": largest + 1,
+                    "id": number,
                     "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
                     "message": text,
                     "context": dict(context),
@@ -164,9 +171,10 @@ class Feedback:
                 if written != len(data):
                     raise OSError(f"short write: {written} of {len(data)} bytes")
                 os.fsync(handle)
+                self._issue(number + 1)
             finally:
                 os.close(handle)
-        return largest + 1
+        return number
 
     def reports(self) -> list[dict[str, Any]]:
         """
@@ -242,8 +250,8 @@ class Feedback:
         """
         Delete a report, rewriting the file (`rewrite`).
 
-        The next report takes one more than the largest id left, so deleting the
-        newest frees its number again.
+        Its id is never given again: `NEXT_ID_FILE` keeps the next one, also when
+        the newest report goes.
 
         Parameters
         ----------
@@ -308,6 +316,9 @@ class Feedback:
                     lines = file.read().split(b"\n")
                 if lines[-1] == b"":
                     lines.pop()
+                largest = max((found["id"] for found in _reports(lines)), default=0)
+                if self._issued() <= largest:  # a file of an older GUI: no counter yet
+                    self._issue(largest + 1)
                 new = change(lines)
                 if new is None:
                     return
@@ -326,6 +337,24 @@ class Feedback:
             finally:
                 if handle >= 0:
                     os.close(handle)
+
+    def _issued(self) -> int:
+        """The next id `NEXT_ID_FILE` holds; 0 without it or when it holds no number."""
+        try:
+            text = self.next_id.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, UnicodeDecodeError):
+            return 0
+        return int(text) if text.isascii() and text.isdigit() else 0
+
+    def _issue(self, number: int) -> None:
+        """Keep ``number`` as the next id: a temporary file renamed over `NEXT_ID_FILE`."""
+        temporary = _synced(self.path.parent, f"{number}\n".encode())
+        try:
+            os.replace(temporary, self.next_id)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
 
 
 def _locked(path: Path, flags: int, *, shared: bool = False) -> int:

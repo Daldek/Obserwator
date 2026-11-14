@@ -314,6 +314,25 @@ def test_deleting_a_report_removes_its_line_and_an_unknown_id_is_404(admin, stat
     assert listed.json() == {"items": [], "total": 0, "unread_count": 0}
 
 
+def test_a_deleted_reports_id_is_never_given_again(tmp_path):
+    path = tmp_path / "state" / "feedback.jsonl"
+    feedback = Feedback(path)
+    first = [feedback.append(f"report {n}", CONTEXT) for n in (1, 2, 3)]
+    deleted = [feedback.delete(3), feedback.delete(2)]
+    after_delete = Feedback(path).append("after the newest went", CONTEXT)
+    # A file of an older GUI, without the counter: the first rewrite starts it
+    path.write_text(f"{line(7)}\n{line(8)}\n", encoding="utf-8")
+    path.with_name("feedback.next_id").unlink()
+    deleted.append(feedback.delete(8))
+    after_old = feedback.append("after an old file", CONTEXT)
+
+    assert first == [1, 2, 3]
+    assert deleted == [True, True, True]
+    assert after_delete == 4
+    assert after_old == 9
+    assert path.with_name("feedback.next_id").read_text(encoding="utf-8") == "10\n"
+
+
 @pytest.mark.parametrize(
     ("content", "headers"),
     [
