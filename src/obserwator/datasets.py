@@ -899,14 +899,6 @@ _BY_NAME = {
 }
 _ALLOWED = [descriptor.key for descriptor in _DATASETS]
 _UNSUPPORTED = {
-    "meteo/dobowe/synop": (
-        "per_station",
-        message("datasets.meteo_dobowe_synop_archives_published"),
-    ),
-    "meteo/terminowe/synop": (
-        "per_station",
-        message("datasets.meteo_terminowe_synop_archives_published"),
-    ),
     "meteo/terminowe/opad": (
         "not_published",
         message("datasets.meteo_terminowe_opad_data_do"),
@@ -1043,8 +1035,7 @@ def get_dataset(dataset: str, /) -> DatasetDescriptor:
     ObserwatorValidationError
         If the value names no dataset (``details.allowed`` lists the keys),
         or it is a legacy alias of an archive without a descriptor
-        (per-station synop archives, nonexistent hourly precipitation;
-        ``details.reason`` says why).
+        (nonexistent hourly precipitation; ``details.reason`` says why).
     """
     if isinstance(dataset, str):
         if (descriptor := _BY_NAME.get(dataset)) is not None:

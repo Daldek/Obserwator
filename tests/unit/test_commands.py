@@ -607,7 +607,11 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
     ("command", "options", "option"),
     [
         ("store delete", {"root": "/s"}, "command"),
-        ("datasets files", {"dataset": "meteo/dobowe/synop", "years": 2024}, "dataset"),
+        (
+            "datasets files",
+            {"dataset": "meteo/terminowe/opad", "years": 2024},
+            "dataset",
+        ),
         ("datasets files", {"dataset": DAILY, "years": 1900}, "years"),
         (
             "datasets download",

@@ -201,11 +201,7 @@ def test_renamed_key_resolves_to_the_current_key(monkeypatch):
 
 @pytest.mark.parametrize(
     ("alias", "reason"),
-    [
-        ("meteo/dobowe/synop", "per_station"),
-        ("meteo/terminowe/synop", "per_station"),
-        ("meteo/terminowe/opad", "not_published"),
-    ],
+    [("meteo/terminowe/opad", "not_published")],
 )
 def test_aliases_without_descriptor_explain_reason(alias, reason):
     with pytest.raises(ObserwatorValidationError) as exc:
