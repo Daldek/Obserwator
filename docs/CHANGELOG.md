@@ -6,6 +6,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Dead and duplicated code removed (2026-11-14).** No public interface, output or store
+  byte changes. Removed code without callers: `_parsing.common.is_missing_value`,
+  `agent_guide._code_or_dash`, `gui._http.text_of`, `gui._extra.REQUIREMENTS`, the never
+  read `GuiConfig.operator_problems`, the page's `statName` (with its texts
+  `gui.words.stat.*`), `useAnalysisList` and `togglePanel`, and test fixtures and constants
+  no test used. One implementation each instead of copies: the store's canonical JSON
+  (`store.writer._canonical_text`, also behind the plan file, the registry digest, the
+  observation names and the Parquet metadata), the durable write of a new file
+  (`_write_new`), the slot directory of an archive file (`_archive_slot_dir`, four copies in
+  the writer, reader, catalog and series), the file checksum of the writer, `_next_month`,
+  `_relative`, the lines of a dataset (`_lines`), `_has_lang_option` and the GUI's UTC time
+  (`utc_now`).
+  Tests: the phone case of the view's one strip of provider lines (`test_sources.py`)
+  measured the station's sheet during its 0.25 s slide-in, up to ~31 px below the strip
+  when the run was slow; it now waits for the sheet's `transform: none` first, as the
+  shell's sheet test does.
+
 - **CI fixes of `develop` (2026-11-14).** Security: `opentelemetry-api` 1.45.1 → 1.45.2 in
   `uv.lock` (CVE-2026-126360; `pip-audit` of CI). The GUI's report file lock (`_locked` in
   `gui/_feedback.py`) keeps the POSIX `flock` in the `else` block of `sys.platform == "win32"`,

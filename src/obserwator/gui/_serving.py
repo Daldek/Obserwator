@@ -24,13 +24,13 @@ import sys
 import threading
 import webbrowser
 from collections.abc import Callable, Iterator, Mapping
-from datetime import UTC, datetime
 from typing import Any
 
 import uvicorn
 from starlette.applications import Starlette
 
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
+from obserwator.gui._live import utc_now
 from obserwator.messages import message
 from obserwator.nogat_logging import ServerLog
 
@@ -41,10 +41,6 @@ _IN_USE = frozenset(
     for code in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", None))
     if code is not None
 )
-
-
-def _now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def url_of(host: str, port: int) -> str:
@@ -156,7 +152,7 @@ def run(
     try:
         listener.listen()
         url = url_of(host, listener.getsockname()[1])
-        started_at = _now()
+        started_at = utc_now()
         log.start({"url": url, **settings})
         try:
             config = uvicorn.Config(
@@ -173,4 +169,4 @@ def run(
             log.stop()
     finally:
         listener.close()
-    return {"url": url, "started_at": started_at, "stopped_at": _now()}
+    return {"url": url, "started_at": started_at, "stopped_at": utc_now()}

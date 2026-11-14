@@ -24,30 +24,6 @@ import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, us
  */
 export const ResultLines = createContext(null);
 
-/**
- * The analysis ids that apply to a station (`api/analyses/{code}`).
- *
- * @param {string} code the station
- * @returns {{data: {analyses: object[], compute: boolean}|null, error: Error|null, loading: boolean,
- *   has: (id: string) => boolean}}
- */
-export function useAnalysisList(code) {
-  const [state, setState] = useState({ data: null, error: null, loading: true });
-  useEffect(() => {
-    let live = true;
-    setState({ data: null, error: null, loading: true });
-    api.analyses(code).then(
-      (data) => live && setState({ data, error: null, loading: false }),
-      (error) => live && setState({ data: null, error, loading: false }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [code]);
-  const ids = new Set(state.data ? state.data.analyses.map((a) => a.analysis) : []);
-  return { ...state, has: (id) => ids.has(id) };
-}
-
 function clean(overrides) {
   const out = {};
   for (const [key, value] of Object.entries(overrides || {})) {

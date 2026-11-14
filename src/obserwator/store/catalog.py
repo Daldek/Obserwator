@@ -80,6 +80,7 @@ from obserwator.store.types import (
     StorePlan,
 )
 from obserwator.store.writer import (
+    _archive_slot_dir,
     _canonical,
     _cleanup,
     _existing,
@@ -88,6 +89,7 @@ from obserwator.store.writer import (
     _utc,
     _validate_slot,
     _write_json,
+    _write_new,
     lenient_store,
     prepare_store,
     refuse_root,
@@ -242,10 +244,7 @@ def _publish_version(
     staging.mkdir()
     try:
         for file_name, content in ((name, data), *(attachments or {}).items()):
-            with (staging / file_name).open("xb") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
+            _write_new(staging / file_name, content)
         _write_json(staging / f"{name}.meta.json", meta)
         _fsync_dir(staging)
         slot_dir.mkdir(parents=True, exist_ok=True)
@@ -483,16 +482,11 @@ def _signal_time(meta: Mapping[str, Any]) -> datetime:
     return _timestamp(meta["downloaded_at"])
 
 
-def _archive_slot(archive: ArchiveFile) -> str:
-    relative = PurePosixPath(archive.server_path)
-    return f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
-
-
 def _current_archive(
     root: Path, archive: ArchiveFile
 ) -> tuple[Path, dict[str, Any]] | None:
     """Current archive version: newest Last-Modified, then downloaded_at, then path."""
-    slot = _validate_slot(root, _archive_slot(archive))
+    slot = _validate_slot(root, _archive_slot_dir(archive.server_path))
     entries = _existing(slot, PurePosixPath(archive.server_path).name, archive=True)
     return max(
         entries,

@@ -12,6 +12,7 @@ from obserwator.datasets import DatasetDescriptor, get_dataset
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.models import Measurement, NormalizedRecord
+from obserwator.store.series import _next_month
 from obserwator.store.types import StationCoverage
 
 _PERIODS: tuple[Literal["winter", "summer", "annual"], ...] = (
@@ -36,10 +37,6 @@ def _merge_spans(spans: Iterable[_Span]) -> tuple[_Span, ...]:
         else:
             merged.append([start, end])
     return tuple((start, end) for start, end in merged)
-
-
-def _next_month(day: date) -> date:
-    return date(day.year + (day.month == 12), day.month % 12 + 1, 1)
 
 
 def _gaps(missing: list[date], *, time_unit: str) -> tuple[tuple[date, date], ...]:

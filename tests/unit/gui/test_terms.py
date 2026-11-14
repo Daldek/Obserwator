@@ -52,7 +52,6 @@ def config(
         request_window=60,
         gui={"obserwator": "https://obserwator.example/"} if gui is None else gui,
         operator=operator,
-        operator_problems=(),
     )
 
 

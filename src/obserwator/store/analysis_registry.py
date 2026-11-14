@@ -17,7 +17,6 @@ such number is Hydrolog's, copied from its result; Obserwator computes none
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import re
 from collections.abc import Callable, Iterable, Mapping
@@ -27,6 +26,7 @@ from typing import Any, ClassVar, Literal
 
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
+from obserwator.store.writer import _canonical_text
 
 __all__ = [
     "AnalysisDefinition",
@@ -1316,7 +1316,5 @@ def definitions_digest() -> str:
     Titles and overridable options are left out: they change no stored result.
     """
     document = [_digest_document(definition) for definition in _DEFINITIONS]
-    text = json.dumps(
-        document, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    )
+    text = _canonical_text(document)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()

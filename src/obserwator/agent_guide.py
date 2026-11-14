@@ -238,10 +238,6 @@ def _code(text: object) -> str:
     return f"`{text}`"
 
 
-def _code_or_dash(text: object) -> str:
-    return _DASH if text is None else _code(text)
-
-
 def _cell(text: str) -> str:
     """Table cell text: a pipe escaped, no line breaks."""
     return text.replace("|", "\\|").replace("\n", " ")

@@ -83,7 +83,6 @@ STATION = "0-203-1-001000"  # Špindlerův Mlýn, Labe (spec §7.4)
 METEO_STATION = "0-203-0-11799"  # SRA, T, TMA, TMI ≈ 55 kB together, 2006 only
 PUBLISHED, UNPUBLISHED = (2024, 2025), 2026  # 2026 is not published before 2027
 YEARS = f"{PUBLISHED[0]}-{UNPUBLISHED}"
-METEO_YEARS = "2006"
 HYDRO_PLAN, METEO_PLAN = "plan-hydro.json", "plan-meteo.json"
 HYDRO_SELECTION = {
     "dataset": HYDRO,

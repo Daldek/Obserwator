@@ -54,32 +54,6 @@ def hydro_to_calendar_date(hydro_year: int, hydro_month: int, day: int) -> date:
     )
 
 
-def is_missing_value(value: float | None, value_type: str) -> bool:
-    """
-    Check whether a hydrological value is missing.
-
-    Parameters
-    ----------
-    value : float or None
-        Parsed value; ``None`` is always treated as missing.
-    value_type : {"level", "flow", "temp"}
-        Kind of value, selecting the IMGW missing-data sentinel to compare
-        against (``9999`` for water level, ``99999.999`` for flow, ``99.9``
-        for water temperature). Any other string only treats ``None`` as
-        missing.
-
-    Returns
-    -------
-    bool
-        True if the value is ``None`` or equals the sentinel for its type.
-    """
-    return value is None or (
-        (value_type == "level" and value == MISSING_WATER_LEVEL)
-        or (value_type == "flow" and abs(value - MISSING_FLOW) < 0.001)
-        or (value_type == "temp" and abs(value - MISSING_TEMP) < 0.01)
-    )
-
-
 def _safe_float(value: str, missing_value: float) -> float | None:
     try:
         parsed = float(value.strip())
