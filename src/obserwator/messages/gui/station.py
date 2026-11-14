@@ -185,7 +185,13 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.info.elevation": Text("Elevation", "Wysokość"),
     "station.info.metres_asl": Text("{value} m a.s.l.", "{value} m n.p.m."),
+    "station.info.metres_asl_datum": Text(
+        "{value} m a.s.l. ({datum})", "{value} m n.p.m. ({datum})"
+    ),
     "station.info.gauge_zero": Text("Gauge zero", "Zero wodowskazu"),
+    "station.info.catchment_area": Text("Catchment area", "Powierzchnia zlewni"),
+    "station.info.province": Text("Voivodeship", "Województwo"),
+    "station.info.district": Text("County (powiat)", "Powiat"),
     "station.info.river_km": Text("River kilometre", "Kilometr rzeki"),
     "station.info.hydrographic_code": Text("Hydrographic code", "Kod hydrograficzny"),
     "station.info.river_order": Text(
@@ -196,6 +202,27 @@ MESSAGES: dict[str, Text] = {
         "czwarta kolumna wykazu stacji, bez przypisanego znaczenia (river_order)",
     ),
     "station.info.established": Text("Year established", "Rok założenia"),
+    "station.info.levels": Text(
+        "IMGW-PIB's levels and extremes", "Progi i stany ekstremalne IMGW-PIB"
+    ),
+    "station.info.levels_info": Text(
+        "IMGW-PIB's warning and alarm levels of the station and the absolute minimum "
+        "and maximum water levels of its gauge with their dates, in cm above the "
+        "gauge zero, as the station's page on hydro.imgw.pl gives them, kept by "
+        "Obserwator's store as pl.imgw.hydro_details; the warning and alarm levels "
+        "as of their download.",
+        "Stany ostrzegawczy i alarmowy IMGW-PIB dla stacji oraz absolutne minimum i "
+        "maksimum stanu wody na jej wodowskazie z ich datami, w cm nad zerem "
+        "wodowskazu, tak jak podaje je strona stacji w serwisie hydro.imgw.pl, "
+        "przechowywane przez magazyn Obserwatora jako pl.imgw.hydro_details; stany "
+        "ostrzegawczy i alarmowy według stanu z chwili ich pobrania.",
+    ),
+    "station.info.level": Text("Level", "Stan"),
+    "station.info.level.warning": Text("Warning level", "Stan ostrzegawczy"),
+    "station.info.level.alarm": Text("Alarm level", "Stan alarmowy"),
+    "station.info.level.minimum": Text("Absolute minimum", "Absolutne minimum"),
+    "station.info.level.maximum": Text("Absolute maximum", "Absolutne maksimum"),
+    "station.info.level_date": Text("Date", "Data"),
     "station.info.thresholds": Text("ČHMÚ's thresholds", "Progi ČHMÚ"),
     "station.info.thresholds_info": Text(
         "ČHMÚ's threshold levels and discharges of the station: the flood activity "

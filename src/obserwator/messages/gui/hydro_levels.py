@@ -130,21 +130,21 @@ _LEVELS: dict[str, Text] = {
         "ČHMÚ's thresholds (SPA 1–3, Q50 and the drought level) come from ČHMÚ's "
         "station catalog (opendata.chmi.cz); Hydrolog computes the characteristic "
         "levels SWW, SSW and SNW (SWQ, SSQ, SNQ) of the chosen years (“stats "
-        "characteristic”). IMGW-PIB's warning and alarm levels are not in the "
-        "archived data, so they are not here. Hydrolog counts the days beyond a "
-        "level and the runs of such days (“stats threshold-events”): a day whose "
-        "value is at or above the level (for the drought level and SNW/SNQ: below "
-        "it) is beyond it; a run ends on a day within the level or without a value. "
-        "Hydrological years November–October.",
+        "characteristic”). IMGW-PIB's warning and alarm levels (hydro.imgw.pl, "
+        "current values) are shown in “Station information” and are not used here. "
+        "Hydrolog counts the days beyond a level and the runs of such days (“stats "
+        "threshold-events”): a day whose value is at or above the level (for the "
+        "drought level and SNW/SNQ: below it) is beyond it; a run ends on a day within "
+        "the level or without a value. Hydrological years November–October.",
         "Progi ČHMÚ (SPA 1–3, Q50 i próg suszy) pochodzą z katalogu stacji ČHMÚ "
         "(opendata.chmi.cz); stany (przepływy) charakterystyczne SWW, SSW i SNW "
         "(SWQ, SSQ, SNQ) wybranych lat liczy Hydrolog („stats characteristic”). "
-        "Stanów ostrzegawczych i alarmowych IMGW-PIB nie ma w danych archiwalnych, "
-        "więc nie ma ich tutaj. Dni poza progiem i ciągi takich dni liczy Hydrolog "
-        "(„stats threshold-events”): dzień z wartością równą progowi lub wyższą "
-        "(dla progu suszy i SNW/SNQ: niższą od progu) jest poza progiem; ciąg "
-        "kończy dzień w granicach progu albo dzień bez wartości. Lata hydrologiczne "
-        "XI–X.",
+        "Stany ostrzegawczy i alarmowy IMGW-PIB (hydro.imgw.pl, wartości bieżące) "
+        "są pokazane w „Informacjach o stacji” i nie są tu używane. Dni poza progiem "
+        "i ciągi takich dni liczy Hydrolog („stats threshold-events”): dzień z "
+        "wartością równą progowi lub wyższą (dla progu suszy i SNW/SNQ: niższą od "
+        "progu) jest poza progiem; ciąg kończy dzień w granicach progu albo dzień bez "
+        "wartości. Lata hydrologiczne XI–X.",
     ),
     "hydro.levels.name.spa1": Text(
         "SPA 1 · alert (bdělost)", "SPA 1 · stan czuwania (bdělost)"
