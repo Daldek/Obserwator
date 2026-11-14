@@ -78,9 +78,25 @@ MESSAGES = {
     ),
     "archives_dataset_cover_whole_country": Text(
         "The archives of the dataset {key} cover the whole country; the option "
-        "stations applies only to datasets with station files (cz.chmi.*)",
+        "stations applies only to datasets with station files (cz.chmi.* and the "
+        "per-station synop archives of IMGW-PIB)",
         "Archiwa zbioru {key} obejmują cały kraj; opcja stations dotyczy wyłącznie "
-        "zbiorów z plikami stacji (cz.chmi.*)",
+        "zbiorów z plikami stacji (cz.chmi.* i archiwów synop IMGW-PIB "
+        "publikowanych osobno dla każdej stacji)",
+    ),
+    "station_archives_need_stations_or_months": Text(
+        "The dataset {key} needs the option stations (9-digit IMGW-PIB station "
+        "codes: the archives cover single stations) or months (the monthly files "
+        "of the whole country published for the running year)",
+        "Zbiór {key} wymaga opcji stations (9-cyfrowych kodów stacji IMGW-PIB: "
+        "archiwa obejmują pojedyncze stacje) albo months (miesięcznych plików "
+        "całego kraju publikowanych dla bieżącego roku)",
+    ),
+    "monthly_station_archives_from_2001": Text(
+        "The monthly files of the dataset {key} cover years from 2001; earlier "
+        "years need the option stations",
+        "Miesięczne pliki zbioru {key} obejmują lata od 2001; wcześniejsze roczniki "
+        "wymagają opcji stations",
     ),
     "dataset_needs_option_years_years": Text(
         "The dataset {key} needs the option years (the years of the archives)",

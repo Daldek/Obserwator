@@ -1020,6 +1020,11 @@ def _origin(archive: ArchiveFile) -> tuple[ProviderDescriptor, bool]:
     return get_provider(descriptor.provider), descriptor.archive_scope != "country"
 
 
+def _zipped(archive: ArchiveFile) -> bool:
+    """Whether the bytes of an archive must form a ZIP archive (by its name)."""
+    return archive.server_path.lower().endswith(".zip")
+
+
 def _stage(
     client: httpx.Client,
     archive: ArchiveFile,
@@ -1221,7 +1226,7 @@ def _download_plain(
                 archive,
                 staging,
                 source=provider.short_name if per_station else "IMGW",
-                zipped=not per_station,
+                zipped=_zipped(archive),
             )
             target = directory.joinpath(*archive.server_path.split("/"))
             return staging.commit(staged, target, size, sha256)
