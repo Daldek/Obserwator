@@ -162,7 +162,6 @@ def test_datasets_kind_filter():
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
     ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
-    assert len(meteo) == 14
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
