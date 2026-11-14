@@ -240,7 +240,7 @@ for feature in read_catalog(root=demo, provider="CHMI"):
 - **Freshness:** `check_store` compares the time (to the minute) and size from the server listing with the version signal in the store (`current`, `newer`, `missing`); a year with no file at the source is `unverifiable` with `error="not published"` (not an error; the text is a catalog message, in Polish "nieopublikowany"), and `download_archives` gives it a `not_published` item. `now`/`recent` data, hourly data, ČHMÚ warnings and PMAXTP outside Poland are not supported; `current …` and `pmaxtp …` apply to IMGW-PIB only.
 - **Versions:** ČHMÚ regenerates files in bulk. The same bytes under a new `Last-Modified` give `relabeled` (a copy, as for IMGW-PIB); different bytes with the same content (hydro JSON and station lists without the `zaznamID`/`datumVytvoreni` envelope, form `chmi-json/1`, sidecar field `content_sha256`) give `unchanged` without a new version, with the `content_unchanged` notice and an observation of the new signal in `observations/`, so the next check gives `current` without downloading.
 - **Series:** `series.json` has the periods known per station (`stations[<code>].periods`); the meteo series has `<V>_quality` and `<V>_source_flag` columns, and values are not corrected based on quality. `series select` accepts only years within the series periods (a range across an unpublished year → `validation_error`).
-- **Station catalog:** a separate version of the provider catalog in the data root (`build_catalog(data, raw_root=raw, provider="CHMI")`, `obserwator store catalog --provider CHMI`), built offline from the `now` and historical metadata stored in the raw root (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, `cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`, downloaded by `store sync --datasets`) with a check against the Czech border outline; coordinates carry the published value (JSON does not keep trailing zeros, e.g. `50.6493690` → `50.649369`).
+- **Station catalog:** a separate version of the provider catalog in the data root (`build_catalog(data, raw_root=raw, provider="CHMI")`, `obserwator store catalog --provider CHMI`), built offline from the `now` and historical metadata stored in the raw root (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, `cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`, downloaded by `store sync --datasets`) with a check against the packaged state border of Czechia (RÚIAN of ČÚZK; section [Station data sources](#station-data-sources)); coordinates carry the published value (JSON does not keep trailing zeros, e.g. `50.6493690` → `50.649369`).
 - **License:** CC BY 4.0; sidecars, series, the catalog and exports carry the ČHMÚ attribution (processed forms — marked as changed), and the `license_terms` notice states the license terms.
 
 ### Stored analyses (computed by Hydrolog)
@@ -638,11 +638,11 @@ Every analysis shows Hydrolog's result with its source (stored, or computed on r
 
 | Variable (`nogat.toml` key) | Default | Meaning |
 |---|---|---|
-| `OBSERWATOR_GUI_BASEMAP_URL` (`gui_basemap_url`) | `https://tiles.openfreemap.org/planet` | TileJSON of the basemap, drawn in the GUI's own grey style with place names in the page's language where the tiles have them; the TileJSON and its tiles must share one origin, the only remote one the CSP allows. `none` or `off`, or the variable set and empty (`.env` ignores empty values): no basemap, the borders of Poland and Czechia packaged with Obserwator, offline |
+| `OBSERWATOR_GUI_BASEMAP_URL` (`gui_basemap_url`) | `https://tiles.openfreemap.org/planet` | TileJSON of the basemap, drawn in the GUI's own grey style with place names in the page's language where the tiles have them; the TileJSON and its tiles must share one origin, the only remote one the CSP allows. `none` or `off`, or the variable set and empty (`.env` ignores empty values): no basemap, the state borders of Poland (PRG of GUGiK) and Czechia (RÚIAN of ČÚZK) packaged with Obserwator (ADR-018), offline |
 | `OBSERWATOR_GUI_BASEMAP_ATTRIBUTION` (`gui_basemap_attribution`) | `OpenFreeMap © OpenMapTiles Data from OpenStreetMap` | the basemap's credit under the map |
 | `OBSERWATOR_HYDROLOG_COMMAND` (`hydrolog_command`) | unset: `hydrolog` on `PATH` | Hydrolog's program for a person's choices computed on request: a command line, split as a shell splits it, looked for once when the server starts; without a program only stored results are shown |
 | `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW` (`request_limit`, `request_window`) | `300`, `60` | the rate limit: requests of one client address in a window of seconds (Nogat DEV-15.9) |
-| `OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE` (environment only) | unset | the key of the admin panel, or a file holding it, read on every admin request (section [Admin panel](#admin-panel)); unset, every admin route answers `401` |
+| `OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE` (environment only) | unset | the key of the admin panel, or a file holding it, read on every admin request (section [Admin panel](#admin-panel)); unset, every route of the admin API (`api/admin/…`) answers `401` |
 
 The tables `[nogat.gui]` and `[nogat.operator]` of `nogat.toml` are no settings (no variable, no default); the GUI reads them when it starts. `[nogat.gui]` lists the GUIs of the deployment for the app menu „Aplikacje” (a registry name in lower case → its address; Nogat DEV-15.4); its `obserwator` entry is this GUI's own public address, which the regulamin and a hand-off name. `[nogat.operator]` names who runs a deployment open to others (section [Public deployment](#public-deployment)).
 
@@ -731,7 +731,7 @@ mail_transfer = "Mogą być przetwarzane poza Europejskim Obszarem Gospodarczym.
 
 `name`, `email`, `terms_effective`, `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` are sentences of the terms, empty or left out when they do not apply. A table with a required key missing or empty is not used. With a usable `[nogat.operator]` and the `obserwator` address the GUI is public:
 
-- **Terms (DEV-15.7).** `regulamin.html` beside the start page: the `nogat-terms.html` of Nogat's kit 0.6.0 (regulamin 1.0, copied into `gui/web/nogat/`), filled from `[nogat.operator]`, the `obserwator` address and Obserwator's own values (name, MIT licence, source address), with the blocks of its data sources kept (IMGW-PIB, hydro.imgw.pl, PMAXTP, ČHMÚ, and OpenStreetMap with a basemap). Every view links „Regulamin” beside the attribution lines, and the app menu passes it. Without the two tables there is neither page (`404`) nor link; a template that cannot be filled is logged and not served.
+- **Terms (DEV-15.7).** `regulamin.html` beside the start page: the `nogat-terms.html` of Nogat's kit 0.7.0 (regulamin 1.0, copied into `gui/web/nogat/`), filled from `[nogat.operator]`, the `obserwator` address and Obserwator's own values (name, MIT licence, source address), with the blocks of its data sources kept (IMGW-PIB, hydro.imgw.pl, PMAXTP, ČHMÚ, GUGiK and ČÚZK for the packaged borders, and OpenStreetMap with a basemap). Every view links „Regulamin” beside the attribution lines, and the app menu passes it. Without the two tables there is neither page (`404`) nor link; a template that cannot be filled is logged and not served.
 - **Statement (DEV-15.8).** Beside „Regulamin”, under the strip of provider lines across every view: „Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB.” (in English with „EN”).
 
 The other rules hold in every deployment whose own directory lies apart from the data root:
@@ -852,7 +852,7 @@ OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator OBSERWATOR_RAW_ROOT=
 
 ### Station data sources
 
-`store sync --datasets` downloads them into the raw root; `store catalog` builds the catalogs in the data root from the stored versions, offline (ADR-015, ADR-017).
+`store sync --datasets` downloads them into the raw root; `store catalog` builds the catalogs in the data root from the stored versions, offline (ADR-015, ADR-017). It checks each published location against the state border of the provider's country packaged with Obserwator (ADR-018: Poland from PRG of GUGiK, Czechia from RÚIAN of ČÚZK, both simplified to 50 m): a point outside the border by more than those 50 m plus the location's uncertainty (at least 150 m) is rejected, the station's next source is tried, and a station without a valid point has no location (`location_missing_reason` `outside_country`). The catalog, `stations export` and the envelope of `store catalog` carry the border's line, G (GUGiK) or Z (ČÚZK).
 
 - **IMGW-PIB hydro and meteo station lists** (`pl.imgw.hydro_stations`, `pl.imgw.meteo_stations`): CSV from `danepubliczne.imgw.pl` (CP1250 encoding)
 - **IMGW-PIB station coordinates** (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`): the current-data API `danepubliczne.imgw.pl/api/data/hydro` and `/meteo`; operational data are never archived, so the store keeps a derived file with each station's code, name, river and coordinates only (sidecar `extra.kept_fields`), never the measurements, their times or the warning and alarm levels (ADR-015 D5)
@@ -902,7 +902,7 @@ jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' ~/.local
 
 ## Configuration
 
-A setting comes from the first of: a command-line option, the `OBSERWATOR_<KEY>` variable, the same key in the `.env` file of the working directory, the `NOGAT_<KEY>` variable (only the shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file (in this order; `[nogat]` holds only shared keys), the default value. `nogat.toml` lies in the user configuration directory (`platformdirs.user_config_path("nogat")`, e.g. `~/.config/nogat/nogat.toml`) or at the path from `NOGAT_CONFIG`; a missing file is not an error, an unreadable or invalid file ends every `obserwator` call with a `validation_error`. Credentials (`OBSERWATOR_STORE_WRITE_TOKEN`) come only from the environment, never from the file. The tool writes nothing into the working directory: the roots of the store lie under `data_dir` (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), the cache under `cache_dir` (`<cache_dir>/obserwator`) and the servers' logs under `state_dir` (`<state_dir>/obserwator/logs`).
+A setting comes from the first of: a command-line option, the `OBSERWATOR_<KEY>` variable, the same key in the `.env` file of the working directory, the `NOGAT_<KEY>` variable (only the shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), the `[obserwator]` and `[nogat]` sections of the `nogat.toml` file (in this order; `[nogat]` holds only shared keys), the default value. `nogat.toml` lies in the user configuration directory (`platformdirs.user_config_path("nogat")`, e.g. `~/.config/nogat/nogat.toml`) or at the path from `NOGAT_CONFIG`; a missing file is not an error, an unreadable or invalid file ends every `obserwator` call with a `validation_error`. Credentials (`OBSERWATOR_STORE_WRITE_TOKEN`, `OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE`) come only from the environment (or `.env`), never from the file. The tool writes nothing into the working directory: the roots of the store lie under `data_dir` (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), the cache under `cache_dir` (`<cache_dir>/obserwator`) and the servers' logs under `state_dir` (`<state_dir>/obserwator/logs`).
 
 ```toml
 [nogat]   # keys shared by all tools of the ecosystem
@@ -929,7 +929,7 @@ api_max_limit = 500
 | `OBSERWATOR_USER_LOCATIONS_DIR` | `user_locations_dir` | none | directory of user location files for REST routes |
 | `OBSERWATOR_API_MAX_LIMIT` | `api_max_limit` | `1000` | default and maximum `limit` of REST and MCP list commands |
 | `OBSERWATOR_API_KEYS_FILE` | `api_keys_file` | `<data_dir>/obserwator/api_keys.json` | the file of the REST API keys of `obserwator admin` |
-| `OBSERWATOR_RATE_LIMIT` | `rate_limit` | `100` | requests per hour (0 = no limit) |
+| `OBSERWATOR_RATE_LIMIT` | `rate_limit` | `100` | requests per hour (0 = no limit); read by no component: `obserwator server` limits no rate, and the GUI's limit is `OBSERWATOR_REQUEST_LIMIT` |
 | `OBSERWATOR_ENV` | `env` | `development` | `development` or `production` |
 | `OBSERWATOR_HOST`, `OBSERWATOR_PORT` | `host`, `port` | `0.0.0.0`, `8000` | address and port of `obserwator server` |
 | `OBSERWATOR_MCP_ENABLED` | `mcp_enabled` | `false` | `/mcp` in `obserwator server` (read and plan only) |
@@ -1056,7 +1056,10 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
   stdout is the `obserwator-result/1` envelope with `--json` (a summary for a person without it), an error is
   JSON on the last stderr line, exit codes follow the error registry.
 - REST: catalog routes `/api/v1/<group>/<command>` replace `/api/v1/hydro|meteo|download|pmaxtp/*`
-  and `/map/stations`; errors in `application/problem+json`.
+  and `/map/stations`; errors in `application/problem+json`. The HTML pages of `obserwator server`
+  (Jinja2 and HTMX: the map, the download forms, `/static`) are removed: its `GET /` redirects to
+  `/docs`, and the GUI is `obserwator gui serve` (ADR-013).
+- Settings: `IMGW_LOG_LEVEL` has no successor (no `OBSERWATOR_LOG_LEVEL`; fixed levels, ADR-019).
 - Python: `station_id` → `station` (argument) and `station_code` (field); `list_*_stations` →
   `find_stations`, `get_hydro_stations_with_coords` → `fetch_hydro_states`,
   `build_hydro_url`/`build_meteo_url` → `archive_files`; `download_hydro_data`,
@@ -1083,5 +1086,12 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
   for a subset on the fly, a registry of 87 analyses (`analysis_definitions`), the setting `hydrolog_command`.
 - AI agents: `AGENTS.md`, `llms.txt`, `obserwator commands guide`, catalog descriptions in English
   (Polish on request: `--lang pl`, `Accept-Language`), command effect metadata, the `obserwator mcp` MCP server and `/mcp`.
+- The web GUI `obserwator gui serve` (ADR-013, extra `gui`) with its private API under `api/`, the
+  admin panel `admin/` behind `OBSERWATOR_ADMIN_API_KEY` (ADR-020), the reports of „Zgłoś uwagę” and
+  the daily totals in `<data_dir>/obserwator`.
+- Server logs of `obserwator server` and `obserwator gui serve` in `<state_dir>/obserwator/logs`,
+  kept 14 days, without client addresses (ADR-019, `OBSERWATOR_STATE_DIR`).
+- State borders from PRG (GUGiK) and RÚIAN (ČÚZK) for the catalogs' location check and the offline
+  map (ADR-018); the optional dataset `pl.imgw.hydro_details` of hydro.imgw.pl's station details (ADR-021).
 - Public builder of test roots `obserwator.testing.build_fixture_store(root, *, data_root)`, returning
   `FixtureRoots(raw, data)` (also the PL + CZ variant).

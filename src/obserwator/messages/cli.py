@@ -164,9 +164,8 @@ MESSAGES = {
         "Print the version of the program.", "Wyświetl wersję programu."
     ),
     "server_help": Text(
-        "Start the API server: REST, the web GUI and /mcp (with "
-        "OBSERWATOR_MCP_ENABLED=true).",
-        "Uruchom serwer API: REST, web GUI i /mcp (przy OBSERWATOR_MCP_ENABLED=true).",
+        "Start the API server: REST and /mcp (with OBSERWATOR_MCP_ENABLED=true).",
+        "Uruchom serwer API: REST i /mcp (przy OBSERWATOR_MCP_ENABLED=true).",
     ),
     "server_host_help": Text(
         "Listening address (OBSERWATOR_HOST)", "Adres nasłuchu (OBSERWATOR_HOST)"

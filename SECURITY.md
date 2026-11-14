@@ -20,9 +20,20 @@ version and credited in the CHANGELOG unless you prefer otherwise.
 Obserwator downloads public data from IMGW-PIB and ČHMÚ and writes it to local files or a
 versioned store. Reports about the following are in scope:
 
-- the REST server (`obserwator server`, `/api/v1`, the web GUI), including the store write
-  routes and their API key (`OBSERWATOR_STORE_WRITES_ENABLED`,
-  `OBSERWATOR_STORE_WRITE_TOKEN`, header `X-API-Key`) and the server's API keys file;
+- the REST server (`obserwator server`, `/api/v1`), including the store write routes and
+  their token (`OBSERWATOR_STORE_WRITES_ENABLED`, `OBSERWATOR_STORE_WRITE_TOKEN`, header
+  `X-API-Key`) and the file of the REST API keys of `obserwator admin` (`api_keys.json`);
+- the web GUI, its own server (`obserwator gui serve`): its private API under `api/`,
+  including the computations on request that run Hydrolog's program; its rate limit per
+  client address (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`, `429` with
+  `Retry-After`); the „Zgłoś uwagę” form (`POST api/feedback`) and its file
+  `<data_dir>/obserwator/feedback.jsonl`, which keeps no client address; the daily totals
+  `stats.jsonl`; and the admin panel (`admin/`, `api/admin/…`) with its key
+  (`OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, header
+  `X-Admin-Key`): any admin access without the key, or a key, report or client address
+  that leaks;
+- the servers' logs (`<state_dir>/obserwator/logs`): a client address, a header, a body or
+  a credential written to them;
 - the MCP server (`obserwator mcp` over stdio and `/mcp` of the REST server), including
   the sandbox of writes (`--allow-writes`, `--allow-dir`): any write or path outside the
   allowed directories;

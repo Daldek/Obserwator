@@ -1,23 +1,23 @@
 # Decision log — Obserwator
 
-Each entry keeps the state of the decision as of the day it was accepted; later changes are described as dated errata, without rewriting history. Format: number, date, status, context, options, decision, consequences. The tool is called Obserwator since ADR-009 (2026-11-03); the entries before it keep the names of their day (IMGWTools, `imgwtools`, `imgw`, `IMGW_*`, `imgw-*/1`) and read through its name map.
+Each entry keeps the state of the decision as of the day it was accepted; later changes are described as dated errata, without rewriting history. Format: number, date, status, context, options, decision, consequences. The tool is called Obserwator since ADR-009 (2026-11-03); the entries before it keep the names of their day (IMGWTools, `imgwtools`, `imgw`, `IMGW_*`, `imgw-*/1`) and read through its name map. Likewise, the drafts of the Nogat standard that older entries call 2.0 or 2.1 are the standard 1.0 (Nogat ECO-056).
 
 ## Index
 
 | ADR | Title | Date | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-versioned-imgw-store) | Versioned IMGW store | 2026-10-17 | Accepted |
-| [ADR-002](#adr-002-one-command-catalog-and-consistent-interfaces) | One command catalog and consistent interfaces | 2026-10-18 | Accepted |
-| [ADR-003](#adr-003-čhmú-provider-in-the-imgw-store) | ČHMÚ provider in the IMGW store | 2026-10-18 | Accepted |
-| [ADR-004](#adr-004-ai-agent-support-in-release-300) | AI agent support in release 3.0.0 | 2026-10-19 | Accepted |
+| [ADR-001](#adr-001-versioned-imgw-store) | Versioned IMGW store | 2026-10-17 | Accepted; partly superseded by ADR-007 and ADR-008 |
+| [ADR-002](#adr-002-one-command-catalog-and-consistent-interfaces) | One command catalog and consistent interfaces | 2026-10-18 | Accepted; partly superseded by ADR-007, ADR-008 and ADR-013 |
+| [ADR-003](#adr-003-čhmú-provider-in-the-imgw-store) | ČHMÚ provider in the IMGW store | 2026-10-18 | Accepted; partly superseded by ADR-008 |
+| [ADR-004](#adr-004-ai-agent-support-in-release-300) | AI agent support in release 3.0.0 | 2026-10-19 | Accepted; partly superseded by ADR-006, ADR-007 and ADR-008 |
 | [ADR-005](#adr-005-user-environment-dev-18) | User environment (DEV-18) | 2026-10-24 | Accepted |
-| [ADR-006](#adr-006-message-catalog-and-english-machine-output) | Message catalog and English machine output | 2026-10-24 | Accepted |
-| [ADR-007](#adr-007-data-output-plain-mode-the-store-and-the-default-root) | Data output: plain mode, the store and the default root | 2026-10-24 | Accepted |
+| [ADR-006](#adr-006-message-catalog-and-english-machine-output) | Message catalog and English machine output | 2026-10-24 | Accepted; partly superseded by ADR-013 |
+| [ADR-007](#adr-007-data-output-plain-mode-the-store-and-the-default-root) | Data output: plain mode, the store and the default root | 2026-10-24 | Accepted; partly superseded by ADR-008 |
 | [ADR-008](#adr-008-projects-move-to-archiwista) | Projects move to Archiwista | 2026-10-31 | Accepted |
 | [ADR-009](#adr-009-the-tool-is-called-obserwator) | The tool is called Obserwator | 2026-11-03 | Accepted |
 | [ADR-010](#adr-010-result-error-and-catalog-documents-follow-the-nogat-standard-10) | Result, error and catalog documents follow the Nogat standard 1.0 | 2026-11-04 | Accepted |
-| [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted |
-| [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted |
+| [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted; D1 and D3 removed by ADR-013 |
+| [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted; D7 superseded by ADR-013 |
 | [ADR-013](#adr-013-web-gui-obserwator-gui-serve) | Web GUI: `obserwator gui serve` | 2026-11-13 | Accepted |
 | [ADR-014](#adr-014-harmonized-exports) | Harmonized exports | 2026-11-13 | Accepted |
 | [ADR-015](#adr-015-raw-data-only-in-store-sync-station-sources-archived-catalogs-offline) | Raw data only in `store sync`, station sources archived, catalogs offline | 2026-11-13 | Accepted |
@@ -112,6 +112,8 @@ Consequences: source archives keep their bytes and provenance; stations without 
 
 **2026-11-13 — Q10 (changed by ADR-012).** The CSV keeps `attribution_source` and `attribution_processed` in the first data row, and the columns `attribution` and `terms_notice` of Nogat DEV-20.5 follow them (the lines of `obserwator.attribution`, one per cell from the first data row down). Still no `#` row.
 
+**2026-11-14 — D2, D3, D4 (changed by ADR-015, ADR-017 and ADR-021).** Since ADR-017 (2026-11-13) the one store of D2 and D3 is two roots: the raw root (`obserwator-store.json`) keeps `archives/`, with the observation registers of their slots, and `pmaxtp/`; the data root (`obserwator-data.json`, `obserwator-data/1`) keeps `series/`, `stations/` and the analyses of ADR-016 in `analyses/` (`output.DATA_MARKER`, `_LAYOUT_TREES` in `store/writer.py`), and `series build` and `store catalog` read a raw root and write only the data root. `store sync` writes archive versions and builds no series (ADR-015 D1, 2026-11-13). Beside the station lists of D3 the store keeps the station metadata of the current-data answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`, `cz.chmi.hydro_now`, `cz.chmi.meteo_now`; ADR-015 D2) and the station details of hydro.imgw.pl (`pl.imgw.hydro_details`; ADR-021, 2026-11-14), so the registry of D4 has 22 descriptors, 16 of them IMGW-PIB (`obserwator.datasets`).
+
 ---
 
 ## ADR-002: One command catalog and consistent interfaces
@@ -183,6 +185,8 @@ Unchanged: `download_hydro_data`/`download_meteo_data` (2.1.1 arguments, result 
 **2026-10-25 — D2, D13 (example calls; AGI-2.2, AGI-2.1).** Every catalog command declares at least one example: a complete `imgw` line and an excerpt of its result, published as `x-imgw.examples` (`[{call, result}]`) of `command_schema` and so of the whole `imgw-commands/1` document. The call is the canonical line of `format_command` (Nogat AGI-2.1, d7b3f07): absolute paths under `/data/imgw` and an explicit `--root`, so the line is the same in every working directory and under every default root; the excerpt is some fields of the `result` of the envelope (the first item and `total` of a list, the start of the text or the `OutputReport` of a stream). The examples sit in `x-imgw`, not in the JSON Schema keyword `examples`, which holds instances of the options; they are data of the private module `imgwtools._examples`, not a field of `DataCommand`, because `data_commands(provider=…)` narrows a command to one provider and an example of the other would be wrong there. They have no title (AGI-2.2 asks `{call, result}`; Kartograf adds a title), so they add no texts to translate. The MCP tools and `commands list` do not carry them (MCP strips `x-imgw`; the list is a summary). A contract test (`tests/contract/test_command_lines.py`) holds every command to an example, every call to a line that `parse_command` reads into a call of its command which `validate_command` accepts and `format_command` writes as the same line with another default root set, and every excerpt to fields of the command's result type.
 
 **2026-10-31 — D1, D4, D9, D10, D11, D14, breaking changes (superseded by ADR-008).** The group `project` and its commands leave the catalog without aliases (it has 30 commands in seven groups: `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands`), and `OperationResult` loses the field `task` that named the project task of an item. The changes of `imgw-project/1` that D14 and the breaking changes list (`files[].station` → `station_code`, `ProjectFile.station`) concern a contract that no longer exists.
+
+**2026-11-14 — D1, D7, D8, D9, D12 (the web pages superseded by ADR-013; changed by ADR-010, ADR-014 and ADR-016).** The catalog (`_CATALOG` in `commands.py`) has 35 commands in eight groups: `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses` and `commands` (`stations export` of ADR-014 and the four `analyses` commands of ADR-016, 2026-11-13). Outside it stay `obserwator version`, `server`, `mcp`, `admin`, `config show` and `gui serve` (`cli/main.py`, `cli/admin.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`) and the routes `GET /health`, `GET /api/v1`, `GET /llms.txt`, `/docs` and, when enabled, `/mcp` of `obserwator server` (`api/main.py`). The HTML pages of D1, D7 (`partials/error.html`) and D12 were removed with `src/obserwator/web/` (ADR-013 D18, 2026-11-13): the GUI is the app of `obserwator gui serve`, which reads through public functions and answers its private API with `obserwator-error/1` (`gui/_http.py`). The documents of D7 to D9 follow ADR-010 (2026-11-04): the envelope names `tool` and `version` and pages by `cursor` (`page`) instead of `offset`, the CLI prints it only with `--json` (a summary for a person without it, `cli/_render.py`), and a REST error stays problem+json with the `type` `urn:obserwator:error:<code>` and a `hint` (`api/errors.py`).
 
 ---
 
@@ -276,6 +280,8 @@ Archiwista reads ČHMÚ with the same adapter and contracts, and IMGW behavior d
 
 **2026-11-13 — D12 (changed by ADR-012).** The ČHMÚ `attribution` ends with the link of the licence, „… licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)” (CC BY 4.0 §3(a)(1)), and the processed forms carry it with the mark of changes; new sidecars write it, versions already written keep their bytes.
 
+**2026-11-14 — D11 (changed by ADR-015 and ADR-018).** The catalog reads the `now` metadata of D11 from the raw root, as the versions of `cz.chmi.hydro_now` and `cz.chmi.meteo_now` that `store sync --datasets` stored (ADR-015 D2, D3, 2026-11-13), so `active` is the presence in that stored list, no longer in the list of the build day. Since ADR-018 (2026-11-14) a location is checked against the state border of Czechia from RÚIAN of ČÚZK (`_data/czechia_border_wgs84.geojson`, read by `obserwator._borders`) within the border's simplification tolerance (50 m) plus the location's uncertainty (at least 150 m), no longer against Natural Earth 1:10m with 1,500 m (`store/catalog.py`), and the catalog carries the line Z of ČÚZK.
+
 ---
 
 ## ADR-004: AI agent support in release 3.0.0
@@ -337,6 +343,8 @@ An agent learns IMGWTools from a single source consistent with the code (`AGENTS
 
 **2026-10-31 — D5 (superseded by ADR-008).** The flow of a reproducible project leaves the guide with the projects (ADR-008); the other flows and rules stay.
 
+**2026-11-14 — D7, D9 (changed by ADR-017).** MCP knows two roots since ADR-017 D7 (2026-11-13). Over stdio an absent `root` is the default root of the command's kind, the data root (`OBSERWATOR_ROOT`, `[obserwator] root`, `<data_dir>/obserwator`) or, for a command on downloaded sources, the raw root (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root`, `<data_dir>/obserwator-raw`), and an absent `raw_root` of `series build` and `store catalog` the default raw root; `--allow-dir` confines both, defaults included (`mcp/server.py`, `mcp/_calls.py`). `/mcp` over HTTP takes the two roots of the REST server, as REST does.
+
 ---
 
 ## ADR-005: User environment (DEV-18)
@@ -367,6 +375,10 @@ The user has one place for settings shared with the other Nogat tools and one co
 ### Open questions
 
 - Whether the server state (API keys) should have its own directory instead of `<data_dir>/imgw` (enforcement of the keys is in the backlog, `docs/PROGRESS.md`).
+
+### Errata
+
+**2026-11-14 — D1, D3 (extended by ADR-019 and ADR-020).** D1 has four shared keys since ADR-019 (2026-11-14): `state_dir` joins `data_dir`, `cache_dir` and `lang` (`_environment.SHARED_KEYS`; `NOGAT_STATE_DIR`, `OBSERWATOR_STATE_DIR`, `[nogat] state_dir`, default `platformdirs.user_state_path("nogat")`) and holds the servers' logs in `<state_dir>/obserwator/logs` (`Settings.log_dir`). D3 has three credentials since ADR-020 (2026-11-14): beside the store write token, the GUI's admin key `OBSERWATOR_ADMIN_API_KEY` and the file named by `OBSERWATOR_ADMIN_API_KEY_FILE` come only from the environment and `.env` (`_environment.CREDENTIAL_KEYS`), and `config show` reports each present or missing.
 
 ---
 
@@ -421,6 +433,8 @@ An agent reads the same English text whatever the user's setting, and a Polish u
 
 **2026-10-24 — D1, D3 (areas, rendering).** Two catalog areas hold wordings that persisted files or other tools read: `legal` (attribution formulas and the IMGW-PIB name, one wording in both languages) and the reason of a failed HTTP request, which the `_http_error` helper classifies by its prefix, not by a Polish text. A list that a message embeds is joined with `"; "`. The two texts of a plan item (`not published`, `cancelled`) are English, and Retman and Archiwista compare them literally (PROGRESS, Next 2).
 
+**2026-11-14 — D3, D4 (the web pages superseded by ADR-013).** The Jinja pages whose templates D4 calls Polish were removed by ADR-013 D18 (2026-11-13). Every word of the GUI of `obserwator gui serve` is an entry of the area `gui`, a package with one module per part of the page (`messages/gui/`, merged by its `__init__.py`), which `api/texts?lang=pl|en` serves: Polish by default, English through „PL | EN”; its private API renders an error (`obserwator-error/1`, `gui/_http.py`) in the page's language.
+
 ---
 
 ## ADR-007: Data output: plain mode, the store and the default root
@@ -470,6 +484,8 @@ An agent or a script writes without a flag (the default store), writes plain fil
 
 **2026-11-13 — D3 (changed by ADR-012 D5).** A plain write also puts `ATTRIBUTION.txt` at the root of the output directory: the lines the providers' terms require for its files (Nogat DEV-20.5), merged with the lines the file holds, so it never conflicts; the plan lists it and `files[]` reports it. The data files stay plain, without sidecars.
 
+**2026-11-14 — D2, D5, D6, D8, D9 (changed by ADR-015, ADR-016 and ADR-017).** Since ADR-017 (2026-11-13) there are two default roots (`config.store_root(kind=…)`, `output.resolve_target`): a download without `output_dir` or `root` (`datasets download`, `store sync`, `pmaxtp sync`) writes the raw root, the first of `--root`, `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` and `<data_dir>/obserwator-raw`; series, catalogs and analyses go to the data root, the first of `--root`, `OBSERWATOR_ROOT`, `[obserwator] root` and `<data_dir>/obserwator`, and `series build` and `store catalog` read the raw root of `--raw-root`; `config show --json` reports both (`store`, `raw_store`). `api_keys.json` stays in `<data_dir>/obserwator` (`Settings.api_keys_file`), the default data root. D5 and D6 know three marker names (`output.STORE_MARKERS`: `kartograf-store.json`, `obserwator-store.json`, `obserwator-data.json`); a layout without a marker is judged by the trees of its kind (raw `archives/`, `pmaxtp/`; data `series/`, `stations/`, `analyses/`), and `store init --kind raw|data` verifies the layout of its kind. D8: `store sync` lost the option `series` (ADR-015 D1, 2026-11-13) and `analyses build` (ADR-016) is store-only, so the class is `store init`, `store catalog`, `series build`, `analyses build` and the option `plan` of `store sync` (`store_only` in `commands.py`). D9: REST writes only to `OBSERWATOR_ROOT` or `OBSERWATOR_RAW_ROOT`, by the command's kind, and refuses a `raw_root` in a request as it refuses `root` (`api/routes/commands.py`).
+
 ---
 
 ## ADR-008: Projects move to Archiwista
@@ -511,6 +527,10 @@ ADR-001 gave IMGWTools a project manifest of its own, `imgw-project.json` (`imgw
 
 The call is the narrowest that selects the version's file, and it is checked offline (`store sync`'s own selection must contain the file); it may cover files beside it that the same options select (the `H`, `Q` and `T` files of a half-year, every element of a ČHMÚ meteorological station), each a plan item of its own. **Refused, never guessed**, with `unsupported` (the Nogat registry code, added to `ERROR_CODES` with exit 15 and HTTP 422) and `details.reason="command_not_rebuildable"` (with `details.version` and `field` or `server_path`; the text names how to pin the version as local data instead): a catalog built with a user's coordinates file (the sidecar records its name, not its path), a sidecar without a field the call needs (`request.user_locations`, `request.latitude`, `request.longitude`), and an archive file `store sync` does not select (a file name this release does not download). A missing version or sidecar (an unfinished publication) is `not_found`; a sidecar that is invalid is `data_error` with `details.version`, one that contradicts the layout (`dataset`, `request.server_path`, `year`, `month`, `station_code`, `param`, the PMAXTP method or cell) also with `details.field`; a path that is no version (an observation, a slot directory, outside the root) is `validation_error` with `details.option="version"`. Rejected: a plan line (`imgw …`) instead of the call (a consumer would parse it back); the widest call of a dataset (it would download far more than the pin); guessing the coordinates file of a catalog from its name (any file of that name would do).
 
+### Errata
+
+**2026-11-14 — D5 (changed by ADR-015, ADR-016 and ADR-017).** Since ADR-017 D6 (2026-11-13) the function is `command_for_version(version, *, root=None, raw_root=None)` (`commands.py`): the tree of the version gives the kind of its root (`archives/` and `pmaxtp/` raw; `series/`, `stations/` and `analyses/` data), a relative version lies in `root`, else in the default root of its kind, and an absolute one in `root`, else in its nearest ancestor with either marker. A station list gives `store sync --datasets <key>`, as every station source does, because the catalog downloads nothing (ADR-015 D4); a catalog gives `store catalog --root <data> --raw-root <raw> --provider <id>` and a series version `series build --root <data> --raw-root <raw> --dataset <key>`, `<raw>` being `raw_root` or the default raw root; an analyses version, its sidecar or a station file of it gives `analyses build --root <data>` (ADR-016).
+
 ## ADR-009: The tool is called Obserwator
 
 **Date:** 2026-11-03  
@@ -534,6 +554,10 @@ The tool was named after IMGW-PIB, the institute whose public data it reads; sin
 ### Consequences
 
 **Breaking** for every caller and reader of an old name (`docs/CHANGELOG.md`, `[Unreleased]`, with the migration lines); no released interface breaks, because 2.1.1 has none of the ids and 3.0.0 is untagged. `AGENTS.md` and `llms.txt` are regenerated with the new names. The consumers follow in the order of the Nogat plan (HUB-5.2): Archiwista, Retman, Hydraulik and Hydrolog pin the commit of this change and rename their imports, commands, variables and ids; the frozen Kartograf names `obserwator-store.json` in its `STORE_MARKERS`; Hydrograf keeps its pin and imports of `imgwtools` until after its v0.5.0. The author renames the GitHub repository later; the URLs follow then.
+
+### Errata
+
+**2026-11-14 — D2, Consequences (the repository renamed).** The author renamed the GitHub repository to `Daldek/Obserwator` by 2026-11-04, and the URLs followed with `feature/obserwator-url` (merged into `develop` on 2026-11-04): `[project.urls]` of `pyproject.toml`, the README, `CONTRIBUTING.md` and the templates of `llms.txt` in `src/obserwator/_data/agents/`. GitHub redirects the old URL `github.com/Daldek/IMGWTools`, which D2 kept.
 
 ---
 
@@ -618,6 +642,8 @@ Additive changes of `/1` contracts (no version changes): the envelope fields and
 
 **2026-11-13 — D1, D2, D4, D6, D8 (Nogat ECO-065, kit 0.6.0).** Products carry only what the providers require verbatim and link the rest: DEV §20 drops H, which no terms require, and N, a summary of the IMGW-PIB terms, and the terms lines name what they link (RD „Regulamin danych IMGW-PIB: …”, RH „Regulamin serwisu hydrologicznego IMGW-PIB: …”, RK „Regulamin danych PMAXTP: …”). `obserwator.messages.legal` holds S, P, PS, PP, M, C, CP, RD, RH, RK; `Attribution` orders S, P, PS, PP, M, C, CP and RD, RH, RK; `imgw_hydro` data carry S, P and RH; `terms_notice` holds the terms lines only, and the IMGW-PIB `license_terms` notice is the lines and the links, without an English gloss. The retired texts stay as `legal.RETIRED_LINES`, only to be recognised: `Attribution.from_lines` skips them (an `ATTRIBUTION.txt` written before), and the new `carried(stored, *origins)` gives the lines of a stored product — the lines of its data derived from their origins, with only another tool's own attribution lines kept from what was stored (Hydrolog's ČHMÚ line). Every reader of stored lines uses it or derives them outright: the stored analyses (`list_analyses`, `read_analysis`, `export_analyses`, the envelopes of `analyses build` and `store catalog`, the GUI), so a data root written before needs no rebuild to show and export the current lines. Versions keep their bytes (D6); a series whose `series.json` holds the former lines is rebuilt by the next `series build`, as D6 says.
 
+**2026-11-14 — D1, D2, D6 (changed by ADR-015, ADR-017, ADR-018 and ADR-021).** `obserwator.messages.legal` also holds G (`gugik_attribution`) and Z (`cuzk_attribution`) of DEV-20.9 and DEV-20.11, whose products and days `obserwator.attribution` fills from the packaged border files (ADR-018 D3, 2026-11-14): the origins are `imgw`, `imgw_hydro`, `pmaxtp`, `chmi`, `gugik` and `cuzk` (`attribution.ORIGINS`), and `Attribution` orders S, P, PS, PP, M, C, CP, G, Z and RD, RH, RK. D2: `store sync` builds no series since ADR-015 D1 (2026-11-13); its envelope carries the verbatim lines of the files it stored and the processed lines of a station-metadata file kept by `kept_fields` (`_sync_lines` in `commands.py`). `store catalog` and `stations find --source store` add the line of the provider's border (`border_origin`: G for IMGW-PIB, Z for ČHMÚ) and RH for a station located from hydro.imgw.pl, the catalog also for a station with the details of `pl.imgw.hydro_details` (ADR-021 D9; `_catalog_lines`, `_stations_lines`). D6: a series without the current lines is reported `outdated` by `series build --check` (`check_series`), no longer by `store check`, whose plan covers the raw root alone (ADR-017 D4), and is rebuilt by `series build` only.
+
 ## ADR-013: Web GUI: `obserwator gui serve`
 
 **Date:** 2026-11-13  
@@ -659,6 +685,8 @@ For the library additive: `obserwator.gui` lies outside `obserwator.__all__`, an
 ### Errata
 
 **2026-11-14 — D4, D15, D16 (the admin panel, ADR-020).** The GUI serves the admin panel of Nogat DEV-15.13 beside the routes of D4: `admin` (308), `admin/`, `api/admin/feedback`, `api/admin/feedback/{id}` (PATCH, DELETE), `api/admin/stats` and `api/admin/status`, behind the key of `OBSERWATOR_ADMIN_API_KEY`; their answers carry `Cache-Control: no-store` and a CSP without the basemap (D15). The operator no longer reads `feedback.jsonl` with a text tool, and the deviation from DEV-15.12 is gone (D16).
+
+**2026-11-14 — D14, D16 (Nogat kit 0.6.2 and 0.7.0; the server logs of ADR-019).** The copy of Nogat's kit in `gui/web/nogat/` is 0.7.0 (`nogat-kit.json`), not D14's 0.6.0: kit 0.6.2 (ECO-068; `fix/terms-1.0`, merged on 2026-11-14) corrected the regulamin 1.0 in place (`nogat-terms.md` and `nogat-terms.html`, from which `gui/_terms.py` fills `regulamin.html`, no longer from kit 0.4.0's) and `nogat-sources.js`, and kit 0.7.0 (ECO-067; `feat/admin-panel`, 2026-11-14) added `nogat-admin.js` and `nogat-admin.css` of ADR-020; the keys of `[nogat.operator]` stay those of D16 (`_environment.OPERATOR_KEYS`). The logs of D16 follow ADR-019 (2026-11-14): `obserwator gui serve` writes the `nogat-log/1` records `access`, `app` and `lifecycle` to `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl` (`Settings.log_dir`) through `nogat_logging.ServerLog` and the outermost middleware `AccessLog` (`serve` in `gui/__init__.py`, `build_app(log=)` in `gui/_app.py`; the app of `create_app` alone logs no request), deletes them after 14 days and prints only the lifecycle records and errors reduced to their type on stderr. The GUI's own directory thus holds only `stats.jsonl`, `feedback.jsonl` and `feedback.next_id` (`GuiConfig.writes_own_files`).
 
 ## ADR-014: Harmonized exports
 
@@ -848,6 +876,10 @@ The GUI kept the reports of „Zgłoś uwagę” in `<data_dir>/obserwator/feedb
 ### Consequences
 
 The deviation from DEV-15.12 and the `jq` instructions are gone. A deployment sets the key (a file of mode `0600` named by the unit through `OBSERWATOR_ADMIN_API_KEY_FILE`) and protects exactly `/admin`, `/admin/*` and `/api/admin/*` (Cloudflare Access on the test deployment). `config show` lists two more credentials. Kit 0.7.0 is copied byte for byte.
+
+### Errata
+
+**2026-11-14 — D3 (Windows; the rule it cites).** The `flock` of D3 is POSIX only: `_locked` in `gui/_feedback.py` takes it in the `else` of `sys.platform == "win32"` (the form the CI fixes of `fix/ci-2026-11-14` gave it on 2026-11-14, behaviour unchanged), and on Windows only the instance's own lock orders the reads and writes of one process, so a rewrite by another process is not excluded there. The rule D3 cites as ADR-013 D7, that the GUI writes none of its files when its directory and the data root are one or one holds the other, is ADR-013 D16 (GUI plan D7; `GuiConfig.writes_own_files` in `gui/_config.py`).
 
 ---
 

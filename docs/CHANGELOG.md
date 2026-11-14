@@ -6,6 +6,27 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Documentation audited against the code (2026-11-14).** README, `SECURITY.md`, `CLAUDE.md`,
+  `.env.example` and `docs/` (USAGE, ARCHITECTURE, CODEBASE, PRD, TEST_PLAN, TESTING, RULES,
+  PROGRESS, DECISIONS) checked against `develop` `bee65bb`. `SECURITY.md` no longer scopes a web
+  GUI of `obserwator server` (its Jinja pages are gone since ADR-013): the GUI is its own server,
+  `obserwator gui serve`, with its private API, rate limit, „Zgłoś uwagę”, daily totals and the
+  admin panel and its key, and the servers' logs are in scope; the help of `obserwator server`
+  says REST and `/mcp` only. `.env.example`, USAGE, CODEBASE and `CLAUDE.md` name the admin key
+  `OBSERWATOR_ADMIN_API_KEY`/`_FILE` among the credentials, which come from the environment or
+  `.env`, never from `nogat.toml`; `OBSERWATOR_RATE_LIMIT` is documented as read by no component.
+  Also corrected: Nogat's kit 0.7.0 (not 0.6.0), the check of locations against the PRG and
+  RÚIAN borders with lines G and Z (ADR-018), the logs of ADR-019 in the architecture,
+  `feedback.next_id`, the five streaming exports and the one-file outputs of `stations export`
+  and `analyses export`, the CI matrix and `pip-audit`, the code maps (`nogat_logging.py`,
+  `_borders.py`, `_environment.py`, `cli/admin.py`, `cli/config_cmd.py`), the counts of PRD,
+  RULES and TESTING (3499 tests: 3427 offline, 148 of them in `tests/e2e`, and 72 live; 35
+  commands; 22 datasets), a dated note in TEST_PLAN on the removed Jinja GUI and helpers, and the
+  merges into `develop` up to `bee65bb` in PROGRESS. DECISIONS: the preamble reads the standard
+  drafts 2.0 and 2.1 of older entries as Nogat standard 1.0 (ECO-056), the index states the
+  superseded parts, and dated errata of 2026-11-14 bring ADR-001 to ADR-009, ADR-012, ADR-013 and
+  ADR-020 up to the code. `AGENTS.md` and `llms.txt` regenerated: unchanged.
+
 - **Dead and duplicated code removed (2026-11-14).** No public interface, output or store
   byte changes. Removed code without callers: `_parsing.common.is_missing_value`,
   `agent_guide._code_or_dash`, `gui._http.text_of`, `gui._extra.REQUIREMENTS`, the never

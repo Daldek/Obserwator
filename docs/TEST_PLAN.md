@@ -44,6 +44,19 @@ Installed in `.venv`: pytest 9.0, pytest-cov 7.0, pytest-asyncio 1.3 (`asyncio_m
 > `served_raw_root` and `served` (both settings of the REST server). `tests/unit/test_store_split.py` covers the documented
 > split of a combined store, the refusal of a root of the other kind, builds that leave a read-only raw root untouched and
 > the analyses as entries and slots of the data root.
+>
+> **Update 2026-11-14 (ADR-013, ADR-019, ADR-020):** the Jinja/HTMX web GUI that `obserwator server` served is removed:
+> `web/app.py` with its templates and static files, and its tests (planned here as `tests/unit/test_web.py`, written as
+> `tests/unit/test_web_app.py`); `obserwator server` is the REST API (`/api/v1`) and `/mcp` only (`GET /` redirects to
+> `/docs`). The `web/app.py` rows of sections 1–2, section 4.19, step 4 of the commit plan and the `web/static` note of the
+> `api_client` fixture describe the state before. The web GUI is `obserwator gui serve` (`src/obserwator/gui`, extra `gui`),
+> tested in `tests/unit/gui/` (Starlette's `TestClient`, with the access log of `nogat_logging` and the admin panel),
+> `tests/contract/test_gui_web.py` (the page's files) and `tests/e2e/` (Playwright with Chromium; markers `e2e` and
+> `hydrolog`). The dead-code cleanup removed `_parsing.common.is_missing_value`, so the planned
+> `test_is_missing_value_level_flow_temp_and_none` has no subject, and the unused fixtures `hydro_current_api_response`,
+> `synop_api_response`, `hydro_stations_csv` and `map_stations_api_response` of `tests/conftest.py`; the autouse fixture
+> named `isolated_data_dir` below is now `isolated_reference_dir` (it sets `settings.reference_dir`). State: 3499 tests
+> (3427 offline, 148 of them in `tests/e2e`; 72 live; `docs/TESTING.md`).
 
 Base commands:
 

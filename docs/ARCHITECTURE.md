@@ -8,20 +8,20 @@ System consists of six main components:
    - `pip install obserwator` for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
    - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (22 descriptors: 16 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
-   - Command catalog (`obserwator.commands`): 35 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); Polish texts with an English variant, declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
+   - Command catalog (`obserwator.commands`): 35 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); English texts with a Polish variant (ADR-006), declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
 
 2. **Versioned Store** [Parquet: `obserwator[store]`] in two roots (ADR-017)
    - Raw root (marker `obserwator-store.json`): append-only, immutable versions of IMGW-PIB and ČHMÚ archives with provenance sidecars, the station sources of the catalogs and the PMAXTP cells; the downloads write only here
    - Data root (marker `obserwator-data.json`): Parquet station series, `stations.geojson` per provider and the stations' analyses computed by Hydrolog's program and stored as its answers (ADR-016; Obserwator computes no number), built from the raw root, which the builders only read
    - Default roots in the user data directory (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), or `--root`, `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, `[obserwator] raw_root` and `root` (and `--raw-root` of a build); readable offline, also from network shares
-   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support, ADR-015 raw data only in `store sync`, ADR-016 stored analyses computed by Hydrolog, ADR-017 the data root); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
+   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support, ADR-015 raw data only in `store sync`, ADR-016 stored analyses computed by Hydrolog, ADR-017 the data root, ADR-021 station details of hydro.imgw.pl); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
 
 3. **Backend (FastAPI)** [optional: `obserwator[api]`]
    - Routes `/api/v1/<group>/<command>` generated from the command catalog (33 commands; local-only commands have no route)
    - URL generation for IMGW-PIB and ČHMÚ downloads and live IMGW data
    - Store commands only with the explicit server-side root of their kind: `OBSERWATOR_RAW_ROOT` (raw root) or `OBSERWATOR_ROOT` (data root); `series build` and `store catalog` need both
-   - Errors as `application/problem+json`; language negotiation (`Accept-Language`, English by default); `GET /llms.txt`; optional MCP endpoint `/mcp`; rate limiting via Nginx
+   - Errors as `application/problem+json`; language negotiation (`Accept-Language`, English by default); `GET /llms.txt`; optional MCP endpoint `/mcp`; rate limiting via Nginx; Nogat's logs in `<state_dir>/obserwator/logs` (ADR-019)
 
 4. **MCP Server** [optional: `obserwator[mcp]`]
    - `obserwator mcp` (stdio) and `/mcp` (Streamable HTTP inside the REST app); tools generated from the command catalog
@@ -29,8 +29,9 @@ System consists of six main components:
 
 5. **GUI** [optional: `obserwator[gui]`; the command also needs `obserwator[cli]`]
    - `obserwator gui serve` (ADR-013): a Starlette app of its own on 127.0.0.1:8060 with a private API relative to its page; Nogat's GUI platform finds it through the entry point `nogat.gui`
-   - Every station of IMGW-PIB and ČHMÚ on a MapLibre map, the station panel (description, current IMGW-PIB values, series chart and table, Hydrolog's analyses, downloads), PMAXTP of a point; Preact + htm without a build step
+   - Every station of IMGW-PIB and ČHMÚ on a MapLibre map, the station panel (description, IMGW-PIB's levels and extremes of a hydrological station (ADR-021), current IMGW-PIB values, series chart and table, Hydrolog's analyses, downloads), PMAXTP of a point; Preact + htm without a build step
    - Reads the data root read-only through public functions, Hydrolog's stored analyses (ADR-016) among it; IMGW-PIB's current data and PMAXTP pass through the server's memory; a person's choices are computed by Hydrolog's program on request
+   - A public deployment adds a rate limit, daily statistics, „Zgłoś uwagę”, the regulamin and the admin panel `admin/` with a key of its own (ADR-020); the logs are Nogat's, as the REST server's (ADR-019)
 
 6. **CLI** [optional: `obserwator[cli]`]
    - Local client using the library directly (never through the REST API)
@@ -59,7 +60,7 @@ System consists of six main components:
 │  └────────────┘ └────────────┘ └──────────────┘ └────────────┘  │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ store/: writer · content · sync · series · catalog ·      │   │
-│  │         pmaxtp · reader · export                          │   │
+│  │         pmaxtp · reader · export · plain · analyses       │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ commands.py: catalog · validate · run/check · schema      │   │
@@ -109,12 +110,13 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 ## 4. REST API
 
 ### Implemented Features
-- Routes generated from the catalog (`x-obserwator.rest` of the internal input schemas) by `api/routes/commands.py`: `GET` for reads (options in the query; lists comma-separated or repeated), `POST` for `store sync`, `store catalog`, `series build`, `pmaxtp sync` (options in a JSON body; `?check=true` returns the plan without writing)
-- Response body = `CommandResult.to_json(root, server=True, lang=)`, identical to the CLI envelope except hidden server paths and the language of the texts; list commands page with `limit` (default/maximum `OBSERWATOR_API_MAX_LIMIT`) and `cursor` (`page.next_cursor`); `store export`/`series export` stream CSV/JSONL with `X-Obserwator-Notices`/`X-Obserwator-Status` headers
+- Routes generated from the catalog (`x-obserwator.rest` of the internal input schemas) by `api/routes/commands.py`: `GET` for reads (options in the query; lists comma-separated or repeated), `POST` for `store sync`, `store catalog`, `series build`, `analyses build`, `pmaxtp sync` (options in a JSON body; `?check=true` returns the plan without writing)
+- Response body = `CommandResult.to_json(root, server=True, lang=)`, identical to the CLI envelope except hidden server paths and the language of the texts; list commands page with `limit` (default/maximum `OBSERWATOR_API_MAX_LIMIT`) and `cursor` (`page.next_cursor`); `stations export`, `store export`, `series export`, `analyses export` and `commands guide` stream their file (a Parquet export is written by the server, then sent) with `X-Obserwator-Notices`/`X-Obserwator-Status` headers and, for a provider's data, `X-Obserwator-Attribution`/`X-Obserwator-Terms-Notice`
 - Errors: `api/errors.py` turns every `ObserwatorError`, request validation error, HTTP error, `OSError` and unexpected exception into `application/problem+json` with `code`, `details`, `hint` (when one fits) and the status of `ERROR_CODES` (validation always 400)
 - `GET /api/v1` (name, version, schema route, catalog routes), `GET /health`, `GET /llms.txt` (agent guide in the language of `Accept-Language`, English by default), OpenAPI/Swagger documentation (`/docs`, English; `GET /` redirects to it)
 - Language (AGI-6.4, AGI-9.2): the texts of an answer (notices, item and plan texts, the `title`, `detail` and `hint` of problem+json) follow `?lang=` of a command with the option `lang` (`commands list`, `commands schema`, `commands guide`), else `Accept-Language` (RFC 9110 weights, first subtag), else English; every command answer has `Content-Language`, and `Vary: Accept-Language` when the header decided
 - Optional `/mcp` (MCP Streamable HTTP, `OBSERWATOR_MCP_ENABLED=true`): the SDK session manager runs in the app lifespan, tools call the REST routes in process (section 7)
+- Logs (Nogat DEV-12.4 to DEV-12.9, ADR-019): `api/main.py` starts a `ServerLog` of `obserwator.nogat_logging` (Nogat's reference module, copied byte for byte and shared with `obserwator gui serve`) and adds its `AccessLog` as the outermost middleware (no client address; `/docs`, `/redoc`, `/openapi.json`, `/llms.txt`, `/health` logged only from status 400): access, application and lifecycle records in `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl`, deleted after 14 days; stderr gets only the lifecycle records and the errors reduced to their type; uvicorn runs with `--no-access-log --log-level warning` and there is no log level setting
 
 ### Security (Current State)
 - Rate limiting via Nginx (`limit_req_zone`)
@@ -132,15 +134,15 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 
 ## 5. GUI Layer
 
-`obserwator gui serve` (ADR-013; package `obserwator.gui`, outside `obserwator.__all__`; extra `obserwator[gui]` = `[store]` + Starlette + uvicorn, and `[cli]` for the command) is a server of its own, never mounted in the REST app, so only the GUI's routes reach its address. It reads Obserwator's data only through its public functions (it uses the internal helpers `_environment`, `_jsonable` and `_hydrolog` for settings, JSON and Hydrolog's program) and computes nothing itself: every number of an analysis is Hydrolog's. Running it, its settings and its public rules: `docs/USAGE.md`, section „GUI”.
+`obserwator gui serve` (ADR-013; package `obserwator.gui`, outside `obserwator.__all__`; extra `obserwator[gui]` = `[store]` + Starlette + uvicorn, and `[cli]` for the command) is a server of its own, never mounted in the REST app, so only the GUI's routes reach its address. It reads Obserwator's data only through its public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog` and `_borders` for settings, JSON, Hydrolog's program and the packaged borders) and computes no statistic itself: every number of an analysis is Hydrolog's; the one exception is the colour scale of the climate stripes (`_stripes.py`, route `api/prototype/stripes/{code}`). Running it, its settings and its public rules: `docs/USAGE.md`, section „GUI”.
 
 ### Technologies (Implemented)
 - **Starlette** under **uvicorn**, one process (FastAPI was rejected: the private routes need neither OpenAPI nor pydantic); blocking reads and exports run in worker threads, at most four at a time
 - **Preact 10.29.8 + htm 3.1.1** as ES modules without a build step, vendored byte for byte with their licences and SHA-256 (`gui/web/vendor/vendor.json`)
 - **MapLibre GL JS 6.14.0**, vendored with its module worker (a same-origin file) and the Noto Sans glyphs; the basemap is a TileJSON from settings (OpenFreeMap's by default) drawn in the GUI's own grey style, or offline the packaged borders of Poland and Czechia
 - **An own SVG chart module** (`gui/web/src/charts/`): linear, log, date, time and Gumbel-probability axes; lines, steps, areas, bands, bars, points and reference marks; long series decimated to the first, last, lowest and highest point per pixel column; zoom and a readout by pointer and keys
-- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 0.6.0 (`nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
-- **Provider lines on screen** (DEV-20.5, ECO-064): one compact `<nogat-sources>` of the kit per view, across the page under the map and both panels, fed the union of the lines of what the list and the map show and of what the right panel shows (the station's header, its open cards and their results, the stations files or PMAXTP's tables), the basemap's credit after it; never per panel or card; on a phone the sheets stop above it. S, P, PS, PP and the short ČHMÚ line on screen, every line and the terms behind „Źródła i warunki”; a welcome window on the first visit with the same full content (`fillSources`). Files, images, hand-offs and the API keep the full lines
+- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 0.7.0 (`nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`, `nogat-admin.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
+- **Provider lines on screen** (DEV-20.5, ECO-064): one compact `<nogat-sources>` of the kit per view, across the page under the map and both panels, fed the union of the lines of what the list and the map show and of what the right panel shows (the station's header, its open cards and their results, the stations files or PMAXTP's tables), the basemap's credit after it; never per panel or card; on a phone the sheets stop above it. A set of catalog stations brings the line of the state border its locations were checked against (G or Z, ADR-018). S, P, PS, PP and the short forms of ČHMÚ's, GUGiK's and ČÚZK's lines (CK, GK, ZK) on screen, every line and the terms behind „Źródła i warunki”; a welcome window on the first visit with the same full content (`fillSources`). Files, images, hand-offs and the API keep the full lines
 - **Texts**: the area `gui` of the message catalog (`messages/gui/`, `Text(en, pl)`, ADR-006), served by `api/texts`; Polish by default, English through „PL | EN”
 
 ### Routes
@@ -171,20 +173,20 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 - **Live data** (`_live.py`), in memory only: snapshots of IMGW-PIB's current data (water states, hydro, meteo, synop), each fetched on demand at most once per 10 minutes, one request at a time, the last kept when a fetch fails; PMAXTP per method and point at four decimals for 24 hours, at most 1,000 points, one live request at a time.
 - **Analyses** (`_analyses.py`): Hydrolog's results stored in the data root by `analyses build` (`list_analyses`, `read_analysis`), shown as they are; a person's choices (and the climate stripes' reference period) computed on request by `compute_analysis` through Hydrolog's program (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`, looked for once when the app starts; without it only stored results): at most two processes of 30 s, 500 results in memory, never written.
 - **Files**: `export_series`, `export_stations` and `export_analyses` write them byte for byte as the CLI does; PMAXTP of a point is packed by the server (CSV, JSON); a hand-off is built by the server from the data root or from Hydrolog's result.
-- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl` (rewritten atomically under its `flock` when the admin panel marks or deletes a report); neither when that directory and the data root are one or one holds the other.
-- **Logs** in `<state_dir>/obserwator/logs` (Nogat DEV-12.4 to DEV-12.9): `obserwator gui serve` starts a `ServerLog` of `obserwator.nogat_logging` (Nogat's reference module, copied byte for byte and shared with `obserwator server`) and `build_app` adds its `AccessLog` as the outermost middleware, outside `Traffic`, so the rate limit's `429` is logged too; static content (`QUIET` of `_app.py`) only from status 400; stderr gets only the lifecycle records and reduced errors.
+- **Own files** in `<data_dir>/obserwator`: `stats.jsonl`, `feedback.jsonl` (rewritten atomically under its `flock` when the admin panel marks or deletes a report) and `feedback.next_id` beside it (ids are never reused); none when that directory and the data root are one or one holds the other.
+- **Logs** in `<state_dir>/obserwator/logs` (Nogat DEV-12.4 to DEV-12.9, ADR-019): `obserwator gui serve` starts a `ServerLog` of `obserwator.nogat_logging` (Nogat's reference module, copied byte for byte and shared with `obserwator server`) and `build_app` adds its `AccessLog` as the outermost middleware, outside `Traffic`, so the rate limit's `429` is logged too; one file per kind and UTC day (`<kind>-YYYY-MM-DD.jsonl`), deleted after 14 days, no client address; static content (`QUIET` of `_app.py`) only from status 400; stderr gets only the lifecycle records and reduced errors.
 - The page connects only to its own origin and the basemap's.
 
 ### Security
 - Every answer (`SecurityHeaders` of `_app.py`): `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cache-Control: no-cache` unless the answer sets another
 - No cookies, sessions or CORS headers; no inline script or style and no remote resource but the basemap
 - Every parameter is checked against the registries before the data root or Hydrolog is touched (DEV-13.3); errors are `obserwator-error/1` in the page's language with the server's directories hidden (root, own directory, TMPDIR, CWD); Hydrolog gets only checked options and series files the server wrote
-- No sign-in but the admin panel's: the GUI binds `127.0.0.1` by default and is reachable beyond it only behind an authenticating proxy (`FORWARDED_ALLOW_IPS` names the proxy to uvicorn); `admin/` and `api/admin/…` (`_admin.py`) check `X-Admin-Key` in constant time against `OBSERWATOR_ADMIN_API_KEY` or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every request (`401 unauthorized` otherwise), and answer with `Cache-Control: no-store` under CSP `'self'`
+- No sign-in but the admin panel's: the GUI binds `127.0.0.1` by default and is reachable beyond it only behind an authenticating proxy (`FORWARDED_ALLOW_IPS` names the proxy to uvicorn); every route of `api/admin/…` (`_admin.py`) checks `X-Admin-Key` in constant time against `OBSERWATOR_ADMIN_API_KEY` or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every request (`401 unauthorized` otherwise; never generated or logged, and not one of the REST API keys of `obserwator admin`); the panel's answers (`admin/` and `api/admin/…`) carry `Cache-Control: no-store` under CSP `'self'`
 
 ### Public Rules (Nogat DEV-15.7 to DEV-15.12)
 - `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory); the access log is `AccessLog`'s, outside it (Logs above); uvicorn keeps no log of its own
-- `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl`; `_admin.py` (DEV-15.13) lists, marks and deletes reports, shows the daily totals and the status checks `data_root_marker`, `stored_analyses`, `hydrolog_command`; the panel's requests stay under the rate limit and out of the totals
-- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from kit 0.6.0 (its source blocks link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
+- `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl` (never an IP address or a User-Agent); `_admin.py` (DEV-15.13) lists, marks and deletes reports, shows the daily totals and the status checks `data_root_marker`, `stored_analyses`, `hydrolog_command`; the panel's requests stay under the rate limit and out of the totals
+- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from the kit's `nogat-terms.html` (its source blocks of Obserwator's data sources, the borders' GUGiK and ČÚZK among them, link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
 
 ---
 
@@ -196,7 +198,7 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 - **HTTPX** - HTTP client
 
 ### Architecture
-The CLI uses the library directly and downloads data straight from IMGW-PIB and ČHMÚ servers; it does NOT communicate through the REST API. All catalog groups (`datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `commands`) are generated from `command_schema()` by `cli/_dispatch.py` (`ObserwatorGroup` + `register_catalog`): help texts and flags come from the catalog, raw option text goes to `run_command` (or `check_command` for `--check`), `--schema` prints the command schema. With `--json` stdout is the one-line JSON envelope `obserwator-result/1`, without it a short summary for a person in the language of `--lang` (`cli/_render.py`: status, the items of a list as a table of key fields and the page, the main fields of a document, the notices) (streams for `store export`/`series export`/`commands guide` without `--output`; with it the envelope result is `{output, files[]}`), with `--json` notices go to stderr once, errors are the `obserwator-error/1` document (`schema`, `code`, `title`, `message`, `hint`?, `details`, `exit_code`, `command`?; `error_report.py`) as the last stderr line with the exit code of `ERROR_CODES` (envelope status: `partial` 10, `failed` 11, `cancelled` 130). The CLI therefore has no validation or business rules of its own — CLI = Python API = REST = MCP (`tests/contract/test_interface_contract.py`, `test_mcp_contract.py`). `OBSERWATOR_LANG=pl|en` picks the help language once at import (catalog texts, group descriptions and the Typer/Click elements such as „Opcje”/„Options”, „Użycie:”/„Usage:”, `[OPCJE]`, „Przerwano.”); an invalid value ends every `obserwator` call with a `validation_error` line (exit 2). `obserwator version`, `obserwator server`, `obserwator mcp`, `obserwator gui serve` (section 5) and `obserwator admin` stay outside the catalog (Polish help).
+The CLI uses the library directly and downloads data straight from IMGW-PIB and ČHMÚ servers; it does NOT communicate through the REST API. All catalog groups (`datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses`, `commands`) are generated from `command_schema()` by `cli/_dispatch.py` (`ObserwatorGroup` + `register_catalog`): help texts and flags come from the catalog, raw option text goes to `run_command` (or `check_command` for `--check`), `--schema` prints the command schema. With `--json` stdout is the one-line JSON envelope `obserwator-result/1`, without it a short summary for a person in the language of `--lang` (`cli/_render.py`: status, the items of a list as a table of key fields and the page, the main fields of a document, the notices) (streams for `stations export`/`store export`/`series export`/`analyses export`/`commands guide` without `--output`; with it the envelope result is `{output, files[]}`), with `--json` notices go to stderr once, errors are the `obserwator-error/1` document (`schema`, `code`, `title`, `message`, `hint`?, `details`, `exit_code`, `command`?; `error_report.py`) as the last stderr line with the exit code of `ERROR_CODES` (envelope status: `partial` 10, `failed` 11, `cancelled` 130). The CLI therefore has no validation or business rules of its own — CLI = Python API = REST = MCP (`tests/contract/test_interface_contract.py`, `test_mcp_contract.py`). `OBSERWATOR_LANG=pl|en` picks the help language once at import (catalog texts, group descriptions and the Typer/Click elements such as „Opcje”/„Options”, „Użycie:”/„Usage:”, `[OPCJE]`, „Przerwano.”); an invalid value ends every `obserwator` call with a `validation_error` line (exit 2). `obserwator version`, `obserwator server`, `obserwator mcp`, `obserwator gui serve` (section 5), `obserwator config show` and `obserwator admin` stay outside the catalog (their help also in the language of `OBSERWATOR_LANG`).
 
 ---
 
@@ -260,7 +262,7 @@ Every writing command has one of two ways of writing, with the same names in Pyt
 | plain files | `-o`, `--output-dir` / `output_dir=` | the files only, named as in the store, no metadata | `written`, `replaced` |
 | store | `-r`, `--root` / `root=` | versions with sidecars in the root of the command's kind (section 8) | `new`, `unchanged`, `relabeled` |
 | none given | — | the default root of the command's kind: the raw root of a download (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root`, `<data_dir>/obserwator-raw`), the data root of a build (`OBSERWATOR_ROOT`, `[obserwator] root`, `<data_dir>/obserwator`); `obserwator config show --json` names both and their sources | as store |
-| one file | `--output` / `output=` | one export file (`store export`, `series export`, `commands guide`); result `OutputReport` | `written`, `replaced` |
+| one file | `--output` / `output=` | one export file (`stations export`, `store export`, `series export`, `analyses export`, `commands guide`); result `OutputReport` | `written`, `replaced` |
 
 - `output_dir` and `root` exclude each other (`validation_error`, `details.reason="exclusive_options"`). The commands whose input or result is the store (`series build`, `store catalog`, `analyses build`) are store-only: they have no `output_dir` (rule in their catalog entry); `--plan` with `output_dir` is refused (`store_only_option`); a dataset without a store form is refused with `not_in_store`; `store sync --output-dir` of a station-year dataset (ČHMÚ) needs `years` (`years_required_in_plain_mode`), because a plain write does not read the server listing.
 - Plain names are the store names: for `datasets download` the provider's server path, kept as sub-directories because names collide across folders. `obserwator pmaxtp sync` names its two files by the cell indices of the answer (deviation DEV-19.5/19.6 in `CLAUDE.md`).
@@ -331,7 +333,8 @@ IMGW-PIB archives are inconsistent between years; parsers auto-detect the format
 - The GUI: its page and private JSON API (`obserwator-gui-session/1`, `obserwator-analysis/1`, `nogat-handoff/1`) and the files of the exports above (section 5)
 
 ### GIS Integration
-- `stations.geojson` with WGS84 points per provider (stations without a valid location keep `geometry: null` and a reason; ČHMÚ hydro stations carry SPA `thresholds`)
+- `stations.geojson` with WGS84 points per provider (stations without a valid location keep `geometry: null` and a reason; ČHMÚ hydro stations carry SPA `thresholds`, IMGW-PIB hydro stations the details of hydro.imgw.pl: gauge zero, river km, catchment area, warning and alarm levels, absolute extremes; ADR-021)
+- A location counts only in its provider's country (ADR-018): inside the packaged state border of Poland (PRG of GUGiK) or Czechia (RÚIAN of ČÚZK), built by `scripts/build_borders.py` and read by `obserwator._borders`, or nearer to it than its 50 m simplification tolerance plus the location's uncertainty (at least 150 m); else `location_missing_reason="outside_country"`. The border's line (G of GUGiK, Z of ČÚZK) joins the attribution of the catalog and of every product of it
 - The GUI's map (MapLibre GL JS) draws the stations of both catalogs, IMGW-PIB's current measurements and the PMAXTP point (section 5)
 - ~~WFS/WMS integration~~ - not implemented
 
@@ -360,17 +363,22 @@ standard, DEV-7.6) runs, in order and stopping at the first failure: `ruff forma
 --check`, `ruff check`, mypy (`strict`, over `src/` and `tests/`), one pytest call
 over `tests/` with coverage (offline, `-m "not live"`, floor 80%) and the commit
 step `scripts/check-commits.sh` (identity, Conventional Commits, no AI
-attribution). The environment is `uv.lock` (`uv sync --locked`).
+attribution). The environment is `uv.lock` (`uv sync --locked --all-extras`, the
+gate's first step).
 
-**CI:** GitHub Actions run the gate on Linux, macOS and Windows
-(`.github/workflows/ci.yml`, DEV-7.7), the `live` tests weekly
-(`.github/workflows/live.yml`), and Dependabot updates the Actions
-(`.github/dependabot.yml`). Templates: `standards/ci/` of the Nogat standard. They
-trigger on `main` and `develop`, so they start working once the branches are renamed.
-The GUI's browser tests (`tests/e2e/`, Playwright) skip where Chromium is not
-installed, as in CI.
+**CI:** GitHub Actions run the gate on Linux, macOS and Windows with Python 3.12
+(required) and 3.15 (reported, not blocking) on pushes and pull requests to `main`
+and `develop` (`.github/workflows/ci.yml`, DEV-7.7); its commit step checks commits
+only of pull requests into `develop` and of `hotfix/*` into `main` (DEV-4.5). The
+same workflow audits the locked PyPI dependencies with `pip-audit`, also weekly
+(informative, DEV-13.6). The `live` tests run weekly and on demand
+(`.github/workflows/live.yml`), and Dependabot updates the Actions weekly into
+`develop` (`.github/dependabot.yml`). Templates: `standards/ci/` of the Nogat
+standard. The GUI's browser tests (`tests/e2e/`, Playwright) skip where Chromium
+is not installed, as in CI.
 
-**Deployment:** Docker (`docker/`) for the REST server; the GUI as a service of its
+**Deployment:** Docker (`docker/`) for the REST server, its logs on a volume of
+`<state_dir>/obserwator` and nginx keeping no log; the GUI as a service of its
 own on 127.0.0.1 behind an authenticating proxy (`docs/USAGE.md`, „GUI”).
 
 ---
@@ -382,6 +390,10 @@ Obserwator/
 ├── src/obserwator/
 │   ├── __init__.py       # PUBLIC API entry point (single __all__)
 │   ├── output.py         # Plain output (ADR-007): resolve_target, refuse_directory, plan_plain, refuse, Staging, FileResult, OutputReport; markers STORE_MARKERS, DATA_MARKER
+│   ├── _environment.py   # nogat.toml, NOGAT_* variables, user directories, [nogat.gui] and [nogat.operator]
+│   ├── attribution.py    # Provider attribution and terms lines of every product (ADR-012)
+│   ├── _borders.py       # Packaged state borders of Poland and Czechia (ADR-018), read by the catalog, the GUI and attribution
+│   ├── nogat_logging.py  # Nogat's reference logging module, copied byte for byte: logs of both servers (ADR-019)
 │   ├── _version.py       # Version, single source (pyproject reads it)
 │   ├── fetch.py          # PUBLIC: fetch_* (live), download_archives, download_* -> DownloadResult
 │   ├── models.py         # PUBLIC: Data models incl. NormalizedRecord, Measurement
@@ -403,24 +415,25 @@ Obserwator/
 │   ├── _hydrolog.py      # Hydrolog's program: `commands batch` in a separate process (ADR-016)
 │   ├── _data/            # Poland and Czechia borders (PRG of GUGiK, RÚIAN of ČÚZK; ADR-018), agents/ templates, packaged fixtures, recordings, contract schemas
 │   ├── _parsing/         # common.py, hydro.py, meteo.py, stations.py, chmi.py
-│   ├── store/            # types, writer, content, sync, series, catalog, pmaxtp, reader, export, plain (plan of a plain write), analyses and analysis_registry (ADR-016)
+│   ├── store/            # types, writer (the store's one canonical JSON, new-file write, file checksum and archive slot directory), content, sync, series, catalog, pmaxtp, reader, export, plain (plan of a plain write), analyses and analysis_registry (ADR-016)
 │   ├── api/              # REST API [optional]
 │   │   ├── main.py       # FastAPI app (/health, /api/v1, /llms.txt, /docs, /mcp; GET / redirects to /docs)
 │   │   ├── routes/commands.py  # Routes generated from the command catalog
 │   │   ├── errors.py     # problem+json handlers, hide_server_paths, Accept-Language
 │   │   └── schemas.py    # HealthCheck
 │   ├── cli/              # CLI [optional]
-│   │   ├── main.py       # Entry point (version, server, mcp, admin, config, catalog groups)
+│   │   ├── main.py       # Entry point (version, server, mcp, admin, config, gui, catalog groups)
+│   │   ├── config_cmd.py # obserwator config show
 │   │   ├── gui_cmd.py    # obserwator gui serve
 │   │   ├── _dispatch.py  # Catalog-driven command generation (only adapter), OBSERWATOR_LANG
 │   │   ├── _render.py    # Summary for a person of the envelope (without --json)
 │   │   └── admin.py      # REST API key management (api_keys.json)
 │   ├── mcp/              # MCP server [optional: obserwator[mcp]]: _tools, _calls, server
 │   └── gui/              # GUI [optional: obserwator[gui]]: obserwator gui serve, entry point nogat.gui (ADR-013)
-│       ├── _app.py       # Starlette app: private API, headers; _root, _live, _analyses, _traffic, _feedback, _admin, _terms
+│       ├── _app.py       # Starlette app: private API, headers; _root, _live, _analyses, _stripes, _traffic, _feedback, _admin, _terms, _http, _params, _config, _state, _serving, _extra
 │       └── web/          # the page: Preact + htm modules, charts, MapLibre, Nogat's kit and tokens, instrukcja/, admin/
 ├── AGENTS.md, llms.txt   # Agent guide — derived from the catalog (obserwator commands guide)
-├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp], compose, nginx with /mcp)
+├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp], compose with the logs volume, nginx with /mcp)
 ├── tests/                # Tests (unit, contract, e2e, live; fixtures/store with synthetic IMGW-PIB and ČHMÚ archives, recordings; fixtures/export_golden)
 └── pyproject.toml        # Project configuration
 ```
