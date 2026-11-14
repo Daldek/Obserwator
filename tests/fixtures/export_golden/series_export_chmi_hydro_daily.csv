@@ -1,6 +1,6 @@
 date,year,H [cm],H_flag,Q [m3/s],Q_flag,T [degC],T_flag,attribution_source,attribution_processed,attribution,terms_notice
-2004-01-01,2004,,missing,1.845,value,,missing,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu),"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
-2004-01-02,2004,,missing,1.993,value,,missing,,,Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu),
+2004-01-01,2004,,missing,1.845,value,,missing,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",Dane ČHMÚ zostały przetworzone,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+2004-01-02,2004,,missing,1.993,value,,missing,,,Dane ČHMÚ zostały przetworzone,
 2004-01-03,2004,,missing,2.142,value,,missing,,,,
 2004-01-04,2004,,missing,2.292,value,,missing,,,,
 2004-01-05,2004,,missing,2.442,value,,missing,,,,

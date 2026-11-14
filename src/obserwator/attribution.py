@@ -31,7 +31,10 @@ each once, so equal lines of different tools merge byte for byte.
 
 A stored product (a series, catalog or analysis written before ECO-065) may hold lines
 the standard has retired: `carried` derives the lines of a stored product from the
-origins of its data and keeps only another tool's own lines from what was stored.
+origins of its data and keeps only another tool's own lines from what was stored. A
+product written before ECO-071 may hold CP with the processing in parentheses („Dane
+ČHMÚ zostały przetworzone (…)”, of Obserwator or of Hydrolog): every `Attribution`
+holds it as CP, once.
 """
 
 from __future__ import annotations
@@ -77,6 +80,9 @@ _RK = str(message("legal.imgw_terms_pmaxtp"))
 _TERMS_ORDER = (_RD, _RH, _RK)
 # Lines earlier versions of the standard required (ECO-065), never carried on.
 _RETIRED = frozenset(RETIRED_LINES)
+# CP of a product written before ECO-071 began so and named the processing in
+# parentheses after it (DEV-20.4).
+_OLD_CP = f"{_CP} ("
 # Lines of an origin with fixed texts: of a verbatim copy, added by processing, the
 # terms lines.
 _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {
@@ -141,6 +147,16 @@ def _ordered(order: tuple[str, ...], lines: Iterable[str]) -> tuple[str, ...]:
     )
 
 
+def _canonical(lines: Iterable[str]) -> tuple[str, ...]:
+    """``lines`` once each, an old CP with the processing in parentheses as CP."""
+    return tuple(
+        dict.fromkeys(
+            _CP if line.startswith(_OLD_CP) and line.endswith(")") else line
+            for line in lines
+        )
+    )
+
+
 # „Regulamin <whose terms>: <address>”: the first word of every terms line (DEV §20).
 _TERMS_WORD = _RD.split(" ", 1)[0] + " "
 
@@ -156,7 +172,9 @@ class Attribution:
     The lines a product with provider data carries (ADR-012, Nogat DEV §20).
 
     ``a | b`` merges two products' lines (a product made from both), each
-    line once and in the order of the standard.
+    line once and in the order of the standard. The attribution lines are kept
+    once each, and a CP written before ECO-071 („Dane ČHMÚ zostały przetworzone
+    (…)”) becomes the canonical CP (DEV-20.4).
 
     Attributes
     ----------
@@ -170,6 +188,10 @@ class Attribution:
 
     attribution: tuple[str, ...] = ()
     terms_notice: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Hold an old CP as CP, each attribution line once (DEV-20.4, ECO-071)."""
+        object.__setattr__(self, "attribution", _canonical(self.attribution))
 
     def __or__(self, other: Attribution) -> Attribution:
         """The lines of both, each once, in the order of the standard."""
@@ -279,8 +301,9 @@ def carried(
     those of a product stored before ECO-065 are partly retired (H, N, the terms
     lines before they named their terms). The lines of its data are derived anew
     from their origins; of what was stored only the attribution lines another tool
-    added and the standard does not derive stay, e.g. Hydrolog's ČHMÚ line naming
-    its computation (DEV-20.6). Stored terms lines never stay: they are derived.
+    added and the standard does not derive stay (DEV-20.6). Hydrolog's ČHMÚ line
+    naming its computation, of a result stored before ECO-071, is CP (`Attribution`).
+    Stored terms lines never stay: they are derived.
 
     Parameters
     ----------

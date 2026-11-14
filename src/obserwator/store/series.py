@@ -396,7 +396,8 @@ def _reusable(
     Whether a series version stays current: the same inputs and the current lines.
 
     A version written before the series carried the provider's attribution
-    lines (ADR-012) is rebuilt once, so the store's products carry them.
+    lines (ADR-012) is rebuilt once, so the store's products carry them; one whose
+    CP names the processing (before ECO-071) stays current, as it holds CP.
     """
     return version.manifest == manifest and version.lines == _lines(descriptor)
 

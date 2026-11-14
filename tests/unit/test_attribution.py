@@ -102,7 +102,7 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
             "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), "
             f"https://opendata.chmi.cz, licencja CC BY 4.0 ({licence})"
         ),
-        "CP": "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)",
+        "CP": "Dane ČHMÚ zostały przetworzone",
         # <period> the year of creation, <date> the day of the download of the file
         "G": (
             "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono "
@@ -199,14 +199,35 @@ OLD = Attribution(
 )
 
 
+# CP as Obserwator and Hydrolog wrote it before ECO-071, naming the processing
+OLD_CP = (
+    "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)",
+    "Dane ČHMÚ zostały przetworzone (obliczenia hydrologiczne programem Hydrolog)",
+)
+
+
 def test_a_stored_product_carries_the_derived_lines_and_its_producers_own_only():
-    hydrolog = "Dane ČHMÚ zostały przetworzone (obliczenia w programie Hydrolog)"
-    stored = Attribution((*OLD.attribution, hydrolog), OLD.terms_notice)
+    own = "Dane przetworzone w programie X"
+    stored = Attribution((*OLD.attribution, own), OLD.terms_notice)
 
     assert carried(OLD, "imgw", "imgw_hydro") == attribution("imgw", "imgw_hydro")
-    assert carried(stored, "chmi") == attribution("chmi") | Attribution((hydrolog,))
+    assert carried(stored, "chmi") == attribution("chmi") | Attribution((own,))
     # An ATTRIBUTION.txt written before ECO-065 is read back without its retired lines
     assert Attribution.from_lines(OLD.lines) == Attribution(IMGW.attribution)
+
+
+def test_an_old_cp_naming_the_processing_is_read_as_cp_once():
+    (_, cp) = CHMI.attribution
+    old = Attribution((*CHMI.attribution[:1], *OLD_CP))
+
+    assert old == CHMI
+    assert carried(old, "chmi") == CHMI
+    assert Attribution.from_lines([*OLD_CP, *CHMI.lines]) == CHMI
+    # Merged with other lines it takes CP's place in the order of the standard
+    assert Attribution((*OLD_CP, CHMI.attribution[0])) | IMGW == IMGW | CHMI
+    # Only CP with its processing in parentheses: other lines stay as they are
+    other = (f"{cp}.", f"{cp} (bez nawiasu zamykającego", f"Uwaga: {OLD_CP[0]}")
+    assert Attribution(other).attribution == other
 
 
 # --------------------------------------------------------------------------

@@ -6,6 +6,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **CP without the detail of processing (Nogat ECO-071, DEV-20.3, DEV-20.4; kit 0.7.1).** The
+  ČHMÚ processing line is „Dane ČHMÚ zostały przetworzone”, once, without „(normalizacja i
+  zmiana formatu)”, on every product: envelopes, the CLI, series, catalogs, CSV, JSONL and
+  Parquet exports, sidecars' `license.attribution`, `ATTRIBUTION.txt`, the GUI and its guide.
+  Every `Attribution` reads a line „Dane ČHMÚ zostały przetworzone (…)” of an older product
+  (Obserwator's own, or Hydrolog's naming its computation) as CP and keeps it once: an
+  `ATTRIBUTION.txt` merged by a plain write, stored series, catalogs and analyses, and
+  Hydrolog's results; `carried` no longer keeps Hydrolog's old line as its own. A series
+  version whose CP names the processing stays current (`series build` does not rebuild it for
+  this line); versions already written keep their bytes. Nogat's kit is 0.7.1 (byte for byte):
+  `nogat-sources.js` knows CP and shows an old one as CP, and the regulamin is 1.1 with the
+  ČHMÚ block's CP without parentheses; a public deployment publishing 1.1 sets its own
+  `terms_effective` in `[nogat.operator]`. Tests: the CP line of the standard, an old CP read
+  as CP once (from `Attribution`, `from_lines`, `carried` and a merge), a ČHMÚ series with an
+  old CP kept current; the golden CSV of ČHMÚ series exports regenerated. ADR-003, ADR-012
+  and ADR-013 errata.
+
 - **GUI: no footer statement; „Regulamin” at the bottom of the left panel (Nogat DEV-15.7,
   DEV-15.8, the author's decision of 2026-11-14).** A public deployment no longer shows
   „Regulamin” and the service's statement under the strip of provider lines: the statement
