@@ -6,6 +6,18 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **GUI: no footer statement; „Regulamin” at the bottom of the left panel (Nogat DEV-15.7,
+  DEV-15.8, the author's decision of 2026-11-14).** A public deployment no longer shows
+  „Regulamin” and the service's statement under the strip of provider lines: the statement
+  stays as the opening of § 3 of the regulamin (unchanged, 1.0). `regulamin.html` is linked,
+  in a new tab, by a small quiet „Regulamin” at the bottom of the left panel of every view
+  (the last item of the left sheet on a phone), by the app menu „Aplikacje” and by the
+  welcome window's „Regulamin serwisu”. The message `shell.statement` and `PublicNotice` are
+  gone; the strip `<nogat-sources>` and „Źródła i warunki” are unchanged. Tests: the e2e test
+  of the footer gives way to one of the left panel's link (desktop and phone, new tab, none
+  in a private deployment) and one of the welcome window's (one link, new tab, none in a
+  private deployment); ADR-013 erratum.
+
 - **The Windows runs of the gate (2026-11-14).** Since the GUI and the data root were merged,
   the gate failed six tests on Windows (Python 3.12 and 3.15). The GUI's page scripts (`.js`,
   `.mjs`) are `text/javascript` (RFC 9239) on every system: `build_app` registers both in

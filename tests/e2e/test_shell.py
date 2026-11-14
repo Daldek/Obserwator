@@ -101,20 +101,33 @@ def test_the_theme_switch_is_remembered(open_page):
 
 
 @pytest.mark.parametrize("view", ["", "?view=current", "?view=pmaxtp"])
-def test_a_public_deployment_shows_its_terms_under_every_view(
+def test_a_public_deployment_links_its_terms_at_the_bottom_of_the_left_panel(
     open_page, public_url, gui_url, view
 ):
     page = open_page(view, base=public_url)
-    terms = page.locator(".view-foot").get_by_role("link", name="Regulamin")
+    rail = page.locator("#panel-left .panel-foot")
+    terms = rail.get_by_role("link", name="Regulamin")
     expect(terms).to_be_visible()
-    assert terms.get_attribute("href") == "regulamin.html"
-    expect(page.locator(".view-foot")).to_contain_text(
-        "Serwis jest niekomercyjny i bezpłatny"
-    )
-    # a deployment that is not public has neither
+    expect(terms).to_have_attribute("href", "regulamin.html")
+    expect(terms).to_have_attribute("target", "_blank")
+    expect(terms).to_have_attribute("rel", "noopener")
+    # the panel's last item; the view's foot holds only the providers' strip
+    box, panel = rail.bounding_box(), page.locator("#panel-left").bounding_box()
+    assert box is not None and panel is not None
+    assert abs(box["y"] + box["height"] - (panel["y"] + panel["height"])) <= 1
+    foot = page.locator(".view-foot")
+    expect(foot.get_by_role("link", name="Regulamin", exact=True)).to_have_count(0)
+    expect(foot).not_to_contain_text("niekomercyjny")
+    # on a phone it ends the left sheet
+    phone = open_page(view, base=public_url, width=390)
+    phone.locator(".panel-toggle.left").click()
+    expect(
+        phone.locator("#panel-left .panel-foot").get_by_role("link", name="Regulamin")
+    ).to_be_visible()
+    # a deployment that is not public has no link
     private = open_page(view, base=gui_url)
     expect(private.get_by_role("radiogroup", name="Widok mapy")).to_be_visible()
-    expect(private.locator(".public-notice")).to_have_count(0)
+    expect(private.locator("#panel-left .panel-foot")).to_have_count(0)
 
 
 def test_feedback_sends_a_report_of_the_view_shown(open_page, public_url):

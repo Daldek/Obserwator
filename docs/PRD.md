@@ -116,7 +116,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | PMAXTP of a point picked on the map or by coordinates, without a layer of the grid | Implemented |
 | Polish and English, light and dark theme, a phone layout; Nogat's identity and app menu | Implemented |
 | Offline map without a basemap (the packaged borders) | Implemented |
-| Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms, statement, rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented |
+| Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms (linked from the left panel, the app menu and the welcome window; the statement of DEV-15.8 in § 3 of the terms), rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented |
 | Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` (or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`), not a REST API key | Implemented (ADR-020) |
 | HTTPS | Through the deployment's authenticating proxy |
 
@@ -218,7 +218,7 @@ obserwator commands guide [-f agents|llms] [--lang pl|en] [--output <file> [--fo
 | PEP8 compliance | Implemented | Using ruff |
 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
 | Unit and contract tests | Implemented | 3280 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-14); Python = CLI = REST = MCP contract |
-| GUI browser tests | Implemented | 148 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-14) |
+| GUI browser tests | Implemented | 149 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-14) |
 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-14) |
 | API response time < 2s | Implemented | For proxied requests |
 | Online documentation | Implemented | Swagger at `/docs` |

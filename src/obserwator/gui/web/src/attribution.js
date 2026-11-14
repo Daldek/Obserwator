@@ -8,8 +8,8 @@
 // (`Sources`): a 12 px strip with S, P, PS, PP and the short forms of ČHMÚ's, GUGiK's and
 // ČÚZK's lines, then „Źródła i warunki”, a dialog with every line, the terms and „Regulamin”
 // where the deployment serves one. A view has one strip, across the page under the map and
-// both panels, never one per panel or card. A public deployment also shows „Regulamin” and
-// the service's statement under it (Nogat DEV-15.7, DEV-15.8): `PublicNotice`.
+// both panels, never one per panel or card. A public deployment also links „Regulamin” at
+// the bottom of the left panel (Nogat DEV-15.7): `TermsLink`.
 //
 // main.js hands the session's `attribution` over with `setTexts` once api/session answers;
 // `useTexts` gives it to every component that composes lines (null until then).
@@ -163,17 +163,14 @@ export function Sources({ fields, session }) {
 }
 
 /**
- * „Regulamin” and the service's statement of a public deployment (Nogat DEV-15.7,
- * DEV-15.8), shown beside the attribution lines of every view; nothing when the deployment
- * is not public (no `terms` in the session).
+ * „Regulamin” of a public deployment (Nogat DEV-15.7), a small quiet link at the bottom of
+ * the left panel, opening the terms in a new tab; nothing when the deployment is not public
+ * (no `terms` in the session).
  *
- * @param {{session: object|null, className?: string}} props the session (its `terms`)
+ * @param {{session: object|null}} props the session (its `terms`)
  * @returns {object|null}
  */
-export function PublicNotice({ session, className = "" }) {
+export function TermsLink({ session }) {
   if (!session || !session.terms) return null;
-  return html`<p class=${["public-notice", className].filter(Boolean).join(" ")}>
-    <a class="terms-link" href=${session.terms} target="_blank" rel="noopener">${t("shell.terms")}</a>
-    <span class="statement">${t("shell.statement")}</span>
-  </p>`;
+  return html`<a class="terms-link" href=${session.terms} target="_blank" rel="noopener">${t("shell.terms")}</a>`;
 }
