@@ -363,9 +363,13 @@ _METEO_DAILY = (
     "cz.chmi.meteo_daily",
 )
 # The daily meteo record of an IMGW-PIB station (ADR-022): its synoptic series,
-# then its climate series for what the synoptic one lacks (Świnoujście: climate
-# 1961-1965, synop from 1966).
-_METEO_JOINED = ("pl.imgw.meteo_synop_daily", "pl.imgw.meteo_climate_daily")
+# then its climate series, then its precipitation series (P and snow only) for
+# what the earlier ones lack (Świnoujście: climate 1961-1965, synop from 1966).
+_METEO_JOINED = (
+    "pl.imgw.meteo_synop_daily",
+    "pl.imgw.meteo_climate_daily",
+    "pl.imgw.meteo_precip_daily",
+)
 _DATE = {"date_column": "date"}
 _YEARS = (
     AnalysisOption("first_year", "integer", minimum=1),

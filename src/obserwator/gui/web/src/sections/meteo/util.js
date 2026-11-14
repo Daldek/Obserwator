@@ -80,21 +80,32 @@ export function useOptions(initial, code) {
 
 /**
  * The years of a variable's record at the station (the bounds of a period the person
- * chooses): calendar years, or hydrological years XI–X named after their end.
+ * chooses): calendar years, or hydrological years XI–X named after their end. An analysis
+ * of a joined record (ADR-022: synoptic, climate and precipitation series of the station)
+ * spans the years of all its inputs.
  *
  * @param {object} station `api/stations/{code}`
- * @param {object|null} doc an analysis of the variable (its input names the dataset)
+ * @param {object|null} doc an analysis of the variable (its inputs name the datasets)
  * @param {string} variable the store's variable ("P")
  * @param {string} [yearType] "calendar" or "hydrological"
  * @returns {{first: number, last: number}|null}
  */
 export function recordYears(station, doc, variable, yearType = "calendar") {
-  const input = doc && (doc.inputs || [])[0];
-  const set = input && (station.datasets || []).find((d) => d.dataset === input.dataset);
-  const span = set && set.variables[variable];
-  if (!span || !span.first || !span.last) return null;
+  const spans = inputSpans(station, doc, variable);
+  if (!spans.length) return null;
   const year = (iso) => +iso.slice(0, 4) + (yearType === "hydrological" && +iso.slice(5, 7) >= 11 ? 1 : 0);
-  return { first: year(span.first), last: year(span.last) };
+  return { first: Math.min(...spans.map((span) => year(span.first))), last: Math.max(...spans.map((span) => year(span.last))) };
+}
+
+/** The span of a variable in each dataset an analysis read, in the order of its inputs. */
+function inputSpans(station, doc, variable) {
+  return ((doc && doc.inputs) || [])
+    .map((input) => {
+      const set = (station.datasets || []).find((d) => d.dataset === input.dataset);
+      const span = set && set.variables[variable];
+      return span && span.first && span.last ? { dataset: input.dataset, first: span.first, last: span.last } : null;
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -136,19 +147,23 @@ export function Select({ value, options, onChange, label }) {
 }
 
 /**
- * Where a result comes from: the dataset of the analysis's input and the span of the
- * variable in it ("Daily climate data (IMGW-PIB) · precipitation: 01.01.1961 – 31.12.2025").
+ * Where a result comes from: the datasets of the analysis's inputs and the span of the
+ * variable in each ("Daily synoptic data (IMGW-PIB) · precipitation: 01.01.1966 –
+ * 31.10.2026; Daily climate data (IMGW-PIB): 01.01.1961 – 31.12.1965").
  *
  * @param {{station: object, doc: object|null, variable: string}} props `doc` is an
  *   `obserwator-analysis/1` document
  */
 export function Source({ station, doc, variable }) {
-  const input = doc && (doc.inputs || [])[0];
-  if (!input) return null;
-  const set = (station.datasets || []).find((d) => d.dataset === input.dataset);
-  const span = set && set.variables[variable];
+  const inputs = (doc && doc.inputs) || [];
+  if (!inputs.length) return null;
+  const spans = Object.fromEntries(inputSpans(station, doc, variable).map((span) => [span.dataset, span]));
   const what = variableInfo(variable).label;
-  return html`<p class="me-source muted">${datasetTitle(input.dataset)} · ${what}${span ? `: ${fmtDate(span.first)} – ${fmtDate(span.last)}` : ""}</p>`;
+  const parts = inputs.map((input, at) => {
+    const span = spans[input.dataset];
+    return `${datasetTitle(input.dataset)}${at ? "" : ` · ${what}`}${span ? `: ${fmtDate(span.first)} – ${fmtDate(span.last)}` : ""}`;
+  });
+  return html`<p class="me-source muted">${parts.join("; ")}</p>`;
 }
 
 /** A number with a unit, "–" when missing. */

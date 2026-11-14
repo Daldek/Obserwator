@@ -2632,7 +2632,9 @@ def _archive_call(
                 relative, f"request.{field}", request[field], getattr(archive, field)
             )
     options: Options = {"datasets": [key]}
-    if descriptor.archive_scope == "country":
+    if descriptor.archive_scope == "country" or archive.station_code is None:
+        # Country archives, and the synop archives of IMGW-PIB found in the index
+        # of the folder of their year (their names carry no station code).
         options["years"] = [archive.year]
         if archive.month is not None:
             options["months"] = [archive.month]
@@ -2649,6 +2651,9 @@ def _archive_call(
         )
     except ObserwatorValidationError:
         _not_rebuildable(unselected, relative, server_path=server_path)
+    if candidates and candidates.get(key) is None:
+        # The folder index of the year names the file; nothing to compare offline.
+        return "store sync", options
     offered = (candidates.get(key) or ()) if candidates else archives
     if server_path not in {item.server_path for item in offered}:
         _not_rebuildable(unselected, relative, server_path=server_path)
