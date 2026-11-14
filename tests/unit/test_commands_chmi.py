@@ -122,7 +122,7 @@ def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
     assert [action.status for action in planned.result.actions] == ["current"]
     chmi = run_command("datasets list", options={"provider": "CHMI"}).result
     assert [descriptor.key for descriptor in chmi] == [HYDRO, METEO, *STATION_SOURCES]
-    assert run_command("datasets list", options={}).page.total == 21
+    assert run_command("datasets list", options={}).page.total == 22
 
 
 def _entry(name):
