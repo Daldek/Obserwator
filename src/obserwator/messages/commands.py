@@ -904,10 +904,16 @@ MESSAGES = {
         "Opis katalogu komend",
     ),
     "stations_rule": Text(
-        "stations required for cz.chmi.* datasets and not allowed for pl.imgw.*; "
-        "codes in the grammar of the dataset's provider",
-        "stations wymagane dla zbiorów cz.chmi.* i niedozwolone dla pl.imgw.*; kody "
-        "według gramatyki dostawcy zbioru",
+        "stations required for cz.chmi.* datasets; for the per-station synop archives "
+        "of IMGW-PIB 9-digit codes, optional in store check and store sync (none = "
+        "every station of the folder index), datasets files and datasets download "
+        "need them or months; not allowed for the other pl.imgw.* datasets; codes in "
+        "the grammar of the dataset's provider",
+        "stations wymagane dla zbiorów cz.chmi.*; dla archiwów synop IMGW-PIB "
+        "publikowanych osobno dla każdej stacji 9-cyfrowe kody, opcjonalne w store "
+        "check i store sync (brak = każda stacja z indeksu folderu), datasets files i "
+        "datasets download wymagają ich albo months; niedozwolone dla innych zbiorów "
+        "pl.imgw.*; kody według gramatyki dostawcy zbioru",
     ),
     "months_rule": Text(
         "months only for pl.imgw.* datasets",
@@ -946,8 +952,10 @@ MESSAGES = {
         "params wyłącznie dla pl.imgw.hydro_semiannual",
     ),
     "store_rule_1": Text(
-        "datasets of one kind: country archives pl.imgw.* or station files cz.chmi.*",
-        "zbiory jednego rodzaju: archiwa krajowe pl.imgw.* albo pliki stacji cz.chmi.*",
+        "datasets of one kind: country archives pl.imgw.*, the synop station archives "
+        "pl.imgw.meteo_synop_daily or station files cz.chmi.*",
+        "zbiory jednego rodzaju: archiwa krajowe pl.imgw.*, archiwa stacji "
+        "synoptycznych pl.imgw.meteo_synop_daily albo pliki stacji cz.chmi.*",
     ),
     "store_rule_2": Text(
         "years not earlier than the first year of each dataset",

@@ -910,20 +910,24 @@ def check_store(
     Nothing is written to the store, not even staging files, and no archive is
     fetched. IMGW-PIB country archives are enumerated offline and checked with
     the listing of their parent directory and an HTTP ``HEAD`` request (a file
-    is published when its name appears in the listing). ČHMÚ per-station files
-    are checked with a single GET of each server directory listing, without
-    any ``HEAD``: the listing's time (to the minute) and size are compared with
-    the reference signal of the slot (the newest observation of its current
-    version, or that version's ``Last-Modified`` and size). Per-archive errors
-    are recorded in the plan, never raised.
+    is published when its name appears in the listing). The per-station synop
+    archives of IMGW-PIB (``pl.imgw.meteo_synop_daily``) are the files the
+    index of each folder of the selected years names, checked by ``HEAD`` the
+    same way (ADR-022). ČHMÚ per-station files are checked with a single GET
+    of each server directory listing, without any ``HEAD``: the listing's time
+    (to the minute) and size are compared with the reference signal of the
+    slot (the newest observation of its current version, or that version's
+    ``Last-Modified`` and size). Per-archive errors are recorded in the plan,
+    never raised.
 
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
         Raw root (ADR-017) or an open handle of one.
     datasets : Iterable[str]
-        Dataset keys, slugs or legacy aliases of measurement series datasets,
-        either all IMGW-PIB or all ČHMÚ. A bare string is rejected.
+        Dataset keys, slugs or legacy aliases of measurement series datasets
+        of one kind: IMGW-PIB country archives, the IMGW-PIB synop archives or
+        ČHMÚ station files. A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
@@ -932,11 +936,14 @@ def check_store(
         the stations); rejected for ``cz.chmi.meteo_daily``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
-        IMGW-PIB files only; yearly archives are returned once regardless of
-        this filter. Rejected for ČHMÚ datasets.
+        IMGW-PIB files only (also the running year's monthly synop files);
+        yearly archives are returned once regardless of this filter. Rejected
+        for ČHMÚ datasets.
     stations : Iterable[str] or None, optional
-        ČHMÚ station codes (WIGOS identifiers); required for ČHMÚ datasets and
-        rejected for IMGW-PIB datasets.
+        Station codes: ČHMÚ WIGOS identifiers, required for ČHMÚ datasets;
+        nine-digit IMGW-PIB codes selecting the synop station archives whose
+        number is a code's last three digits (None: every station of the
+        folder index); rejected for the other IMGW-PIB datasets.
     plan : str, os.PathLike or None, optional
         File to save the plan to (``obserwator-plan/1``, see `StorePlan.to_json`); it
         must lie outside the store in an existing directory.
@@ -1543,7 +1550,8 @@ def sync_store(
     months : MonthsArg or None, optional
         Months (1-12) filtering physically monthly IMGW-PIB files.
     stations : Iterable[str] or None, optional
-        ČHMÚ station codes, as in :func:`check_store`.
+        Station codes (ČHMÚ WIGOS identifiers, nine-digit codes of the IMGW-PIB
+        synop archives), as in :func:`check_store`.
     plan : StorePlan, str, os.PathLike or None, optional
         Plan from :func:`check_store`, or the path of its ``obserwator-plan/1`` JSON file.
         Must refer to the same store root. Store mode only.

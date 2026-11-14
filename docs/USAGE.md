@@ -319,7 +319,7 @@ call = command_for_version("series/versions/hydro_daily/2026-10-19_b85f50c3/seri
 
 | Version | Command |
 |---|---|
-| IMGW-PIB archive | `store sync --datasets <key> --years <year>` (`--months <month>` for a monthly file) |
+| IMGW-PIB archive | `store sync --datasets <key> --years <year>` (`--months <month>` for a monthly file; a synop archive of `pl.imgw.meteo_synop_daily` syncs every station file of its folder) |
 | ČHMÚ hydro / meteo archive | `store sync --datasets <key> --stations <code>` (hydro also `--years <year>`) |
 | station list or station metadata (`*_stations`, `*_now`, `pl.imgw.hydro_details`) | `store sync --datasets <key>` |
 | station catalog | `store catalog --raw-root <raw> --provider <provider>` |
@@ -428,6 +428,14 @@ obserwator analyses build --workers 2                 # analyses/versions/<pl.im
 obserwator analyses list -s 149190310
 obserwator analyses read -s 149190310 --analysis characteristic.Q --json
 obserwator analyses export -s 149190310 --format csv --output raba-analyses.csv
+
+# IMGW-PIB daily synoptic data (ADR-022): the files come from the folder index of the
+# selected years; -s (9-digit codes, the files carry the last three digits) is optional;
+# the station's analyses read its synop, then climate, then precipitation series by day.
+obserwator store sync -d pl.imgw.meteo_synop_daily -s 353140200 -y 1966-2026
+obserwator store sync -d pl.imgw.meteo_climate_daily -y 1961-1965
+obserwator series build -d pl.imgw.meteo_synop_daily
+obserwator series summary -d pl.imgw.meteo_synop_daily -s 353140200
 
 # ČHMÚ data (WIGOS station codes; -s/--stations required for cz.chmi.*)
 obserwator datasets providers
@@ -1017,6 +1025,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 | `pl.imgw.hydro_semiannual` | `hydro/polroczne_i_roczne` | Half-yearly and yearly hydro: H/Q/T × min/mean/max with dates of extremes |
 | `pl.imgw.meteo_climate_daily` | `meteo/dobowe/klimat` | Daily climate meteo: Tmax, Tmin, Tmean, Tground, P, snow cover |
 | `pl.imgw.meteo_precip_daily` | `meteo/dobowe/opad` | Daily precipitation meteo: P, snow cover and fresh snow |
+| `pl.imgw.meteo_synop_daily` | `meteo/dobowe/synop` | Daily synoptic meteo, one file per station and folder (five-year folders until 2000, then yearly; the running year as monthly country files): the climate variables Tmax, Tmin, Tmean, Tground, P, snow cover under their names, and sunshine, durations of phenomena, snow water equivalent, isotherms, actinometry, cloud cover, wind speed, vapour pressure, humidity, pressures, day and night precipitation (37 variables, ADR-022). `store check|sync` find the files in the folder index; `stations` (9 digits) optional there |
 | `pl.imgw.hydro_stations`, `pl.imgw.meteo_stations` | — | Station lists (CSV) — input of the `stations.geojson` catalog |
 | `pl.imgw.hydro_now`, `pl.imgw.meteo_now` | — | Station code, name, river and coordinates kept of the current-data API (derived, no measurements) — input of the catalog |
 | `pl.imgw.hydro_details` | — | Station details of hydro.imgw.pl kept of its station pages (gauge zero and datum, river km, catchment area, year of establishment, province, district, warning and alarm levels, absolute extremes; derived) — optional input of the IMGW-PIB catalog |

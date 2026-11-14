@@ -6,6 +6,36 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Daily synoptic data in the store, `pl.imgw.meteo_synop_daily` (ADR-022).** The
+  per-station archives of `dane_meteorologiczne/dobowe/synop` (alias `meteo/dobowe/synop`,
+  no longer refused as `per_station`): one file per station and folder (`1966_1970` …
+  `1996_2000`, then yearly; the running year as monthly files of the whole country).
+  `store check` and `store sync` read the folder index of the selected years and check every
+  file by HEAD; `stations` (9 digits, the file names carry the last three) is optional there,
+  the monthly files follow `months`; a folder not published is an `unverifiable` action.
+  `parse_meteo_synop_daily` (new public parser) reads `s_d` and `s_d_t` (CP1250): `Tmax`,
+  `Tmin`, `Tmean`, `Tground`, `P` and `snow_cover` as in `pl.imgw.meteo_climate_daily`, and
+  31 synoptic variables (sunshine, durations of phenomena, snow water equivalent, isotherms,
+  actinometry, cloud cover, wind speed, vapour pressure, humidity, pressures, day and night
+  precipitation); `TEMP` of `s_d_t` is not read (the mean `STD` gives). `series build` keeps
+  per-station periods, and a station's yearly archive supersedes its records in the monthly
+  files of that year. `command_for_version` of a synop version gives `store sync` of its year.
+- **`meteo_kind` `synop`.** A station in the current synop series is `synop`, before
+  `climate` and `precipitation`; the `stations.geojson` schema has the value and the GUI says
+  „stacja synoptyczna”.
+- **The station's joined daily record (ADR-022).** The daily meteorological analyses read
+  the station's synoptic, climate and precipitation series joined by day and variable, the
+  earlier dataset taking precedence, so no day is counted twice (`AnalysisInput.joined`; the
+  CSV Hydrolog reads is `<code>_meteo_synop_daily+meteo_climate_daily.csv`); the results'
+  `inputs` list every dataset joined. Stored analyses are recomputed on the next
+  `analyses build` (new definitions digest).
+- **GUI.** The station layer and `api/stations/{code}` give `first` and `last` over every
+  series of the station, its header shows the years and the dataset of each part („Dane
+  1961–2026: Klimatyczne 1961–1965 · Synoptyczne 1966–2026”), the meteo cards give the
+  years and source of every input, the synop dataset and variables have Polish labels and
+  `J/cm2` shows as `J/cm²`.
+- **Agent guide.** The dataset table names up to six variables of a dataset, else the
+  first three and the number of all (DOC-1.7); `AGENTS.md` and `llms.txt` regenerated.
 - **Download-only datasets for the rest of IMGW-PIB's public data (ADR-023).**
   `pl.imgw.meteo_synop_terms` (alias `meteo/terminowe/synop`, no longer refused as
   `per_station`): one file per station and folder selected by 9-digit `stations` (the file
