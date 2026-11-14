@@ -13,8 +13,8 @@ import csv
 import io
 import json
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal, cast, overload
@@ -1099,6 +1099,103 @@ def export_series(
         cancel=cancel,
         done=done,
     )
+
+
+def _export_joined(
+    series: Sequence[Path], /, *, station: str, output: PathArg
+) -> OutputReport:
+    """
+    Write the joined daily record of a station as the CSV of `export_series` (ADR-022).
+
+    ``series`` are series versions of one provider's daily datasets, in order
+    of precedence. For every day and variable the measurement of the first
+    series with one other than ``missing`` is kept, so no day is counted
+    twice; a day between the first and the last record without a measurement
+    of a variable is ``missing``. The columns are the variables of the first
+    dataset, then those only the others have; the provider's lines are the
+    first dataset's.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If no series holds a record of the station.
+    """
+    indexes = [read_series_index(path) for path in series]
+    descriptors = [get_dataset(index.dataset) for index in indexes]
+    first = descriptors[0]
+    units: dict[str, str] = {}
+    for descriptor in descriptors:
+        for name, unit in descriptor.variables.items():
+            units.setdefault(name, unit)
+    days: dict[date, dict[str, Measurement]] = {}
+    for path, index in zip(series, indexes, strict=True):
+        if station not in index.stations:
+            continue
+        for record in read_series(path, station=station):
+            values = days.setdefault(record.date, {})
+            for name, measurement in record.measurements.items():
+                held = values.get(name)
+                if held is None or held.flag == "missing":
+                    values[name] = measurement
+    if not days:
+        raise ObserwatorDataError(
+            message(
+                "export.series_station_empty_chosen_range",
+                station=station,
+                dataset=first.key,
+            )
+        )
+    missing = Measurement(None, "missing")
+    records: list[NormalizedRecord] = []
+    day, last = min(days), max(days)
+    while day <= last:
+        values = days.get(day, {})
+        records.append(
+            NormalizedRecord(
+                station,
+                first.key,
+                day,
+                day.year + (day.month >= 11),
+                None,
+                {name: values.get(name, missing) for name in units},
+            )
+        )
+        day += timedelta(days=1)
+    columns = _series_columns(
+        replace(first, variables=units), list(units), indexes[0].year_type
+    )
+    formulas = (
+        first.license.attribution,
+        get_provider(first.provider).processed_attribution,
+    )
+    rows = (
+        [
+            *(column.cell(record) for column in columns),
+            *(formulas if number == 0 else ("", "")),
+        ]
+        for number, record in enumerate(records)
+    )
+    target = _target(output, force=False)
+    assert target is not None
+    report = _deliver(
+        _Lines(
+            (
+                _csv_line(
+                    [*(column.header for column in columns), *_ATTRIBUTION_COLUMNS]
+                ),
+            ),
+            _csv_lines(_with_lines(rows, _lines(first))),
+            total=len(records),
+            label=message("export.station_progress", station=station),
+            on_progress=None,
+            cancel=None,
+        ),
+        target=target,
+        cancel=None,
+        done=message("export.series_exported", station=station),
+    )
+    assert isinstance(report, OutputReport)
+    return report
 
 
 # --------------------------------------------------------------------------

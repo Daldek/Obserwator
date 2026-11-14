@@ -156,6 +156,10 @@ MESSAGES = {
         "Daily meteorological data from precipitation stations",
         "Dane meteorologiczne dobowe ze stacji opadowych",
     ),
+    "title_meteo_synop_daily": Text(
+        "Daily meteorological data from synoptic stations",
+        "Dane meteorologiczne dobowe ze stacji synoptycznych",
+    ),
     "title_hydro_stations": Text(
         "List of hydrological stations",
         "Lista stacji hydrologicznych",
@@ -202,8 +206,9 @@ MESSAGES = {
         "Dane meteorologiczne terminowe ze stacji klimatycznych",
     ),
     # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
-    # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt),
-    # with the field names of the files and nothing beyond them.
+    # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt,
+    # s_d_format.txt, s_d_t_format.txt), with the field names of the files and
+    # nothing beyond them.
     "note_imgw_hydro_daily_h": Text(
         "Water level of the day (COSTAN); no value where IMGW-PIB's database has no "
         "data (9999 or NULL in the source file)",
@@ -284,6 +289,104 @@ MESSAGES = {
     "note_imgw_fresh_snow": Text(
         "Depth of freshly fallen snow (HSS)",
         "Wysokość świeżo spadłego śniegu (HSS)",
+    ),
+    "note_imgw_snow_water": Text(
+        "Water equivalent of snow (RWSN)",
+        "Równoważnik wodny śniegu (RWSN)",
+    ),
+    "note_imgw_sunshine": Text("Sunshine duration (USL)", "Usłonecznienie (USL)"),
+    "note_imgw_rain_duration": Text(
+        "Duration of rain (DESZ)", "Czas trwania opadu deszczu (DESZ)"
+    ),
+    "note_imgw_snowfall_duration": Text(
+        "Duration of snowfall (SNEG)", "Czas trwania opadu śniegu (SNEG)"
+    ),
+    "note_imgw_sleet_duration": Text(
+        "Duration of rain with snow (DISN)",
+        "Czas trwania opadu deszczu ze śniegiem (DISN)",
+    ),
+    "note_imgw_hail_duration": Text(
+        "Duration of hail (GRAD)", "Czas trwania gradu (GRAD)"
+    ),
+    "note_imgw_fog_duration": Text(
+        "Duration of fog (MGLA)", "Czas trwania mgły (MGLA)"
+    ),
+    "note_imgw_mist_duration": Text(
+        "Duration of mist (ZMGL)", "Czas trwania zamglenia (ZMGL)"
+    ),
+    "note_imgw_rime_duration": Text(
+        "Duration of rime (SADZ)", "Czas trwania sadzi (SADZ)"
+    ),
+    "note_imgw_glaze_duration": Text(
+        "Duration of glaze (GOLO)", "Czas trwania gołoledzi (GOLO)"
+    ),
+    "note_imgw_drifting_snow": Text(
+        "Duration of low drifting snow (ZMNI)",
+        "Czas trwania zamieci śnieżnej niskiej (ZMNI)",
+    ),
+    "note_imgw_blowing_snow": Text(
+        "Duration of high drifting (blowing) snow (ZMWS)",
+        "Czas trwania zamieci śnieżnej wysokiej (ZMWS)",
+    ),
+    "note_imgw_haze_duration": Text(
+        "Duration of haze (ZMET)", "Czas trwania zmętnienia (ZMET)"
+    ),
+    "note_imgw_wind_10_duration": Text(
+        "Duration of wind of at least 10 m/s (FF10)",
+        "Czas trwania wiatru o prędkości co najmniej 10 m/s (FF10)",
+    ),
+    "note_imgw_wind_15_duration": Text(
+        "Duration of wind above 15 m/s (FF15)",
+        "Czas trwania wiatru o prędkości powyżej 15 m/s (FF15)",
+    ),
+    "note_imgw_thunderstorm": Text(
+        "Duration of thunderstorm (BRZA)", "Czas trwania burzy (BRZA)"
+    ),
+    "note_imgw_dew_duration": Text(
+        "Duration of dew (ROSA)", "Czas trwania rosy (ROSA)"
+    ),
+    "note_imgw_hoarfrost_duration": Text(
+        "Duration of hoarfrost (SZRO)", "Czas trwania szronu (SZRO)"
+    ),
+    "note_imgw_snow_cover_day": Text(
+        "Occurrence of snow cover, 0 or 1 (DZPS)",
+        "Wystąpienie pokrywy śnieżnej, 0 albo 1 (DZPS)",
+    ),
+    "note_imgw_lightning_day": Text(
+        "Occurrence of lightning, 0 or 1 (DZBL)",
+        "Wystąpienie błyskawicy, 0 albo 1 (DZBL)",
+    ),
+    "note_imgw_isotherm_lower": Text("Lower isotherm (IZD)", "Izoterma dolna (IZD)"),
+    "note_imgw_isotherm_upper": Text("Upper isotherm (IZG)", "Izoterma górna (IZG)"),
+    "note_imgw_actinometry": Text("Actinometry (AKTN)", "Aktynometria (AKTN)"),
+    "note_imgw_cloud_cover": Text(
+        "Mean daily total cloud cover (NOS)",
+        "Średnie dobowe zachmurzenie ogólne (NOS)",
+    ),
+    "note_imgw_wind_speed": Text(
+        "Mean daily wind speed (FWS)", "Średnia dobowa prędkość wiatru (FWS)"
+    ),
+    "note_imgw_vapour_pressure": Text(
+        "Mean daily water vapour pressure (CPW)",
+        "Średnie dobowe ciśnienie pary wodnej (CPW)",
+    ),
+    "note_imgw_humidity": Text(
+        "Mean daily relative humidity (WLGS)",
+        "Średnia dobowa wilgotność względna (WLGS)",
+    ),
+    "note_imgw_pressure_station": Text(
+        "Mean daily pressure at the station level (PPPS)",
+        "Średnie dobowe ciśnienie na poziomie stacji (PPPS)",
+    ),
+    "note_imgw_pressure_sea": Text(
+        "Mean daily pressure at sea level (PPPM)",
+        "Średnie dobowe ciśnienie na poziomie morza (PPPM)",
+    ),
+    "note_imgw_p_day": Text(
+        "Precipitation sum of the day (WODZ)", "Suma opadu dzień (WODZ)"
+    ),
+    "note_imgw_p_night": Text(
+        "Precipitation sum of the night (WONO)", "Suma opadu noc (WONO)"
     ),
     "title_chmi_hydro_daily": Text(
         "ČHMÚ — daily hydrological data (H, Q, T)",

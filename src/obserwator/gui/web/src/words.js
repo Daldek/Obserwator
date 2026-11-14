@@ -40,6 +40,7 @@ export const DATASET_STEPS = {
   "pl.imgw.hydro_semiannual": "half_year",
   "pl.imgw.meteo_climate_daily": "day",
   "pl.imgw.meteo_precip_daily": "day",
+  "pl.imgw.meteo_synop_daily": "day",
   "cz.chmi.hydro_daily": "day",
   "cz.chmi.meteo_daily": "day",
 };
@@ -54,8 +55,34 @@ export function datasetShort(key) {
   return word(`words.dataset.${slug(key)}.short`, key);
 }
 
-/** The decimals shown of each variable of the store. */
-const DIGITS = { H: 0, Q: 3, T: 1, Tmax: 1, Tmin: 1, Tmean: 1, Tground: 1, P: 1, snow_cover: 0, fresh_snow: 0 };
+/** The decimals shown of each variable of the store; the synoptic durations [h] have one. */
+const DIGITS = {
+  H: 0,
+  Q: 3,
+  T: 1,
+  Tmax: 1,
+  Tmin: 1,
+  Tmean: 1,
+  Tground: 1,
+  P: 1,
+  snow_cover: 0,
+  fresh_snow: 0,
+  snow_water_equivalent: 1,
+  sunshine: 1,
+  snow_cover_occurrence: 0,
+  lightning_occurrence: 0,
+  isotherm_lower: 0,
+  isotherm_upper: 0,
+  actinometry: 0,
+  cloud_cover: 1,
+  wind_speed: 1,
+  vapour_pressure: 1,
+  humidity: 1,
+  pressure_station: 1,
+  pressure_sea: 1,
+  P_day: 1,
+  P_night: 1,
+};
 
 /**
  * What a variable is: its label in the page's language and the decimals shown. A monthly
@@ -68,7 +95,7 @@ export function variableInfo(name) {
   const [base, stat] = /^(.+)_(min|mean|max)$/.test(name) ? name.split(/_(?=(?:min|mean|max)$)/) : [name, null];
   return {
     label: word(`words.variable.${slug(base)}`, base),
-    digits: DIGITS[base] ?? 2,
+    digits: DIGITS[base] ?? (base.endsWith("_duration") ? 1 : 2),
     stat: stat || null,
   };
 }

@@ -33,6 +33,10 @@ MESSAGES: dict[str, Text] = {
         "Daily precipitation data (IMGW-PIB)", "Dane opadowe dobowe (IMGW-PIB)"
     ),
     "words.dataset.pl_imgw_meteo_precip_daily.short": Text("Precipitation", "Opadowe"),
+    "words.dataset.pl_imgw_meteo_synop_daily.title": Text(
+        "Daily synoptic data (IMGW-PIB)", "Dane synoptyczne dobowe (IMGW-PIB)"
+    ),
+    "words.dataset.pl_imgw_meteo_synop_daily.short": Text("Synoptic", "Synoptyczne"),
     "words.dataset.cz_chmi_hydro_daily.title": Text(
         "Daily hydrological data (ČHMÚ)", "Dane hydrologiczne dobowe (ČHMÚ)"
     ),
@@ -51,6 +55,65 @@ MESSAGES: dict[str, Text] = {
     "words.variable.p": Text("precipitation", "opad"),
     "words.variable.snow_cover": Text("snow cover", "pokrywa śnieżna"),
     "words.variable.fresh_snow": Text("fresh snow", "śnieg świeży"),
+    "words.variable.snow_water_equivalent": Text(
+        "water equivalent of snow", "równoważnik wodny śniegu"
+    ),
+    "words.variable.sunshine": Text("sunshine duration", "usłonecznienie"),
+    "words.variable.rain_duration": Text("duration of rain", "czas trwania deszczu"),
+    "words.variable.snowfall_duration": Text(
+        "duration of snowfall", "czas trwania opadu śniegu"
+    ),
+    "words.variable.sleet_duration": Text(
+        "duration of rain with snow", "czas trwania deszczu ze śniegiem"
+    ),
+    "words.variable.hail_duration": Text("duration of hail", "czas trwania gradu"),
+    "words.variable.fog_duration": Text("duration of fog", "czas trwania mgły"),
+    "words.variable.mist_duration": Text("duration of mist", "czas trwania zamglenia"),
+    "words.variable.rime_duration": Text("duration of rime", "czas trwania sadzi"),
+    "words.variable.glaze_duration": Text(
+        "duration of glaze", "czas trwania gołoledzi"
+    ),
+    "words.variable.drifting_snow_duration": Text(
+        "duration of low drifting snow", "czas trwania zamieci niskiej"
+    ),
+    "words.variable.blowing_snow_duration": Text(
+        "duration of blowing snow", "czas trwania zamieci wysokiej"
+    ),
+    "words.variable.haze_duration": Text("duration of haze", "czas trwania zmętnienia"),
+    "words.variable.wind_10_duration": Text(
+        "duration of wind ≥ 10 m/s", "czas trwania wiatru ≥ 10 m/s"
+    ),
+    "words.variable.wind_15_duration": Text(
+        "duration of wind > 15 m/s", "czas trwania wiatru > 15 m/s"
+    ),
+    "words.variable.thunderstorm_duration": Text(
+        "duration of thunderstorm", "czas trwania burzy"
+    ),
+    "words.variable.dew_duration": Text("duration of dew", "czas trwania rosy"),
+    "words.variable.hoarfrost_duration": Text(
+        "duration of hoarfrost", "czas trwania szronu"
+    ),
+    "words.variable.snow_cover_occurrence": Text(
+        "snow cover (0/1)", "pokrywa śnieżna (0/1)"
+    ),
+    "words.variable.lightning_occurrence": Text("lightning (0/1)", "błyskawica (0/1)"),
+    "words.variable.isotherm_lower": Text("lower isotherm", "izoterma dolna"),
+    "words.variable.isotherm_upper": Text("upper isotherm", "izoterma górna"),
+    "words.variable.actinometry": Text("actinometry", "aktynometria"),
+    "words.variable.cloud_cover": Text("cloud cover", "zachmurzenie"),
+    "words.variable.wind_speed": Text("wind speed", "prędkość wiatru"),
+    "words.variable.vapour_pressure": Text(
+        "water vapour pressure", "ciśnienie pary wodnej"
+    ),
+    "words.variable.humidity": Text("relative humidity", "wilgotność względna"),
+    "words.variable.pressure_station": Text(
+        "pressure at the station", "ciśnienie na poziomie stacji"
+    ),
+    "words.variable.pressure_sea": Text(
+        "pressure at sea level", "ciśnienie na poziomie morza"
+    ),
+    "words.variable.p_day": Text("precipitation of the day", "opad w dzień"),
+    "words.variable.p_night": Text("precipitation of the night", "opad w nocy"),
     "words.flag.value": Text("value", "wartość"),
     "words.flag.missing": Text("missing", "brak"),
     "words.flag.no_phenomenon": Text("no phenomenon", "brak zjawiska"),

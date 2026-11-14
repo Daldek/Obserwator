@@ -29,6 +29,7 @@ from obserwator._parsing.hydro import (
 from obserwator._parsing.meteo import (
     parse_meteo_climate_daily,
     parse_meteo_precip_daily,
+    parse_meteo_synop_daily,
 )
 from obserwator._parsing.stations import parse_stations_csv
 
@@ -41,6 +42,7 @@ __all__ = [
     "parse_stations_csv",
     "parse_meteo_climate_daily",
     "parse_meteo_precip_daily",
+    "parse_meteo_synop_daily",
     "parse_chmi_hydro_daily",
     "parse_chmi_meteo_daily",
     "parse_chmi_stations",

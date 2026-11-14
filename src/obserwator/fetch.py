@@ -1286,7 +1286,7 @@ def _download_store(
             client,
             archive.url,
             source=provider.short_name if per_station else "IMGW",
-            zipped=not per_station,
+            zipped=_zipped(archive),
         )
         version = write_archive(
             handle, archive=archive, response=response, on_notice=forward, cancel=cancel

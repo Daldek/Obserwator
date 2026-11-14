@@ -15,6 +15,10 @@ MESSAGES = {
         "Invalid station code",
         "Niepoprawny kod stacji",
     ),
+    "station_of_another_file": Text(
+        "The station code does not end with the station number {number} of the file",
+        "Kod stacji nie kończy się numerem stacji {number} z nazwy pliku",
+    ),
     "date_outside_period_archive": Text(
         "The date is outside the period of the archive",
         "Data poza okresem archiwum",

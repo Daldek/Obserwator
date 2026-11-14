@@ -213,12 +213,26 @@ def _version(slot: str, root: Path) -> Version | None:
     )
 
 
+def record_years(held: list[dict[str, Any]]) -> dict[str, str | None]:
+    """
+    The years of a station's record: from its first to its last value in any series.
+
+    The series of a station are kept per dataset as published; its record spans
+    them all, e.g. a synoptic station's climate series before its synoptic one
+    (ADR-022).
+    """
+    firsts = [v["first"] for d in held for v in d["variables"].values() if v["first"]]
+    lasts = [v["last"] for d in held for v in d["variables"].values() if v["last"]]
+    return {
+        "first": min(firsts)[:4] if firsts else None,
+        "last": max(lasts)[:4] if lasts else None,
+    }
+
+
 def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
     """One point of the station layer: what the map, the list and the filters need."""
     props = feature.properties
     held = snapshot.datasets_of(feature.station_code)
-    firsts = [v["first"] for d in held for v in d["variables"].values() if v["first"]]
-    lasts = [v["last"] for d in held for v in d["variables"].values() if v["last"]]
     lon, lat = feature.geometry if feature.geometry else (None, None)
     return {
         "code": feature.station_code,
@@ -232,8 +246,7 @@ def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
         "lon": lon,
         "lat": lat,
         "datasets": [d["dataset"] for d in held],
-        "first": min(firsts)[:4] if firsts else None,
-        "last": max(lasts)[:4] if lasts else None,
+        **record_years(held),
     }
 
 

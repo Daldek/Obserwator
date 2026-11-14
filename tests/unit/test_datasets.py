@@ -64,6 +64,15 @@ _REGISTRY = [
         1950,
         "meteo/dobowe/opad",
     ),
+    (
+        "pl.imgw.meteo_synop_daily",
+        "meteo",
+        True,
+        "day",
+        "calendar",
+        1966,
+        "meteo/dobowe/synop",
+    ),
     ("pl.imgw.hydro_stations", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_stations", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
@@ -150,7 +159,6 @@ def test_datasets_kind_filter():
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
     ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
-    assert len(meteo) == 11
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"

@@ -89,7 +89,13 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
-from obserwator.gui._root import ANALYSES_SLOTS, DataRoot, Snapshot, StationsFormat
+from obserwator.gui._root import (
+    ANALYSES_SLOTS,
+    DataRoot,
+    Snapshot,
+    StationsFormat,
+    record_years,
+)
 from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
@@ -378,6 +384,7 @@ async def station(request: Request) -> Response:
         "lat": lat,
         "properties": props,
         "datasets": held,
+        **record_years(held),
         **catalog.fields(),
         "attribution_parts": {
             "catalog": catalog.fields(),

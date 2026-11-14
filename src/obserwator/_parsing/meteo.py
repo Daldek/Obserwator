@@ -1,8 +1,9 @@
-"""Daily IMGW meteorological k_d and o_d CSV normalization."""
+"""Daily IMGW meteorological k_d, o_d and s_d (synop) CSV normalization."""
 
 import calendar
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Literal
 
@@ -19,12 +20,72 @@ from obserwator.models import Measurement, NormalizedRecord
 _ATTRIBUTE_COLUMNS = {
     "k_d": (("precip_type", 15),),
     "o_d": (("precip_type", 7), ("snow_species", 12), ("snow_cover_type", 14)),
+    "s_d": (("precip_type", 15), ("ground_state", 58)),
 }
+_SYNOP = "pl.imgw.meteo_synop_daily"
 DATASET_ATTRIBUTES = {
     "pl.imgw.meteo_climate_daily": tuple(k for k, _ in _ATTRIBUTE_COLUMNS["k_d"]),
     "pl.imgw.meteo_precip_daily": tuple(k for k, _ in _ATTRIBUTE_COLUMNS["o_d"]),
+    _SYNOP: tuple(k for k, _ in _ATTRIBUTE_COLUMNS["s_d"]),
 }
 """Qualitative ``NormalizedRecord.attributes`` keys of each meteorological dataset."""
+
+# Daily synoptic data (s_d_format.txt, s_d_t_format.txt): the value column of each
+# variable, its status (8 no measurement, 9 no phenomenon) in the next one. The
+# first columns of s_d are those of k_d. TEMP of s_d_t, the mean daily air
+# temperature that STD of s_d gives as Tmean, is not read.
+_SYNOP_COLUMNS: dict[str, tuple[tuple[str, int], ...]] = {
+    "s_d": (
+        ("Tmax", 5),
+        ("Tmin", 7),
+        ("Tmean", 9),
+        ("Tground", 11),
+        ("P", 13),
+        ("snow_cover", 16),
+        ("snow_water_equivalent", 18),
+        ("sunshine", 20),
+        ("rain_duration", 22),
+        ("snowfall_duration", 24),
+        ("sleet_duration", 26),
+        ("hail_duration", 28),
+        ("fog_duration", 30),
+        ("mist_duration", 32),
+        ("rime_duration", 34),
+        ("glaze_duration", 36),
+        ("drifting_snow_duration", 38),
+        ("blowing_snow_duration", 40),
+        ("haze_duration", 42),
+        ("wind_10_duration", 44),
+        ("wind_15_duration", 46),
+        ("thunderstorm_duration", 48),
+        ("dew_duration", 50),
+        ("hoarfrost_duration", 52),
+        ("snow_cover_occurrence", 54),
+        ("lightning_occurrence", 56),
+        ("isotherm_lower", 59),
+        ("isotherm_upper", 61),
+        ("actinometry", 63),
+    ),
+    "s_d_t": (
+        ("cloud_cover", 5),
+        ("wind_speed", 7),
+        ("vapour_pressure", 11),
+        ("humidity", 13),
+        ("pressure_station", 15),
+        ("pressure_sea", 17),
+        ("P_day", 19),
+        ("P_night", 21),
+    ),
+}
+# Columns of a row of each file.
+_SYNOP_WIDTH = {"s_d": 65, "s_d_t": 23}
+# A member of a synop package: a station's file named by its number and period
+# (``s_d_200_1966_1970.csv``, ``s_d_t_200_2024.csv``) or a month of the whole
+# country (``s_d_01_2026.csv``).
+_SYNOP_MEMBER = re.compile(
+    r"(?:^|/)(s_d(?:_t)?)_(?:([0-9]{3})_([0-9]{4})(?:_([0-9]{4}))?"
+    r"|([0-9]{2})_([0-9]{4}))\.csv$"
+)
 
 
 def _measurement(raw: str, status: str, *, filename: str, number: int) -> Measurement:
@@ -201,6 +262,117 @@ def _period_from_filename(filename: str, kind: str) -> tuple[int | None, int | N
     return int(match.group(1)), int(match.group(2)) if match.group(2) else None
 
 
+def _synop_member(name: str) -> tuple[str, date | None, date | None, str | None]:
+    """
+    Kind, period and station number of a synop member by its name.
+
+    A station's file gives its number and the years of its name, a monthly file
+    of the whole country its month; another name gives no period (``s_d``
+    unless it names ``s_d_t``).
+    """
+    match = _SYNOP_MEMBER.search(name.lower())
+    if match is None:
+        kind = "s_d_t" if re.search(r"(?:^|/)s_d_t_", name.lower()) else "s_d"
+        return kind, None, None, None
+    if match[2] is not None:
+        first, last = int(match[3]), int(match[4] or match[3])
+        return match[1], date(first, 1, 1), date(last, 12, 31), match[2]
+    year, month = int(match[6]), int(match[5])
+    if not 1 <= month <= 12:
+        return match[1], None, None, None
+    days = calendar.monthrange(year, month)[1]
+    return match[1], date(year, month, 1), date(year, month, days), None
+
+
+def _parse_synop(
+    content: bytes | str,
+    *,
+    filename: str,
+    kind: str,
+    start: date | None,
+    end: date | None,
+    number: str | None,
+) -> Iterator[NormalizedRecord]:
+    """
+    Records of one ``s_d`` or ``s_d_t`` CSV, every day of the period for each station.
+
+    Without a period the months present in the file are filled, as for k_d.
+    A station's file (``number``) holds only codes ending with its number.
+    """
+    text = _decode_content(content) if isinstance(content, bytes) else content
+    text = text.lstrip("\ufeff")
+    columns = _SYNOP_COLUMNS[kind]
+    attributes = _ATTRIBUTE_COLUMNS.get(kind, ())
+    days: dict[str, dict[date, NormalizedRecord]] = {}
+    leading = True
+    for line, row in enumerate(_iter_rows(text, _detect_delimiter(text)), 1):
+        if not any(cell.strip() for cell in row):
+            continue
+        if leading:
+            leading = False
+            if _is_header_row(row):
+                continue
+        if len(row) < _SYNOP_WIDTH[kind]:
+            raise ObserwatorDataError(
+                message("meteo.too_few_columns_row", filename=filename, number=line)
+            )
+        try:
+            station = row[0].strip().strip('"')
+            if not re.fullmatch(r"\d{9}", station):
+                raise ValueError(message("meteo.invalid_station_code"))
+            if number is not None and station[-3:] != number:
+                raise ValueError(
+                    message("meteo.station_of_another_file", number=number)
+                )
+            measured = date(int(row[2]), int(row[3]), int(row[4]))
+            if start is not None and end is not None and not start <= measured <= end:
+                raise ValueError(message("meteo.date_outside_period_archive"))
+            entries = days.setdefault(station, {})
+            if measured in entries:
+                raise ValueError(message("meteo.repeated_day_station"))
+            entries[measured] = NormalizedRecord(
+                station,
+                _SYNOP,
+                measured,
+                measured.year + (measured.month >= 11),
+                None,
+                {
+                    name: _measurement(
+                        row[column], row[column + 1], filename=filename, number=line
+                    )
+                    for name, column in columns
+                },
+                {name: row[column].strip() or None for name, column in attributes},
+            )
+        except (ValueError, IndexError) as exc:
+            raise ObserwatorDataError(
+                message(
+                    "meteo.invalid_record_row",
+                    filename=filename,
+                    number=line,
+                    exc=reason(exc),
+                )
+            ) from exc
+    if start is not None and end is not None:
+        spans = [(start, end)]
+    else:
+        months = sorted(
+            {(day.year, day.month) for found in days.values() for day in found}
+        )
+        spans = [
+            (date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])) for y, m in months
+        ]
+    missing = {name: Measurement(None, "missing") for name, _ in columns}
+    for station, entries in days.items():
+        for first, last in spans:
+            day = first
+            while day <= last:
+                yield entries.get(day) or NormalizedRecord(
+                    station, _SYNOP, day, day.year + (day.month >= 11), None, missing
+                )
+                day += timedelta(days=1)
+
+
 def parse_meteo_climate_daily(
     content: bytes | str, /, *, filename: str
 ) -> Iterator[NormalizedRecord]:
@@ -296,6 +468,71 @@ def parse_meteo_precip_daily(
     )
 
 
+def parse_meteo_synop_daily(
+    content: bytes | str, /, *, filename: str
+) -> Iterator[NormalizedRecord]:
+    """
+    Parse an IMGW daily synoptic CSV (``s_d`` or ``s_d_t``) into normalized records.
+
+    An ``s_d`` file gives the variables of the climate stations under their
+    names, ``Tmax``, ``Tmin``, ``Tmean``, ``Tground`` [degC], ``P`` [mm] and
+    ``snow_cover`` [cm], and the synoptic ones: ``snow_water_equivalent``
+    [mm/cm], ``sunshine`` [h], the durations [h] ``rain_duration``,
+    ``snowfall_duration``, ``sleet_duration``, ``hail_duration``,
+    ``fog_duration``, ``mist_duration``, ``rime_duration``,
+    ``glaze_duration``, ``drifting_snow_duration``,
+    ``blowing_snow_duration``, ``haze_duration``, ``wind_10_duration``,
+    ``wind_15_duration``, ``thunderstorm_duration``, ``dew_duration`` and
+    ``hoarfrost_duration``, the occurrences [0/1] ``snow_cover_occurrence``
+    and ``lightning_occurrence``, ``isotherm_lower`` and ``isotherm_upper``
+    [cm] and ``actinometry`` [J/cm2]; the precipitation type and the state of
+    the ground (``Z`` or ``R``) are kept in ``attributes["precip_type"]`` and
+    ``attributes["ground_state"]``. An ``s_d_t`` file (named ``s_d_t_*``)
+    gives the daily means of the observation times: ``cloud_cover`` [okta],
+    ``wind_speed`` [m/s], ``vapour_pressure`` [hPa], ``humidity`` [%],
+    ``pressure_station`` and ``pressure_sea`` [hPa], and the day and night
+    precipitation sums ``P_day`` and ``P_night`` [mm]; its ``TEMP``, the mean
+    temperature that ``Tmean`` gives, is not read. Status 8 gives ``None``
+    flagged ``"missing"``, status 9 gives ``0.0`` flagged
+    ``"no_phenomenon"``, an empty value is ``"missing"``, as for
+    ``parse_meteo_climate_daily``.
+
+    The period is taken from the file name: a station's file
+    ``s_d[_t]_<number>_<year>[_<last year>].csv`` holds the years of its name
+    and only codes ending with its three-digit number, a monthly file of the
+    whole country ``s_d[_t]_<month>_<year>.csv`` its month; without such a
+    name, the months present in the file are used. For every station, every
+    day of that period is yielded and days absent from the file get all
+    variables ``"missing"``.
+
+    Parameters
+    ----------
+    content : bytes or str
+        CSV content; bytes are decoded as CP1250 (UTF-8 with BOM detected).
+    filename : str
+        Member file name, used to infer the kind, the period and the station
+        number and in error messages.
+
+    Yields
+    ------
+    NormalizedRecord
+        One record per station and calendar day, with dataset
+        ``"pl.imgw.meteo_synop_daily"`` and the hydrological year
+        (November-October) of the day.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If a row has too few columns, an invalid station code (or one of
+        another station's file), date or value, a date outside the period from
+        ``filename``, or repeats a station day.
+    """
+    kind, start, end, number = _synop_member(filename)
+    yield from _parse_synop(
+        content, filename=filename, kind=kind, start=start, end=end, number=number
+    )
+
+
 def normalize_meteo_archive(
     dataset: str, filename: str, data: bytes, *, year: int | None, month: int | None
 ) -> Iterator[NormalizedRecord]:
@@ -354,3 +591,79 @@ def normalize_meteo_archive(
         raise ObserwatorDataError(
             message("meteo.no_file", kind=kind, filename=filename)
         )
+
+
+def normalize_synop_archive(
+    filename: str, data: bytes, *, start: date | None, end: date | None
+) -> Iterator[NormalizedRecord]:
+    """
+    Normalize a daily synoptic IMGW archive (``pl.imgw.meteo_synop_daily``).
+
+    The ``s_d`` member and, when the package has it, the ``s_d_t`` member of a
+    station's file (``s_d_<number>_<period>.csv``) or of a monthly file of
+    the whole country (``s_d_<month>_<year>.csv``) are parsed like
+    ``parse_meteo_synop_daily``, except that the period comes from ``start``
+    and ``end``; a station's day joins the variables of both members. Other
+    members are ignored.
+
+    Parameters
+    ----------
+    filename : str
+        Archive name used in error messages.
+    data : bytes
+        ZIP archive content.
+    start, end : date or None
+        First and last day covered by the archive; every row must fall
+        between them and missing days are filled for the whole period.
+        ``None`` disables the check and fills only the months present in the
+        data.
+
+    Yields
+    ------
+    NormalizedRecord
+        One record per station and calendar day.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the archive is unreadable or unsafe, has no ``s_d`` member, or
+        contains a malformed row.
+    """
+    from obserwator._parsing.common import archive_csv_members
+
+    daily: list[NormalizedRecord] = []
+    terms: dict[tuple[str, date], NormalizedRecord] = {}
+    matched = False
+    for member, content in archive_csv_members(data, filename=filename):
+        found = _SYNOP_MEMBER.search(member.lower())
+        if found is None:
+            continue
+        records = _parse_synop(
+            content,
+            filename=f"{filename}/{member}",
+            kind=found[1],
+            start=start,
+            end=end,
+            number=found[2],
+        )
+        if found[1] == "s_d":
+            matched = True
+            daily.extend(records)
+        else:
+            terms.update(
+                ((record.station_code, record.date), record) for record in records
+            )
+    if not matched:
+        raise ObserwatorDataError(
+            message("meteo.no_file", kind="s_d", filename=filename)
+        )
+    for record in daily:
+        extra = terms.pop((record.station_code, record.date), None)
+        yield (
+            record
+            if extra is None
+            else replace(
+                record, measurements={**record.measurements, **extra.measurements}
+            )
+        )
+    yield from terms.values()

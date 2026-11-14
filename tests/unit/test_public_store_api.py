@@ -39,6 +39,7 @@ SPEC_FUNCTIONS = (
     "sync_store",
     "parse_meteo_climate_daily",
     "parse_meteo_precip_daily",
+    "parse_meteo_synop_daily",
     "normalize_archive",
     "parse_chmi_hydro_daily",
     "parse_chmi_meteo_daily",

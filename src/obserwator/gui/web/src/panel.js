@@ -28,7 +28,7 @@ import { METEO_SECTIONS } from "./sections/meteo/index.js";
 import { Command, Licence, POBIERZ } from "./sections/pobierz.js";
 import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
-import { DATASET_STEPS, datasetTitle, kindName, providerFullName, providerName } from "./words.js";
+import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerFullName, providerName } from "./words.js";
 
 /** The providers of the catalogs, in the order the panel lists them. */
 const PROVIDERS = ["IMGW-PIB", "CHMI"];
@@ -100,6 +100,24 @@ function useLines(onLines, lines) {
   useEffect(() => () => onLines(null), []);
 }
 
+/** The years of a dataset's values at the station, null without any. */
+function datasetYears(entry) {
+  const spans = Object.values(entry.variables).filter((v) => v.first && v.last);
+  if (!spans.length) return null;
+  return { first: +spans.map((v) => v.first).sort()[0].slice(0, 4), last: +spans.map((v) => v.last).sort().at(-1).slice(0, 4) };
+}
+
+/** The station's record (ADR-022): its years over every series, and the dataset of each part. */
+function Record({ station }) {
+  const parts = station.datasets.map((entry) => ({ key: entry.dataset, years: datasetYears(entry) })).filter((part) => part.years);
+  if (!station.first || !parts.length) return null;
+  parts.sort((a, b) => a.years.first - b.years.first);
+  return html`<p class="station-record small">
+    ${t("station.record", { years: `${station.first}–${station.last}` })}${" "}
+    ${parts.map((part, at) => html`${at ? " · " : ""}<span title=${datasetTitle(part.key)}>${datasetShort(part.key)} ${part.years.first}–${part.years.last}</span>`)}
+  </p>`;
+}
+
 /** The header of the station. */
 function StationHead({ station }) {
   const p = station.properties;
@@ -115,6 +133,7 @@ function StationHead({ station }) {
       <span class=${`badge ${p.active ? "ok" : "warn"}`}>${p.active ? t("station.active") : t("station.inactive")}</span>
       ${station.lon === null ? html`<span class="badge warn">${t("station.no_location")}</span>` : null}
     </div>
+    <${Record} station=${station} />
     ${station.datasets.length ? null : html`<p class="note-box">${t("station.no_series")}</p>`}
   </div>`;
 }

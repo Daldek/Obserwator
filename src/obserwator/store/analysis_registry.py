@@ -219,11 +219,19 @@ class AnalysisInput:
         holds the station with every variable is exported (``series export``).
     variables : tuple of str
         The variables that need values at the station.
+    joined : tuple of str, optional
+        Datasets of ``datasets`` read as one daily record of the station
+        (ADR-022): when the dataset chosen is one of them, the later ones
+        whose series hold the station with every variable fill, day by day
+        and variable by variable, what it lacks (a ``missing`` value or a day
+        without a row), the earlier dataset taking precedence; empty reads the
+        chosen dataset alone.
     """
 
     option: str
     datasets: tuple[str, ...]
     variables: tuple[str, ...]
+    joined: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -349,10 +357,15 @@ class AnalysisDefinition:
 _HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
 _HALF_YEARS = ("pl.imgw.hydro_semiannual",)
 _METEO_DAILY = (
+    "pl.imgw.meteo_synop_daily",
     "pl.imgw.meteo_climate_daily",
     "pl.imgw.meteo_precip_daily",
     "cz.chmi.meteo_daily",
 )
+# The daily meteo record of an IMGW-PIB station (ADR-022): its synoptic series,
+# then its climate series for what the synoptic one lacks (Świnoujście: climate
+# 1961-1965, synop from 1966).
+_METEO_JOINED = ("pl.imgw.meteo_synop_daily", "pl.imgw.meteo_climate_daily")
 _DATE = {"date_column": "date"}
 _YEARS = (
     AnalysisOption("first_year", "integer", minimum=1),
@@ -446,9 +459,9 @@ def _half_years(variable: str) -> AnalysisVariant:
 
 
 def _meteo(*variables: str, columns: Mapping[str, Any]) -> AnalysisVariant:
-    """A variant reading a daily meteorological series (IMGW-PIB or ČHMÚ)."""
+    """A variant reading a station's daily meteorological record (IMGW-PIB or ČHMÚ)."""
     return AnalysisVariant(
-        (AnalysisInput("input_file", _METEO_DAILY, variables),),
+        (AnalysisInput("input_file", _METEO_DAILY, variables, _METEO_JOINED),),
         _frozen({**columns, **_DATE}),
     )
 
@@ -1288,7 +1301,12 @@ def _digest_document(definition: AnalysisDefinition) -> dict[str, Any]:
         "variants": [
             {
                 "inputs": [
-                    [item.option, list(item.datasets), list(item.variables)]
+                    [
+                        item.option,
+                        list(item.datasets),
+                        list(item.variables),
+                        list(item.joined),
+                    ]
                     for item in variant.inputs
                 ],
                 "options": dict(variant.options),

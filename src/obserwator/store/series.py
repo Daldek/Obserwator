@@ -14,7 +14,7 @@ import tempfile
 import uuid
 import zlib
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -25,6 +25,7 @@ from obserwator._parsing import normalize_archive
 from obserwator._version import __version__
 from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import (
+    _IMGW_STATION_FILE,
     ArchiveFile,
     DatasetDescriptor,
     _archive_from_path,
@@ -899,6 +900,7 @@ def _spill_station_file(
     archive: ArchiveFile,
     records: Iterable[NormalizedRecord],
     spans: dict[str, list[tuple[date, date]]],
+    superseded: Collection[tuple[str, int]] = (),
 ) -> None:
     """
     Spill the records of one per-station file and add its known period.
@@ -906,13 +908,16 @@ def _spill_station_file(
     A station-year file covers its calendar year (``extra.period``); a
     station-element file the days from its first to its last record, explicit
     missing rows included (ADR-003 D10). A record of another station than
-    the file's is a data error.
+    the file's is a data error. A file without a station code (the synop
+    archives of IMGW-PIB, named by the station's number, and the running
+    year's monthly files of the whole country) covers its period for every
+    station it holds; a record whose station number and year are in
+    ``superseded`` is left out.
     """
     code = archive.station_code
-    assert code is not None
-    first = last = None
+    bounds: dict[str, list[date]] = {}
     for record in records:
-        if record.station_code != code:
+        if code is not None and record.station_code != code:
             raise ObserwatorDataError(
                 message(
                     "series.record_station_file_station",
@@ -921,15 +926,42 @@ def _spill_station_file(
                     server_path=archive.server_path,
                 )
             )
+        if (record.station_code[-3:], record.date.year) in superseded:
+            continue
         spill.add(record)
-        if first is None or record.date < first:
-            first = record.date
-        if last is None or record.date > last:
-            last = record.date
-    if archive.period_start is not None and archive.period_end is not None:
-        spans[code].append(_archive_span(archive))
-    elif first is not None and last is not None:
-        spans[code].append((first, last))
+        span = bounds.setdefault(record.station_code, [record.date, record.date])
+        span[0], span[1] = min(span[0], record.date), max(span[1], record.date)
+    stations: dict[str, list[date] | None] = (
+        dict(bounds) if code is None else {code: bounds.get(code)}
+    )
+    for station, days in stations.items():
+        if archive.period_start is not None and archive.period_end is not None:
+            spans[station].append(_archive_span(archive))
+        elif days is not None:
+            spans[station].append((days[0], days[1]))
+
+
+def _superseded(inputs: Iterable[_Input]) -> set[tuple[str, int]]:
+    """
+    The station numbers and years of the stored synop archives of IMGW-PIB.
+
+    The running year's monthly files of the whole country stand for the
+    station archives of that year until IMGW-PIB publishes them; a station's
+    archive of a year, once stored, supersedes the station's records of the
+    year in those files (ADR-022).
+    """
+    covered: set[tuple[str, int]] = set()
+    for item in inputs:
+        archive = item.archive
+        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
+        if station is None or archive.station_code is not None:
+            continue
+        assert archive.period_start is not None and archive.period_end is not None
+        covered.update(
+            (station[3], year)
+            for year in range(archive.period_start.year, archive.period_end.year + 1)
+        )
+    return covered
 
 
 def _coverage_index(coverage: Iterable[StationCoverage]) -> dict[str, dict[str, Any]]:
@@ -1137,9 +1169,11 @@ def build_series(
     )
 
     known = _KnownUnits(descriptor.time_unit)
-    # Per-station files (ČHMÚ, ADR-003 D10): known periods of every station.
+    # Per-station files (ČHMÚ, ADR-003 D10; the synop archives of IMGW-PIB,
+    # ADR-022): known periods of every station.
     per_station = descriptor.archive_scope != "country"
     spans: dict[str, list[tuple[date, date]]] = defaultdict(list)
+    superseded = _superseded(inputs) if per_station else set()
     with tempfile.TemporaryDirectory(prefix="obserwator-series-") as local:
         spill = _Spill(Path(local), descriptor)
         try:
@@ -1158,7 +1192,14 @@ def build_series(
                 # parsed records nor the values of all stations stay in memory.
                 records = normalize_archive(item.archive, data=data)
                 if per_station:
-                    _spill_station_file(spill, item.archive, records, spans)
+                    monthly = item.archive.month is not None
+                    _spill_station_file(
+                        spill,
+                        item.archive,
+                        records,
+                        spans,
+                        superseded if monthly else (),
+                    )
                 else:
                     for record in records:
                         spill.add(record)

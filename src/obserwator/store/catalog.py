@@ -180,14 +180,20 @@ _DETAILS_PROPERTIES = (
 _THRESHOLD_UNITS: Mapping[str, str] = MappingProxyType({"CM": "cm", "M3_S": "m3/s"})
 
 MissingReason = Literal["none", "zero", "outside_country"]
-MeteoKind = Literal["climate", "precipitation"]
-# ``meteo_kind`` of an IMGW-PIB station measured in the current series of a dataset;
-# a station in both series is a climate station (its programme includes precipitation).
+MeteoKind = Literal["synop", "climate", "precipitation"]
+# ``meteo_kind`` of an IMGW-PIB station measured in the current series of a dataset,
+# in order of precedence: a station in several series has the first kind (the
+# programme of a synoptic station includes the climate one, which includes
+# precipitation).
 _METEO_KINDS: Mapping[str, MeteoKind] = MappingProxyType(
     {
+        "pl.imgw.meteo_synop_daily": "synop",
         "pl.imgw.meteo_climate_daily": "climate",
         "pl.imgw.meteo_precip_daily": "precipitation",
     }
+)
+_KIND_RANKS: Mapping[MeteoKind, int] = MappingProxyType(
+    {kind: rank for rank, kind in enumerate(_METEO_KINDS.values())}
 )
 # Location candidate ``(source, longitude, latitude)`` as published.
 _Candidate = tuple[str, object, object]
@@ -852,7 +858,10 @@ def _series_codes(
         for code in stations:
             if pattern.fullmatch(code):
                 codes[descriptor.kind].add(code)
-                if meteo_kind is not None and kinds.get(code) != "climate":
+                held = kinds.get(code)
+                if meteo_kind is not None and (
+                    held is None or _KIND_RANKS[meteo_kind] < _KIND_RANKS[held]
+                ):
                     kinds[code] = meteo_kind
             else:
                 problems.append(
@@ -2069,15 +2078,16 @@ def build_catalog(
     ``station_code,latitude,longitude`` (``settings.reference_dir``), then the user
     CSV. A missing static file is not an error: it is reported in ``problems``
     and recorded in the sidecar as ``available: false``. ``meteo_kind`` of a
-    meteorological station is ``"climate"`` when the current
-    ``pl.imgw.meteo_climate_daily`` series holds it, otherwise
-    ``"precipitation"`` when the current ``pl.imgw.meteo_precip_daily`` series
-    does, and null without such a series (also for every ČHMÚ station). The
-    station details of hydro.imgw.pl (``pl.imgw.hydro_details``, ADR-021) are
-    optional: when the raw root holds them, each hydrological station on that
-    service's map gets its warning and alarm levels, absolute minimum and
-    maximum with their dates, gauge zero with its datum, river kilometre,
-    catchment area, year of establishment, province and district
+    meteorological station is ``"synop"`` when the current
+    ``pl.imgw.meteo_synop_daily`` series holds it, otherwise ``"climate"``
+    when the current ``pl.imgw.meteo_climate_daily`` series does, otherwise
+    ``"precipitation"`` when the current ``pl.imgw.meteo_precip_daily``
+    series does, and null without such a series (also for every ČHMÚ
+    station). The station details of hydro.imgw.pl (``pl.imgw.hydro_details``,
+    ADR-021) are optional: when the raw root holds them, each hydrological
+    station on that service's map gets its warning and alarm levels, absolute
+    minimum and maximum with their dates, gauge zero with its datum, river
+    kilometre, catchment area, year of establishment, province and district
     (``details_source`` ``"hydro_details"``; they add no station); without
     them these properties are null, the sidecar records the source as
     ``available: false`` and an ``info`` notice ``source_missing`` names the

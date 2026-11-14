@@ -82,6 +82,7 @@ from obserwator.store.export import (
     _csv_line,
     _csv_lines,
     _deliver,
+    _export_joined,
     _format,
     _Lines,
     _number,
@@ -431,11 +432,16 @@ def _current_catalog(root: Path, provider: ProviderDescriptor) -> _Catalog | Non
 
 @dataclass(frozen=True)
 class _Planned:
-    """An analysis of the registry that applies to a station: its variant and files."""
+    """
+    An analysis of the registry that applies to a station: its variant and files.
+
+    Each file is a Hydrolog option and the datasets its series file is made
+    of: one, or the joined daily record of the station (ADR-022).
+    """
 
     definition: AnalysisDefinition
     variant: AnalysisVariant
-    files: tuple[tuple[str, str], ...]
+    files: tuple[tuple[str, tuple[str, ...]], ...]
 
 
 @dataclass(frozen=True)
@@ -452,7 +458,18 @@ class _Station:
     def datasets(self) -> tuple[str, ...]:
         """The datasets the planned analyses read, in order of first use."""
         return tuple(
-            dict.fromkeys(key for planned in self.planned for _, key in planned.files)
+            dict.fromkeys(
+                key
+                for planned in self.planned
+                for _, keys in planned.files
+                for key in keys
+            )
+        )
+
+    def exports(self) -> tuple[tuple[str, ...], ...]:
+        """The series files of the planned analyses (their datasets), once each."""
+        return tuple(
+            dict.fromkeys(keys for planned in self.planned for _, keys in planned.files)
         )
 
     def thresholds(self) -> object:
@@ -562,19 +579,22 @@ def _plan(
         ):
             continue
         for variant in definition.variants:
-            files: list[tuple[str, str]] = []
+            files: list[tuple[str, tuple[str, ...]]] = []
             for item in variant.inputs:
-                key = next(
-                    (
-                        key
-                        for key in item.datasets
-                        if set(item.variables) <= holdings.get(key, frozenset())
-                    ),
-                    None,
-                )
-                if key is None:
+                held = [
+                    key
+                    for key in item.datasets
+                    if set(item.variables) <= holdings.get(key, frozenset())
+                ]
+                if not held:
                     break
-                files.append((item.option, key))
+                # The station's daily record: the chosen dataset, then the later
+                # datasets it is joined with (ADR-022).
+                keys: tuple[str, ...] = (held[0],)
+                if held[0] in item.joined:
+                    later = item.joined[item.joined.index(held[0]) + 1 :]
+                    keys += tuple(key for key in later if key in held)
+                files.append((item.option, keys))
             else:
                 planned[definition.id] = _Planned(definition, variant, tuple(files))
                 break
@@ -741,14 +761,15 @@ def _datasets_of(station: _Station, planned: _Planned) -> tuple[str, ...]:
     pending = [planned]
     while pending:
         current = pending.pop()
-        for _, key in current.files:
-            found.setdefault(key)
+        for _, keys in current.files:
+            found.update(dict.fromkeys(keys))
         pending += [by_id[name] for name in current.definition.depends_on]
     return tuple(key for key in station.datasets() if key in found)
 
 
-def _export_name(code: str, key: str) -> str:
-    return f"{code}_{get_dataset(key).slug}.csv"
+def _export_name(code: str, keys: tuple[str, ...]) -> str:
+    """The series file of a station: one dataset or its joined record (ADR-022)."""
+    return f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}.csv"
 
 
 def _compute(
@@ -776,15 +797,23 @@ def _compute(
     exports: dict[str, dict[str, str]] = {}
     for station in stations:
         hashes: dict[str, str] = {}
-        for key in station.datasets():
+        for keys in station.exports():
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("common.cancelled"))
-            report = export_series(
-                station.series[key].path,
-                station=station.code,
-                output=scratch / _export_name(station.code, key),
+            target = scratch / _export_name(station.code, keys)
+            report = (
+                export_series(
+                    station.series[keys[0]].path, station=station.code, output=target
+                )
+                if len(keys) == 1
+                else _export_joined(
+                    [station.series[key].path for key in keys],
+                    station=station.code,
+                    output=target,
+                )
             )
-            hashes[key] = report.files[0].sha256
+            for key in keys:
+                hashes.setdefault(key, report.files[0].sha256)
         exports[station.code] = hashes
     answers: dict[str, dict[str, _Outcome]] = {station.code: {} for station in stations}
     version = hydrolog.version or ""
@@ -804,8 +833,8 @@ def _compute(
                     **definition.options,
                     **planned.variant.options,
                     **{
-                        option: _export_name(station.code, key)
-                        for option, key in planned.files
+                        option: _export_name(station.code, keys)
+                        for option, keys in planned.files
                     },
                     **picked,
                     **((overrides or {}).get(definition.id) or {}),
@@ -826,8 +855,8 @@ def _compute(
                 _datasets_of(station, planned),
             )
     for station in stations:
-        for key in station.datasets():
-            (scratch / _export_name(station.code, key)).unlink(missing_ok=True)
+        for keys in station.exports():
+            (scratch / _export_name(station.code, keys)).unlink(missing_ok=True)
     now = datetime.now(UTC)
     return version, [
         _Computed(
