@@ -387,20 +387,23 @@ def _locked(path: Path, flags: int, *, shared: bool = False) -> int:
         create it.
     """
     flags |= getattr(os, "O_BINARY", 0)
-    while True:
-        handle = os.open(path, flags, 0o600)
-        if sys.platform == "win32":
-            return handle
-        try:
-            fcntl.flock(handle, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
-            if os.path.samestat(os.fstat(handle), os.stat(path)):
-                return handle
-        except FileNotFoundError:
-            pass  # removed while this waited: open the path again
-        except BaseException:
+    # An else block, not code after a return: mypy resolves names only in the
+    # branch of the platform it checks, so `fcntl` is no name on Windows.
+    if sys.platform == "win32":
+        return os.open(path, flags, 0o600)
+    else:
+        while True:
+            handle = os.open(path, flags, 0o600)
+            try:
+                fcntl.flock(handle, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+                if os.path.samestat(os.fstat(handle), os.stat(path)):
+                    return handle
+            except FileNotFoundError:
+                pass  # removed while this waited: open the path again
+            except BaseException:
+                os.close(handle)
+                raise
             os.close(handle)
-            raise
-        os.close(handle)
 
 
 def _synced(directory: Path, data: bytes) -> str:

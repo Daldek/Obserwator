@@ -6,6 +6,16 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **CI fixes of `develop` (2026-11-14).** Security: `opentelemetry-api` 1.45.1 → 1.45.2 in
+  `uv.lock` (CVE-2026-126360; `pip-audit` of CI). The GUI's report file lock (`_locked` in
+  `gui/_feedback.py`) keeps the POSIX `flock` in the `else` block of `sys.platform == "win32"`,
+  so mypy of the Windows gate no longer resolves `fcntl` (behaviour unchanged: on Windows the
+  instance's lock alone orders one process's reads and writes). Tests: the analyses case of
+  `command_for_version` took the first entry of `stations/` in listing order, a `<code>/`
+  directory on macOS (APFS lists it before `<code>.json`), which is no version file; it now
+  gives both station files of the layout, `stations/<code>.json` and
+  `stations/<code>/<analysis>.json`.
+
 - **Station details of hydro.imgw.pl (ADR-021).** Added: the store dataset
   `pl.imgw.hydro_details` (22 datasets, 16 of IMGW-PIB; slug `hydro_details`, `time_unit`
   `station_list`, no update signal, licence = the hydro.imgw.pl terms, lines S, P, RH):
