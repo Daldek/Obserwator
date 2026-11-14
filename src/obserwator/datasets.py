@@ -68,6 +68,10 @@ _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
 _FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
 # Site of IMGW-PIB's public data: the current-data API (``IMGW_API_URL``) lies below it.
 _IMGW_SITE = "https://danepubliczne.imgw.pl/"
+# Backend of IMGW-PIB's hydrological service hydro.imgw.pl (its map and station pages).
+_HYDRO_BACK = "https://hydro-back.imgw.pl/"
+HYDRO_DETAILS = "pl.imgw.hydro_details"
+"""Key of the station details of hydro.imgw.pl, an optional source of the IMGW-PIB catalog (ADR-021)."""
 
 
 @dataclass(frozen=True)
@@ -239,13 +243,16 @@ class DatasetDescriptor:
     base_url : str or None, optional
         Base URL of the dataset's server paths when it is not the provider's
         ``base_url`` (the current-data API of IMGW-PIB, archived as the station
-        locations of its catalog); None for the provider's.
+        locations of its catalog, and hydro.imgw.pl's backend); None for the
+        provider's.
     kept_fields : tuple of str, optional
         Fields of each station that the store keeps of an answer that also
-        carries operational data (IMGW-PIB's current-data API: measurements,
-        their times, warning and alarm levels): the stored file holds the
-        stations with these fields only, never the rest (ADR-015 D5); empty
-        keeps the provider's bytes verbatim.
+        carries operational data (IMGW-PIB's current-data API: measurements and
+        their times; hydro.imgw.pl's station details: water states): the stored
+        file holds the stations with these fields only, never the rest
+        (ADR-015 D5, ADR-021). A dotted name reaches into an object of the
+        answer (``"status.alarmValue"``), the first field is the station code;
+        empty keeps the provider's bytes verbatim.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -330,6 +337,12 @@ _LICENSE = License(
     "IMGW-PIB",
     message("legal.imgw_attribution"),
     "https://danepubliczne.imgw.pl/regulations",
+)
+# The data of hydro.imgw.pl are under the terms of that service (Nogat DEV-20.7, RH).
+_HYDRO_LICENSE = License(
+    "IMGW-PIB",
+    message("legal.imgw_attribution"),
+    "https://hydro.imgw.pl/#/regulamin",
 )
 # PMAXTP has terms of its own (the project page), with its own formulas.
 _PMAXTP_LICENSE = License(
@@ -570,6 +583,44 @@ _DATASETS = (
         in_store=True,
         base_url=_IMGW_SITE,
         kept_fields=("kod_stacji", "nazwa_stacji", "lon", "lat"),
+    ),
+    # The station details of hydro.imgw.pl (ADR-021): its backend's answer for each
+    # station of its map, one request per station, gathered into one file. The store
+    # keeps each station's reference data only (warning and alarm levels, absolute
+    # extremes, gauge zero, river kilometre, catchment area, year of establishment,
+    # province and district), never its water states (ADR-015 D5, Nogat DEV-20.8).
+    DatasetDescriptor(
+        key=HYDRO_DETAILS,
+        slug="hydro_details",
+        kind="hydro",
+        title=message("datasets.title_hydro_details"),
+        server_dir="station/hydro",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_HYDRO_BACK,
+        kept_fields=(
+            "id",
+            "properties.maximumStateValue",
+            "properties.maximumStateDate",
+            "properties.minimumStateValue",
+            "properties.minimumStateDate",
+            "properties.district",
+            "properties.waterGaugeZeroOrdinate",
+            "properties.waterGaugeZeroOrdinateReferrenceSystem",
+            "properties.yearOfEstablishment",
+            "status.riverCourseKm",
+            "status.catchmentArea",
+            "status.province",
+            "status.alarmValue",
+            "status.warningValue",
+        ),
     ),
     DatasetDescriptor(
         key="pl.imgw.pmaxtp",
@@ -939,8 +990,8 @@ def datasets(
     Returns
     -------
     tuple of DatasetDescriptor
-        Descriptors in registry order: the 13 IMGW-PIB datasets (the eight of
-        the store, then the five download-only ones), then the four ČHMÚ
+        Descriptors in registry order: the 16 IMGW-PIB datasets (the eleven of
+        the store, then the five download-only ones), then the six ČHMÚ
         datasets.
 
     Raises
@@ -1574,12 +1625,14 @@ def _station_archives(
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
 # daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmi.meteo_now`` is the newest of its listing.
+# The file of hydro.imgw.pl's station details gathers one answer per station (ADR-021).
 _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "pl.imgw.hydro_stations": ("lista_stacji_hydro.csv",),
         "pl.imgw.meteo_stations": ("wykaz_stacji.csv",),
         "pl.imgw.hydro_now": ("hydro",),
         "pl.imgw.meteo_now": ("meteo",),
+        HYDRO_DETAILS: ("status",),
         "cz.chmi.hydro_stations": ("meta1.json",),
         "cz.chmi.meteo_stations": ("meta1.json",),
         "cz.chmi.hydro_now": ("meta1.json", "meta3.json"),

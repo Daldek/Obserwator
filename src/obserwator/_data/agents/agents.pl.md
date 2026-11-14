@@ -6,7 +6,7 @@
 
 Obserwator to biblioteka Pythona, CLI `obserwator`, REST API i serwer MCP do publicznych danych hydrologicznych i meteorologicznych: archiwów, danych bieżących i opadów maksymalnych prawdopodobnych PMAXTP. Archiwa trafiają do wersjonowanego katalogu surowego (niezmienne wersje, tożsamość to SHA-256) albo jako zwykłe pliki; szeregi, katalogi stacji i analizy powstają z niego w katalogu danych i czyta się je offline.
 
-Służy do odczytu archiwalnych i bieżących danych stacji IMGW-PIB i ČHMÚ, lokalnych kopii i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
+Czyta archiwalne i bieżące dane stacji IMGW-PIB i ČHMÚ, lokalne kopie i wartości PMAXTP. Nieobsługiwane: prognozy, dane operacyjne ČHMÚ (`now`, `recent`), dobowe archiwa synoptyczne IMGW-PIB, PMAXTP poza Polską. Instalacja: `pip install obserwator[cli]` (`[mcp]` dodaje serwer MCP, `[store]` szeregi Parquet).
 
 <!-- obserwator:providers -->
 
@@ -58,7 +58,7 @@ Jedna linia na komendę, według skutku; opcje, reguły i skutki opcji: `obserwa
 
 ## Typowe przepływy
 
-Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z wcześniejszych kroków.
+Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z poprzednich kroków.
 
 <!-- obserwator:flows -->
 

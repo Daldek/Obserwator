@@ -35,4 +35,8 @@ MESSAGES = {
         "Unexpected response from {url}: a list of stations was expected",
         "Nieoczekiwana odpowiedź z {url}: oczekiwano listy stacji",
     ),
+    "details_cancelled": Text(
+        "The download of hydro.imgw.pl's station details was cancelled",
+        "Przerwano pobieranie szczegółów stacji z hydro.imgw.pl",
+    ),
 }

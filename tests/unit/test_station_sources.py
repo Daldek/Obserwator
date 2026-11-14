@@ -1,21 +1,27 @@
-"""Raw-data sync and the station sources of the catalogs (ADR-015).
+"""Raw-data sync and the station sources of the catalogs (ADR-015, ADR-021).
 
 ``store sync`` writes raw data only: measurement archives without series, and
 the station sources the catalogs read (station lists checked by HEAD, the
-current-data station metadata downloaded and compared). Operational data are
-never archived (ADR-015 D5): of an IMGW-PIB current-data answer only the
-station fields of the dataset are stored. Replayed with respx from
-``recordings.json``, ``builder_recordings.json`` and
-``chmi_catalog_recordings.json``; the current-data answers are shaped like the
+current-data station metadata and hydro.imgw.pl's station details downloaded
+and compared). Operational data are never archived (ADR-015 D5): of an IMGW-PIB
+current-data answer or station page only the station fields of the dataset are
+stored. Replayed with respx from ``recordings.json``,
+``builder_recordings.json``, ``chmi_catalog_recordings.json`` and
+``hydro_details_recordings.json``; the current-data answers are shaped like the
 live API, with fictional stations.
 """
 
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
 import respx
 
+from obserwator._version import __version__
+from obserwator.attribution import attribution
+from obserwator.datasets import get_provider
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.store import init_store, iter_store
@@ -53,8 +59,10 @@ HYDRO_NOW_URL = "https://danepubliczne.imgw.pl/api/data/hydro"
 METEO_NOW_URL = "https://danepubliczne.imgw.pl/api/data/meteo"
 METEO_NOW_LISTING = CHMI["meteo_now_listing"]["url"]
 
-# Operational fields of the IMGW-PIB current-data answers: measurements, their
-# times and the warning and alarm levels. None may reach the store.
+# Fields of the IMGW-PIB current-data answers never stored: measurements, their
+# times and the warning and alarm levels of that answer. The levels the store
+# keeps as station reference data are those of hydro.imgw.pl's station pages
+# (``pl.imgw.hydro_details``, ADR-021).
 HYDRO_MEASUREMENTS = frozenset(
     {
         "stan_wody",
@@ -643,3 +651,246 @@ def test_an_answer_that_is_no_list_of_stations_fails_and_writes_nothing(
     ]
     assert report.items[0].version is None and report.files == ()
     assert files(root) == before
+
+
+# --------------------------------------------------------------------------
+# hydro.imgw.pl's station details (ADR-021)
+# --------------------------------------------------------------------------
+
+DETAILS_KEY = "pl.imgw.hydro_details"
+DETAILS = _cases("hydro_details_recordings.json")
+DETAILS_MAP = DETAILS["map"]["json"]
+DETAILS_MAP_URL = DETAILS["map"]["url"]
+DETAILS_URL = "https://hydro-back.imgw.pl/station/hydro/status"
+# The recorded station pages by code; the backend answers null for a code it
+# does not know.
+DETAILS_PAGES = {
+    row["url"].rpartition("=")[2]: row["json"]
+    for case, row in DETAILS.items()
+    if case.startswith("status_")
+}
+DETAILS_CODES = [station["id"] for station in DETAILS_MAP["stations"]]
+# The station reference data the store keeps of a page, nested as in the answer.
+DETAILS_KEPT = (
+    "id",
+    "properties.maximumStateValue",
+    "properties.maximumStateDate",
+    "properties.minimumStateValue",
+    "properties.minimumStateDate",
+    "properties.district",
+    "properties.waterGaugeZeroOrdinate",
+    "properties.waterGaugeZeroOrdinateReferrenceSystem",
+    "properties.yearOfEstablishment",
+    "status.riverCourseKm",
+    "status.catchmentArea",
+    "status.province",
+    "status.alarmValue",
+    "status.warningValue",
+)
+DETAILS_SLOT = "archives/versions/station/hydro/status"
+
+
+def serve_details(server, *, pages=None, stations=None):
+    """The recorded map and station pages; ``pages`` replaces answers by code."""
+    stations = DETAILS_MAP["stations"] if stations is None else stations
+    server.get(DETAILS_MAP_URL).respond(200, json={**DETAILS_MAP, "stations": stations})
+    answers = {**DETAILS_PAGES, **(pages or {})}
+    # The bytes of the answer: ``json=None`` would give an empty body, not ``null``.
+    return {
+        station["id"]: server.get(f"{DETAILS_URL}?id={station['id']}").respond(
+            200,
+            content=json.dumps(answers[station["id"]]).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        for station in stations
+    }
+
+
+def kept(page):
+    """The kept fields of a station page, nested as in the answer."""
+    row = {"id": page["id"]}
+    for name in DETAILS_KEPT[1:]:
+        group, _, field = name.partition(".")
+        row.setdefault(group, {})[field] = page[group][field]
+    return row
+
+
+def other_water_states(page):
+    """A later page: other water states and notices, the same reference data."""
+    status = {
+        **page["status"],
+        "currentState": {"date": "2026-11-14T12:00:00Z", "value": 777.0},
+        "previousState": {"date": "2026-11-14T11:50:00Z", "value": 776.0},
+        "trend": 1,
+        "status": 160,
+        "notes": [{"content": "Stacja automatyczna zdewastowana", "severity": 1}],
+    }
+    return {**page, "stateCode": "high", "status": status}
+
+
+def test_details_sync_keeps_the_reference_data_of_each_station(root, server):
+    serve_details(server)
+    notices = []
+
+    report = sync_store(root, datasets=[DETAILS_KEY], on_notice=notices.append)
+
+    assert [(item.slot, item.status) for item in report.items] == [
+        (f"archive:{DETAILS_KEY}:status", "new")
+    ]
+    version = report.items[0].version
+    content = version.read_bytes()
+    assert version.name == "status"
+    assert version.parent.parent == root / DETAILS_SLOT
+    assert re.fullmatch(
+        rf"\d{{4}}-\d{{2}}-\d{{2}}_{hashlib.sha256(content).hexdigest()[:8]}",
+        version.parent.name,
+    )
+    rows = json.loads(content)
+    assert content == (
+        json.dumps(rows, ensure_ascii=False, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    # Sorted by code; the map lists Kłodzko, Warszawa-Bulwary, Świnoujście.
+    assert rows == [kept(DETAILS_PAGES[code]) for code in sorted(DETAILS_CODES)]
+    assert rows[0] == {
+        "id": "150160180",
+        "properties": {
+            "maximumStateValue": 890,
+            "maximumStateDate": "1997-07-08",
+            "minimumStateValue": 28,
+            "minimumStateDate": "1950-08-31",
+            "district": "kłodzki",
+            "waterGaugeZeroOrdinate": 281.617,
+            "waterGaugeZeroOrdinateReferrenceSystem": "EVRF2007",
+            "yearOfEstablishment": "1884",
+        },
+        "status": {
+            "riverCourseKm": 130.04,
+            "catchmentArea": 1082.27,
+            "province": "dolnośląskie",
+            "alarmValue": 240.0,
+            "warningValue": 160.0,
+        },
+    }
+    # Water states, notices, the clause on operational data, coordinates and the
+    # backend's own id never reach the store.
+    for name in (
+        "currentState",
+        "previousState",
+        "lastState",
+        "notes",
+        "stateCode",
+        "trend",
+        "coordinates",
+        "dataClause",
+    ):
+        assert f'"{name}"'.encode() not in content, name
+    assert all("id" not in row["status"] for row in rows)
+    assert all(set(row) == {"id", "properties", "status"} for row in rows)
+
+    sidecar = json.loads(version.with_name("status.meta.json").read_text("utf-8"))
+    assert sidecar["license"]["url"] == "https://hydro.imgw.pl/#/regulamin"
+    assert sidecar["extra"]["kept_fields"] == list(DETAILS_KEPT)
+
+    # The map, then one page per station in map order, each with the headers
+    # hydro-back.imgw.pl requires.
+    assert urls(server) == [
+        DETAILS_MAP_URL,
+        *(f"{DETAILS_URL}?id={code}" for code in DETAILS_CODES),
+    ]
+    for call in server.calls:
+        assert call.request.headers["Referer"] == "https://hydro.imgw.pl/"
+        assert call.request.headers["User-Agent"] == f"Obserwator/{__version__}"
+
+    # The terms of hydro.imgw.pl (RH), with the processed mark: the store keeps
+    # some fields of each answer.
+    (terms,) = [notice for notice in notices if notice.code == "license_terms"]
+    lines = attribution("imgw_hydro", processed=True)
+    assert terms.message == get_provider("IMGW-PIB").license_notice(lines)
+    assert str(message("legal.imgw_terms_hydro")) in terms.message
+    assert str(message("legal.imgw_processed_attribution")) in terms.message
+    assert str(message("legal.imgw_terms_danepubliczne")) not in terms.message
+
+
+def test_details_leave_out_a_map_station_the_backend_does_not_know(root, server):
+    stations = [*DETAILS_MAP["stations"]]
+    stations.insert(1, {**stations[0], "id": "999999999", "n": "NIEZNANA"})
+    pages = serve_details(server, stations=stations)
+
+    report = sync_store(root, datasets=[DETAILS_KEY])
+
+    assert [item.status for item in report.items] == ["new"]
+    assert pages["999999999"].called
+    rows = json.loads(report.items[0].version.read_bytes())
+    assert [row["id"] for row in rows] == sorted(DETAILS_CODES)
+
+
+@pytest.mark.parametrize("failing", ["map", "152210170"])
+def test_an_http_error_of_any_details_request_fails_and_writes_nothing(
+    root, server, failing
+):
+    pages = serve_details(server)
+    if failing == "map":
+        server.get(DETAILS_MAP_URL).respond(503)
+    else:
+        server.get(f"{DETAILS_URL}?id={failing}").respond(503)
+    before = files(root)
+
+    report = sync_store(root, datasets=[DETAILS_KEY])
+
+    assert [(item.status, item.error_code) for item in report.items] == [
+        ("failed", "source_unavailable")
+    ]
+    assert report.items[0].version is None and report.files == ()
+    assert files(root) == before
+    # No request after the failed one.
+    assert not pages["153140010"].called
+
+
+def test_a_cancel_between_station_pages_stores_nothing(root, server):
+    pages = serve_details(server)
+    before = files(root)
+
+    report = sync_store(
+        root, datasets=[DETAILS_KEY], cancel=lambda: pages["150160180"].called
+    )
+
+    assert report.cancelled
+    assert [item.status for item in report.items] == ["cancelled"]
+    assert report.files == () and files(root) == before
+    assert not pages["152210170"].called and not pages["153140010"].called
+
+
+def test_details_are_unverifiable_and_unchanged_when_only_water_states_moved(
+    root, server
+):
+    serve_details(server)
+
+    plan = check_store(root, datasets=[DETAILS_KEY])
+
+    assert [(item.archive.dataset, item.status) for item in plan.items] == [
+        (DETAILS_KEY, "unverifiable")
+    ]
+    assert plan.items[0].error == message("sync.station_source_no_signal")
+    assert not server.calls
+    first = sync_store(root, datasets=[DETAILS_KEY])
+    recheck = check_store(root, datasets=[DETAILS_KEY])
+    assert [item.status for item in recheck.items] == ["unverifiable"]
+
+    serve_details(
+        server,
+        pages={code: other_water_states(DETAILS_PAGES[code]) for code in DETAILS_CODES},
+    )
+    again = sync_store(root, datasets=[DETAILS_KEY])
+
+    assert [item.status for item in again.items] == ["unchanged"]
+    assert again.items[0].version == first.items[0].version
+    assert len(list((root / DETAILS_SLOT).iterdir())) == 1
+
+    # A changed warning level is new station reference data.
+    raised = DETAILS_PAGES["152210170"]
+    raised = {**raised, "status": {**raised["status"], "warningValue": 710.0}}
+    serve_details(server, pages={"152210170": raised})
+    changed = sync_store(root, datasets=[DETAILS_KEY])
+    assert [item.status for item in changed.items] == ["new"]
+    rows = json.loads(changed.items[0].version.read_bytes())
+    assert rows[1]["status"]["warningValue"] == 710.0

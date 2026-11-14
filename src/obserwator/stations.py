@@ -4,16 +4,19 @@ Station search and current states of hydrological stations.
 `find_stations` searches the station lists of the data providers (IMGW-PIB
 and ČHMÚ), live or from a versioned store; `fetch_hydro_states` reads the
 locations and current water states of hydrological stations from the
-hydro.imgw.pl map API.
+hydro.imgw.pl map API, whose station pages also give the station details
+``store sync`` keeps for the catalog (``pl.imgw.hydro_details``, ADR-021).
 """
 
 from __future__ import annotations
 
+import json
 import unicodedata
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+import httpx
 from pydantic import ValidationError
 
 from obserwator._parsing.chmi import iter_stations, parse_listing
@@ -29,6 +32,7 @@ from obserwator.datasets import (
     station_source_files,
 )
 from obserwator.exceptions import (
+    ObserwatorCancelledError,
     ObserwatorDataError,
     ObserwatorStoreError,
     ObserwatorValidationError,
@@ -36,9 +40,11 @@ from obserwator.exceptions import (
 from obserwator.fetch import (
     _IDENTIFY,
     DEFAULT_TIMEOUT,
+    DownloadResult,
     _get,
     _get_async,
     _json_payload,
+    _source_error,
 )
 from obserwator.messages import message
 from obserwator.models import HydroState, StationListEntry
@@ -535,3 +541,64 @@ async def fetch_hydro_states_async(
     url = _map_url(main_only)
     response = await _get_async(url, timeout=timeout, headers=_MAP_HEADERS)
     return _hydro_states(_json_payload(response), url)
+
+
+def _hydro_details(
+    client: httpx.Client, url: str, *, cancel: Callable[[], bool] | None = None
+) -> DownloadResult:
+    """
+    hydro.imgw.pl's details of every station of its map, gathered into one JSON list.
+
+    The map (``onlyMainStations=false``) names the stations; then ``url``, the
+    endpoint of a station page (``station/hydro/status``), is asked once per
+    station (``?id=<code>``), in map order, one request at a time and with the
+    headers hydro-back.imgw.pl requires. An answer that is no object (``null``
+    for a code the backend does not know) is left out. The list holds the
+    whole answers: `write_archive` keeps only the fields of
+    ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021).
+
+    Parameters
+    ----------
+    client : httpx.Client
+        Client of the requests.
+    url : str
+        The endpoint of the station pages, the URL of the dataset's file.
+    cancel : callable or None, optional
+        Polled before each request; once it returns True the download stops.
+
+    Returns
+    -------
+    DownloadResult
+        The JSON list with ``url`` and without HTTP signals (one file of many
+        answers has none).
+
+    Raises
+    ------
+    ObserwatorConnectionError
+        If any request fails (``source_unavailable``, ``details`` ``url`` of
+        that request); nothing is returned of the other answers.
+    ObserwatorDataError
+        If the map or an answer is no JSON, or the map holds no station list.
+    ObserwatorCancelledError
+        If ``cancel`` returns True.
+    """
+    asked = _map_url(False)
+    answers: list[Any] = []
+    try:
+        response = client.get(asked, headers=_MAP_HEADERS)
+        response.raise_for_status()
+        for state in _hydro_states(_json_payload(response), asked):
+            if cancel is not None and cancel():
+                raise ObserwatorCancelledError(message("stations.details_cancelled"))
+            asked = f"{url}?id={state.station_code}"
+            response = client.get(asked, headers=_MAP_HEADERS)
+            response.raise_for_status()
+            answer = _json_payload(response)
+            if isinstance(answer, dict):
+                answers.append(answer)
+    except httpx.HTTPError as exc:
+        raise _source_error(exc, asked) from exc
+    data = json.dumps(answers, ensure_ascii=False).encode("utf-8")
+    return DownloadResult(
+        data=data, url=url, etag=None, last_modified=None, content_length=None
+    )

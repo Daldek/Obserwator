@@ -168,6 +168,11 @@ MESSAGES = {
         "Current meteorological data: station locations",
         "Bieżące dane meteorologiczne: położenie stacji",
     ),
+    "title_hydro_details": Text(
+        "Hydrological station details of hydro.imgw.pl: levels, extremes, gauge zero",
+        "Szczegóły stacji hydrologicznych z hydro.imgw.pl: stany progowe, ekstrema, "
+        "zero wodowskazu",
+    ),
     "title_pmaxtp": Text(
         "Probable maximum precipitation PMAXTP",
         "Opady maksymalne prawdopodobne PMAXTP",

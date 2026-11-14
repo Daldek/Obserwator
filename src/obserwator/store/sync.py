@@ -18,6 +18,7 @@ from obserwator._parsing.chmi import ListingEntry, parse_listing
 from obserwator.datasets import (
     _CHMI_HYDRO_FILE,
     _CHMI_METEO_FILE,
+    HYDRO_DETAILS,
     ArchiveFile,
     DatasetDescriptor,
     MonthsArg,
@@ -55,6 +56,7 @@ from obserwator.fetch import (
 from obserwator.messages import Message, message, reason
 from obserwator.messages.sync import MESSAGES
 from obserwator.output import resolve_target
+from obserwator.stations import _hydro_details
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
     _current_version,
@@ -1172,13 +1174,19 @@ def _check_source(client: httpx.Client, root: Path, archive: ArchiveFile) -> Pla
 
 
 def _download(
-    archive: ArchiveFile, /, *, client: httpx.Client | None = None
+    archive: ArchiveFile,
+    /,
+    *,
+    client: httpx.Client | None = None,
+    cancel: Cancel | None = None,
 ) -> DownloadResult:
     """
     GET one archive for a store version.
 
     IMGW-PIB ZIP archives go through the 2.1.1 download functions. A
     per-station file (ČHMÚ) is taken as it is, through ``client`` when given.
+    The station details of hydro.imgw.pl are one request per station of its
+    map (ADR-021); ``cancel`` is polled between them.
 
     Raises
     ------
@@ -1186,16 +1194,20 @@ def _download(
         If the download fails (``source_unavailable``).
     ObserwatorDataError
         If an IMGW-PIB archive is no ZIP or a header is invalid.
+    ObserwatorCancelledError
+        If ``cancel`` stops the requests of the station details.
     """
     descriptor = get_dataset(archive.dataset)
     if descriptor.archive_scope != "country" or descriptor.time_unit == "station_list":
+        if client is None:
+            with httpx.Client(
+                timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, headers=_IDENTIFY
+            ) as own:
+                return _download(archive, client=own, cancel=cancel)
+        if descriptor.key == HYDRO_DETAILS:
+            return _hydro_details(client, archive.url, cancel=cancel)
         source = get_provider(descriptor.provider).short_name
-        if client is not None:
-            return _archive_response(client, archive.url, source=source, zipped=False)
-        with httpx.Client(
-            timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, headers=_IDENTIFY
-        ) as own:
-            return _archive_response(own, archive.url, source=source, zipped=False)
+        return _archive_response(client, archive.url, source=source, zipped=False)
     slug = descriptor.slug
     assert archive.year is not None
     if slug.startswith("hydro_"):
@@ -1664,7 +1676,7 @@ def _sync_one(
                 on_notice(Notice("warning", "stale_plan", text))
             return _result(item, "stale_plan", version=local, error=text)
     try:
-        response = _download(item.archive, client=client)
+        response = _download(item.archive, client=client, cancel=cancel)
         written = write_archive(
             root,
             archive=item.archive,
