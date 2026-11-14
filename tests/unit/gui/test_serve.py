@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import queue
-import signal
 import socket
 import subprocess
 import sys
@@ -24,6 +23,7 @@ from obserwator.gui import create_app, gui_module, serve
 from obserwator.gui._config import Basemap, GuiConfig
 from obserwator.gui._serving import url_of
 from tests.contract.nogat import validate
+from tests.contract.support import SERVER_FLAGS, STOP_SIGNAL
 
 DEADLINE_S = 60.0
 """The longest wait for a server to start or to stop [s]."""
@@ -76,6 +76,7 @@ def test_gui_serve_answers_until_sigterm_logs_and_ends_with_exit_code_0(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        creationflags=SERVER_FLAGS,
     )
     lines: queue.Queue[str] = queue.Queue()
     reader = threading.Thread(
@@ -89,7 +90,7 @@ def test_gui_serve_answers_until_sigterm_logs_and_ends_with_exit_code_0(
         with urllib.request.urlopen(url + "css/app.css", timeout=10):
             pass
         status, session = answer_of(url + "api/session")
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(STOP_SIGNAL)  # SIGTERM; Ctrl+Break on Windows
         code = process.wait(timeout=DEADLINE_S)
         stdout = process.stdout.read()
         reader.join(timeout=DEADLINE_S)

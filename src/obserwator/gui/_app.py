@@ -18,6 +18,7 @@ import csv
 import functools
 import io
 import logging
+import mimetypes
 import re
 import shlex
 import shutil
@@ -1450,6 +1451,11 @@ def build_app(
     (`GuiConfig.writes_own_files`), the app writes none of its files (D7): no
     statistics, „Zgłoś uwagę” off; one warning says so.
 
+    The static files take their type from `mimetypes`, which on Windows reads the
+    registry (``application/javascript`` for a script, or ``text/plain`` after some
+    installers), so ``.js`` and ``.mjs`` are registered there as ``text/javascript``
+    (RFC 9239), the type of the page's scripts on every system.
+
     Parameters
     ----------
     config : GuiConfig
@@ -1502,6 +1508,9 @@ def build_app(
             yield
         finally:
             await state.traffic.stop()
+
+    for suffix in (".js", ".mjs"):
+        mimetypes.add_type("text/javascript", suffix)
 
     routes = [
         Route("/api/session", session),

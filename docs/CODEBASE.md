@@ -67,8 +67,8 @@ src/obserwator/
     ├── __init__.py       # create_app, serve, gui_module, GuiModule, WEB_DIR, SECTIONS (imports neither Starlette nor uvicorn)
     ├── _extra.py         # require_gui_extra: missing_dependency without Starlette, uvicorn or pyarrow
     ├── _config.py        # GuiConfig.resolve: root, own directory (gui_dir), basemap, rate limit, [nogat.gui], [nogat.operator]
-    ├── _serving.py       # uvicorn: binds, starts the ServerLog (record start with the address), stops on Ctrl+C or SIGTERM; no uvicorn log
-    ├── _app.py           # Starlette app: the private API's routes (the files of export_series, export_stations and export_analyses at api/files/series, stations, analyses; POST api/feedback), the admin panel (admin/, api/admin/…), SecurityHeaders (headers, CSP, methods), QUIET, build_app (AccessLog outermost when given a ServerLog)
+    ├── _serving.py       # uvicorn: binds, starts the ServerLog (record start with the address), stops on Ctrl+C, SIGTERM or (Windows) Ctrl+Break; no uvicorn log
+    ├── _app.py           # Starlette app: the private API's routes (the files of export_series, export_stations and export_analyses at api/files/series, stations, analyses; POST api/feedback), the admin panel (admin/, api/admin/…), SecurityHeaders (headers, CSP, methods), QUIET, build_app (AccessLog outermost when given a ServerLog; .js and .mjs registered as text/javascript)
     ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app

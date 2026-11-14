@@ -3,15 +3,16 @@ uvicorn for `obserwator.gui.serve` (imported with the ``gui`` extra).
 
 The server binds the address and listens, starts its logs, whose lifecycle record
 ``start`` on standard error names the address (``settings.url``), builds the app and
-serves it until Ctrl+C or ``SIGTERM`` stops it gracefully, returning, so the command
-ends with exit code 0 after the record ``stop``. The logs are Nogat's (DEV-12.4 to
-DEV-12.9, `obserwator.nogat_logging.ServerLog`): access, application and lifecycle
-records in ``<state_dir>/obserwator/logs``, deleted after 14 days; standard error gets
-only the lifecycle records and the errors reduced to their type. uvicorn runs with
-``log_config=None`` and ``access_log=False`` (its access line names the client). Behind
-a reverse proxy uvicorn takes the client's address from ``X-Forwarded-For`` only when
-the proxy is one of ``FORWARDED_ALLOW_IPS`` (default ``127.0.0.1``), so the rate limit
-counts clients, not the proxy; no log holds the address.
+serves it until Ctrl+C, ``SIGTERM`` or, on Windows, Ctrl+Break stops it gracefully,
+returning, so the command ends with exit code 0 after the record ``stop``. The logs are
+Nogat's (DEV-12.4 to DEV-12.9, `obserwator.nogat_logging.ServerLog`): access,
+application and lifecycle records in ``<state_dir>/obserwator/logs``, deleted after 14
+days; standard error gets only the lifecycle records and the errors reduced to their
+type. uvicorn runs with ``log_config=None`` and ``access_log=False`` (its access line
+names the client). Behind a reverse proxy uvicorn takes the client's address from
+``X-Forwarded-For`` only when the proxy is one of ``FORWARDED_ALLOW_IPS`` (default
+``127.0.0.1``), so the rate limit counts clients, not the proxy; no log holds the
+address.
 """
 
 from __future__ import annotations
@@ -41,6 +42,12 @@ _IN_USE = frozenset(
     for code in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", None))
     if code is not None
 )
+_STOP_SIGNALS: tuple[signal.Signals, ...] = (signal.SIGINT, signal.SIGTERM)
+"""The signals that stop the server gracefully, uvicorn's own: Ctrl+C, ``SIGTERM`` and,
+on Windows, which delivers no ``SIGTERM`` to another program, Ctrl+Break, the event a
+supervisor sends to the console process group the server leads."""
+if sys.platform == "win32":
+    _STOP_SIGNALS += (signal.SIGBREAK,)
 
 
 def url_of(host: str, port: int) -> str:
@@ -87,13 +94,12 @@ class _Server(uvicorn.Server):
 
     @contextlib.contextmanager
     def capture_signals(self) -> Iterator[None]:
-        """Stop gracefully on ``SIGINT`` or ``SIGTERM`` without re-raising them."""
+        """Stop gracefully on `_STOP_SIGNALS` without re-raising them."""
         if threading.current_thread() is not threading.main_thread():
             yield
             return
-        handled = [signal.SIGINT, signal.SIGTERM]
         previous = {
-            number: signal.signal(number, self.handle_exit) for number in handled
+            number: signal.signal(number, self.handle_exit) for number in _STOP_SIGNALS
         }
         try:
             yield

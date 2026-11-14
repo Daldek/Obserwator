@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import stat
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
@@ -312,8 +313,9 @@ def test_the_stats_file_is_private_and_holds_exactly_the_keys(tmp_path):
     path = tmp_path / "state" / "stats.jsonl"
     (line,) = stats_lines(tmp_path)
     assert list(line) == KEYS
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+    if os.name != "nt":  # Windows has no permission bits
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert [p.name for p in path.parent.iterdir() if p.name.endswith(".tmp")] == []
 
 

@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import logging
+import mimetypes
 import shlex
 import shutil
 from pathlib import Path
@@ -1019,6 +1020,21 @@ def test_the_page_and_its_files_are_revalidated_on_every_load(client):
     assert client.get("/src/no-such-module.js").status_code == 404
     again = client.get("/", headers={"If-None-Match": page.headers["etag"]})
     assert again.status_code == 304
+
+
+def test_the_scripts_are_javascript_whatever_types_the_system_registers(
+    make_client, monkeypatch
+):
+    # The types of a Windows registry, which `mimetypes` reads into its table at init.
+    mimetypes.init()
+    monkeypatch.setitem(mimetypes.types_map, ".js", "application/javascript")
+    monkeypatch.setitem(mimetypes.types_map, ".mjs", "text/plain")
+    client = make_client()
+
+    for path in ("/theme-init.js", "/vendor/preact/preact.mjs"):
+        answer = client.get(path)
+        assert answer.status_code == 200
+        assert answer.headers["content-type"] == "text/javascript; charset=utf-8"
 
 
 def test_every_answer_carries_the_security_headers(client):
