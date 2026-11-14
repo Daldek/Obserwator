@@ -6,6 +6,12 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Every format at version 1 until the first release (Nogat REL-1.4, ECO-072).** The report of
+  `store sync` is `obserwator-sync-report/1` again (was `/2`; the same fields: `items`,
+  `cancelled`, `files`, no `series`); it is a result document only, so no store needs migrating.
+  Nogat's kit is 1.0.0 (`nogat-kit.json` byte for byte, the files of 0.7.1 unchanged) and the
+  regulamin stays 1.0. The contract schemas' example envelope of `store sync` follows.
+
 - **CP without the detail of processing (Nogat ECO-071, DEV-20.3, DEV-20.4; kit 0.7.1).** The
   ČHMÚ processing line is „Dane ČHMÚ zostały przetworzone”, once, without „(normalizacja i
   zmiana formatu)”, on every product: envelopes, the CLI, series, catalogs, CSV, JSONL and

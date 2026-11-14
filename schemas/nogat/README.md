@@ -25,7 +25,7 @@ refresh the copies from `std-1.0` at the tag when it does):
 Do not edit these files; copy them again when the standard changes (DEV-15.6).
 On 2026-11-12 all four were byte for byte equal to Nogat commit `7786271`.
 
-The web pages hold another copy of Nogat files, in `src/obserwator/web/static/nogat/`:
-`nogat-app-menu.js`, `nogat-app-menu.css` and `nogat-kit.json` of Nogat `design/kit/`
-(kit 0.1.0) and `marks/` of `design/marks/`, from commit `7786271` (ADR-011).
+The GUI holds another copy of Nogat files, in `src/obserwator/gui/web/nogat/`: the files
+of Nogat's `design/kit/` listed in its `nogat-kit.json` (kit 1.0.0) and `marks/` of
+`design/marks/` (ADR-011, ADR-013).
 Nogat's `scripts/ecosystem.py drift` reports every copy as current, behind or modified.

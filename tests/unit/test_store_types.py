@@ -370,7 +370,7 @@ def test_result_documents_lead_with_their_schema_also_when_nested(tmp_path):
     ]
     synced = document(report)
     assert list(synced)[0] == "schema"
-    assert synced["schema"] == "obserwator-sync-report/2"
+    assert synced["schema"] == "obserwator-sync-report/1"
     assert set(synced) == {"schema", "items", "cancelled", "files"}
     (built,) = document((series,))
     assert list(built)[0] == "schema"

@@ -148,7 +148,7 @@ def test_obserwator_scenario_prints_the_envelopes_of_run_command_and_writes_alik
     assert stale["result"]["files"] == []
     # A sync writes raw data only: the report lists the archive versions, no series.
     for step in (synced, newer, sources):
-        assert step["result"]["schema"] == "obserwator-sync-report/2"
+        assert step["result"]["schema"] == "obserwator-sync-report/1"
         assert "series" not in step["result"]
         assert [file["path"] for file in step["result"]["files"]] == [
             item["version"] for item in step["result"]["items"]

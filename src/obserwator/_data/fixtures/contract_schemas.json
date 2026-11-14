@@ -1,5 +1,5 @@
 {
-  "description": "JSON Schema Draft 2020-12 kontraktów Obserwatora (spec 2026-10-17-versioned-store-design.md §11 magazyn z dziedzinami /1 i rejestrem obserwacji obserwator-observation/1 według ADR-003, spec 2026-10-18-chmi-provider-design.md §3.2 i §11; §13.5 błędy problem+json i CLI, §13.6 koperta obserwator-result/1 z dokumentem wyniku w dowolnej wersji głównej, np. obserwator-sync-report/2 według ADR-015) i przykłady ze specyfikacji; przykłady nie są fixturą sum kontrolnych.",
+  "description": "JSON Schema Draft 2020-12 kontraktów Obserwatora (spec 2026-10-17-versioned-store-design.md §11 magazyn z dziedzinami /1 i rejestrem obserwacji obserwator-observation/1 według ADR-003, spec 2026-10-18-chmi-provider-design.md §3.2 i §11; §13.5 błędy problem+json i CLI, §13.6 koperta obserwator-result/1 z dokumentem wyniku w dowolnej wersji głównej, np. obserwator-sync-report/1 według ADR-015) i przykłady ze specyfikacji; przykłady nie są fixturą sum kontrolnych.",
   "schemas": {
     "obserwator-store/1": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1495,7 +1495,7 @@
       "check": false,
       "status": "partial",
       "result": {
-        "schema": "obserwator-sync-report/2",
+        "schema": "obserwator-sync-report/1",
         "items": [
           {
             "slot": "archive:pl.imgw.hydro_daily:2023/codz_2023.zip",
