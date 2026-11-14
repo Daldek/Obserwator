@@ -347,8 +347,19 @@ def _datasets(lang: Lang) -> str:
         for descriptor in datasets()
         if descriptor.in_store
     ]
+    # The keys outside the store fold by their prefix: ``pl.imgw.{a,b}``.
+    names: dict[str, list[str]] = {}
+    for descriptor in datasets():
+        if not descriptor.in_store:
+            prefix, _, name = descriptor.key.rpartition(".")
+            names.setdefault(prefix, []).append(name)
     outside = ", ".join(
-        _code(descriptor.key) for descriptor in datasets() if not descriptor.in_store
+        _code(
+            f"{prefix}.{group[0]}"
+            if len(group) == 1
+            else f"{prefix}.{{{','.join(group)}}}"
+        )
+        for prefix, group in names.items()
     )
     outside_store = message("agent_guide.outside_store", lang=lang)
     return f"{_table(_header('datasets', lang), rows)}\n\n{outside_store} {outside}."

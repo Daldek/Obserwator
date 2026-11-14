@@ -6,6 +6,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Download-only datasets for the rest of IMGW-PIB's public data (ADR-023).**
+  `pl.imgw.meteo_synop_terms` (alias `meteo/terminowe/synop`, no longer refused as
+  `per_station`): one file per station and folder selected by 9-digit `stations` (the file
+  names carry the last three digits), or the running year's monthly country files by `months`;
+  a station without a file is `not_published`. `pl.imgw.warnings_hydro_archive` and
+  `pl.imgw.warnings_meteo_archive`: the monthly warning archives `data/arch/ost_hydro|ost_meteo/
+  <YYYY>/<MM>.zip` from 2017. `pl.imgw.actinometric`: the solar radiation files of 28 stations
+  (1990–2017) as published, found in the server's folder index whatever the spelling of its
+  folders (`Zweryfikowane`, `źródłowe`, `wartości dobowe`, range folders `1991-1992`), by
+  years for every station, with the summary xlsx; `datasets files` refuses it (`reason`
+  `listed`) and stays offline, `datasets download` and its `--check` read the index, `stations`
+  is refused (the folders carry names, not codes). All four through Python, CLI, REST and MCP
+  with `--output-dir` only, with the IMGW-PIB attribution lines. Plain downloads check ZIP bytes
+  by the `.zip` name, archive URLs are percent-encoded, and `AGENTS.md` folds the download-only
+  keys as `pl.imgw.{…}`. Publications (`Roczniki/`, `Biuletyn_PSHM/`, the current warning PDFs)
+  and `api/data/product` are no datasets. Tests replay real files recorded on 2026-11-14.
+
 - **Every format at version 1 until the first release (Nogat REL-1.4, ECO-072).** The report of
   `store sync` is `obserwator-sync-report/1` again (was `/2`; the same fields: `items`,
   `cancelled`, `files`, no `series`); it is a result document only, so no store needs migrating.

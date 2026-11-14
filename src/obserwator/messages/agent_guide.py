@@ -44,8 +44,8 @@ MESSAGES = {
         "lokalna",
     ),
     "outside_store": Text(
-        "Outside the store (`datasets files` and `datasets download` only):",
-        "Poza magazynem (tylko `datasets files` i `datasets download`):",
+        "Download only (`datasets download`):",
+        "Do pobrania (`datasets download`):",
     ),
     "header_status": Text(
         "Status",
