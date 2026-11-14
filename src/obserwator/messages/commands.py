@@ -343,10 +343,14 @@ MESSAGES = {
         "przecinkami",
     ),
     "archive_stations_help": Text(
-        "Comma-separated ČHMÚ station codes (WIGOS identifiers, e.g. "
-        "0-203-1-001000); required for cz.chmi.* datasets, not allowed for pl.imgw.*",
-        "Kody stacji ČHMÚ (identyfikatory WIGOS, np. 0-203-1-001000) rozdzielone "
-        "przecinkami; wymagane dla zbiorów cz.chmi.*, niedozwolone dla pl.imgw.*",
+        "Comma-separated station codes: ČHMÚ WIGOS identifiers (e.g. "
+        "0-203-1-001000), required for cz.chmi.* datasets; 9-digit IMGW-PIB codes "
+        "for the per-station synop archives of IMGW-PIB; not allowed for other "
+        "pl.imgw.* datasets",
+        "Kody stacji rozdzielone przecinkami: identyfikatory WIGOS ČHMÚ (np. "
+        "0-203-1-001000), wymagane dla zbiorów cz.chmi.*; 9-cyfrowe kody IMGW-PIB "
+        "dla archiwów synop IMGW-PIB publikowanych osobno dla każdej stacji; "
+        "niedozwolone dla innych zbiorów pl.imgw.*",
     ),
     "provider_help": Text(
         "Data provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",

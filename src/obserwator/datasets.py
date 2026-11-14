@@ -68,6 +68,11 @@ _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
 _FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
 # Site of IMGW-PIB's public data: the current-data API (``IMGW_API_URL``) lies below it.
 _IMGW_SITE = "https://danepubliczne.imgw.pl/"
+# Per-station synop archives of IMGW-PIB (``meteo/dobowe|terminowe/synop``): the
+# folder's period and the station number (the last three digits of its code); the
+# running year is published as monthly files of the whole country instead.
+_IMGW_STATION_FILE = re.compile(r"^(?:([0-9]{4})_)?([0-9]{4})_([0-9]{3})_s\.zip$")
+_IMGW_MONTH_FILE = re.compile(r"^([0-9]{4})_([0-9]{2})_s\.zip$")
 # Backend of IMGW-PIB's hydrological service hydro.imgw.pl (its map and station pages).
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
@@ -909,7 +914,8 @@ _UNSUPPORTED = {
 }
 # Suffix of the file name and the last year of the first folder of the
 # meteorological five-year grid (klimat 1951_1955, opad 1950_1955, synop
-# 1960_1965); from 1966 all subtypes share the 1966_1970, ... grid.
+# 1960_1965, the per-station synop archives 1966_1970); from 1966 all subtypes
+# share the 1966_1970, ... grid.
 _METEO_LAYOUT = {
     "pl.imgw.meteo_climate_daily": ("k", 1955),
     "pl.imgw.meteo_precip_daily": ("o", 1955),
@@ -1343,9 +1349,14 @@ def archive_files(
     monthly files (daily hydro before 2023, daily and hourly meteo from
     2001); for yearly archives one file per year is returned, and a
     meteorological monthly archive is returned once per folder (five-year
-    folders until 2000). ČHMÚ files cover one station: one file per station
-    and calendar year (``cz.chmi.hydro_daily``) or four files per station
-    with its whole history, one per element SRA, T, TMA, TMI
+    folders until 2000). The per-station synop archives of IMGW-PIB
+    (``pl.imgw.meteo_synop_daily``, ``pl.imgw.meteo_synop_terms``) hold one
+    station per file: one file per station and folder (five-year folders
+    until 2000), named by the station number (the last three digits of its
+    code); the running year is published as monthly files of the whole
+    country, selected by months. ČHMÚ files cover one station: one file per
+    station and calendar year (``cz.chmi.hydro_daily``) or four files per
+    station with its whole history, one per element SRA, T, TMA, TMI
     (``cz.chmi.meteo_daily``). Years are not limited by the current year;
     the result lists candidates, and whether a file is published is decided
     by the server (its listing or a 404 answer).
@@ -1353,27 +1364,33 @@ def archive_files(
     Parameters
     ----------
     dataset : str
-        Key, slug or legacy alias of one of the twelve archive datasets (all
-        but the station lists and PMAXTP).
+        Key, slug or legacy alias of an archive dataset (all but the station
+        lists and PMAXTP).
     years : YearsArg or None, optional
         Archive years (hydrological or calendar per the dataset), also as
         ranges ``"a-b"``; at least ``first_year`` of the dataset. Required
         except for ``cz.chmi.meteo_daily``, which rejects it.
     months : MonthsArg or None, optional
         Months 1-12 (for hydrological data 1 = November of the previous
-        year); None selects all months. Rejected for ČHMÚ datasets.
+        year); None selects all months. Rejected for ČHMÚ datasets. For the
+        per-station synop archives of IMGW-PIB they select the monthly files
+        of the whole country (years from 2001), and either they or
+        ``stations`` are required.
     params : iterable of {"H", "Q", "T"} or None, optional
         Parameters of ``pl.imgw.hydro_semiannual`` to keep; None keeps all
         three. Rejected for other datasets.
     stations : iterable of str or None, optional
         Station codes of the dataset's provider (duplicates are dropped).
-        Required for ČHMÚ datasets, rejected for IMGW-PIB datasets.
+        Required for ČHMÚ datasets, accepted by the per-station synop archives
+        of IMGW-PIB, rejected for other IMGW-PIB datasets.
 
     Returns
     -------
     tuple of ArchiveFile
-        IMGW-PIB archives ordered by year, then by month or parameter; ČHMÚ
-        files ordered by station code, then by year or element.
+        IMGW-PIB archives ordered by year, then by month or parameter (the
+        per-station synop archives by station, then by folder, then the
+        monthly files); ČHMÚ files ordered by station code, then by year or
+        element.
 
     Raises
     ------
@@ -1392,6 +1409,10 @@ def archive_files(
         )
     if descriptor.archive_scope == "country":
         return _country_archives(
+            descriptor, years=years, months=months, params=params, stations=stations
+        )
+    if descriptor.provider == "IMGW-PIB":
+        return _imgw_station_archives(
             descriptor, years=years, months=months, params=params, stations=stations
         )
     return _station_archives(
@@ -1622,6 +1643,120 @@ def _station_archives(
     )
 
 
+def _imgw_station_file(
+    descriptor: DatasetDescriptor, folder: str, number: str
+) -> ArchiveFile:
+    """
+    Per-station synop archive of IMGW-PIB: one station in one folder.
+
+    The file carries no station code (its name has only the station number),
+    so the archive equals the one `_archive_from_path` gives for its path; it
+    covers the whole folder (a five-year range or a year).
+    """
+    suffix = _METEO_LAYOUT[descriptor.key][0]
+    first, _, last = folder.partition("_")
+    return _archive(
+        descriptor,
+        f"{descriptor.server_dir}/{folder}/{folder}_{number}_{suffix}.zip",
+        int(first),
+        last_year=int(last or first),
+    )
+
+
+def _imgw_month_file(
+    descriptor: DatasetDescriptor, year: int, month: int
+) -> ArchiveFile:
+    """Monthly file of the whole country that stands for the running year's station files."""
+    suffix = _METEO_LAYOUT[descriptor.key][0]
+    return _archive(
+        descriptor,
+        f"{descriptor.server_dir}/{year}/{year}_{month:02d}_{suffix}.zip",
+        year,
+        month,
+    )
+
+
+def _imgw_station_archives(
+    descriptor: DatasetDescriptor,
+    *,
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    params: Iterable[Literal["H", "Q", "T"]] | None,
+    stations: Iterable[str] | None,
+) -> tuple[ArchiveFile, ...]:
+    """
+    Per-station synop archives of IMGW-PIB and the monthly files of the running year.
+
+    Stations give one file per station and folder (the station number is the
+    last three digits of the code; two codes of one number name one file);
+    months give the monthly files of the whole country of the years from 2001.
+    """
+    key = descriptor.key
+    if params is not None:
+        _parse_params(params, descriptor)
+    if years is None:
+        raise ObserwatorValidationError(
+            message("datasets.dataset_needs_option_years_years", key=key),
+            details={"option": "years", "value": None},
+        )
+    if stations is None and months is None:
+        raise ObserwatorValidationError(
+            message("datasets.station_archives_need_stations_or_months", key=key),
+            details={"option": "stations", "value": None},
+        )
+    selected_years = parse_years(years)
+    _minimum_year(selected_years, descriptor)
+    first_year = descriptor.first_year or selected_years[0]
+    first_folder_end = _METEO_LAYOUT[key][1]
+    result: dict[str, ArchiveFile] = {}
+    if stations is not None:
+        for code in _parse_stations(stations, get_provider(descriptor.provider)):
+            for year in selected_years:
+                folder = _meteo_folder(
+                    year, first_year=first_year, first_folder_end=first_folder_end
+                )
+                archive = _imgw_station_file(descriptor, folder, code[-3:])
+                result.setdefault(archive.server_path, archive)
+    if months is not None:
+        selected_months = parse_months(months)
+        recent = [year for year in selected_years if year > 2000]
+        if not recent:
+            raise ObserwatorValidationError(
+                message("datasets.monthly_station_archives_from_2001", key=key),
+                details={"option": "months", "value": list(selected_months)},
+            )
+        for year in recent:
+            for month in selected_months:
+                archive = _imgw_month_file(descriptor, year, month)
+                result.setdefault(archive.server_path, archive)
+    return tuple(result.values())
+
+
+def _imgw_station_path(
+    descriptor: DatasetDescriptor, directory: str, name: str
+) -> ArchiveFile | None:
+    """The archive of a per-station synop path, None when it is no file of the dataset."""
+    parent, _, folder = directory.rpartition("/")
+    period = _FOLDER.fullmatch(folder)
+    if parent != descriptor.server_dir or period is None:
+        return None
+    first = int(period[1])
+    first_year = descriptor.first_year or first
+    if first < first_year or folder != _meteo_folder(
+        first, first_year=first_year, first_folder_end=_METEO_LAYOUT[descriptor.key][1]
+    ):
+        return None
+    if (station := _IMGW_STATION_FILE.fullmatch(name)) is not None:
+        archive = _imgw_station_file(descriptor, folder, station[3])
+    elif (monthly := _IMGW_MONTH_FILE.fullmatch(name)) is not None and (
+        first > 2000 and 1 <= int(monthly[2]) <= 12
+    ):
+        archive = _imgw_month_file(descriptor, first, int(monthly[2]))
+    else:
+        return None
+    return archive if archive.server_path == f"{directory}/{name}" else None
+
+
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
 # daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmi.meteo_now`` is the newest of its listing.
@@ -1739,6 +1874,8 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
         return _station_file(descriptor, name)
     if descriptor.server_dir is None:
         return None
+    if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW-PIB":
+        return _imgw_station_path(descriptor, directory, name)
     if descriptor.archive_scope == "station_year":
         hydro = _CHMI_HYDRO_FILE.fullmatch(name)
         if hydro is None or directory != descriptor.server_dir:
