@@ -166,16 +166,16 @@ MESSAGES: dict[str, Text] = {
         "Kliknij mapę w granicach PMAXTP ({bounds}). Mapa nie rysuje siatki PMAXTP.",
     ),
     "stations.legend.borders": Text(
-        "Background: the borders of Poland and Czechia from Obserwator's package "
-        "(Natural Earth, public domain).",
-        "Tło: granice Polski i Czech z pakietu Obserwatora (Natural Earth, domena "
-        "publiczna).",
+        "Background: the state borders of Poland (PRG, GUGiK) and Czechia (RÚIAN, "
+        "ČÚZK) from Obserwator's package.",
+        "Tło: granice państwowe Polski (PRG, GUGiK) i Czech (RÚIAN, ČÚZK) z pakietu "
+        "Obserwatora.",
     ),
     "stations.legend.basemap_failed": Text(
-        "The basemap did not load: the background is the borders of Poland and "
-        "Czechia from Obserwator's package (Natural Earth).",
-        "Podkład mapy się nie wczytał: tło to granice Polski i Czech z pakietu "
-        "Obserwatora (Natural Earth).",
+        "The basemap did not load: the background is the state borders of Poland "
+        "(PRG, GUGiK) and Czechia (RÚIAN, ČÚZK) from Obserwator's package.",
+        "Podkład mapy się nie wczytał: tło to granice państwowe Polski (PRG, GUGiK) i "
+        "Czech (RÚIAN, ČÚZK) z pakietu Obserwatora.",
     ),
     # The snapshots of api/current, named where one fails
     "stations.source.states": Text(

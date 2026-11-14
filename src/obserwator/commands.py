@@ -41,6 +41,7 @@ from obserwator._version import __version__
 from obserwator.attribution import (
     Attribution,
     attribution,
+    border_origin,
     carried,
     dataset_origin,
     provider_origin,
@@ -2974,7 +2975,8 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     """
     The lines of the built (or the equal current) catalog, derived from what it holds.
 
-    The provider's lines, and hydro.imgw.pl's when a station was located from there
+    The provider's lines, those of the packaged border its locations were checked
+    against (ADR-018), and hydro.imgw.pl's when a station was located from there
     (``location_source`` "static"); the strings the document was written with are
     not trusted, since a catalog written before ECO-065 holds retired lines.
     """
@@ -2982,7 +2984,9 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     if report.version is None:
         return Attribution()
     document = json.loads(report.version.read_bytes())
-    lines = attribution(provider_origin(report.provider))
+    lines = attribution(
+        provider_origin(report.provider), border_origin(report.provider)
+    )
     if any(
         (feature.get("properties") or {}).get("location_source") == "static"
         for feature in document.get("features", ())
@@ -2995,17 +2999,23 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     """
     Lines of the providers of the stations found.
 
-    A store search locates IMGW-PIB stations by the current catalog, whose
-    ``static`` locations come from hydro.imgw.pl; those add its lines.
+    A store search reads the current catalogs, whose locations were checked
+    against the packaged borders (ADR-018): their lines join those of the
+    providers. The ``static`` locations of IMGW-PIB stations in the catalog come
+    from hydro.imgw.pl; those add its lines.
     """
     entries = cast(Sequence[StationListEntry], result)
-    lines = attribution(*dict.fromkeys(provider_origin(e.provider) for e in entries))
+    owners = dict.fromkeys(entry.provider for entry in entries)
+    lines = attribution(*(provider_origin(owner) for owner in owners))
+    if options.get("source") != "store":
+        return lines
+    lines |= attribution(*(border_origin(owner) for owner in owners))
     located = {
         entry.station_code
         for entry in entries
         if entry.provider == "IMGW-PIB" and entry.latitude is not None
     }
-    if options.get("source") != "store" or not located:
+    if not located:
         return lines
     try:
         features = _store.read_catalog(root=options["root"], provider="IMGW-PIB")

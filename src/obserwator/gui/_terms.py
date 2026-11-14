@@ -21,8 +21,9 @@ from obserwator.messages import message
 
 _LOG = logging.getLogger(__name__)
 
-BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmi")
-"""The blocks of Obserwator's data sources; ``osm`` joins them with a basemap."""
+BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmi", "gugik", "cuzk")
+"""The blocks of Obserwator's data sources, the packaged borders of PRG (GUGiK) and
+RÚIAN (ČÚZK) among them (ADR-018); ``osm`` joins them with a basemap."""
 KNOWN_BLOCKS: frozenset[str] = frozenset(
     {
         "imgw",
@@ -35,10 +36,9 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "isric",
         "wody-polskie",
         "osm",
-        "esri",
     }
 )
-"""The blocks a GUI may list (Nogat's ``BLOCKS``)."""
+"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 0.6.2)."""
 PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "service_name",

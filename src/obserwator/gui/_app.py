@@ -38,10 +38,12 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
+from obserwator._borders import CZECHIA, POLAND
 from obserwator.attribution import (
     ORIGINS,
     Attribution,
     attribution,
+    border_origin,
     dataset_origin,
     provider_origin,
 )
@@ -82,16 +84,14 @@ from obserwator.gui._terms import terms_page
 from obserwator.gui._traffic import Traffic, TrafficState
 from obserwator.messages import LANGS, Lang, message
 from obserwator.messages.gui import MESSAGES as TEXTS
+from obserwator.nogat_logging import AccessLog, ServerLog
 from obserwator.store.types import StationFeature
 
 LOG = logging.getLogger(__name__)
 WEB = Path(__file__).resolve().parent / "web"
 DATA = Path(obserwator.__file__).resolve().parent / "_data"
-BORDERS = {
-    "poland_border_wgs84.geojson": DATA / "poland_border_wgs84.geojson",
-    "czechia_border_wgs84.geojson": DATA / "czechia_border_wgs84.geojson",
-}
-"""The packaged borders, the map's background without a basemap (D9)."""
+BORDERS = {name: DATA / name for name in (POLAND, CZECHIA)}
+"""The packaged borders, the map's background without a basemap (D9, ADR-018)."""
 SESSION_SCHEMA = "obserwator-gui-session/1"
 HANDOFF_SCHEMA = "nogat-handoff/1"
 SERIES_SCHEMA = "hydrolog-series/1"
@@ -112,6 +112,12 @@ SEXT = {
     "parquet": "application/vnd.apache.parquet",
     "geojson": "application/geo+json",
 }
+QUIET = (
+    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/theme-init\.js$|^/regulamin\.html$"
+)
+"""The static content of the access log (Nogat DEV-12.5), paths at the origin's root: the
+page's files, the packaged borders, the guide and the regulamin, the same for every
+client, are logged only when answered with 400 or more."""
 
 Handler = Callable[[Request], Awaitable[Response]]
 StationKind = Literal["hydro", "meteo"]
@@ -206,13 +212,17 @@ def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
 def _station_origins(
     provider: str, properties: Mapping[str, Any], *, location: bool
 ) -> Attribution:
-    """The lines of what is shown of a station: its provider, hydro.imgw.pl's locations."""
+    """
+    The lines of what is shown of a station from its catalog.
+
+    Its provider's; with its location, those of the packaged border the catalog
+    checked it against (ADR-018) and hydro.imgw.pl's for a location taken from there.
+    """
     lines = attribution(provider_origin(provider))
-    if (
-        location
-        and provider == "IMGW-PIB"
-        and properties.get("location_source") == "static"
-    ):
+    if not location:
+        return lines
+    lines = lines | attribution(border_origin(provider))
+    if provider == "IMGW-PIB" and properties.get("location_source") == "static":
         lines = lines | attribution("imgw_hydro")
     return lines
 
@@ -1344,13 +1354,18 @@ class SecurityHeaders:
 # --- the app --------------------------------------------------------------------------------
 
 
-def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
+def build_app(
+    config: GuiConfig,
+    *,
+    state: GuiState | None = None,
+    log: ServerLog | None = None,
+) -> Starlette:
     """
     The app for resolved settings: routes, static files, middleware and lifespan.
 
-    When the GUI's own directory and the data root overlap (`GuiConfig.writes_state`),
-    the app writes none of its files (D7): no statistics, no access log, „Zgłoś uwagę”
-    off; one warning says so.
+    When the GUI's own directory and the data root overlap
+    (`GuiConfig.writes_own_files`), the app writes none of its files (D7): no
+    statistics, „Zgłoś uwagę” off; one warning says so.
 
     Parameters
     ----------
@@ -1358,6 +1373,12 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
         The settings.
     state : GuiState or None, optional
         Prepared parts (tests give recorded live sources); built from ``config`` by default.
+    log : ServerLog or None, optional
+        Where the access log goes (Nogat DEV-12.4 to DEV-12.9): with it the outermost
+        middleware is `AccessLog`, outside the rate limit, one record per request but
+        the static content of `QUIET` answered below 400. None (default) logs no
+        request, as a host with its own access log mounts the app; ``obserwator gui
+        serve`` gives one.
 
     Returns
     -------
@@ -1365,13 +1386,13 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
         The app.
     """
     if state is None:
-        writes = config.writes_state
+        writes = config.writes_own_files
         if not writes:
             LOG.warning(
                 "%s",
                 message(
-                    "gui.server.state_in_root",
-                    state_dir=str(config.state_dir),
+                    "gui.server.gui_dir_in_root",
+                    gui_dir=str(config.gui_dir),
                     root=str(config.root),
                 ),
             )
@@ -1384,10 +1405,10 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
             traffic=TrafficState(
                 limit=config.request_limit,
                 window=config.request_window,
-                state_dir=config.state_dir,
+                directory=config.gui_dir,
                 writes=writes,
             ),
-            feedback=Feedback(config.state_dir / "feedback.jsonl", writes=writes),
+            feedback=Feedback(config.gui_dir / "feedback.jsonl", writes=writes),
             terms=terms_page(config, WEB),
         )
 
@@ -1425,14 +1446,13 @@ def build_app(config: GuiConfig, *, state: GuiState | None = None) -> Starlette:
         Route("/data/{name}", border),
         Mount("/", StaticFiles(directory=WEB, html=True)),
     ]
-    app = Starlette(
-        routes=routes,
-        middleware=[
-            Middleware(Traffic, state=state.traffic),
-            Middleware(SecurityHeaders, policy=csp(config)),
-            Middleware(GZipMiddleware, minimum_size=1024),
-        ],
-        lifespan=lifespan,
-    )
+    middleware = [
+        Middleware(Traffic, state=state.traffic),
+        Middleware(SecurityHeaders, policy=csp(config)),
+        Middleware(GZipMiddleware, minimum_size=1024),
+    ]
+    if log is not None:
+        middleware.insert(0, Middleware(AccessLog, log=log, quiet=QUIET))
+    app = Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
     app.state.gui = state
     return app

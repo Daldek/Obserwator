@@ -18,13 +18,13 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
-from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Literal
 
 import httpx
 
+from obserwator._borders import CZECHIA, POLAND, PROVIDERS, border
 from obserwator._parsing.chmi import (
     MetadataTable,
     read_metadata,
@@ -33,7 +33,12 @@ from obserwator._parsing.chmi import (
 )
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
-from obserwator.attribution import Attribution, attribution, provider_origin
+from obserwator.attribution import (
+    Attribution,
+    attribution,
+    border_origin,
+    provider_origin,
+)
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     _CATALOG_SOURCES,
@@ -109,15 +114,15 @@ _NESTED_CATALOGS: Mapping[str, str] = MappingProxyType(
     }
 )
 STATIC_LOCATIONS = "hydro_stations_locations.csv"
-BORDER_RESOURCE = "poland_border_wgs84.geojson"
-CZECHIA_BORDER_RESOURCE = "czechia_border_wgs84.geojson"
-# Country outline of each provider's station locations (Natural Earth 1:10m Admin 0).
-_BORDERS: Mapping[str, str] = MappingProxyType(
-    {"IMGW-PIB": BORDER_RESOURCE, "CHMI": CZECHIA_BORDER_RESOURCE}
-)
-# Natural Earth 1:10m generalises the outline by up to ~1 km: every real IMGW station it
-# misplaced outside Poland (Odra/Bug gauges, coast, Tatra) lay within 968 m of the line.
-BORDER_TOLERANCE_M = 1500.0
+# A location is in its provider's country when it lies inside the packaged border
+# (`obserwator._borders`, ADR-018) or closer to it than the border's own error, its
+# simplification tolerance (50 m), plus the location's uncertainty (`_uncertainty_m`, at
+# least 150 m): a gauge published on a border river is never called foreign for a line we
+# drew, and the point of a station abroad is. Against the target catalogs of 2026-11-13,
+# every real IMGW-PIB gauge outside the outline lay within 43 m of it (Bogatynia on the
+# Miedzianka; on the Nysa Łużycka, Bug and Olza within 20 m), the ČHMÚ gauges on the
+# border rivers within 51 m and Ehrendorf in Austria 158 m beyond it, while the next
+# foreign point lay 1,084 m away (Jarnołtówek in Poland).
 LICENSE_NOTICE = "license_terms"
 MIN_UNCERTAINTY_M = 150.0
 _METRES_PER_DEGREE = 111_320.0
@@ -237,16 +242,12 @@ def _cancelled(cancel: Cancel | None) -> bool:
 # --------------------------------------------------------------------------
 
 
-def _resource(name: str) -> bytes:
-    return files("obserwator").joinpath("_data", name).read_bytes()
-
-
 class _Border:
     """Even-odd point-in-polygon over latitude bands, plus distance to the outline; stdlib only."""
 
     _BANDS = 512
 
-    def __init__(self, rings: list[list[list[float]]]) -> None:
+    def __init__(self, rings: Iterable[Sequence[Sequence[float]]]) -> None:
         # Horizontal edges never flip the crossing test, but they count for ``near``.
         edges = [
             (x1, y1, x2, y2)
@@ -309,20 +310,11 @@ class _Border:
         return False
 
 
-@lru_cache(maxsize=len(_BORDERS))
-def _border(resource: str) -> _Border:
-    document = json.loads(_resource(resource))
-    rings: list[list[list[float]]] = []
-    for feature in document["features"]:
-        geometry = feature["geometry"]
-        polygons = (
-            [geometry["coordinates"]]
-            if geometry["type"] == "Polygon"
-            else geometry["coordinates"]
-        )
-        for polygon in polygons:
-            rings.extend(polygon)
-    return _Border(rings)
+@lru_cache(maxsize=len(PROVIDERS))
+def _border(resource: str) -> tuple[_Border, float]:
+    """The outline of a packaged border and its error in metres (`obserwator._borders`)."""
+    packaged = border(resource)
+    return _Border(packaged.rings), packaged.tolerance_m
 
 
 def _number(value: object) -> tuple[float, int] | None:
@@ -350,24 +342,27 @@ def _uncertainty_m(lat: float, lon_decimals: int, lat_decimals: int) -> float:
 
 
 def _evaluate(
-    lon_raw: object, lat_raw: object, *, border: str = BORDER_RESOURCE
+    lon_raw: object, lat_raw: object, *, border: str = POLAND
 ) -> tuple[tuple[float, float], float] | MissingReason:
     """Point and uncertainty of a published location, or why it is rejected.
 
-    ``border`` names the country outline resource (Poland by default).
+    ``border`` names the packaged border of the provider's country (Poland by
+    default); a point outside it farther than the border's error plus the point's
+    uncertainty is ``outside_country``.
     """
     lon, lat = _number(lon_raw), _number(lat_raw)
     if lon is None or lat is None:
         return "none"
     if lon[0] == 0 and lat[0] == 0:
         return "zero"
-    outline = _border(border)
+    uncertainty = _uncertainty_m(lat[0], lon[1], lat[1])
+    outline, error_m = _border(border)
     if not (
         outline.contains(lon[0], lat[0])
-        or outline.near(lon[0], lat[0], BORDER_TOLERANCE_M)
+        or outline.near(lon[0], lat[0], error_m + uncertainty)
     ):
         return "outside_country"
-    return (lon[0], lat[0]), _uncertainty_m(lat[0], lon[1], lat[1])
+    return (lon[0], lat[0]), uncertainty
 
 
 def _distance_m(first: tuple[float, float], second: tuple[float, float]) -> float:
@@ -812,7 +807,7 @@ def _feature(
     candidates: list[_Candidate],
     rejections: list[str],
 ) -> tuple[dict[str, Any], str | None]:
-    located = _locate(code, candidates, border=BORDER_RESOURCE, rejections=rejections)
+    located = _locate(code, candidates, border=POLAND, rejections=rejections)
     geometry, location_source, uncertainty, reason = _placement(located, candidates)
     river = (api or {}).get("rzeka") or (listed.river if listed else None)
     api_row = api or {}
@@ -1175,16 +1170,14 @@ def _chmi_feature(
     if code in user:
         candidates.append(("user", user[code][0], user[code][1]))
         owners.append(None)
-    located = _locate(
-        code, candidates, border=CZECHIA_BORDER_RESOURCE, rejections=rejections
-    )
+    located = _locate(code, candidates, border=CZECHIA, rejections=rejections)
     geometry, location_source, uncertainty, reason = _placement(located, candidates)
     conflict = False
     elevation: int | float | None = None
     if not isinstance(located, str):
         index, point, own = located
         for _, later_lon, later_lat in candidates[index + 1 :]:
-            verdict = _evaluate(later_lon, later_lat, border=CZECHIA_BORDER_RESOURCE)
+            verdict = _evaluate(later_lon, later_lat, border=CZECHIA)
             if not isinstance(verdict, str) and _distance_m(point, verdict[0]) > max(
                 own, verdict[1]
             ):
@@ -1393,14 +1386,16 @@ def _catalog_lines(
     provider: ProviderDescriptor, used: Mapping[str, int]
 ) -> Attribution:
     """
-    The lines of a provider's catalog (ADR-012).
+    The lines of a provider's catalog (ADR-012, ADR-018).
 
     The catalog is a processed form of the provider's station lists, so it
     carries the processed lines (under CC BY 4.0 the provider's mark of
-    changes, spec 2026-10-18 §7.5, §8); a catalog that took any location from
-    the static file, written from the hydro.imgw.pl map, adds its lines.
+    changes, spec 2026-10-18 §7.5, §8), and its locations were checked against
+    the packaged border of the provider's country, so it carries that border's
+    line too (G of PRG, Z of RÚIAN); a catalog that took any location from the
+    static file, written from the hydro.imgw.pl map, adds its lines.
     """
-    lines = attribution(provider_origin(provider.id))
+    lines = attribution(provider_origin(provider.id), border_origin(provider.id))
     if used.get("static"):
         lines |= attribution("imgw_hydro")
     return lines

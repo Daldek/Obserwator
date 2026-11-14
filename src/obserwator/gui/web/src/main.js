@@ -8,17 +8,18 @@
 // data in one compact strip across the page under the map and both panels (attribution.js
 // `Sources`, Nogat DEV-20.5; the layout's `foot`): the union of the lines of what the list
 // and the map show and of what the right panel shows (the station's cards, the stations'
-// files, PMAXTP's tables), with the basemap's credit after them; never one per card. On a
-// phone the sheets stop above it. A first visit opens the welcome window with every line
-// (ui/welcome.js). A public deployment adds „Regulamin” and the service's statement under
-// the strip. „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's
-// parameters.
+// files, PMAXTP's tables), with the lines of the packaged borders while they are the map's
+// background (GUGiK's and ČÚZK's, ADR-018) and the basemap's credit after them; never one
+// per card. On a phone the sheets stop above it. A first visit opens the welcome window
+// with every line (ui/welcome.js). A public deployment adds „Regulamin” and the service's
+// statement under the strip. „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and
+// the address's parameters.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
 
 import { api } from "./api.js";
-import { PublicNotice, Sources, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
+import { BORDER_SOURCES, PublicNotice, Sources, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
 import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
@@ -78,9 +79,11 @@ function App({ lang: language }) {
   const [method, setMethod] = useState(start.method);
   const current = useCurrent(view === "current");
   const pmaxtp = usePmaxtp(pick, method);
-  // The lines of what the station panel shows (panel.js `onLines`) and the basemap's credit
-  // (map.js `onCredit`)
+  // The lines of what the station panel shows (panel.js `onLines`), whether the packaged
+  // borders are the map's background and the basemap's credit (map.js `onBorders`,
+  // `onCredit`)
   const [panelLines, setPanelLines] = useState(null);
+  const [borders, setBorders] = useState(false);
   const [credit, setCredit] = useState(null);
 
   useEffect(() => {
@@ -116,9 +119,11 @@ function App({ lang: language }) {
   const station = selected ? byCode.get(selected) || null : null;
   const texts = useTexts();
   const listed = useMemo(() => compose(texts, catalogSources(drawn)), [texts, drawn]);
+  const background = useMemo(() => (borders ? compose(texts, BORDER_SOURCES) : null), [texts, borders]);
   const pmaxtpView = view === "pmaxtp";
-  // The view's lines: what the list and the map show and what the right panel shows
-  const shown = pmaxtpView ? [pmaxtp.doc] : [listed, view === "current" ? current.doc : null, panelLines];
+  // The view's lines: what the list and the map show, the map's background and what the
+  // right panel shows
+  const shown = pmaxtpView ? [pmaxtp.doc, background] : [listed, view === "current" ? current.doc : null, background, panelLines];
   const lines = merge(texts, shown);
   const viewItems = views();
   const viewName = viewItems.find((item) => item.value === view).label;
@@ -184,6 +189,7 @@ function App({ lang: language }) {
       current=${current}
       pick=${pick}
       pickFly=${pickFly}
+      onBorders=${setBorders}
       onCredit=${setCredit}
       session=${session}
       onSelect=${(code) => select(code)}

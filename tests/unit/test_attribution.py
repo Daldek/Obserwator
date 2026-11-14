@@ -1,12 +1,13 @@
 """The attribution lines and the terms lines of provider data (ADR-012, Nogat DEV §20).
 
-The texts are a legal contract: the IMGW-PIB terms, the PMAXTP terms and CC BY 4.0
-of ČHMÚ prescribe them, so one test pins them byte for byte against the table of
-Nogat DEV §20; every other test takes them from `obserwator.attribution`. One test
-per surface family proves that a product with provider data carries them: CSV,
+The texts are a legal contract: the IMGW-PIB terms, the PMAXTP terms, CC BY 4.0 of ČHMÚ
+and ČÚZK and GUGiK's conditions of reuse prescribe them, so one test pins them byte for
+byte against the table of Nogat DEV §20 (G and Z with the products and days of the
+packaged borders, ADR-018); every other test takes them from `obserwator.attribution`.
+One test per surface family proves that a product with provider data carries them: CSV,
 JSONL, Parquet, the JSON documents of the store, the envelope, REST, MCP, the
-``ATTRIBUTION.txt`` of a plain write and the human CLI output. Offline: the
-fixture store and recorded answers only.
+``ATTRIBUTION.txt`` of a plain write and the human CLI output. Offline: the fixture store
+and recorded answers only.
 """
 
 import csv
@@ -50,6 +51,14 @@ ARCHIVES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
 POINT = {"latitude": 52.23, "longitude": 21.01}
 IMGW = attribution("imgw")
 CHMI = attribution("chmi")
+DATA = Path(__file__).parents[2] / "src" / "obserwator" / "_data"
+
+
+def border_properties(name: str) -> dict[str, str]:
+    """The properties of a packaged border (``scripts/build_borders.py``)."""
+    document = json.loads((DATA / name).read_text(encoding="utf-8"))
+    properties: dict[str, str] = document["features"][0]["properties"]
+    return properties
 
 
 def series_of(root: Path, dataset: str) -> Path:
@@ -69,13 +78,16 @@ def table_of(lines) -> list[dict[str, str]]:
 # --------------------------------------------------------------------------
 
 
-def test_the_ten_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
+def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
     imgw = "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy"
     imgw_of = (
         "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
         "Badawczego"
     )
     pmaxtp = "https://klimat.imgw.pl/opady-maksymalne"
+    licence = "https://creativecommons.org/licenses/by/4.0/"
+    prg = border_properties("poland_border_wgs84.geojson")
+    ruian = border_properties("czechia_border_wgs84.geojson")
     table = {
         "S": f"Źródłem pochodzenia danych jest {imgw}",
         "P": f"{imgw_of} zostały przetworzone",
@@ -88,10 +100,18 @@ def test_the_ten_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
         ),
         "C": (
             "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), "
-            "https://opendata.chmi.cz, licencja CC BY 4.0 "
-            "(https://creativecommons.org/licenses/by/4.0/)"
+            f"https://opendata.chmi.cz, licencja CC BY 4.0 ({licence})"
         ),
         "CP": "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)",
+        # <period> the year of creation, <date> the day of the download of the file
+        "G": (
+            "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono "
+            f"{prg['created'][:4]}, pozyskano {prg['acquired']}); dane przetworzone"
+        ),
+        "Z": (
+            "Źródło: Český úřad zeměměřický a katastrální (ČÚZK), RÚIAN (pozyskano "
+            f"{ruian['acquired']}), licencja CC BY 4.0 ({licence}); dane przetworzone"
+        ),
         "RD": "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations",
         "RH": (
             "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
@@ -101,13 +121,13 @@ def test_the_ten_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
 
     every = attribution(*ORIGINS)
 
-    marks = ("S", "P", "PS", "PP", "M", "C", "CP")
+    marks = ("S", "P", "PS", "PP", "M", "C", "CP", "G", "Z")
     assert every.attribution == tuple(table[mark] for mark in marks)
     assert every.terms_notice == tuple(table[mark] for mark in ("RD", "RH", "RK"))
 
 
 def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs():
-    s, p, ps, pp, m, c, cp = attribution(*ORIGINS).attribution
+    s, p, ps, pp, m, c, cp, g, z = attribution(*ORIGINS).attribution
     rd, rh, rk = attribution(*ORIGINS).terms_notice
 
     assert [
@@ -118,6 +138,9 @@ def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs(
         (Attribution((s,), (rh,)), Attribution((s, p), (rh,))),
         (Attribution((ps, m), (rk,)), Attribution((ps, pp, m), (rk,))),
         (Attribution((c,)), Attribution((c, cp))),
+        # The packaged borders exist only processed: G and Z say so themselves
+        (Attribution((g,)), Attribution((g,))),
+        (Attribution((z,)), Attribution((z,))),
     ]
     assert attribution() == Attribution() and not attribution()
 
@@ -125,7 +148,9 @@ def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs(
 def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
     every = attribution(*ORIGINS)
     reversed_merge = (
-        attribution("chmi")
+        attribution("cuzk")
+        | attribution("gugik")
+        | attribution("chmi")
         | attribution("pmaxtp")
         | attribution("imgw_hydro")
         | attribution("imgw")
@@ -262,14 +287,15 @@ def test_json_documents_of_the_store_carry_the_lines_at_the_top(
     documents = {
         "series.json IMGW-PIB": (load(series_of(fixture_root, DAILY)), IMGW),
         "series.json ČHMÚ": (load(series_of(fixture_root, CHMI_HYDRO)), CHMI),
-        # Built without the static locations: no hydro.imgw.pl lines.
+        # Built without the static locations: no hydro.imgw.pl lines; the locations
+        # checked against the packaged borders (ADR-018).
         "stations.geojson IMGW-PIB": (
             load(next(catalogs.glob("*_*/stations.geojson"))),
-            IMGW,
+            IMGW | attribution("gugik"),
         ),
         "stations.geojson ČHMÚ": (
             load(next(catalogs.glob("chmi_stations/*/stations.geojson"))),
-            CHMI,
+            CHMI | attribution("cuzk"),
         ),
         "cell.json": (load(cell), attribution("pmaxtp")),
     }

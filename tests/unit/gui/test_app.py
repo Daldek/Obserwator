@@ -135,7 +135,7 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
         attribution("chmi").attribution
     )
     origins = session["attribution"]["origins"]
-    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmi"}
+    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"}
     assert session["basemap"] is None
     assert session["terms"] is None
     assert session["operator_email"] is None
@@ -227,7 +227,8 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
     }
     assert by_code[METEO_CHMI]["provider"] == "CHMI"
     assert by_code[METEO]["meteo_kind"] == "precipitation"
-    lines = attribution("imgw", "chmi")
+    # The catalogs' lines: the providers' and those of the packaged borders (ADR-018)
+    lines = attribution("imgw", "chmi", "gugik", "cuzk")
     assert layer["attribution"] == list(lines.attribution)
     assert layer["terms_notice"] == list(lines.terms_notice)
     again = client.get(
@@ -261,7 +262,7 @@ def test_a_station_answers_its_properties_series_and_lines(client):
         "accumulated": 0,
         "gaps": 0,
     }
-    assert hydro["attribution"] == list(attribution("imgw").attribution)
+    assert hydro["attribution"] == list(attribution("imgw", "gugik").attribution)
     assert chmi["properties"]["thresholds"]["Q"]["q50"] == 96
     assert chmi["attribution_parts"]["series"]["attribution"] == list(
         attribution("chmi").attribution
@@ -938,7 +939,7 @@ def test_every_answer_carries_the_security_headers(client):
             assert answer.headers[name] == value, (answer.url, name)
         assert csp(answer) == OWN_ORIGIN_ONLY, answer.url
         assert answer.headers["cache-control"] in ("no-cache", "no-store")
-        assert answer.headers["x-request-id"]
+        assert "x-request-id" not in answer.headers  # the request id stays in the log
 
 
 def test_the_basemap_origin_is_the_only_remote_one_the_page_may_reach(make_client):
@@ -1056,7 +1057,7 @@ def test_the_gui_never_writes_under_the_root(
     make_client, fixture_root, hydrolog, tmp_path
 ):
     before = files_of(fixture_root)
-    client = make_client(fixture_root, hydrolog=hydrolog, state_dir=tmp_path / "state")
+    client = make_client(fixture_root, hydrolog=hydrolog, gui_dir=tmp_path / "state")
 
     exercise(client)
     client.post("/api/feedback", json=REPORT, headers=SAME_SITE)
@@ -1065,26 +1066,25 @@ def test_the_gui_never_writes_under_the_root(
     assert files_of(fixture_root) == before
     assert sorted(path.name for path in (tmp_path / "state").iterdir()) == [
         "feedback.jsonl",
-        "logs",
         "stats.jsonl",
     ]
 
 
-@pytest.mark.parametrize("layout", ["same", "state_in_root", "root_in_state"])
+@pytest.mark.parametrize("layout", ["same", "gui_dir_in_root", "root_in_gui_dir"])
 def test_the_gui_writes_none_of_its_files_where_they_would_be_under_the_root(
     make_client, fixture_root, tmp_path, caplog, layout
 ):
     if layout == "same":
-        root = state_dir = tmp_path / "obserwator"
-    elif layout == "state_in_root":
-        root, state_dir = tmp_path / "obserwator", tmp_path / "obserwator" / "gui"
+        root = gui_dir = tmp_path / "obserwator"
+    elif layout == "gui_dir_in_root":
+        root, gui_dir = tmp_path / "obserwator", tmp_path / "obserwator" / "gui"
     else:
-        root, state_dir = tmp_path / "obserwator" / "root", tmp_path / "obserwator"
+        root, gui_dir = tmp_path / "obserwator" / "root", tmp_path / "obserwator"
     shutil.copytree(fixture_root, root)
     before = files_of(tmp_path)
     caplog.set_level(logging.WARNING, logger="obserwator.gui._app")
 
-    client = make_client(root, state_dir=state_dir, headers=EN)
+    client = make_client(root, gui_dir=gui_dir, headers=EN)
     exercise(client)
     report = client.post("/api/feedback", json=REPORT, headers=SAME_SITE)
     client.__exit__(None, None, None)
@@ -1098,7 +1098,7 @@ def test_the_gui_writes_none_of_its_files_where_they_would_be_under_the_root(
         if record.name.startswith("obserwator.gui")
     ]
     assert warnings == [
-        message("gui.server.state_in_root", state_dir=str(state_dir), root=str(root))
+        message("gui.server.gui_dir_in_root", gui_dir=str(gui_dir), root=str(root))
     ]
 
 

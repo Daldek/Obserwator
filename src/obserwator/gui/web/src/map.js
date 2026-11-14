@@ -4,8 +4,8 @@
 // (`basemap` of api/session: a TileJSON, OpenFreeMap's by default) drawn in the GUI's own
 // grey style, place names in the packaged glyphs, in the page's language where the tiles
 // have it (Polish by default, `name:pl`); without a basemap, or when its tiles do not load,
-// the borders of Poland and Czechia from Obserwator's package (data/*.geojson, Natural
-// Earth) are the background.
+// the state borders of Poland and Czechia from Obserwator's package (data/*.geojson: PRG of
+// GUGiK and RÚIAN of ČÚZK, ADR-018) are the background.
 //
 // The three views of main.js share it, each with only its own layer:
 // - „Stacje”: every located station of the catalogs in hydro.imgw.pl's symbols
@@ -22,7 +22,8 @@
 // Colours come from css/map.css (tokens), read again when the theme changes.
 //
 // The basemap's credit goes to the view's one strip under the map and the panels
-// (`onCredit`, main.js), with the providers' lines (Nogat DEV-20.5). It never folds:
+// (`onCredit`, main.js), with the providers' lines (Nogat DEV-20.5); while the borders are
+// the background, the strip carries their lines instead (`onBorders`). It never folds:
 // MapLibre's own attribution control, which collapses after the first drag, is left out.
 // The zoom buttons are the page's own, so their names follow the page's language. The
 // map's element keeps the MapLibre map as `maplibre`, for a test or a console asking what
@@ -393,16 +394,18 @@ function repaintLayers(map, colors) {
  *   fly: {code: string, n: number}|null, view: "stations"|"current"|"pmaxtp",
  *   current: {doc: object|null, error: Error|null, loading: boolean},
  *   pick: {lat: number, lon: number}|null, pickFly: {n: number}|null,
- *   onCredit: (credit: string|null) => void, session: object|null,
- *   onSelect: (code: string) => void, onPick: (point: {lat: number, lon: number}) => void}} props
+ *   onBorders: (drawn: boolean) => void, onCredit: (credit: string|null) => void,
+ *   session: object|null, onSelect: (code: string) => void,
+ *   onPick: (point: {lat: number, lon: number}) => void}} props
  *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
  *   the selected one, a request to fly to a station, the view, the current measurements
- *   (current.js), the point picked for PMAXTP and a request to fly to it, where the
- *   basemap's credit goes while the basemap is drawn, api/session (null until it answers:
- *   its `basemap`), the selection's and the pick's handlers
+ *   (current.js), the point picked for PMAXTP and a request to fly to it, whether the
+ *   packaged borders are the background, where the basemap's credit goes while the basemap
+ *   is drawn, api/session (null until it answers: its `basemap`), the selection's and the
+ *   pick's handlers
  * @returns {object} the map with its legend and its zoom buttons
  */
-export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onCredit, session, onSelect, onPick }) {
+export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onBorders, onCredit, session, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
@@ -627,6 +630,8 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   }
   const credit = background === "basemap" && basemap && basemap.attribution ? t("stations.map.basemap_credit", { credit: basemap.attribution }) : null;
   useEffect(() => onCredit(credit), [credit]);
+  const bordersDrawn = background === "borders" || background === "failed";
+  useEffect(() => onBorders(bordersDrawn), [bordersDrawn]);
   return html`<div class="map-wrap">
     <div class="map-stage">
       <div class="map" ref=${box}></div>
