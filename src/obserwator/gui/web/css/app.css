@@ -207,6 +207,11 @@ html[data-host="nogat"] .main { grid-row: 1; }
 .view-panel.right { grid-column: 3; border-left: 1px solid var(--line); }
 .view-panel-body { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-3) 14px var(--space-6); scrollbar-gutter: stable; }
 .view-panel.left .view-panel-body { display: flex; flex-direction: column; padding-bottom: var(--space-3); }
+/* The bottom of a panel under its scrolling body: „Regulamin” of a public deployment, a small
+   quiet link at the bottom of the left panel (src/attribution.js TermsLink; Nogat DEV-15.7) */
+.panel-foot { flex: none; padding: 4px 14px 6px; border-top: 1px solid var(--line); font-size: var(--text-xs); line-height: 1.35; }
+.panel-foot .terms-link { color: var(--text-3); text-decoration: underline; text-decoration-color: var(--line-2); }
+.panel-foot .terms-link:hover { color: var(--text-2); }
 .panel-head {
   display: flex; align-items: center; gap: var(--space-2);
   min-height: 46px; padding: 0 var(--space-2) 0 14px;
@@ -424,9 +429,8 @@ pre.code .arg { display: inline-block; max-width: 100%; vertical-align: top; }
 
 /* ---------- The foot of the view across its width, under the map and both panels (after
    Hydrograf's #view-foot): the view's one strip of provider lines, the kit's <nogat-sources>
-   (its own 12 px muted text, Nogat DEV-20.5) with the basemap's credit run on after it, and
-   „Regulamin” with the statement of a public deployment (src/attribution.js PublicNotice;
-   Nogat DEV-15.7, DEV-15.8). On a phone the sheets stop above it (--view-foot-h) ---------- */
+   (its own 12 px muted text, Nogat DEV-20.5) with the basemap's credit run on after it. On a
+   phone the sheets stop above it (--view-foot-h) ---------- */
 .view-foot { grid-row: 2; grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--line); background: var(--surface); }
 .view-sources {
   padding: 4px 12px 5px;
@@ -435,10 +439,6 @@ pre.code .arg { display: inline-block; max-width: 100%; vertical-align: top; }
 .view-sources nogat-sources:not([hidden]),
 .view-sources .nogat-sources-strip { display: inline; }
 .view-sources nogat-sources:not([hidden]) + .map-basemap::before { content: " · "; }
-.public-notice { margin: 0; padding: 0 12px 5px; font-size: 11px; line-height: 1.35; color: var(--text-3); }
-.view-foot > .public-notice:first-child { padding-top: 4px; }
-.public-notice .terms-link { margin-right: var(--space-2); color: var(--text-2); font-weight: var(--weight-bold); text-decoration: underline; text-decoration-color: var(--line-2); }
-.public-notice .terms-link:hover { color: var(--text); }
 /* The welcome window of a first visit (src/ui/welcome.js): a .modal with the kit's sources */
 .welcome .intro { margin: 0 0 var(--space-3); color: var(--text-2); }
 
@@ -546,8 +546,6 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
   .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .view-foot { flex: none; max-height: 34%; overflow-y: auto; }
   .view-sources { padding: 4px 8px 5px; }
-  .public-notice { padding: 0 8px 5px; }
-  .public-notice { font-size: 10.5px; line-height: 1.3; }
 }
 /* A narrow phone: the mark alone names the tool, so every action of the bar fits */
 @media (max-width: 430px) {

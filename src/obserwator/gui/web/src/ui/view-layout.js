@@ -1,14 +1,15 @@
 // The layout of the view (Nogat design/README.md, Layout; after Hydrolog's GUI,
 // src/ui/view-layout.js): „Stacje” on the left, the map in the centre, „Stacja” on the right.
-//   html`<${ViewLayout} left=${{title, sub, body}} center=${{bar, body, label}}
+//   html`<${ViewLayout} left=${{title, sub, body, foot}} center=${{bar, body, label}}
 //     right=${{title, sub, body, short, badge}} foot=${foot} />`
 // The side panels resize by dragging or by keys (arrows 16 px, Shift 64 px, Home, End,
 // Enter or a double click for the default width), left 260-560 px (300) and right
 // 340-720 px (400), keeping the centre at least 480 px; the widths are kept in the
 // browser. At 860 px and below the panels are bottom sheets, opened from the map's bar.
 // The `foot` runs across the whole view under the map and both panels (after Hydrograf's
-// #view-foot): the view's one strip of provider lines and the statement of a public
-// deployment. On a phone the sheets stop above it (`--view-foot-h`), so it stays in sight.
+// #view-foot): the view's one strip of provider lines. On a phone the sheets stop above it
+// (`--view-foot-h`), so it stays in sight. A panel's own `foot` sits under its scrolling
+// body: „Regulamin” of a public deployment at the bottom of the left panel.
 
 import { useLayoutEffect, useRef, useState } from "../../vendor/preact/hooks.mjs";
 import { html, t } from "../lib.js";
@@ -146,17 +147,18 @@ function Panel({ side, panel, open, sheet, onClose }) {
       </button>
     </div>
     <div class="view-panel-body">${panel.body}</div>
+    ${panel.foot ? html`<div class="panel-foot">${panel.foot}</div>` : null}
   </aside>`;
 }
 
 /**
  * The layout: the list, the map and the station, and the foot across them.
  *
- * @param {{left: {title?: any, sub?: any, body: any}, center: {bar?: any, body: any,
+ * @param {{left: {title?: any, sub?: any, body: any, foot?: any}, center: {bar?: any, body: any,
  *   label?: string}, right: {title?: any, sub?: any, body: any, short?: string, badge?: any},
  *   foot?: any}} props the panels and the centre; `right.short` and `right.badge` label the
- *   bar's button that opens the station panel (a sheet on a phone); `foot` is the view's
- *   foot under the map and both panels
+ *   bar's button that opens the station panel (a sheet on a phone); `left.foot` sits at the
+ *   bottom of the left panel; `foot` is the view's foot under the map and both panels
  * @returns {object} the layout
  */
 export function ViewLayout({ left, center, right, foot }) {

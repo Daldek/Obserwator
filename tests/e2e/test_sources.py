@@ -77,10 +77,27 @@ def test_the_welcome_window_holds_every_line_once_on_the_first_visit(
     content = dialog.locator(".nogat-sources-content")
     for line in texts["order"] + texts["terms_order"]:
         expect(content).to_contain_text(line)
-    regulamin = content.get_by_role("link", name="Regulamin serwisu")
-    expect(regulamin).to_have_attribute("href", f"{public_url}regulamin.html")
     dialog.get_by_role("button", name="Rozumiem").click()
     expect(dialog).to_be_hidden()
     page.reload()
     expect(page.get_by_role("radiogroup", name="Widok mapy")).to_be_visible()
     expect(page.locator("dialog.welcome")).to_be_hidden()
+
+
+def test_the_welcome_window_links_the_terms_of_a_public_deployment_once(
+    open_page: Any, public_url: str, gui_url: str
+) -> None:
+    page = open_page(base=public_url, welcome=True)
+    dialog = page.locator("dialog.welcome")
+    expect(dialog).to_be_visible(timeout=WAIT)
+    # the kit's „Regulamin serwisu” is the window's one link to the terms, in a new tab
+    expect(dialog.locator('a[href$="regulamin.html"]')).to_have_count(1)
+    regulamin = dialog.get_by_role("link", name="Regulamin serwisu", exact=True)
+    expect(regulamin).to_have_attribute("href", f"{public_url}regulamin.html")
+    expect(regulamin).to_have_attribute("target", "_blank")
+    expect(regulamin).to_have_attribute("rel", "noopener")
+    # a deployment that is not public has none
+    private = open_page(base=gui_url, welcome=True)
+    welcome = private.locator("dialog.welcome")
+    expect(welcome).to_be_visible(timeout=WAIT)
+    expect(welcome.locator('a[href$="regulamin.html"]')).to_have_count(0)

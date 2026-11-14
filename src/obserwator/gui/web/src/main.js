@@ -11,15 +11,15 @@
 // files, PMAXTP's tables), with the lines of the packaged borders while they are the map's
 // background (GUGiK's and ČÚZK's, ADR-018) and the basemap's credit after them; never one
 // per card. On a phone the sheets stop above it. A first visit opens the welcome window
-// with every line (ui/welcome.js). A public deployment adds „Regulamin” and the service's
-// statement under the strip. „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and
-// the address's parameters.
+// with every line and, in a public deployment, „Regulamin serwisu” (ui/welcome.js); a
+// public deployment also links „Regulamin” at the bottom of the left panel (`TermsLink`).
+// „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's parameters.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
 
 import { api } from "./api.js";
-import { BORDER_SOURCES, PublicNotice, Sources, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
+import { BORDER_SOURCES, Sources, TermsLink, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
 import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
@@ -161,8 +161,9 @@ function App({ lang: language }) {
     openPanel("right");
   };
 
+  const terms = session && session.terms ? html`<${TermsLink} session=${session} />` : null;
   const left = pmaxtpView
-    ? { title: "PMAXTP", body: html`<${PmaxtpForm} point=${pick} method=${method} onPoint=${choosePoint} onMethod=${setMethod} />` }
+    ? { title: "PMAXTP", body: html`<${PmaxtpForm} point=${pick} method=${method} onPoint=${choosePoint} onMethod=${setMethod} />`, foot: terms }
     : {
         title: t("shell.panel.stations"),
         body: failure
@@ -170,6 +171,7 @@ function App({ lang: language }) {
           : stations
             ? html`<${StationList} stations=${all} filters=${filters} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted" role="status">${t("shell.stations_loading")}</p>`,
+        foot: terms,
       };
   const hints = {
     stations: t("shell.hint.stations"),
@@ -197,14 +199,11 @@ function App({ lang: language }) {
     />`,
   };
   const foot =
-    lines || credit || (session && session.terms)
-      ? html`${lines || credit
-            ? html`<div class="view-sources">
-                <${Sources} fields=${lines} session=${session} />
-                ${credit ? html`<span class="map-basemap">${credit}</span>` : null}
-              </div>`
-            : null}
-          <${PublicNotice} session=${session} />`
+    lines || credit
+      ? html`<div class="view-sources">
+          <${Sources} fields=${lines} session=${session} />
+          ${credit ? html`<span class="map-basemap">${credit}</span>` : null}
+        </div>`
       : null;
   const right = pmaxtpView
     ? {

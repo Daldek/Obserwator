@@ -186,7 +186,7 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 ### Public Rules (Nogat DEV-15.7 to DEV-15.12)
 - `Traffic` (`_traffic.py`), an ASGI middleware: the rate limit per client address (300 requests in 60 s by default, static files not counted, `429` with `Retry-After`), the daily totals in `stats.jsonl` (visitors as keyed hashes kept in memory); the access log is `AccessLog`'s, outside it (Logs above); uvicorn keeps no log of its own
 - `_feedback.py`: `POST api/feedback` appends a report of „Zgłoś uwagę” to `feedback.jsonl` (never an IP address or a User-Agent); `_admin.py` (DEV-15.13) lists, marks and deletes reports, shows the daily totals and the status checks `data_root_marker`, `stored_analyses`, `hydrolog_command`; the panel's requests stay under the rate limit and out of the totals
-- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from the kit's `nogat-terms.html` (its source blocks of Obserwator's data sources, the borders' GUGiK and ČÚZK among them, link each provider's terms, no summary of them); the page then shows „Regulamin” and the statement in every view
+- `_terms.py`: with `[nogat.operator]` and the `obserwator` address of `[nogat.gui]`, `regulamin.html` filled from the kit's `nogat-terms.html` (its source blocks of Obserwator's data sources, the borders' GUGiK and ČÚZK among them, link each provider's terms, no summary of them); the page then links „Regulamin” at the bottom of the left panel, in the app menu and in the welcome window, with no footer statement
 
 ---
 

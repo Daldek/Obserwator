@@ -11,7 +11,7 @@ uvicorn in a thread, on a free port of 127.0.0.1:
   recordings, Hydrolog only when ``OBSERWATOR_HYDROLOG_COMMAND`` is set; not public (no
   ``[nogat.operator]``).
 * ``public_url``: the same root as a public deployment: ``[nogat.operator]`` and
-  ``[nogat.gui]`` set, so ``regulamin.html`` and the footer's statement are served.
+  ``[nogat.gui]`` set, so ``regulamin.html`` is served and linked.
 * ``stored_url``: a read-only copy of the fixture data root with the analyses that
   ``build_analyses`` stored with the recorded Hydrolog (``tests/fixtures/hydrolog``), the
   rest as ``gui_url``, and no Hydrolog's program at all: only stored results.

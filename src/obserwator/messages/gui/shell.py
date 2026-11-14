@@ -1,4 +1,4 @@
-"""The page's shell: the top bar, the views, the panels, the footer and „Zgłoś uwagę”."""
+"""The page's shell: the top bar, the views, the panels, the welcome, „Zgłoś uwagę”."""
 
 from obserwator.messages import Text
 
@@ -68,8 +68,7 @@ MESSAGES: dict[str, Text] = {
     "shell.theme.light": Text("Light", "Jasny"),
     "shell.theme.dark": Text("Dark", "Ciemny"),
     # The welcome window of a first visit, with the kit's full provider lines (Nogat
-    # DEV-20.5); in a public deployment the terms and the statement (Nogat DEV-15.7,
-    # DEV-15.8; the statement opens § 3 of the terms)
+    # DEV-20.5) and, in a public deployment, the kit's „Regulamin serwisu” (DEV-15.7)
     "shell.welcome.title": Text("Welcome to Obserwator", "Witaj w Obserwatorze"),
     "shell.welcome.intro": Text(
         "Obserwator shows the hydrological and meteorological stations of IMGW-PIB and"
@@ -79,17 +78,8 @@ MESSAGES: dict[str, Text] = {
     ),
     "shell.welcome.start": Text("Got it", "Rozumiem"),
     "shell.welcome.close": Text("Close", "Zamknij"),
+    # „Regulamin” of a public deployment at the bottom of the left panel (DEV-15.7)
     "shell.terms": Text("Terms of service", "Regulamin"),
-    "shell.statement": Text(
-        "The service is non-commercial and free of charge, carries no advertising and"
-        " does not serve the operator's business. It serves research and education."
-        " IMGW-PIB data are used in it for non-profit purposes, in accordance with"
-        " IMGW-PIB's terms.",
-        "Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy"
-        " działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym."
-        " Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z"
-        " regulaminami IMGW-PIB.",
-    ),
     # „Zgłoś uwagę” (Nogat DEV-15.12)
     "shell.feedback.open": Text("Send feedback", "Zgłoś uwagę"),
     "shell.feedback.close": Text("Close", "Zamknij"),
