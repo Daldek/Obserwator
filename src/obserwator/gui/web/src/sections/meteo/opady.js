@@ -689,7 +689,7 @@ function Quantiles({ station, quantiles, maxima, opt, setOpt, durations, entry }
       />
     </${Option}>`}
   </div>`;
-  return html`<${Section} title=${t("meteo.opady.quantiles.title")} info=${t("meteo.opady.quantiles.info")} states=${[quantiles]}>
+  return html`<${Section} title=${t("meteo.opady.quantiles.title")} info=${t("meteo.opady.quantiles.info")} guide="metody-opady-kwantyle" states=${[quantiles]}>
     ${options}
     <${Notices} states=${[quantiles]} />
     ${quantiles.result &&
@@ -754,15 +754,15 @@ export function Opady({ station, analyses }) {
     </div>
     <${Notices} states=${[sums, regime, days, intensity, heavy, maxima]} />
     ${sums.entry &&
-    html`<${Section} title=${t("meteo.opady.sums.title")} info=${t("meteo.opady.sums.info")} states=${[sums]}>
+    html`<${Section} title=${t("meteo.opady.sums.title")} info=${t("meteo.opady.sums.info")} guide="metody-opady-sumy" states=${[sums]}>
       ${sums.result && html`<${SumsBody} station=${station} doc=${sums.data} r=${sums.result} regime=${regime.result} />`}
     </${Section}>`}
     ${regime.entry &&
-    html`<${Section} title=${t("meteo.opady.regime.title")} info=${t("meteo.opady.regime.info")} states=${[regime]}>
+    html`<${Section} title=${t("meteo.opady.regime.title")} info=${t("meteo.opady.regime.info")} guide="metody-opady-rezim" states=${[regime]}>
       ${regime.result && html`<${RegimeBody} r=${regime.result} />`}
     </${Section}>`}
     ${days.entry &&
-    html`<${Section} title=${t("meteo.opady.days.title")} info=${t("meteo.opady.days.info")} states=${[days, intensity]}>
+    html`<${Section} title=${t("meteo.opady.days.title")} info=${t("meteo.opady.days.info")} guide="metody-opady-dni" states=${[days, intensity]}>
       ${days.result &&
       html`<${DaysBody}
         r=${days.result}
@@ -773,11 +773,11 @@ export function Opady({ station, analyses }) {
       />`}
     </${Section}>`}
     ${heavy.entry &&
-    html`<${Section} title=${t("meteo.opady.heavy.title")} info=${t("meteo.opady.heavy.info")} states=${[heavy]}>
+    html`<${Section} title=${t("meteo.opady.heavy.title")} info=${t("meteo.opady.heavy.info")} guide="metody-opady-duze" states=${[heavy]}>
       ${heavy.result && html`<${HeavyBody} r=${heavy.result} />`}
     </${Section}>`}
     ${maxima.entry &&
-    html`<${Section} title=${t("meteo.opady.maxima.title")} info=${t("meteo.opady.maxima.info")} states=${[maxima]}>
+    html`<${Section} title=${t("meteo.opady.maxima.title")} info=${t("meteo.opady.maxima.info")} guide="metody-opady-maksima" states=${[maxima]}>
       ${maxima.result && html`<${MaximaBody} r=${maxima.result} days=${opt.days} onDays=${(n) => setOpt({ days: n })} />`}
     </${Section}>`}
     ${quantiles.entry &&

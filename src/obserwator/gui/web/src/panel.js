@@ -254,7 +254,7 @@ function StationsFiles({ provider, kind, onDoc }) {
   useEffect(() => onDoc(doc), [doc]);
   const formats = doc ? Object.keys(doc.formats) : [];
   return html`<div class="stations-files">
-    <${Section} title=${t("station.none.files")} info=${t("station.none.files_info")}>
+    <${Section} title=${t("station.none.files")} info=${t("station.none.files_info")} guide="lista-stacji">
       <table class="params compact">
         <tbody>
           <tr><th scope="row">${t("stations.list.provider")}</th><td>${provider ? providerName(provider) : t("stations.list.provider_all")}</td></tr>

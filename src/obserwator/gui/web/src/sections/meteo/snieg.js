@@ -53,7 +53,7 @@ export function Snieg({ station, analyses }) {
   const info = t("meteo.snow.info");
   const onRange = (a, b) =>
     setOpt(record && a === record.first && b === record.last ? { first_year: undefined, last_year: undefined } : { first_year: a, last_year: b });
-  if (!data) return html`<div class="me-card"><${Section} title=${title} info=${info} states=${[state]} /></div>`;
+  if (!data) return html`<div class="me-card"><${Section} title=${title} info=${info} guide="metody-snieg" states=${[state]} /></div>`;
   const p = data.period;
   const fresh = present(p.mean_fresh_snow_cm);
   const months = new Map((p.months || []).map((m) => [m.month, m.cover_days]));
@@ -71,7 +71,7 @@ export function Snieg({ station, analyses }) {
     html`<div class="me-toolbar">
       <${YearRange} first=${record.first} last=${record.last} from=${data.first_year} to=${data.last_year} label=${t("meteo.snow.winters")} onApply=${onRange} />
     </div>`}
-    <${Section} title=${title} info=${info} states=${[state]}>
+    <${Section} title=${title} info=${info} guide="metody-snieg" states=${[state]}>
       <${Source} station=${station} doc=${state.data} variable="snow_cover" />
       <${Notices} states=${[state]} />
       <${Figures}

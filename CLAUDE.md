@@ -4,16 +4,16 @@ Instructions for Claude Code (claude.ai/code) working in this repository. Refere
 
 ## 1. Project
 
-Obserwator (`obserwator` on PyPI, v3.0.0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable` and `_hydrolog` for settings, JSON and Hydrolog's program). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Obserwator (`obserwator` on PyPI, v3.0.0, unreleased: `3.0.0.dev0`, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog` and `_borders` for settings, JSON, Hydrolog's program and the packaged borders). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 2. Critical rules
 
 - Write only where the user says: `--output-dir` (plain files) or `--root`; without `--root`, downloads go to the raw root (`OBSERWATOR_RAW_ROOT`, default `<data_dir>/obserwator-raw`) and the series, catalogs and analyses to the data root (`OBSERWATOR_ROOT`, default `<data_dir>/obserwator`) (DEV-19.2, ADR-007, ADR-017). A build reads the raw root (`--raw-root`) and never writes it; a function needing one kind of root refuses the other (`wrong_root`). A server writes only to its configured `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, never to a default. No database.
-- Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`. Outside the catalog stay only `version`, `server`, `mcp`, `admin` (the REST API keys of `api_keys.json`), `config show` and `gui serve` (`cli/main.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`).
+- Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`. Outside the catalog stay only `version`, `server`, `mcp`, `admin` (the REST API keys of `api_keys.json`), `config show` and `gui serve` (`cli/main.py`, `cli/admin.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`).
 - Never edit `AGENTS.md` and `llms.txt` by hand: they are derived from the catalog. A change of catalog texts, of the dataset/provider/error registries or of the templates in `src/obserwator/_data/agents/` regenerates both in the same change (commands in section 3); `tests/unit/test_agent_guide.py` compares the bytes.
 - Keep the contract Python = CLI = REST = MCP (`tests/contract/`); one option name per parameter, one envelope `obserwator-result/1`, one error registry `ERROR_CODES`.
 - Never run tests with the global Python (a non-editable `obserwator` there shadows `src/`): use `uv run`.
-- `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: environment only, never from a file, never printed. So is the GUI's admin key (Nogat DEV-15.13, ADR-020): `OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every admin request, never generated, logged or taken from `nogat.toml`; it is not one of the REST API keys of `obserwator admin`.
+- `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: from the environment or `.env` only, never from `nogat.toml`, never printed. So is the GUI's admin key (Nogat DEV-15.13, ADR-020): `OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every admin request, never generated, logged or taken from `nogat.toml`; it is not one of the REST API keys of `obserwator admin`.
 - Text for a person (an error `detail`, a notice, a progress or plan line, a printed line, a command description or option help) is never inline: it is an entry of `obserwator.messages.<area>` (`Text(en, pl)`, English first) rendered by `message("<area>.<name>", value=…)` (ADR-006); `tests/unit/test_messages.py` checks both languages, the call sites and that no Polish literal is left outside the catalog.
 - Every functional change updates the Markdown docs, docstrings and OpenAPI where affected; no change without tests.
 - Approvals (DEV-3.3): without the author's approval in the current session never merge a pull request, create or move tags, publish a release, force-push a shared branch or rewrite the history of `main`/`develop`. A change of a public interface or across more than one module starts with a plan approved by the author (DEV-17.4).
@@ -29,7 +29,7 @@ scripts/gate.sh                                    # gate: ruff format --check, 
 uv run pytest tests/unit/test_models.py -v         # one test file (add -k <expr> for one test)
 uv run pytest tests/live -m live                   # live tests (network, outside the gate)
 uv run pytest tests/e2e                            # the GUI in Chromium (once: uv run playwright install chromium)
-obserwator server --reload                         # REST API and /mcp (GET / redirects to /docs)
+obserwator server --reload                         # REST API, /mcp with OBSERWATOR_MCP_ENABLED=true (GET / redirects to /docs)
 obserwator gui serve --no-browser                  # web GUI on 127.0.0.1:8060 (extras cli and gui)
 obserwator config show --json                      # every setting with its source
 obserwator commands guide --format agents --output AGENTS.md --force  # regenerate AGENTS.md (English)
@@ -45,7 +45,8 @@ src/obserwator/
 ├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
 ├── commands.py           # command catalog (35 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
-├── coverage.py, exceptions.py (ERROR_CODES), testing.py, config.py, reference_data.py
+├── coverage.py, exceptions.py (ERROR_CODES), error_report.py, output.py, testing.py, config.py, reference_data.py
+├── nogat_logging.py      # Nogat's server logs: reference module, byte copy, never edited (ADR-019)
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006); gui/ = the GUI's texts
 ├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
@@ -54,7 +55,7 @@ src/obserwator/
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
-└── gui/                  # web GUI server (Starlette), web/ (the page), admin/  [obserwator[gui]]
+└── gui/                  # web GUI server (Starlette), web/ (the page; admin/ the admin panel)  [obserwator[gui]]
 tests/{unit,contract,e2e,live}  AGENTS.md, llms.txt (derived)  docker/  scripts/  docs/
 ```
 
@@ -77,7 +78,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Code style, naming, errors, docstrings | [docs/RULES.md](docs/RULES.md), the Nogat [development standard](https://github.com/Daldek/Nogat/blob/main/standards/DEVELOPMENT_STANDARDS.md) (standard 1.0) |
 | Contributor licence | [docs/CLA.md](docs/CLA.md) |
 | The name Obserwator (ADR-009; IMGWTools until 2.1.1) and the 2026-08 draft of a provider layer | [docs/DECISIONS.md](docs/DECISIONS.md) ADR-009, [docs/OBSERWATOR_SPEC.md](docs/OBSERWATOR_SPEC.md), [docs/OBSERWATOR_RESEARCH.md](docs/OBSERWATOR_RESEARCH.md) |
-| Plans, specs and research behind 3.0.0 | `docs/superpowers/` (plans, specs, research) |
+| Plans, specs and research behind 3.0.0 | `docs/superpowers/` (plans, specs, research), the GUI's plan in `docs/plans/` |
 | Using the tool as an agent (not developing it) | `AGENTS.md`, `llms.txt` (derived, never edited by hand) |
 
 ## 6. Session workflow

@@ -93,7 +93,7 @@ export function PmaxtpForm({ point, method, onPoint, onMethod }) {
         />
       </label>
     </div>
-    <p class="note">${t("pmaxtp.form.bounds", { bounds: boundsLabel(), function: "fetch_pmaxtp" })}</p>
+    <p class="note">${t("pmaxtp.form.bounds", { bounds: boundsLabel() })}</p>
     ${error ? html`<p class="ana-error" role="alert">${error}</p>` : null}
     <div class="btn-row"><button type="submit" class="btn primary sm">${t("pmaxtp.form.submit")}</button></div>
     <h3 class="group-title">${t("pmaxtp.form.places")}</h3>

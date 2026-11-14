@@ -67,7 +67,7 @@ function SeriesFiles({ entry }) {
   const formats = Object.keys(entry.formats);
   const [chosen, setChosen] = useState(formats[0]);
   const format = entry.formats[chosen] || entry.formats[formats[0]];
-  return html`<${Section} title=${datasetTitle(entry.dataset)} info=${t("station.files.info")}>
+  return html`<${Section} title=${datasetTitle(entry.dataset)} info=${t("station.files.info")} guide="szeregi">
     <div class="btn-row files">
       ${formats.map(
         (key) => html`<a class="btn sm" href=${entry.formats[key].url} download=${entry.formats[key].file}>
@@ -90,7 +90,7 @@ function ResultFiles({ code, analyses, stored }) {
   const formats = stored ? Object.keys(stored.formats) : [];
   const [chosen, setChosen] = useState(formats[0] || "json");
   const format = stored ? stored.formats[chosen] || stored.formats[formats[0]] : null;
-  return html`<${Section} title=${t("station.files.results")} info=${t("station.files.results_info")}>
+  return html`<${Section} title=${t("station.files.results")} info=${t("station.files.results_info")} guide="wyniki-analiz">
     ${analyses === null ? html`<p class="muted" role="status">${t("station.analyses_loading")}</p>` : null}
     ${analyses && !rows.length ? html`<p class="muted">${t("station.files.results_none")}</p>` : null}
     ${stored && format
@@ -139,7 +139,7 @@ function Handoff({ station, session, analyses }) {
   const ids = new Set((analyses || []).map((item) => item.analysis));
   const variables = daily ? ["Q", "H"].filter((name) => daily.variables[name]) : ids.has("flood_frequency.Q") ? ["Q"] : [];
   if (!variables.length) return null;
-  return html`<${Section} title=${t("station.files.handoff")} info=${t("station.files.handoff_info")}>
+  return html`<${Section} title=${t("station.files.handoff")} info=${t("station.files.handoff_info")} guide="przekazanie">
     <p class="note">${daily ? t("station.files.handoff_daily") : t("station.files.handoff_annual")}</p>
     ${variables.map(
       (variable) => html`<div class="handoff-var" key=${variable}>

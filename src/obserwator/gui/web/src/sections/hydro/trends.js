@@ -293,7 +293,7 @@ export function Trends({ station, analyses }) {
   const spec = useMemo(() => shown && trendSpec(shown, variable, name), [shown, variable, name]);
   const apply = (from, to) =>
     setOpt({ from: record && from === record.first ? undefined : from, to: record && to === record.last ? undefined : to, ryear: undefined, byear: undefined });
-  return html`<${Section} info=${t("hydro.trends.info")}><div class="hy-card">
+  return html`<${Section} info=${t("hydro.trends.info")} guide="metody-trends"><div class="hy-card">
     ${record &&
     html`<${YearRange}
       first=${record.first}

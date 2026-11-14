@@ -11,18 +11,27 @@ MESSAGES: dict[str, Text] = {
         "Annual Max Precipitation", "Annual Max Precipitation, maksima roczne"
     ),
     "pmaxtp.method.pot.text": Text(
-        "Peaks over a threshold: every rainfall event exceeding the threshold, whatever "
-        "the year it occurred in. Recommended for analyses of the frequency of extreme "
-        "events.",
-        "Metoda wartości szczytowych powyżej progu: wszystkie zdarzenia opadowe "
-        "przekraczające próg, niezależnie od roku wystąpienia. Zalecana do analiz "
-        "częstości zdarzeń ekstremalnych.",
+        "Selection of every rainfall event exceeding a threshold, whatever the year it "
+        "occurred in.\n\n"
+        "A year may give several such events or none.\n\n"
+        "Sources: IMGW-PIB, the PMAXTP project, ed. B. Ozga-Zieliński, Warsaw 2022 "
+        "(klimat.imgw.pl/opady-maksymalne)",
+        "Wybór wszystkich zdarzeń opadowych przekraczających próg, niezależnie od roku "
+        "wystąpienia.\n\n"
+        "Jeden rok może dać kilka takich zdarzeń albo żadnego.\n\n"
+        "Źródła: IMGW-PIB, Projekt PMAXTP, red. B. Ozga-Zieliński, Warszawa 2022 "
+        "(klimat.imgw.pl/opady-maksymalne)",
     ),
     "pmaxtp.method.amp.text": Text(
-        "Annual maxima: only the largest rainfall of each year of the measurement "
-        "series. Used in traditional hydrological analyses.",
-        "Metoda rocznych wartości maksymalnych: tylko największy opad każdego roku "
-        "serii pomiarowej. Stosowana w tradycyjnych analizach hydrologicznych.",
+        "Selection of only the largest rainfall of each year of the measurement "
+        "series.\n\n"
+        "Each year of the series gives exactly one value.\n\n"
+        "Sources: IMGW-PIB, the PMAXTP project, ed. B. Ozga-Zieliński, Warsaw 2022 "
+        "(klimat.imgw.pl/opady-maksymalne)",
+        "Wybór tylko największego opadu każdego roku serii pomiarowej.\n\n"
+        "Każdy rok serii daje dokładnie jedną wartość.\n\n"
+        "Źródła: IMGW-PIB, Projekt PMAXTP, red. B. Ozga-Zieliński, Warszawa 2022 "
+        "(klimat.imgw.pl/opady-maksymalne)",
     ),
     # The form of the left panel
     "pmaxtp.form.hint": Text(
@@ -37,12 +46,10 @@ MESSAGES: dict[str, Text] = {
     "pmaxtp.form.longitude": Text("Longitude [° E]", "Długość [° E]"),
     "pmaxtp.form.example": Text("e.g. {value}", "np. {value}"),
     "pmaxtp.form.bounds": Text(
-        "Range: {bounds} (the bounds of {function}); IMGW-PIB answers for the points "
-        "of its grid in Poland. The point is rounded to 4 decimal places, as in the "
-        "address of IMGW-PIB's API.",
-        "Zakres: {bounds} (granice {function}); IMGW-PIB odpowiada dla punktów swojej "
-        "siatki w Polsce. Punkt jest zaokrąglany do 4 miejsc po przecinku, jak w "
-        "adresie API IMGW-PIB.",
+        "Range: {bounds}; IMGW-PIB answers for the points of its grid in Poland. The "
+        "point is rounded to 4 decimal places, as in the address of IMGW-PIB's API.",
+        "Zakres: {bounds}; IMGW-PIB odpowiada dla punktów swojej siatki w Polsce. Punkt "
+        "jest zaokrąglany do 4 miejsc po przecinku, jak w adresie API IMGW-PIB.",
     ),
     "pmaxtp.form.error_number": Text(
         "Enter the latitude and the longitude in decimal degrees.",

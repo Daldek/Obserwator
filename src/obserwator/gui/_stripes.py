@@ -392,7 +392,7 @@ def stripes_document(
         The document whose normal is the centre: `asked` itself, or the one over the
         whole record when `asked` has no normal.
     lang : {"pl", "en"}
-        The language of the method and of the errors.
+        The language of the errors.
 
     Returns
     -------
@@ -400,8 +400,8 @@ def stripes_document(
         ``obserwator-gui-stripes/1``: ``status`` ``ok`` with ``years`` (``year``,
         Hydrolog's ``tmean_c`` and ``anomaly_c``, ``colour``, ``months_missing``),
         ``grey``, ``scale``, ``palette``, ``scales`` (the FAQ's scales to choose
-        from), the slim ``analysis`` document, the prototype's ``provenance`` and the
-        lines; or ``failed`` with an ``error``.
+        from), the slim ``analysis`` document and the lines; or ``failed`` with an
+        ``error``.
     """
     result = _result(used)
     if result is None:
@@ -520,11 +520,6 @@ def stripes_document(
             for name, item in SCALES.items()
         ],
         "analysis": _slim(used),
-        "provenance": {
-            "engine": "prototype",
-            "method": str(message("gui.meteo.stripes.method", lang=lang)),
-            "target": "M15",
-        },
         "attribution": list(used.get("attribution") or []),
         "terms_notice": list(used.get("terms_notice") or []),
     }

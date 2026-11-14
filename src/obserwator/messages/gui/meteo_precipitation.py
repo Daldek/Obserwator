@@ -54,31 +54,31 @@ MESSAGES: dict[str, Text] = {
         "Precipitation totals and the normal", "Sumy opadów i normalna"
     ),
     "meteo.opady.sums.info": Text(
-        "Hydrolog, `meteo precipitation` (index sums). A monthly total needs every day "
-        "of the month; a total of several days that IMGW-PIB gives after days without a "
-        "measurement (flag “accumulated”) stands for the days it covers. The half-years "
-        "XI–IV and V–X, the meteorological seasons (XII–II with the December of the "
-        "year before) and the year need all their months. The normal is the mean of "
-        "the years of the reference period that have a value, when they are at least "
-        "80 % of its years (WMO-No. 1203, 2017, 4.4.2); the reference period is by "
-        "default the years analysed, the station's whole record, and at least 30 years "
-        "are recommended (WMO-No. 1203: the standard normal 1991–2020, the reference "
-        "normal 1961–1990 for climate change). A total in % of its normal is the "
-        "relative precipitation. The mean, the extremes and the coefficient of "
-        "variation are those of the years analysed; the share of a month is that of "
-        "its normal in the sum of the twelve normals (from the regime below).",
-        "Hydrolog, `meteo precipitation` (index sums). Suma miesięczna wymaga każdego "
-        "dnia miesiąca; suma z kilku dni, którą IMGW-PIB podaje po dniach bez pomiaru "
-        "(flaga „accumulated”), zastępuje dni, które obejmuje. Półrocza XI–IV i V–X, "
-        "pory roku meteorologiczne (XII–II z grudniem roku poprzedniego) i rok "
-        "wymagają wszystkich swoich miesięcy. Normalna to średnia lat okresu "
-        "odniesienia, które mają wartość, gdy jest ich co najmniej 80 % lat okresu "
-        "(WMO-No. 1203, 2017, p. 4.4.2); okres odniesienia to domyślnie lata analizy, "
-        "czyli cały zapis stacji, a zalecane jest co najmniej 30 lat (WMO-No. 1203: "
-        "normalna standardowa 1991–2020, referencyjna 1961–1990 do badania zmian "
-        "klimatu). Suma w % normalnej to opad względny. Średnia, skrajne sumy i "
-        "współczynnik zmienności dotyczą lat analizy; udział miesiąca to udział jego "
-        "normalnej w sumie dwunastu normalnych (z reżimu niżej).",
+        "Precipitation totals of a month, a half-year (XI–IV, V–X), a season and a "
+        "year, from the station's daily totals. The normal is the mean of such totals "
+        "over the years of the reference period, by default the station's whole "
+        "record; at least 30 years are recommended.\n\n"
+        "Pr = 100 · P / N\n"
+        "Cv = σ / P̄\n"
+        "where: Pr – relative precipitation [%], P – precipitation total [mm], N – its "
+        "normal [mm], P̄, σ – mean and standard deviation of the annual totals of the "
+        "years analysed [mm], Cv – coefficient of variation [–]\n\n"
+        "A relative precipitation of 100 % is a total equal to the normal; less means "
+        "a drier period, more a wetter one than usual. The larger Cv, the more the "
+        "annual totals differ from year to year.\n\n"
+        "Sources: WMO-No. 1203, 2017",
+        "Suma opadów miesiąca, półrocza (XI–IV, V–X), pory roku i roku, liczona z "
+        "dobowych sum stacji. Normalna to średnia takich sum z lat okresu odniesienia, "
+        "domyślnie całego zapisu stacji; zalecane jest co najmniej 30 lat.\n\n"
+        "Pw = 100 · P / N\n"
+        "Cv = σ / P̄\n"
+        "gdzie: Pw – opad względny [%], P – suma opadów [mm], N – jej normalna [mm], "
+        "P̄, σ – średnia i odchylenie standardowe sum rocznych lat analizy [mm], Cv – "
+        "współczynnik zmienności [–]\n\n"
+        "Opad względny 100 % to suma równa normalnej; mniejszy oznacza okres suchszy, "
+        "a większy wilgotniejszy od przeciętnego. Im większy Cv, tym bardziej sumy "
+        "roczne różnią się między latami.\n\n"
+        "Źródła: WMO-No. 1203, 2017",
     ),
     "meteo.opady.sums.mean": Text("Mean annual total", "Średnia suma roczna"),
     "meteo.opady.sums.normal_years.one": Text(
@@ -142,26 +142,32 @@ MESSAGES: dict[str, Text] = {
         "Regime and seasonality of precipitation", "Reżim i sezonowość opadów"
     ),
     "meteo.opady.regime.info": Text(
-        "Hydrolog, `meteo precipitation` (index seasonality). The regime is the share "
-        "of each monthly normal of the reference period in their sum; the coefficient "
-        "is a monthly normal over a twelfth of that sum. Oliver's (1980) precipitation "
-        "concentration index PCI = 100·Σp²/(Σp)²: up to 10 uniform, up to 15 "
-        "moderately concentrated, up to 20 irregular, above 20 strongly irregular. "
-        "Walsh and Lawler's (1981) seasonality index SI = Σ|xₙ − R/12|/R: up to 0.20 "
-        "very equable, up to 0.40 equable with a wetter season, up to 0.60 rather "
-        "seasonal, up to 0.80 seasonal, up to 1.00 markedly seasonal, up to 1.20 most "
-        "precipitation in three months or less, above that extreme. Both are given for "
-        "the normals and as the mean of the values of the years analysed.",
-        "Hydrolog, `meteo precipitation` (index seasonality). Reżim to udział każdej "
-        "normalnej miesięcznej okresu odniesienia w ich sumie; współczynnik to "
-        "normalna miesiąca przez 1/12 tej sumy. Wskaźnik koncentracji opadu PCI = "
-        "100·Σp²/(Σp)² (Oliver 1980): do 10 równomierny, do 15 umiarkowanie "
-        "skoncentrowany, do 20 nieregularny, powyżej 20 silnie nieregularny. Wskaźnik "
-        "sezonowości SI = Σ|xₙ − R/12|/R (Walsh i Lawler 1981): do 0,20 bardzo "
-        "równomierny, do 0,40 równomierny z porą wilgotniejszą, do 0,60 raczej "
-        "sezonowy, do 0,80 sezonowy, do 1,00 wyraźnie sezonowy, do 1,20 większość "
-        "opadu w trzech miesiącach lub krócej, powyżej skrajny. Oba są podane dla "
-        "normalnych i jako średnia wartości lat analizy.",
+        "The regime is the share of each month's normal in the sum of the twelve "
+        "normals. The indices PCI and SI tell how unevenly precipitation spreads over "
+        "the months of the year.\n\n"
+        "PCI = 100 · Σpₙ² / (Σpₙ)²\n"
+        "SI = Σ|pₙ − R/12| / R\n"
+        "kₙ = 12 · pₙ / R\n"
+        "where: pₙ – normal of the month n = 1–12 (for a year, its monthly total) "
+        "[mm], R – annual total, Σpₙ [mm], kₙ – coefficient of the month [–]\n\n"
+        "A bar above the line 1/12 (kₙ > 1) is a month wetter than the average month. "
+        "PCI up to 10 and SI up to 0.20 mean an even spread, PCI above 20 a strongly "
+        "irregular one, SI above 1.20 almost all precipitation in one or two "
+        "months.\n\n"
+        "Sources: Oliver 1980 (PCI); Walsh and Lawler 1981 (SI)",
+        "Reżim to udział normalnej każdego miesiąca w sumie dwunastu normalnych. "
+        "Wskaźniki PCI i SI mówią, jak nierównomiernie opad rozkłada się na miesiące "
+        "roku.\n\n"
+        "PCI = 100 · Σpₙ² / (Σpₙ)²\n"
+        "SI = Σ|pₙ − R/12| / R\n"
+        "kₙ = 12 · pₙ / R\n"
+        "gdzie: pₙ – normalna miesiąca n = 1–12 (dla roku jego suma miesięczna) [mm], "
+        "R – suma roczna, Σpₙ [mm], kₙ – współczynnik miesiąca [–]\n\n"
+        "Słupek ponad linią 1/12 (kₙ > 1) to miesiąc wilgotniejszy od przeciętnego. "
+        "PCI do 10 i SI do 0,20 oznaczają opad równomierny, PCI powyżej 20 silnie "
+        "nieregularny, a SI powyżej 1,20 prawie cały w jednym lub dwóch "
+        "miesiącach.\n\n"
+        "Źródła: Oliver 1980 (PCI); Walsh i Lawler 1981 (SI)",
     ),
     "meteo.opady.regime.axis_x": Text("month", "miesiąc"),
     "meteo.opady.regime.axis_y": Text(
@@ -218,25 +224,27 @@ MESSAGES: dict[str, Text] = {
         "Days with precipitation and its intensity", "Dni z opadem i natężenie"
     ),
     "meteo.opady.days.info": Text(
-        "Hydrolog, `meteo precipitation` (indices days and intensity). Days with daily "
-        "precipitation of at least 0.1, 1, 10 and 20 mm (R10mm and R20mm of the "
-        "ETCCDI). A month counts when fewer than 11 days, and fewer than 5 in a row, "
-        "are missing; its count is then scaled to all the days of the month "
-        "(WMO-No. 1203, 2017, 4.4.1); a year needs its twelve months. A total of "
-        "several days after days without a measurement is a missing day here. The "
-        "intensity of a wet day (SDII of the ETCCDI; Zhang et al., 2011) is the "
-        "precipitation of the wet days (at least 1 mm, or 0.1 mm if chosen) over their "
-        "number, in the years whose every day has a value; that of a month pools its "
-        "complete months.",
-        "Hydrolog, `meteo precipitation` (index days i intensity). Dni z opadem "
-        "dobowym co najmniej 0,1, 1, 10 i 20 mm (R10mm i R20mm ETCCDI). Miesiąc liczy "
-        "się, gdy brakuje mniej niż 11 dni i mniej niż 5 kolejnych; jego liczba dni "
-        "jest wtedy przeliczona na wszystkie dni miesiąca (WMO-No. 1203, 2017, "
-        "p. 4.4.1); rok wymaga dwunastu miesięcy. Suma z kilku dni po dniach bez "
-        "pomiaru jest tu dniem bez wartości. Natężenie opadu dnia mokrego (SDII wg "
-        "ETCCDI; Zhang i in. 2011) to opad dni mokrych (co najmniej 1 mm albo, do "
-        "wyboru, 0,1 mm) przez ich liczbę, w latach z pomiarem w każdym dniu; "
-        "natężenie miesiąca łączy jego pełne miesiące.",
+        "The number of days with daily precipitation of at least 0.1, 1, 10 and 20 mm, "
+        "on average in a year and in a month (the counts of days of at least 10 and 20 "
+        "mm are the indices R10mm and R20mm). The intensity of a wet day, SDII, is the "
+        "mean precipitation of a day with at least 1 mm or, if chosen, 0.1 mm.\n\n"
+        "SDII = ΣP / W\n"
+        "where: SDII – intensity of a wet day [mm/d], P – precipitation of a wet day "
+        "[mm], W – number of wet days [–]\n\n"
+        "The larger SDII, the more precipitation an average wet day brings. The count "
+        "of a month with a few missing days is scaled to all its days.\n\n"
+        "Sources: ETCCDI (Zhang et al. 2011); WMO-No. 1203, 2017",
+        "Liczba dni z opadem dobowym co najmniej 0,1, 1, 10 i 20 mm, średnio w roku i "
+        "w miesiącu (liczby dni z co najmniej 10 i 20 mm to wskaźniki R10mm i R20mm). "
+        "Natężenie dnia mokrego SDII to średni opad dnia z opadem co najmniej 1 mm "
+        "albo, do wyboru, 0,1 mm.\n\n"
+        "SDII = ΣP / W\n"
+        "gdzie: SDII – natężenie dnia mokrego [mm/d], P – opad dnia mokrego [mm], W – "
+        "liczba dni mokrych [–]\n\n"
+        "Im większe SDII, tym więcej opadu przynosi przeciętny dzień mokry. Liczba dni "
+        "miesiąca z nielicznymi brakami pomiaru jest przeliczona na wszystkie jego "
+        "dni.\n\n"
+        "Źródła: ETCCDI (Zhang i in. 2011); WMO-No. 1203, 2017",
     ),
     "meteo.opady.days.figure": Text("Days ≥ {threshold} mm", "Dni ≥ {threshold} mm"),
     "meteo.opady.days.per_year": Text("mean in a year", "średnio w roku"),
@@ -261,23 +269,31 @@ MESSAGES: dict[str, Text] = {
         "Heavy precipitation (R95p, R99p)", "Opady duże (R95p, R99p)"
     ),
     "meteo.opady.heavy.info": Text(
-        "Hydrolog, `meteo precipitation` (index heavy). The thresholds are the 95th and "
-        "99th percentiles of the precipitation of the wet days (at least 1 mm) of the "
-        "reference period, quantile type 8 (Hyndman and Fan 1996, as climdex.pcic of "
-        "the ETCCDI), from at least 100 wet days. R95p is the precipitation of a "
-        "year's days above the 95th percentile, R95pTOT = 100·R95p / the precipitation "
-        "of the year's wet days (R99p likewise; Zhang et al., 2011). A year needs every "
-        "day. The ETCCDI takes the percentiles of the base period 1961–1990 (Klein "
-        "Tank et al., 2009); a period longer than 30 years gives steadier percentiles "
-        "(WMO-No. 1203, 2017, 5.2.2).",
-        "Hydrolog, `meteo precipitation` (index heavy). Progi to 95. i 99. percentyl "
-        "opadu dni mokrych (co najmniej 1 mm) okresu odniesienia, kwantyl typu 8 "
-        "(Hyndman i Fan 1996, jak climdex.pcic ETCCDI), liczony z co najmniej 100 dni "
-        "mokrych. R95p to opad dni roku powyżej 95. percentyla, R95pTOT = 100·R95p / "
-        "opad dni mokrych roku (R99p podobnie; Zhang i in. 2011). Rok wymaga każdego "
-        "dnia. ETCCDI bierze percentyle okresu bazowego 1961–1990 (Klein Tank i in. "
-        "2009); okres dłuższy niż 30 lat daje stabilniejsze percentyle (WMO-No. 1203, "
-        "2017, p. 5.2.2).",
+        "R95p and R99p are the precipitation of the days of a year with precipitation "
+        "above a threshold: the 95th or the 99th percentile of the precipitation of "
+        "the wet days (at least 1 mm) of the reference period. R95pTOT and R99pTOT are "
+        "the share of that sum in the precipitation of the year's wet days.\n\n"
+        "R95pTOT = 100 · R95p / P\n"
+        "where: R95p – precipitation of the year's days above the threshold P95 [mm], "
+        "P – precipitation of all the year's wet days [mm], R95pTOT – share [%]; R99p "
+        "and R99pTOT likewise with the threshold P99\n\n"
+        "About one wet day in twenty of the reference period exceeds P95, one in a "
+        "hundred P99. The larger R95pTOT, the more of the year's wet-day precipitation "
+        "fell on the days above the threshold.\n\n"
+        "Sources: ETCCDI (Zhang et al. 2011; Klein Tank et al. 2009); Hyndman and Fan "
+        "1996; WMO-No. 1203, 2017",
+        "R95p i R99p to suma opadu dni roku z opadem powyżej progu: 95. albo 99. "
+        "percentyla opadu dni mokrych (co najmniej 1 mm) okresu odniesienia. R95pTOT i "
+        "R99pTOT to udział tej sumy w opadzie dni mokrych roku.\n\n"
+        "R95pTOT = 100 · R95p / P\n"
+        "gdzie: R95p – opad dni roku powyżej progu P95 [mm], P – opad wszystkich dni "
+        "mokrych roku [mm], R95pTOT – udział [%]; R99p i R99pTOT tak samo z progiem "
+        "P99\n\n"
+        "Próg P95 przekracza około co dwudziesty dzień mokry okresu odniesienia, a P99 "
+        "co setny. Im większy R95pTOT, tym większą część opadu dni mokrych roku "
+        "przyniosły dni powyżej progu.\n\n"
+        "Źródła: ETCCDI (Zhang i in. 2011; Klein Tank i in. 2009); Hyndman i Fan 1996; "
+        "WMO-No. 1203, 2017",
     ),
     "meteo.opady.heavy.threshold": Text("Threshold P{p}", "Próg P{p}"),
     "meteo.opady.heavy.threshold_note": Text(
@@ -300,23 +316,20 @@ MESSAGES: dict[str, Text] = {
         "Maximum precipitation of 1–10 days", "Opady maksymalne 1–10 dni"
     ),
     "meteo.opady.maxima.info": Text(
-        "Hydrolog, `meteo precipitation` (index maxima). The n-day sum of a day is the "
-        "precipitation of the n days that end on it (n = 1, 2, 3, 5, 10; Rx1day and "
-        "Rx5day of the ETCCDI for 1 and 5 days); it belongs to the year of its last day "
-        "and needs all n days. An annual maximum needs every day of the year, so a "
-        "year with a missing day is left out. The monthly maximum of daily "
-        "precipitation takes whatever days the month has; the mean of the monthly "
-        "maxima takes the months with enough days (WMO-No. 1203, 2017, 4.4.2), and "
-        "“Annual maxima” counts the complete years whose largest daily sum fell in the "
-        "month.",
-        "Hydrolog, `meteo precipitation` (index maxima). Suma n-dniowa dnia to opad n "
-        "dni kończących się tym dniem (n = 1, 2, 3, 5, 10; Rx1day i Rx5day ETCCDI dla 1 "
-        "i 5 dni); należy do roku swojego ostatniego dnia i wymaga wszystkich n dni. "
-        "Maksimum roczne wymaga każdego dnia roku, więc rok z brakiem dnia jest "
-        "pomijany. Maksimum miesięczne opadu dobowego bierze dni, które miesiąc ma; "
-        "średnia maksimów miesięcznych — miesiące z dostateczną liczbą dni (WMO-No. "
-        "1203, 2017, p. 4.4.2), a „Maks. roczne” liczy lata pełne, w których "
-        "największa suma dobowa przypadła na ten miesiąc.",
+        "The annual maximum is the largest precipitation total of n consecutive days "
+        "of the year (n = 1, 2, 3, 5, 10; for 1 and 5 days the indices Rx1day and "
+        "Rx5day). An n-day total belongs to the year of its last day.\n\n"
+        "A year with a day without a measurement is left out; the note under the table "
+        "names such years. In the table of the months, “Annual maxima” gives in how "
+        "many complete years the largest daily total fell in the month.\n\n"
+        "Sources: ETCCDI (Zhang et al. 2011); WMO-No. 1203, 2017",
+        "Maksimum roczne to największa suma opadu z n kolejnych dni roku (n = 1, 2, 3, "
+        "5, 10; dla 1 i 5 dni to wskaźniki Rx1day i Rx5day). Suma n-dniowa należy do "
+        "roku swojego ostatniego dnia.\n\n"
+        "Rok z dniem bez pomiaru jest pominięty; takie lata wymienia notka pod tabelą. "
+        "W tabeli miesięcy „Maks. roczne” podaje, w ilu latach pełnych największa suma "
+        "dobowa przypadła na dany miesiąc.\n\n"
+        "Źródła: ETCCDI (Zhang i in. 2011); WMO-No. 1203, 2017",
     ),
     "meteo.opady.days_n.one": Text("{n} day", "{n} doba"),
     "meteo.opady.days_n.few": Text("{n} days", "{n} doby"),
@@ -369,26 +382,32 @@ MESSAGES: dict[str, Text] = {
         "Opad maksymalny o prawdopodobieństwie p",
     ),
     "meteo.opady.quantiles.info": Text(
-        "Hydrolog, `stats flood-frequency` on the annual maxima of n days of the "
-        "complete years (from `meteo precipitation`, index maxima, the same years): "
-        "log-normal, GEV, Pearson III and Weibull distributions fitted by L-moments by "
-        "default (Hosking and Wallis 1997), with the goodness of fit KS, A² and AIC; "
-        "the distribution with the smallest AIC comes first. The points of the annual "
-        "maxima are at the exceedance probability m/(n+1). Beside them IMGW-PIB's "
-        "PMAXTP for the station's point (precipitation lasting 24, 48 or 72 h, methods "
-        "POT and AMP; asked of IMGW-PIB, not computed here). A daily total of a station "
+        "The precipitation total of the chosen number of days that the annual maximum "
+        "exceeds with the probability p, that is once in T years on average. Computed "
+        "from distributions fitted to the annual maxima; beside them IMGW-PIB's PMAXTP "
+        "for the station's point.\n\n"
+        "T = 1 / p\n"
+        "pₘ = m / (n + 1)\n"
+        "where: p – exceedance probability [–], T – return period [years], pₘ – "
+        "exceedance probability of the m-th largest annual maximum [–], n – number of "
+        "years\n\n"
+        "The distribution with the smallest AIC fits best. A station's daily total "
         "(the day of 06–06 UTC) is smaller than the largest 24-hour total of a moving "
-        "window, by about 1.13 times on average (Weiss 1964); it is not converted.",
-        "Hydrolog, `stats flood-frequency` na maksimach rocznych z n dni lat pełnych "
-        "(z `meteo precipitation`, index maxima, te same lata): rozkłady log-normalny, "
-        "GEV, Pearsona III i Weibulla, domyślnie metodą L-momentów (Hosking i Wallis "
-        "1997), z miarami zgodności KS, A² i AIC; rozkład o najmniejszym AIC jest "
-        "pierwszy. Punkty maksimów rocznych mają prawdopodobieństwo przewyższenia "
-        "m/(n+1). Obok PMAXTP IMGW-PIB dla punktu stacji (opad o czasie trwania 24, 48 "
-        "lub 72 h, metody POT i AMP; dane pobrane z IMGW-PIB, nie liczone tutaj). Suma "
-        "dobowa ze stacji (doba 06–06 UTC) jest mniejsza od największej sumy "
-        "24-godzinnej w przesuwanym oknie, średnio około 1,13 raza (Weiss 1964); nie "
-        "jest przeliczana.",
+        "window, about 1.13 times on average, and is not converted.\n\n"
+        "Sources: Hosking and Wallis 1997; Weiss 1964; PMAXTP: IMGW-PIB",
+        "Suma opadu z wybranej liczby dni, którą maksimum roczne przekracza z "
+        "prawdopodobieństwem p, czyli średnio raz na T lat. Liczona z rozkładów "
+        "dopasowanych do maksimów rocznych; obok PMAXTP IMGW-PIB dla punktu "
+        "stacji.\n\n"
+        "T = 1 / p\n"
+        "pₘ = m / (n + 1)\n"
+        "gdzie: p – prawdopodobieństwo przewyższenia [–], T – okres powtarzalności "
+        "[lata], pₘ – prawdopodobieństwo przewyższenia m-tego co do wielkości maksimum "
+        "rocznego [–], n – liczba lat\n\n"
+        "Najlepszy jest rozkład o najmniejszym AIC. Suma dobowa stacji (doba 06–06 "
+        "UTC) jest mniejsza od największej sumy 24-godzinnej w przesuwanym oknie, "
+        "średnio około 1,13 raza, i nie jest przeliczana.\n\n"
+        "Źródła: Hosking i Wallis 1997; Weiss 1964; PMAXTP: IMGW-PIB",
     ),
     "meteo.opady.quantiles.distribution": Text("Distribution", "Rozkład"),
     "meteo.opady.quantiles.method": Text("Method", "Metoda"),
@@ -473,24 +492,21 @@ MESSAGES: dict[str, Text] = {
         "Dry and wet spells", "Okresy bezopadowe i opadowe"
     ),
     "meteo.susze.spells.info": Text(
-        "Hydrolog, `meteo spells`. A dry spell is a run of consecutive days with "
-        "precipitation below the threshold, a wet spell a run of days with at least it "
-        "(1 mm: CDD and CWD of the ETCCDI; Zhang et al., 2011), found by the run logic "
-        "of `stats threshold-events` (Tallaksen and van Lanen 2004). A day without a "
-        "value ends a spell, which is then open (marked ≥: it may have been longer). A "
-        "spell counts in the year in which it starts; the figures of the years take "
-        "the years whose every day has a value, the distribution of the durations the "
-        "spells of those years that are not open. The list of spells holds those of at "
-        "least the duration named; the summaries take every spell.",
-        "Hydrolog, `meteo spells`. Okres bezopadowy to ciąg kolejnych dni z opadem "
-        "mniejszym od progu, okres opadowy — ciąg dni z opadem co najmniej równym "
-        "progowi (1 mm: CDD i CWD wg ETCCDI; Zhang i in. 2011), wyznaczony logiką serii "
-        "`stats threshold-events` (Tallaksen i van Lanen 2004). Dzień bez pomiaru "
-        "przerywa ciąg, który jest wtedy otwarty (oznaczony ≥: mógł być dłuższy). Ciąg "
-        "należy do roku, w którym się zaczął; wartości lat biorą lata z pomiarem w "
-        "każdym dniu, rozkład długości — ciągi tych lat, które nie są otwarte. Lista "
-        "ciągów obejmuje ciągi nie krótsze od podanej długości; podsumowania biorą "
-        "wszystkie ciągi.",
+        "A dry spell is a run of consecutive days with precipitation below the "
+        "threshold, a wet spell a run of days with at least the threshold (1 mm by "
+        "default). A spell counts in the year in which it starts.\n\n"
+        "At a threshold of 1 mm, the longest spell of a year is the index CDD or CWD. "
+        "The mark ≥ is an open spell, cut by a missing measurement: it may have been "
+        "longer; the figures of the years take only the years with a measurement on "
+        "every day.\n\n"
+        "Sources: ETCCDI (Zhang et al. 2011); Tallaksen and van Lanen 2004",
+        "Okres bezopadowy to ciąg kolejnych dni z opadem mniejszym od progu, a okres "
+        "opadowy ciąg dni z opadem co najmniej równym progowi (domyślnie 1 mm). Ciąg "
+        "należy do roku, w którym się zaczął.\n\n"
+        "Przy progu 1 mm najdłuższy ciąg roku to wskaźnik CDD albo CWD. Znak ≥ oznacza "
+        "ciąg otwarty, przerwany brakiem pomiaru: mógł być dłuższy; wartości lat liczą "
+        "się tylko z lat z pomiarem w każdym dniu.\n\n"
+        "Źródła: ETCCDI (Zhang i in. 2011); Tallaksen i van Lanen 2004",
     ),
     "meteo.susze.spells.kind_label": Text("Spells", "Ciągi"),
     "meteo.susze.spells.kind.dry": Text("dry", "bezopadowe"),
@@ -552,30 +568,32 @@ MESSAGES: dict[str, Text] = {
         "Standardized precipitation index SPI", "Wskaźnik standaryzowanego opadu SPI"
     ),
     "meteo.susze.spi.info": Text(
-        "Hydrolog, `meteo spi`. The SPI of a month for k months (1, 3, 6, 12) is the "
-        "standard normal quantile of the sum of the k months ending in it under the "
-        "distribution of such sums of the same calendar month in the reference period: "
-        "a gamma distribution fitted to the positive sums by Thom's (1958) "
-        "approximation of maximum likelihood, with the probability of a zero sum q: "
-        "H(x) = q + (1 − q)·G(x) (McKee et al., 1993; Edwards and McKee, 1997; "
-        "WMO-No. 1090, 2012). A month is fitted when its sums are known in at least "
-        "80 % of the years and three or more are positive; the SPI is held within "
-        "±3.09. At least 30 years are recommended (WMO-No. 1090: 20–30 years at least, "
-        "50–60 preferred). The colours are McKee's classes: −2 and below extremely "
-        "dry, to −1.5 severely dry, to −1 moderately dry, below 1 near normal, then "
-        "wet likewise.",
-        "Hydrolog, `meteo spi`. SPI miesiąca dla k miesięcy (1, 3, 6, 12) to kwantyl "
-        "standardowego rozkładu normalnego sumy k miesięcy kończących się w nim, przy "
-        "rozkładzie takich sum tego samego miesiąca kalendarzowego w okresie "
-        "odniesienia: rozkład gamma dopasowany do sum dodatnich metodą największej "
-        "wiarygodności w przybliżeniu Thoma (1958), z prawdopodobieństwem sumy zerowej "
-        "q: H(x) = q + (1 − q)·G(x) (McKee i in. 1993; Edwards i McKee 1997; WMO-No. "
-        "1090, 2012). Miesiąc jest dopasowany, gdy jego sumy są znane w co najmniej "
-        "80 % lat i co najmniej trzy są dodatnie; SPI jest ograniczony do ±3,09. "
-        "Zalecane jest co najmniej 30 lat (WMO-No. 1090: co najmniej 20–30 lat, "
-        "najlepiej 50–60). Kolory to klasy McKee: −2 i mniej ekstremalnie suchy, do "
-        "−1,5 bardzo suchy, do −1 umiarkowanie suchy, poniżej 1 normalny, dalej "
-        "symetrycznie wilgotne.",
+        "The SPI is the precipitation total of k months (1, 3, 6, 12) ending in a "
+        "month, expressed as a value of the standard normal distribution against such "
+        "totals of the same month in the reference period.\n\n"
+        "SPI = Φ⁻¹(H(x))\n"
+        "H(x) = q + (1 − q) · G(x)\n"
+        "where: x – total of k months [mm], G – distribution function of the gamma "
+        "distribution fitted to the positive totals, q – probability of a zero total "
+        "[–], Φ⁻¹ – inverse distribution function of the standard normal "
+        "distribution\n\n"
+        "A negative SPI is a total below the median of the fitted distribution, a "
+        "positive one above it. The colours are McKee's classes; “near normal” lies "
+        "between the lines −1 and 1.\n\n"
+        "Sources: McKee et al. 1993; Edwards and McKee 1997; Thom 1958; WMO-No. 1090, "
+        "2012",
+        "SPI to suma opadów z k miesięcy (1, 3, 6, 12) kończących się w danym "
+        "miesiącu, wyrażona jako wartość standardowego rozkładu normalnego względem "
+        "takich sum tego samego miesiąca w okresie odniesienia.\n\n"
+        "SPI = Φ⁻¹(H(x))\n"
+        "H(x) = q + (1 − q) · G(x)\n"
+        "gdzie: x – suma z k miesięcy [mm], G – dystrybuanta rozkładu gamma "
+        "dopasowanego do sum dodatnich, q – prawdopodobieństwo sumy zerowej [–], Φ⁻¹ – "
+        "funkcja odwrotna dystrybuanty standardowego rozkładu normalnego\n\n"
+        "Ujemny SPI to suma mniejsza od mediany dopasowanego rozkładu, dodatni "
+        "większa. Kolory to klasy McKee; klasa „normalny” leży między liniami −1 i "
+        "1.\n\n"
+        "Źródła: McKee i in. 1993; Edwards i McKee 1997; Thom 1958; WMO-No. 1090, 2012",
     ),
     "meteo.susze.spi.scale": Text("Scale", "Skala"),
     "meteo.susze.spi.scale_label": Text("Scale of the SPI", "Skala SPI"),
@@ -604,24 +622,28 @@ MESSAGES: dict[str, Text] = {
         "Relative precipitation and its classes", "Opad względny i jego klasy"
     ),
     "meteo.susze.relative.info": Text(
-        "Hydrolog, `meteo spi`. The relative precipitation is a total in % of its "
-        "normal, the mean of the reference period. A year is classed by Kaczorowska "
-        "(1962): below 50 % extremely dry, 50–74 very dry, 75–89 dry, 90–110 normal, "
-        "111–125 wet, 126–150 very wet, above 150 extremely wet (the percentage "
-        "rounded to a whole number). Kaczorowska gave no classes of months; a month is "
-        "classed by the limits of Polish practice: below 25 % extremely dry, from 25 "
-        "very dry, from 50 dry, 75–125 normal, above 125 wet, above 150 very wet, "
-        "above 200 extremely wet (Tomaszewska 1994, after Kosiba 1948, as given by "
-        "Gąsiorek and Musiał 2011).",
-        "Hydrolog, `meteo spi`. Opad względny to suma w % jej normalnej, średniej "
-        "okresu odniesienia. Rok jest klasyfikowany według Kaczorowskiej (1962): "
-        "poniżej 50 % skrajnie suchy, 50–74 bardzo suchy, 75–89 suchy, 90–110 "
-        "normalny, 111–125 wilgotny, 126–150 bardzo wilgotny, powyżej 150 skrajnie "
-        "wilgotny (procent zaokrąglony do całości). Kaczorowska nie podała klas "
-        "miesięcy; miesiąc jest klasyfikowany według progów polskiej praktyki: poniżej "
-        "25 % skrajnie suchy, od 25 bardzo suchy, od 50 suchy, 75–125 normalny, "
-        "powyżej 125 wilgotny, powyżej 150 bardzo wilgotny, powyżej 200 skrajnie "
-        "wilgotny (Tomaszewska 1994, za Kosibą 1948, według Gąsiorka i Musiał 2011).",
+        "The relative precipitation is the total of a month or a year in % of its "
+        "normal, the mean of the reference period. The years are classed after "
+        "Kaczorowska, the months by the limits of Polish practice.\n\n"
+        "Pr = 100 · P / N\n"
+        "where: Pr – relative precipitation [%], P – total of the month or the year "
+        "[mm], N – its normal [mm]\n\n"
+        "A year is normal at 90–110 %, extremely dry below 50 % and extremely wet "
+        "above 150 %. A month is normal at 75–125 %, extremely dry below 25 % and "
+        "extremely wet above 200 %.\n\n"
+        "Sources: Kaczorowska 1962 (years); Tomaszewska 1994 after Kosiba 1948, as "
+        "given by Gąsiorek and Musiał 2011 (months)",
+        "Opad względny to suma miesiąca albo roku w procentach jej normalnej, czyli "
+        "średniej z okresu odniesienia. Lata są klasyfikowane według Kaczorowskiej, a "
+        "miesiące według progów polskiej praktyki.\n\n"
+        "Pw = 100 · P / N\n"
+        "gdzie: Pw – opad względny [%], P – suma miesiąca albo roku [mm], N – jej "
+        "normalna [mm]\n\n"
+        "Rok jest normalny przy 90–110 %, skrajnie suchy poniżej 50 %, a skrajnie "
+        "wilgotny powyżej 150 %. Miesiąc jest normalny przy 75–125 %, skrajnie suchy "
+        "poniżej 25 %, a skrajnie wilgotny powyżej 200 %.\n\n"
+        "Źródła: Kaczorowska 1962 (lata); Tomaszewska 1994 za Kosibą 1948, według "
+        "Gąsiorka i Musiał 2011 (miesiące)",
     ),
     "meteo.susze.relative.table": Text(
         "Relative precipitation of the months and years [% of the normal]",

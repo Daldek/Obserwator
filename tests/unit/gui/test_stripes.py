@@ -167,7 +167,7 @@ def test_the_scale_refuses_a_spread_or_k_that_is_not_positive_and_finite(centre,
 # --- the document on Hydrolog's result --------------------------------------------------
 
 
-def test_the_centre_and_the_anomalies_are_hydrologs_and_only_the_scale_is_the_prototype():
+def test_the_centre_and_the_anomalies_are_hydrologs_and_only_the_scale_is_the_servers():
     means = {year: 7.5 if year % 2 else 8.5 for year in range(1901, 2001)}
     means |= {2001: 9.0, 2002: None, 2003: 9.6, 2004: None}
     found = document(analysis(means, 8.0, reference=(1961, 2010), normal_years=50))
@@ -199,8 +199,6 @@ def test_the_centre_and_the_anomalies_are_hydrologs_and_only_the_scale_is_the_pr
         15,
     ]
     assert found["palette"] == list(COLOURS)
-    assert found["provenance"]["engine"] == "prototype"
-    assert found["provenance"]["target"] == "M15"
     assert "result" not in found["analysis"]["envelope"]
     assert found["attribution"] == ["Source: IMGW-PIB"]
     assert found["terms_notice"] == ["IMGW-PIB terms"]

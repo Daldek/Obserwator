@@ -233,7 +233,7 @@ export function Regime({ station, analyses }) {
   ];
   const type = rr && rr.regime_type;
   const criteria = type && type.criteria;
-  return html`<${Section} info=${t("hydro.regime.info")}><div class="hy-card">
+  return html`<${Section} info=${t("hydro.regime.info")} guide="metody-regime"><div class="hy-card">
     ${variables.length > 0 &&
     html`<${Section} title=${t("hydro.regime.daily_monthly_title")}>
       ${variables.length > 1 &&

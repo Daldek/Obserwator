@@ -167,7 +167,7 @@ export function WaterTemperature({ station, analyses }) {
     { key: "max", label: t("hydro.temperature.col.max"), format: (v, row) => (v === undefined ? "–" : `${fmt(v, 1)} (${date(row.max_date)})`) },
   ];
   const active = (state) => state.loading || state.data || state.error;
-  return html`<${Section} info=${t("hydro.temperature.info")}><div class="hy-card">
+  return html`<${Section} info=${t("hydro.temperature.info")} guide="metody-temperature"><div class="hy-card">
     <${Years} station=${station} variables=${["T"]} from=${opt.from} to=${opt.to} onApply=${applyYears} label=${t("hydro.axis.hydro_years")} />
     ${ids.has(HARMONICS) &&
     html`<${Section} title=${t("hydro.temperature.cycle_part")} states=${[harmonics, daily].filter(active)}>

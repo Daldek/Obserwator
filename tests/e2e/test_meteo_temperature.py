@@ -36,10 +36,6 @@ WAIT = 180_000
 """How long a section may take: Hydrolog computes the stripes' normal on request [ms]."""
 SOURCE = {True: "wynik zapisany", False: "policzony na żądanie"}
 """The provenance chip of a stored result and of one computed on request."""
-PROTOTYPE = {
-    "pl": "Prototyp obliczeń · docelowo Hydrolog (M15)",
-    "en": "Computation prototype · to move to Hydrolog (M15)",
-}
 
 
 def get(base: str, path: str, **query: Any) -> dict[str, Any]:
@@ -151,12 +147,12 @@ def test_temperature_shows_hydrologs_means_days_harmonics_and_coefficient(
 
 
 @pytest.mark.parametrize("code", STATIONS)
-def test_the_stripes_take_hydrologs_normal_and_are_labelled_a_prototype(
+def test_the_stripes_take_hydrologs_normal_and_name_its_computation(
     open_page, analysis_url, code
 ):
     temperature = card(open_page, analysis_url, code, "temperatura")
     section = part(temperature, "Paski klimatyczne")
-    section.locator(".prov-proto", has_text=PROTOTYPE["pl"]).wait_for(timeout=WAIT)
+    section.locator("svg.stripes").wait_for(timeout=WAIT)
     provenance(section, "meteo temperature", stored=False)
     document = stripes(analysis_url, code)
     centre = document["scale"]["centre"]
@@ -173,7 +169,7 @@ def test_the_stripes_take_hydrologs_normal_and_are_labelled_a_prototype(
     assert number(figure(section, "Średnia 1961–2010")) == pytest.approx(
         centre["normal_c"], abs=0.006
     )
-    # one stripe a year, coloured by the prototype's scale
+    # one stripe a year, coloured by the server's scale
     rects = section.locator("svg.stripes > rect")
     assert rects.count() == len(document["years"]) + len(document["grey"])
     first = document["years"][0]
@@ -190,7 +186,7 @@ def test_the_stripes_files_carry_the_station_the_credit_and_the_lines(
 ):
     temperature = card(open_page, analysis_url, KRAKOW, "temperatura")
     section = part(temperature, "Paski klimatyczne")
-    section.locator(".prov-proto").wait_for(timeout=WAIT)
+    section.locator("svg.stripes").wait_for(timeout=WAIT)
     document = stripes(analysis_url, KRAKOW)
     lines = document["attribution"] + document["terms_notice"]
     assert lines
@@ -297,7 +293,7 @@ def test_the_stripes_draw_in_both_themes_languages_and_widths(
     )
     title = "Paski klimatyczne" if lang == "pl" else "Climate stripes"
     section = part(temperature, title)
-    section.locator(".prov-proto", has_text=PROTOTYPE[lang]).wait_for(timeout=WAIT)
+    section.locator("svg.stripes").wait_for(timeout=WAIT)
     assert section.locator("svg.stripes > rect").count() >= 60
     page = temperature.page
     assert page.evaluate("document.documentElement.scrollWidth") <= width
