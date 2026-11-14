@@ -55,8 +55,8 @@ Installed in `.venv`: pytest 9.0, pytest-cov 7.0, pytest-asyncio 1.3 (`asyncio_m
 > `hydrolog`). The dead-code cleanup removed `_parsing.common.is_missing_value`, so the planned
 > `test_is_missing_value_level_flow_temp_and_none` has no subject, and the unused fixtures `hydro_current_api_response`,
 > `synop_api_response`, `hydro_stations_csv` and `map_stations_api_response` of `tests/conftest.py`; the autouse fixture
-> named `isolated_data_dir` below is now `isolated_reference_dir` (it sets `settings.reference_dir`). State: 3499 tests
-> (3427 offline, 148 of them in `tests/e2e`; 72 live; `docs/TESTING.md`).
+> named `isolated_data_dir` below is now `isolated_reference_dir` (it sets `settings.reference_dir`). State: 3500 tests
+> (3428 offline, 148 of them in `tests/e2e`; 72 live; `docs/TESTING.md`).
 
 Base commands:
 

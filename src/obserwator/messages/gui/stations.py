@@ -115,13 +115,12 @@ MESSAGES: dict[str, Text] = {
         "Stacje meteorologiczne: opad w 10 min",
     ),
     "stations.legend.meteo_note": Text(
-        "Symbols and colours as on hydro.imgw.pl, which classes the precipitation of "
-        "6 hours; IMGW-PIB's 6-hour class is not available here, so the latest "
-        "10-minute total gives the class. Heavy: at least heavy rain on Chomicz's "
-        "scale.",
-        "Symbole i kolory jak na hydro.imgw.pl, które klasyfikuje opad z 6 godzin; "
-        "klasa 6-godzinna IMGW-PIB jest tu niedostępna, więc klasę daje ostatnia "
-        "suma 10-minutowa. Intensywny: co najmniej silny deszcz w skali Chomicza.",
+        "Symbols and colours as on hydro.imgw.pl, which classes the precipitation of 6 "
+        "hours; here the latest 10-minute total gives the class. Heavy: at least heavy "
+        "rain on Chomicz's scale.",
+        "Symbole i kolory jak na hydro.imgw.pl, które klasyfikuje opad z 6 godzin; tu "
+        "klasę daje ostatnia suma 10-minutowa. Intensywny: co najmniej silny deszcz w "
+        "skali Chomicza.",
     ),
     "stations.legend.loading": Text(
         "Fetching the current measurements from IMGW-PIB…",
@@ -167,15 +166,14 @@ MESSAGES: dict[str, Text] = {
     ),
     "stations.legend.borders": Text(
         "Background: the state borders of Poland (PRG, GUGiK) and Czechia (RÚIAN, "
-        "ČÚZK) from Obserwator's package.",
-        "Tło: granice państwowe Polski (PRG, GUGiK) i Czech (RÚIAN, ČÚZK) z pakietu "
-        "Obserwatora.",
+        "ČÚZK).",
+        "Tło: granice państwowe Polski (PRG, GUGiK) i Czech (RÚIAN, ČÚZK).",
     ),
     "stations.legend.basemap_failed": Text(
-        "The basemap did not load: the background is the state borders of Poland "
-        "(PRG, GUGiK) and Czechia (RÚIAN, ČÚZK) from Obserwator's package.",
+        "The basemap did not load: the background is the state borders of Poland (PRG, "
+        "GUGiK) and Czechia (RÚIAN, ČÚZK).",
         "Podkład mapy się nie wczytał: tło to granice państwowe Polski (PRG, GUGiK) i "
-        "Czech (RÚIAN, ČÚZK) z pakietu Obserwatora.",
+        "Czech (RÚIAN, ČÚZK).",
     ),
     # The snapshots of api/current, named where one fails
     "stations.source.states": Text(

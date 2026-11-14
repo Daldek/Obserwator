@@ -17,10 +17,10 @@ const MILLION = 1e6;
 const EXCEEDANCE = { p70: 70, p90: 90 };
 /** The mean of the annual minima by variable: SNQ of the discharge, SNW of the water level. */
 const MEAN_MINIMUM = { Q: "SNQ", H: "SNW" };
-/** The texts of each variable: the (i), the threshold read off the duration curve, the daily series. */
+/** The texts of each variable: the (i) and its part of the guide, the threshold read off the duration curve, the daily series. */
 const TEXTS = {
-  Q: { info: "hydro.lowflow.info_q", exceedance: "hydro.lowflow.threshold_exceedance_q", daily: "hydro.lowflow.daily_q" },
-  H: { info: "hydro.lowflow.info_h", exceedance: "hydro.lowflow.threshold_exceedance_h", daily: "hydro.lowflow.daily_h" },
+  Q: { info: "hydro.lowflow.info_q", guide: "metody-lowflow-q", exceedance: "hydro.lowflow.threshold_exceedance_q", daily: "hydro.lowflow.daily_q" },
+  H: { info: "hydro.lowflow.info_h", guide: "metody-lowflow-h", exceedance: "hydro.lowflow.threshold_exceedance_h", daily: "hydro.lowflow.daily_h" },
 };
 /**
  * Hydrolog's deficits by variable (the fields of a period, a year and the whole): of Q as a
@@ -249,7 +249,7 @@ export function LowFlowPeriods({ station, session, analyses }) {
     { key: "mean_flow", label: t("hydro.lowflow.col.mean"), format: (v) => fmtV(v, variable) },
     { key: "missing_days", label: t("hydro.lowflow.col.missing"), format: (v) => (v ? fmt(v, 0) : "") },
   ];
-  return html`<${Section} info=${t(TEXTS[variable].info)}><div class="hy-card">
+  return html`<${Section} info=${t(TEXTS[variable].info)} guide=${TEXTS[variable].guide}><div class="hy-card">
     <${Years} station=${station} variables=${[variable]} from=${opt.from} to=${opt.to} onApply=${applyYears} label=${t("hydro.axis.hydro_years")} />
     <div class="hy-options">
       ${variables.length > 1 &&

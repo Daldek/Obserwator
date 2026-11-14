@@ -9,7 +9,7 @@
 ---
 
 ## 2. Tests
-- **unit and contract tests** — required, status: 3279 tests in `tests/unit` and `tests/contract` (2026-11-14), all offline
+- **unit and contract tests** — required, status: 3280 tests in `tests/unit` and `tests/contract` (2026-11-14), all offline
 - **browser tests of the GUI** — 148 tests in `tests/e2e` (Playwright, Chromium; marker `e2e`, skipped without Chromium; 44 also marked `hydrolog`, skipped without Hydrolog's program)
 - **live tests** — 72 tests in `tests/live` (marker `live`, outside the gate: `pytest -m live`): 50 against IMGW-PIB servers (35 commands × Python/CLI/REST, live errors, MCP leg `-k obserwator_mcp`) and 22 against opendata.chmi.cz (ČHMÚ provider)
 - coverage: last measurement **94.37%** (2026-10-25), gate threshold **80%**

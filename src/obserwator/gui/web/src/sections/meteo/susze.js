@@ -335,7 +335,7 @@ export function Susze({ station, analyses }) {
     </div>
     <${Notices} states=${[spells, spi]} />
     ${spells.entry &&
-    html`<${Section} title=${t("meteo.susze.spells.title")} info=${t("meteo.susze.spells.info")} states=${[spells]}>
+    html`<${Section} title=${t("meteo.susze.spells.title")} info=${t("meteo.susze.spells.info")} guide="metody-susze-ciagi" states=${[spells]}>
       <div class="me-options">
         ${takes(spells.entry, "threshold_mm") &&
         html`<${Option} label=${t("meteo.common.threshold")}>
@@ -349,11 +349,11 @@ export function Susze({ station, analyses }) {
       ${spells.result && html`<${SpellsBody} r=${spells.result} recordLast=${recordLast} />`}
     </${Section}>`}
     ${spi.entry &&
-    html`<${Section} title=${t("meteo.susze.spi.title")} info=${t("meteo.susze.spi.info")} states=${[spi]}>
+    html`<${Section} title=${t("meteo.susze.spi.title")} info=${t("meteo.susze.spi.info")} guide="metody-susze-spi" states=${[spi]}>
       ${spiResult && html`<${SpiBody} r=${spiResult} k=${Math.min(k, spiResult.scales_months.length - 1)} onScale=${(v) => setOpt({ scale: v })} />`}
     </${Section}>`}
     ${spi.entry &&
-    html`<${Section} title=${t("meteo.susze.relative.title")} info=${t("meteo.susze.relative.info")} states=${[spi]}>
+    html`<${Section} title=${t("meteo.susze.relative.title")} info=${t("meteo.susze.relative.info")} guide="metody-susze-wzgledny" states=${[spi]}>
       ${spiResult && html`<${RelativeBody} r=${spiResult} />`}
     </${Section}>`}
   </div>`;

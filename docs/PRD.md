@@ -217,7 +217,7 @@ obserwator commands guide [-f agents|llms] [--lang pl|en] [--output <file> [--fo
 | No server-side data storage by default | Implemented | Core design principle: URL generation and live proxy; the servers store data only in their configured roots (`OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`); the CLI and the library write where the person says (`--root`, `--output-dir`, `--output`) or, without it, to the default raw and data roots (ADR-017) |
 | PEP8 compliance | Implemented | Using ruff |
 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
-| Unit and contract tests | Implemented | 3279 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-14); Python = CLI = REST = MCP contract |
+| Unit and contract tests | Implemented | 3280 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-14); Python = CLI = REST = MCP contract |
 | GUI browser tests | Implemented | 148 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-14) |
 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-14) |
 | API response time < 2s | Implemented | For proxied requests |

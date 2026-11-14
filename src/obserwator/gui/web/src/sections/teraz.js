@@ -140,7 +140,7 @@ function Teraz({ station }) {
   const doc = state.doc;
   const hydro = station.properties.kind === "hydro";
   const absent = hydro ? t("station.now.no_record_hydro") : t("station.now.no_record_meteo");
-  return html`<${Section} info=${hydro ? t("station.now.info_hydro") : t("station.now.info_meteo")}>
+  return html`<${Section} info=${hydro ? t("station.now.info_hydro") : t("station.now.info_meteo")} guide="pomiary-biezace">
     ${state.error ? html`<p class="ana-error" role="alert">${state.error.message}</p>` : null}
     ${!doc && state.loading ? html`<p class="muted" role="status">${t("station.now.loading")}</p>` : null}
     ${doc && !doc.record ? html`<p class="note-box">${absent}${station.properties.active ? "" : ` ${t("station.now.inactive")}`}</p>` : null}

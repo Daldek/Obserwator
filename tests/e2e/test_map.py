@@ -221,7 +221,7 @@ def test_current_measurements_replace_the_station_layer_and_stations_bring_it_ba
     for words, colour in STATE_COLOURS.items():
         symbol = legend.locator("li", has_text=words).locator(".sym .body").first
         assert symbol.evaluate("(path) => getComputedStyle(path).fill") == colour
-    expect(legend).to_contain_text("klasa 6-godzinna IMGW-PIB jest tu niedostępna")
+    expect(legend).to_contain_text("tu klasę daje ostatnia suma 10-minutowa")
     page.get_by_role("radio", name="Stacje").click()
     wait_drawn(page, ["stations"], located)
     wait_drawn(page, ["current", "current-selected"], set())

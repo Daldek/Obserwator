@@ -129,7 +129,7 @@ function Periods({ code, ids, opt, setOpt, axis }) {
     { key: "level_at_reference_discharge", label: t("hydro.rating.col_h_at", { flow: fmt(result.reference_discharge_m3s, 2) }), format: (v) => (v === null || v === undefined ? "–" : fmt(v, 0)) },
   ];
   const rows = periods.map((p) => ({ ...p, label: `${p.first_year}–${p.last_year}` }));
-  return html`<${Section} title=${t("hydro.rating.periods_title")} info=${t("hydro.rating.periods_info")} states=${[state]}>
+  return html`<${Section} title=${t("hydro.rating.periods_title")} info=${t("hydro.rating.periods_info")} guide="metody-rating-okresy" states=${[state]}>
     <${Option} label=${t("hydro.rating.periods")}><${Seg}
       value=${opt.period}
       label=${t("hydro.rating.periods_length")}
@@ -181,7 +181,7 @@ export function RatingCurve({ station, session, analyses }) {
   }, [fit, series.data, opt.axis, lang()]);
   const flowUnit = unit("m3/s");
   return html`<div class="hy-card">
-    <${Section} title=${t("hydro.rating.title")} info=${t("hydro.rating.info")} states=${[state]}>
+    <${Section} title=${t("hydro.rating.title")} info=${t("hydro.rating.info")} guide="metody-rating-krzywa" states=${[state]}>
       ${fit &&
       html`<${Years}
           station=${station}

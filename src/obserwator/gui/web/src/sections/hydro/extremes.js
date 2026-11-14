@@ -129,7 +129,7 @@ function Homogeneity({ state }) {
     { key: "p", label: "p", format: (v) => fmt(v, 3) },
     { key: "ok", label: t("hydro.extremes.col_homogeneous"), format: (v) => t(v ? "hydro.extremes.yes" : "hydro.extremes.no") },
   ];
-  return html`<${Section} title=${t("hydro.extremes.homogeneity_title")} info=${t("hydro.extremes.homogeneity_info")} states=${[state]}>
+  return html`<${Section} title=${t("hydro.extremes.homogeneity_title")} info=${t("hydro.extremes.homogeneity_info")} guide="metody-extremes-jednorodnosc" states=${[state]}>
     ${result &&
     html`<${Table} columns=${columns} rows=${rows} className="tbl hy-compact" />
       <p class="muted hy-caption">
@@ -176,7 +176,7 @@ function LowFlow({ state, code, session, periods }) {
         .map((row) => ({ f: percent(fitted.non_exceedance_probabilities[row]), T: fitted.return_periods[row], q: fitted.quantiles[row] }))
     : [];
   const years = result ? result.hydrological_years : [];
-  return html`<${Section} title=${t("hydro.extremes.low_title")} info=${t("hydro.extremes.low_info")} states=${[state]}>
+  return html`<${Section} title=${t("hydro.extremes.low_title")} info=${t("hydro.extremes.low_info")} guide="metody-extremes-minima" states=${[state]}>
     ${result &&
     html`<${Figures}
         items=${[
@@ -259,7 +259,7 @@ export function Extremes({ station, session, analyses }) {
       to=${opt.to}
       onApply=${(from, to) => setOpt({ from, to })}
     />
-    <${Section} title=${t("hydro.extremes.max_title")} info=${t("hydro.extremes.max_info")} states=${[state]}>
+    <${Section} title=${t("hydro.extremes.max_title")} info=${t("hydro.extremes.max_info")} guide="metody-extremes-maksima" states=${[state]}>
       <div class="hy-options">
         <${Option} label=${t("hydro.extremes.distribution")}><${Select}
           value=${opt.distribution}

@@ -6,11 +6,8 @@ MESSAGES: dict[str, Text] = {
     "sections.failed": Text("The analysis failed.", "Analiza się nie powiodła."),
     "sections.info": Text("Explanation", "Objaśnienie"),
     "sections.info_methods": Text("How it is computed", "Objaśnienie metod"),
+    "sections.guide": Text("More in the guide (in Polish)", "Więcej w instrukcji"),
     "sections.computing": Text("Computing…", "Liczę…"),
-    "sections.prototype": Text(
-        "Computation prototype · to move to Hydrolog ({target})",
-        "Prototyp obliczeń · docelowo Hydrolog ({target})",
-    ),
     "sections.stored": Text("stored result of {when}", "wynik zapisany {when}"),
     "sections.on_request": Text("computed on request", "policzony na żądanie"),
     "sections.series_version": Text("series {version}", "szereg {version}"),

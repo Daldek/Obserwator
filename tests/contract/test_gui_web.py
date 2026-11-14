@@ -4,7 +4,8 @@ The web GUI's page files (GUI plan D15, D16; Nogat DEV-15.1, DEV-15.3, DEV-15.6)
 The copies of Nogat's tokens, marks and kit and the vendored libraries keep the bytes
 their manifests name; the page loads nothing from another origin and has no inline script
 or style (CSP ``'self'``); every text the page's scripts name is an entry of the catalog's
-area ``gui``, and no Polish word is left in their literals.
+area ``gui``, no Polish word is left in their literals, and every link of an explanation
+into the user guide names one of its parts (Nogat DEV-15.14).
 """
 
 import hashlib
@@ -297,3 +298,35 @@ def test_the_page_scripts_hold_no_polish_text():
             if POLISH.search(value):
                 found.append(f"{path.relative_to(WEB_DIR).as_posix()}: {value[:60]!r}")
     assert found == [], "a text of the page belongs in obserwator.messages.gui"
+
+
+# --- links into the guide ----------------------------------------------------------------
+
+
+class _Ids(HTMLParser):
+    """The ids of a page's elements."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.found: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.found.update(value for name, value in attrs if name == "id" and value)
+
+
+def test_every_guide_link_of_an_explanation_names_a_part_of_the_guide():
+    parser = _Ids()
+    parser.feed((GUIDE / "index.html").read_text(encoding="utf-8"))
+    parser.close()
+    # A section's `guide="…"` prop, or `guide: "…"` in a table of a section's texts
+    links = [
+        (path.relative_to(WEB_DIR).as_posix(), anchor)
+        for path in SCRIPTS
+        for anchor in re.findall(
+            r"""\bguide(?:=|:\s*)["']([^"']+)["']""", path.read_text(encoding="utf-8")
+        )
+    ]
+    assert links, "no explanation links the guide"
+    assert [
+        f"{where}: #{anchor}" for where, anchor in links if anchor not in parser.found
+    ] == []

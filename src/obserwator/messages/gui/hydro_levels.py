@@ -24,35 +24,24 @@ _COMMON: dict[str, Text] = {
 
 _CHARACTERISTIC: dict[str, Text] = {
     "hydro.characteristic.info": Text(
-        "First-degree characteristic values are the lowest, mean and highest value of "
-        "each hydrological year (November–October) and of its half-years "
-        "(November–April, May–October): NW, SW, WW of water levels, NQ, SQ, WQ of "
-        "discharges, NT, ST, WT of water temperature. Second-degree values (WWQ…NNQ, "
-        "WWW…NNW) are the highest (W), mean (S), median (Z) and lowest (N) of the "
-        "annual (half-year) maxima, means and minima of the chosen years, by "
-        "IMGW-PIB's method. Hydrolog computes both (“stats characteristic”): in bold "
-        "from the daily series (a year without a value on every day from its days "
-        "with one), in small type from IMGW-PIB's half-year characteristics "
-        "(pl.imgw.hydro_semiannual), whose annual maximum is the larger half-year "
-        "one and may be an instantaneous value. The source “IMGW-PIB, other years "
-        "daily” takes the published characteristics into the first-degree table "
-        "and the years without them from the daily series. By default every year "
-        "of the station's record; at least 30 years are recommended. Data: IMGW-PIB "
-        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz).",
-        "Wartości charakterystyczne I stopnia to najmniejsza, średnia i największa "
-        "wartość roku hydrologicznego (XI–X) i jego półroczy (XI–IV, V–X): NW, SW, "
-        "WW dla stanów, NQ, SQ, WQ dla przepływów, NT, ST, WT dla temperatury wody. "
-        "Wartości II stopnia (WWQ…NNQ, WWW…NNW) to największa (W), średnia (S), "
-        "mediana (Z) i najmniejsza (N) z rocznych (półrocznych) maksimów, średnich "
-        "i minimów wybranych lat, według metodyki IMGW-PIB. Obie liczy Hydrolog "
-        "(„stats characteristic”): pogrubione z szeregu dobowego (rok bez wartości "
-        "w każdym dniu z dni z wartością), mniejszą czcionką z charakterystyk "
-        "półrocznych IMGW-PIB (pl.imgw.hydro_semiannual), w których maksimum roczne "
-        "to większe z półrocznych i może być wartością chwilową. Źródło „IMGW-PIB, "
-        "pozostałe lata dobowe” bierze do tabeli I stopnia opublikowane "
-        "charakterystyki, a lata bez nich z szeregu dobowego. Domyślnie wszystkie "
-        "lata zapisu stacji; zalecany okres to co najmniej 30 lat. Dane: IMGW-PIB "
-        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz).",
+        "First-degree values are the lowest (N), mean (S) and highest (W) value of a "
+        "hydrological year (November–October) or half-year. Second-degree values are "
+        "the highest (W), mean (S), median (Z) and lowest (N) of them in the chosen "
+        "years.\n\n"
+        "The first of the three letters of a name is the statistic over the years, the "
+        "second the annual value, the third the variable (Q discharge, W water level, "
+        "T water temperature): SNQ is the mean of the annual lowest discharges.\n\n"
+        "Sources: IMGW-PIB's method; Byczkowski 1996 (Hydrologia, vol. 1); data: "
+        "IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
+        "Wartości I stopnia to najmniejsza (N), średnia (S) i największa (W) wartość "
+        "roku hydrologicznego (XI–X) albo półrocza. Wartości II stopnia to największa "
+        "(W), średnia (S), mediana (Z) i najmniejsza (N) z nich w wybranych "
+        "latach.\n\n"
+        "Pierwsza z trzech liter nazwy to statystyka lat, druga – wartość roczna, "
+        "trzecia – zmienna (Q przepływ, W stan wody, T temperatura wody): SNQ to "
+        "średnia z rocznych przepływów najmniejszych.\n\n"
+        "Źródła: metodyka IMGW-PIB; Byczkowski 1996 (Hydrologia, t. 1); dane: IMGW-PIB "
+        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
     ),
     "hydro.characteristic.second_title": Text(
         "Second-degree values", "Wartości II stopnia"
@@ -127,24 +116,24 @@ _LEVELS: dict[str, Text] = {
         "Levels and the days beyond them", "Progi i dni poza nimi"
     ),
     "hydro.levels.info": Text(
-        "ČHMÚ's thresholds (SPA 1–3, Q50 and the drought level) come from ČHMÚ's "
-        "station catalog (opendata.chmi.cz); Hydrolog computes the characteristic "
-        "levels SWW, SSW and SNW (SWQ, SSQ, SNQ) of the chosen years (“stats "
-        "characteristic”). IMGW-PIB's warning and alarm levels (hydro.imgw.pl, "
-        "current values) are shown in “Station information” and are not used here. "
-        "Hydrolog counts the days beyond a level and the runs of such days (“stats "
-        "threshold-events”): a day whose value is at or above the level (for the "
-        "drought level and SNW/SNQ: below it) is beyond it; a run ends on a day within "
-        "the level or without a value. Hydrological years November–October.",
-        "Progi ČHMÚ (SPA 1–3, Q50 i próg suszy) pochodzą z katalogu stacji ČHMÚ "
-        "(opendata.chmi.cz); stany (przepływy) charakterystyczne SWW, SSW i SNW "
-        "(SWQ, SSQ, SNQ) wybranych lat liczy Hydrolog („stats characteristic”). "
-        "Stany ostrzegawczy i alarmowy IMGW-PIB (hydro.imgw.pl, wartości bieżące) "
-        "są pokazane w „Informacjach o stacji” i nie są tu używane. Dni poza progiem "
-        "i ciągi takich dni liczy Hydrolog („stats threshold-events”): dzień z "
-        "wartością równą progowi lub wyższą (dla progu suszy i SNW/SNQ: niższą od "
-        "progu) jest poza progiem; ciąg kończy dzień w granicach progu albo dzień bez "
-        "wartości. Lata hydrologiczne XI–X.",
+        "A day beyond a level has a daily value at or above it (for the drought level, "
+        "SNW and SNQ: below it); such days are counted in each hydrological year "
+        "(November–October), with their runs. The levels are ČHMÚ's SPA 1–3, Q50 and "
+        "drought level and SWW, SSW, SNW (SWQ, SSQ, SNQ) of the chosen years.\n\n"
+        "A run ends on a day within the level or without a value. IMGW-PIB's warning "
+        "and alarm levels are in the card “Station information”, not here.\n\n"
+        "Sources: threshold level method (Tallaksen and van Lanen 2004); ČHMÚ's "
+        "levels: ČHMÚ's station catalog (opendata.chmi.cz); data: IMGW-PIB "
+        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
+        "Dzień poza progiem ma wartość dobową równą progowi lub wyższą (przy progu "
+        "suszy, SNW i SNQ: niższą); liczone są takie dni w latach hydrologicznych "
+        "(XI–X) i ich ciągi. Progi to SPA 1–3, Q50 i próg suszy ČHMÚ oraz SWW, SSW, "
+        "SNW (SWQ, SSQ, SNQ) wybranych lat.\n\n"
+        "Ciąg kończy dzień w granicach progu albo bez wartości. Stany ostrzegawczy i "
+        "alarmowy IMGW-PIB są w karcie „Informacje o stacji”, a nie tutaj.\n\n"
+        "Źródła: metoda progowa (Tallaksen i van Lanen 2004); progi ČHMÚ: katalog "
+        "stacji ČHMÚ (opendata.chmi.cz); dane: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ "
+        "(opendata.chmi.cz)",
     ),
     "hydro.levels.name.spa1": Text(
         "SPA 1 · alert (bdělost)", "SPA 1 · stan czuwania (bdělost)"
@@ -222,36 +211,32 @@ _LEVELS: dict[str, Text] = {
 _RATING: dict[str, Text] = {
     "hydro.rating.title": Text("Curve of the chosen years", "Krzywa wybranych lat"),
     "hydro.rating.info": Text(
-        "Hydrolog fits the rating curve Q = a·(H − H₀)^b (“hydrometrics "
-        "rating-curve”: non-linear least squares, H₀ below the lowest level; on "
-        "request it drops the pairs whose residual exceeds 2 standard deviations "
-        "and fits again) to every same-day water level–discharge pair of the chosen "
-        "years; the chart thins the points to one per cell of a grid. By default "
-        "the last 10 years, not the whole record as in the other analyses: the "
-        "curve changes over time, so one curve fitted to many decades describes "
-        "none of them well; for the same reason the recommended minimum of 30 years "
-        "does not apply. The services compute daily discharges from the levels "
-        "with their own curves (IMGW-PIB, ČHMÚ), so the pairs of one year lie on "
-        "the curve valid that year: the scatter and the shift of the curves of "
-        "successive periods show changes of the curve (e.g. erosion or silting of "
-        "the channel, a new gauge zero), not measurement errors. H₀ is in "
-        "centimetres, a in m³/s per cm^b. ČHMÚ's published curve is not in the "
-        "store yet.",
-        "Krzywą natężenia przepływu Q = a·(H − H₀)^b dopasowuje Hydrolog "
-        "(„hydrometrics rating-curve”: nieliniowa metoda najmniejszych kwadratów, "
-        "H₀ poniżej najniższego stanu; na życzenie odrzuca pary o resztach ponad 2 "
-        "odchylenia standardowe i dopasowuje ponownie) do wszystkich par "
-        "stan–przepływ z tego samego dnia w wybranych latach; na wykresie punkty są "
-        "przerzedzone do jednego na komórkę siatki. Domyślnie to ostatnie 10 lat, a "
-        "nie cały zapis jak w pozostałych analizach: krzywa zmienia się w czasie, "
-        "więc jedna krzywa dopasowana do wielu dekad nie opisuje dobrze żadnej z "
-        "nich; z tego powodu nie dotyczy jej też zalecany minimalny okres 30 lat. "
-        "Przepływy dobowe służby wyznaczają ze stanów własnymi krzywymi (IMGW-PIB, "
-        "ČHMÚ), więc pary z jednego roku leżą na krzywej obowiązującej w tym roku: "
-        "rozrzut punktów i przesuwanie się krzywych w kolejnych okresach pokazuje "
-        "zmiany krzywej (np. erozję lub zamulanie koryta, zmianę zera wodowskazu), a "
-        "nie błąd pomiaru. H₀ jest w centymetrach, a w m³/s na cm^b. Opublikowanej "
-        "krzywej ČHMÚ nie ma jeszcze w katalogu danych.",
+        "The relation between discharge and water level at the gauge's cross-section, "
+        "fitted by non-linear least squares to the same-day water level–discharge "
+        "pairs of the chosen years.\n\n"
+        "Q = a·(H − H₀)^b\n"
+        "where: Q – discharge [m³/s], H – water level [cm], H₀ – level of zero flow, "
+        "below the lowest level [cm], a – coefficient [m³/s·cm⁻ᵇ], b – exponent "
+        "[–]\n\n"
+        "IMGW-PIB and ČHMÚ compute the daily discharges from the levels with their own "
+        "curves, so the scatter of the points and the shift of the curve over time "
+        "show changes of the curve (e.g. erosion or silting of the channel, a new "
+        "gauge zero), not measurement errors.\n\n"
+        "Sources: daily data of IMGW-PIB (danepubliczne.imgw.pl) and ČHMÚ "
+        "(opendata.chmi.cz)",
+        "Zależność przepływu od stanu wody w przekroju wodowskazowym, dopasowana "
+        "nieliniową metodą najmniejszych kwadratów do par stan–przepływ z tego samego "
+        "dnia wybranych lat.\n\n"
+        "Q = a·(H − H₀)^b\n"
+        "gdzie: Q – przepływ [m³/s], H – stan wody [cm], H₀ – stan zerowego przepływu, "
+        "niższy od najniższego stanu [cm], a – współczynnik [m³/s·cm⁻ᵇ], b – wykładnik "
+        "[–]\n\n"
+        "IMGW-PIB i ČHMÚ wyznaczają przepływy dobowe ze stanów własnymi krzywymi, więc "
+        "rozrzut punktów i przesuwanie się krzywej w czasie pokazują zmiany krzywej "
+        "(np. erozję lub zamulanie koryta, nowe zero wodowskazu), a nie błąd "
+        "pomiaru.\n\n"
+        "Źródła: dane dobowe IMGW-PIB (danepubliczne.imgw.pl) i ČHMÚ "
+        "(opendata.chmi.cz)",
     ),
     "hydro.rating.default_note": Text(
         "By default the last 10 years: the rating curve changes over time (see the "
@@ -275,29 +260,32 @@ _RATING: dict[str, Text] = {
     ),
     "hydro.rating.pairs_note": Text(
         "Daily water level–discharge pairs are not hydrometric measurements: the "
-        "points of one year lie on the curve the service computed the discharges "
-        "with. ČHMÚ's published curve is not in the data root yet. The hand-off carries "
-        "the daily discharges of these years with the fitted curve as Obserwator's "
-        "result.",
+        "points of one year lie on the curve the service computed the discharges with. "
+        "The hand-off carries the daily discharges of these years with the fitted "
+        "curve as Obserwator's result.",
         "Pary dobowe stan–przepływ to nie pomiary hydrometryczne: punkty z jednego "
-        "roku leżą na krzywej, z której służba wyliczyła przepływy. Krzywej "
-        "opublikowanej przez ČHMÚ nie ma jeszcze w katalogu danych. Przekazanie niesie "
+        "roku leżą na krzywej, z której służba wyliczyła przepływy. Przekazanie niesie "
         "przepływy dobowe tych lat z dopasowaną krzywą jako wynikiem Obserwatora.",
     ),
     "hydro.rating.periods_title": Text("Successive periods", "Kolejne okresy"),
     "hydro.rating.periods_info": Text(
-        "Hydrolog fits the curve of each period of the whole record separately "
-        "(“hydrometrics rating-curve” with “years_per_period”; the periods start in "
-        "the years 1951, 1961, … for 10-year periods); a period with fewer than 30 "
-        "pairs has no curve. The table gives Q at the median water level and H at "
-        "the median discharge of all pairs, both Hydrolog's, to compare the "
-        "periods.",
-        "Krzywe kolejnych okresów całego zapisu dopasowuje Hydrolog osobno dla "
-        "każdego okresu („hydrometrics rating-curve” z „years_per_period”; okresy "
-        "10-letnie zaczynają się w latach 1951, 1961, …); okres z mniej niż 30 "
-        "parami nie ma krzywej. Tabela podaje przepływ przy medianie stanów i stan "
-        "przy medianie przepływów wszystkich par, obie według Hydrologa, żeby "
-        "porównać okresy.",
+        "Rating curves of successive periods of the station's whole record, each "
+        "fitted like the curve of the chosen years, but only to the water "
+        "level–discharge pairs of its own period.\n\n"
+        "The table gives the discharge of each curve at the median water level and the "
+        "water level at the median discharge of all pairs: their change from period to "
+        "period is the shift of the curve. A period with fewer than 30 pairs has no "
+        "curve.\n\n"
+        "Sources: daily data of IMGW-PIB (danepubliczne.imgw.pl) and ČHMÚ "
+        "(opendata.chmi.cz)",
+        "Krzywe natężenia przepływu kolejnych okresów całego zapisu stacji, każda "
+        "dopasowana tak jak krzywa wybranych lat, ale tylko do par stan–przepływ "
+        "swojego okresu.\n\n"
+        "Tabela podaje przepływ każdej krzywej przy medianie stanów i stan przy "
+        "medianie przepływów wszystkich par: ich zmiana z okresu na okres to "
+        "przesunięcie krzywej. Okres z mniej niż 30 parami nie ma krzywej.\n\n"
+        "Źródła: dane dobowe IMGW-PIB (danepubliczne.imgw.pl) i ČHMÚ "
+        "(opendata.chmi.cz)",
     ),
     "hydro.rating.periods": Text("Periods", "Okresy"),
     "hydro.rating.periods_length": Text("Length of the periods", "Długość okresów"),
@@ -331,27 +319,32 @@ _EXTREMES: dict[str, Text] = {
         "Annual maximum discharges", "Przepływy maksymalne roczne"
     ),
     "hydro.extremes.max_info": Text(
-        "Hydrolog computes the quantiles of the annual maximum discharges (“stats "
-        "flood-frequency”): the log-normal, GEV, Pearson III and Weibull "
-        "distributions, by default by L-moments (Hosking and Wallis 1997), with the "
-        "goodness of fit by KS, Anderson–Darling's A² and AIC; the distributions are "
-        "ranked by AIC. The maxima: where the data root has IMGW-PIB's half-year "
-        "characteristics, the larger of the published half-year maxima (they may "
-        "be instantaneous values); at other stations Hydrolog takes the maxima of "
-        "the complete hydrological years (November–October) of the daily series "
-        "and leaves out incomplete years. The empirical points have the exceedance "
-        "probability m/(n+1). The same maxima and options go to Hydrolog through "
-        "the hand-off.",
-        "Kwantyle przepływów maksymalnych rocznych liczy Hydrolog („stats "
-        "flood-frequency”): rozkłady log-normalny, GEV, Pearsona III i Weibulla, "
-        "domyślnie metodą L-momentów (Hosking i Wallis 1997), z miarami zgodności "
-        "KS, A² Andersona–Darlinga i AIC; rozkłady są ułożone wg AIC. Maksima: tam, "
-        "gdzie katalog danych ma charakterystyki półroczne IMGW-PIB, większe z "
-        "opublikowanych maksimów półrocznych (mogą być wartościami chwilowymi); na "
-        "pozostałych stacjach Hydrolog bierze maksima pełnych lat hydrologicznych "
-        "(XI–X) szeregu dobowego i pomija lata niepełne. Punkty empiryczne mają "
-        "prawdopodobieństwo przewyższenia m/(n+1). Te same maksima i opcje trafiają "
-        "do Hydrologa przez przekazanie.",
+        "The quantile Q_p is the annual maximum discharge exceeded in any year with "
+        "probability p, i.e. on average once in T = 1/p years, estimated from the "
+        "log-normal, GEV, Pearson III and Weibull distributions fitted to the annual "
+        "maxima.\n\n"
+        "Q_p = F⁻¹(1 − p), T = 1/p, pₘ = m/(n + 1)\n"
+        "where: Q_p – quantile [m³/s], F – distribution function of the fitted "
+        "distribution [–], p – exceedance probability [–], T – return period [years], "
+        "pₘ – exceedance probability of an empirical point [–], m – rank of the "
+        "maximum in descending order [–], n – number of annual maxima [–]\n\n"
+        "Q1% is exceeded on average once in 100 years. The distributions are ranked by "
+        "AIC, the lowest first: the first is the best.\n\n"
+        "Sources: Hosking and Wallis 1997 (Regional Frequency Analysis); Weibull 1939; "
+        "data: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
+        "Kwantyl Q_p to przepływ maksymalny roczny przewyższany w każdym roku z "
+        "prawdopodobieństwem p, czyli średnio raz na T = 1/p lat, wyznaczany z "
+        "rozkładów log-normalnego, GEV, Pearsona III i Weibulla dopasowanych do "
+        "maksimów rocznych.\n\n"
+        "Q_p = F⁻¹(1 − p), T = 1/p, pₘ = m/(n + 1)\n"
+        "gdzie: Q_p – kwantyl [m³/s], F – dystrybuanta dopasowanego rozkładu [–], p – "
+        "prawdopodobieństwo przewyższenia [–], T – okres powtarzalności [lata], pₘ – "
+        "prawdopodobieństwo przewyższenia punktu empirycznego [–], m – numer maksimum "
+        "w szeregu malejącym [–], n – liczba maksimów rocznych [–]\n\n"
+        "Q1% jest przewyższany średnio raz na 100 lat. Rozkłady są ułożone według AIC, "
+        "od najmniejszego: pierwszy jest najlepszy.\n\n"
+        "Źródła: Hosking i Wallis 1997 (Regional Frequency Analysis); Weibull 1939; "
+        "dane: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
     ),
     "hydro.extremes.distribution": Text("Distribution", "Rozkład"),
     "hydro.extremes.dist_all": Text("all four", "wszystkie cztery"),
@@ -431,17 +424,25 @@ _EXTREMES: dict[str, Text] = {
         "Homogeneity of the maxima", "Jednorodność maksimów"
     ),
     "hydro.extremes.homogeneity_info": Text(
-        "Hydrolog tests the annual maxima for homogeneity (“stats homogeneity”): "
-        "the Mann–Whitney U and Kolmogorov–Smirnov tests compare the years before "
-        "the split year with the years from it (by default the halves of the "
-        "sample), Pettitt's test finds the most probable change point; significance "
-        "level α = 0.05. A sample that is not homogeneous (e.g. after a reservoir "
-        "was built) weakens the quantiles.",
-        "Jednorodność maksimów rocznych sprawdza Hydrolog („stats homogeneity”): "
-        "testy Manna–Whitneya U i Kołmogorowa–Smirnowa porównują lata przed rokiem "
-        "podziału z latami od niego (domyślnie połowy próby), test Pettitta szuka "
-        "najbardziej prawdopodobnego punktu zmiany; poziom istotności α = 0,05. "
-        "Niejednorodna próba (np. po budowie zbiornika) osłabia kwantyle.",
+        "A check whether the annual maxima come from one distribution, as the "
+        "computation of the quantiles assumes: the Mann–Whitney U and "
+        "Kolmogorov–Smirnov tests compare the years before the split year with the "
+        "years from it, and Pettitt's test looks for the most probable year of "
+        "change.\n\n"
+        "A p-value below the significance level α = 0.05 rejects homogeneity (“no” in "
+        "the table). A sample that is not homogeneous (e.g. after a reservoir was "
+        "built) weakens the quantiles.\n\n"
+        "Sources: Mann and Whitney 1947; Smirnov 1939; Pettitt 1979; data: IMGW-PIB "
+        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
+        "Sprawdzenie, czy maksima roczne pochodzą z jednego rozkładu, jak zakłada "
+        "obliczenie kwantyli: testy Manna–Whitneya U i Kołmogorowa–Smirnowa porównują "
+        "lata przed rokiem podziału z latami od niego, a test Pettitta szuka "
+        "najbardziej prawdopodobnego roku zmiany.\n\n"
+        "Wartość p mniejsza od poziomu istotności α = 0,05 odrzuca jednorodność (w "
+        "tabeli „nie”). Niejednorodna próba (np. po budowie zbiornika) osłabia "
+        "kwantyle.\n\n"
+        "Źródła: Mann i Whitney 1947; Smirnov 1939; Pettitt 1979; dane: IMGW-PIB "
+        "(danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
     ),
     "hydro.extremes.test.mann_whitney": Text("Mann–Whitney U", "Manna–Whitneya U"),
     "hydro.extremes.test.kolmogorov_smirnov": Text(
@@ -469,17 +470,31 @@ _EXTREMES: dict[str, Text] = {
     ),
     "hydro.extremes.low_title": Text("Minimum discharges", "Przepływy minimalne"),
     "hydro.extremes.low_info": Text(
-        "Hydrolog fits the Fisher–Tippett distribution of minima (GEV for minima) to "
-        "the annual minima of the complete hydrological years of the daily series "
-        "(“stats low-flow”); NQ_T is the discharge reached or undercut once in T "
-        "years, T = 1/F, F the non-exceedance probability. The empirical points "
-        "have the probability m/(n+1). The hand-off carries the daily discharges of "
-        "these years.",
-        "Rozkład Fishera–Tippetta minimów (GEV dla minimów) dopasowuje Hydrolog do "
-        "minimów rocznych pełnych lat hydrologicznych szeregu dobowego („stats "
-        "low-flow”); NQ_T to przepływ osiągany lub niższy raz na T lat, T = 1/F, F – "
-        "prawdopodobieństwo nieprzekroczenia. Punkty empiryczne mają "
-        "prawdopodobieństwo m/(n+1). Przekazanie niesie przepływy dobowe tych lat.",
+        "NQ_T is the annual minimum discharge reached or undercut on average once in T "
+        "years, estimated from the Fisher–Tippett distribution of minima (GEV for "
+        "minima) fitted to the annual minima of the complete hydrological years of the "
+        "daily series.\n\n"
+        "T = 1/F, Fₘ = m/(n + 1)\n"
+        "where: T – return period [years], F – non-exceedance probability of NQ_T [–], "
+        "Fₘ – non-exceedance probability of an empirical point [–], m – rank of the "
+        "minimum in ascending order [–], n – number of annual minima [–]\n\n"
+        "The annual minimum falls to the 10-year NQ (F = 10 %) or below on average "
+        "once in 10 years. Years with a day without a value are left out.\n\n"
+        "Sources: Fisher and Tippett 1928; Gumbel 1958 (Statistics of Extremes); "
+        "WMO-No. 1029 (2009); data: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ "
+        "(opendata.chmi.cz)",
+        "NQ_T to przepływ minimalny roczny osiągany lub niższy średnio raz na T lat, "
+        "wyznaczany z rozkładu Fishera–Tippetta minimów (GEV dla minimów) dopasowanego "
+        "do minimów rocznych pełnych lat hydrologicznych szeregu dobowego.\n\n"
+        "T = 1/F, Fₘ = m/(n + 1)\n"
+        "gdzie: T – okres powtarzalności [lata], F – prawdopodobieństwo "
+        "nieprzekroczenia NQ_T [–], Fₘ – prawdopodobieństwo nieprzekroczenia punktu "
+        "empirycznego [–], m – numer minimum w szeregu rosnącym [–], n – liczba "
+        "minimów rocznych [–]\n\n"
+        "Minimum roczne spada do NQ 10-letniego (F = 10 %) lub niżej średnio raz na 10 "
+        "lat. Lata z dniem bez wartości są pominięte.\n\n"
+        "Źródła: Fisher i Tippett 1928; Gumbel 1958 (Statistics of Extremes); WMO-No. "
+        "1029 (2009); dane: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz)",
     ),
     "hydro.extremes.low_axis": Text(
         "non-exceedance probability of the minima",

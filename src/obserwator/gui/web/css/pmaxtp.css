@@ -18,7 +18,7 @@
 .pmaxtp-form .ana-error { margin: 0; }
 .pm-method { font-size: var(--text-sm); color: var(--text-2); }
 .pm-method summary { cursor: pointer; font-weight: var(--weight-bold); color: var(--text); }
-.pm-method p { margin: 4px 0 0; line-height: 1.45; }
+.pm-method p { margin: 4px 0 0; line-height: 1.45; white-space: pre-line; }
 
 .pmaxtp-result { display: grid; gap: var(--space-2); }
 .pmaxtp-result > * { margin-top: 0; margin-bottom: 0; }

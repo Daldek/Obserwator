@@ -320,6 +320,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
   border: 1px solid color-mix(in srgb, var(--info) 35%, var(--line)); border-radius: var(--radius-md);
   background: var(--info-bg); color: var(--text); font-size: var(--text-sm); line-height: 1.5;
 }
+.ana-info p { margin: 0; white-space: pre-line; }
+.ana-info p + p { margin-top: var(--space-2); }
 .ana-body { transition: opacity 0.15s; min-width: 0; }
 .ana-body.is-loading { opacity: 0.5; }
 .ana-error {
@@ -336,8 +338,6 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .prov code { font-size: var(--text-xs); color: var(--text); }
 .prov-hydrolog { border-color: color-mix(in srgb, var(--tool-hydrolog) 55%, var(--line)); background: color-mix(in srgb, var(--tool-hydrolog) 12%, var(--surface)); color: var(--text); }
 .prov-hydrolog::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--tool-hydrolog); flex: none; }
-.prov-proto { border-style: dashed; border-color: var(--warn); background: var(--warn-bg); color: var(--warn-ink); font-weight: var(--weight-bold); cursor: help; }
-.prov-proto::before { content: "⚗"; font-weight: var(--weight-regular); }
 
 .years { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: var(--text-sm); color: var(--text-2); }
 .years label { display: inline-flex; align-items: center; gap: 6px; }

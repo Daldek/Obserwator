@@ -82,12 +82,14 @@ export function failure(state) {
  * the numbers come from. The card's header already names the section, so `title` names this
  * part only and is left out where the part is the whole card.
  *
- * @param {{title?: string, info?: string|object, states?: object[], failures?: boolean, children}} props
+ * @param {{title?: string, info?: string, guide?: string, states?: object[], failures?: boolean, children}} props
+ *   `info` the explanation (Nogat DEV-15.14), its paragraphs parted by blank lines; `guide`
+ *   the id of the guide's part with the longer explanation, linked at the end of `info`;
  *   `states` from useAnalysis: while one loads the body dims, the failure of every one
  *   replaces it, the failure of some is said above it (`failures: false` where the body
  *   names each failure itself), and the provenance of every result is shown under it
  */
-export function Section({ title, info, states = [], failures = true, children }) {
+export function Section({ title, info, guide, states = [], failures = true, children }) {
   const [open, setOpen] = useState(false);
   const loading = states.some((s) => s.loading);
   const failed = [...new Set(states.map(failure).filter(Boolean))];
@@ -103,7 +105,11 @@ export function Section({ title, info, states = [], failures = true, children })
         onClick=${() => setOpen(!open)}>i</button>`}
       ${info && !title && html`<span class="muted small">${t("sections.info_methods")}</span>`}
     </header>`}
-    ${open && html`<div class="ana-info">${info}</div>`}
+    ${open &&
+    html`<div class="ana-info">
+      <p>${info}</p>
+      ${guide && html`<p><a href=${`instrukcja/#${guide}`} target="_blank" rel="noopener">${t("sections.guide")}</a></p>`}
+    </div>`}
     ${none
       ? html`<p class="ana-error">${failed.join(" ")}</p>`
       : html`${failures && failed.length > 0 ? html`<p class="ana-error">${failed.join(" ")}</p>` : null}
@@ -116,24 +122,17 @@ export function Section({ title, info, states = [], failures = true, children })
 
 /**
  * Who computed it: Hydrolog's command and version, the series version, and whether the
- * result was stored or computed on request; a prototype names the Hydrolog step it awaits.
- * A series version is named by its label, as „Dane” names it; the input's identifier (the
- * version's directory in the data root) is its tooltip.
+ * result was stored or computed on request. A series version is named by its label, as
+ * „Dane” names it; the input's identifier (the version's directory in the data root) is
+ * its tooltip.
  *
- * @param {{results: object[]}} props `obserwator-analysis/1` documents (or a prototype's
- *   `{engine: "prototype", method, target}`)
+ * @param {{results: object[]}} props `obserwator-analysis/1` documents
  */
 export function Provenance({ results }) {
   const seen = new Set();
   const items = [];
   for (const doc of results) {
     if (!doc) continue;
-    if (doc.engine === "prototype") {
-      const key = `p ${doc.target}`;
-      if (!seen.has(key)) items.push(html`<span class="prov prov-proto" title=${doc.method}>${t("sections.prototype", { target: doc.target })}</span>`);
-      seen.add(key);
-      continue;
-    }
     const key = `${doc.command} ${doc.stored ? "stored" : "computed"}`;
     if (seen.has(key)) continue;
     seen.add(key);

@@ -119,7 +119,7 @@ function Levels({ properties }) {
     dates: level.dates ? properties[level.dates] : null,
   })).filter((row) => given(row.H) || given(row.dates));
   if (!rows.length) return null;
-  return html`<${Section} title=${t("station.info.levels")} info=${t("station.info.levels_info")}>
+  return html`<${Section} title=${t("station.info.levels")} info=${t("station.info.levels_info")} guide="hydro-imgw">
     <${Table}
       columns=${[
         { key: "label", label: t("station.info.level") },
@@ -140,7 +140,7 @@ function Thresholds({ thresholds }) {
     Q: flows ? flows[key] : null,
   })).filter((row) => given(row.H) || given(row.Q));
   if (!rows.length) return null;
-  return html`<${Section} title=${t("station.info.thresholds")} info=${t("station.info.thresholds_info", { source: sourceName(thresholds.source) })}>
+  return html`<${Section} title=${t("station.info.thresholds")} info=${t("station.info.thresholds_info", { source: sourceName(thresholds.source) })} guide="chmi">
     <${Table}
       columns=${[
         { key: "label", label: t("station.info.threshold") },
@@ -156,7 +156,7 @@ function Coverage({ station }) {
   if (!station.datasets.length) {
     return html`<${Section} title=${t("station.info.coverage")}><p class="muted">${t("station.info.no_series")}</p></${Section}>`;
   }
-  return html`<${Section} title=${t("station.info.coverage")} info=${t("station.info.coverage_info")}>
+  return html`<${Section} title=${t("station.info.coverage")} info=${t("station.info.coverage_info")} guide="karty">
     ${station.datasets.map((entry) => {
       const covered = Object.entries(entry.variables);
       const summed = covered.some(([, cov]) => cov.accumulated > 0);

@@ -2,7 +2,7 @@
 // temperature (showyourstripes.info). Hydrolog gives the annual means, the normal of the
 // centre period and each year's anomaly (`temperature.means`); the GUI server's prototype
 // (`api/prototype/stripes/{code}`, src/obserwator/gui/_stripes.py) adds only the colour
-// scale and each year's colour, labelled as the prototype that moves to Hydrolog (M15).
+// scale and each year's colour, until Hydrolog has them (M15).
 // This module draws the stripes as SVG, without axes as the original or with a year axis
 // and a readout, and writes them as PNG, SVG and CSV. The images carry the station, the
 // period, the method's credit and the provider's lines and terms drawn in (Nogat DEV-20.5);
@@ -403,17 +403,14 @@ function useStripes(code, options, wanted) {
 }
 
 /**
- * The states the section shows: Hydrolog's analysis (its provenance and notices) and the
- * prototype's label; a failure carries the stripes' error on the analysis it came from.
+ * The states the section shows: Hydrolog's analysis (its provenance and notices); a failure
+ * carries the stripes' error on the analysis it came from.
  */
 function partsOf(state) {
   const doc = state.data;
   if (!doc) return [state];
   if (doc.status !== "ok") return [{ ...state, data: { ...doc.analysis, status: "failed", error: doc.error } }];
-  return [
-    { ...state, data: doc.analysis },
-    { ...state, data: doc.provenance },
-  ];
+  return [{ ...state, data: doc.analysis }];
 }
 
 /** The fallback of a period, in words: the asked years lacked annual means. */
@@ -447,9 +444,9 @@ export function Stripes({ station, session }) {
   const title = t("meteo.stripes.title");
   const info = t("meteo.stripes.info");
   if (compute === false) {
-    return html`<${Section} title=${title} info=${info}><p class="note" data-part="stripes-unavailable">${t("meteo.stripes.no_hydrolog")}</p></${Section}>`;
+    return html`<${Section} title=${title} info=${info} guide="metody-temperatura-paski"><p class="note" data-part="stripes-unavailable">${t("meteo.stripes.no_hydrolog")}</p></${Section}>`;
   }
-  if (!data) return html`<${Section} title=${title} info=${info} states=${parts} />`;
+  if (!data) return html`<${Section} title=${title} info=${info} guide="metody-temperatura-paski" states=${parts} />`;
   const s = data.scale;
   const c = s.centre;
   const d = s.spread;
@@ -466,7 +463,7 @@ export function Stripes({ station, session }) {
   const bounds = (period) => ({ first: Math.min(data.first_year, period.asked_first_year), last: Math.max(data.last_year, period.asked_last_year) });
   const centreBounds = bounds(c);
   const spreadBounds = bounds(d);
-  return html`<${Section} title=${title} info=${info} states=${parts}>
+  return html`<${Section} title=${title} info=${info} guide="metody-temperatura-paski" states=${parts}>
     <${Source} station=${station} doc=${data.analysis} variable="Tmean" />
     <${StripesSvg} data=${data} label=${label} axis=${view === "axis"} />
     <p class="stripes-credit">${t("meteo.stripes.credit")} <a href=${CREDIT_URL} target="_blank" rel="noopener noreferrer">${CREDIT_TAG}</a></p>

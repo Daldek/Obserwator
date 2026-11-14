@@ -221,7 +221,7 @@ function Levels({ station, code, session, ids, years, choice, setChoice }) {
     };
   }, [result, lang()]);
   if (!variable) return null;
-  return html`<${Section} title=${t("hydro.levels.title")} info=${t("hydro.levels.info")} states=${[events]}>
+  return html`<${Section} title=${t("hydro.levels.title")} info=${t("hydro.levels.info")} guide="metody-characteristic-progi" states=${[events]}>
     ${usable.length > 1 && html`<${Option} label=${t("hydro.common.variable")}><${VariableSeg} value=${variable} variables=${usable} onChange=${(v) => setChoice({ lv: v, level: undefined })} /></${Option}>`}
     <ul class="hy-levels">${levels.map(
       (item) => html`<li class=${LEVEL_CLASS[item.key]}><i aria-hidden="true"></i>${levelName(item.key, own)}: <strong>${withUnit(item.value, variable, unitText)}</strong> <small>${CHMI_LEVELS.includes(item.key) ? "ČHMÚ" : "Hydrolog"}</small></li>`,
@@ -269,7 +269,7 @@ export function Characteristic({ station, session, analyses }) {
       ${variables.length > 1 && html`<${Option} label=${t("hydro.common.variable")}><${VariableSeg} value=${variable} variables=${variables} onChange=${(v) => setOpt({ variable: v })} /></${Option}>`}
       <${Option} label=${t("hydro.characteristic.period")}><${Seg} value=${opt.period} label=${t("hydro.characteristic.period")} options=${PERIODS.map((p) => [p, periodName(p)])} onChange=${(v) => setOpt({ period: v })} /></${Option}>
     </div>
-    <${Section} title=${t("hydro.characteristic.second_title")} info=${t("hydro.characteristic.info")} states=${states}>
+    <${Section} title=${t("hydro.characteristic.second_title")} info=${t("hydro.characteristic.info")} guide="metody-characteristic-wartosci" states=${states}>
       ${main &&
       html`<${Matrix} main=${main} alt=${alt} period=${opt.period} variable=${variable} />
         <${SecondCaption} main=${main} alt=${alt} fromDaily=${fromDaily} unitText=${unitText} />

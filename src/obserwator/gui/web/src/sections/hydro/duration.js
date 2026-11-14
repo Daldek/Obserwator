@@ -166,7 +166,7 @@ export function Duration({ station, analyses }) {
   const apply = (from, to) => setOpt({ from: record && from === record.first ? undefined : from, to: record && to === record.last ? undefined : to });
   const table = hr || qr;
   const states = [h, q, zones].filter((state) => state.data || state.loading || state.error);
-  return html`<${Section} info=${t("hydro.duration.info")}><div class="hy-card">
+  return html`<${Section} info=${t("hydro.duration.info")} guide="metody-duration"><div class="hy-card">
     ${record &&
     html`<${YearRange}
       first=${record.first}

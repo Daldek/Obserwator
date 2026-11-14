@@ -158,7 +158,7 @@ function Means({ station, means, range }) {
   const states = range.entry ? [means, range] : [means];
   const title = t("meteo.temperature.means.title");
   const info = t("meteo.temperature.means.info");
-  if (!data) return html`<${Section} title=${title} info=${info} states=${states} />`;
+  if (!data) return html`<${Section} title=${title} info=${info} guide="metody-temperatura-srednie" states=${states} />`;
   const period = data.period || {};
   const tmean = t("meteo.temperature.tmean");
   const hasMax = period.max_c !== null && period.max_c !== undefined;
@@ -202,7 +202,7 @@ function Means({ station, means, range }) {
     ...(hasMin ? [{ label: t("meteo.temperature.lowest_tmin"), value: num(period.min_c, 1, "°C"), note: date(period.min_date) }] : []),
     ...(dtr && dtr.period ? [{ label: t("meteo.temperature.dtr"), value: num(dtr.period.dtr_c, 1, "°C"), note: t("meteo.temperature.on_average") }] : []),
   ];
-  return html`<${Section} title=${title} info=${info} states=${states}>
+  return html`<${Section} title=${title} info=${info} guide="metody-temperatura-srednie" states=${states}>
     <${Source} station=${station} doc=${means.data} variable="Tmean" />
     <${Notices} states=${states} />
     <${Figures} items=${figures} />
@@ -288,9 +288,9 @@ function CharacteristicDays({ days, degree }) {
   const states = [days, degree].filter((s) => s.entry);
   const title = t("meteo.temperature.days.title");
   const info = t("meteo.temperature.days.info");
-  if (!keys.length) return html`<${Section} title=${title} info=${info} states=${states} />`;
+  if (!keys.length) return html`<${Section} title=${title} info=${info} guide="metody-temperatura-dni" states=${states} />`;
   const countKeys = keys.filter((k) => DAY_KEYS.includes(k));
-  return html`<${Section} title=${title} info=${info} states=${states}>
+  return html`<${Section} title=${title} info=${info} guide="metody-temperatura-dni" states=${states}>
     <${Notices} states=${states} />
     <${Figures}
       items=${keys.map((k) => {
@@ -383,11 +383,11 @@ function Harmonics({ station, state, onRange }) {
   const info = t("meteo.harmonics.info");
   const record = recordYears(station, state.data, "Tmean", "hydrological");
   const range = record && data ? html`<${YearRange} first=${record.first} last=${record.last} from=${data.first_year} to=${data.last_year} label=${t("meteo.harmonics.years")} onApply=${onRange(record)} />` : null;
-  if (!data) return html`<${Section} title=${title} info=${info} states=${[state]} />`;
+  if (!data) return html`<${Section} title=${title} info=${info} guide="metody-temperatura-harmoniki" states=${[state]} />`;
   const fit = data.period;
   const [one, two] = fit.harmonics;
   const rows = newestFirst(data.years).map((r) => ({ ...r, c1: r.harmonics[0] || {}, c2: r.harmonics[1] || {} }));
-  return html`<${Section} title=${title} info=${info} states=${[state]}>
+  return html`<${Section} title=${title} info=${info} guide="metody-temperatura-harmoniki" states=${[state]}>
     ${range}
     <${Notices} states=${[state]} />
     <${Figures}
@@ -474,11 +474,11 @@ function Hydrothermal({ state }) {
   }, [data]);
   const title = t("meteo.hydrothermal.title");
   const info = t("meteo.hydrothermal.info");
-  if (!data) return html`<${Section} title=${title} info=${info} states=${[state]} />`;
+  if (!data) return html`<${Section} title=${title} info=${info} guide="metody-temperatura-hydrotermiczny" states=${[state]} />`;
   const period = data.period;
   const months = (period.months || []).map((m) => m.month);
   const rows = newestFirst(data.years);
-  return html`<${Section} title=${title} info=${info} states=${[state]}>
+  return html`<${Section} title=${title} info=${info} guide="metody-temperatura-hydrotermiczny" states=${[state]}>
     <${Notices} states=${[state]} />
     <${Figures}
       items=${[

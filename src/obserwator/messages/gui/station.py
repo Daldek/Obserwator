@@ -89,22 +89,22 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.none.files": Text("Download the station list", "Pobierz listę stacji"),
     "station.none.files_info": Text(
-        "Each file is made by the command obserwator stations export "
-        "(export_stations) from the current station catalogs in the server's data "
-        "root, stations without coordinates included. GeoJSON: one document "
-        "obserwator-stations-export/1, a FeatureCollection with the catalogs read, the "
-        "series holding each station and the providers' lines. CSV: UTF-8, comma, "
-        "decimal point, one row per station with its catalog properties, coordinates, "
-        "datasets and the providers' lines. Without --root the command reads "
-        "Obserwator's default data root.",
-        "Każdy plik tworzy polecenie obserwator stations export (export_stations) z "
-        "bieżących katalogów stacji w katalogu danych serwera, razem ze stacjami bez "
-        "współrzędnych. GeoJSON: jeden dokument obserwator-stations-export/1, "
-        "FeatureCollection z odczytanymi katalogami, szeregami, w których jest każda "
-        "stacja, i wierszami dostawców. CSV: UTF-8, przecinek, kropka dziesiętna, "
-        "wiersz na stację z jej właściwościami z katalogu, współrzędnymi, zbiorami i "
-        "wierszami dostawców. Bez --root polecenie czyta domyślny katalog danych "
-        "Obserwatora.",
+        "The stations of the current catalogs as GeoJSON or CSV, stations without "
+        "coordinates included: each station's catalog data, its location and the "
+        "datasets it has series in.\n\n"
+        "The CSV has one row per station (UTF-8, comma as separator, decimal point). "
+        "Every file carries the providers' lines: keep them when you use the data "
+        "further.\n\n"
+        "Sources: IMGW-PIB and ČHMÚ (stations), GUGiK and ČÚZK (the state borders the "
+        "locations are checked against)",
+        "Stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez "
+        "współrzędnych: dane katalogowe każdej stacji, jej położenie i zbiory danych, "
+        "w których ma szeregi.\n\n"
+        "CSV ma wiersz na stację (UTF-8, przecinek jako separator, kropka dziesiętna). "
+        "Każdy plik niesie wiersze dostawców: zachowaj je przy dalszym wykorzystaniu "
+        "danych.\n\n"
+        "Źródła: IMGW-PIB i ČHMÚ (stacje), GUGiK i ČÚZK (granice państw, którymi "
+        "sprawdzane są położenia)",
     ),
     "station.none.files_stations": Text("Stations in the file", "Stacje w pliku"),
     "station.none.files_note": Text(
@@ -207,15 +207,15 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.info.levels_info": Text(
         "IMGW-PIB's warning and alarm levels of the station and the absolute minimum "
-        "and maximum water levels of its gauge with their dates, in cm above the "
-        "gauge zero, as the station's page on hydro.imgw.pl gives them, kept by "
-        "Obserwator's store as pl.imgw.hydro_details; the warning and alarm levels "
-        "as of their download.",
+        "and maximum water levels of its gauge, with the dates they occurred.\n\n"
+        "H in cm above the gauge zero; the warning and alarm levels as the station's "
+        "page gave them on the day of their download.\n\n"
+        "Sources: IMGW-PIB, the station's page on hydro.imgw.pl",
         "Stany ostrzegawczy i alarmowy IMGW-PIB dla stacji oraz absolutne minimum i "
-        "maksimum stanu wody na jej wodowskazie z ich datami, w cm nad zerem "
-        "wodowskazu, tak jak podaje je strona stacji w serwisie hydro.imgw.pl, "
-        "przechowywane przez magazyn Obserwatora jako pl.imgw.hydro_details; stany "
-        "ostrzegawczy i alarmowy według stanu z chwili ich pobrania.",
+        "maksimum stanu wody na jej wodowskazie, z datami ich wystąpienia.\n\n"
+        "H w cm nad zerem wodowskazu; stany ostrzegawczy i alarmowy według strony "
+        "stacji z dnia ich pobrania.\n\n"
+        "Źródła: IMGW-PIB, strona stacji w serwisie hydro.imgw.pl",
     ),
     "station.info.level": Text("Level", "Stan"),
     "station.info.level.warning": Text("Warning level", "Stan ostrzegawczy"),
@@ -226,11 +226,16 @@ MESSAGES: dict[str, Text] = {
     "station.info.thresholds": Text("ČHMÚ's thresholds", "Progi ČHMÚ"),
     "station.info.thresholds_info": Text(
         "ČHMÚ's threshold levels and discharges of the station: the flood activity "
-        "degrees SPA 1–3 (stupně povodňové aktivity), the drought threshold and q50, "
-        "from Obserwator's catalog of stations (source: {source}).",
-        "Stany i przepływy progowe ČHMÚ dla stacji: stopnie aktywności powodziowej "
-        "SPA 1–3 (stupně povodňové aktivity), próg suszy i q50, z katalogu stacji "
-        "Obserwatora (źródło: {source}).",
+        "degrees SPA 1–3 (stupně povodňové aktivity), the drought threshold and "
+        "q50.\n\n"
+        "The SPA degrees in turn are alertness, readiness and danger; q50 is the level "
+        "and discharge of the 50-year flood.\n\n"
+        "Sources: {source}",
+        "Stany i przepływy progowe ČHMÚ dla stacji: stopnie aktywności powodziowej SPA "
+        "1–3 (stupně povodňové aktivity), próg suszy i q50.\n\n"
+        "Kolejne stopnie SPA to czujność, gotowość i zagrożenie; q50 to stan i "
+        "przepływ wody 50-letniej.\n\n"
+        "Źródła: {source}",
     ),
     "station.info.threshold": Text("Threshold", "Próg"),
     "station.info.threshold.spa1": Text(
@@ -247,14 +252,19 @@ MESSAGES: dict[str, Text] = {
         "Series in the data root", "Szeregi w katalogu danych"
     ),
     "station.info.coverage_info": Text(
-        "The coverage of each variable in the current version of each series: the "
-        "first and the last period with a value, the number of periods with a value "
-        "(days, months or half-years), of values summed over several days and of gaps, "
-        "from the index of the series in Obserwator's data root (series.json).",
-        "Pokrycie każdej zmiennej w bieżącej wersji każdego szeregu: pierwszy i ostatni "
-        "okres z wartością, liczba okresów z wartością (dni, miesięcy albo półroczy), "
-        "wartości sumowanych z kilku dni i luk, według indeksu szeregu w katalogu danych "
-        "Obserwatora (series.json).",
+        "The coverage of each variable in the current version of each series of the "
+        "station: the first and the last period with a value and the number of periods "
+        "with a value (days, months or half-years), of sums of several days and of "
+        "gaps.\n\n"
+        "A gap is an unbroken run of periods without a value between the first and the "
+        "last; “Gaps” gives the number of such runs. A sum of several days is "
+        "precipitation collected over several days and given on the last of them.",
+        "Pokrycie każdej zmiennej w bieżącej wersji każdego szeregu stacji: pierwszy i "
+        "ostatni okres z wartością oraz liczba okresów z wartością (dni, miesięcy albo "
+        "półroczy), sum z kilku dni i luk.\n\n"
+        "Luka to nieprzerwany ciąg okresów bez wartości między pierwszym a ostatnim; "
+        "„Luki” podaje liczbę takich ciągów. Suma z kilku dni to opad zebrany z kilku "
+        "dni i podany w ostatnim z nich.",
     ),
     "station.info.downloaded": Text("downloaded {when}", "pobrany {when}"),
     "station.info.span": Text("From – to", "Od – do"),
@@ -267,41 +277,45 @@ MESSAGES: dict[str, Text] = {
     ),
     # --- „Pomiary bieżące” ----------------------------------------------------------------
     "station.now.info_hydro": Text(
-        "IMGW-PIB's operational values (not verified) from its public API (obserwator "
-        "current hydro): the water level, the discharge and the water temperature, each "
-        "with the time of its measurement (UTC). The symbol and its words are the water "
-        "state against the characteristic levels, as the map hydro.imgw.pl shows it "
-        "(obserwator current hydro-states), in its colours: filled for a state from the "
-        "measurements of the last 2 hours, hollow for one from the last 26 hours. The "
-        "GUI's server asks IMGW-PIB at most once in 10 minutes, shows the snapshot with "
-        "its time and stores nothing.",
-        "Wartości operacyjne IMGW-PIB (niezweryfikowane) z jego publicznego API "
-        "(obserwator current hydro): stan wody, przepływ i temperatura wody, każda z "
-        "czasem pomiaru (UTC). Symbol i opis to stan wody względem stanów "
-        "charakterystycznych, jak pokazuje go mapa hydro.imgw.pl (obserwator current "
-        "hydro-states), w jej kolorach: pełny to stan z pomiarów ostatnich 2 godzin, z "
-        "pustym środkiem — z ostatnich 26 godzin. Serwer GUI pyta IMGW-PIB najwyżej raz "
-        "na 10 minut, pokazuje migawkę z jej czasem i niczego nie zapisuje.",
+        "IMGW-PIB's unverified operational values: the water level H, the discharge Q "
+        "and the water temperature, each with the time of its measurement (UTC).\n\n"
+        "The symbol and its words are the water state against the characteristic "
+        "levels, in the colours of the map hydro.imgw.pl: a filled symbol is the state "
+        "from the measurements of the last 2 hours, a hollow one the state from the "
+        "last 26 hours. The values are refreshed at most every 10 minutes.\n\n"
+        "Sources: IMGW-PIB, its public API (danepubliczne.imgw.pl) and the map "
+        "hydro.imgw.pl",
+        "Niezweryfikowane wartości operacyjne IMGW-PIB: stan wody H, przepływ Q i "
+        "temperatura wody, każda z czasem pomiaru (UTC).\n\n"
+        "Znak i opis to stan wody względem stanów charakterystycznych, w kolorach mapy "
+        "hydro.imgw.pl: znak pełny to stan z pomiarów ostatnich 2 godzin, a z pustym "
+        "środkiem stan z ostatnich 26 godzin. Wartości odświeżają się najwyżej co 10 "
+        "minut.\n\n"
+        "Źródła: IMGW-PIB, publiczne API (danepubliczne.imgw.pl) i mapa hydro.imgw.pl",
     ),
     "station.now.info_meteo": Text(
-        "Operational values of IMGW-PIB's automatic meteorological stations (not "
-        "verified) from its public API (obserwator current meteo): the precipitation of "
-        "the last 10 minutes, the air temperature with the time of its measurement "
-        "(UTC), the mean wind speed and the relative humidity. The class of "
-        "precipitation has the colours of the map hydro.imgw.pl, but it is taken from "
-        "the 10-minute total (hydro.imgw.pl takes 6 hours); heavy precipitation is at "
-        "least heavy rain on Chomicz's scale, ≥ √10 ≈ 3.2 mm in 10 minutes. A synoptic "
-        "station also has its last SYNOP report (obserwator current synop). The GUI's "
-        "server asks IMGW-PIB at most once in 10 minutes and stores nothing.",
-        "Wartości operacyjne automatycznych stacji meteorologicznych IMGW-PIB "
-        "(niezweryfikowane) z jego publicznego API (obserwator current meteo): opad "
-        "ostatnich 10 minut, temperatura powietrza z czasem pomiaru (UTC), średnia "
-        "prędkość wiatru i wilgotność względna. Klasa opadu ma kolory mapy hydro.imgw.pl, "
-        "ale liczona jest z sumy 10-minutowej (hydro.imgw.pl liczy z 6 godzin); opad "
-        "intensywny to co najmniej silny deszcz w skali Chomicza, ≥ √10 ≈ 3,2 mm w 10 "
-        "minut. Stacja synoptyczna ma też ostatnią depeszę SYNOP (obserwator current "
-        "synop). Serwer GUI pyta IMGW-PIB najwyżej raz na 10 minut i niczego nie "
-        "zapisuje.",
+        "Unverified operational values of an IMGW-PIB automatic station: the "
+        "precipitation of the last 10 minutes, the air temperature with the time of "
+        "its measurement (UTC), the mean wind and the relative humidity; a synoptic "
+        "station also has its last SYNOP report.\n\n"
+        "Heavy precipitation (at least heavy rain on Chomicz's scale): P ≥ √t\n"
+        "where: P – precipitation total [mm], t – its duration [min]\n\n"
+        "The precipitation class, in the colours of the map hydro.imgw.pl, comes from "
+        "the 10-minute total, not the 6-hour one: heavy precipitation is here P ≥ √10 "
+        "≈ 3.2 mm. The values are refreshed at most every 10 minutes.\n\n"
+        "Sources: IMGW-PIB, its public API (danepubliczne.imgw.pl); Chomicz's scale of "
+        "rain intensity",
+        "Niezweryfikowane wartości operacyjne automatycznej stacji IMGW-PIB: opad "
+        "ostatnich 10 minut, temperatura powietrza z czasem pomiaru (UTC), średni "
+        "wiatr i wilgotność względna; stacja synoptyczna ma też ostatnią depeszę "
+        "SYNOP.\n\n"
+        "Opad intensywny (co najmniej silny deszcz w skali Chomicza): P ≥ √t\n"
+        "gdzie: P – suma opadu [mm], t – czas trwania opadu [min]\n\n"
+        "Klasę opadu, w kolorach mapy hydro.imgw.pl, daje suma 10-minutowa, nie "
+        "6-godzinna: opad intensywny to tu P ≥ √10 ≈ 3,2 mm. Wartości odświeżają się "
+        "najwyżej co 10 minut.\n\n"
+        "Źródła: IMGW-PIB, publiczne API (danepubliczne.imgw.pl); skala natężenia "
+        "deszczu Chomicza",
     ),
     "station.now.chmi_note": Text(
         "Obserwator serves no current data of ČHMÚ (now, recent), only the daily series "
@@ -497,21 +511,21 @@ MESSAGES: dict[str, Text] = {
         "Loading the list of files…", "Wczytuję listę plików…"
     ),
     "station.files.info": Text(
-        "Each file is made by the command obserwator series export (export_series) "
-        "from the current version of the series in the server's data root. CSV: UTF-8, "
-        "comma, decimal point; the date, the year, each variable with its unit and its "
-        "flag, and the provider's lines (attribution_source, attribution_processed, "
-        "attribution, terms_notice). JSON: one document obserwator-series-export/1 with "
-        "the same columns, the units, the series version, the licence and the "
-        "provider's lines. Parquet: the same columns, typed, with the same fields in "
-        "the file's metadata.",
-        "Każdy plik robi polecenie obserwator series export (export_series) z bieżącej "
-        "wersji szeregu w katalogu danych serwera. CSV: UTF-8, przecinek, kropka "
-        "dziesiętna; data, rok, każda zmienna z jednostką i flagą oraz linie dostawcy "
-        "(attribution_source, attribution_processed, attribution, terms_notice). JSON: "
-        "jeden dokument obserwator-series-export/1 z tymi samymi kolumnami, jednostkami, "
-        "wersją szeregu, licencją i liniami dostawcy. Parquet: te same kolumny, "
-        "typowane, z tymi samymi polami w metadanych pliku.",
+        "The station's series of the whole period, in its current version, as CSV, "
+        "JSON or Parquet: the date, the year and each variable with its unit and "
+        "flag.\n\n"
+        "The CSV is text for a spreadsheet (UTF-8, comma as separator, decimal point); "
+        "JSON and Parquet have the same columns, Parquet also their types. Every file "
+        "carries the provider's lines and terms: keep them when you use the data "
+        "further.\n\n"
+        "Sources: IMGW-PIB (danepubliczne.imgw.pl) or ČHMÚ (opendata.chmi.cz)",
+        "Szereg stacji z całego okresu, w bieżącej wersji, jako CSV, JSON albo "
+        "Parquet: data, rok i każda zmienna z jednostką i flagą.\n\n"
+        "CSV to tekst do arkusza kalkulacyjnego (UTF-8, przecinek jako separator, "
+        "kropka dziesiętna); JSON i Parquet mają te same kolumny, a Parquet także ich "
+        "typy. Każdy plik niesie wiersze i warunki dostawcy: zachowaj je przy dalszym "
+        "wykorzystaniu danych.\n\n"
+        "Źródła: IMGW-PIB (danepubliczne.imgw.pl) albo ČHMÚ (opendata.chmi.cz)",
     ),
     "station.files.command_format": Text(
         "Format of the command line", "Format polecenia"
@@ -543,20 +557,23 @@ MESSAGES: dict[str, Text] = {
         "Results of the analyses (JSON, CSV)", "Wyniki analiz (JSON, CSV)"
     ),
     "station.files.results_info": Text(
-        "Hydrolog's results stored in the data root (obserwator analyses build): all "
-        "of them in one file (obserwator analyses export), as a JSON document "
-        "obserwator-analyses-export/1 or a long CSV table with one value per row and "
-        "its JSON Pointer path, or each analysis on its own: its CSV rows, or its JSON "
-        "document obserwator-analysis/1 with Hydrolog's command, options and version, "
-        "the series it read (version, SHA-256), the result or the error, and the "
-        "providers' lines.",
-        "Wyniki Hydrologa zapisane w katalogu danych (obserwator analyses build): "
-        "wszystkie w jednym pliku (obserwator analyses export), jako dokument JSON "
-        "obserwator-analyses-export/1 albo długa tabela CSV z jedną wartością w wierszu "
-        "i jej ścieżką JSON Pointer, albo każda analiza osobno: jej wiersze CSV albo "
-        "jej dokument JSON obserwator-analysis/1 z poleceniem Hydrologa, jego opcjami "
-        "i wersją, szeregiem, który przeczytał (wersja, SHA-256), wynikiem albo błędem "
-        "oraz liniami dostawców.",
+        "The stored results of the station's analyses, computed with the default "
+        "options: all of them in one file (JSON or CSV) or each analysis on its "
+        "own.\n\n"
+        "The CSV is a long table, one value of a result per row; the JSON also gives "
+        "the computation's options and the versions of the program and of the series, "
+        "needed to cite a result. Results computed on request, with other years or "
+        "options, are not in the files.\n\n"
+        "Sources: IMGW-PIB or ČHMÚ (the station's series); the explanations of the "
+        "analysis cards give the methods and their literature",
+        "Zapisane wyniki analiz stacji, policzone z domyślnymi opcjami: wszystkie w "
+        "jednym pliku (JSON albo CSV) albo każda analiza osobno.\n\n"
+        "CSV to długa tabela, wiersz na jedną wartość wyniku; JSON podaje też opcje "
+        "obliczenia oraz wersje programu i szeregu, potrzebne do cytowania wyniku. "
+        "Wyniki policzone na żądanie, z innymi latami albo opcjami, nie trafiają do "
+        "plików.\n\n"
+        "Źródła: IMGW-PIB albo ČHMÚ (szeregi stacji); metody i ich literaturę podają "
+        "objaśnienia kart analiz",
     ),
     "station.files.results_count.one": Text(
         "{n} analysis of this station is stored.",
@@ -586,17 +603,22 @@ MESSAGES: dict[str, Text] = {
     "station.files.file": Text("Files", "Pliki"),
     "station.files.handoff": Text("Hand-off to Hydrolog", "Przekazanie do Hydrologa"),
     "station.files.handoff_info": Text(
-        "A document nogat-handoff/1 with a series hydrolog-series/1, which Hydrolog "
-        "opens in “Statystyka przepływów” (flow statistics): the daily values of the "
-        "whole period (a day without a value as null); when the data root holds only "
-        "IMGW-PIB's half-year characteristics, the annual maxima Hydrolog's flood "
-        "frequency analysis used, with its result. The document carries the provider's "
-        "lines and terms.",
-        "Dokument nogat-handoff/1 z szeregiem hydrolog-series/1, który Hydrolog otwiera "
-        "w „Statystyce przepływów”: wartości dobowe z całego okresu (dzień bez wartości "
-        "jako null); gdy katalog danych ma tylko charakterystyki półroczne IMGW-PIB — "
-        "maksima roczne, których użyła analiza częstości przepływów Hydrologa, z jej "
-        "wynikiem. Dokument niesie linie i warunki dostawcy.",
+        "The station's series for Hydrolog, the application for hydrological "
+        "computations: the daily values of the whole period or, when the station has "
+        "only IMGW-PIB's half-year characteristics, the annual maxima the flood "
+        "frequency analysis used, with its result.\n\n"
+        "Hydrolog opens the hand-off in “Statystyka przepływów” (flow statistics) and "
+        "shows an included result beside its own, for comparison. The hand-off carries "
+        "the provider's lines and terms.\n\n"
+        "Sources: IMGW-PIB or ČHMÚ (the station's series)",
+        "Szereg stacji dla Hydrologa, aplikacji do obliczeń hydrologicznych: wartości "
+        "dobowe z całego okresu albo, gdy stacja ma tylko charakterystyki półroczne "
+        "IMGW-PIB, maksima roczne, których użyła analiza częstości przepływów, z jej "
+        "wynikiem.\n\n"
+        "Hydrolog otwiera przekazanie w „Statystyce przepływów”, a dołączony wynik "
+        "pokazuje obok własnego, do porównania. Przekazanie niesie wiersze i warunki "
+        "dostawcy.\n\n"
+        "Źródła: IMGW-PIB albo ČHMÚ (szeregi stacji)",
     ),
     "station.files.handoff_daily": Text(
         "Daily series: the whole period.", "Szereg dobowy: cały okres."

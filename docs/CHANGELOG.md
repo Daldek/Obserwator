@@ -6,6 +6,29 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+- **Info texts by Nogat DEV-15.14 (2026-11-14).** Every explanation of the GUI, the „(i)” of the
+  analysis parts, of „Informacje o stacji”, „Pomiary bieżące”, „Pobierz” and the station list and
+  the PMAXTP methods, is rewritten in Polish and English in the shape of DEV-15.14 (ECO-069): a
+  definition, the formula with its symbols and units, how to read the value and the sources,
+  impersonal, at most about 400 characters without the formula and the sources. Gone from them:
+  the author's past work („metoda autora z 2024 r.”, the Baltic buoys), plan steps (M12, M15,
+  H14), development status, the programs and commands behind a value (Hydrolog's `stats …`,
+  `obserwator series export`), schema ids, dataset keys, file names and column lists; the
+  licence credits of Ed Hawkins's stripes (CC BY 4.0) and ColorBrewer's acknowledgment stay in
+  the sources. The method detail moved to a new chapter of the guide, „04 Metody analiz”
+  (`instrukcja/#metody`; the chapters after it are 05–09, and the tables of the analysis cards
+  link it), which „Więcej w instrukcji” at the end of an explanation opens at the method's part:
+  `Section` (`gui/web/src/sections/common.js`) takes `guide`, the id of that part, and keeps the
+  paragraphs of its text. The climate stripes' chip „Prototyp obliczeń · docelowo Hydrolog
+  (M15)” is removed with the stripes document's `provenance` and the texts
+  `gui.sections.prototype` and `gui.meteo.stripes.method`; the stripes' footer names Hydrolog's
+  computation and the series version, as every part's does. Also: the PMAXTP range note no
+  longer names `fetch_pmaxtp`, the map legend no longer says what is unavailable or packaged,
+  the stripes' scale lines say „normalna Hydrologa”, and the guide's PMAXTP methods drop the
+  unsourced recommendation of POT and its note on „Rodzaj roku” names only „Opady”. Tests: every
+  `guide` id of the page is a part of the guide (`tests/contract/test_gui_web.py`); the stripes'
+  tests no longer expect the chip.
+
 - **Documentation audited against the code (2026-11-14).** README, `SECURITY.md`, `CLAUDE.md`,
   `.env.example` and `docs/` (USAGE, ARCHITECTURE, CODEBASE, PRD, TEST_PLAN, TESTING, RULES,
   PROGRESS, DECISIONS) checked against `develop` `bee65bb`. `SECURITY.md` no longer scopes a web
