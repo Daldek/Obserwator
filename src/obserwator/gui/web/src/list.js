@@ -1,7 +1,8 @@
 // The left panel „Stacje” (plan D10): search by name, river or code ignoring case and
 // diacritics (as `obserwator stations find` does: a fragment of the name or the river, a
 // prefix of the code), filters by provider, kind, the datasets holding the station (chips,
-// any of those chosen) and „tylko czynne”, the counts „na mapie N · bez współrzędnych M”
+// any of those chosen) and „tylko czynne” (checked on a first visit, the person's choice
+// remembered), the counts „na mapie N · bez współrzędnych M”
 // and the list, which keeps the stations without coordinates, marked; a click selects the
 // station and the map flies to it when it has a location. The filters choose the map's
 // stations too (`onMap`); the search is the list's.
@@ -11,8 +12,33 @@ import { StationSymbol } from "./symbols.js";
 import { Seg } from "./ui/seg.js";
 import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerName } from "./words.js";
 
-/** The filters of a first visit: every station of the catalogs. */
-export const DEFAULT_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false });
+/** The filters of „Wyczyść filtry”: every station of the catalogs. */
+export const NO_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false });
+
+/** localStorage key of the person's „tylko czynne” choice: "1" checked, "0" not. */
+export const ACTIVE_KEY = "obserwator-active-only";
+
+/**
+ * The filters a visit starts with: every station but „tylko czynne” as the person last
+ * left it, checked on a first visit.
+ *
+ * @returns {object} the filters (NO_FILTERS' fields)
+ */
+export function startFilters() {
+  try {
+    return { ...NO_FILTERS, active: window.localStorage.getItem(ACTIVE_KEY) !== "0" };
+  } catch {
+    return { ...NO_FILTERS, active: true };
+  }
+}
+
+function rememberActive(active) {
+  try {
+    window.localStorage.setItem(ACTIVE_KEY, active ? "1" : "0");
+  } catch {
+    // Storage blocked: the choice lasts until the page closes.
+  }
+}
 
 const PAGE = 150;
 /** The providers in the order of the registry. */
@@ -167,7 +193,7 @@ function StationSub({ station }) {
  *
  * @param {{stations: object[], filters: object, onFilters: (next: object) => void,
  *   selected: string|null, onSelect: (code: string, options: {fly: boolean}) => void}} props
- *   the stations of prepareStations, the filters (DEFAULT_FILTERS' fields), their handler,
+ *   the stations of prepareStations, the filters (NO_FILTERS' fields), their handler,
  *   the selected station and the selection's handler
  * @returns {object}
  */
@@ -180,6 +206,7 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
   const located = found.filter((station) => station.lon !== null).length;
   const change = (next) => {
     setShown(PAGE);
+    if (next.active !== filters.active) rememberActive(next.active);
     // A dataset chosen under another provider or kind is dropped with its chip
     const chosen = (next.datasets || []).filter((key) => {
       const entry = datasets.find((item) => item.key === key);
@@ -227,13 +254,14 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
       <${Seg}
         full
         tiny
+        className="kinds"
         label=${t("stations.list.kind")}
         value=${filters.kind}
         onChange=${set("kind")}
         items=${[
-          { value: "all", label: t("stations.list.kind_all") },
           { value: "hydro", label: t("stations.list.kind_hydro") },
           { value: "meteo", label: t("stations.list.kind_meteo") },
+          { value: "all", label: t("stations.list.kind_all") },
         ]}
       />
       <${DatasetChips} entries=${datasets} filters=${filters} onToggle=${toggle} />
@@ -263,7 +291,7 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
         </ul>`
       : html`<div class="empty-note">
           <p>${t("stations.list.none")}</p>
-          ${filtered ? html`<button type="button" class="btn sm" onClick=${() => change(DEFAULT_FILTERS)}>${t("stations.list.clear")}</button>` : null}
+          ${filtered ? html`<button type="button" class="btn sm" onClick=${() => change(NO_FILTERS)}>${t("stations.list.clear")}</button>` : null}
         </div>`}
     ${found.length > shown
       ? html`<button type="button" class="btn sm more" onClick=${() => setShown(shown + PAGE)}>

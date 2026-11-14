@@ -23,6 +23,17 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   old CP kept current; the golden CSV of ČHMÚ series exports regenerated. ADR-003, ADR-012
   and ADR-013 errata.
 
+- **GUI: the kind filter in two rows; „tylko czynne” checked on a first visit (the author's
+  request of 2026-11-14).** „Rodzaj stacji” in the left panel shows „Hydrologiczne” and
+  „Meteorologiczne” side by side with a full-width „Wszystkie” under them, at every width;
+  it stays one radio group (arrow keys in that order, one tab stop, the same chosen state).
+  „tylko czynne” is checked on a first visit, so the list and the map start with the active
+  stations; the browser remembers the person's choice (`localStorage`
+  `obserwator-active-only`), which wins on later visits. „Wyczyść filtry” still returns to
+  every station, inactive ones included. The guide's text and its screenshots of the panel
+  follow. Tests: e2e of the default, of a remembered choice and of the kind filter's layout
+  on a desktop and a phone.
+
 - **GUI: no footer statement; „Regulamin” at the bottom of the left panel (Nogat DEV-15.7,
   DEV-15.8, the author's decision of 2026-11-14).** A public deployment no longer shows
   „Regulamin” and the service's statement under the strip of provider lines: the statement

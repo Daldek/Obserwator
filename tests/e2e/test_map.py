@@ -100,6 +100,15 @@ def codes(stations: list[dict[str, Any]], *, located: bool | None = None) -> set
     }
 
 
+def active(stations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The stations of a first visit: „tylko czynne” starts checked."""
+    return [station for station in stations if station["active"]]
+
+
+def show_inactive(page: Any) -> None:
+    page.get_by_role("checkbox", name="tylko czynne").uncheck()
+
+
 def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
     open_page, catalog
 ):
@@ -109,6 +118,7 @@ def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
     assert {by_code[code]["provider"] for code in located} == {"IMGW-PIB", "CHMI"}
     assert unlocated
     page = open_page()
+    show_inactive(page)
     wait_drawn(page, ["stations"], located)
     wait_listed(page, located | unlocated)
     for code in unlocated:
@@ -139,22 +149,99 @@ def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
         ("90001", set()),
     ],
 )
-def test_the_search_ignores_case_and_diacritics(open_page, query, found):
+def test_the_search_ignores_case_and_diacritics(open_page, catalog, query, found):
     page = open_page()
     expect(page.locator(".stations .st-item").first).to_be_visible()
+    only = page.get_by_role("checkbox", name="tylko czynne")
+    only.uncheck()
     page.get_by_role(
         "searchbox", name="Szukaj stacji po nazwie, rzece albo kodzie"
     ).fill(query)
     wait_listed(page, found)
     if not found:
         expect(page.get_by_text("Żadna stacja nie pasuje.")).to_be_visible()
+        only.check()
         page.get_by_role("button", name="Wyczyść filtry").click()
         expect(page.get_by_role("searchbox")).to_have_value("")
-        assert len(listed(page)) > 0
+        # every station again, the inactive ones too
+        expect(only).not_to_be_checked()
+        wait_listed(page, codes(catalog))
+
+
+def test_tylko_czynne_starts_checked_and_a_remembered_choice_wins(open_page, catalog):
+    first = active(catalog)
+    assert codes(first) != codes(catalog)
+    page = open_page()
+    only = page.get_by_role("checkbox", name="tylko czynne")
+    expect(only).to_be_checked()
+    wait_listed(page, codes(first))
+    wait_drawn(page, ["stations"], codes(first, located=True))
+    only.uncheck()
+    wait_listed(page, codes(catalog))
+    # the next visit keeps the person's choice
+    page.reload()
+    expect(only).not_to_be_checked()
+    wait_listed(page, codes(catalog))
+    wait_drawn(page, ["stations"], codes(catalog, located=True))
+    only.check()
+    page.reload()
+    expect(only).to_be_checked()
+    wait_listed(page, codes(first))
+
+
+@pytest.mark.parametrize("width", WIDTHS)
+def test_the_kind_filter_has_two_kinds_side_by_side_and_all_under_them(
+    open_page, catalog, width
+):
+    page = open_page(width=width, height=844)
+    if width < 860:
+        page.locator(".map-bar .panel-toggle.left").click()
+    group = page.get_by_role("radiogroup", name="Rodzaj stacji")
+    radios = group.get_by_role("radio")
+    expect(radios).to_have_text(["Hydrologiczne", "Meteorologiczne", "Wszystkie"])
+    # measured in one frame: on a phone the sheet may still be sliding up
+    hydro, meteo, every = radios.evaluate_all(
+        "(items) => items.map((item) => { const box = item.getBoundingClientRect();"
+        " return { x: box.x, y: box.y, width: box.width, height: box.height }; })"
+    )
+    # one row of two equal halves, then „Wszystkie” across both
+    assert abs(hydro["y"] - meteo["y"]) < 1
+    assert abs(hydro["width"] - meteo["width"]) < 1
+    assert hydro["x"] + hydro["width"] <= meteo["x"]
+    assert every["y"] >= hydro["y"] + hydro["height"]
+    assert abs(every["x"] - hydro["x"]) < 1
+    assert abs(every["x"] + every["width"] - meteo["x"] - meteo["width"]) < 1
+    # no label is cut
+    assert radios.evaluate_all(
+        "(items) => items.every((item) => item.scrollWidth <= item.clientWidth)"
+    )
+    # one radio group: „Wszystkie” chosen and the one tab stop; the arrows go round in
+    # the order shown and choose
+    expect(radios.nth(2)).to_have_attribute("aria-checked", "true")
+    assert radios.evaluate_all("(items) => items.map((item) => item.tabIndex)") == [
+        -1,
+        -1,
+        0,
+    ]
+    radios.nth(2).focus()
+    page.keyboard.press("ArrowRight")
+    expect(radios.nth(0)).to_be_focused()
+    expect(radios.nth(0)).to_have_attribute("aria-checked", "true")
+    wait_listed(page, codes([s for s in active(catalog) if s["kind"] == "hydro"]))
+    page.keyboard.press("ArrowRight")
+    expect(radios.nth(1)).to_have_attribute("aria-checked", "true")
+    wait_listed(page, codes([s for s in active(catalog) if s["kind"] == "meteo"]))
+    page.keyboard.press("ArrowRight")
+    expect(radios.nth(2)).to_be_focused()
+    expect(radios.nth(2)).to_have_attribute("aria-checked", "true")
+    wait_listed(page, codes(active(catalog)))
+    # nothing of the panel sticks out sideways
+    assert page.evaluate("() => document.documentElement.scrollWidth") <= width
 
 
 def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, catalog):
     page = open_page()
+    show_inactive(page)
     located = codes(catalog, located=True)
     wait_drawn(page, ["stations"], located)
 
@@ -196,7 +283,7 @@ def test_current_measurements_replace_the_station_layer_and_stations_bring_it_ba
     open_page, catalog, gui_url
 ):
     page = open_page()
-    located = codes(catalog, located=True)
+    located = codes(active(catalog), located=True)
     wait_drawn(page, ["stations"], located)
     current = api(gui_url, "api/current")
     (west, south), (east, north) = page.evaluate(
@@ -229,7 +316,7 @@ def test_current_measurements_replace_the_station_layer_and_stations_bring_it_ba
 
 def test_a_point_names_its_station_and_a_click_selects_it(open_page, catalog):
     page = open_page()
-    wait_drawn(page, ["stations"], codes(catalog, located=True))
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
     # Warszawa: in the middle of the map, clear of the legend (bottom left)
     station = next(s for s in catalog if s["code"] == FIXTURE_STATIONS["meteo"])
     x, y = page.evaluate(_PIXEL, [station["lon"], station["lat"]])
@@ -298,7 +385,7 @@ def test_without_a_basemap_the_packaged_borders_are_the_background(open_page):
 
 def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):
     page = open_page()
-    wait_drawn(page, ["stations"], codes(catalog, located=True))
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
     page.get_by_role("radio", name="PMAXTP").click()
     # at once, on the place of a station drawn a moment ago: Warszawa
     warszawa = next(s for s in catalog if s["code"] == FIXTURE_STATIONS["meteo"])
@@ -334,7 +421,7 @@ def test_both_views_draw_in_each_theme_language_and_width(
     open_page, catalog, theme, width, lang
 ):
     page = open_page(theme=theme, width=width, lang=lang)
-    wait_drawn(page, ["stations"], codes(catalog, located=True))
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
     toggle = page.locator(".legend-toggle")
     # on a phone the legend starts folded and opens on demand
     expect(toggle).to_have_attribute(
@@ -351,6 +438,6 @@ def test_both_views_draw_in_each_theme_language_and_width(
     )
     wait_drawn(page, ["stations"], set())
     page.get_by_role("radio", name=stations).click()
-    wait_drawn(page, ["stations"], codes(catalog, located=True))
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
     # nothing of the map sticks out sideways
     assert page.evaluate("() => document.documentElement.scrollWidth") <= width

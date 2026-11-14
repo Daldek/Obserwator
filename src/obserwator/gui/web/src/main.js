@@ -23,7 +23,7 @@ import { BORDER_SOURCES, Sources, TermsLink, catalogSources, compose, merge, set
 import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
-import { DEFAULT_FILTERS, StationList, onMap, prepareStations } from "./list.js";
+import { StationList, onMap, prepareStations, startFilters } from "./list.js";
 import { StationMap } from "./map.js";
 import { NoStation, StationPanel, sectionTitle } from "./panel.js";
 import { PmaxtpForm } from "./pmaxtp/form.js";
@@ -71,7 +71,7 @@ function App({ lang: language }) {
   const [selected, setSelected] = useState(start.station);
   const [open, setOpen] = useState(start.section ? [start.section] : FIRST_OPEN);
   const [section, setSection] = useState(start.section);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(startFilters);
   const [view, setView] = useState(start.view);
   const [fly, setFly] = useState(start.station ? { code: start.station, n: 0 } : null);
   const [pick, setPick] = useState(start.point ? { lat: round4(start.point.lat), lon: round4(start.point.lon) } : null);
