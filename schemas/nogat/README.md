@@ -23,7 +23,9 @@ refresh the copies from `std-1.0` at the tag when it does):
   and `tests/unit/gui/` validate the records both servers write against the schema.
 
 Do not edit these files; copy them again when the standard changes (DEV-15.6).
-On 2026-11-12 all four were byte for byte equal to Nogat commit `7786271`.
+On 2026-11-15 all six, `src/obserwator/nogat_logging.py` and the GUI's copies below were byte
+for byte equal to Nogat's `develop` at commit `3859a30` (`tokens.css` apart from its DEV-15.3
+header).
 
 The GUI holds another copy of Nogat files, in `src/obserwator/gui/web/nogat/`: the files
 of Nogat's `design/kit/` listed in its `nogat-kit.json` (kit 1.0.0) and `marks/` of
