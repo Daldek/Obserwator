@@ -7,7 +7,7 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Field | Value |
 |------|---------|
 | **Version** | 3.0.0 |
-| **Date** | 2026-11-14 |
+| **Date** | 2026-11-15 |
 | **Working branch** | `develop` (formerly `slave`, ECO-008). On 2026-11-03 the finished `feature/archiwista-projects` stack `0e0bc3a` (tree as after the green gate `8cd6844c`) was merged into it (`--no-ff`, the author's decision, without a pull request): projects moved to Archiwista and `command_for_version` (ADR-008), data output (`feature/data-output`, ADR-007), Nogat standard 1.0 (`chore/nogat-2.1`), Archiwista compatibility fixes (`fix/archiwista-compat-2`), and earlier `feature/chmi-agents` (ADR-003, ADR-004) and `feature/versioned-store` (ADR-001, ADR-002); these branches were deleted locally and on GitHub. Since then `develop` took the branches the rows below name, the last `refactor/dead-code` (`bee65bb`, 2026-11-14). Remaining: `main` (releases, v2.1.1); `fix/archiwista-compat` — superseded by `fix/archiwista-compat-2` (`e77a6f9` and `c280088` cherry-picked over), but `e9d8886` (publication without hard links, rejected in favour of `cb6af4f`) and `2e78eb6` are not in any other branch, so its deletion awaits the author's decision; `backup/versioned-store-master-base` `7263212` (a copy of `feature/versioned-store` from before the rework, 8 commits not present elsewhere, local and on GitHub) — also the author's decision; local only and not merged: `feat/gui-mockup` (the six commits of the GUI mockup of 2026-11-13) and `feature/data-root-o2` (an earlier form of the O2 commit `ba68ed4`). Next: merge `develop` → `main` and tag 3.0.0 with the author's approval |
 | **Python** | >=3.12 |
 
@@ -64,6 +64,8 @@ Dependency order; unfinished work first. The backlog is the single source of tru
 4. **Data output — open:** review by the author. The smoke test with the real network passed on 2026-11-03 (release audit, code of `0045bac`): IMGW-PIB and ČHMÚ `datasets download` with `output_dir` through Python, CLI, REST and MCP; `obserwator store sync … -o` and `obserwator pmaxtp sync … -o`; an existing file refused with `conflict` (exit 4, `output_exists`) and replaced with `--force`. The live tests (`tests/live/`) cover plain mode only through `datasets download` with `output_dir` (IMGW-PIB and ČHMÚ, every interface); `store sync -o`, `pmaxtp sync -o`, `output_exists` and `--force` have no live test.
 5. **Consumers of the two roots (ADR-017; Nogat plan 2026-11-12 step R2):** Archiwista configures its stores with both roots, orders downloads into the raw root and reads series and catalogs from the data root; Retman's command list gives each command the root of its kind and `series build`/`store catalog` their `--raw-root`; a store written before ADR-017 is split once ([USAGE "Splitting a store"](USAGE.md#splitting-a-store)), and the deployment's roots start afresh with one full download (plan answer 2). List of changes: [CHANGELOG "Unreleased"](CHANGELOG.md), the entry "the data root".
 6. **Station details of hydro.imgw.pl on the deployment (ADR-021):** merged on 2026-11-14; the operator runs, on the target roots, `obserwator store sync --root "$RAW" --datasets pl.imgw.hydro_details` (about 910 requests to hydro-back.imgw.pl, a few minutes; any HTTP error fails the item, run it again) and `obserwator store catalog --root "$DATA" --raw-root "$RAW" --provider IMGW-PIB`; the running GUI picks up the new catalog version without a restart. The details have no freshness signal (`store check`: `unverifiable`): a periodic sync keeps the levels current, and an unchanged answer is `unchanged`. Archiwista and Retman see one more station source of IMGW-PIB.
+7. **Deployment of synop data (ADR-022; session 2026-11-15):** `obserwator-public.service` deployed at commit 3816b3c with `OBSERWATOR_RAW_ROOT=/mnt/magazyn/agent-tmp/obserwator` (raw root on NAS mounted at `//magazyn.local/agent-tmp` CIFS share; moved from ~/data/obserwator-target/raw, 2825 archives, verification complete); synop sync 1966–2026 complete (1882 new archives merged into store); analyses built: `pl.imgw` version 2026-11-15_2c0ccedb (3240 stations, 82362 ok, 2093 failed vs 2061 before; the 32 extra failures not investigated), `cz.chmi` version 2026-11-15_b3178c6e (23 stations). First analyses build as background job was interrupted at 2332/3240 stations when agent session ended; resume plan in 3.0.1 item 7 (carry-forward matched stations, recompute the rest).
+
 
 Further open backlog items (priority in the text):
 
@@ -241,4 +243,4 @@ Author's decisions of 2026-11-09.
 
 ---
 
-**Last updated:** 2026-11-14
+**Last updated:** 2026-11-15
