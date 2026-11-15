@@ -32,7 +32,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Real-time data (IMGW API) | Implemented | Current hydro/meteo/synop data |
-| Archive data (ZIP/CSV) | Implemented | Dataset registry (16 `pl.imgw.*` descriptors): URL generation and downloads into an IMGW server-path tree |
+| Archive data (ZIP/CSV) | Implemented | Dataset registry (21 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmi.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
 | PMAXTP data | Implemented | Probabilistic max precipitation (IMGW-PIB grid only) |
 | Warnings | Implemented | Hydro/meteo warnings from API |
@@ -217,9 +217,9 @@ obserwator commands guide [-f agents|llms] [--lang pl|en] [--output <file> [--fo
 | No server-side data storage by default | Implemented | Core design principle: URL generation and live proxy; the servers store data only in their configured roots (`OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`); the CLI and the library write where the person says (`--root`, `--output-dir`, `--output`) or, without it, to the default raw and data roots (ADR-017) |
 | PEP8 compliance | Implemented | Using ruff |
 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
-| Unit and contract tests | Implemented | 3280 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-14); Python = CLI = REST = MCP contract |
-| GUI browser tests | Implemented | 149 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-14) |
-| Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-14) |
+| Unit and contract tests | Implemented | 3325 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-15); Python = CLI = REST = MCP contract |
+| GUI browser tests | Implemented | 152 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-15) |
+| Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
 | API response time < 2s | Implemented | For proxied requests |
 | Online documentation | Implemented | Swagger at `/docs` |
 
@@ -245,7 +245,7 @@ The following are explicitly out of scope for this project:
 |-----|--------|----------------|
 | API response time (proxied) | < 2s | Met |
 | API documentation completeness | 100% | Met (Swagger) |
-| Test coverage | 80% | 94.37% (last measured 2026-10-25) |
+| Test coverage | 80% | 94.54% (last measured 2026-11-15) |
 | Stability (no critical bugs) | 30 days | In progress |
 
 ---

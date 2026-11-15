@@ -20,7 +20,7 @@ Since 3.0.0 all interfaces use one catalog of 35 commands (`obserwator commands 
 
 **Supported data:**
 - Current hydrological, meteorological and synoptic data through the IMGW API
-- Historical archive data of IMGW-PIB (ZIP/CSV) and ČHMÚ (JSON/CSV per station) — a registry of 22 datasets of two providers (`pl.imgw.*`, `cz.chmi.*`)
+- Historical archive data of IMGW-PIB (ZIP/CSV) and ČHMÚ (JSON/CSV per station) — a registry of 27 datasets of two providers (`pl.imgw.*`, `cz.chmi.*`)
 - Hydrological and meteorological warnings
 - PMAXTP data (probable maximum precipitation)
 - Station lists (IMGW-PIB and ČHMÚ search) and water levels of IMGW hydro stations with coordinates; the station details of hydro.imgw.pl (gauge zero, catchment area, warning and alarm levels, absolute extremes) in the IMGW-PIB catalog

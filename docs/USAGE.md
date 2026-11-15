@@ -1091,7 +1091,7 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
 - A single catalog of 35 commands for Python, the CLI, REST and MCP (`command_schema`, `run_command`),
   the `obserwator-result/1` envelope with pagination, the `ERROR_CODES` error code registry.
 - `find_stations`, `fetch_meteo_current`, `fetch_hydro_states`, `download_archives`,
-  `select_series`, `summarize_series`, `export_archive`; a registry of 22 datasets from two providers.
+  `select_series`, `summarize_series`, `export_archive`; a registry of 27 datasets from two providers.
 - ČHMÚ provider (Czechia): per-station daily hydrological and meteorological data,
   freshness from the listing, canonical content and an observation register, a station catalog with SPA thresholds,
   ČHMÚ quality and flags in series.
