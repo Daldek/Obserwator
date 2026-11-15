@@ -417,7 +417,7 @@ repository in line with the Nogat standard 1.0 (then the draft 2.1): the user en
 and in the store with a default root (ADR-007), and projects moved to Archiwista (ADR-008). The
 downloads write raw data only, into a raw root, and the series, catalogs and analyses built from
 them live in a data root of their own (ADR-015, ADR-017). The stations' analyses are computed by
-Hydrolog and stored as its answers (ADR-016). The registry has 22 datasets of two providers, and
+Hydrolog and stored as its answers (ADR-016). The registry has 27 datasets of two providers, and
 the catalog 35 commands. Decisions: `docs/DECISIONS.md`; contracts:
 `docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
 §13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
@@ -674,8 +674,9 @@ route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generat
   Additive: new documents and a new directory; no existing contract changes. The analyses live in
   the data root (`obserwator-data/1`, ADR-017, under "Changed"), where `store scan --kind
   analyses`, `iter_store` and `current_version` find them. Hydrolog's development builds all
-  report `1.0.0.dev0`, so a Hydrolog change within one development version does not trigger a
-  recomputation. Pinned and recorded against Hydrolog develop `14e8f06` (ADR-0033 names).
+  report one development version (`0.8.0.dev0` on its `develop`), so a Hydrolog change within
+  one development version does not trigger a recomputation. Pinned and recorded against
+  Hydrolog develop `14e8f06` (ADR-0033 names).
 - **`command_for_version(version, *, root=None)` (ADR-008, Nogat ECO-054, plan 2026-10-31 step 3):**
   the data command that fetches a stored version again, rebuilt offline and read-only from its
   sidecar (`obserwator-meta/1`) and the store layout, as the `CommandCall` that `parse_command` reads
