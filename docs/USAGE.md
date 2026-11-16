@@ -703,9 +703,9 @@ A systemd user unit, e.g. `~/.config/systemd/user/obserwator-gui.service`, where
 Description=Obserwator GUI
 
 [Service]
-Environment=TMPDIR=/home/<user>/data/tmp
+Environment=TMPDIR=%h/data/tmp
 Environment=OBSERWATOR_HYDROLOG_COMMAND=/path/to/hydrolog
-Environment=OBSERWATOR_ADMIN_API_KEY_FILE=/home/<user>/.config/obserwator/admin-key
+Environment=OBSERWATOR_ADMIN_API_KEY_FILE=%h/.config/obserwator/admin-key
 Environment=FORWARDED_ALLOW_IPS=127.0.0.1
 WorkingDirectory=<checkout>
 ExecStart=<checkout>/.venv/bin/obserwator gui serve --no-browser --host 127.0.0.1 --port 8060 --root <data root>
@@ -816,7 +816,7 @@ The checks of „Stan”, each `ok`, `warning` or `failed` with a detail in the 
 }
 ```
 
-- Without a system-wide installation: `"command": "uvx", "args": ["--from", "obserwator[mcp]", "obserwator", "mcp"]`.
+- Without a system-wide installation: `"command": "uvx", "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0", "obserwator", "mcp"]`.
 - Writes: `"args": ["mcp", "--allow-writes", "--allow-dir", "/dane/obserwator", "--allow-dir", "/dane/obserwator-raw"]` (or `OBSERWATOR_MCP_ALLOW_WRITES=true`; `--allow-dir` can be repeated). Without `--allow-writes` the server does not write: writing commands have the `check` argument fixed to `true` and return an `obserwator-plan/1` plan, and writing options (`output_dir`, `output`, `force`, `plan`) are unavailable (an attempt → `forbidden`, `details.reason="writes_disabled"`). With the flag, `check` defaults to `true` and writing requires `check: false` — the user decides about writes in the configuration, not the model. Writing without `--allow-dir` is `forbidden` (`no_allowed_dir`), and a target (`root`, `raw_root`, `output_dir`, `output` or a default root) outside these directories is `forbidden` (`outside_allowed_dirs`).
 - Language: the MCP server always speaks English (tool descriptions, instructions, error documents; AGI-9.2), regardless of `OBSERWATOR_LANG`. There is no `--lang` option; an agent gets Polish text only on explicit request (the `lang: "pl"` argument of the `obserwator_commands_list`, `obserwator_commands_schema`, `obserwator_commands_guide` tools).
 - `root` as in the CLI: a tool argument, else the default root of the command's kind — the data root (`OBSERWATOR_ROOT`, `[obserwator] root` or `<data_dir>/obserwator`) or, for the commands of the raw root, the raw root (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw`); `raw_root` of `obserwator_series_build` and `obserwator_store_catalog` defaults to the raw root. With `--allow-dir` every root a call uses, a default root included, must lie within one of the directories; relative paths are resolved from the server's working directory, and the server instructions give the working directory and both default roots.
@@ -980,7 +980,7 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
 
 Versions are immutable and append-only: no overwriting, no permanent links and no `latest` path. The current version is computed by `current_version(root, slot=...)`, and the slot decides the kind of root it needs; slots of the raw root: `archive:<key>:<file>` (e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `archive:cz.chmi.hydro_daily:H_0-203-1-001000_DQ_2025.json`), `pmaxtp:pl.imgw.pmaxtp:<METHOD>/<indX>_<indY>`; slots of the data root: `series:<key>`, `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`, `analyses:pl.imgw.analyses`, `analyses:cz.chmi.analyses`. Every main file has a `*.meta.json` sidecar (`obserwator-meta/1`) with SHA-256, size, request, HTTP headers and the provider license; sidecars of ČHMÚ archives with a canonical form also have `content_sha256`. A path in a sidecar is relative to its own root, as its first directory tells: a series or catalog names its sources under `archives/` of the raw root and the series a catalog read under `series/` of the data root. The `observations/` directory (`obserwator-observation/1`) records a new source signal when the downloaded bytes have the same content as the current version — it is not a version; `store scan --root <raw root> --kind observation` shows it as publication history.
 
-A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement — see "Installation"). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
+A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement in [README "Install"](../README.md#install)). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
 
 ### Splitting a store
 
@@ -1060,7 +1060,7 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
 
 ### Breaking changes
 
-- The tool is called Obserwator (ADR-009): `pip install obserwator` and `import obserwator` instead of
+- The tool is called Obserwator (ADR-009): the distribution `obserwator` and `import obserwator` instead of
   `imgwtools`, the command `obserwator` instead of `imgw`, the variables `OBSERWATOR_<KEY>` instead of
   `IMGW_<KEY>`, the section `[obserwator]` of `nogat.toml`, `ObserwatorError` and its subclasses instead of
   `IMGWError`; the dataset keys `pl.imgw.*` and the provider IMGW-PIB keep their names.

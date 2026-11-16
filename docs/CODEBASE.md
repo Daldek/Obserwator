@@ -11,7 +11,7 @@ src/obserwator/
 ├── fetch.py              # PUBLIC: live data (fetch_*), PMAXTP, download_archives, download_*_data
 ├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, NormalizedRecord, Measurement, ...)
 ├── stations.py           # PUBLIC: find_stations (live lists of IMGW-PIB and ČHMÚ, or the current catalogs of a data root)
-├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 22 dataset descriptors, archive_files
+├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 27 dataset descriptors, archive_files
 ├── commands.py           # PUBLIC: Command catalog (35 commands, PL + EN texts, effects), run_command, command_schema, list_commands
 ├── agent_guide.py        # PUBLIC: agent_guide (AGENTS.md / llms.txt), MCP server instructions
 ├── coverage.py           # PUBLIC: summarize_coverage (per-station periods for ČHMÚ)

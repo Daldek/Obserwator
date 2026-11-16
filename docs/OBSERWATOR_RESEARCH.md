@@ -48,7 +48,7 @@ Three hard-coded URL bases (`url_builder.py:64-66`): archives `danepubliczne.img
 
 ## 3. Czechia — ČHMÚ (the best candidate)
 
-Since 1.01.2025, Act 262/2024 Sb. has been in force, and the "National Hydrometeorological Database" = **https://opendata.chmi.cz** — a static file server with predictable URLs, **CC BY 4.0, no registration or key**. The model is identical to the IMGWTools philosophy.
+Since 2025-01-01, Act 262/2024 Sb. has been in force, and the "National Hydrometeorological Database" = **https://opendata.chmi.cz** — a static file server with predictable URLs, **CC BY 4.0, no registration or key**. The model is identical to the IMGWTools philosophy.
 
 ### Hydro
 - **Current** (verified live): `https://opendata.chmi.cz/hydrology/now/data/{WIGOS_ID}.json` — H (cm), Q (m³/s), water temperature, 10-min step, appended every hour. E.g. `0-203-1-001000.json`.

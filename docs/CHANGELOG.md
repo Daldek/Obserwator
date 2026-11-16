@@ -6,6 +6,35 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
+Changes since 2.1.1, to be released as 3.0.0, a member of the first joint release of the Nogat
+ecosystem (release set candidate-6, Nogat ECO-074). The tool released as IMGWTools 2.1.1 is called
+Obserwator from this release (ADR-009): the distribution, the import package, the command and
+every name derived from the tool change (the entry "The tool is called Obserwator" below). A
+versioned store of IMGW data replaces the optional SQLite cache (ADR-001), and Python, the CLI,
+REST and MCP use one command catalog with one result envelope and one registry of error codes
+(ADR-002). The second provider beside IMGW-PIB is the Czech ČHMÚ (opendata.chmi.cz, ADR-003): the
+`cz.chmi.*` datasets in the same contracts, store and commands; the value domains of the `/1`
+contracts were opened before the tag (C01). AI agents get the guide `AGENTS.md`/`llms.txt`,
+English descriptions of the catalog, effect metadata of the commands and an MCP server (ADR-004).
+Later work brings the repository in line with the Nogat standard 1.0 (then the draft 2.1): the
+user environment (ADR-005), the message catalog and English machine output (ADR-006), data output
+in plain mode and in the store with a default root (ADR-007), and projects moved to Archiwista
+(ADR-008). The downloads write raw data only, into a raw root, and the series, catalogs and
+analyses built from them live in a data root of their own (ADR-015, ADR-017). The stations'
+analyses are computed by Hydrolog and stored as its answers (ADR-016). Every product carries the
+providers' attribution lines (ADR-012), and the web GUI `obserwator gui serve` (ADR-013) shows
+the stations, series and stored analyses of the data root. The registry has 27 datasets of two
+providers (18 of them in the store; ADR-022, ADR-023), and the catalog 35 commands. Decisions:
+`docs/DECISIONS.md`; contracts:
+`docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
+§13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
+`2026-10-19-agent-support-design.md` (agents). The release has no aliases or shims of old names.
+The versions 2.2.0 (2026-08-22) and 3.0.0 (2026-10-19) of earlier drafts of this file were never
+tagged; their changes are part of this section. What a caller of 2.1.1 changes closes "Changed":
+"Migration from 2.1.1".
+
+### Added
+
 - **Daily synoptic data in the store, `pl.imgw.meteo_synop_daily` (ADR-022).** The
   per-station archives of `dane_meteorologiczne/dobowe/synop` (alias `meteo/dobowe/synop`,
   no longer refused as `per_station`): one file per station and folder (`1966_1970` …
@@ -53,139 +82,8 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   keys as `pl.imgw.{…}`. Publications (`Roczniki/`, `Biuletyn_PSHM/`, the current warning PDFs)
   and `api/data/product` are no datasets. Tests replay real files recorded on 2026-11-14.
 
-- **Every format at version 1 until the first release (Nogat REL-1.4, ECO-072).** The report of
-  `store sync` is `obserwator-sync-report/1` again (was `/2`; the same fields: `items`,
-  `cancelled`, `files`, no `series`); it is a result document only, so no store needs migrating.
-  Nogat's kit is 1.0.0 (`nogat-kit.json` byte for byte, the files of 0.7.1 unchanged) and the
-  regulamin stays 1.0. The contract schemas' example envelope of `store sync` follows.
-
-- **CP without the detail of processing (Nogat ECO-071, DEV-20.3, DEV-20.4; kit 0.7.1).** The
-  ČHMÚ processing line is „Dane ČHMÚ zostały przetworzone”, once, without „(normalizacja i
-  zmiana formatu)”, on every product: envelopes, the CLI, series, catalogs, CSV, JSONL and
-  Parquet exports, sidecars' `license.attribution`, `ATTRIBUTION.txt`, the GUI and its guide.
-  Every `Attribution` reads a line „Dane ČHMÚ zostały przetworzone (…)” of an older product
-  (Obserwator's own, or Hydrolog's naming its computation) as CP and keeps it once: an
-  `ATTRIBUTION.txt` merged by a plain write, stored series, catalogs and analyses, and
-  Hydrolog's results; `carried` no longer keeps Hydrolog's old line as its own. A series
-  version whose CP names the processing stays current (`series build` does not rebuild it for
-  this line); versions already written keep their bytes. Nogat's kit is 0.7.1 (byte for byte):
-  `nogat-sources.js` knows CP and shows an old one as CP, and the regulamin stays 1.0, corrected in
-  place with the ČHMÚ block's CP without parentheses (no new `terms_effective`). Tests: the CP line of the standard, an old CP read
-  as CP once (from `Attribution`, `from_lines`, `carried` and a merge), a ČHMÚ series with an
-  old CP kept current; the golden CSV of ČHMÚ series exports regenerated. ADR-003, ADR-012
-  and ADR-013 errata.
-
-- **GUI: the kind filter in two rows; „tylko czynne” checked on a first visit (the author's
-  request of 2026-11-14).** „Rodzaj stacji” in the left panel shows „Hydrologiczne” and
-  „Meteorologiczne” side by side with a full-width „Wszystkie” under them, at every width;
-  it stays one radio group (arrow keys in that order, one tab stop, the same chosen state).
-  „tylko czynne” is checked on a first visit, so the list and the map start with the active
-  stations; the browser remembers the person's choice (`localStorage`
-  `obserwator-active-only`), which wins on later visits. „Wyczyść filtry” still returns to
-  every station, inactive ones included. The guide's text and its screenshots of the panel
-  follow. Tests: e2e of the default, of a remembered choice and of the kind filter's layout
-  on a desktop and a phone.
-
-- **GUI: no footer statement; „Regulamin” at the bottom of the left panel (Nogat DEV-15.7,
-  DEV-15.8, the author's decision of 2026-11-14).** A public deployment no longer shows
-  „Regulamin” and the service's statement under the strip of provider lines: the statement
-  stays as the opening of § 3 of the regulamin (unchanged, 1.0). `regulamin.html` is linked,
-  in a new tab, by a small quiet „Regulamin” at the bottom of the left panel of every view
-  (the last item of the left sheet on a phone), by the app menu „Aplikacje” and by the
-  welcome window's „Regulamin serwisu”. The message `shell.statement` and `PublicNotice` are
-  gone; the strip `<nogat-sources>` and „Źródła i warunki” are unchanged. Tests: the e2e test
-  of the footer gives way to one of the left panel's link (desktop and phone, new tab, none
-  in a private deployment) and one of the welcome window's (one link, new tab, none in a
-  private deployment); ADR-013 erratum.
-
-- **The Windows runs of the gate (2026-11-14).** Since the GUI and the data root were merged,
-  the gate failed six tests on Windows (Python 3.12 and 3.15). The GUI's page scripts (`.js`,
-  `.mjs`) are `text/javascript` (RFC 9239) on every system: `build_app` registers both in
-  `mimetypes`, whose table Starlette's static files read and which on Windows comes from the
-  registry (`application/javascript` on the runners, `text/plain` on some machines, which
-  `X-Content-Type-Options: nosniff` keeps a browser from running). `obserwator gui serve` also
-  stops gracefully on Ctrl+Break on Windows (`SIGBREAK`, which uvicorn, and so `obserwator
-  server`, handles already): Windows delivers no `SIGTERM` to another program, so a supervisor
-  sends Ctrl+Break to the console process group the server leads. Tests: the servers of
-  `test_serve.py` and `test_api_main.py` are stopped that way on Windows (`SERVER_FLAGS` and
-  `STOP_SIGNAL` of `tests/contract/support.py`), the modes `0600` and `0700` of
-  `feedback.jsonl`, `stats.jsonl` and their directory are checked where permission bits exist,
-  the plan of `store catalog` is compared with the POSIX paths of the stored files, and a new
-  test serves the scripts as `text/javascript` when the system registers other types for them.
-
-- **Info texts by Nogat DEV-15.14 (2026-11-14).** Every explanation of the GUI, the „(i)” of the
-  analysis parts, of „Informacje o stacji”, „Pomiary bieżące”, „Pobierz” and the station list and
-  the PMAXTP methods, is rewritten in Polish and English in the shape of DEV-15.14 (ECO-069): a
-  definition, the formula with its symbols and units, how to read the value and the sources,
-  impersonal, at most about 400 characters without the formula and the sources. Gone from them:
-  the author's past work („metoda autora z 2024 r.”, the Baltic buoys), plan steps (M12, M15,
-  H14), development status, the programs and commands behind a value (Hydrolog's `stats …`,
-  `obserwator series export`), schema ids, dataset keys, file names and column lists; the
-  licence credits of Ed Hawkins's stripes (CC BY 4.0) and ColorBrewer's acknowledgment stay in
-  the sources. The method detail moved to a new chapter of the guide, „04 Metody analiz”
-  (`instrukcja/#metody`; the chapters after it are 05–09, and the tables of the analysis cards
-  link it), which „Więcej w instrukcji” at the end of an explanation opens at the method's part:
-  `Section` (`gui/web/src/sections/common.js`) takes `guide`, the id of that part, and keeps the
-  paragraphs of its text. The climate stripes' chip „Prototyp obliczeń · docelowo Hydrolog
-  (M15)” is removed with the stripes document's `provenance` and the texts
-  `gui.sections.prototype` and `gui.meteo.stripes.method`; the stripes' footer names Hydrolog's
-  computation and the series version, as every part's does. Also: the PMAXTP range note no
-  longer names `fetch_pmaxtp`, the map legend no longer says what is unavailable or packaged,
-  the stripes' scale lines say „normalna Hydrologa”, and the guide's PMAXTP methods drop the
-  unsourced recommendation of POT and its note on „Rodzaj roku” names only „Opady”. Tests: every
-  `guide` id of the page is a part of the guide (`tests/contract/test_gui_web.py`); the stripes'
-  tests no longer expect the chip.
-
-- **Documentation audited against the code (2026-11-14).** README, `SECURITY.md`, `CLAUDE.md`,
-  `.env.example` and `docs/` (USAGE, ARCHITECTURE, CODEBASE, PRD, TEST_PLAN, TESTING, RULES,
-  PROGRESS, DECISIONS) checked against `develop` `bee65bb`. `SECURITY.md` no longer scopes a web
-  GUI of `obserwator server` (its Jinja pages are gone since ADR-013): the GUI is its own server,
-  `obserwator gui serve`, with its private API, rate limit, „Zgłoś uwagę”, daily totals and the
-  admin panel and its key, and the servers' logs are in scope; the help of `obserwator server`
-  says REST and `/mcp` only. `.env.example`, USAGE, CODEBASE and `CLAUDE.md` name the admin key
-  `OBSERWATOR_ADMIN_API_KEY`/`_FILE` among the credentials, which come from the environment or
-  `.env`, never from `nogat.toml`; `OBSERWATOR_RATE_LIMIT` is documented as read by no component.
-  Also corrected: Nogat's kit 0.7.0 (not 0.6.0), the check of locations against the PRG and
-  RÚIAN borders with lines G and Z (ADR-018), the logs of ADR-019 in the architecture,
-  `feedback.next_id`, the five streaming exports and the one-file outputs of `stations export`
-  and `analyses export`, the CI matrix and `pip-audit`, the code maps (`nogat_logging.py`,
-  `_borders.py`, `_environment.py`, `cli/admin.py`, `cli/config_cmd.py`), the counts of PRD,
-  RULES and TESTING (3499 tests: 3427 offline, 148 of them in `tests/e2e`, and 72 live; 35
-  commands; 22 datasets), a dated note in TEST_PLAN on the removed Jinja GUI and helpers, and the
-  merges into `develop` up to `bee65bb` in PROGRESS. DECISIONS: the preamble reads the standard
-  drafts 2.0 and 2.1 of older entries as Nogat standard 1.0 (ECO-056), the index states the
-  superseded parts, and dated errata of 2026-11-14 bring ADR-001 to ADR-009, ADR-012, ADR-013 and
-  ADR-020 up to the code. `AGENTS.md` and `llms.txt` regenerated: unchanged.
-
-- **Dead and duplicated code removed (2026-11-14).** No public interface, output or store
-  byte changes. Removed code without callers: `_parsing.common.is_missing_value`,
-  `agent_guide._code_or_dash`, `gui._http.text_of`, `gui._extra.REQUIREMENTS`, the never
-  read `GuiConfig.operator_problems`, the page's `statName` (with its texts
-  `gui.words.stat.*`), `useAnalysisList` and `togglePanel`, and test fixtures and constants
-  no test used. One implementation each instead of copies: the store's canonical JSON
-  (`store.writer._canonical_text`, also behind the plan file, the registry digest, the
-  observation names and the Parquet metadata), the durable write of a new file
-  (`_write_new`), the slot directory of an archive file (`_archive_slot_dir`, four copies in
-  the writer, reader, catalog and series), the file checksum of the writer, `_next_month`,
-  `_relative`, the lines of a dataset (`_lines`), `_has_lang_option` and the GUI's UTC time
-  (`utc_now`).
-  Tests: the phone case of the view's one strip of provider lines (`test_sources.py`)
-  measured the station's sheet during its 0.25 s slide-in, up to ~31 px below the strip
-  when the run was slow; it now waits for the sheet's `transform: none` first, as the
-  shell's sheet test does.
-
-- **CI fixes of `develop` (2026-11-14).** Security: `opentelemetry-api` 1.45.1 → 1.45.2 in
-  `uv.lock` (CVE-2026-126360; `pip-audit` of CI). The GUI's report file lock (`_locked` in
-  `gui/_feedback.py`) keeps the POSIX `flock` in the `else` block of `sys.platform == "win32"`,
-  so mypy of the Windows gate no longer resolves `fcntl` (behaviour unchanged: on Windows the
-  instance's lock alone orders one process's reads and writes). Tests: the analyses case of
-  `command_for_version` took the first entry of `stations/` in listing order, a `<code>/`
-  directory on macOS (APFS lists it before `<code>.json`), which is no version file; it now
-  gives both station files of the layout, `stations/<code>.json` and
-  `stations/<code>/<analysis>.json`.
-
 - **Station details of hydro.imgw.pl (ADR-021).** Added: the store dataset
-  `pl.imgw.hydro_details` (22 datasets, 16 of IMGW-PIB; slug `hydro_details`, `time_unit`
+  `pl.imgw.hydro_details` (slug `hydro_details`, `time_unit`
   `station_list`, no update signal, licence = the hydro.imgw.pl terms, lines S, P, RH):
   `store sync --datasets pl.imgw.hydro_details` reads the hydro.imgw.pl map for the codes and
   then the station page of each, `hydro-back.imgw.pl/station/hydro/status?id=<code>`, one
@@ -231,42 +129,12 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   statistics. The deviation from DEV-15.12 and the `jq` instructions are gone. Deployment: set the
   key (a file of mode 0600 named by the unit) and protect `/admin`, `/admin/*`, `/api/admin/*`.
   The REST API keys of `obserwator admin` are unchanged and separate.
-- **State borders from PRG and RÚIAN (ADR-018).** The packaged borders of Poland and Czechia
-  come from PRG (GUGiK) and RÚIAN (ČÚZK) instead of Natural Earth, built by
-  `scripts/build_borders.py` (simplified to 50 m). A catalog keeps a location within the
-  border's tolerance (50 m) plus its uncertainty (at least 150 m) instead of 1,500 m. Catalogs
-  carry the new lines G („Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, …”) and Z
-  („Źródło: Český úřad zeměměřický a katastrální (ČÚZK), …, licencja CC BY 4.0”); the GUI's
-  strip shows them as GK and ZK. Rebuild catalogs to add the lines.
 - **Server logs of Nogat ECO-066 (ADR-019).** `obserwator server` and `obserwator gui serve`
   write `nogat-log/1` records (access, app, lifecycle) to `<state_dir>/obserwator/logs`
   through Nogat's reference module `obserwator.nogat_logging`, deleted after 14 days, without
   client addresses; uvicorn keeps no access log. New setting `OBSERWATOR_STATE_DIR`;
   `OBSERWATOR_LOG_LEVEL` is removed (fixed levels, DEV-12.7). Docker: state volume, logging
   driver `local`, nginx without logs.
-- **Nogat kit 0.6.2 (ECO-068).** The regulamin 1.0 corrected in place (`nogat-terms.md`,
-  `nogat-terms.html`) and `nogat-sources.js` copied byte for byte.
-- **Provider lines of Nogat ECO-065 (kit 0.6.0).** Products link the providers' terms instead
-  of restating them: the line H of hydro.imgw.pl and the notice N, a summary of the IMGW-PIB
-  terms, are gone from every product, and the terms lines name what they link: „Regulamin
-  danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations”, „Regulamin serwisu
-  hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin” and „Regulamin danych PMAXTP:
-  https://klimat.imgw.pl/opady-maksymalne”. `terms_notice` holds only them; the IMGW-PIB
-  `license_terms` notice has no English summary. New `obserwator.attribution.carried`: the
-  readers of stored analyses and catalogs derive the lines from the data's provider and kind
-  and keep only Hydrolog's own lines, so a data root written before shows and exports the
-  current lines without a rebuild; `Attribution.from_lines` skips the retired lines of an
-  `ATTRIBUTION.txt` written before. The regulamin comes from kit 0.6.0 without the block
-  `imgw-terms`; the kit and `schemas/nogat/handoff-1.schema.json` are copied byte for byte.
-- **GUI: one compact strip of provider lines per view (Nogat DEV-20.5, ECO-064, kit 0.5.1).**
-  The lines under the map, under every open card of the station panel and under PMAXTP's tables
-  give way to one `<nogat-sources>` of the kit across the page under the map and both panels,
-  fed the union of the `attribution` and `terms_notice` of what the list, the map and the right
-  panel show, the basemap's credit after it; S, P, PS, PP and „Źródło: ČHMÚ, CC BY 4.0” on
-  screen, every line, the terms and „Regulamin” in the dialog of „Źródła i warunki”. On a phone
-  the sheets stop above it. A first visit opens a welcome window with the same full content.
-  Files, PNG and SVG images, hand-offs and the API's `attribution` and `terms_notice` keep the
-  full lines.
 - **Web GUI: `obserwator gui serve` (ADR-013, GUI plan S1 and S2).** A Starlette app of its own
   (extra `gui`: Starlette and uvicorn; entry point `nogat.gui` → `obserwator.gui:gui_module`;
   `create_app`, `serve`) serves the page and a private API relative to it, GET and HEAD only:
@@ -320,38 +188,6 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   result computed on request (a person's choices, also when repeated from the server's memory,
   and the climate stripes), no longer stored results.
 
-- **GUI: fixes of the acceptance on the target data root.** A part of an analysis section that
-  shows several results names the failure of one of them above the others it still shows (it
-  dropped it silently, e.g. Hydrolog's 30 s limit for the intensity beside the days with
-  precipitation, or the duration curve of H beside Rybczyński's zones); „Trendy” keeps naming
-  each failure in its table. The provenance of an analysis names its series version by its
-  label, as „Dane” does, with the version's directory in the data root as the tooltip.
-  „Stany charakterystyczne” reads the daily series of its chart once, for the years of its
-  result, instead of the whole record first. The list's filter and the explanations of the
-  rating curve and the flood maxima name the data root („Szeregi w katalogu danych”, „Series
-  in the data root”), no longer the store, which since the split of the roots is Archiwista's.
-
-- **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
-  is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
-  gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still
-  brings python-multipart).
-
-- **Documentation of the GUI (GUI plan S8, S9).** `README.md`: the GUI among the interfaces,
-  `pip install "obserwator[cli,gui]"` (the command needs the CLI too; `create_app` and `serve`
-  only the extra `gui`) and a quick start that names what each daily total counts (Nogat
-  DEV-15.11). `docs/USAGE.md` „GUI” replaces „Web GUI”: starting it, the page, what it reads and
-  writes, the settings, the private API, hosting under a prefix and as Nogat's module, „Behind
-  an authenticating proxy” (the headers and the CSP, `FORWARDED_ALLOW_IPS`, a systemd user unit,
-  journald kept 14 days) and „Public deployment” (DEV-15.7 to DEV-15.12, a `nogat.toml` example
-  with `[nogat.operator]` of kit 0.4.0 and `[nogat.gui]`, reading `feedback.jsonl` with `jq`).
-  `docs/ARCHITECTURE.md` section 5, the component diagram and the file tree; `docs/CODEBASE.md`:
-  the `gui/` and `messages/gui/` trees, the five settings, `[nogat.gui]`, `[nogat.operator]` and
-  the deployment notes; `docs/PRD.md` section 5 and the visualization and export rows;
-  `CLAUDE.md` with the deviations from AGI-6.1 (the private API) and DEV-15.12 (no admin routes);
-  ADR-013 in `docs/DECISIONS.md`; `docs/TESTING.md` with the GUI's tests and markers;
-  `docs/PROGRESS.md` with the GUI's status and open gaps; a GUI block in `.env.example`. The GUI
-  serves its guide in Polish at `instrukcja/`, and `tests/e2e/test_smoke.py` opens every view.
-
 - **Provider attribution in every product (ADR-012, Nogat DEV §20, ECO-060; the author's order of
   2026-11-13).** One module, `obserwator.attribution` (`attribution(*origins, processed=True)`,
   `Attribution` with `attribution`, `terms_notice`, `|`, `fields()`, `from_lines()`), composes the
@@ -392,9 +228,6 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   `terms_notice` with the data and carry them on; readers of the series CSV by column name need no
   change (Hydrolog), `license.attribution` stays a text (Archiwista).
 
-- Repository URLs point to `github.com/Daldek/Obserwator` (the repository was renamed from IMGWTools).
-- The version has one source, `src/obserwator/_version.py` (`pyproject.toml` reads it through
-  `[tool.hatch.version]`); `develop` carries `3.0.0.dev0` until the release (Nogat REL-1.1).
 - `SECURITY.md`: supported versions, private reporting through GitHub Security Advisories and the
   scope (REST and MCP servers, store writes, the `--allow-dir` sandbox, API keys); `CONTRIBUTING.md`
   points to it (Nogat DEV-13.7).
@@ -402,228 +235,6 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
   ADR-011) at the right end of the top bar: it lists the GUIs of the table `gui` of `[nogat]` in
   `nogat.toml` (e.g. `[nogat.gui]` `hydrolog = "http://127.0.0.1:8070/"`) and is not drawn without
   it. The kit's menu files and the marks are copied byte for byte into `web/static/nogat/`.
-
-Changes since 2.1.1, to be released as 3.0.0. The tool released as IMGWTools 2.1.1 is called
-Obserwator from this release (ADR-009): the distribution, the import package, the command and
-every name derived from the tool change (first entry below). A versioned store of IMGW data
-replaces the optional SQLite cache (ADR-001), and Python, the CLI, REST and the web GUI use one
-command catalog with one result envelope and one registry of error codes (ADR-002). The second
-provider beside IMGW-PIB is the Czech ČHMÚ (opendata.chmi.cz, ADR-003): the `cz.chmi.*` datasets
-in the same contracts, store and commands; the value domains of the `/1` contracts were opened
-before the tag (C01). AI agents get the guide `AGENTS.md`/`llms.txt`, English descriptions of the
-catalog, effect metadata of the commands and an MCP server (ADR-004). Later work brings the
-repository in line with the Nogat standard 1.0 (then the draft 2.1): the user environment
-(ADR-005), the message catalog and English machine output (ADR-006), data output in plain mode
-and in the store with a default root (ADR-007), and projects moved to Archiwista (ADR-008). The
-downloads write raw data only, into a raw root, and the series, catalogs and analyses built from
-them live in a data root of their own (ADR-015, ADR-017). The stations' analyses are computed by
-Hydrolog and stored as its answers (ADR-016). The registry has 27 datasets of two providers, and
-the catalog 35 commands. Decisions: `docs/DECISIONS.md`; contracts:
-`docs/superpowers/specs/2026-10-17-versioned-store-design.md` (§13: consistency of the interfaces,
-§13.11: full migration tables), `2026-10-18-chmi-provider-design.md` (ČHMÚ) and
-`2026-10-19-agent-support-design.md` (agents). The release has no aliases or shims of old names.
-The versions 2.2.0 (2026-08-22) and 3.0.0 (2026-10-19) of earlier drafts of this file were never
-tagged; their changes are part of this section.
-
-### Breaking changes and migration from 2.1.1
-
-What a caller of 2.1.1 changes; no alias or shim keeps an old name. Writing data (`--output-dir`,
-`--root`, `--output` and the default store) is described in "Migration guide: data output" at the
-end of this section.
-
-#### The tool is called Obserwator (ADR-009, Nogat ECO-057)
-
-IMGW-PIB is the institute whose data the tool reads (beside ČHMÚ), not the tool, so the tool is
-Obserwator and every name derived from it changes. The institute keeps its names: IMGW-PIB and
-IMGW in texts, the provider id `IMGW-PIB`, the dataset keys `pl.imgw.*`, the provider URLs and
-the identifiers that name the provider (`IMGW_API_URL`, `IMGW_PMAXTP_URL`,
-`IMGW_PUBLIC_DATA_URL`, `IMGW_ENCODING`). The repository is `github.com/Daldek/Obserwator`
-(GitHub redirects the old URL). No alias, shim or conversion keeps an old name: the store, its documents
-and every id below exist only since 3.0.0, which was never released under the old names
-(ECO-056). The other entries of this section use the new names; an old name stays only where an
-entry names what was removed or renamed.
-
-| Old | New |
-|---|---|
-| the product IMGWTools | Obserwator |
-| the distribution `imgwtools` (`pip install imgwtools[cli]`) | `obserwator` (`pip install obserwator[cli]`) |
-| the import package `imgwtools` (`from imgwtools import …`, `python -m imgwtools.reference_data`) | `obserwator` (`from obserwator import …`, `python -m obserwator.reference_data`) |
-| the command `imgw` (`imgw mcp`, `imgw server`, `imgw config show`, the catalog commands) | `obserwator` (`obserwator mcp`, `obserwator server`, `obserwator config show`, …); the REST paths `/api/v1/…` are unchanged |
-| the variables `IMGW_<KEY>` (`IMGW_ROOT`, `IMGW_LANG`, `IMGW_DATA_DIR`, `IMGW_CACHE_DIR`, `IMGW_REFERENCE_DIR`, `IMGW_MCP_ENABLED`, …; `IMGW_LIVE_REPORT` of the live tests) | `OBSERWATOR_<KEY>` (`OBSERWATOR_ROOT`, `OBSERWATOR_LANG`, `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`, …; `OBSERWATOR_LIVE_REPORT`) |
-| the section `[imgw]` of `nogat.toml` | `[obserwator]` |
-| the default store `<data_dir>/imgw`, the caches `<cache_dir>/imgw` (reference data `<cache_dir>/imgw/reference`, API keys `<data_dir>/imgw/api_keys.json`) | `<data_dir>/obserwator`, `<cache_dir>/obserwator` (`<cache_dir>/obserwator/reference`, `<data_dir>/obserwator/api_keys.json`) |
-| the document ids `imgw-<kind>/1`: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-plan/1`, `imgw-observation/1`, `imgw-pmaxtp/1`, `imgw-result/1`, `imgw-commands/1`, `imgw-command-list/1`, `imgw-config/1` | `obserwator-<kind>/1`: `obserwator-store/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1`, `obserwator-pmaxtp/1`, `obserwator-result/1`, `obserwator-commands/1`, `obserwator-command-list/1`, `obserwator-config/1` |
-| the store marker `imgw-store.json` (`"tool": "imgw"`) and the staging directory `.imgw-incoming/` | `obserwator-store.json` (`"tool": "obserwator"`) and `.obserwator-incoming/` |
-| `imgwtools` as the `producer` of a sidecar and in `created_by` of the marker | `obserwator` (the only producer a reader accepts) |
-| the Parquet metadata key `imgw_schema` of a series | `obserwator_schema` |
-| the MCP tools and OpenAPI `operationId`s `imgw_<group>_<verb>` (`imgw_store_sync`) and `imgw_system_<function>`; the MCP server `imgwtools` (title `IMGWTools`) | `obserwator_<group>_<verb>` (`obserwator_store_sync`; the longest, `obserwator_current_hydro_states`, has 31 characters) and `obserwator_system_<function>`; the MCP server `obserwator` (title `Obserwator`) |
-| the catalog extensions `x-imgw` (`x-imgw.rules`, `x-imgw.writes`, `x-imgw.operation_id`, …), `x-imgw-writes`, `x-imgw-path-role`, `x-imgw-store-only`, `x-imgw-type` | `x-obserwator` (`x-obserwator.rules`, `x-obserwator.writes`, `x-obserwator.operation_id`, …), `x-obserwator-writes`, `x-obserwator-path-role`, `x-obserwator-store-only`, `x-obserwator-type` |
-| the export headers `X-IMGW-Status` and `X-IMGW-Notices` | `X-Obserwator-Status` and `X-Obserwator-Notices` |
-| the problem type `urn:imgwtools:error:<code>` | `urn:obserwator:error:<code>` |
-| the exceptions `IMGWError`, `IMGWConnectionError`, `IMGWDataError`, `IMGWValidationError`, `IMGWStoreError`, `IMGWStoreConflictError`, `IMGWStoreDependencyError`, `IMGWCancelledError` | `ObserwatorError`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`, `ObserwatorStoreError`, `ObserwatorStoreConflictError`, `ObserwatorStoreDependencyError`, `ObserwatorCancelledError` |
-| the CLI classes `ImgwGroup`, `ImgwSubgroup`, `ImgwCommand` | `ObserwatorGroup`, `ObserwatorSubgroup`, `ObserwatorCommand` |
-| `User-Agent: imgwtools/<version>` (archives, ČHMÚ) and `IMGWTools/<version>` (station map) | `obserwator/<version>` and `Obserwator/<version>` |
-| the block markers `<!-- imgw:… -->` of the guide templates | `<!-- obserwator:… -->` |
-
-Migration:
-
-- Install and pin `obserwator` instead of `imgwtools` (a git pin uses `github.com/Daldek/Obserwator`), import
-  `obserwator` and catch `ObserwatorError` and its subclasses.
-- Run `obserwator` instead of `imgw` in scripts and MCP client configurations
-  (`"command": "obserwator", "args": ["mcp"]`); MCP clients and OpenAPI generators call the tools
-  `obserwator_*`.
-- Rename every `IMGW_<KEY>` variable (environment, `.env`, Docker) to `OBSERWATOR_<KEY>` and the
-  section `[imgw]` of `nogat.toml` to `[obserwator]`: an old variable or section is ignored.
-- Readers of the documents and of the marker check the new ids and `obserwator-store.json`;
-  Kartograf finds the marker by its name for its nested-store check.
-- A store, plan, sidecar or envelope written by a development build before the rename (marker
-  `imgw-store.json`, ids `imgw-*/1`) is neither read nor converted, as no release wrote one:
-  download the data again into new roots (`obserwator store sync` into the raw root, default
-  `<data_dir>/obserwator-raw`, then `series build` and `store catalog` into the data root, default
-  `<data_dir>/obserwator`; ADR-017).
-
-#### Result, error and catalog documents follow the Nogat standard 1.0 (ADR-010)
-
-The documents of every interface follow the Nogat standard 1.0 (AGI-2.4, AGI-3.2–3.4,
-AGI-4.1–4.4, AGI-5.6, AGI-6.3, AGI-6.5, ERR-3; Nogat plan `2026-11-04-obserwator-agent-contracts`).
-`schemas/nogat/` holds copies of Nogat's `result-1`, `error-1`, `commands-1` and the error
-registry, and contract tests validate the CLI, REST, MCP and Python documents against them.
-
-| Old | New |
-|---|---|
-| the CLI prints the envelope on stdout | `--json` prints exactly the envelope; without it the CLI prints a short summary for a person in the `--lang` language (status, the command, the items or the main fields, the page, the notices); the streams (`store export`, `series export`, `commands guide` without `--output`) give the same bytes in both modes |
-| the envelope `{schema, command, check, status, result, notices}` | adds `tool` (`"obserwator"`) and `version` (`__version__`), and `page` for a list command |
-| a list command returns `{items, total, limit, offset}` as `result` (Python `Page[T]` with `items`, `total`, `limit`, `offset`) | `result` is the list of the page's items and the envelope's `page` is `{total, next_cursor, truncated}` (Python `CommandResult.result` is the tuple of items and `CommandResult.page` a `Page(total, next_cursor, truncated)`) |
-| `offset` (CLI `--offset`, REST and MCP `offset`) | `cursor` (`--cursor`): pass `page.next_cursor` of the previous page; a cursor no page wrote is refused with `validation_error` (`details.option` `"cursor"`) |
-| a result document without an id | every result document has its own `schema` `obserwator-<kind>/1` (`obserwator-dataset/1`, `obserwator-station/1`, `obserwator-record/1`, …; `PMaXTPUrl` is a new type with `obserwator-pmaxtp-url/1`) |
-| a notice `{level, code, text}` with the levels `info`, `warning` and `error` | `{level, code, message}` with the levels `info` and `warning` (a former `error` notice is a `warning`) |
-| the CLI error line and the MCP error `{code, detail, details}` | the document `obserwator-error/1` `{schema, code, title, message, hint?, details, exit_code, command?}` in English; `message` is the former `detail` (the Python attribute `ObserwatorError.detail` keeps its name) and `hint` names the option or command that fixes the input; in human mode one readable line precedes it, and the last line of stderr stays the document |
-| REST problem+json `{type, title, status, detail, code, details}` | adds `hint` |
-| `command_schema` entries are the JSON Schemas of the options (`x-obserwator`) | entries follow Nogat `commands-1` (`name`, `operation_id`, `summary`, `options` with `flags` and `enum` meanings, `effects`, `errors`, `examples`, …); `commands list` stays the summary `obserwator-command-list/1`, as in Kartograf and Hydrolog |
-| `parse_command` and `format_command` know the run flag `--check` | they also know `--json` and `--lang` (`run["json"]`, `run["lang"]`) |
-| `StoreInfo.schema` (the schema of the marker) | `StoreInfo.store_schema`; the document's own `schema` is its id `obserwator-store-info/1` |
-
-- A script that reads CLI stdout adds `--json`; the error document stays the last line of stderr.
-- Read the list from `result` and the paging from `page`; fetch the next page with
-  `--cursor <page.next_cursor>` while `page.truncated`, instead of computing an `offset`.
-- Read the notice text from `message` and the error text from `message` instead of `detail`.
-- A reader of `command_schema` reads the `commands-1` entries; the JSON Schemas of the options
-  are the MCP tools' `inputSchema` and the request bodies of the OpenAPI document.
-
-#### Python — data functions
-
-| Old | New |
-|---|---|
-| `fetch_hydro_current(station_id=…)` (+`_async`) | `fetch_hydro_current(*, station=…)`; `HydroCurrentData.station_id` → `station_code`, new `latitude`, `longitude` |
-| `fetch_synop(station_id=…, station_name=…)` (+`_async`) | `fetch_synop(*, station=…, station_name=…)`; `SynopData.station_id` → `station_code` |
-| `fetch_warnings(warning_type="hydro")` (+`_async`) | `fetch_warnings(*, kind=None)` (none = both families); `WarningData.warning_type` → `kind`, new `event` |
-| `fetch_pmaxtp(lat, lon, "AMP")` | `fetch_pmaxtp(lat, lon, method="AMP")`; a call with a named `method` is unchanged |
-| `list_hydro_stations()`, `list_meteo_stations()` (+`_async`) → `HydroStation`, `MeteoStation` | `find_stations(kind="hydro")` / `find_stations(kind="meteo")` (+`find_stations_async`) → `StationListEntry` (`station_id` → `station_code`) |
-| `get_hydro_stations_with_coords(include_all=True)` (+`_async`) | `fetch_hydro_states(main_only=False)` (+`_async`) → `HydroState` |
-| `build_hydro_url(HydroInterval.DAILY, 2023)` | `archive_files("hydro/dobowe", years=2023)[0].url` (or the key `pl.imgw.hydro_daily`) |
-| `build_hydro_url(HydroInterval.DAILY, 2023, month=13)` | `archive_files("pl.imgw.hydro_phenomena", years=2023)[0].url` |
-| `build_meteo_url(MeteoInterval.MONTHLY, MeteoSubtype.SYNOP, 1995)` | `archive_files("meteo/miesieczne/synop", years=1995)[0].url` |
-| `get_available_years(DataType.HYDRO, "dobowe")` | `get_dataset("hydro/dobowe").first_year` (no upper bound) |
-| `DownloadURL` | `ArchiveFile` |
-| `DataType`, `HydroInterval`, `HydroParam`, `MeteoInterval`, `MeteoSubtype` | dataset keys and aliases (`str`), `params` `H\|Q\|T` |
-| `PMaXTPMethod` | `Literal["POT", "AMP"]` |
-| `build_pmaxtp_url(method, latitude, longitude)` | `build_pmaxtp_url(latitude, longitude, *, method="POT")` |
-| `build_api_url(endpoint, station_id=…, station_name=…)` | `build_api_url(endpoint, *, station=…, station_name=…)` |
-| `IMGWError(message)` | `ObserwatorError(detail, *, code=…, details=…)` (the name: see above); a call with the text only keeps its arguments |
-| `download_hydro_data`, `download_meteo_data` (+`_async`) → `bytes` | → `DownloadResult` (`data` = the exact bytes, `url`, `etag`, `last_modified`, `content_length`); the arguments are unchanged, migration: `download_hydro_data("dobowe", 2023).data`; an answer that is no ZIP → `ObserwatorDataError`; a missing month/parameter → `ObserwatorValidationError` with `details.option` |
-| `parse_zip_file` → `zipfile.BadZipFile` for a damaged archive | `ObserwatorDataError`; the ZIP is read with limits on the number and size of its files and without unsafe paths |
-| `parse_stations_csv(data)` → `HydroStation` (`imgwtools.db.models`) | `parse_stations_csv(data, kind="hydro"\|"meteo")` → `StationListEntry` (`kind`, `station_code`, `name`; hydro `river`, `hydrographic_code`, `river_order`; meteo `short_code`); `.station_name`/`.river_name` → `.name`/`.river`; the meteo list is not read with the hydro layout (its third column is `short_code`) |
-
-Removed from `imgwtools` (also from `imgwtools.urls`), without replacements of the same name:
-`HydroStation`, `MeteoStation`, `list_hydro_stations`, `list_hydro_stations_async`,
-`list_meteo_stations`, `list_meteo_stations_async`, `get_hydro_stations_with_coords`,
-`get_hydro_stations_with_coords_async`, `build_hydro_url`, `build_meteo_url`,
-`get_available_years`, `DownloadURL`, `DataType`, `HydroInterval`, `HydroParam`,
-`MeteoInterval`, `MeteoSubtype`, `PMaXTPMethod`; the module `imgwtools.core` (`url_builder`)
-— the URL constants and `build_pmaxtp_url`/`build_api_url` are in `obserwator.urls`.
-
-#### Legacy modules and the `[spatial]` extra
-
-- **The extra `[spatial]` became `[pandas]`.** `pip install imgwtools[spatial]` no longer works;
-  the dependencies `pyproj`/`pyshp` are dropped.
-- **`core/imgw_spatial.py` is removed** (the class `StationMap`, outside the public API, without a
-  replacement).
-- **`core/imgw_api.py` is removed** (DEPRECATED since 2.0.0). Replacements: `HYDRO` →
-  `fetch_hydro_current()`, `SYNOP` → `fetch_synop()`, `METEO` → `fetch_synop()` /
-  `fetch_hydro_current()`, `WARNINGS` → `fetch_warnings()`, `PMAXTPAPI` → `fetch_pmaxtp()`.
-- **`core/imgw_datastore.py` is removed**: instead of `DataDownloader` use `download_hydro_data()`
-  or `download_meteo_data()`.
-
-#### Removed SQLite cache (ADR-001)
-
-- the package `imgwtools.db` (`cache_manager`, `connection`, `schema`, `repository`, `models`,
-  `parsers`): the hydro parsers are in `obserwator.parsers`, the archive models
-  (`HydroArchiveStation`, `HydroDailyRecord`, …) in `obserwator.models`;
-- the CLI command `imgw db …` (`init`, `status`, `stations`, `cache`, `query`, `clear`, `vacuum`);
-- the REST endpoint `GET /api/v1/hydro/data`;
-- the settings `IMGW_DB_ENABLED` and `IMGW_DB_PATH`;
-- the install extra `imgwtools[db]`.
-
-Existing `.db` files are neither deleted nor migrated: download the data again into the store
-(`obserwator store sync`).
-
-#### CLI
-
-| Old | New |
-|---|---|
-| `imgw fetch hydro -i dobowe -y 2023 -m 1 [-p H] [-o DIR]` | `obserwator datasets download -d hydro/dobowe -y 2023 -m 1 [--params H] [-o DIR]` (`-d` required, no default interval); `-o` (`--output-dir`) writes plain files in the path layout of the IMGW server through the `.obserwator-incoming/` directory and `os.replace`, and an existing file needs `--force` |
-| `imgw fetch meteo -i miesieczne -s synop -y 2023 [-o DIR]` | `obserwator datasets download -d meteo/miesieczne/synop -y 2023 [-o DIR]` |
-| `imgw fetch current hydro\|meteo\|synop [-s ID] [-o FILE]` | `obserwator current hydro\|meteo\|synop [-s CODE]` (to save: `> FILE`) |
-| `imgw fetch pmaxtp -m AMP --lat … --lon … [-o FILE]` | `obserwator pmaxtp fetch --method AMP --lat … --lon …` |
-| `imgw fetch warnings -t meteo [-o FILE]` | `obserwator current warnings -k meteo` |
-| `imgw list stations -t hydro -s Warsz -l 50` | `obserwator stations find -k hydro -q Warsz --limit 50` |
-| `imgw list datasets [-t hydro]` | `obserwator datasets list [-k hydro]` |
-| `imgw list intervals` | `obserwator datasets list` (the field `legacy_alias`) |
-| stdout: the raw result, absolute paths | a short summary for a person; `--json` prints the envelope `obserwator-result/1` on one line; paths in the store relative to the root |
-| an error: `Błąd: …` on stderr (legacy commands: stdout), exit code 1 | the document `obserwator-error/1` on the last line of stderr, the exit code from the error registry; a `partial`/`failed` result → 10/11, cancellation 130 |
-
-#### REST
-
-| Old | New |
-|---|---|
-| `GET /api/v1/hydro/stations`, `GET /api/v1/meteo/stations` (stubs), `GET /api/v1/hydro/stations/{station_id}` | `GET /api/v1/stations/find?kind=…&query=…` |
-| `GET /api/v1/hydro/current?station_id=` | `GET /api/v1/current/hydro?station=` |
-| `GET /api/v1/meteo/current?station_id=` | `GET /api/v1/current/meteo?station=` |
-| `GET /api/v1/meteo/synop?station_id=&station_name=` | `GET /api/v1/current/synop?station=&station_name=` |
-| — | `GET /api/v1/current/warnings`, `GET /api/v1/current/hydro-states` |
-| `POST /api/v1/hydro/download-url`, `/hydro/download-urls`, `/meteo/download-url`, `/meteo/download-urls`; `GET /api/v1/download/url`, `/download/urls` | `GET /api/v1/datasets/files?dataset=…&years=…&months=…&params=…` |
-| `GET /api/v1/download/datasets` | `GET /api/v1/datasets/list` |
-| `GET /api/v1/pmaxtp/methods` | `GET /api/v1/commands/schema?command=pmaxtp%20fetch` (the `method` enumeration with its description) |
-| `POST /api/v1/pmaxtp/url` | `GET /api/v1/pmaxtp/url` |
-| `POST /api/v1/pmaxtp/data` (the raw IMGW answer) | `GET /api/v1/pmaxtp/fetch` (`PMaXTPResult`) |
-| `GET /map/stations` (web) | `GET /api/v1/current/hydro-states` |
-| errors `{"detail": …}`, 422 with a pydantic list | `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `code`, `details`, `hint`); validation always 400 |
-
-Web: the routes `/download/archives` + `POST /download/files`, `/stations/find` and the catalog
-route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generate]`,
-`/stations/hydro|meteo` and `/map/stations`.
-
-#### Fields and files
-
-| Old | New |
-|---|---|
-| REST `Station.id`, `HydroStation.station_id`, `HydroCurrentData.station_id`, `SynopData.station_id` | `station_code` |
-| REST `DownloadURLResponse{url, filename, data_type, interval, year, month}` | `ArchiveFile{dataset, server_path, url, year, month, param, year_type, period_start, period_end}` |
-| REST `HydroCurrentData{water_level, flow, temperature}` | the library model `{water_level_cm, flow_m3s, water_temp_c, …}` |
-| REST `MeteoCurrentData{temperature, wind_speed, humidity, precipitation}` | `MeteoCurrentData{air_temp_c, wind_speed_ms, humidity_percent, precipitation_10min_mm, …}` or `SynopData` |
-| `WarningData.warning_type`, REST `WarningData.type` | `kind` |
-| `data/hydro_stations_locations.csv` `id,X,Y` | `station_code,latitude,longitude` (run `python -m obserwator.reference_data` again; the old header → `validation_error` with an instruction) |
-| `data/hydro_stations_names.csv`, `data/meteo_stations_names.csv` and `Settings.hydro_stations_file`/`meteo_stations_file` | removed (only `imgw list stations` read them) |
-| `IMGW_DATA_DIR` (`Settings.data_dir`, default `./data`) as the directory of the reference data | `OBSERWATOR_REFERENCE_DIR` (default `<cache_dir>/obserwator/reference`); `OBSERWATOR_DATA_DIR` is the user data directory, the parent of the stores (see Changed) |
-| `IMGW_API_KEYS_FILE` with the default `./api_keys.json` | the default `<data_dir>/obserwator/api_keys.json` |
-
-#### Installation
-
-- **`obserwator[full]`** covers `store` (`pyarrow>=15`) and `mcp` beside `api`, `cli`, `pandas`.
-- The new extra **`obserwator[mcp]`** = `obserwator[cli]` + `mcp>=2.3,<3` (the MCP server, ADR-004).
-
-### Added
-
 - **Harmonized exports (ADR-014, Obserwator GUI plan S0, Nogat plan O3):** `export_stations` and
   the command `stations export` (`GET /api/v1/stations/export`, MCP `obserwator_stations_export`)
   export the stations of the current catalogs of the chosen providers as GeoJSON
@@ -1209,28 +820,17 @@ release have the same bytes as without the ČHMÚ provider.
     raw root at `root` and the data root at `data_root` and returns `FixtureRoots(raw, data)`.
   - Polish texts call the raw root „katalog surowy” and the data root „katalog danych”.
 
-  Migration: point the downloads at the raw root and the rest at the data root
-  (`OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, or `raw_root` and `root` in `[obserwator]` of
-  `nogat.toml`; a REST server needs both); pass `raw_root=` to the four builders and `--raw-root`
-  where the raw root is not the default; take the stations of the store from the catalogs
-  (`store catalog` first); call `build_fixture_store(raw, data_root=data)` and use `.raw` and
-  `.data` of its result. Split an existing store once, as `docs/USAGE.md` "Splitting a store"
-  shows: move a store at `<data_dir>/obserwator` aside, then `mkdir RAW DATA`, `cp -al
-  OLD/archives OLD/pmaxtp RAW/` and `cp -al OLD/series OLD/stations OLD/analyses DATA/` (the trees
-  it has; in Python `shutil.copytree(src, dst, copy_function=os.link)`), `obserwator store init
-  --root RAW` and `obserwator store init --kind data --root DATA`; `obserwator store scan --root
-  RAW --kind problem` and the same of `DATA` list nothing. Archiwista and Retman follow in the
-  Nogat plan's step R2.
+  Migration: "Breaking changes and migration from 2.1.1", "Two roots".
 - **Breaking — `store sync` writes raw data only; the station sources are archived and the
   catalogs are built offline (ADR-015, Nogat ECO-059, plan 2026-11-12 step R1):**
   - `sync_store`/`store sync` lose `series` (`--series/--no-series`); `SyncReport` has no `series`
-    and is `obserwator-sync-report/2` (`items`, `cancelled`, `files`, archive versions only). Build
+    and is `obserwator-sync-report/1` (`items`, `cancelled`, `files`, archive versions only). Build
     the series with `build_series`/`series build` after a sync. Migration: drop `series=…`, read
     `report.items`/`report.files`, call `series build --dataset <key>` for each synced dataset.
   - Four new store datasets, the station metadata of the catalogs: `pl.imgw.hydro_now`,
     `pl.imgw.meteo_now` (IMGW-PIB's current-data API `api/data/hydro|meteo`;
     `DatasetDescriptor.base_url`) and `cz.chmi.hydro_now`, `cz.chmi.meteo_now` (ČHMÚ
-    `now/metadata`); the registry has 21 datasets. `store check` and `store sync --datasets` take
+    `now/metadata`). `store check` and `store sync --datasets` take
     the eight station sources (lists and metadata) in a call of their own (no `years`, `months`,
     `stations`; store only): lists by HEAD, the `now` metadata without a signal always downloaded
     and compared by bytes or canonical content, the ČHMÚ meteo file by its listing.
@@ -1553,6 +1153,495 @@ release have the same bytes as without the ČHMÚ provider.
 - NumPy docstrings in all of `src/`, enforced by the ruff `D` rules; `ruff format` over the whole
   repository.
 - `obserwator version` reads `__version__`.
+- **Every format at version 1 until the first release (Nogat REL-1.4, ECO-072).** The report of
+  `store sync` is `obserwator-sync-report/1` (development builds wrote `/2` for a time; the same
+  fields: `items`, `cancelled`, `files`, no `series`); it is a result document only, so no store
+  needs migrating. Nogat's kit is 1.0.0 (`nogat-kit.json` byte for byte, the files of 0.7.1
+  unchanged) and the regulamin stays 1.0. The contract schemas' example envelope of `store sync`
+  follows.
+
+- **CP without the detail of processing (Nogat ECO-071, DEV-20.3, DEV-20.4; kit 0.7.1).** The
+  ČHMÚ processing line is „Dane ČHMÚ zostały przetworzone”, once, without „(normalizacja i
+  zmiana formatu)”, on every product: envelopes, the CLI, series, catalogs, CSV, JSONL and
+  Parquet exports, sidecars' `license.attribution`, `ATTRIBUTION.txt`, the GUI and its guide.
+  Every `Attribution` reads a line „Dane ČHMÚ zostały przetworzone (…)” of an older product
+  (Obserwator's own, or Hydrolog's naming its computation) as CP and keeps it once: an
+  `ATTRIBUTION.txt` merged by a plain write, stored series, catalogs and analyses, and
+  Hydrolog's results; `carried` no longer keeps Hydrolog's old line as its own. A series
+  version whose CP names the processing stays current (`series build` does not rebuild it for
+  this line); versions already written keep their bytes. Nogat's kit is 0.7.1 (byte for byte):
+  `nogat-sources.js` knows CP and shows an old one as CP, and the regulamin stays 1.0, corrected in
+  place with the ČHMÚ block's CP without parentheses (no new `terms_effective`). Tests: the CP line of the standard, an old CP read
+  as CP once (from `Attribution`, `from_lines`, `carried` and a merge), a ČHMÚ series with an
+  old CP kept current; the golden CSV of ČHMÚ series exports regenerated. ADR-003, ADR-012
+  and ADR-013 errata.
+
+- **GUI: the kind filter in two rows; „tylko czynne” checked on a first visit (the author's
+  request of 2026-11-14).** „Rodzaj stacji” in the left panel shows „Hydrologiczne” and
+  „Meteorologiczne” side by side with a full-width „Wszystkie” under them, at every width;
+  it stays one radio group (arrow keys in that order, one tab stop, the same chosen state).
+  „tylko czynne” is checked on a first visit, so the list and the map start with the active
+  stations; the browser remembers the person's choice (`localStorage`
+  `obserwator-active-only`), which wins on later visits. „Wyczyść filtry” still returns to
+  every station, inactive ones included. The guide's text and its screenshots of the panel
+  follow. Tests: e2e of the default, of a remembered choice and of the kind filter's layout
+  on a desktop and a phone.
+
+- **GUI: no footer statement; „Regulamin” at the bottom of the left panel (Nogat DEV-15.7,
+  DEV-15.8, the author's decision of 2026-11-14).** A public deployment no longer shows
+  „Regulamin” and the service's statement under the strip of provider lines: the statement
+  stays as the opening of § 3 of the regulamin (unchanged, 1.0). `regulamin.html` is linked,
+  in a new tab, by a small quiet „Regulamin” at the bottom of the left panel of every view
+  (the last item of the left sheet on a phone), by the app menu „Aplikacje” and by the
+  welcome window's „Regulamin serwisu”. The message `shell.statement` and `PublicNotice` are
+  gone; the strip `<nogat-sources>` and „Źródła i warunki” are unchanged. Tests: the e2e test
+  of the footer gives way to one of the left panel's link (desktop and phone, new tab, none
+  in a private deployment) and one of the welcome window's (one link, new tab, none in a
+  private deployment); ADR-013 erratum.
+
+- **Info texts by Nogat DEV-15.14 (2026-11-14).** Every explanation of the GUI, the „(i)” of the
+  analysis parts, of „Informacje o stacji”, „Pomiary bieżące”, „Pobierz” and the station list and
+  the PMAXTP methods, is rewritten in Polish and English in the shape of DEV-15.14 (ECO-069): a
+  definition, the formula with its symbols and units, how to read the value and the sources,
+  impersonal, at most about 400 characters without the formula and the sources. Gone from them:
+  the author's past work („metoda autora z 2024 r.”, the Baltic buoys), plan steps (M12, M15,
+  H14), development status, the programs and commands behind a value (Hydrolog's `stats …`,
+  `obserwator series export`), schema ids, dataset keys, file names and column lists; the
+  licence credits of Ed Hawkins's stripes (CC BY 4.0) and ColorBrewer's acknowledgment stay in
+  the sources. The method detail moved to a new chapter of the guide, „04 Metody analiz”
+  (`instrukcja/#metody`; the chapters after it are 05–09, and the tables of the analysis cards
+  link it), which „Więcej w instrukcji” at the end of an explanation opens at the method's part:
+  `Section` (`gui/web/src/sections/common.js`) takes `guide`, the id of that part, and keeps the
+  paragraphs of its text. The climate stripes' chip „Prototyp obliczeń · docelowo Hydrolog
+  (M15)” is removed with the stripes document's `provenance` and the texts
+  `gui.sections.prototype` and `gui.meteo.stripes.method`; the stripes' footer names Hydrolog's
+  computation and the series version, as every part's does. Also: the PMAXTP range note no
+  longer names `fetch_pmaxtp`, the map legend no longer says what is unavailable or packaged,
+  the stripes' scale lines say „normalna Hydrologa”, and the guide's PMAXTP methods drop the
+  unsourced recommendation of POT and its note on „Rodzaj roku” names only „Opady”. Tests: every
+  `guide` id of the page is a part of the guide (`tests/contract/test_gui_web.py`); the stripes'
+  tests no longer expect the chip.
+
+- **Documentation audited against the code (2026-11-14).** README, `SECURITY.md`, `CLAUDE.md`,
+  `.env.example` and `docs/` (USAGE, ARCHITECTURE, CODEBASE, PRD, TEST_PLAN, TESTING, RULES,
+  PROGRESS, DECISIONS) checked against `develop` `bee65bb`. `SECURITY.md` no longer scopes a web
+  GUI of `obserwator server` (its Jinja pages are gone since ADR-013): the GUI is its own server,
+  `obserwator gui serve`, with its private API, rate limit, „Zgłoś uwagę”, daily totals and the
+  admin panel and its key, and the servers' logs are in scope; the help of `obserwator server`
+  says REST and `/mcp` only. `.env.example`, USAGE, CODEBASE and `CLAUDE.md` name the admin key
+  `OBSERWATOR_ADMIN_API_KEY`/`_FILE` among the credentials, which come from the environment or
+  `.env`, never from `nogat.toml`; `OBSERWATOR_RATE_LIMIT` is documented as read by no component.
+  Also corrected: Nogat's kit 0.7.0 (not 0.6.0), the check of locations against the PRG and
+  RÚIAN borders with lines G and Z (ADR-018), the logs of ADR-019 in the architecture,
+  `feedback.next_id`, the five streaming exports and the one-file outputs of `stations export`
+  and `analyses export`, the CI matrix and `pip-audit`, the code maps (`nogat_logging.py`,
+  `_borders.py`, `_environment.py`, `cli/admin.py`, `cli/config_cmd.py`), the counts of PRD,
+  RULES and TESTING (3499 tests: 3427 offline, 148 of them in `tests/e2e`, and 72 live; 35
+  commands; 22 datasets), a dated note in TEST_PLAN on the removed Jinja GUI and helpers, and the
+  merges into `develop` up to `bee65bb` in PROGRESS. DECISIONS: the preamble reads the standard
+  drafts 2.0 and 2.1 of older entries as Nogat standard 1.0 (ECO-056), the index states the
+  superseded parts, and dated errata of 2026-11-14 bring ADR-001 to ADR-009, ADR-012, ADR-013 and
+  ADR-020 up to the code. `AGENTS.md` and `llms.txt` regenerated: unchanged.
+
+- **Dead and duplicated code removed (2026-11-14).** No public interface, output or store
+  byte changes. Removed code without callers: `_parsing.common.is_missing_value`,
+  `agent_guide._code_or_dash`, `gui._http.text_of`, `gui._extra.REQUIREMENTS`, the never
+  read `GuiConfig.operator_problems`, the page's `statName` (with its texts
+  `gui.words.stat.*`), `useAnalysisList` and `togglePanel`, and test fixtures and constants
+  no test used. One implementation each instead of copies: the store's canonical JSON
+  (`store.writer._canonical_text`, also behind the plan file, the registry digest, the
+  observation names and the Parquet metadata), the durable write of a new file
+  (`_write_new`), the slot directory of an archive file (`_archive_slot_dir`, four copies in
+  the writer, reader, catalog and series), the file checksum of the writer, `_next_month`,
+  `_relative`, the lines of a dataset (`_lines`), `_has_lang_option` and the GUI's UTC time
+  (`utc_now`).
+  Tests: the phone case of the view's one strip of provider lines (`test_sources.py`)
+  measured the station's sheet during its 0.25 s slide-in, up to ~31 px below the strip
+  when the run was slow; it now waits for the sheet's `transform: none` first, as the
+  shell's sheet test does.
+
+- **State borders from PRG and RÚIAN (ADR-018).** The packaged borders of Poland and Czechia
+  come from PRG (GUGiK) and RÚIAN (ČÚZK) instead of Natural Earth, built by
+  `scripts/build_borders.py` (simplified to 50 m). A catalog keeps a location within the
+  border's tolerance (50 m) plus its uncertainty (at least 150 m) instead of 1,500 m. Catalogs
+  carry the new lines G („Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, …”) and Z
+  („Źródło: Český úřad zeměměřický a katastrální (ČÚZK), …, licencja CC BY 4.0”); the GUI's
+  strip shows them as GK and ZK. Rebuild catalogs to add the lines.
+- **Nogat kit 0.6.2 (ECO-068).** The regulamin 1.0 corrected in place (`nogat-terms.md`,
+  `nogat-terms.html`) and `nogat-sources.js` copied byte for byte.
+- **Provider lines of Nogat ECO-065 (kit 0.6.0).** Products link the providers' terms instead
+  of restating them: the line H of hydro.imgw.pl and the notice N, a summary of the IMGW-PIB
+  terms, are gone from every product, and the terms lines name what they link: „Regulamin
+  danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations”, „Regulamin serwisu
+  hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin” and „Regulamin danych PMAXTP:
+  https://klimat.imgw.pl/opady-maksymalne”. `terms_notice` holds only them; the IMGW-PIB
+  `license_terms` notice has no English summary. New `obserwator.attribution.carried`: the
+  readers of stored analyses and catalogs derive the lines from the data's provider and kind
+  and keep only Hydrolog's own lines, so a data root written before shows and exports the
+  current lines without a rebuild; `Attribution.from_lines` skips the retired lines of an
+  `ATTRIBUTION.txt` written before. The regulamin comes from kit 0.6.0 without the block
+  `imgw-terms`; the kit and `schemas/nogat/handoff-1.schema.json` are copied byte for byte.
+- **GUI: one compact strip of provider lines per view (Nogat DEV-20.5, ECO-064, kit 0.5.1).**
+  The lines under the map, under every open card of the station panel and under PMAXTP's tables
+  give way to one `<nogat-sources>` of the kit across the page under the map and both panels,
+  fed the union of the `attribution` and `terms_notice` of what the list, the map and the right
+  panel show, the basemap's credit after it; S, P, PS, PP and „Źródło: ČHMÚ, CC BY 4.0” on
+  screen, every line, the terms and „Regulamin” in the dialog of „Źródła i warunki”. On a phone
+  the sheets stop above it. A first visit opens a welcome window with the same full content.
+  Files, PNG and SVG images, hand-offs and the API's `attribution` and `terms_notice` keep the
+  full lines.
+- **Removed: the Jinja2 and HTMX pages of `obserwator server` (GUI plan S8, D18).** The web GUI
+  is `obserwator gui serve`; `GET /` of `obserwator server` redirects to `/docs`, `/static` is
+  gone, and the `api` extra no longer installs Jinja2 or python-multipart (the `mcp` extra still
+  brings python-multipart).
+
+- **Documentation of the GUI (GUI plan S8, S9).** `README.md`: the GUI among the interfaces,
+  `pip install "obserwator[cli,gui]"` (the command needs the CLI too; `create_app` and `serve`
+  only the extra `gui`) and a quick start that names what each daily total counts (Nogat
+  DEV-15.11). `docs/USAGE.md` „GUI” replaces „Web GUI”: starting it, the page, what it reads and
+  writes, the settings, the private API, hosting under a prefix and as Nogat's module, „Behind
+  an authenticating proxy” (the headers and the CSP, `FORWARDED_ALLOW_IPS`, a systemd user unit,
+  journald kept 14 days) and „Public deployment” (DEV-15.7 to DEV-15.12, a `nogat.toml` example
+  with `[nogat.operator]` of kit 0.4.0 and `[nogat.gui]`, reading `feedback.jsonl` with `jq`).
+  `docs/ARCHITECTURE.md` section 5, the component diagram and the file tree; `docs/CODEBASE.md`:
+  the `gui/` and `messages/gui/` trees, the five settings, `[nogat.gui]`, `[nogat.operator]` and
+  the deployment notes; `docs/PRD.md` section 5 and the visualization and export rows;
+  `CLAUDE.md` with the deviations from AGI-6.1 (the private API) and DEV-15.12 (no admin routes);
+  ADR-013 in `docs/DECISIONS.md`; `docs/TESTING.md` with the GUI's tests and markers;
+  `docs/PROGRESS.md` with the GUI's status and open gaps; a GUI block in `.env.example`. The GUI
+  serves its guide in Polish at `instrukcja/`, and `tests/e2e/test_smoke.py` opens every view.
+
+- Repository URLs point to `github.com/Daldek/Obserwator` (the repository was renamed from IMGWTools).
+- The version has one source, `src/obserwator/_version.py` (`pyproject.toml` reads it through
+  `[tool.hatch.version]`); `develop` carries `3.0.0.dev0` until the release (Nogat REL-1.1).
+
+#### Migration from 2.1.1
+
+What a caller of 2.1.1 changes; no alias or shim keeps an old name. Writing data (`--output-dir`,
+`--root`, `--output` and the default store) is described in "Data output" at the end of this
+list, the two roots below. Every other breaking change is an entry of "Changed" above
+whose title starts with **Breaking —** and ends with its migration: `store sync` writes raw data
+only (ADR-015), projects moved to Archiwista (ADR-008), `IMGW_DATA_DIR` no longer names the
+reference data, the MCP tool names and `operationId`s, the `title_en`, `help_en`,
+`description_en` and `rules_en` fields, `IMGW_STORE_ROOT` and the default store, the status
+`created`, the store marker and nested stores, `datasets download` and the exports, and the
+English texts of errors, notices, the MCP server, the description commands and REST (ADR-006).
+
+##### Two roots: raw data and the data built from it (ADR-015, ADR-017)
+
+Downloads write raw data only, into the raw root (`obserwator-store.json`: archives, station
+sources, PMAXTP cells), and the series, catalogs and analyses built from them live in the data
+root (`obserwator-data.json`); details in the two **Breaking —** entries of "Changed" on the data
+root and on `store sync`. 2.1.1 had no store, so a caller of 2.1.1 only sets the two roots; the
+rest concerns stores and code written against development builds of 3.0.0.
+
+- Point the downloads at the raw root and the rest at the data root (`OBSERWATOR_RAW_ROOT` and
+  `OBSERWATOR_ROOT`, or `raw_root` and `root` in `[obserwator]` of `nogat.toml`; defaults
+  `<data_dir>/obserwator-raw` and `<data_dir>/obserwator`; a REST server needs both).
+- Pass `raw_root=` to `build_series`, `check_series`, `build_catalog` and `check_catalog`, and
+  `--raw-root` to `series build` and `store catalog` where the raw root is not the default.
+- Drop `series=…` (`--series`) from `store sync` and run `series build --dataset <key>` for each
+  synced dataset; run `store sync --datasets` of a provider's station sources before `store
+  catalog`, which makes no request.
+- Take the stations of the store from the catalogs (`store catalog` first); `stations find
+  --source store` reads them.
+- In tests call `build_fixture_store(raw, data_root=data)` and use `.raw` and `.data` of its result.
+- Split a store written before ADR-017 once, as `docs/USAGE.md` "Splitting a store" shows: move a
+  store at `<data_dir>/obserwator` aside, then `mkdir RAW DATA`, `cp -al OLD/archives OLD/pmaxtp
+  RAW/` and `cp -al OLD/series OLD/stations OLD/analyses DATA/` (the trees it has; in Python
+  `shutil.copytree(src, dst, copy_function=os.link)`), `obserwator store init --root RAW` and
+  `obserwator store init --kind data --root DATA`; `obserwator store scan --root RAW --kind
+  problem` and the same of `DATA` list nothing. Archiwista and Retman follow in the Nogat plan's
+  step R2.
+
+##### The tool is called Obserwator (ADR-009, Nogat ECO-057)
+
+IMGW-PIB is the institute whose data the tool reads (beside ČHMÚ), not the tool, so the tool is
+Obserwator and every name derived from it changes. The institute keeps its names: IMGW-PIB and
+IMGW in texts, the provider id `IMGW-PIB`, the dataset keys `pl.imgw.*`, the provider URLs and
+the identifiers that name the provider (`IMGW_API_URL`, `IMGW_PMAXTP_URL`,
+`IMGW_PUBLIC_DATA_URL`, `IMGW_ENCODING`). The repository is `github.com/Daldek/Obserwator`
+(GitHub redirects the old URL). No alias, shim or conversion keeps an old name: the store, its documents
+and every id below exist only since 3.0.0, which was never released under the old names
+(ECO-056). The other entries of this section use the new names; an old name stays only where an
+entry names what was removed or renamed.
+
+| Old | New |
+|---|---|
+| the product IMGWTools | Obserwator |
+| the distribution `imgwtools` (`pip install imgwtools[cli]`) | `obserwator` (`pip install obserwator[cli]`) |
+| the import package `imgwtools` (`from imgwtools import …`, `python -m imgwtools.reference_data`) | `obserwator` (`from obserwator import …`, `python -m obserwator.reference_data`) |
+| the command `imgw` (`imgw mcp`, `imgw server`, `imgw config show`, the catalog commands) | `obserwator` (`obserwator mcp`, `obserwator server`, `obserwator config show`, …); the REST paths `/api/v1/…` are unchanged |
+| the variables `IMGW_<KEY>` (`IMGW_ROOT`, `IMGW_LANG`, `IMGW_DATA_DIR`, `IMGW_CACHE_DIR`, `IMGW_REFERENCE_DIR`, `IMGW_MCP_ENABLED`, …; `IMGW_LIVE_REPORT` of the live tests) | `OBSERWATOR_<KEY>` (`OBSERWATOR_ROOT`, `OBSERWATOR_LANG`, `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_MCP_ENABLED`, …; `OBSERWATOR_LIVE_REPORT`) |
+| the section `[imgw]` of `nogat.toml` | `[obserwator]` |
+| the default store `<data_dir>/imgw`, the caches `<cache_dir>/imgw` (reference data `<cache_dir>/imgw/reference`, API keys `<data_dir>/imgw/api_keys.json`) | `<data_dir>/obserwator`, `<cache_dir>/obserwator` (`<cache_dir>/obserwator/reference`, `<data_dir>/obserwator/api_keys.json`) |
+| the document ids `imgw-<kind>/1`: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-plan/1`, `imgw-observation/1`, `imgw-pmaxtp/1`, `imgw-result/1`, `imgw-commands/1`, `imgw-command-list/1`, `imgw-config/1` | `obserwator-<kind>/1`: `obserwator-store/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1`, `obserwator-pmaxtp/1`, `obserwator-result/1`, `obserwator-commands/1`, `obserwator-command-list/1`, `obserwator-config/1` |
+| the store marker `imgw-store.json` (`"tool": "imgw"`) and the staging directory `.imgw-incoming/` | `obserwator-store.json` (`"tool": "obserwator"`) and `.obserwator-incoming/` |
+| `imgwtools` as the `producer` of a sidecar and in `created_by` of the marker | `obserwator` (the only producer a reader accepts) |
+| the Parquet metadata key `imgw_schema` of a series | `obserwator_schema` |
+| the MCP tools and OpenAPI `operationId`s `imgw_<group>_<verb>` (`imgw_store_sync`) and `imgw_system_<function>`; the MCP server `imgwtools` (title `IMGWTools`) | `obserwator_<group>_<verb>` (`obserwator_store_sync`; the longest, `obserwator_current_hydro_states`, has 31 characters) and `obserwator_system_<function>`; the MCP server `obserwator` (title `Obserwator`) |
+| the catalog extensions `x-imgw` (`x-imgw.rules`, `x-imgw.writes`, `x-imgw.operation_id`, …), `x-imgw-writes`, `x-imgw-path-role`, `x-imgw-store-only`, `x-imgw-type` | `x-obserwator` (`x-obserwator.rules`, `x-obserwator.writes`, `x-obserwator.operation_id`, …), `x-obserwator-writes`, `x-obserwator-path-role`, `x-obserwator-store-only`, `x-obserwator-type` |
+| the export headers `X-IMGW-Status` and `X-IMGW-Notices` | `X-Obserwator-Status` and `X-Obserwator-Notices` |
+| the problem type `urn:imgwtools:error:<code>` | `urn:obserwator:error:<code>` |
+| the exceptions `IMGWError`, `IMGWConnectionError`, `IMGWDataError`, `IMGWValidationError`, `IMGWStoreError`, `IMGWStoreConflictError`, `IMGWStoreDependencyError`, `IMGWCancelledError` | `ObserwatorError`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`, `ObserwatorStoreError`, `ObserwatorStoreConflictError`, `ObserwatorStoreDependencyError`, `ObserwatorCancelledError` |
+| the CLI classes `ImgwGroup`, `ImgwSubgroup`, `ImgwCommand` | `ObserwatorGroup`, `ObserwatorSubgroup`, `ObserwatorCommand` |
+| `User-Agent: imgwtools/<version>` (archives, ČHMÚ) and `IMGWTools/<version>` (station map) | `obserwator/<version>` and `Obserwator/<version>` |
+| the block markers `<!-- imgw:… -->` of the guide templates | `<!-- obserwator:… -->` |
+
+Migration:
+
+- Install and pin `obserwator` instead of `imgwtools` (a git pin uses `github.com/Daldek/Obserwator`), import
+  `obserwator` and catch `ObserwatorError` and its subclasses.
+- Run `obserwator` instead of `imgw` in scripts and MCP client configurations
+  (`"command": "obserwator", "args": ["mcp"]`); MCP clients and OpenAPI generators call the tools
+  `obserwator_*`.
+- Rename every `IMGW_<KEY>` variable (environment, `.env`, Docker) to `OBSERWATOR_<KEY>` and the
+  section `[imgw]` of `nogat.toml` to `[obserwator]`: an old variable or section is ignored.
+- Readers of the documents and of the marker check the new ids and `obserwator-store.json`;
+  Kartograf finds the marker by its name for its nested-store check.
+- A store, plan, sidecar or envelope written by a development build before the rename (marker
+  `imgw-store.json`, ids `imgw-*/1`) is neither read nor converted, as no release wrote one:
+  download the data again into new roots (`obserwator store sync` into the raw root, default
+  `<data_dir>/obserwator-raw`, then `series build` and `store catalog` into the data root, default
+  `<data_dir>/obserwator`; ADR-017).
+
+##### Result, error and catalog documents follow the Nogat standard 1.0 (ADR-010)
+
+The documents of every interface follow the Nogat standard 1.0 (AGI-2.4, AGI-3.2–3.4,
+AGI-4.1–4.4, AGI-5.6, AGI-6.3, AGI-6.5, ERR-3; Nogat plan `2026-11-04-obserwator-agent-contracts`).
+`schemas/nogat/` holds copies of Nogat's `result-1`, `error-1`, `commands-1` and the error
+registry, and contract tests validate the CLI, REST, MCP and Python documents against them.
+
+| Old | New |
+|---|---|
+| the CLI prints the envelope on stdout | `--json` prints exactly the envelope; without it the CLI prints a short summary for a person in the `--lang` language (status, the command, the items or the main fields, the page, the notices); the streams (`store export`, `series export`, `commands guide` without `--output`) give the same bytes in both modes |
+| the envelope `{schema, command, check, status, result, notices}` | adds `tool` (`"obserwator"`) and `version` (`__version__`), and `page` for a list command |
+| a list command returns `{items, total, limit, offset}` as `result` (Python `Page[T]` with `items`, `total`, `limit`, `offset`) | `result` is the list of the page's items and the envelope's `page` is `{total, next_cursor, truncated}` (Python `CommandResult.result` is the tuple of items and `CommandResult.page` a `Page(total, next_cursor, truncated)`) |
+| `offset` (CLI `--offset`, REST and MCP `offset`) | `cursor` (`--cursor`): pass `page.next_cursor` of the previous page; a cursor no page wrote is refused with `validation_error` (`details.option` `"cursor"`) |
+| a result document without an id | every result document has its own `schema` `obserwator-<kind>/1` (`obserwator-dataset/1`, `obserwator-station/1`, `obserwator-record/1`, …; `PMaXTPUrl` is a new type with `obserwator-pmaxtp-url/1`) |
+| a notice `{level, code, text}` with the levels `info`, `warning` and `error` | `{level, code, message}` with the levels `info` and `warning` (a former `error` notice is a `warning`) |
+| the CLI error line and the MCP error `{code, detail, details}` | the document `obserwator-error/1` `{schema, code, title, message, hint?, details, exit_code, command?}` in English; `message` is the former `detail` (the Python attribute `ObserwatorError.detail` keeps its name) and `hint` names the option or command that fixes the input; in human mode one readable line precedes it, and the last line of stderr stays the document |
+| REST problem+json `{type, title, status, detail, code, details}` | adds `hint` |
+| `command_schema` entries are the JSON Schemas of the options (`x-obserwator`) | entries follow Nogat `commands-1` (`name`, `operation_id`, `summary`, `options` with `flags` and `enum` meanings, `effects`, `errors`, `examples`, …); `commands list` stays the summary `obserwator-command-list/1`, as in Kartograf and Hydrolog |
+| `parse_command` and `format_command` know the run flag `--check` | they also know `--json` and `--lang` (`run["json"]`, `run["lang"]`) |
+| `StoreInfo.schema` (the schema of the marker) | `StoreInfo.store_schema`; the document's own `schema` is its id `obserwator-store-info/1` |
+
+- A script that reads CLI stdout adds `--json`; the error document stays the last line of stderr.
+- Read the list from `result` and the paging from `page`; fetch the next page with
+  `--cursor <page.next_cursor>` while `page.truncated`, instead of computing an `offset`.
+- Read the notice text from `message` and the error text from `message` instead of `detail`.
+- A reader of `command_schema` reads the `commands-1` entries; the JSON Schemas of the options
+  are the MCP tools' `inputSchema` and the request bodies of the OpenAPI document.
+
+##### Python — data functions
+
+| Old | New |
+|---|---|
+| `fetch_hydro_current(station_id=…)` (+`_async`) | `fetch_hydro_current(*, station=…)`; `HydroCurrentData.station_id` → `station_code`, new `latitude`, `longitude` |
+| `fetch_synop(station_id=…, station_name=…)` (+`_async`) | `fetch_synop(*, station=…, station_name=…)`; `SynopData.station_id` → `station_code` |
+| `fetch_warnings(warning_type="hydro")` (+`_async`) | `fetch_warnings(*, kind=None)` (none = both families); `WarningData.warning_type` → `kind`, new `event` |
+| `fetch_pmaxtp(lat, lon, "AMP")` | `fetch_pmaxtp(lat, lon, method="AMP")`; a call with a named `method` is unchanged |
+| `list_hydro_stations()`, `list_meteo_stations()` (+`_async`) → `HydroStation`, `MeteoStation` | `find_stations(kind="hydro")` / `find_stations(kind="meteo")` (+`find_stations_async`) → `StationListEntry` (`station_id` → `station_code`) |
+| `get_hydro_stations_with_coords(include_all=True)` (+`_async`) | `fetch_hydro_states(main_only=False)` (+`_async`) → `HydroState` |
+| `build_hydro_url(HydroInterval.DAILY, 2023)` | `archive_files("hydro/dobowe", years=2023)[0].url` (or the key `pl.imgw.hydro_daily`) |
+| `build_hydro_url(HydroInterval.DAILY, 2023, month=13)` | `archive_files("pl.imgw.hydro_phenomena", years=2023)[0].url` |
+| `build_meteo_url(MeteoInterval.MONTHLY, MeteoSubtype.SYNOP, 1995)` | `archive_files("meteo/miesieczne/synop", years=1995)[0].url` |
+| `get_available_years(DataType.HYDRO, "dobowe")` | `get_dataset("hydro/dobowe").first_year` (no upper bound) |
+| `DownloadURL` | `ArchiveFile` |
+| `DataType`, `HydroInterval`, `HydroParam`, `MeteoInterval`, `MeteoSubtype` | dataset keys and aliases (`str`), `params` `H\|Q\|T` |
+| `PMaXTPMethod` | `Literal["POT", "AMP"]` |
+| `build_pmaxtp_url(method, latitude, longitude)` | `build_pmaxtp_url(latitude, longitude, *, method="POT")` |
+| `build_api_url(endpoint, station_id=…, station_name=…)` | `build_api_url(endpoint, *, station=…, station_name=…)` |
+| `IMGWError(message)` | `ObserwatorError(detail, *, code=…, details=…)` (the name: see above); a call with the text only keeps its arguments |
+| `download_hydro_data`, `download_meteo_data` (+`_async`) → `bytes` | → `DownloadResult` (`data` = the exact bytes, `url`, `etag`, `last_modified`, `content_length`); the arguments are unchanged, migration: `download_hydro_data("dobowe", 2023).data`; an answer that is no ZIP → `ObserwatorDataError`; a missing month/parameter → `ObserwatorValidationError` with `details.option` |
+| `parse_zip_file` → `zipfile.BadZipFile` for a damaged archive | `ObserwatorDataError`; the ZIP is read with limits on the number and size of its files and without unsafe paths |
+| `parse_stations_csv(data)` → `HydroStation` (`imgwtools.db.models`) | `parse_stations_csv(data, kind="hydro"\|"meteo")` → `StationListEntry` (`kind`, `station_code`, `name`; hydro `river`, `hydrographic_code`, `river_order`; meteo `short_code`); `.station_name`/`.river_name` → `.name`/`.river`; the meteo list is not read with the hydro layout (its third column is `short_code`) |
+
+Removed from `imgwtools` (also from `imgwtools.urls`), without replacements of the same name:
+`HydroStation`, `MeteoStation`, `list_hydro_stations`, `list_hydro_stations_async`,
+`list_meteo_stations`, `list_meteo_stations_async`, `get_hydro_stations_with_coords`,
+`get_hydro_stations_with_coords_async`, `build_hydro_url`, `build_meteo_url`,
+`get_available_years`, `DownloadURL`, `DataType`, `HydroInterval`, `HydroParam`,
+`MeteoInterval`, `MeteoSubtype`, `PMaXTPMethod`; the module `imgwtools.core` (`url_builder`)
+— the URL constants and `build_pmaxtp_url`/`build_api_url` are in `obserwator.urls`.
+
+##### Legacy modules and the `[spatial]` extra
+
+- **The extra `[spatial]` became `[pandas]`.** `pip install imgwtools[spatial]` no longer works;
+  the dependencies `pyproj`/`pyshp` are dropped.
+- **`core/imgw_spatial.py` is removed** (the class `StationMap`, outside the public API, without a
+  replacement).
+- **`core/imgw_api.py` is removed** (DEPRECATED since 2.0.0). Replacements: `HYDRO` →
+  `fetch_hydro_current()`, `SYNOP` → `fetch_synop()`, `METEO` → `fetch_synop()` /
+  `fetch_hydro_current()`, `WARNINGS` → `fetch_warnings()`, `PMAXTPAPI` → `fetch_pmaxtp()`.
+- **`core/imgw_datastore.py` is removed**: instead of `DataDownloader` use `download_hydro_data()`
+  or `download_meteo_data()`.
+
+##### Removed SQLite cache (ADR-001)
+
+- the package `imgwtools.db` (`cache_manager`, `connection`, `schema`, `repository`, `models`,
+  `parsers`): the hydro parsers are in `obserwator.parsers`, the archive models
+  (`HydroArchiveStation`, `HydroDailyRecord`, …) in `obserwator.models`;
+- the CLI command `imgw db …` (`init`, `status`, `stations`, `cache`, `query`, `clear`, `vacuum`);
+- the REST endpoint `GET /api/v1/hydro/data`;
+- the settings `IMGW_DB_ENABLED` and `IMGW_DB_PATH`;
+- the install extra `imgwtools[db]`.
+
+Existing `.db` files are neither deleted nor migrated: download the data again into the store
+(`obserwator store sync`).
+
+##### CLI
+
+| Old | New |
+|---|---|
+| `imgw fetch hydro -i dobowe -y 2023 -m 1 [-p H] [-o DIR]` | `obserwator datasets download -d hydro/dobowe -y 2023 -m 1 [--params H] [-o DIR]` (`-d` required, no default interval); `-o` (`--output-dir`) writes plain files in the path layout of the IMGW server through the `.obserwator-incoming/` directory and `os.replace`, and an existing file needs `--force` |
+| `imgw fetch meteo -i miesieczne -s synop -y 2023 [-o DIR]` | `obserwator datasets download -d meteo/miesieczne/synop -y 2023 [-o DIR]` |
+| `imgw fetch current hydro\|meteo\|synop [-s ID] [-o FILE]` | `obserwator current hydro\|meteo\|synop [-s CODE]` (to save: `> FILE`) |
+| `imgw fetch pmaxtp -m AMP --lat … --lon … [-o FILE]` | `obserwator pmaxtp fetch --method AMP --lat … --lon …` |
+| `imgw fetch warnings -t meteo [-o FILE]` | `obserwator current warnings -k meteo` |
+| `imgw list stations -t hydro -s Warsz -l 50` | `obserwator stations find -k hydro -q Warsz --limit 50` |
+| `imgw list datasets [-t hydro]` | `obserwator datasets list [-k hydro]` |
+| `imgw list intervals` | `obserwator datasets list` (the field `legacy_alias`) |
+| stdout: the raw result, absolute paths | a short summary for a person; `--json` prints the envelope `obserwator-result/1` on one line; paths in the store relative to the root |
+| an error: `Błąd: …` on stderr (legacy commands: stdout), exit code 1 | the document `obserwator-error/1` on the last line of stderr, the exit code from the error registry; a `partial`/`failed` result → 10/11, cancellation 130 |
+
+##### REST
+
+| Old | New |
+|---|---|
+| `GET /api/v1/hydro/stations`, `GET /api/v1/meteo/stations` (stubs), `GET /api/v1/hydro/stations/{station_id}` | `GET /api/v1/stations/find?kind=…&query=…` |
+| `GET /api/v1/hydro/current?station_id=` | `GET /api/v1/current/hydro?station=` |
+| `GET /api/v1/meteo/current?station_id=` | `GET /api/v1/current/meteo?station=` |
+| `GET /api/v1/meteo/synop?station_id=&station_name=` | `GET /api/v1/current/synop?station=&station_name=` |
+| — | `GET /api/v1/current/warnings`, `GET /api/v1/current/hydro-states` |
+| `POST /api/v1/hydro/download-url`, `/hydro/download-urls`, `/meteo/download-url`, `/meteo/download-urls`; `GET /api/v1/download/url`, `/download/urls` | `GET /api/v1/datasets/files?dataset=…&years=…&months=…&params=…` |
+| `GET /api/v1/download/datasets` | `GET /api/v1/datasets/list` |
+| `GET /api/v1/pmaxtp/methods` | `GET /api/v1/commands/schema?command=pmaxtp%20fetch` (the `method` enumeration with its description) |
+| `POST /api/v1/pmaxtp/url` | `GET /api/v1/pmaxtp/url` |
+| `POST /api/v1/pmaxtp/data` (the raw IMGW answer) | `GET /api/v1/pmaxtp/fetch` (`PMaXTPResult`) |
+| `GET /map/stations` (web) | `GET /api/v1/current/hydro-states` |
+| errors `{"detail": …}`, 422 with a pydantic list | `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `code`, `details`, `hint`); validation always 400 |
+
+Web: the routes `/download/archives` + `POST /download/files`, `/stations/find` and the catalog
+route `GET /api/v1/current/hydro-states` replace `/download/hydro|meteo[/generate]`,
+`/stations/hydro|meteo` and `/map/stations`.
+
+##### Fields and files
+
+| Old | New |
+|---|---|
+| REST `Station.id`, `HydroStation.station_id`, `HydroCurrentData.station_id`, `SynopData.station_id` | `station_code` |
+| REST `DownloadURLResponse{url, filename, data_type, interval, year, month}` | `ArchiveFile{dataset, server_path, url, year, month, param, year_type, period_start, period_end}` |
+| REST `HydroCurrentData{water_level, flow, temperature}` | the library model `{water_level_cm, flow_m3s, water_temp_c, …}` |
+| REST `MeteoCurrentData{temperature, wind_speed, humidity, precipitation}` | `MeteoCurrentData{air_temp_c, wind_speed_ms, humidity_percent, precipitation_10min_mm, …}` or `SynopData` |
+| `WarningData.warning_type`, REST `WarningData.type` | `kind` |
+| `data/hydro_stations_locations.csv` `id,X,Y` | `station_code,latitude,longitude` (run `python -m obserwator.reference_data` again; the old header → `validation_error` with an instruction) |
+| `data/hydro_stations_names.csv`, `data/meteo_stations_names.csv` and `Settings.hydro_stations_file`/`meteo_stations_file` | removed (only `imgw list stations` read them) |
+| `IMGW_DATA_DIR` (`Settings.data_dir`, default `./data`) as the directory of the reference data | `OBSERWATOR_REFERENCE_DIR` (default `<cache_dir>/obserwator/reference`); `OBSERWATOR_DATA_DIR` is the user data directory, the parent of the stores (see Changed) |
+| `IMGW_API_KEYS_FILE` with the default `./api_keys.json` | the default `<data_dir>/obserwator/api_keys.json` |
+
+##### Installation
+
+- **`obserwator[full]`** covers `store` (`pyarrow>=15`) and `mcp` beside `api`, `cli`, `pandas`.
+- The new extra **`obserwator[mcp]`** = `obserwator[cli]` + `mcp>=2.3,<3` (the MCP server, ADR-004).
+- **`obserwator` is not on PyPI yet:** install and pin the tag from Git,
+  `obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.0.0` (README "Install",
+  Nogat REL-5.1); `imgwtools` on PyPI stays at 2.1.1.
+
+##### Data output (ADR-007, DEV §19)
+
+What a caller of Obserwator (Python, `obserwator`, REST, MCP) or a reader of its files has to change. The
+entries above give the reasons and every detail; this is the list to follow. The names are those of
+the unreleased 3.0.0, so no earlier release has to keep working and no alias exists.
+
+**The three targets (DEV-19.1, DEV-19.2).** `output_dir` (`--output-dir`, `-o`) writes plain files,
+`root` (`--root`, `-r`) writes the versioned store, `output` (`--output`, no short form) writes the one
+file of an export; `--force` replaces existing plain files. `output_dir` and `root` exclude each other
+(`validation_error`, `exclusive_options`). A writing command given neither writes the root of its kind
+(ADR-017): a download the raw root at the first of `--root`, `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` of
+`nogat.toml` and `<data_dir>/obserwator-raw`, a build the data root at the first of `--root`, `OBSERWATOR_ROOT`,
+`[obserwator] root` and `<data_dir>/obserwator` (`obserwator config show --json` names both and their sources),
+never the working directory. A REST server writes only to its own `OBSERWATOR_RAW_ROOT` and
+`OBSERWATOR_ROOT`, with writes enabled and the token, and takes no `root`, `output_dir`, `output` or `force` in
+a request; `obserwator mcp` writes only inside its `--allow-dir` directories and with `--allow-writes`.
+
+| Old | New |
+|---|---|
+| `IMGW_STORE_ROOT`, `Settings.store_root` | `OBSERWATOR_ROOT`, `Settings.root` (the data root since ADR-017; the raw root is `OBSERWATOR_RAW_ROOT`, `Settings.raw_root`); `root` is optional in every store command (the default root of its kind) |
+| `IMGW_DATA_DIR` as the directory of the reference data | `OBSERWATOR_REFERENCE_DIR` (`OBSERWATOR_DATA_DIR` is the user data directory) |
+| `download_archives(output=DIR)`, `datasets download --output/-o DIR` (default `./data/downloaded`) | `output_dir=DIR`, `--output-dir/-o DIR` for plain files; `root=`, `--root` for versions in the raw root; neither: the default raw root |
+| `DownloadReport.output` | `DownloadReport.mode` (`plain`/`store`), `.output_dir` or `.root`, `.files` |
+| `export_archive`, `export_series`, `agent_guide` with `path=F`; `--path F`, `-p F` | `output=F` (`force=True` over an existing file); `--output F` (`--force`) |
+| their `Path` result; envelope `result` `"<path>"` | `OutputReport` (`.output`, `.files`); `{"output": …, "files": […]}` |
+| status `created`; series status `reused` | `new`; `unchanged` |
+| `.part` files beside the targets | staging directory `<dir>/.obserwator-incoming/<host>_<pid>_<token>/`, removed after every run (success, error, SIGINT, SIGTERM) |
+| `imgw-store.json` with `schema`, `created_by` | `obserwator-store.json`, also with `tool` (`obserwator`), `created_at`, `producer_version`, always; the first write creates it, `obserwator store init` only verifies the layout |
+| nested stores found by `kartograf-project.json` and `kartograf-meta/1` sidecars | by the marker names `kartograf-store.json`, `obserwator-store.json` and `obserwator-data.json` only |
+| `imgw mcp --allow-writes` alone | needs `--allow-dir DIR` (repeatable) for any write and for any `output`, `output_dir` or `plan` file |
+
+**Results (DEV-19.19).** Every writing command lists `files[]` = `{path, size_bytes, sha256, status}`
+with `written` or `replaced` (plain) and `new`, `unchanged` or `relabeled` (store); `sha256` is computed
+while the file is written. `items[]` keep the per-unit outcomes (`DownloadItem`: `downloaded`,
+`not_published`, `failed`, `cancelled`; a plain `store sync` item is `new` for a written file).
+`--check` plans each plain target as `write`, `replace` (with `--force`) or `conflict`
+(`PlanAction.action`, `path`, `reason`); a plan with conflicts is `ok` (exit 0), only the run fails.
+
+**Errors** (codes of the registry; `details.reason` is the new precision):
+
+| Code (CLI exit) | `details.reason` | When |
+|---|---|---|
+| `conflict` (4) | `output_exists` | a plain target exists and there is no `--force`; `details.paths` lists every such file |
+| `conflict` (4) | `duplicate_output_name` | two targets of one request have one name; `details.paths` |
+| `conflict` (4) | `output_in_store` | the output directory is or lies in a store of Obserwator or Kartograf (`details.paths` is the directory, before any request); a target that would enter a store below the directory, or the file of an export, is reported by its own path |
+| `conflict` (4) | `nested_store` | the root lies in, holds or nests a store of any tool |
+| `conflict` (4) | `not_empty` | a store write or `store init` into a directory with other files and no layout (was `path_conflict`), or into a file |
+| `store_unavailable` (8) | `no_marker` | a root that has the layout and no marker; hint `obserwator store init --root <path>` |
+| `data_error` (7) | `invalid_layout` | `store init` found a foreign or invalid file |
+| `data_error` (7) | `invalid_marker` | the marker of the root is unreadable (invalid JSON, no `schema`); it was `store_unavailable` in the writer |
+| `validation_error` (2) | `exclusive_options` | `output_dir` with `root` (`details.option` is `root`, `details.options` both) |
+| `validation_error` (2) | `store_only_option` | `plan` or `series` of `store sync` with `output_dir` |
+| `validation_error` (2) | `not_in_store` | a store download of a dataset that has no place in the store (hint `--output-dir`) |
+| `validation_error` (2) | `years_required_in_plain_mode` | plain `store sync` of ČHMÚ station files without `years` |
+| `forbidden` (12) | `no_allowed_dir`, `outside_allowed_dirs` | an MCP write without `--allow-dir`, or outside it |
+
+An `output` that is a directory, a `force` without `output` and a plain `output_dir` that is a file are
+`validation_error` with `details.option`.
+
+**Unchanged.** `fetch_pmaxtp`, `download_hydro_data`, `download_meteo_data` and every reader
+(`read_*`, `iter_store`, `current_version`, `store_info`); the store layout and the schemas
+`obserwator-meta/1` (its sidecar already has the core of DEV-19.16, held by a contract test),
+`obserwator-series/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`; the envelope `obserwator-result/1`, `obserwator-plan/1`
+(only the optional `action`, `path`, `reason` are new), the error registry and exit codes, the REST
+routes and `operationId`s, the MCP tool names.
+
+**Per consumer** (checkouts of 2026-10-25):
+
+- **Retman** (`src/retman/tools/imgwtools/`): `calls.py:226-228` and `calls_archives.py:271-272` give
+  `path` to an export: pass `output` (add `force` only where a step may repeat in one result folder);
+  `calls_archives.py:90-91` gives `output` (a directory) to `datasets download`: pass `output_dir`;
+  `client.py:235-240` and `:272` look for `path` and take the export result as a string: use `output`
+  and `result["output"]` (or `files[0]["path"]`); `describe.py:717` and `describe_archives.py:104-125`
+  match `created` and `reused`: match `new` and `unchanged`; `client.py:62-71` exports
+  `IMGW_DATA_DIR` for the reference data: `OBSERWATOR_REFERENCE_DIR`; `client.py:101` keeps passing `root`,
+  which is optional now (a default store exists), so `store_dir` need not stay required. Retman sets no
+  `IMGW_STORE_ROOT`.
+- **Archiwista:** no IMGW adapter yet (only `adapter/kartograf`). When `adapter/imgw` is written: read the
+  marker fields `tool`, `created_at`, `producer_version` beside `created_by`; let `probe` follow DEV-19.12
+  and DEV-19.13 (a layout without a marker is `store_unavailable`, `no_marker`); statuses are `new`,
+  `unchanged`, `relabeled` (a series is `unchanged`, not `reused`). `docs/IMGWTOOLS_REQUIREMENTS.md`
+  (IMGW-5 and IMGW-7: lines 715-717, 747, 826-865, 1320-1363, 1528-1551; the marker: 26, 386-448) and
+  `docs/SPEC.md` §12.7 still quote the old marker and `created`/`reused`. `obserwator.testing` and the
+  packaged `contract_schemas.json` carry the new marker.
+- **Hydrolog:** no package dependency (the registry says `file`, `obserwator-series-csv`), and the CSV of
+  `series export` is unchanged. Its documents already name `imgw series export … --output FILE`
+  (`docs/INTEGRATION.md:391`, `docs/USAGE.md:665-678`, `AGENTS.md:139`, `src/hydrolog/agent_guide.py:217`,
+  `README.md:21,256`): that form is real now (as `obserwator series export`, see the rename), so item 3 of its PROGRESS can be closed. Add `--force` to
+  the example where the file may exist and read `files[].path` of the `--json` result.
+- **Hydraulik, Hydrograf:** only `fetch_pmaxtp(latitude, longitude, method=…)` (Hydraulik
+  `src/hydraulik/data.py:347` in the proof-of-concept worktree, pin `v2.1.1`; Hydrograf
+  `backend/scripts/preprocess_precipitation.py:169` and `analyze_watershed.py:348`, pin `v2.1.0`),
+  unchanged and compatible with the 3.0.0 signature: change the pin to the 3.0.0 tag when it exists.
+  Neither reads the store or uses the names above.
 
 ### Fixed
 
@@ -1727,101 +1816,41 @@ release have the same bytes as without the ČHMÚ provider.
   module's `\r\n` in text mode); it is opened with `newline=""`.
 - The repository keeps LF line endings in every checkout (`.gitattributes`, DEV-14.1); the
   recorded fixtures are binary.
+- **The Windows runs of the gate (2026-11-14).** Since the GUI and the data root were merged,
+  the gate failed six tests on Windows (Python 3.12 and 3.15). The GUI's page scripts (`.js`,
+  `.mjs`) are `text/javascript` (RFC 9239) on every system: `build_app` registers both in
+  `mimetypes`, whose table Starlette's static files read and which on Windows comes from the
+  registry (`application/javascript` on the runners, `text/plain` on some machines, which
+  `X-Content-Type-Options: nosniff` keeps a browser from running). `obserwator gui serve` also
+  stops gracefully on Ctrl+Break on Windows (`SIGBREAK`, which uvicorn, and so `obserwator
+  server`, handles already): Windows delivers no `SIGTERM` to another program, so a supervisor
+  sends Ctrl+Break to the console process group the server leads. Tests: the servers of
+  `test_serve.py` and `test_api_main.py` are stopped that way on Windows (`SERVER_FLAGS` and
+  `STOP_SIGNAL` of `tests/contract/support.py`), the modes `0600` and `0700` of
+  `feedback.jsonl`, `stats.jsonl` and their directory are checked where permission bits exist,
+  the plan of `store catalog` is compared with the POSIX paths of the stored files, and a new
+  test serves the scripts as `text/javascript` when the system registers other types for them.
 
-### Migration guide: data output (ADR-007, DEV §19)
+- **CI fixes of `develop` (2026-11-14).** Security: `opentelemetry-api` 1.45.1 → 1.45.2 in
+  `uv.lock` (CVE-2026-126360; `pip-audit` of CI). The GUI's report file lock (`_locked` in
+  `gui/_feedback.py`) keeps the POSIX `flock` in the `else` block of `sys.platform == "win32"`,
+  so mypy of the Windows gate no longer resolves `fcntl` (behaviour unchanged: on Windows the
+  instance's lock alone orders one process's reads and writes). Tests: the analyses case of
+  `command_for_version` took the first entry of `stations/` in listing order, a `<code>/`
+  directory on macOS (APFS lists it before `<code>.json`), which is no version file; it now
+  gives both station files of the layout, `stations/<code>.json` and
+  `stations/<code>/<analysis>.json`.
 
-What a caller of Obserwator (Python, `obserwator`, REST, MCP) or a reader of its files has to change. The
-entries above give the reasons and every detail; this is the list to follow. The names are those of
-the unreleased 3.0.0, so no earlier release has to keep working and no alias exists.
-
-**The three targets (DEV-19.1, DEV-19.2).** `output_dir` (`--output-dir`, `-o`) writes plain files,
-`root` (`--root`, `-r`) writes the versioned store, `output` (`--output`, no short form) writes the one
-file of an export; `--force` replaces existing plain files. `output_dir` and `root` exclude each other
-(`validation_error`, `exclusive_options`). A writing command given neither writes the root of its kind
-(ADR-017): a download the raw root at the first of `--root`, `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` of
-`nogat.toml` and `<data_dir>/obserwator-raw`, a build the data root at the first of `--root`, `OBSERWATOR_ROOT`,
-`[obserwator] root` and `<data_dir>/obserwator` (`obserwator config show --json` names both and their sources),
-never the working directory. A REST server writes only to its own `OBSERWATOR_RAW_ROOT` and
-`OBSERWATOR_ROOT`, with writes enabled and the token, and takes no `root`, `output_dir`, `output` or `force` in
-a request; `obserwator mcp` writes only inside its `--allow-dir` directories and with `--allow-writes`.
-
-| Old | New |
-|---|---|
-| `IMGW_STORE_ROOT`, `Settings.store_root` | `OBSERWATOR_ROOT`, `Settings.root` (the data root since ADR-017; the raw root is `OBSERWATOR_RAW_ROOT`, `Settings.raw_root`); `root` is optional in every store command (the default root of its kind) |
-| `IMGW_DATA_DIR` as the directory of the reference data | `OBSERWATOR_REFERENCE_DIR` (`OBSERWATOR_DATA_DIR` is the user data directory) |
-| `download_archives(output=DIR)`, `datasets download --output/-o DIR` (default `./data/downloaded`) | `output_dir=DIR`, `--output-dir/-o DIR` for plain files; `root=`, `--root` for versions in the raw root; neither: the default raw root |
-| `DownloadReport.output` | `DownloadReport.mode` (`plain`/`store`), `.output_dir` or `.root`, `.files` |
-| `export_archive`, `export_series`, `agent_guide` with `path=F`; `--path F`, `-p F` | `output=F` (`force=True` over an existing file); `--output F` (`--force`) |
-| their `Path` result; envelope `result` `"<path>"` | `OutputReport` (`.output`, `.files`); `{"output": …, "files": […]}` |
-| status `created`; series status `reused` | `new`; `unchanged` |
-| `.part` files beside the targets | staging directory `<dir>/.obserwator-incoming/<host>_<pid>_<token>/`, removed after every run (success, error, SIGINT, SIGTERM) |
-| `imgw-store.json` with `schema`, `created_by` | `obserwator-store.json`, also with `tool` (`obserwator`), `created_at`, `producer_version`, always; the first write creates it, `obserwator store init` only verifies the layout |
-| nested stores found by `kartograf-project.json` and `kartograf-meta/1` sidecars | by the marker names `kartograf-store.json`, `obserwator-store.json` and `obserwator-data.json` only |
-| `imgw mcp --allow-writes` alone | needs `--allow-dir DIR` (repeatable) for any write and for any `output`, `output_dir` or `plan` file |
-
-**Results (DEV-19.19).** Every writing command lists `files[]` = `{path, size_bytes, sha256, status}`
-with `written` or `replaced` (plain) and `new`, `unchanged` or `relabeled` (store); `sha256` is computed
-while the file is written. `items[]` keep the per-unit outcomes (`DownloadItem`: `downloaded`,
-`not_published`, `failed`, `cancelled`; a plain `store sync` item is `new` for a written file).
-`--check` plans each plain target as `write`, `replace` (with `--force`) or `conflict`
-(`PlanAction.action`, `path`, `reason`); a plan with conflicts is `ok` (exit 0), only the run fails.
-
-**Errors** (codes of the registry; `details.reason` is the new precision):
-
-| Code (CLI exit) | `details.reason` | When |
-|---|---|---|
-| `conflict` (4) | `output_exists` | a plain target exists and there is no `--force`; `details.paths` lists every such file |
-| `conflict` (4) | `duplicate_output_name` | two targets of one request have one name; `details.paths` |
-| `conflict` (4) | `output_in_store` | the output directory is or lies in a store of Obserwator or Kartograf (`details.paths` is the directory, before any request); a target that would enter a store below the directory, or the file of an export, is reported by its own path |
-| `conflict` (4) | `nested_store` | the root lies in, holds or nests a store of any tool |
-| `conflict` (4) | `not_empty` | a store write or `store init` into a directory with other files and no layout (was `path_conflict`), or into a file |
-| `store_unavailable` (8) | `no_marker` | a root that has the layout and no marker; hint `obserwator store init --root <path>` |
-| `data_error` (7) | `invalid_layout` | `store init` found a foreign or invalid file |
-| `data_error` (7) | `invalid_marker` | the marker of the root is unreadable (invalid JSON, no `schema`); it was `store_unavailable` in the writer |
-| `validation_error` (2) | `exclusive_options` | `output_dir` with `root` (`details.option` is `root`, `details.options` both) |
-| `validation_error` (2) | `store_only_option` | `plan` or `series` of `store sync` with `output_dir` |
-| `validation_error` (2) | `not_in_store` | a store download of a dataset that has no place in the store (hint `--output-dir`) |
-| `validation_error` (2) | `years_required_in_plain_mode` | plain `store sync` of ČHMÚ station files without `years` |
-| `forbidden` (12) | `no_allowed_dir`, `outside_allowed_dirs` | an MCP write without `--allow-dir`, or outside it |
-
-An `output` that is a directory, a `force` without `output` and a plain `output_dir` that is a file are
-`validation_error` with `details.option`.
-
-**Unchanged.** `fetch_pmaxtp`, `download_hydro_data`, `download_meteo_data` and every reader
-(`read_*`, `iter_store`, `current_version`, `store_info`); the store layout and the schemas
-`obserwator-meta/1` (its sidecar already has the core of DEV-19.16, held by a contract test),
-`obserwator-series/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`; the envelope `obserwator-result/1`, `obserwator-plan/1`
-(only the optional `action`, `path`, `reason` are new), the error registry and exit codes, the REST
-routes and `operationId`s, the MCP tool names.
-
-**Per consumer** (checkouts of 2026-10-25):
-
-- **Retman** (`src/retman/tools/imgwtools/`): `calls.py:226-228` and `calls_archives.py:271-272` give
-  `path` to an export: pass `output` (add `force` only where a step may repeat in one result folder);
-  `calls_archives.py:90-91` gives `output` (a directory) to `datasets download`: pass `output_dir`;
-  `client.py:235-240` and `:272` look for `path` and take the export result as a string: use `output`
-  and `result["output"]` (or `files[0]["path"]`); `describe.py:717` and `describe_archives.py:104-125`
-  match `created` and `reused`: match `new` and `unchanged`; `client.py:62-71` exports
-  `IMGW_DATA_DIR` for the reference data: `OBSERWATOR_REFERENCE_DIR`; `client.py:101` keeps passing `root`,
-  which is optional now (a default store exists), so `store_dir` need not stay required. Retman sets no
-  `IMGW_STORE_ROOT`.
-- **Archiwista:** no IMGW adapter yet (only `adapter/kartograf`). When `adapter/imgw` is written: read the
-  marker fields `tool`, `created_at`, `producer_version` beside `created_by`; let `probe` follow DEV-19.12
-  and DEV-19.13 (a layout without a marker is `store_unavailable`, `no_marker`); statuses are `new`,
-  `unchanged`, `relabeled` (a series is `unchanged`, not `reused`). `docs/IMGWTOOLS_REQUIREMENTS.md`
-  (IMGW-5 and IMGW-7: lines 715-717, 747, 826-865, 1320-1363, 1528-1551; the marker: 26, 386-448) and
-  `docs/SPEC.md` §12.7 still quote the old marker and `created`/`reused`. `obserwator.testing` and the
-  packaged `contract_schemas.json` carry the new marker.
-- **Hydrolog:** no package dependency (the registry says `file`, `obserwator-series-csv`), and the CSV of
-  `series export` is unchanged. Its documents already name `imgw series export … --output FILE`
-  (`docs/INTEGRATION.md:391`, `docs/USAGE.md:665-678`, `AGENTS.md:139`, `src/hydrolog/agent_guide.py:217`,
-  `README.md:21,256`): that form is real now (as `obserwator series export`, see the rename), so item 3 of its PROGRESS can be closed. Add `--force` to
-  the example where the file may exist and read `files[].path` of the `--json` result.
-- **Hydraulik, Hydrograf:** only `fetch_pmaxtp(latitude, longitude, method=…)` (Hydraulik
-  `src/hydraulik/data.py:347` in the proof-of-concept worktree, pin `v2.1.1`; Hydrograf
-  `backend/scripts/preprocess_precipitation.py:169` and `analyze_watershed.py:348`, pin `v2.1.0`),
-  unchanged and compatible with the 3.0.0 signature: change the pin to the 3.0.0 tag when it exists.
-  Neither reads the store or uses the names above.
+- **GUI: fixes of the acceptance on the target data root.** A part of an analysis section that
+  shows several results names the failure of one of them above the others it still shows (it
+  dropped it silently, e.g. Hydrolog's 30 s limit for the intensity beside the days with
+  precipitation, or the duration curve of H beside Rybczyński's zones); „Trendy” keeps naming
+  each failure in its table. The provenance of an analysis names its series version by its
+  label, as „Dane” does, with the version's directory in the data root as the tooltip.
+  „Stany charakterystyczne” reads the daily series of its chart once, for the years of its
+  result, instead of the whole record first. The list's filter and the explanations of the
+  rating curve and the flood maxima name the data root („Szeregi w katalogu danych”, „Series
+  in the data root”), no longer the store, which since the split of the roots is Archiwista's.
 
 ## [2.1.1] — 2026-07-06
 
