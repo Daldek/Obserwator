@@ -1,0 +1,78 @@
+# Obserwator — guide for agents (version <!-- obserwator:version -->)
+
+> Generated from the command catalog: `obserwator commands guide --format agents`. Do not edit by hand.
+
+## What Obserwator is
+
+Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
+
+Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
+
+<!-- obserwator:providers -->
+
+## Rules: check → run → read
+
+<!-- obserwator:rules -->
+
+## Interfaces
+
+| Interface | Plan | Result | Error |
+|---|---|---|---|
+| Python | `check_command(…)` | `CommandResult` (`to_json()`) | `ObserwatorError` (`code`, `detail`, `hint`, `details`); `obserwator.error_report.error_report(exc).to_dict()` = the error document |
+| CLI `obserwator` | `--check` | `--json`: one-line JSON envelope on stdout (without it a summary for a person) | last stderr line: error document `obserwator-error/1`; exit code |
+| REST `/api/v1` | `?check=true` (POST) | 200 + envelope | `application/problem+json` (with `hint`) |
+| MCP | `check: true` | `structuredContent` = envelope | `isError: true` + error document `obserwator-error/1` |
+
+One command in every interface: CLI `obserwator <group> <command> --option value --json` (flag = `--` + the option name with `-` for `_`); Python `run_command("<group> <command>", options={...})`; REST `/api/v1/<group>/<command>` (GET: query parameters, POST: JSON body); MCP tool `obserwator_<group>_<command>`.
+
+- **REST:** the server sets the roots (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`), `version` is relative to the command's root, local options do not exist; writing (POST without `?check=true`) must be enabled on the server and needs the `X-API-Key` header.
+- **MCP:** `obserwator mcp` (stdio) starts without writes — writing commands return a plan (`check` fixed to `true`); the user enables writes (`--allow-writes`), and even then `check` is `true` by default. `/mcp` of the REST server (`OBSERWATOR_MCP_ENABLED=true`) reads and plans only.
+- **Language:** machine output is English; Polish on request: `--lang pl` (`commands list|schema|guide`, else the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
+
+## Envelope, statuses and errors
+
+A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}`. List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
+
+<!-- obserwator:statuses -->
+
+An error has a code from a closed registry, the same in Python, the CLI, REST (problem+json) and MCP (`isError`); `details.option` names the wrong option. Codes with the CLI exit code and the HTTP status (`—`: never reported): <!-- obserwator:errors -->.
+
+## Datasets
+
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+
+<!-- obserwator:datasets -->
+
+- `stations`: WIGOS (required for `cz.chmi.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
+- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+
+## Commands
+
+One line per command, by effect; options, rules and per-option effects: `obserwator commands schema --command "<command>" --json`. Marks: `[output: …]` — the option writes a file when given; `[is a check]` — the command plans itself; `[local]` — no REST route.
+
+<!-- obserwator:commands -->
+
+## Flags and values
+
+<!-- obserwator:flags -->
+
+## Typical flows
+
+Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of earlier steps.
+
+<!-- obserwator:flows -->
+
+## What not to do
+
+1. Do not build or crawl IMGW-PIB and ČHMÚ server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
+2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
+3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
+4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
+5. Do not edit, move or delete files of a store — it only grows.
+6. Do not download "just in case": narrow `years`, `months` and `stations`.
+7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
+8. Do not poll `current …` in a loop — it is a live API; keep the result.
+9. Show the `attribution` and `terms_notice` lines verbatim with the data and in what you make of it (the `license_terms` notice too).
+10. Point `version` only below `*/versions/` of a root, without `..`; over REST and MCP over HTTP — relative to the server's root.
+
+Developing this repository? Read CLAUDE.md.

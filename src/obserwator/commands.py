@@ -1,0 +1,4334 @@
+"""
+Catalog of the 35 data commands and the single dispatcher of public functions.
+
+``data_commands`` describes every operation of Obserwator (spec §13.3). Each
+command calls exactly one public function whose parameters carry the option
+names; the CLI, the REST API and the web GUI use `validate_command`,
+`format_command`, `check_command`, `run_command` and `command_schema` instead
+of their own validation, HTTP requests or option lists. `run_command` and
+`check_command` return the ``obserwator-result/1`` envelope `CommandResult`;
+`parse_command` reads an ``obserwator`` line into the call it makes (`CommandCall`),
+with the flags the CLI has, and `format_command` writes the canonical line of a
+call.
+
+Texts for humans (option help, descriptions, rules, group titles) are catalog
+messages (``obserwator.messages.commands``): English, with a Polish variant that
+`command_schema` renders on request; every command
+declares its effects (``writes``, ``network``) for adapters that must not
+write or connect without a decision of the user (spec 2026-10-19 §3–§4).
+"""
+
+import copy
+import importlib
+import inspect
+import json
+import math
+import os
+import re
+import shlex
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from pathlib import Path, PurePosixPath
+from typing import Any, Literal, NoReturn, cast
+
+from obserwator import fetch as _fetch
+from obserwator import stations as _stations
+from obserwator import store as _store
+from obserwator._examples import EXAMPLES
+from obserwator._version import __version__
+from obserwator.attribution import (
+    Attribution,
+    attribution,
+    border_origin,
+    carried,
+    dataset_origin,
+    provider_origin,
+)
+from obserwator.config import store_root
+from obserwator.datasets import (
+    _CATALOG_DATASETS,
+    STATION_CODE_PATTERN,
+    ArchiveFile,
+    DatasetDescriptor,
+    MonthsArg,
+    ProviderDescriptor,
+    YearsArg,
+    _archive_from_path,
+    archive_files,
+    datasets,
+    get_dataset,
+    get_provider,
+    parse_months,
+    parse_years,
+    providers,
+)
+from obserwator.exceptions import (
+    ERROR_CODES,
+    ObserwatorCancelledError,
+    ObserwatorDataError,
+    ObserwatorError,
+    ObserwatorStoreError,
+    ObserwatorValidationError,
+    io_error,
+)
+from obserwator.messages import LANGS, Lang, localize, message, reason
+from obserwator.models import StationListEntry
+from obserwator.output import DATA_MARKER, STORE_MARKER
+from obserwator.store import analyses as _analyses
+from obserwator.store import export as _export
+from obserwator.store import reader as _reader
+from obserwator.store import sync as _sync
+from obserwator.store import writer as _writer
+from obserwator.store.analysis_registry import analysis_definitions, get_definition
+from obserwator.store.catalog import _NESTED_CATALOGS, CATALOG_FILE
+from obserwator.store.plain import plain_actions
+from obserwator.store.pmaxtp import CELL_FILE, RESPONSE_FILE
+from obserwator.store.types import (
+    Cancel,
+    CatalogReport,
+    CommandCall,
+    CommandOption,
+    CommandResult,
+    DataCommand,
+    DownloadReport,
+    Meta,
+    Notice,
+    NoticeHook,
+    Page,
+    PathArg,
+    PlanAction,
+    PMaXTPStoreResult,
+    PMaXTPUrl,
+    ProgressHook,
+    RootKind,
+    SeriesReport,
+    StorePlan,
+    SyncReport,
+    Writes,
+    cursor_index,
+    page_cursor,
+)
+from obserwator.urls import build_api_url, build_pmaxtp_url
+
+__all__ = [
+    "check_command",
+    "command_for_version",
+    "command_schema",
+    "data_commands",
+    "format_command",
+    "list_commands",
+    "parse_command",
+    "run_command",
+    "validate_command",
+]
+
+Options = dict[str, Any]
+Hooks = dict[str, Any]
+Status = Literal["ok", "partial", "failed", "cancelled"]
+OptionType = Literal["str", "int", "float", "bool", "date", "path", "list", "choice"]
+ItemType = Literal["str", "int", "year", "choice"]
+Checker = Callable[[Options, Hooks], StorePlan]
+Rule = Callable[[Options], None]
+
+# Prefix of the operation ids: REST ``operationId`` and MCP tool names (ECO-018).
+_TOOL = "obserwator"
+# The marker of each root kind (ADR-017 D1): the raw root keeps the downloaded
+# sources, the data root what is built from them.
+_MARKERS: Mapping[RootKind, str] = {"raw": STORE_MARKER, "data": DATA_MARKER}
+_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+_RANGE = "^[0-9]{1,4}-[0-9]{1,4}$"
+_STATION = STATION_CODE_PATTERN
+# Live IMGW-PIB readings accept only IMGW-PIB codes.
+_IMGW_STATION = "^[0-9]{9}$"
+_SYNOP_STATION = "^[0-9]{5}$"
+_PATTERN_TEXT = {
+    _STATION: message("commands.pattern_station"),
+    _IMGW_STATION: message("commands.pattern_imgw_station"),
+    _SYNOP_STATION: message("commands.pattern_synop_station"),
+}
+_INTEGER = re.compile(r"-?[0-9]+")
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
+_KINDS = ("hydro", "meteo")
+_YEAR_TYPES = ("hydrological", "calendar")
+# Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
+# station lists and PMAXTP have none.
+_ARCHIVE_DATASETS = tuple(
+    d.key
+    for d in datasets()
+    if d.server_dir is not None and d.time_unit != "station_list"
+)
+_SERIES_DATASETS = tuple(
+    d.key
+    for d in datasets()
+    if d.in_store and d.time_unit in ("day", "month", "half_year")
+)
+# What ``store check`` and ``store sync`` download: the measurement archives and
+# the station sources of the catalogs (station lists and metadata, ADR-015).
+_SYNC_DATASETS = _SERIES_DATASETS + tuple(
+    d.key for d in datasets() if d.in_store and d.time_unit == "station_list"
+)
+_PROVIDERS = tuple(provider.id for provider in providers())
+# Groups reading the sources of one provider only (spec 2026-10-18 §9.3).
+_GROUP_PROVIDERS = {"current": "IMGW-PIB", "pmaxtp": "IMGW-PIB"}
+_DONE = ("new", "relabeled", "unchanged")
+_EXIT_CODES = {"ok": 0, "partial": 10, "failed": 11, "cancelled": 130}
+_GROUPS = {
+    "datasets": message("commands.group_datasets"),
+    "stations": message("commands.group_stations"),
+    "current": message("commands.group_current"),
+    "pmaxtp": message("commands.group_pmaxtp"),
+    "store": message("commands.group_store"),
+    "series": message("commands.group_series"),
+    "analyses": message("commands.group_analyses"),
+    "commands": message("commands.group_commands"),
+}
+_STORE_FUNCTIONS = (
+    "check_pmaxtp",
+    "sync_pmaxtp",
+    "read_pmaxtp",
+    "init_store",
+    "store_info",
+    "iter_store",
+    "check_store",
+    "sync_store",
+    "build_catalog",
+    "check_catalog",
+    "export_archive",
+    "build_series",
+    "check_series",
+    "select_series",
+    "read_series",
+    "summarize_series",
+    "export_series",
+    "export_stations",
+    "build_analyses",
+    "check_analyses",
+    "list_analyses",
+    "read_analysis",
+    "export_analyses",
+)
+# Public module of every function the catalog dispatches to (resolved per call).
+_MODULES = {
+    "datasets": "obserwator.datasets",
+    "providers": "obserwator.datasets",
+    "archive_files": "obserwator.datasets",
+    "download_archives": "obserwator.fetch",
+    "fetch_hydro_current": "obserwator.fetch",
+    "fetch_meteo_current": "obserwator.fetch",
+    "fetch_synop": "obserwator.fetch",
+    "fetch_warnings": "obserwator.fetch",
+    "fetch_pmaxtp": "obserwator.fetch",
+    "find_stations": "obserwator.stations",
+    "fetch_hydro_states": "obserwator.stations",
+    "build_pmaxtp_url": "obserwator.urls",
+    **dict.fromkeys(_STORE_FUNCTIONS, "obserwator.store"),
+    "command_schema": "obserwator.commands",
+    "list_commands": "obserwator.commands",
+    "agent_guide": "obserwator.agent_guide",
+}
+# Function results that are no document get one in the envelope (AGI-4.1).
+_DOCUMENTS: dict[str, Callable[[Any], object]] = {"build_pmaxtp_url": PMaXTPUrl}
+
+
+# --- katalog ---------------------------------------------------------------------------------
+
+
+def _option(
+    name: str,
+    type_: OptionType,
+    help_: str,
+    *,
+    required: bool = False,
+    choices: Iterable[str] = (),
+    default: object = None,
+    aliases: tuple[str, ...] = (),
+    items: ItemType | None = None,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    pattern: str | None = None,
+    rest: Literal["param", "server", "local"] = "param",
+    writes: Writes = "none",
+    path_role: Literal["input", "output", "root"] | None = None,
+    store_only: bool = False,
+) -> CommandOption:
+    return CommandOption(
+        name,
+        type_,
+        required,
+        "--" + name.replace("_", "-"),
+        tuple(choices),
+        help_,
+        default=default,
+        aliases=aliases,
+        items=items,
+        minimum=minimum,
+        maximum=maximum,
+        pattern=pattern,
+        rest=rest,
+        writes=writes,
+        path_role=path_role,
+        store_only=store_only,
+    )
+
+
+# The kind of the root of every command with a root option (ADR-017 D4), filled
+# by `_command`: the raw root keeps the downloaded sources (archives, station
+# sources, PMAXTP cells), the data root what is built from them (series,
+# catalogs, analyses).
+_ROOT_KINDS: dict[str, RootKind] = {}
+
+
+def _command(
+    name: str,
+    description: str,
+    options: Iterable[CommandOption],
+    *,
+    function: str,
+    result_type: str,
+    root: RootKind | None = None,
+    check: str | None = None,
+    result: Literal["object", "list", "stream"] = "object",
+    method: Literal["GET", "POST"] | None = None,
+    requires: Mapping[str, tuple[str, ...]] | None = None,
+    one_of: tuple[tuple[str, ...], ...] = (),
+    rules: tuple[str, ...] = (),
+    writes: Writes = "none",
+    network: bool = False,
+    idempotent: bool = True,
+    env_root_when: Mapping[str, str] | None = None,
+    exclusive: tuple[tuple[str, ...], ...] = (),
+    store_only: bool = False,
+) -> tuple[DataCommand, str]:
+    """
+    Catalog entry; ``rules`` are the catalog messages of one rule each.
+
+    ``one_of`` is a pair of alternative option groups (the refusal names both);
+    ``root`` is the kind of the root option, given exactly when there is one.
+    """
+    given = tuple(options)
+    if len(one_of) not in (0, 2):
+        raise ValueError(f"one_of of {name} must be a pair of option groups")
+    if (root is None) == any(option.name == "root" for option in given):
+        raise ValueError(f"{name} needs a root kind exactly when it has a root option")
+    if root is not None:
+        _ROOT_KINDS[name] = root
+    if store_only:
+        rules = (*rules, message("commands.store_only_rule"))
+    listed = (*given, _LIMIT, _CURSOR) if result == "list" else given
+    command = DataCommand(
+        name,
+        description,
+        listed,
+        function=function,
+        check=check,
+        result=result,
+        method=method,
+        requires=dict(requires or {}),
+        one_of=one_of,
+        rules=rules,
+        writes=writes,
+        network=network,
+        idempotent=idempotent,
+        env_root_when=dict(env_root_when or {}),
+        exclusive=exclusive,
+        store_only=store_only,
+    )
+    return command, result_type
+
+
+# The root of a data command, of a raw command, of a command reading either kind
+# (by its marker) and the raw root a build reads.
+_ROOT = _option(
+    "root",
+    "path",
+    message("commands.root_help"),
+    aliases=("-r",),
+    rest="server",
+    path_role="root",
+)
+_RAW_STORE = replace(_ROOT, help=message("commands.raw_store_help"))
+_ANY_ROOT = replace(_ROOT, help=message("commands.any_root_help"))
+_RAW_ROOT = _option(
+    "raw_root",
+    "path",
+    message("commands.raw_root_help"),
+    rest="server",
+    path_role="root",
+)
+_ARCHIVE_DATASET = _option(
+    "dataset",
+    "choice",
+    message("commands.archive_dataset_help"),
+    required=True,
+    choices=_ARCHIVE_DATASETS,
+    aliases=("-d",),
+)
+_SERIES_DATASET = _option(
+    "dataset",
+    "choice",
+    message("commands.series_dataset_help"),
+    choices=_SERIES_DATASETS,
+    aliases=("-d",),
+)
+_DATASETS = _option(
+    "datasets",
+    "list",
+    message("commands.datasets_help"),
+    choices=_SYNC_DATASETS,
+    items="choice",
+    aliases=("-d",),
+)
+_FAMILY = _option(
+    "kind",
+    "choice",
+    message("commands.family_help"),
+    choices=_KINDS,
+    aliases=("-k",),
+)
+_YEARS = _option(
+    "years",
+    "list",
+    message("commands.years_help"),
+    items="year",
+    minimum=1,
+    maximum=9999,
+    aliases=("-y",),
+)
+_ARCHIVE_YEARS = replace(
+    _YEARS,
+    help=message("commands.archive_years_help"),
+)
+_STORE_YEARS = replace(
+    _YEARS,
+    help=message("commands.store_years_help"),
+)
+_MONTHS = _option(
+    "months",
+    "list",
+    message("commands.months_help"),
+    items="int",
+    minimum=1,
+    maximum=12,
+    aliases=("-m",),
+)
+_PARAMS = _option(
+    "params",
+    "list",
+    message("commands.params_help"),
+    choices=("H", "Q", "T"),
+    items="choice",
+)
+_OUTPUT_DIR = _option(
+    "output_dir",
+    "path",
+    message("commands.output_dir_help"),
+    aliases=("-o",),
+    rest="local",
+    writes="add",
+    path_role="output",
+)
+_FORCE = _option(
+    "force",
+    "bool",
+    message("commands.force_help"),
+    default=False,
+    rest="local",
+    writes="replace",
+)
+_STATION_OPTION = _option(
+    "station",
+    "str",
+    message("commands.station_option_help"),
+    pattern=_STATION,
+    aliases=("-s",),
+)
+_STATIONS = _option(
+    "stations",
+    "list",
+    message("commands.stations_help"),
+    items="str",
+    pattern=_STATION,
+    aliases=("-s",),
+)
+_ARCHIVE_STATIONS = replace(
+    _STATIONS,
+    help=message("commands.archive_stations_help"),
+)
+_PROVIDER = _option(
+    "provider",
+    "choice",
+    message("commands.provider_help"),
+    choices=_PROVIDERS,
+)
+_VARIABLES = _option(
+    "variables",
+    "list",
+    message("commands.variables_help"),
+    items="str",
+)
+_YEAR_TYPE = _option(
+    "year_type",
+    "choice",
+    message("commands.year_type_help"),
+    choices=_YEAR_TYPES,
+)
+_START = _option(
+    "start",
+    "date",
+    message("commands.start_help"),
+)
+_END = _option(
+    "end",
+    "date",
+    message("commands.end_help"),
+)
+_LATITUDE = _option(
+    "latitude",
+    "float",
+    message("commands.latitude_help"),
+    required=True,
+    minimum=49.0,
+    maximum=55.0,
+    aliases=("--lat",),
+)
+_LONGITUDE = _option(
+    "longitude",
+    "float",
+    message("commands.longitude_help"),
+    required=True,
+    minimum=14.0,
+    maximum=24.5,
+    aliases=("--lon",),
+)
+_METHOD = _option(
+    "method",
+    "choice",
+    message("commands.method_help"),
+    choices=("POT", "AMP"),
+    default="POT",
+)
+_IND_X = _option(
+    "ind_x",
+    "int",
+    message("commands.ind_x_help"),
+    minimum=0,
+)
+_IND_Y = _option(
+    "ind_y",
+    "int",
+    message("commands.ind_y_help"),
+    minimum=0,
+)
+_SERIES_VERSION = _option(
+    "version",
+    "path",
+    message("commands.series_version_help"),
+    path_role="input",
+)
+_SERIES_ROOT = replace(
+    _ROOT,
+    required=False,
+    help=message("commands.series_root_help"),
+)
+# The one file of an export (DEV-19.1): the lines go to the standard output without it.
+_OUTPUT = _option(
+    "output",
+    "path",
+    message("commands.output_help"),
+    rest="local",
+    writes="add",
+    path_role="output",
+)
+_EXPORT_FORCE = replace(_FORCE, help=message("commands.export_force_help"))
+# Plan file written by the commands that are checks themselves.
+_PLAN_FILE = _option(
+    "plan",
+    "path",
+    message("commands.plan_file_help"),
+    rest="local",
+    writes="replace",
+    path_role="output",
+)
+# Language of the texts of the description commands (commands schema, commands guide).
+_LANGUAGE = _option(
+    "lang",
+    "choice",
+    message("commands.language_help"),
+    choices=LANGS,
+    default="en",
+)
+_LIMIT = _option("limit", "int", message("commands.limit_help"), minimum=1)
+_CURSOR = _option("cursor", "str", message("commands.cursor_help"))
+_CELL_PAIR = {"ind_x": ("ind_y",), "ind_y": ("ind_x",)}
+# force replaces the file of output: without output it has nothing to replace.
+_NEEDS_OUTPUT = {"force": ("output",)}
+# Plain files or the store, never both (DEV-19.1).
+_TARGETS = (("output_dir", "root"),)
+# The conflicting option of version+dataset+root is reported as dataset.
+_VERSION_OR_DATASET = (("version",), ("dataset", "root"))
+# Rules are (Polish, English) pairs.
+_STATIONS_RULE = message("commands.stations_rule")
+_MONTHS_RULE = message("commands.months_rule")
+_VARIABLES_RULE = message("commands.variables_rule")
+_START_RULE = message("commands.start_rule")
+_HALF_YEAR_RULE = message("commands.half_year_rule")
+_OUTPUT_RULE = message("commands.output_rule")
+_ARCHIVE_RULES = (
+    message("commands.archive_rule_1"),
+    message("commands.archive_rule_2"),
+    _STATIONS_RULE,
+    _MONTHS_RULE,
+    message("commands.archive_rule_3"),
+)
+_STORE_RULES = (
+    message("commands.store_rule_1"),
+    message("commands.store_rule_2"),
+    message("commands.store_rule_3"),
+    _STATIONS_RULE,
+    _MONTHS_RULE,
+)
+_SERIES_RULES = (
+    message("commands.series_rule_1"),
+    _VARIABLES_RULE,
+)
+# Stored analyses (ADR-016): the ids of the registry, a station decides the provider.
+_ANALYSIS_IDS = tuple(definition.id for definition in analysis_definitions())
+_ANALYSES_VERSION = _option(
+    "version",
+    "path",
+    message("commands.analyses_version_help"),
+    path_role="input",
+)
+_ANALYSES_ROOT = replace(_ROOT, help=message("commands.analyses_root_help"))
+_ANALYSES_STATION = replace(_STATION_OPTION, required=True)
+_ANALYSES_RULES = (message("commands.analyses_rule_station"),)
+
+_CATALOG: tuple[tuple[DataCommand, str], ...] = (
+    _command(
+        "datasets list",
+        message("commands.datasets_list_description"),
+        (
+            replace(
+                _FAMILY,
+                help=message("commands.datasets_list_family_help"),
+            ),
+            replace(
+                _PROVIDER,
+                help=message("commands.datasets_list_provider_help"),
+            ),
+        ),
+        function="datasets",
+        result="list",
+        method="GET",
+        result_type="DatasetDescriptor",
+    ),
+    _command(
+        "datasets files",
+        message("commands.datasets_files_description"),
+        (_ARCHIVE_DATASET, _ARCHIVE_YEARS, _MONTHS, _PARAMS, _ARCHIVE_STATIONS),
+        function="archive_files",
+        result="list",
+        method="GET",
+        result_type="ArchiveFile",
+        rules=_ARCHIVE_RULES,
+    ),
+    _command(
+        "datasets download",
+        message("commands.datasets_download_description"),
+        (
+            _ARCHIVE_DATASET,
+            _ARCHIVE_YEARS,
+            _MONTHS,
+            _PARAMS,
+            _ARCHIVE_STATIONS,
+            _OUTPUT_DIR,
+            _RAW_STORE,
+            _FORCE,
+        ),
+        function="download_archives",
+        result_type="DownloadReport",
+        root="raw",
+        check="check_command",
+        rules=_ARCHIVE_RULES,
+        exclusive=_TARGETS,
+        # New plain files or store versions; --force replaces existing plain files.
+        writes="add",
+        network=True,
+    ),
+    _command(
+        "datasets providers",
+        message("commands.datasets_providers_description"),
+        (),
+        function="providers",
+        result="list",
+        method="GET",
+        result_type="ProviderDescriptor",
+    ),
+    _command(
+        "stations find",
+        message("commands.stations_find_description"),
+        (
+            replace(
+                _FAMILY,
+                help=message("commands.stations_find_family_help"),
+            ),
+            _option(
+                "query",
+                "str",
+                message("commands.stations_find_query_help"),
+                aliases=("-q",),
+            ),
+            _option(
+                "source",
+                "choice",
+                message("commands.stations_find_source_help"),
+                choices=("live", "store"),
+                default="live",
+            ),
+            replace(
+                _ROOT,
+                required=False,
+                help=message("commands.stations_find_root_help"),
+            ),
+            replace(
+                _PROVIDER,
+                help=message("commands.stations_find_provider_help"),
+            ),
+        ),
+        function="find_stations",
+        result_type="StationListEntry",
+        root="data",
+        check="check_command",
+        result="list",
+        method="GET",
+        rules=(
+            message("commands.stations_find_rule_1"),
+            message("commands.stations_find_rule_2"),
+        ),
+        network=True,
+        # A live search rejects root (spec 2026-10-17 §13.10).
+        env_root_when={"source": "store"},
+    ),
+    _command(
+        "stations export",
+        message("commands.stations_export_description"),
+        (
+            _ROOT,
+            replace(_PROVIDER, help=message("commands.stations_find_provider_help")),
+            replace(_FAMILY, help=message("commands.stations_find_family_help")),
+            _option(
+                "series",
+                "bool",
+                message("commands.stations_export_series_help"),
+                default=True,
+            ),
+            _option(
+                "format",
+                "choice",
+                message("commands.stations_export_format_help"),
+                choices=("geojson", "csv"),
+                default="geojson",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_stations",
+        result_type="str",
+        root="data",
+        check="check_command",
+        result="stream",
+        method="GET",
+        requires=_NEEDS_OUTPUT,
+        rules=(_OUTPUT_RULE,),
+    ),
+    _command(
+        "current hydro",
+        message("commands.current_hydro_description"),
+        (
+            replace(
+                _STATION_OPTION,
+                help=message("commands.current_hydro_station_option_help"),
+                pattern=_IMGW_STATION,
+            ),
+        ),
+        function="fetch_hydro_current",
+        check="check_command",
+        result="list",
+        method="GET",
+        result_type="HydroCurrentData",
+        network=True,
+    ),
+    _command(
+        "current meteo",
+        message("commands.current_meteo_description"),
+        (
+            replace(
+                _STATION_OPTION,
+                help=message("commands.current_hydro_station_option_help"),
+                pattern=_IMGW_STATION,
+            ),
+        ),
+        function="fetch_meteo_current",
+        check="check_command",
+        result="list",
+        method="GET",
+        result_type="MeteoCurrentData",
+        network=True,
+    ),
+    _command(
+        "current synop",
+        message("commands.current_synop_description"),
+        (
+            replace(
+                _STATION_OPTION,
+                help=message("commands.current_synop_station_option_help"),
+                pattern=_SYNOP_STATION,
+            ),
+            _option(
+                "station_name",
+                "str",
+                message("commands.current_synop_station_name_help"),
+            ),
+        ),
+        function="fetch_synop",
+        check="check_command",
+        result="list",
+        method="GET",
+        result_type="SynopData",
+        network=True,
+    ),
+    _command(
+        "current warnings",
+        message("commands.current_warnings_description"),
+        (
+            replace(
+                _FAMILY,
+                help=message("commands.current_warnings_family_help"),
+            ),
+        ),
+        function="fetch_warnings",
+        check="check_command",
+        result="list",
+        method="GET",
+        result_type="WarningData",
+        network=True,
+    ),
+    _command(
+        "current hydro-states",
+        message("commands.current_hydro_states_description"),
+        (
+            _option(
+                "main_only",
+                "bool",
+                message("commands.current_hydro_states_main_only_help"),
+                default=False,
+            ),
+        ),
+        function="fetch_hydro_states",
+        check="check_command",
+        result="list",
+        method="GET",
+        result_type="HydroState",
+        network=True,
+    ),
+    _command(
+        "pmaxtp fetch",
+        message("commands.pmaxtp_fetch_description"),
+        (_LATITUDE, _LONGITUDE, _METHOD),
+        function="fetch_pmaxtp",
+        check="check_command",
+        method="GET",
+        result_type="PMaXTPResult",
+        network=True,
+    ),
+    _command(
+        "pmaxtp url",
+        message("commands.pmaxtp_url_description"),
+        (_LATITUDE, _LONGITUDE, _METHOD),
+        function="build_pmaxtp_url",
+        method="GET",
+        result_type="PMaXTPUrl",
+    ),
+    _command(
+        "pmaxtp check",
+        message("commands.pmaxtp_check_description"),
+        (_RAW_STORE, _LATITUDE, _LONGITUDE, _METHOD, _IND_X, _IND_Y),
+        function="check_pmaxtp",
+        result_type="StorePlan",
+        root="raw",
+        method="GET",
+        requires=_CELL_PAIR,
+    ),
+    _command(
+        "pmaxtp sync",
+        message("commands.pmaxtp_sync_description"),
+        (
+            _RAW_STORE,
+            _OUTPUT_DIR,
+            _FORCE,
+            _LATITUDE,
+            _LONGITUDE,
+            _METHOD,
+            _IND_X,
+            _IND_Y,
+        ),
+        function="sync_pmaxtp",
+        result_type="PMaXTPStoreResult",
+        root="raw",
+        check="check_pmaxtp",
+        method="POST",
+        requires=_CELL_PAIR,
+        exclusive=_TARGETS,
+        writes="add",
+        network=True,
+    ),
+    _command(
+        "pmaxtp read",
+        message("commands.pmaxtp_read_description"),
+        (
+            _RAW_STORE,
+            replace(
+                _IND_X,
+                required=True,
+                help=message("commands.pmaxtp_read_ind_x_help"),
+            ),
+            replace(
+                _IND_Y,
+                required=True,
+                help=message("commands.pmaxtp_read_ind_y_help"),
+            ),
+            _METHOD,
+            _option(
+                "version",
+                "path",
+                message("commands.pmaxtp_read_version_help"),
+                path_role="input",
+            ),
+        ),
+        function="read_pmaxtp",
+        result_type="PMaXTPResult",
+        root="raw",
+        method="GET",
+    ),
+    _command(
+        "store init",
+        message("commands.store_init_description"),
+        (
+            replace(_ROOT, help=message("commands.store_init_root_help")),
+            _option(
+                "kind",
+                "choice",
+                message("commands.store_init_kind_help"),
+                choices=("raw", "data"),
+                default="raw",
+                aliases=("-k",),
+            ),
+        ),
+        function="init_store",
+        result_type="StoreHandle",
+        # The kind of the default root follows --kind (`_root_kind`).
+        root="raw",
+        store_only=True,
+        check="check_command",
+        writes="add",
+    ),
+    _command(
+        "store info",
+        message("commands.store_info_description"),
+        (_ANY_ROOT,),
+        function="store_info",
+        result_type="StoreInfo",
+        root="data",
+        method="GET",
+    ),
+    _command(
+        "store scan",
+        message("commands.store_scan_description"),
+        (
+            _ANY_ROOT,
+            _option(
+                "kind",
+                "choice",
+                message("commands.store_scan_kind_help"),
+                choices=(
+                    "archive",
+                    "series",
+                    "catalog",
+                    "pmaxtp",
+                    "analyses",
+                    "observation",
+                    "problem",
+                ),
+                aliases=("-k",),
+            ),
+            replace(
+                _PROVIDER,
+                help=message("commands.store_scan_provider_help"),
+            ),
+        ),
+        function="iter_store",
+        result_type="StoreEntry",
+        root="data",
+        result="list",
+        method="GET",
+    ),
+    _command(
+        "store check",
+        message("commands.store_check_description"),
+        (
+            _RAW_STORE,
+            replace(_DATASETS, required=True),
+            _STORE_YEARS,
+            _MONTHS,
+            _ARCHIVE_STATIONS,
+            _PLAN_FILE,
+        ),
+        function="check_store",
+        result_type="StorePlan",
+        root="raw",
+        method="GET",
+        rules=(
+            *_STORE_RULES,
+            message("commands.store_check_rule_1"),
+        ),
+        # Listing and HEAD requests; the plan file is the effect of an option.
+        network=True,
+    ),
+    _command(
+        "store sync",
+        message("commands.store_sync_description"),
+        (
+            _RAW_STORE,
+            _OUTPUT_DIR,
+            _FORCE,
+            _option(
+                "plan",
+                "path",
+                message("commands.store_sync_plan_help"),
+                path_role="input",
+                store_only=True,
+            ),
+            _DATASETS,
+            _STORE_YEARS,
+            _MONTHS,
+            _ARCHIVE_STATIONS,
+        ),
+        function="sync_store",
+        result_type="SyncReport",
+        root="raw",
+        check="check_store",
+        method="POST",
+        one_of=(("plan",), ("datasets",)),
+        exclusive=_TARGETS,
+        rules=(
+            message("commands.store_sync_rule_1"),
+            *_STORE_RULES,
+        ),
+        writes="add",
+        network=True,
+    ),
+    _command(
+        "store catalog",
+        message("commands.store_catalog_description"),
+        (
+            _ROOT,
+            _RAW_ROOT,
+            replace(
+                _PROVIDER,
+                help=message("commands.store_catalog_provider_help"),
+                default="IMGW-PIB",
+            ),
+            _option(
+                "user_locations",
+                "path",
+                message("commands.store_catalog_user_locations_help"),
+                path_role="input",
+            ),
+        ),
+        function="build_catalog",
+        result_type="CatalogReport",
+        root="data",
+        store_only=True,
+        check="check_catalog",
+        method="POST",
+        writes="add",
+    ),
+    _command(
+        "store export",
+        message("commands.store_export_description"),
+        (
+            _option(
+                "version",
+                "path",
+                message("commands.store_export_version_help"),
+                required=True,
+                path_role="input",
+            ),
+            replace(
+                _RAW_STORE,
+                required=False,
+                help=message("commands.store_export_root_help"),
+            ),
+            _option(
+                "format",
+                "choice",
+                message("commands.store_export_format_help"),
+                choices=("csv", "jsonl"),
+                default="csv",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_archive",
+        result_type="str",
+        root="raw",
+        check="check_command",
+        result="stream",
+        method="GET",
+        requires=_NEEDS_OUTPUT,
+        rules=(_OUTPUT_RULE,),
+    ),
+    _command(
+        "series build",
+        message("commands.series_build_description"),
+        (_ROOT, _RAW_ROOT, replace(_SERIES_DATASET, required=True)),
+        function="build_series",
+        result_type="SeriesReport",
+        root="data",
+        store_only=True,
+        check="check_series",
+        method="POST",
+        writes="add",
+    ),
+    _command(
+        "series select",
+        message("commands.series_select_description"),
+        (
+            _ROOT,
+            replace(_SERIES_DATASET, required=True),
+            replace(_STATIONS, required=True),
+            _VARIABLES,
+            replace(
+                _YEARS,
+                help=message("commands.series_select_years_help"),
+            ),
+            _YEAR_TYPE,
+        ),
+        function="select_series",
+        result_type="SeriesSelection",
+        root="data",
+        method="GET",
+        rules=(
+            _VARIABLES_RULE,
+            _HALF_YEAR_RULE,
+            message("commands.series_select_rule_1"),
+            message("commands.series_select_rule_2"),
+        ),
+    ),
+    _command(
+        "series read",
+        message("commands.series_read_description"),
+        (
+            _SERIES_VERSION,
+            _SERIES_ROOT,
+            _SERIES_DATASET,
+            replace(_STATION_OPTION, required=True),
+            _VARIABLES,
+            _START,
+            _END,
+        ),
+        function="read_series",
+        result_type="NormalizedRecord",
+        root="data",
+        result="list",
+        method="GET",
+        one_of=_VERSION_OR_DATASET,
+        rules=(*_SERIES_RULES, _START_RULE),
+    ),
+    _command(
+        "series summary",
+        message("commands.series_summary_description"),
+        (
+            _SERIES_VERSION,
+            _SERIES_ROOT,
+            _SERIES_DATASET,
+            replace(
+                _STATIONS,
+                help=message("commands.series_summary_stations_help"),
+            ),
+            _VARIABLES,
+        ),
+        function="summarize_series",
+        result_type="StationCoverage",
+        root="data",
+        result="list",
+        method="GET",
+        one_of=_VERSION_OR_DATASET,
+        rules=_SERIES_RULES,
+    ),
+    _command(
+        "series export",
+        message("commands.series_export_description"),
+        (
+            _SERIES_VERSION,
+            _SERIES_ROOT,
+            _SERIES_DATASET,
+            replace(_STATION_OPTION, required=True),
+            _VARIABLES,
+            _START,
+            _END,
+            _YEAR_TYPE,
+            _option(
+                "format",
+                "choice",
+                message("commands.series_export_format_help"),
+                choices=("csv", "json", "parquet"),
+                default="csv",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_series",
+        result_type="str",
+        root="data",
+        check="check_command",
+        result="stream",
+        method="GET",
+        one_of=_VERSION_OR_DATASET,
+        requires=_NEEDS_OUTPUT,
+        rules=(
+            *_SERIES_RULES,
+            _START_RULE,
+            _HALF_YEAR_RULE,
+            _OUTPUT_RULE,
+            message("commands.series_export_rule_parquet"),
+        ),
+    ),
+    _command(
+        "analyses build",
+        message("commands.analyses_build_description"),
+        (
+            _ROOT,
+            replace(_STATIONS, help=message("commands.analyses_stations_help")),
+            _option(
+                "workers",
+                "int",
+                message("commands.workers_help"),
+                default=1,
+                minimum=1,
+            ),
+        ),
+        function="build_analyses",
+        result_type="AnalysesReport",
+        root="data",
+        store_only=True,
+        check="check_analyses",
+        method="POST",
+        rules=(message("commands.analyses_rule_program"),),
+        writes="add",
+    ),
+    _command(
+        "analyses list",
+        message("commands.analyses_list_description"),
+        (_ANALYSES_VERSION, _ANALYSES_ROOT, _ANALYSES_STATION),
+        function="list_analyses",
+        result_type="AnalysisSummary",
+        root="data",
+        result="list",
+        method="GET",
+        rules=_ANALYSES_RULES,
+    ),
+    _command(
+        "analyses read",
+        message("commands.analyses_read_description"),
+        (
+            _ANALYSES_VERSION,
+            _ANALYSES_ROOT,
+            _ANALYSES_STATION,
+            _option(
+                "analysis",
+                "choice",
+                message("commands.analysis_help"),
+                required=True,
+                choices=_ANALYSIS_IDS,
+            ),
+        ),
+        function="read_analysis",
+        result_type="AnalysisResult",
+        root="data",
+        method="GET",
+        rules=_ANALYSES_RULES,
+    ),
+    _command(
+        "analyses export",
+        message("commands.analyses_export_description"),
+        (
+            _ANALYSES_VERSION,
+            _ANALYSES_ROOT,
+            _ANALYSES_STATION,
+            _option(
+                "analyses",
+                "list",
+                message("commands.analyses_ids_help"),
+                items="choice",
+                choices=_ANALYSIS_IDS,
+            ),
+            _option(
+                "format",
+                "choice",
+                message("commands.analyses_export_format_help"),
+                choices=("json", "csv"),
+                default="json",
+                aliases=("-f",),
+            ),
+            _OUTPUT,
+            _EXPORT_FORCE,
+        ),
+        function="export_analyses",
+        result_type="str",
+        root="data",
+        check="check_command",
+        result="stream",
+        method="GET",
+        requires=_NEEDS_OUTPUT,
+        rules=(*_ANALYSES_RULES, _OUTPUT_RULE),
+    ),
+)
+# The description commands close the catalog: commands schema names every command.
+_GUIDE = _command(
+    "commands guide",
+    message("commands.commands_guide_description"),
+    (
+        _option(
+            "format",
+            "choice",
+            message("commands.commands_guide_format_help"),
+            choices=("agents", "llms"),
+            default="agents",
+            aliases=("-f",),
+        ),
+        _LANGUAGE,
+        _OUTPUT,
+        _EXPORT_FORCE,
+    ),
+    function="agent_guide",
+    check="check_command",
+    result="stream",
+    method="GET",
+    requires=_NEEDS_OUTPUT,
+    result_type="str",
+    rules=(_OUTPUT_RULE,),
+)
+_CATALOG += (
+    _command(
+        "commands list",
+        message("commands.commands_list_description"),
+        (_LANGUAGE,),
+        function="list_commands",
+        method="GET",
+        result_type="dict",
+    ),
+    _command(
+        "commands schema",
+        message("commands.commands_schema_description"),
+        (
+            _option(
+                "command",
+                "choice",
+                message("commands.commands_schema_command_help"),
+                choices=(
+                    *(command.name for command, _ in _CATALOG),
+                    "commands list",
+                    "commands schema",
+                    _GUIDE[0].name,
+                ),
+            ),
+            _LANGUAGE,
+        ),
+        function="command_schema",
+        method="GET",
+        result_type="dict",
+    ),
+    _GUIDE,
+)
+_COMMANDS = tuple(command for command, _ in _CATALOG)
+_BY_NAME = {command.name: command for command in _COMMANDS}
+_RESULT_TYPES = {command.name: result_type for command, result_type in _CATALOG}
+
+
+def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | None:
+    """
+    ``command`` as offered for one provider; None when it has no data of it.
+
+    The ``dataset``/``datasets`` choices keep the provider's keys and the
+    ``provider`` option is fixed to it (required, its only choice, no
+    default), so every call valid in the narrowed catalog concerns the
+    provider alone.
+    """
+    if _GROUP_PROVIDERS.get(command.name.split(" ", 1)[0], owner.id) != owner.id:
+        return None
+    options: list[CommandOption] = []
+    for option in command.options:
+        narrowed = option
+        if option.name in ("dataset", "datasets"):
+            choices = tuple(key for key in option.choices if key in owner.datasets)
+            if not choices:
+                return None
+            narrowed = replace(option, choices=choices)
+        elif option.name == "provider":
+            narrowed = replace(option, required=True, choices=(owner.id,), default=None)
+        options.append(narrowed)
+    return replace(command, options=tuple(options))
+
+
+def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
+    """
+    Return the catalog of all 31 data commands or its view for one provider.
+
+    Parameters
+    ----------
+    provider : str or None, optional
+        Provider identifier or key prefix (see `get_provider`); None returns
+        the whole catalog. With a provider, the choices of the ``dataset``
+        and ``datasets`` options keep only its datasets, the ``provider``
+        option becomes required with that provider as its only choice, and
+        commands without any data of the provider are left out (for
+        ``CHMI``: ``current …`` and ``pmaxtp …``). `validate_command` and
+        the other functions always use the whole catalog.
+
+    Returns
+    -------
+    tuple of DataCommand
+        Commands in catalog order (groups ``datasets``, ``stations``,
+        ``current``, ``pmaxtp``, ``store``, ``series``,
+        ``commands``) with their options, the public function they call,
+        the check twin, the result shape, the REST method, the validation
+        rules and the effects of a run (``writes``, ``network``,
+        ``env_root_when``); the texts for humans are catalog messages (English,
+        with a Polish variant).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``provider`` names no provider (``details.option`` is
+        ``provider``).
+    """
+    if provider is None:
+        return _COMMANDS
+    owner = get_provider(provider)
+    return tuple(
+        command
+        for command in (_narrowed(spec, owner) for spec in _COMMANDS)
+        if command is not None
+    )
+
+
+# --- walidacja -------------------------------------------------------------------------------
+
+
+def _shown(value: object) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    return repr(value)
+
+
+def _fail(
+    message: str,
+    *,
+    option: str,
+    value: object = None,
+    hint: str | None = None,
+    **details: object,
+) -> NoReturn:
+    payload: dict[str, object] = {"option": option}
+    if value is not None:
+        payload["value"] = _shown(value)
+    payload.update(details)
+    raise ObserwatorValidationError(message, details=payload, hint=hint)
+
+
+def _spec(command: object) -> DataCommand:
+    spec = _BY_NAME.get(command) if isinstance(command, str) else None
+    if spec is None:
+        _fail(
+            message(
+                "commands.unknown_command_available",
+                command=command,
+                available=", ".join(_BY_NAME),
+            ),
+            option="command",
+            value=command,
+            allowed=list(_BY_NAME),
+            hint=message("errors.hint_unknown_command"),
+        )
+    return spec
+
+
+def _boolean(option: CommandOption, value: object) -> bool | None:
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        value = value.strip().lower() == "true"
+    if not isinstance(value, bool):
+        _fail(
+            message(
+                "commands.option_must_boolean_true_false", name=option.name, value=value
+            ),
+            option=option.name,
+            value=value,
+        )
+    # Wartość domyślna nie jest podawana jawnie: CLI wyraża ją brakiem flagi.
+    return None if value == option.default else value
+
+
+def _bounds(option: CommandOption, number: int) -> int:
+    if option.minimum is not None and number < option.minimum:
+        _fail(
+            message(
+                "commands.option_must_least",
+                name=option.name,
+                minimum=option.minimum,
+                number=number,
+            ),
+            option=option.name,
+            value=number,
+            minimum=option.minimum,
+        )
+    if option.maximum is not None and number > option.maximum:
+        _fail(
+            message(
+                "commands.option_must_most",
+                name=option.name,
+                maximum=option.maximum,
+                number=number,
+            ),
+            option=option.name,
+            value=number,
+            maximum=option.maximum,
+        )
+    return number
+
+
+def _integer(option: CommandOption, value: object) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _bounds(option, value)
+    if isinstance(value, str) and _INTEGER.fullmatch(text := value.strip()):
+        return _bounds(option, int(text))
+    _fail(
+        message("commands.option_must_integer", name=option.name, value=value),
+        option=option.name,
+        value=value,
+    )
+
+
+def _number(option: CommandOption, value: object) -> float:
+    # Granice współrzędnych sprawdza walidator biblioteki (reguła komendy), nie typ.
+    number = math.nan
+    if isinstance(value, int | float | str) and not isinstance(value, bool):
+        with suppress(ValueError):
+            number = float(value)
+    if not math.isfinite(number):
+        _fail(
+            message(
+                "commands.option_must_finite_number", name=option.name, value=value
+            ),
+            option=option.name,
+            value=value,
+        )
+    return number
+
+
+def _text(option: CommandOption, value: object) -> str:
+    text = value.strip() if isinstance(value, str) else ""
+    if not text:
+        _fail(
+            message(
+                "commands.option_needs_non_empty_text", name=option.name, value=value
+            ),
+            option=option.name,
+            value=value,
+        )
+    if option.pattern is not None and not re.search(option.pattern, text):
+        expected = _PATTERN_TEXT.get(option.pattern) or message(
+            "commands.pattern_default", pattern=option.pattern
+        )
+        _fail(
+            message(
+                "commands.option_expected",
+                name=option.name,
+                expected=expected,
+                text=text,
+            ),
+            option=option.name,
+            value=text,
+            pattern=option.pattern,
+        )
+    return text
+
+
+def _date(option: CommandOption, value: object) -> date:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and _ISO_DATE.fullmatch(text := value.strip()):
+        with suppress(ValueError):
+            return date.fromisoformat(text)
+    _fail(
+        message("commands.option_needs_iso_date_yyyy", name=option.name, value=value),
+        option=option.name,
+        value=value,
+    )
+
+
+def _path(option: CommandOption, value: object) -> Path:
+    text = os.fspath(value) if isinstance(value, str | os.PathLike) else None
+    if not isinstance(text, str) or not text.strip() or "\0" in text:
+        _fail(
+            message("commands.option_needs_path", name=option.name, value=value),
+            option=option.name,
+            value=value,
+        )
+    return Path(text).expanduser()
+
+
+def _choice_text(option: CommandOption, text: str) -> str:
+    if option.name in ("dataset", "datasets"):
+        try:
+            text = get_dataset(text).key
+        except ObserwatorValidationError as exc:
+            raise ObserwatorValidationError(
+                exc.detail,
+                details={**exc.details, "option": option.name},
+                hint=exc.hint,
+            ) from exc
+    elif option.name == "provider":
+        # A key prefix (cz.chmi) names its provider, like dataset aliases.
+        text = get_provider(text).id
+    if text not in option.choices:
+        _fail(
+            message(
+                "commands.invalid_value_option_allowed",
+                text=text,
+                name=option.name,
+                choices=", ".join(option.choices),
+            ),
+            option=option.name,
+            value=text,
+            allowed=list(option.choices),
+        )
+    return text
+
+
+def _choice(option: CommandOption, value: object) -> str:
+    if not isinstance(value, str):
+        _fail(
+            message(
+                "commands.option_needs_one_values",
+                name=option.name,
+                choices=", ".join(option.choices),
+                value=value,
+            ),
+            option=option.name,
+            value=value,
+            allowed=list(option.choices),
+        )
+    return _choice_text(option, value.strip())
+
+
+def _texts(option: CommandOption, value: object) -> list[str]:
+    """Flatten a comma-separated text or a collection of texts into list items."""
+    if isinstance(value, str):
+        raw: list[object] = [value]
+    elif isinstance(value, Iterable) and not isinstance(value, bytes | Mapping):
+        raw = list(value)
+    else:
+        _fail(
+            message("commands.option_must_list_values", name=option.name, value=value),
+            option=option.name,
+            value=value,
+        )
+    texts: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            _fail(
+                message(
+                    "commands.option_needs_text_values", name=option.name, item=item
+                ),
+                option=option.name,
+                value=item,
+            )
+        texts.extend(part.strip() for part in item.split(","))
+    if not texts or "" in texts:
+        _fail(
+            message("commands.option_needs_non_empty_list", name=option.name),
+            option=option.name,
+            value=value,
+        )
+    return texts
+
+
+def _list(option: CommandOption, value: object) -> tuple[object, ...]:
+    if option.items == "year":
+        return parse_years(cast(YearsArg, value), option=option.name)
+    if option.name == "months":
+        return parse_months(cast(MonthsArg, value), option=option.name)
+    texts = _texts(option, value)
+    if option.items == "choice":
+        texts = [_choice_text(option, text) for text in texts]
+    else:
+        texts = [_text(option, text) for text in texts]
+    return tuple(dict.fromkeys(texts))
+
+
+_PARSERS: dict[str, Callable[[CommandOption, object], object]] = {
+    "bool": _boolean,
+    "int": _integer,
+    "float": _number,
+    "str": _text,
+    "date": _date,
+    "path": _path,
+    "choice": _choice,
+    "list": _list,
+}
+
+
+def _absolutize(options: Options) -> None:
+    """Paths → absolute: ``version`` against ``root``, others against the CWD."""
+    for name, value in list(options.items()):
+        if isinstance(value, Path) and name != "version":
+            options[name] = value.absolute()
+    version = options.get("version")
+    if isinstance(version, Path) and not version.is_absolute():
+        root = options.get("root")
+        options["version"] = (
+            root / version if isinstance(root, Path) else version.absolute()
+        )
+
+
+def _store_of(path: Path) -> Path | None:
+    """
+    The root of either kind containing ``path`` (or being it), if any.
+
+    The nearest of ``path`` and its ancestors, as given (absolute, links not
+    followed), with the marker of a raw or a data root (ADR-017 D1).
+    """
+    given = path.absolute()
+    return next(
+        (
+            candidate
+            for candidate in (given, *given.parents)
+            if any((candidate / marker).is_file() for marker in _MARKERS.values())
+        ),
+        None,
+    )
+
+
+def _store_root(version: Path) -> Path:
+    return _store_of(version) or version.parent
+
+
+def _half_year(descriptor: DatasetDescriptor, year_type: object) -> None:
+    if descriptor.time_unit == "half_year" and year_type == "calendar":
+        _fail(
+            message("commands.semi_annual_series_supports_only"),
+            option="year_type",
+            value=year_type,
+        )
+
+
+def _rules_archives(options: Options) -> None:
+    # Years, months, params and stations follow the dataset's provider (§2.3).
+    _archives(options)
+
+
+def _rules_download(options: Options) -> None:
+    # The selection of the files first (offline, also for a dataset named in the
+    # folder index); the store takes only the datasets it holds.
+    _download_selection(options, index=False)
+    descriptor = get_dataset(options["dataset"])
+    if "output_dir" not in options and not descriptor.in_store:
+        _fail(
+            message("commands.not_in_store", dataset=descriptor.key),
+            option="dataset",
+            value=descriptor.key,
+            reason="not_in_store",
+        )
+
+
+def _rules_store_check(options: Options) -> None:
+    # One kind of datasets per call; selectors as in check_store (§4.2).
+    _sync._selection(
+        options["datasets"],
+        options.get("years"),
+        options.get("months"),
+        options.get("stations"),
+    )
+
+
+def _rules_store_sync(options: Options) -> None:
+    if "plan" not in options:
+        if "output_dir" in options:
+            # The plain selection needs the years of a station dataset, offline.
+            _sync._plain_archives(
+                options["datasets"],
+                options.get("years"),
+                options.get("months"),
+                options.get("stations"),
+            )
+            return
+        _rules_store_check(options)
+        return
+    selectors = ("datasets", "years", "months", "stations")
+    given = [name for name in selectors if name in options]
+    if given:
+        _fail(
+            message("commands.obserwator_plan_1_plan_excludes"),
+            option=given[0],
+        )
+
+
+def _rules_stations(options: Options) -> None:
+    _stations._search_kinds(
+        options.get("kind"),
+        options.get("query"),
+        options.get("source", "live"),
+        options.get("root"),
+    )
+
+
+def _rules_coordinates(options: Options) -> None:
+    _fetch._validate_poland_coords(options["latitude"], options["longitude"])
+
+
+def _rules_series_select(options: Options) -> None:
+    descriptor = get_dataset(options["dataset"])
+    if "variables" in options:
+        _reader._variables(options["variables"], descriptor)
+    _half_year(descriptor, options.get("year_type"))
+    # Station codes follow the grammar of the dataset's provider (ADR-003 D14).
+    provider = get_provider(descriptor.provider)
+    pattern = re.compile(provider.station_code_pattern)
+    foreign = [
+        code
+        for code in cast("tuple[str, ...]", options.get("stations", ()))
+        if not pattern.fullmatch(code)
+    ]
+    if foreign:
+        # The codes as a list, like every other stations error (not a repr).
+        raise ObserwatorValidationError(
+            message(
+                "commands.station_codes_outside_grammar_dataset",
+                short_name=provider.short_name,
+                key=descriptor.key,
+                foreign=", ".join(foreign),
+                station_code_pattern=provider.station_code_pattern,
+            ),
+            details={"option": "stations", "value": foreign},
+        )
+
+
+def _rules_series(options: Options) -> None:
+    if "dataset" in options:
+        descriptor = get_dataset(options["dataset"])
+        if "variables" in options:
+            _reader._variables(options["variables"], descriptor)
+        _half_year(descriptor, options.get("year_type"))
+    start, end = options.get("start"), options.get("end")
+    if isinstance(start, date) and isinstance(end, date) and start > end:
+        _fail(
+            message("commands.start_range_later_than_end", start=start, end=end),
+            option="end",
+            value=end.isoformat(),
+        )
+    _rules_result_file(options)
+    # Parquet is one binary file: there are no lines to stream without output.
+    _export._needs_output(options.get("format"), options.get("output"))
+
+
+def _rules_result_file(options: Options) -> None:
+    output = options.get("output")
+    if isinstance(output, Path):
+        # A directory is no file; an existing file or a store is a conflict, which
+        # a plan reports and only the run refuses (DEV-19.10).
+        _export._file(output)
+
+
+_RULES: dict[str, Rule] = {
+    "datasets files": _rules_archives,
+    "datasets download": _rules_download,
+    "stations find": _rules_stations,
+    "stations export": _rules_result_file,
+    "pmaxtp fetch": _rules_coordinates,
+    "pmaxtp url": _rules_coordinates,
+    "pmaxtp check": _rules_coordinates,
+    "pmaxtp sync": _rules_coordinates,
+    "store check": _rules_store_check,
+    "store sync": _rules_store_sync,
+    "store export": _rules_result_file,
+    "series select": _rules_series_select,
+    "series read": _rules_series,
+    "series summary": _rules_series,
+    "series export": _rules_series,
+    "analyses export": _rules_result_file,
+    "commands guide": _rules_result_file,
+}
+
+
+def _root_kind(spec: DataCommand, options: Mapping[str, object]) -> RootKind:
+    """
+    The kind of the root ``spec`` works on (ADR-017 D4).
+
+    ``store init`` creates the kind of its ``kind`` option; ``store info`` and
+    ``store scan`` read a root of either kind and default to the data root.
+    """
+    kind = _ROOT_KINDS[spec.name]
+    if spec.name == "store init":
+        return cast(RootKind, options.get("kind", kind))
+    return kind
+
+
+def _validate(command: object, options: object) -> Options:
+    """Validate ``options`` of ``command`` (see `validate_command`)."""
+    spec = _spec(command)
+    if not isinstance(options, Mapping):
+        _fail(
+            message("commands.options_command_must_mapping_name", name=spec.name),
+            option="options",
+        )
+    known = {option.name: option for option in spec.options}
+    for key in options:
+        if key not in known:
+            _fail(
+                message(
+                    "commands.unknown_option_command_available",
+                    key=key,
+                    name=spec.name,
+                    known=", ".join(known),
+                ),
+                option=str(key),
+                allowed=list(known),
+                hint=message("errors.hint_unknown_option", command=spec.name),
+            )
+    result: Options = {}
+    for option in spec.options:
+        value = options.get(option.name)
+        normalized = None if value is None else _PARSERS[option.type](option, value)
+        if normalized is not None:
+            result[option.name] = normalized
+    if "cursor" in result:
+        cursor_index(result["cursor"])  # opaque: only a cursor of a page (AGI-6.5)
+    for group in spec.exclusive:
+        given = [name for name in group if name in result]
+        if len(given) > 1:
+            _fail(
+                message(
+                    "commands.options_exclude_each_other",
+                    first=given[0],
+                    second=given[1],
+                ),
+                option=given[1],
+                reason="exclusive_options",
+                options=list(group),
+            )
+    plain = "output_dir" in result
+    if plain:
+        for option in spec.options:
+            if option.store_only and options.get(option.name) is not None:
+                _fail(
+                    message(
+                        "commands.store_only_option",
+                        name=option.name,
+                        flag=option.flag,
+                    ),
+                    option=option.name,
+                    value=options[option.name],
+                    reason="store_only_option",
+                )
+    if (
+        not plain
+        and "root" in known
+        and "root" not in result
+        and "version" not in result
+    ):
+        # The root of a command without --root is the default root of its kind
+        # (DEV-19.2, ADR-017 D5), under the conditions of env_root_when (a live
+        # search has no root).
+        defaults = {option.name: option.default for option in spec.options}
+        if all(
+            str(result.get(name, defaults.get(name))).strip() == value
+            for name, value in spec.env_root_when.items()
+        ):
+            result["root"] = store_root(kind=_root_kind(spec, result)).root
+    if "raw_root" in known and "raw_root" not in result:
+        # The raw root a build reads: the default raw root (ADR-017 D5).
+        result["raw_root"] = store_root(kind="raw").root
+    present = set(result)
+    for option in spec.options:
+        if option.required and option.name not in present:
+            _fail(
+                message(
+                    "commands.missing_required_option_command",
+                    name=option.name,
+                    flag=option.flag,
+                    name_2=spec.name,
+                ),
+                option=option.name,
+            )
+    for key, needed in spec.requires.items():
+        missing = [name for name in needed if name not in present]
+        if key in present and missing:
+            _fail(
+                message(
+                    "commands.option_command_also_needs",
+                    key=key,
+                    name=spec.name,
+                    missing=", ".join(missing),
+                ),
+                option=missing[0],
+            )
+    if spec.one_of:
+        matched = [group for group in spec.one_of if present.issuperset(group)]
+        if len(matched) != 1:
+            first, second = ("+".join(group) for group in spec.one_of)
+            _fail(
+                message(
+                    "commands.command_needs_exactly_one_group",
+                    name=spec.name,
+                    first=first,
+                    second=second,
+                ),
+                option=(matched[1] if matched else spec.one_of[0])[0],
+            )
+    _absolutize(result)
+    rule = _RULES.get(spec.name)
+    if rule is not None:
+        rule(result)
+    return result
+
+
+def validate_command(
+    command: str, /, *, options: Mapping[str, object]
+) -> dict[str, object]:
+    """
+    Normalize and validate command options without network access.
+
+    Dataset aliases and slugs become keys, a provider key prefix
+    (``cz.chmi``) becomes its identifier, numeric text becomes ``int`` or
+    ``float``, ISO text becomes ``date``, every form of ``years`` (``2024``,
+    ``"2020-2023"``, ``"2020,2022"``, ``[2020, "2022-2023"]``) and ``months``
+    becomes a sorted tuple of numbers, other lists become tuples without
+    duplicates, and paths become absolute (``version`` against ``root``,
+    others against the working directory). A command that names no ``root``
+    (nor ``version`` or ``output_dir``) gets the default root of its kind
+    (`config.store_root`): the raw root of a command on downloaded sources,
+    the data root of one on what is built from them (``store info`` and
+    ``store scan`` too; ``store init`` by ``kind``); a build without
+    ``raw_root`` reads the default raw root (ADR-017 D4, D5).
+    ``None`` values and ``bool`` values equal to their default are omitted,
+    so formatting the result with `format_command` and validating it again
+    yields identical options. Coordinates are checked by the library
+    validator of Poland's bounds; ``years``, ``months``, ``params`` and
+    ``stations`` of archive and store commands follow the provider of the
+    dataset (station codes in its grammar).
+
+    Parameters
+    ----------
+    command : str
+        Catalog command name, e.g. ``"series select"``.
+    options : Mapping[str, object]
+        Option values keyed by option name (``snake_case``); ``limit`` and
+        ``cursor`` are options of list commands.
+
+    Returns
+    -------
+    dict of {str : object}
+        Normalized options in catalog order.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the command, an option name, an option value or a combination of
+        options is unknown or invalid, or a required option is missing;
+        ``details.option`` names the offending option.
+    """
+    return _validate(command, options)
+
+
+# --- formatowanie ----------------------------------------------------------------------------
+
+
+def _argument(value: object) -> str:
+    if isinstance(value, tuple):
+        return ",".join(str(item) for item in value)
+    if isinstance(value, float):
+        return repr(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+# The program a command line starts with (``format_command`` writes it).
+_PROGRAM = "obserwator"
+# The flags of a run beside the options (ADR-002 D11): ``--check`` plans the call
+# (``check_command``); ``--json`` (the envelope as one JSON line) and ``--lang``
+# (the language of the human rendering, AGI-3.2, AGI-3.4) choose how the CLI
+# prints the result and change nothing of the call.
+_CHECK_FLAG = "--check"
+_JSON_FLAG = "--json"
+_LANG_FLAG = "--lang"
+# Flags that print a description of a command instead of calling it.
+_DESCRIBING_FLAGS = ("--help", "--schema")
+
+
+def _has_lang_option(spec: DataCommand) -> bool:
+    """Whether ``--lang`` of ``spec`` is its option (the description commands)."""
+    return any(option.name == "lang" for option in spec.options)
+
+
+def _run_switch(given: Mapping[str, object], name: str) -> bool:
+    """The value of the switch ``name`` of a run: absent, ``False`` or ``True``."""
+    value = given.get(name)
+    if value is None or value is False:
+        return False
+    if value is not True:
+        _fail(
+            message("commands.option_must_boolean_true_false", name=name, value=value),
+            option=name,
+            value=value,
+        )
+    return True
+
+
+def _run_flags(
+    spec: DataCommand, run: Mapping[str, object] | None
+) -> tuple[bool, bool, Lang | None]:
+    """
+    The ``check``, ``json`` and ``lang`` flags of ``run``; any other is refused.
+
+    ``check`` needs a command with a check twin; ``lang`` is a flag of a run
+    only of a command without the option ``lang``.
+    """
+    given = {} if run is None else run
+    allowed = [] if spec.check is None else ["check"]
+    allowed.append("json")
+    if not _has_lang_option(spec):
+        allowed.append("lang")
+    for name in given:
+        if name not in allowed and name != "check":
+            _fail(
+                message(
+                    "commands.not_a_run_flag",
+                    name=name,
+                    command=spec.name,
+                    flags=", ".join(allowed),
+                ),
+                option=str(name),
+                allowed=allowed,
+            )
+    check = _run_switch(given, "check")
+    if check and spec.check is None:
+        _fail(
+            message("commands.command_has_no_check", command=spec.name),
+            option="check",
+            allowed=allowed,
+        )
+    lang = given.get("lang")
+    if lang is not None and lang not in LANGS:
+        _fail(
+            message(
+                "commands.invalid_value_option_allowed",
+                text=lang,
+                name="lang",
+                choices=", ".join(LANGS),
+            ),
+            option="lang",
+            value=lang,
+            allowed=list(LANGS),
+        )
+    return check, _run_switch(given, "json"), lang
+
+
+def format_command(
+    command: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    run: Mapping[str, object] | None = None,
+) -> str:
+    """
+    Write the canonical ``obserwator`` command line of a call.
+
+    The options are written as `validate_command` normalizes them (dataset
+    keys, sorted years, absolute paths, the default root of a store command
+    that names none, ADR-007 D2), each with its canonical ``--kebab-case`` flag
+    in catalog order; a ``bool`` option is ``--x`` or ``--no-x`` and is left
+    out at its default. ``run`` adds ``--check``, ``--json`` and ``--lang``
+    last. Every word is ``shlex``-quoted, so equal calls give equal text:
+    `parse_command` reads the line back into the same command and run and
+    into options that validate to the same call, whose line is this one again.
+
+    Parameters
+    ----------
+    command : str
+        Catalog command name.
+    options : Mapping[str, object]
+        Option values keyed by option name.
+    run : Mapping[str, object] or None, optional
+        The flags of a run beside the options: ``{"check": True}`` writes
+        ``--check`` (the plan of `check_command`) for a command that has it
+        (``DataCommand.check``), ``{"json": True}`` writes ``--json`` (the CLI
+        prints the envelope) and ``{"lang": "pl"}`` writes ``--lang pl`` (the
+        language of the human rendering of the CLI) for a command without the
+        option ``lang``; ``False`` or ``None`` leaves a flag out.
+
+    Returns
+    -------
+    str
+        Command line starting with ``obserwator``, e.g.
+        ``obserwator store info --root /data/obserwator``.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the command or its options are invalid (see `validate_command`),
+        or ``run`` names another flag, gives ``check`` or ``json`` a value
+        that is not a boolean, ``lang`` one that is neither ``pl`` nor ``en``,
+        or asks for ``--check`` of a command without it (``details.option``
+        names it).
+    """
+    normalized = validate_command(command, options=options)
+    spec = _BY_NAME[command]
+    check, as_json, lang = _run_flags(spec, run)
+    words = [_PROGRAM, *spec.name.split()]
+    for option in spec.options:
+        if option.name not in normalized:
+            continue
+        value = normalized[option.name]
+        if option.type == "bool":
+            words.append(option.flag if value else f"--no-{option.flag[2:]}")
+        else:
+            words += [option.flag, _argument(value)]
+    if check:
+        words.append(_CHECK_FLAG)
+    if as_json:
+        words.append(_JSON_FLAG)
+    if lang is not None:
+        words += [_LANG_FLAG, lang]
+    return " ".join(shlex.quote(word) for word in words)
+
+
+def _usage(detail: str, **details: object) -> NoReturn:
+    """Refuse a mistake of a command line: ``details.reason`` is ``usage``."""
+    raise ObserwatorValidationError(detail, details={"reason": "usage", **details})
+
+
+def _line_command(words: Sequence[str]) -> DataCommand:
+    """The catalog command that the first two words of a line name."""
+    groups = list(_GROUPS)
+    if not words:
+        _usage(
+            message("commands.line_needs_command", groups=", ".join(groups)),
+            allowed=groups,
+        )
+    group = words[0]
+    if group in _DESCRIBING_FLAGS:
+        _usage(message("commands.line_describes", flag=group))
+    if group not in _GROUPS:
+        _usage(
+            message(
+                "commands.line_unknown_group", group=group, groups=", ".join(groups)
+            ),
+            allowed=groups,
+        )
+    named = _BY_NAME.get(" ".join(words[:2]))
+    if named is not None:
+        return named
+    if words[1:2] and words[1] in _DESCRIBING_FLAGS:
+        _usage(message("commands.line_describes", flag=words[1]))
+    names = [spec.name for spec in _COMMANDS if spec.name.startswith(f"{group} ")]
+    _usage(
+        message(
+            "commands.line_needs_group_command", group=group, commands=", ".join(names)
+        ),
+        allowed=names,
+    )
+
+
+def _line_flags(spec: DataCommand) -> dict[str, tuple[CommandOption, bool | None]]:
+    """
+    The flags ``obserwator <command>`` has for the options of ``spec``.
+
+    They are those of ``x-obserwator.cli.flags``: the flag of an option, its short
+    aliases and ``--no-x`` of a ``bool`` option whose default is true. Each
+    maps to its option and to ``None`` for a flag that takes a value, or to
+    the value a switch gives.
+    """
+    flags: dict[str, tuple[CommandOption, bool | None]] = {}
+    for option in spec.options:
+        negative = f"--no-{option.flag[2:]}"
+        for flag in _flags(option):
+            flags[flag] = (option, None if option.type != "bool" else flag != negative)
+    return flags
+
+
+def _split_word(word: str) -> tuple[str, str | None]:
+    """A word as its flag and the value joined to it, as the CLI (Click) reads it."""
+    if word.startswith("--"):
+        flag, joined, value = word.partition("=")
+        return flag, value if joined else None
+    if word.startswith("-") and len(word) > 2:
+        return word[:2], word[2:]
+    return word, None
+
+
+def parse_command(line: str | Sequence[str], /) -> CommandCall:
+    """
+    Read an ``obserwator`` command line into the call it makes, as the CLI reads it.
+
+    The first two words name a catalog command (``store sync``); the others
+    are the flags ``obserwator`` has for it (spec §13.10, ADR-002 D2 and D11): the
+    flag of each option and its short alias (``--root``, ``-r``), ``--no-x``
+    of a ``bool`` option whose default is true, ``--check`` of a command
+    with a check twin, ``--json`` and ``--lang`` (of a command without the
+    option ``lang``). A flag takes its value from the next word or after
+    ``=`` (``--root=/data``; a short alias also joined, ``-r/data``), a list
+    option takes one value per occurrence of its flag, a later value of
+    another option wins and ``--`` ends the flags. Like the CLI, which
+    validates nothing, the options are the texts the CLI passes to
+    `run_command`; `validate_command` checks and normalizes them, and
+    `format_command` writes the call as its canonical line, so a line that
+    `format_command` wrote is read into a call it writes as the same line.
+
+    Parameters
+    ----------
+    line : str or Sequence[str]
+        The line, with or without the leading ``obserwator``: a text is split like
+        a shell line (``shlex.split``), a sequence holds its words.
+
+    Returns
+    -------
+    CommandCall
+        The command, its options (the texts as given, ``True`` or ``False``
+        of a switch) and ``run`` (``{"check": True}`` for ``--check``,
+        ``{"json": True}`` for ``--json``, the text of ``--lang`` as ``lang``).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        A mistake of the line, with ``details.reason`` ``usage``: a text that
+        is no shell line, no command or one outside the catalog
+        (``details.allowed`` lists the groups, or the commands of the group),
+        ``--help`` or ``--schema`` (a description, not a call), an unknown
+        flag, a flag without its value or a switch with one
+        (``details.option`` names the option) or a word that is no flag;
+        ``details.command`` names the command the line named.
+    """
+    try:
+        words = shlex.split(line) if isinstance(line, str) else list(line)
+    except ValueError as exc:
+        _usage(message("commands.line_unreadable", error=reason(exc)))
+    if words[:1] == [_PROGRAM]:
+        del words[0]
+    spec = _line_command(words)
+    flags = _line_flags(spec)
+    switches = {_JSON_FLAG: "json"}
+    if spec.check is not None:
+        switches[_CHECK_FLAG] = "check"
+    lang_flag = None if _has_lang_option(spec) else _LANG_FLAG
+    name = spec.name
+    given: dict[str, object] = {}
+    lists: dict[str, list[str]] = {}
+    run: dict[str, object] = {}
+    rest = words[2:]
+    while rest:
+        word = rest.pop(0)
+        if word == "--":
+            if rest:
+                _usage(
+                    message("commands.line_extra_word", word=rest[0], command=name),
+                    command=name,
+                )
+            break
+        flag, joined = _split_word(word)
+        if flag == "-" or not flag.startswith("-"):
+            _usage(
+                message("commands.line_extra_word", word=word, command=name),
+                command=name,
+            )
+        if flag in _DESCRIBING_FLAGS:
+            _usage(message("commands.line_describes", flag=flag), command=name)
+        if flag in switches:
+            if joined is not None:
+                _usage(
+                    message("commands.line_switch_value", flag=flag, command=name),
+                    option=switches[flag],
+                    command=name,
+                )
+            run[switches[flag]] = True
+            continue
+        if flag == lang_flag:
+            if joined is None:
+                if not rest:
+                    _usage(
+                        message("commands.line_needs_value", flag=flag, command=name),
+                        option="lang",
+                        command=name,
+                    )
+                joined = rest.pop(0)
+            run["lang"] = joined
+            continue
+        entry = flags.get(flag)
+        if entry is None:
+            _usage(
+                message("commands.line_unknown_option", flag=flag, command=name),
+                option=flag.lstrip("-").replace("-", "_"),
+                command=name,
+            )
+        option, switch = entry
+        if switch is not None:
+            if joined is not None:
+                _usage(
+                    message("commands.line_switch_value", flag=flag, command=name),
+                    option=option.name,
+                    command=name,
+                )
+            given[option.name] = switch
+            continue
+        if joined is None:
+            if not rest:
+                _usage(
+                    message("commands.line_needs_value", flag=flag, command=name),
+                    option=option.name,
+                    command=name,
+                )
+            joined = rest.pop(0)
+        if option.type == "list":
+            lists.setdefault(option.name, []).append(joined)
+        else:
+            given[option.name] = joined
+    given.update(lists)
+    options = {o.name: given[o.name] for o in spec.options if o.name in given}
+    return CommandCall(name, options, run)
+
+
+# --- komenda zapisanej wersji ----------------------------------------------------------------
+
+# ``details.reason`` of a version whose metadata does not give its command (ECO-054).
+_NOT_REBUILDABLE = "command_not_rebuildable"
+
+
+def _not_a_version(relative: str) -> NoReturn:
+    raise ObserwatorValidationError(
+        message("commands.not_a_version", version=relative),
+        details={"option": "version", "value": relative},
+    )
+
+
+def _no_version(base: Path, relative: str) -> ObserwatorStoreError:
+    return ObserwatorStoreError(
+        message("commands.version_not_found", root=base, version=relative),
+        code="not_found",
+        details={"version": relative},
+    )
+
+
+def _mismatch(relative: str, field: str, value: object, expected: object) -> NoReturn:
+    raise ObserwatorDataError(
+        message(
+            "commands.version_meta_mismatch",
+            version=relative,
+            field=field,
+            value=value,
+            expected=expected,
+        ),
+        details={"version": relative, "field": field},
+    )
+
+
+def _invalid_request(relative: str, field: str, value: object) -> NoReturn:
+    raise ObserwatorDataError(
+        message(
+            "commands.version_request_invalid",
+            version=relative,
+            field=field,
+            value=value,
+        ),
+        details={"version": relative, "field": field},
+    )
+
+
+def _not_rebuildable(detail: str, relative: str, **details: object) -> NoReturn:
+    raise ObserwatorError(
+        detail,
+        code="unsupported",
+        details={"reason": _NOT_REBUILDABLE, "version": relative, **details},
+    )
+
+
+def _missing_field(relative: str, field: str) -> NoReturn:
+    _not_rebuildable(
+        message(
+            "commands.version_command_missing_field", version=relative, field=field
+        ),
+        relative,
+        field=field,
+    )
+
+
+# The tree of a version below its root gives the kind of the root (ADR-017 D6).
+_TREE_KINDS: Mapping[str, RootKind] = {
+    "archives": "raw",
+    "pmaxtp": "raw",
+    "series": "data",
+    "stations": "data",
+    "analyses": "data",
+}
+# The analyses slot of each provider: ``analyses/versions/<key prefix>/``.
+_ANALYSES_PREFIXES = frozenset(provider.key_prefix for provider in providers())
+
+
+def _version_root(version: PathArg, root: PathArg | None) -> tuple[Path, str, Path]:
+    """
+    The root of ``version``, the version relative to it and its path, checked.
+
+    The tree of the version below its root gives the kind of the root (ADR-017
+    D6): a relative version lies in ``root``, else in the default root of that
+    kind; an absolute one lies in ``root``, else in its nearest ancestor with
+    the marker of a raw or a data root. A root of the other kind is refused.
+    """
+    given = Path(version).expanduser()
+    base = None if root is None else Path(root).expanduser().absolute()
+    if given.is_absolute():
+        base = base or _store_of(given)
+        if base is None:
+            raise ObserwatorValidationError(
+                message("commands.version_in_no_root", version=given),
+                details={"option": "version", "value": str(given)},
+            )
+        try:
+            given = given.relative_to(base)
+        except ValueError:
+            raise ObserwatorValidationError(
+                message("commands.version_outside_root", version=given, root=base),
+                details={"option": "version", "value": str(given)},
+            ) from None
+    relative = given.as_posix()
+    kind = _TREE_KINDS.get(given.parts[0]) if given.parts else None
+    if kind is None:
+        _not_a_version(relative)
+    opened = _reader._open(
+        store_root(kind=kind).root if base is None else base, kind=kind
+    )
+    return opened, relative, _writer._validate_slot(opened, relative)
+
+
+def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, str]:
+    """
+    Slot, directory and main file of the version ``path`` names.
+
+    ``path`` is the version directory, its main file, its sidecar, an
+    attachment (the PMAXTP ``response.json``) or a station file of a series
+    version (``stations/<code>.parquet``) or of an analyses version
+    (``stations/<code>.json``, ``stations/<code>/<analysis>.json``); only the
+    layout of the store places it, the data file itself need not exist.
+    """
+    parts = PurePosixPath(relative).parts
+    station_file = parts[4:5] == ("stations",) and (
+        (parts[:2] == ("series", "versions") and len(parts) == 6)
+        or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
+    )
+    given: str | None = None
+    if path.is_dir():
+        directory = path
+    elif path.name.endswith(_reader._SIDECAR):
+        directory, given = path.parent, path.name.removesuffix(_reader._SIDECAR)
+    elif station_file:
+        directory = path.parents[len(parts) - 5]
+    else:
+        directory, given = path.parent, path.name
+    if not directory.is_dir() or not _reader._VERSION_DIR.match(directory.name):
+        if path.exists():
+            _not_a_version(relative)
+        raise _no_version(base, relative)
+    where = directory.relative_to(base).parts
+    series = _reader._series_datasets()
+    attachments: tuple[str, ...] = ()
+    if where[:2] == ("archives", "versions") and len(where) >= 5:
+        found = _reader._scanned_archive_slot(base / "archives" / "versions", directory)
+        if found is None:
+            _not_a_version(relative)
+        slot, name = found[0], PurePosixPath(found[1]).name
+    elif where[:2] == ("series", "versions") and len(where) == 4 and where[2] in series:
+        slot, name = f"series:{series[where[2]].key}", _reader.SERIES_FILE
+    elif where[:2] == ("stations", "versions") and (
+        len(where) == 3 or (len(where) == 4 and where[2] in _NESTED_CATALOGS)
+    ):
+        owner = "IMGW-PIB" if len(where) == 3 else _NESTED_CATALOGS[where[2]]
+        slot, name = f"catalog:{_CATALOG_DATASETS[owner]}", CATALOG_FILE
+    elif (
+        where[:2] == ("pmaxtp", "versions")
+        and len(where) == 5
+        and where[2] in ("POT", "AMP")
+        and _reader._CELL.match(where[3])
+    ):
+        slot = f"pmaxtp:{_reader._PMAXTP_KEY}:{where[2]}/{where[3]}"
+        name, attachments = CELL_FILE, (RESPONSE_FILE,)
+    elif (
+        where[:2] == ("analyses", "versions")
+        and len(where) == 4
+        and where[2] in _ANALYSES_PREFIXES
+    ):
+        slot, name = f"analyses:{where[2]}.analyses", _reader.ANALYSES_FILE
+    else:
+        _not_a_version(relative)
+    if given is not None and given not in (name, *attachments):
+        _not_a_version(relative)
+    return slot, directory, name
+
+
+def _version_meta(base: Path, relative: str, sidecar: Path) -> Meta:
+    """The sidecar of a version: missing is ``not_found``, invalid ``data_error``."""
+    try:
+        return _reader._load_meta(sidecar)
+    except _reader._Invalid as exc:
+        if exc.code == "missing_sidecar":
+            raise _no_version(base, relative) from exc
+        if isinstance(exc.__cause__, OSError):
+            raise io_error(exc.__cause__) from exc.__cause__
+        raise ObserwatorDataError(
+            message("reader.invalid_sidecar", sidecar=sidecar, exc=reason(exc)),
+            details={"version": relative},
+        ) from exc
+
+
+def _archive_call(
+    relative: str, meta: Meta, key: str, server_path: str
+) -> tuple[str, Options]:
+    """``store sync`` of an archive version or of a station source (ADR-015)."""
+    descriptor = get_dataset(key)
+    request = meta.request
+    if request.get("server_path", server_path) != server_path:
+        _mismatch(relative, "request.server_path", request["server_path"], server_path)
+    if descriptor.time_unit == "station_list":
+        # Station lists and metadata are downloaded by store sync (ADR-015).
+        return "store sync", {"datasets": [key]}
+    unselected = message(
+        "commands.version_command_unselected",
+        version=relative,
+        dataset=key,
+        server_path=server_path,
+    )
+    archive = _archive_from_path(key, server_path)
+    if archive is None:
+        _not_rebuildable(unselected, relative, server_path=server_path)
+    for field in ("year", "month", "station_code", "param"):
+        if field in request and request[field] != getattr(archive, field):
+            _mismatch(
+                relative, f"request.{field}", request[field], getattr(archive, field)
+            )
+    options: Options = {"datasets": [key]}
+    if descriptor.archive_scope == "country" or archive.station_code is None:
+        # Country archives, and the synop archives of IMGW-PIB found in the index
+        # of the folder of their year (their names carry no station code).
+        options["years"] = [archive.year]
+        if archive.month is not None:
+            options["months"] = [archive.month]
+    else:
+        options["stations"] = [archive.station_code]
+        if descriptor.archive_scope == "station_year":
+            options["years"] = [archive.year]
+    try:
+        _, _, candidates, archives = _sync._selection(
+            options["datasets"],
+            options.get("years"),
+            options.get("months"),
+            options.get("stations"),
+        )
+    except ObserwatorValidationError:
+        _not_rebuildable(unselected, relative, server_path=server_path)
+    if candidates and candidates.get(key) is None:
+        # The folder index of the year names the file; nothing to compare offline.
+        return "store sync", options
+    offered = (candidates.get(key) or ()) if candidates else archives
+    if server_path not in {item.server_path for item in offered}:
+        _not_rebuildable(unselected, relative, server_path=server_path)
+    return "store sync", options
+
+
+def _catalog_call(relative: str, meta: Meta, key: str) -> tuple[str, Options]:
+    """``store catalog`` of a catalog version built without a user's coordinates."""
+    provider = next(owner for owner, item in _CATALOG_DATASETS.items() if item == key)
+    if "user_locations" not in meta.request:
+        _missing_field(relative, "request.user_locations")
+    user = meta.request["user_locations"]
+    if isinstance(user, str) and user:
+        _not_rebuildable(
+            message(
+                "commands.version_command_user_locations",
+                version=relative,
+                name=user,
+                provider=provider,
+            ),
+            relative,
+            field="request.user_locations",
+        )
+    if user is not None:
+        _invalid_request(relative, "request.user_locations", user)
+    return "store catalog", {"provider": provider}
+
+
+def _pmaxtp_call(relative: str, meta: Meta, slot: str) -> tuple[str, Options]:
+    """``pmaxtp sync`` of the point and the cell a PMAXTP version was fetched for."""
+    method, cell = slot.rsplit(":", 1)[1].split("/")
+    ind_x, ind_y = (int(index) for index in cell.split("_"))
+    request = meta.request
+    for field, expected in (("method", method), ("ind_x", ind_x), ("ind_y", ind_y)):
+        if field in request and request[field] != expected:
+            _mismatch(relative, f"request.{field}", request[field], expected)
+    point: Options = {}
+    for field in ("latitude", "longitude"):
+        if field not in request:
+            _missing_field(relative, f"request.{field}")
+        value = request[field]
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            _invalid_request(relative, f"request.{field}", value)
+        point[field] = value
+    return "pmaxtp sync", {**point, "method": method, "ind_x": ind_x, "ind_y": ind_y}
+
+
+def command_for_version(
+    version: str | os.PathLike[str],
+    *,
+    root: str | os.PathLike[str] | None = None,
+    raw_root: str | os.PathLike[str] | None = None,
+) -> CommandCall:
+    """
+    Give the data command that fetches or builds a stored version again.
+
+    Offline and read-only: the version's sidecar (``obserwator-meta/1``) and the
+    layout of its root give the call of the command that selects this data
+    (ECO-054, ADR-008). The call has the shape `parse_command` returns, so
+    `format_command`, `check_command` and `run_command` take it: it is the
+    call `parse_command` reads from the canonical line of `format_command`,
+    with ``root`` the absolute root of the version (a store command always
+    names its root, ADR-007 D2), ``raw_root`` the absolute raw root of a
+    build of the data root, and no ``run`` flags.
+
+    ======================================  ========================================
+    Version                                 Command
+    ======================================  ========================================
+    IMGW-PIB archive                        ``store sync --datasets <key> --years
+                                            <year>`` (``--months <month>`` of a
+                                            monthly file)
+    ČHMÚ hydrological archive               ``store sync --datasets <key> --stations
+                                            <code> --years <year>``
+    ČHMÚ meteorological archive             ``store sync --datasets <key> --stations
+                                            <code>``
+    station source (list or metadata)       ``store sync --datasets <key>``
+    PMAXTP cell                             ``pmaxtp sync --latitude --longitude
+                                            --method --ind-x --ind-y``
+    station catalog                         ``store catalog --raw-root <raw>
+                                            --provider <provider>``
+    series version (or its station file)    ``series build --raw-root <raw>
+                                            --dataset <key>``
+    analyses version (or a station file)    ``analyses build``
+    ======================================  ========================================
+
+    The tree of the version gives the kind of its root (ADR-017 D6):
+    ``archives/`` and ``pmaxtp/`` lie in a raw root, ``series/``,
+    ``stations/`` and ``analyses/`` in a data root. The call is the narrowest
+    one that selects the version's file; it may select files beside it that
+    the same options cover (the ``H``, ``Q`` and ``T`` files of a half-year,
+    every element of a ČHMÚ meteorological station, the analyses of every
+    provider), each with its own plan item. A version whose metadata does not
+    give the call is refused, never guessed: a catalog built with a user's
+    coordinates file (only its name is recorded), a sidecar without a field
+    the call needs, or a file that ``store sync`` does not select.
+
+    Parameters
+    ----------
+    version : str or os.PathLike
+        A stored version: its directory, its main file (``StoreEntry.version``),
+        its sidecar, the PMAXTP ``response.json`` or a station file of a
+        series or an analyses version. A relative path lies in ``root``, else
+        in the default root of its kind (`config.store_root`); an absolute one
+        lies in ``root``, else in its nearest ancestor with the marker of a
+        raw or a data root. The main file need not exist: the sidecar gives
+        the call.
+    root : str, os.PathLike or None, optional
+        The root of the version, raw or data by its tree.
+    raw_root : str, os.PathLike or None, optional
+        The raw root that the call of a series or catalog version reads;
+        ``None`` takes the default raw root. Other calls do not take it.
+
+    Returns
+    -------
+    CommandCall
+        The command, its options as the texts of its canonical line and an
+        empty ``run``; ``check_command(call.command, options=call.options)``
+        plans the version's file again.
+
+    Raises
+    ------
+    ObserwatorError
+        Code ``unsupported`` with ``details.reason="command_not_rebuildable"``
+        (``details.version``, and ``field`` or ``server_path``) when the
+        metadata does not give the call; the text says how to pin the version
+        instead.
+    ObserwatorStoreError
+        Code ``not_found`` (``details.version``) when the root has no such
+        version or its sidecar is missing; ``store_unavailable`` when the root
+        is not a supported root of the version's kind (``details.reason`` is
+        ``wrong_root`` for a root of the other kind); ``validation_error``
+        when a path component is a symbolic link.
+    ObserwatorValidationError
+        If ``version`` lies outside the root or in no root, contains ``..``
+        or names something that is no version (``details.option="version"``).
+    ObserwatorDataError
+        If the sidecar is invalid or contradicts the layout (``details.version``,
+        ``details.field``); code ``io_error`` if it cannot be read.
+    """
+    base, relative, path = _version_root(version, root)
+    slot, directory, name = _locate_version(base, relative, path)
+    meta = _version_meta(base, relative, directory / f"{name}{_reader._SIDECAR}")
+    kind, key = slot.split(":")[:2]
+    # Analyses are no dataset of the registry: their sidecar names the slot's key.
+    if (meta.dataset if kind == "analyses" else meta.dataset_key) != key:
+        _mismatch(relative, "dataset", meta.dataset, key)
+    if kind == "archive":
+        server_path = slot.removeprefix(f"archive:{key}:")
+        server_dir = get_dataset(key).server_dir
+        command, options = _archive_call(
+            relative, meta, key, f"{server_dir}/{server_path}"
+        )
+    elif kind == "series":
+        if meta.request.get("dataset", key) != key:
+            _mismatch(relative, "request.dataset", meta.request["dataset"], key)
+        command, options = "series build", {"dataset": key}
+    elif kind == "catalog":
+        command, options = _catalog_call(relative, meta, key)
+    elif kind == "analyses":
+        # One build computes the analyses of every provider (ADR-016).
+        command, options = "analyses build", {}
+    else:
+        command, options = _pmaxtp_call(relative, meta, slot)
+    given: Options = {"root": base, **options}
+    if raw_root is not None and any(
+        option.name == "raw_root" for option in _BY_NAME[command].options
+    ):
+        given["raw_root"] = Path(raw_root).expanduser().absolute()
+    try:
+        line = format_command(command, options=given)
+    except ObserwatorValidationError as exc:
+        field = str(exc.details.get("option"))
+        _invalid_request(relative, f"request.{field}", options.get(field))
+    return parse_command(line)
+
+
+# --- dyspozytor ------------------------------------------------------------------------------
+
+
+class _Notices:
+    """Notice hook collecting distinct notices and forwarding every notice."""
+
+    def __init__(self, hook: NoticeHook | None) -> None:
+        self._hook = hook
+        self._seen: dict[Notice, None] = {}
+
+    def __call__(self, notice: Notice) -> None:
+        self._seen.setdefault(notice)
+        if self._hook is not None:
+            self._hook(notice)
+
+    def collected(self) -> tuple[Notice, ...]:
+        return tuple(self._seen)
+
+
+def _function(name: str) -> Callable[..., Any]:
+    return cast(
+        Callable[..., Any], getattr(importlib.import_module(_MODULES[name]), name)
+    )
+
+
+def _call(name: str, options: Mapping[str, object], hooks: Mapping[str, object]) -> Any:
+    """Call public function ``name``, binding options and hooks by parameter name."""
+    function = _function(name)
+    parameters = inspect.signature(function).parameters
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+    for key, value in options.items():
+        parameter = parameters.get(key)
+        if parameter is None:
+            raise TypeError(f"The function {name} has no parameter {key}")
+        if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
+            args.append(value)
+        else:
+            kwargs[key] = value
+    kwargs.update((key, hook) for key, hook in hooks.items() if key in parameters)
+    return function(*args, **kwargs)
+
+
+def _outcome(cancelled: bool, failures: int, successes: int) -> Status:
+    if cancelled:
+        return "cancelled"
+    if not failures:
+        return "ok"
+    return "partial" if successes else "failed"
+
+
+def _status(result: object) -> Status:
+    """Envelope status of a function result (spec §13.6)."""
+    if isinstance(result, StorePlan):
+        states: list[str] = [item.status for item in result.items]
+        states += [action.status for action in result.actions]
+        failures = states.count("check_failed")
+        return _outcome(result.cancelled, failures, len(states) - failures)
+    if isinstance(result, SyncReport):
+        items = [item.status for item in result.items]
+        return _outcome(
+            result.cancelled,
+            sum(s in ("failed", "stale_plan") for s in items),
+            sum(s in _DONE for s in items),
+        )
+    if isinstance(result, DownloadReport):
+        # A ČHMÚ candidate the source does not publish is a successful item.
+        statuses = [item.status for item in result.items]
+        return _outcome(
+            result.cancelled,
+            statuses.count("failed"),
+            statuses.count("downloaded") + statuses.count("not_published"),
+        )
+    if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
+        return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
+    if isinstance(result, _analyses.AnalysesReport):
+        providers_ = [item.status for item in result.providers]
+        return _outcome(
+            result.status == "cancelled",
+            providers_.count("failed") + int(result.status == "failed"),
+            sum(status in _DONE for status in providers_),
+        )
+    return "ok"
+
+
+def _page(options: Options) -> tuple[int | None, int]:
+    """Page size and index of the first item from ``limit`` and ``cursor``."""
+    limit = cast(int | None, options.pop("limit", None))
+    cursor = cast(str | None, options.pop("cursor", None))
+    return limit, 0 if cursor is None else cursor_index(cursor)
+
+
+# --- atrybucja (ADR-012) ---------------------------------------------------------------------
+
+
+def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
+    """Lines of the data of the given datasets (keys, slugs or legacy aliases)."""
+    return attribution(
+        *dict.fromkeys(dataset_origin(get_dataset(key).key) for key in keys),
+        processed=processed,
+    )
+
+
+def _series_lines(options: Options, result: object) -> Attribution:
+    """Processed lines of the series a series command reads or builds."""
+    if options.get("dataset") is not None:
+        return _of_datasets([str(options["dataset"])])
+    series = _reader._series_path(
+        cast(PathArg, options["version"]), root=options.get("root"), dataset=None
+    )
+    meta = _reader.read_meta(series)
+    return _of_datasets([meta.dataset_key or meta.dataset])
+
+
+def _archive_lines(options: Options, result: object) -> Attribution:
+    """Processed lines of the records ``store export`` reads from one archive."""
+    source = Path(cast(PathArg, options["version"])).expanduser()
+    if options.get("root") is not None:
+        source = _reader._open(options["root"]) / source
+    meta = _reader.read_meta(_reader._archive_main(source))
+    return _of_datasets([meta.dataset_key or meta.dataset])
+
+
+def _download_lines(options: Options, result: object) -> Attribution:
+    """Lines of the verbatim files of ``datasets download``."""
+    return _of_datasets([str(options["dataset"])], processed=False)
+
+
+def _sync_lines(options: Options, result: object) -> Attribution:
+    """
+    Lines of the archives of a sync: verbatim files, processed station metadata.
+
+    A sync writes raw data only (ADR-015): the provider's files verbatim, except
+    the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
+    which are processed data.
+    """
+    report = cast(SyncReport, result)
+    keys = [
+        slot.split(":")[1]
+        for item in report.items
+        if (slot := item.slot) is not None and slot.startswith("archive:")
+    ]
+    kept = [key for key in keys if get_dataset(key).kept_fields]
+    verbatim = [key for key in keys if key not in kept]
+    return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
+
+
+def _catalog_lines(options: Options, result: object) -> Attribution:
+    """
+    The lines of the built (or the equal current) catalog, derived from what it holds.
+
+    The provider's lines, those of the packaged border its locations were checked
+    against (ADR-018), and hydro.imgw.pl's when a station was located from there
+    (``location_source`` "static") or has the station details of its pages
+    (``details_source``, ADR-021); the strings the document was written with are
+    not trusted, since a catalog written before ECO-065 holds retired lines.
+    """
+    report = cast(CatalogReport, result)
+    if report.version is None:
+        return Attribution()
+    document = json.loads(report.version.read_bytes())
+    lines = attribution(
+        provider_origin(report.provider), border_origin(report.provider)
+    )
+    if any(
+        properties.get("location_source") == "static"
+        or properties.get("details_source") is not None
+        for properties in (
+            feature.get("properties") or {} for feature in document.get("features", ())
+        )
+    ):
+        lines |= attribution("imgw_hydro")
+    return lines
+
+
+def _stations_lines(options: Options, result: object) -> Attribution:
+    """
+    Lines of the providers of the stations found.
+
+    A store search reads the current catalogs, whose locations were checked
+    against the packaged borders (ADR-018): their lines join those of the
+    providers. The ``static`` locations of IMGW-PIB stations in the catalog come
+    from hydro.imgw.pl; those add its lines.
+    """
+    entries = cast(Sequence[StationListEntry], result)
+    owners = dict.fromkeys(entry.provider for entry in entries)
+    lines = attribution(*(provider_origin(owner) for owner in owners))
+    if options.get("source") != "store":
+        return lines
+    lines |= attribution(*(border_origin(owner) for owner in owners))
+    located = {
+        entry.station_code
+        for entry in entries
+        if entry.provider == "IMGW-PIB" and entry.latitude is not None
+    }
+    if not located:
+        return lines
+    try:
+        features = _store.read_catalog(root=options["root"], provider="IMGW-PIB")
+    except ObserwatorStoreError:
+        return lines
+    if any(
+        feature.station_code in located
+        and feature.properties.get("location_source") == "static"
+        for feature in features
+    ):
+        lines |= attribution("imgw_hydro")
+    return lines
+
+
+def _stations_export_lines(options: Options, result: object) -> Attribution:
+    """The lines of the catalogs ``stations export`` reads (their series add none)."""
+    return _export._stations_attribution(
+        cast("PathArg | None", options.get("root")),
+        cast("str | None", options.get("provider")),
+        cast("str | None", options.get("kind")),
+    )
+
+
+def _origin_lines(*origins: Any) -> Callable[[Options, object], Attribution]:
+    """Resolver of a command whose data have fixed origins (processed)."""
+    lines = attribution(*origins)
+    return lambda options, result: lines
+
+
+def _analyses_build_lines(options: Options, result: object) -> Attribution:
+    """
+    The lines of the analyses versions a build wrote or kept.
+
+    Derived from each provider's data; of the stored lines only Hydrolog's own stay
+    (`carried`), as a version kept from before ECO-065 holds retired lines.
+    """
+    lines = Attribution()
+    for item in cast(_analyses.AnalysesReport, result).providers:
+        if item.version is not None and item.status in _DONE:
+            document = json.loads(item.version.read_bytes())
+            stored = Attribution(
+                tuple(document.get("attribution", ())),
+                tuple(document.get("terms_notice", ())),
+            )
+            lines |= carried(stored, provider_origin(item.provider))
+    return lines
+
+
+def _analyses_lines(options: Options, result: object) -> Attribution:
+    """The lines of the stored analyses a command returns or exports."""
+    if isinstance(result, _analyses.AnalysisResult):
+        return Attribution(result.attribution, result.terms_notice)
+    if isinstance(result, tuple):
+        lines = Attribution()
+        for summary in cast(tuple[_analyses.AnalysisSummary, ...], result):
+            lines |= Attribution(summary.attribution, summary.terms_notice)
+        return lines
+    return _analyses.export_lines(
+        options.get("version"), options.get("root"), str(options["station"])
+    )
+
+
+# The lines of the data a command returns, reads or writes (ADR-012); commands
+# without provider data (the registry, URLs, plans, the store state) have none.
+_ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
+    "datasets download": _download_lines,
+    "stations find": _stations_lines,
+    "stations export": _stations_export_lines,
+    "current hydro": _origin_lines("imgw"),
+    "current meteo": _origin_lines("imgw"),
+    "current synop": _origin_lines("imgw"),
+    "current warnings": _origin_lines("imgw"),
+    "current hydro-states": _origin_lines("imgw_hydro"),
+    "pmaxtp fetch": _origin_lines("pmaxtp"),
+    "pmaxtp sync": _origin_lines("pmaxtp"),
+    "pmaxtp read": _origin_lines("pmaxtp"),
+    "store sync": _sync_lines,
+    "store catalog": _catalog_lines,
+    "store export": _archive_lines,
+    "series build": _series_lines,
+    "series select": _series_lines,
+    "series read": _series_lines,
+    "series summary": _series_lines,
+    "series export": _series_lines,
+    "analyses build": _analyses_build_lines,
+    "analyses list": _analyses_lines,
+    "analyses read": _analyses_lines,
+    "analyses export": _analyses_lines,
+}
+
+
+def run_command(
+    command: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    on_progress: ProgressHook | None = None,
+    on_notice: NoticeHook | None = None,
+    cancel: Cancel | None = None,
+) -> CommandResult[object]:
+    """
+    Run a catalog command through exactly one public function.
+
+    Options are validated with `validate_command` and bound to the function
+    parameters of the same names; the hooks are passed to functions that
+    accept them. List commands are paged here: the ``result`` is the tuple of
+    the items ``[start, start + limit)`` returned by the function (to the end
+    without ``limit``), where ``cursor`` names ``start`` (0 without it), and
+    ``page`` gives their ``total``, whether more follow (``truncated``) and
+    the ``next_cursor`` that fetches them. A function result that is no
+    document gets one (``pmaxtp url``: `PMaXTPUrl`). Stream commands
+    (``store export``, ``stations export``, ``series export``, ``commands
+    guide`` without ``output``) return the iterator of text lines as
+    ``result``; with ``output`` they write the one file and return its
+    `OutputReport` (``series export --format parquet`` needs ``output``); an
+    error while iterating is raised from the iterator.
+
+    Parameters
+    ----------
+    command : str
+        Catalog command name.
+    options : Mapping[str, object]
+        Option values keyed by option name.
+    on_progress : ProgressHook or None, optional
+        Progress callback forwarded to the public function.
+    on_notice : NoticeHook or None, optional
+        Notice callback; it receives every notice, while the envelope keeps
+        each distinct notice once.
+    cancel : Cancel or None, optional
+        Cancellation callback forwarded to the public function.
+
+    Returns
+    -------
+    CommandResult
+        Envelope with ``check=False``, the status computed from the result
+        (``partial``/``failed`` for failed items of a report, ``cancelled``
+        for a cancelled report or an `ObserwatorCancelledError` with
+        ``result=None``), the result (the page's items for list commands) and the
+        distinct notices in order of first occurrence; a list command's ``page``;
+        the ``attribution`` lines and the ``terms_notice`` of the provider data
+        the command returns, reads or writes (ADR-012, empty for a command
+        without provider data).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the command or its options are invalid (see `validate_command`).
+    ObserwatorError
+        Other errors of the dispatched public function are propagated.
+    """
+    normalized = validate_command(command, options=options)
+    spec = _BY_NAME[command]
+    limit, start = _page(normalized)
+    notices = _Notices(on_notice)
+    hooks = {"on_progress": on_progress, "on_notice": notices, "cancel": cancel}
+    page = None
+    try:
+        result = _call(spec.function, normalized, hooks)
+        if spec.function in _DOCUMENTS:
+            result = _DOCUMENTS[spec.function](result)
+        if spec.result == "list":
+            items = tuple(result)
+            end = len(items) if limit is None else min(start + limit, len(items))
+            truncated = end < len(items)
+            page = Page(len(items), page_cursor(end) if truncated else None, truncated)
+            result = items[start:end]
+    except ObserwatorCancelledError:
+        return CommandResult(spec.name, False, "cancelled", None, notices.collected())
+    lines = Attribution()
+    if result is not None and spec.name in _ATTRIBUTIONS:
+        lines = _ATTRIBUTIONS[spec.name](normalized, result)
+    return CommandResult(
+        spec.name,
+        False,
+        _status(result),
+        result,
+        notices.collected(),
+        page,
+        lines.attribution,
+        lines.terms_notice,
+    )
+
+
+# --- sprawdzenia bez zapisu ------------------------------------------------------------------
+
+
+def _plan(root: Path, actions: Iterable[PlanAction]) -> StorePlan:
+    return StorePlan(
+        "obserwator-plan/1", root, datetime.now(UTC), (), {}, tuple(actions)
+    )
+
+
+def _reading(command: str, detail: str, root: Path | None = None) -> StorePlan:
+    return _plan(root or Path.cwd(), [PlanAction(command, "current", detail)])
+
+
+def _live(command: str, urls: Iterable[str]) -> StorePlan:
+    return _plan(
+        Path.cwd(),
+        [
+            PlanAction(
+                command,
+                "unverifiable",
+                message("commands.live_read", url=url),
+            )
+            for url in urls
+        ],
+    )
+
+
+def _twin(name: str, *, without: tuple[str, ...] = ()) -> Checker:
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        kept = {key: value for key, value in options.items() if key not in without}
+        return cast(StorePlan, _call(name, kept, hooks))
+
+    return check
+
+
+def _archives(options: Options) -> tuple[ArchiveFile, ...]:
+    return archive_files(
+        options["dataset"],
+        years=options.get("years"),
+        months=options.get("months"),
+        params=options.get("params"),
+        stations=options.get("stations"),
+    )
+
+
+def _check_datasets_list(options: Options, hooks: Hooks) -> StorePlan:
+    found = datasets(kind=options.get("kind"), provider=options.get("provider"))
+    return _reading(
+        "datasets list", message("commands.datasets_registry", count=len(found))
+    )
+
+
+def _check_datasets_providers(options: Options, hooks: Hooks) -> StorePlan:
+    return _reading(
+        "datasets providers",
+        message("commands.providers_registry", count=len(providers())),
+    )
+
+
+def _check_datasets_files(options: Options, hooks: Hooks) -> StorePlan:
+    files = _archives(options)
+    return _reading(
+        "datasets files",
+        message("commands.archive_files", dataset=options["dataset"], count=len(files)),
+    )
+
+
+def _verbatim_lines(files: Sequence[ArchiveFile]) -> Attribution | None:
+    """Lines of the verbatim files of a plain write (none without files)."""
+    if not files:
+        return None
+    return _of_datasets([file.dataset for file in files], processed=False)
+
+
+def _download_selection(
+    options: Options, *, index: bool = True
+) -> tuple[ArchiveFile, ...]:
+    return _fetch._download_files(
+        options["dataset"],
+        years=options.get("years"),
+        months=options.get("months"),
+        params=options.get("params"),
+        stations=options.get("stations"),
+        index=index,
+    )
+
+
+def _check_download(options: Options, hooks: Hooks) -> StorePlan:
+    files = _download_selection(options)
+    if "output_dir" in options:
+        directory = cast(Path, options["output_dir"])
+        targets = [(file.server_path, file.url) for file in files]
+        return _plan(
+            directory,
+            plain_actions(
+                "datasets download",
+                directory,
+                targets,
+                force=bool(options.get("force")),
+                lines=_verbatim_lines(files),
+            ),
+        )
+    root = cast(Path, options["root"])
+    refused = _writer.root_conflict_plan("datasets download", root, kind="raw")
+    if refused is not None:
+        return refused
+    # A root with the layout and no marker (store_unavailable) is no conflict: it raises.
+    stored = (
+        _writer.lenient_store(root, kind="raw").root.is_dir()
+        and (root / STORE_MARKER).is_file()
+    )
+    actions = []
+    try:
+        for file in files:
+            current = (
+                _store.current_version(root, slot=_fetch._archive_slot(file))
+                if stored
+                else None
+            )
+            actions.append(
+                PlanAction(
+                    "datasets download",
+                    "missing" if current is None else "unverifiable",
+                    message(
+                        "commands.download_to_store"
+                        if current is None
+                        else "commands.download_again",
+                        url=file.url,
+                        root=root,
+                    ),
+                )
+            )
+    except ObserwatorError as exc:
+        actions = [PlanAction("datasets download", "check_failed", reason(exc))]
+    return _plan(root, actions)
+
+
+def _check_stations(options: Options, hooks: Hooks) -> StorePlan:
+    kinds, _ = _stations._search_kinds(
+        options.get("kind"),
+        options.get("query"),
+        options.get("source", "live"),
+        options.get("root"),
+    )
+    root = options.get("root")
+    if not isinstance(root, Path):
+        owners = _stations._owners(options.get("provider"))
+        return _live("stations find", _stations._live_urls(kinds, owners))
+    # A search of the store reads the current catalogs of the data root.
+    try:
+        _reader._open(root, kind="data")
+    except ObserwatorError as exc:
+        action = PlanAction("stations find", "check_failed", reason(exc))
+    else:
+        action = PlanAction(
+            "stations find",
+            "current",
+            message("commands.read_station_catalogs", root=root),
+        )
+    return _plan(root, [action])
+
+
+def _check_current(endpoint: str) -> Checker:
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        url = build_api_url(endpoint, station=options.get("station"))
+        return _live(f"current {endpoint}", [url])
+
+    return check
+
+
+def _check_warnings(options: Options, hooks: Hooks) -> StorePlan:
+    sources = _fetch._warning_sources(options.get("kind"))
+    return _live("current warnings", (url for _, url in sources))
+
+
+def _check_hydro_states(options: Options, hooks: Hooks) -> StorePlan:
+    url = _stations._map_url(bool(options.get("main_only", False)))
+    return _live("current hydro-states", [url])
+
+
+def _pmaxtp_url(options: Options) -> str:
+    return build_pmaxtp_url(
+        options["latitude"], options["longitude"], method=options.get("method", "POT")
+    )
+
+
+def _check_pmaxtp_fetch(options: Options, hooks: Hooks) -> StorePlan:
+    return _live("pmaxtp fetch", [_pmaxtp_url(options)])
+
+
+def _check_pmaxtp_url(options: Options, hooks: Hooks) -> StorePlan:
+    return _reading(
+        "pmaxtp url", message("commands.pmaxtp_url", pmaxtp_url=_pmaxtp_url(options))
+    )
+
+
+def _check_pmaxtp_read(options: Options, hooks: Hooks) -> StorePlan:
+    root = cast(Path, options["root"])
+    cell = f"{options.get('method', 'POT')}/{options['ind_x']}_{options['ind_y']}"
+    try:
+        if "version" in options:
+            version = cast(Path, options["version"])
+            found = version if version.exists() else None
+        else:
+            entry = _store.current_version(root, slot=f"pmaxtp:pl.imgw.pmaxtp:{cell}")
+            found = None if entry is None else entry.version
+    except ObserwatorError as exc:
+        action = PlanAction("pmaxtp read", "check_failed", reason(exc))
+    else:
+        action = (
+            PlanAction(
+                "pmaxtp read",
+                "current",
+                message("commands.read_cell", cell=cell, found=found),
+            )
+            if found is not None
+            else PlanAction(
+                "pmaxtp read", "missing", message("commands.no_stored_cell", cell=cell)
+            )
+        )
+    return _plan(root, [action])
+
+
+def _check_store_init(options: Options, hooks: Hooks) -> StorePlan:
+    root = cast(Path, options["root"])
+    kind = _root_kind(_BY_NAME["store init"], options)
+    marker = _MARKERS[kind]
+    refused = _writer.root_conflict_plan("store init", root, kind=kind)
+    if refused is not None:
+        return refused
+    info = _store.store_info(root)
+    if info.supported:
+        # A root of the other kind is refused by init (``wrong_root``).
+        try:
+            _writer.lenient_store(root, kind=kind)
+        except ObserwatorError as exc:
+            action = PlanAction("store init", "check_failed", reason(exc))
+        else:
+            action = PlanAction(
+                "store init",
+                "current",
+                message("commands.store_exists", marker=marker, root=root),
+            )
+    elif not root.exists() or (root.is_dir() and not _writer._foreign_content(root)):
+        action = PlanAction(
+            "store init",
+            "missing",
+            message("commands.marker_will_be_created", store_marker=marker, root=root),
+        )
+    elif root.is_dir() and _writer._has_layout(root, kind=kind):
+        # The trees of a root without its marker (a split store): init verifies
+        # them first (DEV-19.13, ADR-017 D8).
+        try:
+            _writer._verify_layout(root, kind=kind)
+        except ObserwatorError as exc:
+            action = PlanAction("store init", "check_failed", reason(exc))
+        else:
+            action = PlanAction(
+                "store init",
+                "missing",
+                message(
+                    "commands.marker_will_be_created", store_marker=marker, root=root
+                ),
+            )
+    else:
+        action = PlanAction(
+            "store init",
+            "check_failed",
+            "; ".join(info.problems),
+        )
+    return _plan(root, [action])
+
+
+def _check_reading(command: str, key: str) -> Checker:
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        root = cast(Path, options[key])
+        return _reading(
+            command, message("commands.read_only_operation", root=root), root
+        )
+
+    return check
+
+
+def _check_store_sync(options: Options, hooks: Hooks) -> StorePlan:
+    if "output_dir" in options:
+        directory = cast(Path, options["output_dir"])
+        archives = _sync._plain_archives(
+            options["datasets"],
+            options.get("years"),
+            options.get("months"),
+            options.get("stations"),
+        )
+        return _plan(
+            directory,
+            plain_actions(
+                "store sync",
+                directory,
+                [(archive.server_path, archive.url) for archive in archives],
+                force=bool(options.get("force")),
+                lines=_verbatim_lines(archives),
+            ),
+        )
+    root = cast(Path, options["root"])
+    if "plan" not in options:
+        selection = ("root", "datasets", "years", "months", "stations")
+        return cast(
+            StorePlan,
+            _call(
+                "check_store",
+                {k: v for k, v in options.items() if k in selection},
+                hooks,
+            ),
+        )
+    plan = StorePlan.from_json(options["plan"])
+    if Path(plan.root).absolute() != root:
+        _fail(
+            message("commands.plan_concerns_another_store", root=plan.root),
+            option="plan",
+            value=options["plan"],
+        )
+    return plan
+
+
+def _export_actions(command: str, what: str, options: Options) -> list[PlanAction]:
+    """Plan of an export: the standard output, or the one plain file (DEV-19.10)."""
+    output = options.get("output")
+    if not isinstance(output, Path):
+        return [
+            PlanAction(
+                command, "current", message("commands.export_to_stdout", what=what)
+            )
+        ]
+    return plain_actions(
+        command,
+        output.parent,
+        [(output.name, what)],
+        force=bool(options.get("force")),
+        single=True,
+    )
+
+
+def _check_store_export(options: Options, hooks: Hooks) -> StorePlan:
+    version = cast(Path, options["version"])
+    try:
+        _store.read_archive(version)
+    except ObserwatorError as exc:
+        actions = [PlanAction("store export", "check_failed", reason(exc))]
+    else:
+        what = message(
+            "commands.export_records",
+            version=version,
+            format=options.get("format", "csv"),
+        )
+        actions = _export_actions("store export", what, options)
+    return _plan(options.get("root") or _store_root(version), actions)
+
+
+def _check_select(options: Options, hooks: Hooks) -> StorePlan:
+    try:
+        selection = _call("select_series", options, {})
+    except ObserwatorError as exc:
+        status: Literal["missing", "check_failed"] = (
+            "missing" if exc.code == "not_found" else "check_failed"
+        )
+        action = PlanAction("series select", status, reason(exc))
+    else:
+        action = PlanAction(
+            "series select",
+            "current",
+            message(
+                "commands.series_selection",
+                version=selection.version,
+                stations=", ".join(selection.stations),
+                variables=", ".join(selection.variables),
+                years=", ".join(map(str, selection.years)),
+                year_type=selection.year_type,
+            ),
+        )
+    return _plan(options["root"], [action])
+
+
+def _check_series(command: str) -> Checker:
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        root = options.get("root")
+        try:
+            path = _reader._series_path(
+                options.get("version"), root=root, dataset=options.get("dataset")
+            )
+            index = _store.read_series_index(path)
+            descriptor = get_dataset(index.dataset)
+            codes = (options["station"],) if "station" in options else ()
+            _reader._outside(options.get("stations", codes), index)
+            _reader._variables(options.get("variables"), descriptor)
+            _half_year(descriptor, options.get("year_type"))
+        except ObserwatorError as exc:
+            missing = exc.code == "not_found" and command != "series export"
+            actions = [
+                PlanAction(
+                    command, "missing" if missing else "check_failed", reason(exc)
+                )
+            ]
+        else:
+            actions = (
+                _export_actions(
+                    command,
+                    message(
+                        "commands.export_station_series",
+                        station=options["station"],
+                        path=path,
+                    ),
+                    options,
+                )
+                if command == "series export"
+                else [
+                    PlanAction(
+                        command, "current", message("commands.read_series", path=path)
+                    )
+                ]
+            )
+        base = root if isinstance(root, Path) else _store_root(options["version"])
+        return _plan(base, actions)
+
+    return check
+
+
+def _check_stations_export(options: Options, hooks: Hooks) -> StorePlan:
+    root = cast(Path, options["root"])
+    try:
+        catalogs = _export._catalogs(
+            _export._data_root(root), options.get("provider"), options.get("kind")
+        )
+    except ObserwatorError as exc:
+        actions = [PlanAction("stations export", "check_failed", reason(exc))]
+    else:
+        what = message(
+            "commands.export_stations",
+            catalogs=", ".join(catalog.version for catalog in catalogs),
+            format=options.get("format", "geojson"),
+        )
+        actions = _export_actions("stations export", what, options)
+    return _plan(root, actions)
+
+
+def _check_analyses(command: str) -> Checker:
+    """Plan of reading or exporting stored analyses: the station's record is read."""
+
+    def check(options: Options, hooks: Hooks) -> StorePlan:
+        root, version = options.get("root"), options.get("version")
+        station = str(options["station"])
+        try:
+            summaries = _analyses.list_analyses(version, root=root, station=station)
+            if "analysis" in options and not any(
+                item.analysis == options["analysis"] for item in summaries
+            ):
+                _analyses.read_analysis(
+                    version, root=root, station=station, analysis=options["analysis"]
+                )
+        except ObserwatorError as exc:
+            missing = exc.code == "not_found" and command != "analyses export"
+            actions = [
+                PlanAction(
+                    command, "missing" if missing else "check_failed", reason(exc)
+                )
+            ]
+        else:
+            path = summaries[0].analyses_version if summaries else None
+            actions = (
+                _export_actions(
+                    command,
+                    message(
+                        "commands.export_station_analyses",
+                        station=station,
+                        format=options.get("format", "json"),
+                    ),
+                    options,
+                )
+                if command == "analyses export"
+                else [
+                    PlanAction(
+                        command,
+                        "current",
+                        message(
+                            "commands.read_station_analyses",
+                            station=station,
+                            path=path,
+                        ),
+                    )
+                ]
+            )
+        base = root if isinstance(root, Path) else _store_root(cast(Path, version))
+        return _plan(base, actions)
+
+    return check
+
+
+def _check_commands_guide(options: Options, hooks: Hooks) -> StorePlan:
+    # The guide is rendered offline from the package; the plan names its target.
+    format_, language = options.get("format", "agents"), options.get("lang", "en")
+    output = options.get("output")
+    if isinstance(output, Path):
+        what = message("commands.guide_what", format=format_, language=language)
+        actions = plain_actions(
+            "commands guide",
+            output.parent,
+            [(output.name, what)],
+            force=bool(options.get("force")),
+            single=True,
+        )
+        return _plan(Path.cwd(), actions)
+    detail = message(
+        "commands.guide_plan",
+        format=format_,
+        language=language,
+        target=message("commands.standard_output"),
+    )
+    return _reading("commands guide", detail)
+
+
+_CHECKS: dict[str, Checker] = {
+    "datasets list": _check_datasets_list,
+    "datasets files": _check_datasets_files,
+    "datasets download": _check_download,
+    "datasets providers": _check_datasets_providers,
+    "stations find": _check_stations,
+    "stations export": _check_stations_export,
+    "current hydro": _check_current("hydro"),
+    "current meteo": _check_current("meteo"),
+    "current synop": _check_current("synop"),
+    "current warnings": _check_warnings,
+    "current hydro-states": _check_hydro_states,
+    "pmaxtp fetch": _check_pmaxtp_fetch,
+    "pmaxtp url": _check_pmaxtp_url,
+    "pmaxtp check": _twin("check_pmaxtp"),
+    "pmaxtp sync": _twin("check_pmaxtp"),
+    "pmaxtp read": _check_pmaxtp_read,
+    "store init": _check_store_init,
+    "store info": _check_reading("store info", "root"),
+    "store scan": _check_reading("store scan", "root"),
+    "store check": _twin("check_store", without=("plan",)),
+    "store sync": _check_store_sync,
+    "store catalog": _twin("check_catalog"),
+    "store export": _check_store_export,
+    "series build": _twin("check_series"),
+    "series select": _check_select,
+    "series read": _check_series("series read"),
+    "series summary": _check_series("series summary"),
+    "series export": _check_series("series export"),
+    "analyses build": _twin("check_analyses"),
+    "analyses list": _check_analyses("analyses list"),
+    "analyses read": _check_analyses("analyses read"),
+    "analyses export": _check_analyses("analyses export"),
+    "commands list": lambda options, hooks: _reading(
+        "commands list", message("commands.command_list_description")
+    ),
+    "commands schema": lambda options, hooks: _reading(
+        "commands schema", message("commands.commands_catalog_description")
+    ),
+    "commands guide": _check_commands_guide,
+}
+
+
+def check_command(
+    command: str,
+    /,
+    *,
+    options: Mapping[str, object],
+    on_progress: ProgressHook | None = None,
+    on_notice: NoticeHook | None = None,
+    cancel: Cancel | None = None,
+) -> CommandResult[StorePlan]:
+    """
+    Plan a command without writing anything or downloading content.
+
+    Commands with a check twin use it (``store sync`` → `check_store`,
+    ``store catalog`` → `check_catalog`, ``series build`` → `check_series`,
+    ``pmaxtp sync`` → `check_pmaxtp`); commands that are checks themselves run
+    without writing their plan file. Every other command gets a general plan of
+    `PlanAction` items: validation, URLs and expected paths, without any
+    request (read-only commands are reported ``current``, live reads
+    ``unverifiable``).
+
+    Parameters
+    ----------
+    command : str
+        Catalog command name.
+    options : Mapping[str, object]
+        Option values, identical to those accepted by `run_command`
+        (``limit`` and ``cursor`` are ignored).
+    on_progress : ProgressHook or None, optional
+        Progress callback forwarded to the check twin.
+    on_notice : NoticeHook or None, optional
+        Notice callback; every notice is forwarded, the envelope keeps each
+        distinct notice once.
+    cancel : Cancel or None, optional
+        Cancellation callback forwarded to the check twin.
+
+    Returns
+    -------
+    CommandResult
+        Envelope with ``check=True`` and the ``obserwator-plan/1`` plan as
+        ``result``; ``status`` is ``failed`` or ``partial`` when plan items
+        or actions are ``check_failed`` and ``cancelled`` for a cancelled
+        plan.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the command or its options are invalid (see `validate_command`).
+    ObserwatorError
+        Other errors of the check twin are propagated.
+    """
+    normalized = validate_command(command, options=options)
+    spec = _BY_NAME[command]
+    _page(normalized)
+    notices = _Notices(on_notice)
+    hooks = {"on_progress": on_progress, "on_notice": notices, "cancel": cancel}
+    try:
+        plan = _CHECKS[spec.name](normalized, hooks)
+    except ObserwatorCancelledError:
+        return CommandResult(spec.name, True, "cancelled", None, notices.collected())
+    return CommandResult(spec.name, True, _status(plan), plan, notices.collected())
+
+
+# --- schemat JSON ----------------------------------------------------------------------------
+
+
+def _value_schema(
+    type_: str, option: CommandOption, *, item: bool = False
+) -> dict[str, object]:
+    if type_ in ("str", "int", "float"):
+        schema: dict[str, object] = {
+            "type": {"str": "string", "int": "integer", "float": "number"}[type_]
+        }
+        if type_ == "str":
+            schema["minLength"] = 1
+        for key in ("minimum", "maximum", "pattern"):
+            if (value := getattr(option, key)) is not None:
+                schema[key] = value
+        return schema
+    if type_ == "year":
+        return {
+            "anyOf": [
+                _value_schema("int", option, item=True),
+                {"type": "string", "pattern": _RANGE},
+            ]
+        }
+    if type_ == "choice":
+        return {"enum": list(option.choices)}
+    if type_ == "list" and not item:
+        items = _value_schema(option.items or "str", option, item=True)
+        return {"type": "array", "items": items, "minItems": 1}
+    simple: dict[str, dict[str, object]] = {
+        "bool": {"type": "boolean"},
+        "date": {"type": "string", "format": "date"},
+        "path": {"type": "string", "x-obserwator-type": "path"},
+    }
+    return simple[type_]
+
+
+def _operation_id(command: str) -> str:
+    """``obserwator_<group>_<verb>``: the one naming rule of REST, MCP tools and guide."""
+    return f"{_TOOL}_{command.replace(' ', '_').replace('-', '_')}"
+
+
+def _property(option: CommandOption, lang: Lang) -> dict[str, object]:
+    schema = _value_schema(option.type, option)
+    if option.default is not None:
+        schema["default"] = option.default
+    if option.writes != "none":
+        schema["x-obserwator-writes"] = option.writes
+    if option.path_role is not None:
+        schema["x-obserwator-path-role"] = option.path_role
+    if option.store_only:
+        schema["x-obserwator-store-only"] = True
+    schema["description"] = localize(option.help, lang)
+    return schema
+
+
+def _flags(option: CommandOption) -> list[str]:
+    negative = [f"--no-{option.flag[2:]}"] if option.default is True else []
+    return [option.flag, *option.aliases, *negative]
+
+
+def _input_schema(spec: DataCommand, lang: Lang) -> dict[str, object]:
+    """
+    JSON Schema 2020-12 of the options of ``spec``, for the adapters.
+
+    The MCP input schemas, the REST parameters and the agent guide are built from
+    it. Option types map as ``str`` → ``string`` (``minLength`` 1), ``int`` →
+    ``integer``, ``float`` → ``number``, ``bool`` → ``boolean``, ``date`` →
+    ``string`` with ``format: date``, ``path`` → ``string`` with
+    ``x-obserwator-type: path``, ``choice`` → ``enum``, ``list`` → ``array`` of
+    items (years: ``anyOf`` a number and the ``a-b`` range pattern); ``requires``
+    → ``dependentRequired``, ``one_of`` → ``oneOf`` of ``required`` groups.
+    ``x-obserwator`` carries the catalog data of the command (operation id,
+    function, check twin, result, effects, CLI flags, REST route, rules,
+    examples, exclusive groups).
+    """
+    group, name = spec.name.split(" ", 1)
+    schema: dict[str, object] = {
+        "$schema": _DIALECT,
+        "title": spec.name,
+        "description": localize(spec.description, lang),
+        "type": "object",
+        "properties": {option.name: _property(option, lang) for option in spec.options},
+    }
+    required = [option.name for option in spec.options if option.required]
+    if required:
+        schema["required"] = required
+    if spec.requires:
+        schema["dependentRequired"] = {
+            key: list(names) for key, names in spec.requires.items()
+        }
+    if spec.one_of:
+        schema["oneOf"] = [{"required": list(names)} for names in spec.one_of]
+    schema["additionalProperties"] = False
+    schema["x-obserwator"] = {
+        "command": spec.name,
+        # The one naming rule of REST operationId, MCP tools and the guide.
+        "operation_id": _operation_id(spec.name),
+        "group": group,
+        "function": spec.function,
+        "check": spec.check,
+        "result": spec.result,
+        "result_type": _RESULT_TYPES[spec.name],
+        "writes": spec.writes,
+        "network": spec.network,
+        "idempotent": spec.idempotent,
+        "cli": {
+            "command": f"obserwator {spec.name}",
+            "flags": {option.name: _flags(option) for option in spec.options},
+        },
+        "rest": None
+        if spec.method is None
+        else {
+            "method": spec.method,
+            "path": f"/api/v1/{group}/{name}",
+            "server_options": [o.name for o in spec.options if o.rest == "server"],
+            "local_options": [o.name for o in spec.options if o.rest == "local"],
+        },
+        "rules": [localize(rule, lang) for rule in spec.rules],
+        "examples": [
+            {"call": example.call, "result": copy.deepcopy(example.result)}
+            for example in EXAMPLES[spec.name]
+        ],
+    }
+    meta = cast(dict[str, object], schema["x-obserwator"])
+    if spec.exclusive:
+        meta["exclusive"] = [list(group) for group in spec.exclusive]
+    if spec.store_only:
+        meta["store_only"] = True
+    return schema
+
+
+def _input_schemas(lang: Lang) -> list[dict[str, object]]:
+    """`_input_schema` of every catalog command, in catalog order."""
+    return [_input_schema(spec, lang) for spec in _COMMANDS]
+
+
+# --- katalog obserwator-commands/1 (Nogat commands-1) -----------------------------------------
+
+_COMMANDS_SCHEMA = f"{_TOOL}-commands/1"
+# Every interface returns the envelope; ``result_type`` names its ``result``.
+_RESULT_SCHEMA = f"{_TOOL}-result/1"
+_CARDINALITY = {"object": "single", "list": "bounded", "stream": "unbounded"}
+_JSON_TYPES = {
+    "str": "string",
+    "int": "integer",
+    "float": "number",
+    "bool": "boolean",
+    "date": "string",
+    "path": "string",
+    "list": "array",
+    "choice": "string",
+}
+_WRITES_ORDER: tuple[Writes, ...] = ("none", "add", "replace")
+# Meanings of the values of the fixed enumerations, by option and value; datasets,
+# providers and commands take theirs from the registries (`_meaning`).
+_MEANINGS = {
+    ("kind", "hydro"): message("commands.meaning_kind_hydro"),
+    ("kind", "meteo"): message("commands.meaning_kind_meteo"),
+    ("kind", "raw"): message("commands.meaning_kind_raw"),
+    ("kind", "data"): message("commands.meaning_kind_data"),
+    ("kind", "archive"): message("commands.meaning_kind_archive"),
+    ("kind", "series"): message("commands.meaning_kind_series"),
+    ("kind", "catalog"): message("commands.meaning_kind_catalog"),
+    ("kind", "pmaxtp"): message("commands.meaning_kind_pmaxtp"),
+    ("kind", "analyses"): message("commands.meaning_kind_analyses"),
+    ("kind", "observation"): message("commands.meaning_kind_observation"),
+    ("kind", "problem"): message("commands.meaning_kind_problem"),
+    ("params", "H"): message("commands.meaning_params_h"),
+    ("params", "Q"): message("commands.meaning_params_q"),
+    ("params", "T"): message("commands.meaning_params_t"),
+    ("source", "live"): message("commands.meaning_source_live"),
+    ("source", "store"): message("commands.meaning_source_store"),
+    ("method", "POT"): message("commands.meaning_method_pot"),
+    ("method", "AMP"): message("commands.meaning_method_amp"),
+    ("format", "csv"): message("commands.meaning_format_csv"),
+    ("format", "json"): message("commands.meaning_format_json"),
+    ("format", "jsonl"): message("commands.meaning_format_jsonl"),
+    ("format", "parquet"): message("commands.meaning_format_parquet"),
+    ("format", "geojson"): message("commands.meaning_format_geojson"),
+    ("format", "agents"): message("commands.meaning_format_agents"),
+    ("format", "llms"): message("commands.meaning_format_llms"),
+    ("year_type", "hydrological"): message("commands.meaning_year_type_hydrological"),
+    ("year_type", "calendar"): message("commands.meaning_year_type_calendar"),
+    ("lang", "en"): message("commands.meaning_lang_en"),
+    ("lang", "pl"): message("commands.meaning_lang_pl"),
+}
+
+
+def _meaning(option: CommandOption, value: str, lang: Lang) -> str:
+    """One-line meaning of an enumeration value of ``option`` (AGI-2.3)."""
+    if option.name in ("dataset", "datasets"):
+        return localize(get_dataset(value).title, lang)
+    if option.name == "provider":
+        return get_provider(value).name
+    if option.name == "command":
+        return _summary(localize(_BY_NAME[value].description, lang))
+    if option.name in ("analysis", "analyses"):
+        return localize(message(get_definition(value).title), lang)
+    return localize(_MEANINGS[option.name, value], lang)
+
+
+def _option_entry(
+    option: CommandOption, spec: DataCommand, lang: Lang
+) -> dict[str, object]:
+    """One option of a ``commands-1`` entry (AGI-2.3), with Obserwator's extensions."""
+    entry: dict[str, object] = {
+        "name": option.name,
+        "type": _JSON_TYPES[option.type],
+        "required": option.required,
+    }
+    if option.default is not None:
+        entry["default"] = option.default
+    if option.choices:
+        entry["enum"] = [
+            {"value": value, "meaning": _meaning(option, value, lang)}
+            for value in option.choices
+        ]
+    for key, name in (("min", "minimum"), ("max", "maximum"), ("pattern", "pattern")):
+        if (value := getattr(option, name)) is not None:
+            entry[key] = value
+    entry["description"] = localize(option.help, lang)
+    group = next((names for names in spec.exclusive if option.name in names), None)
+    if group is not None:
+        entry["one_of"] = "_or_".join(group)
+    if option.path_role is not None:
+        entry["path_role"] = option.path_role
+    # Extensions (AGI-4.1): the value form, the effect and the CLI flags.
+    if option.type == "date":
+        entry["format"] = "date"
+    if option.type == "list":
+        entry["items"] = _value_schema(option.items or "str", option, item=True)
+    if option.writes != "none":
+        entry["writes"] = option.writes
+    if option.store_only:
+        entry["store_only"] = True
+    entry["flags"] = _flags(option)
+    return entry
+
+
+def _writes(spec: DataCommand) -> Writes:
+    """The strongest write of a run or of an option of ``spec``."""
+    return max(
+        (spec.writes, *(option.writes for option in spec.options)),
+        key=_WRITES_ORDER.index,
+    )
+
+
+def _errors(spec: DataCommand, writes: Writes) -> list[str]:
+    """
+    Registry codes a run of ``spec`` can raise, in registry order.
+
+    They follow from the declarations: every command can refuse its input or
+    fail internally; a source server can be unavailable or answer malformed
+    data, and a long download can be cancelled; a store can be missing, need
+    the ``store`` extra or lack a version, and a run writing it can find it
+    locked by another writer; a write can fail in the file system; a server
+    refuses a write it does not allow and a path outside its allowed
+    directories. A build of the analyses runs Hydrolog's program, which can
+    fail or be stopped.
+    """
+    codes: set[str] = {"validation_error", "internal_error"}
+    names = {option.name for option in spec.options}
+    reads_store = "root" in names or "version" in names or spec.store_only
+    if spec.network:
+        codes |= {"source_unavailable", "data_error", "cancelled"}
+    if reads_store:
+        codes |= {"not_found", "data_error", "store_unavailable", "missing_dependency"}
+        if spec.writes != "none":
+            codes.add("conflict")
+    if writes != "none":
+        codes |= {"io_error", "forbidden", "cancelled"}
+    if spec.function == "build_analyses":
+        codes.add("source_unavailable")
+    if any(option.type == "path" for option in spec.options):
+        codes.add("forbidden")
+    return [code for code in ERROR_CODES if code in codes]
+
+
+def _entry(spec: DataCommand, lang: Lang) -> dict[str, object]:
+    """The ``commands-1`` entry of ``spec`` (AGI-2.2) with Obserwator's extensions."""
+    group, name = spec.name.split(" ", 1)
+    description = localize(spec.description, lang)
+    polish = localize(spec.description, "pl")
+    writes = _writes(spec)
+    entry: dict[str, object] = {
+        "name": spec.name,
+        "operation_id": _operation_id(spec.name),
+        "function": spec.function,
+        "summary": _summary(description),
+        "description": description,
+        "options": [_option_entry(option, spec, lang) for option in spec.options],
+        "result": {
+            "schema": _RESULT_SCHEMA,
+            "cardinality": _CARDINALITY[spec.result],
+        },
+        "effects": {
+            "read_only": writes == "none",
+            "writes": writes,
+            "idempotent": spec.idempotent,
+            "network": spec.network,
+            "destructive": writes == "replace",
+        },
+        # ``--check`` of the command itself plans it without effects.
+        "check": None if spec.check is None else spec.name,
+        "rules": [localize(rule, lang) for rule in spec.rules],
+        "examples": [
+            {"call": example.call, "result": copy.deepcopy(example.result)}
+            for example in EXAMPLES[spec.name]
+        ],
+        "errors": _errors(spec, writes),
+        "i18n": {
+            "pl": {
+                "summary": _summary(polish),
+                "description": polish,
+                "rules": [localize(rule, "pl") for rule in spec.rules],
+            }
+        },
+        # Extensions (AGI-4.1): the group, the type of the envelope's result, the
+        # rules among the options and the REST route.
+        "group": group,
+        "result_type": _RESULT_TYPES[spec.name],
+    }
+    if spec.requires:
+        entry["requires"] = {key: list(names) for key, names in spec.requires.items()}
+    if spec.one_of:
+        entry["alternatives"] = [list(names) for names in spec.one_of]
+    if spec.exclusive:
+        entry["exclusive"] = [list(names) for names in spec.exclusive]
+    if spec.store_only:
+        entry["store_only"] = True
+    entry["rest"] = (
+        None
+        if spec.method is None
+        else {
+            "method": spec.method,
+            "path": f"/api/v1/{group}/{name}",
+            "server_options": [o.name for o in spec.options if o.rest == "server"],
+            "local_options": [o.name for o in spec.options if o.rest == "local"],
+        }
+    )
+    return entry
+
+
+def _catalog(lang: Lang, entries: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "schema": _COMMANDS_SCHEMA,
+        "tool": _TOOL,
+        "version": __version__,
+        "lang": lang,
+        "commands": entries,
+    }
+
+
+def command_schema(
+    command: str | None = None, /, *, lang: Lang = "en"
+) -> dict[str, object]:
+    """
+    Describe one command, or the whole catalog, as ``obserwator-commands/1``.
+
+    The document follows Nogat's ``commands-1`` (AGI-2.2, AGI-2.4). Each entry
+    has the command ``name``, its ``operation_id`` (``obserwator_<group>_<verb>``:
+    the REST ``operationId`` and the MCP tool name), the ``function``, a
+    ``summary`` (the first sentence of the ``description``), the ``options``,
+    the ``result`` (the ``obserwator-result/1`` envelope and its cardinality:
+    ``single``, ``bounded`` for a paged list, ``unbounded`` for a stream), the
+    ``effects`` (``read_only``, ``writes``: ``none``, ``add`` or ``replace``,
+    ``idempotent``, ``network``, ``destructive``), ``check`` (the command itself
+    when ``--check`` plans it, else null), the ``rules``, the ``examples`` (a
+    canonical ``obserwator`` line, as `format_command` writes it, and an excerpt
+    of the ``result`` of its envelope), the registry ``errors`` it can raise and
+    the Polish texts in ``i18n.pl``. Each option has its ``name``, JSON ``type``,
+    ``required``, ``default``, ``enum`` (each value with its meaning), ``min``,
+    ``max``, ``pattern``, ``description``, ``one_of`` (the group of options of
+    which at most one may be given) and ``path_role`` (``input``, ``output`` or
+    ``root``). Obserwator's extensions: per command ``group``, ``result_type``
+    (the type of the envelope's ``result``), ``requires`` (options required by
+    another option), ``alternatives`` (groups of options of which exactly one is
+    required), ``exclusive``, ``store_only`` (no plain mode) and ``rest`` (the
+    route, or null); per option ``format`` (``date``), ``items`` (the JSON
+    Schema of a list item), ``writes`` (``add`` or ``replace``: giving it writes
+    a file), ``store_only`` (valid only with a store) and ``flags`` (the CLI
+    flags).
+
+    Parameters
+    ----------
+    command : str or None, optional
+        Catalog command name; ``None`` describes every command.
+    lang : {"en", "pl"}, optional
+        Language of the texts: summaries, descriptions, rules, enumeration
+        meanings and group descriptions. ``i18n.pl`` is Polish in both;
+        everything else is the same in both languages.
+
+    Returns
+    -------
+    dict of {str : object}
+        ``obserwator-commands/1`` document with ``tool``, ``version``, ``lang``
+        and ``commands`` (the one command, or all of them in catalog order);
+        the whole catalog also has ``groups``, ``errors`` (the error code
+        registry) and ``exit_codes`` of the envelope statuses.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``command`` is not a catalog command or ``lang`` is not a language
+        of the catalog (``details.allowed`` lists the values).
+    """
+    language = cast(Lang, _choice(_LANGUAGE, lang))
+    if command is not None:
+        return _catalog(language, [_entry(_spec(command), language)])
+    return {
+        **_catalog(language, [_entry(spec, language) for spec in _COMMANDS]),
+        "groups": {name: localize(text, language) for name, text in _GROUPS.items()},
+        "errors": [
+            {
+                "code": spec.code,
+                "title": localize(spec.title, language),
+                "exit_code": spec.exit_code,
+                "http_status": spec.http_status,
+            }
+            for spec in ERROR_CODES.values()
+        ],
+        "exit_codes": dict(_EXIT_CODES),
+    }
+
+
+def _summary(text: str) -> str:
+    """First sentence of a command description (a catalog ``summary``)."""
+    for match in _SENTENCE_BREAK.finditer(text):
+        if text[match.end()].isupper():
+            return text[: match.start() + 1]
+    return text
+
+
+def list_commands(*, lang: Lang = "en") -> dict[str, object]:
+    """
+    Summarize the command catalog: one short row per command.
+
+    The summary is the first step of discovery (AGI-1.5), within the page
+    budget of a result (DOC-1.7): the tool names, what each command does in one
+    sentence, its effects and its REST route. The options of one command come
+    from `command_schema` (``obserwator-commands/1``).
+
+    Parameters
+    ----------
+    lang : {"en", "pl"}, optional
+        Language of the group summaries and of the command summaries.
+
+    Returns
+    -------
+    dict of {str : object}
+        ``obserwator-command-list/1`` document with ``tool``, ``version``,
+        ``lang``, ``groups`` (``name`` and ``summary`` of every group) and
+        ``commands``: per command in catalog order its ``name``,
+        ``operation_id``, ``group``, ``summary`` (the first sentence of the
+        description, at most 100 characters), ``read_only``, ``check`` (the
+        command itself when ``--check`` plans it, else null), ``writes``,
+        ``network``, ``idempotent`` (the ``effects`` of `command_schema`),
+        ``result`` (``object``, ``list`` or ``stream``), ``result_type`` and
+        ``rest`` (method and path, or null).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``lang`` is not a language of the catalog (``details.allowed``
+        lists the values).
+    """
+    language = cast(Lang, _choice(_LANGUAGE, lang))
+    rows: list[dict[str, object]] = []
+    for spec in _COMMANDS:
+        group, name = spec.name.split(" ", 1)
+        writes = _writes(spec)
+        rows.append(
+            {
+                "name": spec.name,
+                "operation_id": _operation_id(spec.name),
+                "group": group,
+                "summary": _summary(localize(spec.description, language)),
+                "read_only": writes == "none",
+                "check": None if spec.check is None else spec.name,
+                "writes": writes,
+                "network": spec.network,
+                "idempotent": spec.idempotent,
+                "result": spec.result,
+                "result_type": _RESULT_TYPES[spec.name],
+                "rest": None
+                if spec.method is None
+                else {"method": spec.method, "path": f"/api/v1/{group}/{name}"},
+            }
+        )
+    return {
+        "schema": f"{_TOOL}-command-list/1",
+        "tool": _TOOL,
+        "version": __version__,
+        "lang": language,
+        "groups": [
+            {"name": name, "summary": localize(text, language)}
+            for name, text in _GROUPS.items()
+        ],
+        "commands": rows,
+    }

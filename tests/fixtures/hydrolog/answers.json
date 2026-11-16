@@ -1,0 +1,5330 @@
+{
+ "hydrometrics rating-curve": {
+  "notices": [
+   {
+    "code": "missing_pairs_removed",
+    "details": {
+     "missing": 1,
+     "total": 731
+    },
+    "level": "warning",
+    "message": "1 of 731 measurement pairs have a missing value (NaN) and were removed before the fit"
+   }
+  ],
+  "result": {
+   "a": 0.08891328165750424,
+   "b": 1.083515218363621,
+   "first_year": 2023,
+   "h0": 29.649139940693242,
+   "last_year": 2025,
+   "n_outliers_removed": 0,
+   "n_points": 730,
+   "periods": null,
+   "r_squared": 0.8878226737277249,
+   "reference_discharge_m3s": null,
+   "reference_level": null,
+   "schema": "hydrolog-hydrometrics-rating-curve/1",
+   "std_residuals": 0.8457727676598533
+  }
+ },
+ "hydrometrics water-level-zones": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": null,
+     "missing": 89,
+     "total": 91
+    },
+    "level": "warning",
+    "message": "89 of 91 values are missing (NaN) and were removed before the analysis"
+   }
+  ],
+  "result": {
+   "bin_width": 10.0,
+   "frequency": {
+    "bin_centers": [
+     159.0
+    ],
+    "bin_edges": [
+     154.0,
+     164.0
+    ],
+    "counts": [
+     2.0
+    ],
+    "cumulative_frequency_pct": [
+     100.0
+    ],
+    "duration_pct": [
+     100.0
+    ],
+    "frequency_pct": [
+     100.0
+    ]
+   },
+   "n_observations": 2,
+   "schema": "hydrolog-hydrometrics-water-level-zones/1",
+   "zones": {
+    "ntw_range": [
+     154.0,
+     159.0
+    ],
+    "ntw_upper": 159.0,
+    "stw_range": [
+     159.0,
+     169.0
+    ],
+    "stw_upper": 169.0,
+    "wtw_range": [
+     169.0,
+     164.0
+    ]
+   }
+  }
+ },
+ "meteo hydrothermal": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2023-2023 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "last_year": 2023,
+   "period": {
+    "mean_season_class": null,
+    "mean_season_coefficient": null,
+    "months": [
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 4,
+      "n_years": 0
+     },
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 5,
+      "n_years": 0
+     },
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 6,
+      "n_years": 0
+     },
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 7,
+      "n_years": 0
+     },
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 8,
+      "n_years": 0
+     },
+     {
+      "class_counts": {
+       "dry": 0,
+       "extremely_dry": 0,
+       "extremely_wet": 0,
+       "fairly_dry": 0,
+       "fairly_wet": 0,
+       "optimal": 0,
+       "very_dry": 0,
+       "very_wet": 0,
+       "wet": 0
+      },
+      "mean_coefficient": null,
+      "month": 9,
+      "n_years": 0
+     }
+    ],
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-hydrothermal/1",
+   "years": [
+    {
+     "months": [
+      {
+       "coefficient": null,
+       "month": 4,
+       "sielianinov_class": null
+      },
+      {
+       "coefficient": null,
+       "month": 5,
+       "sielianinov_class": null
+      },
+      {
+       "coefficient": null,
+       "month": 6,
+       "sielianinov_class": null
+      },
+      {
+       "coefficient": null,
+       "month": 7,
+       "sielianinov_class": null
+      },
+      {
+       "coefficient": null,
+       "month": 8,
+       "sielianinov_class": null
+      },
+      {
+       "coefficient": null,
+       "month": 9,
+       "sielianinov_class": null
+      }
+     ],
+     "season_class": null,
+     "season_coefficient": null,
+     "season_days": null,
+     "year": 2023
+    }
+   ]
+  }
+ },
+ "meteo precipitation#days": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "index": "days",
+   "last_year": 2001,
+   "period": {
+    "days": [
+     null,
+     null,
+     null,
+     null
+    ],
+    "months": [
+     {
+      "days": [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "month": 1
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 2
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 3
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 4
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 5
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 6
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 7
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 8
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 9
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 10
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 11
+     },
+     {
+      "days": [
+       null,
+       null,
+       null,
+       null
+      ],
+      "month": 12
+     }
+    ],
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-precipitation/1",
+   "thresholds_mm": [
+    0.1,
+    1.0,
+    10.0,
+    20.0
+   ],
+   "year_type": "calendar",
+   "years": [
+    {
+     "days": [
+      null,
+      null,
+      null,
+      null
+     ],
+     "months": [
+      {
+       "days": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "month": 1
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 2
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 3
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 4
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 5
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 6
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 7
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 8
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 9
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 10
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 11
+      },
+      {
+       "days": [
+        null,
+        null,
+        null,
+        null
+       ],
+       "month": 12
+      }
+     ],
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo precipitation#heavy": {
+  "error": {
+   "code": "calculation_error",
+   "details": {
+    "count": 0,
+    "minimum": 100,
+    "reason": "too_few_wet_days"
+   },
+   "exit_code": 13,
+   "hint": "Choose a longer reference period (by default the analysed years).",
+   "message": "The percentiles need at least 100 wet days (P >= 1 mm) in the reference period 2001-2001, got 0",
+   "schema": "hydrolog-error/1",
+   "title": "Calculation error"
+  }
+ },
+ "meteo precipitation#intensity": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "index": "intensity",
+   "last_year": 2001,
+   "period": {
+    "mean_sdii_mm": null,
+    "mean_total_mm": null,
+    "months": [
+     {
+      "month": 1,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 2,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 3,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 4,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 5,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 6,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 7,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 8,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 9,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 10,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 11,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     },
+     {
+      "month": 12,
+      "sdii_mm": null,
+      "wet_day_total_mm": null,
+      "wet_days": null
+     }
+    ],
+    "n_years": 0,
+    "sdii_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-precipitation/1",
+   "wet_day_mm": 1.0,
+   "year_type": "calendar",
+   "years": [
+    {
+     "months": [
+      {
+       "month": 1,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 2,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 3,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 4,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 5,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 6,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 7,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 8,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 9,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 10,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 11,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      },
+      {
+       "month": 12,
+       "sdii_mm": null,
+       "wet_day_total_mm": null,
+       "wet_days": null
+      }
+     ],
+     "sdii_mm": null,
+     "total_mm": null,
+     "wet_day_total_mm": null,
+     "wet_days": null,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo precipitation#maxima": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "durations_days": [
+    1,
+    2,
+    3,
+    5,
+    10
+   ],
+   "first_year": 2001,
+   "index": "maxima",
+   "last_year": 2001,
+   "period": {
+    "durations": [
+     {
+      "days": 1,
+      "max_end_date": null,
+      "max_mm": null,
+      "max_start_date": null,
+      "mean_mm": null,
+      "median_mm": null,
+      "min_mm": null,
+      "n_years": 0
+     },
+     {
+      "days": 2,
+      "max_end_date": null,
+      "max_mm": null,
+      "max_start_date": null,
+      "mean_mm": null,
+      "median_mm": null,
+      "min_mm": null,
+      "n_years": 0
+     },
+     {
+      "days": 3,
+      "max_end_date": null,
+      "max_mm": null,
+      "max_start_date": null,
+      "mean_mm": null,
+      "median_mm": null,
+      "min_mm": null,
+      "n_years": 0
+     },
+     {
+      "days": 5,
+      "max_end_date": null,
+      "max_mm": null,
+      "max_start_date": null,
+      "mean_mm": null,
+      "median_mm": null,
+      "min_mm": null,
+      "n_years": 0
+     },
+     {
+      "days": 10,
+      "max_end_date": null,
+      "max_mm": null,
+      "max_start_date": null,
+      "mean_mm": null,
+      "median_mm": null,
+      "min_mm": null,
+      "n_years": 0
+     }
+    ],
+    "incomplete_years": [
+     2001
+    ],
+    "months": [
+     {
+      "annual_maxima": 0,
+      "date": "2001-01-03",
+      "max_mm": 0.0,
+      "mean_max_mm": 0.0,
+      "month": 1,
+      "n_months": 1
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 2,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 3,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 4,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 5,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 6,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 7,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 8,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 9,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 10,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 11,
+      "n_months": 0
+     },
+     {
+      "annual_maxima": 0,
+      "date": null,
+      "max_mm": null,
+      "mean_max_mm": null,
+      "month": 12,
+      "n_months": 0
+     }
+    ],
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-precipitation/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "complete": false,
+     "durations": [
+      {
+       "days": 1,
+       "end_date": null,
+       "start_date": null,
+       "sum_mm": null
+      },
+      {
+       "days": 2,
+       "end_date": null,
+       "start_date": null,
+       "sum_mm": null
+      },
+      {
+       "days": 3,
+       "end_date": null,
+       "start_date": null,
+       "sum_mm": null
+      },
+      {
+       "days": 5,
+       "end_date": null,
+       "start_date": null,
+       "sum_mm": null
+      },
+      {
+       "days": 10,
+       "end_date": null,
+       "start_date": null,
+       "sum_mm": null
+      }
+     ],
+     "months": [
+      {
+       "date": "2001-01-03",
+       "max_mm": 0.0,
+       "month": 1
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 2
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 3
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 4
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 5
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 6
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 7
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 8
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 9
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 10
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 11
+      },
+      {
+       "date": null,
+       "max_mm": null,
+       "month": 12
+      }
+     ],
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo precipitation#seasonality": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "index": "seasonality",
+   "last_year": 2001,
+   "period": {
+    "mean_pci": null,
+    "mean_pci_class": null,
+    "mean_si": null,
+    "mean_si_class": null,
+    "months": [
+     {
+      "coefficient": null,
+      "month": 1,
+      "normal_mm": 9.2,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 2,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 3,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 4,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 5,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 6,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 7,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 8,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 9,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 10,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 11,
+      "normal_mm": null,
+      "share_percent": null
+     },
+     {
+      "coefficient": null,
+      "month": 12,
+      "normal_mm": null,
+      "share_percent": null
+     }
+    ],
+    "n_years": 0,
+    "pci": null,
+    "pci_class": null,
+    "si": null,
+    "si_class": null
+   },
+   "period_years": 1,
+   "reference_first_year": 2001,
+   "reference_last_year": 2001,
+   "reference_period_years": 1,
+   "schema": "hydrolog-meteo-precipitation/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "pci": null,
+     "pci_class": null,
+     "si": null,
+     "si_class": null,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo precipitation#sums": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "normal_not_computed",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "required": 1,
+     "years": 0
+    },
+    "level": "warning",
+    "message": "The normal of 2001-2001 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "index": "sums",
+   "last_year": 2001,
+   "period": {
+    "cv": null,
+    "djf_normal_mm": null,
+    "jja_normal_mm": null,
+    "mam_normal_mm": null,
+    "max_mm": null,
+    "max_year": null,
+    "mean_mm": null,
+    "min_mm": null,
+    "min_year": null,
+    "months": [
+     {
+      "max_mm": 9.2,
+      "max_year": 2001,
+      "mean_mm": 9.2,
+      "min_mm": 9.2,
+      "min_year": 2001,
+      "month": 1,
+      "n_years": 1,
+      "normal_mm": 9.2
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 2,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 3,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 4,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 5,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 6,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 7,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 8,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 9,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 10,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 11,
+      "n_years": 0,
+      "normal_mm": null
+     },
+     {
+      "max_mm": null,
+      "max_year": null,
+      "mean_mm": null,
+      "min_mm": null,
+      "min_year": null,
+      "month": 12,
+      "n_years": 0,
+      "normal_mm": null
+     }
+    ],
+    "normal_mm": null,
+    "normal_years": 0,
+    "son_normal_mm": null,
+    "std_mm": null,
+    "summer_normal_mm": null,
+    "winter_normal_mm": null
+   },
+   "period_years": 1,
+   "reference_first_year": 2001,
+   "reference_last_year": 2001,
+   "reference_period_years": 1,
+   "schema": "hydrolog-meteo-precipitation/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "djf_mm": null,
+     "jja_mm": null,
+     "mam_mm": null,
+     "months": [
+      {
+       "month": 1,
+       "percent_of_normal": 100.0,
+       "total_mm": 9.2
+      },
+      {
+       "month": 2,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 3,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 4,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 5,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 6,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 7,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 8,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 9,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 10,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 11,
+       "percent_of_normal": null,
+       "total_mm": null
+      },
+      {
+       "month": 12,
+       "percent_of_normal": null,
+       "total_mm": null
+      }
+     ],
+     "percent_of_normal": null,
+     "son_mm": null,
+     "summer_mm": null,
+     "total_mm": null,
+     "winter_mm": null,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo snow": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "last_year": 2001,
+   "period": {
+    "earliest_first_date": null,
+    "incomplete_years": [
+     2001
+    ],
+    "latest_last_date": null,
+    "max_date": null,
+    "max_depth_cm": null,
+    "mean_cover_days": null,
+    "mean_fresh_snow_cm": null,
+    "mean_fresh_snow_days": null,
+    "mean_max_depth_cm": null,
+    "median_first_day": null,
+    "median_last_day": null,
+    "months": [
+     {
+      "cover_days": null,
+      "month": 8
+     },
+     {
+      "cover_days": null,
+      "month": 9
+     },
+     {
+      "cover_days": null,
+      "month": 10
+     },
+     {
+      "cover_days": null,
+      "month": 11
+     },
+     {
+      "cover_days": null,
+      "month": 12
+     },
+     {
+      "cover_days": null,
+      "month": 1
+     },
+     {
+      "cover_days": null,
+      "month": 2
+     },
+     {
+      "cover_days": null,
+      "month": 3
+     },
+     {
+      "cover_days": null,
+      "month": 4
+     },
+     {
+      "cover_days": null,
+      "month": 5
+     },
+     {
+      "cover_days": null,
+      "month": 6
+     },
+     {
+      "cover_days": null,
+      "month": 7
+     }
+    ],
+    "n_years": 0,
+    "years_without_cover": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-snow/1",
+   "years": [
+    {
+     "complete": false,
+     "cover_days": null,
+     "first_date": null,
+     "fresh_snow_cm": 0.0,
+     "fresh_snow_days": 0,
+     "last_date": null,
+     "max_date": null,
+     "max_depth_cm": 0.0,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo spells": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "kind": "dry",
+   "last_year": 2001,
+   "max_duration_days": 29,
+   "min_duration_days": 10,
+   "n_spells": 1,
+   "period": {
+    "classes": [
+     {
+      "count": 0,
+      "max_days": 1,
+      "min_days": 1,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 2,
+      "min_days": 2,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 3,
+      "min_days": 3,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 5,
+      "min_days": 4,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 10,
+      "min_days": 6,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 15,
+      "min_days": 11,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 20,
+      "min_days": 16,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": 30,
+      "min_days": 21,
+      "per_year": null
+     },
+     {
+      "count": 0,
+      "max_days": null,
+      "min_days": 31,
+      "per_year": null
+     }
+    ],
+    "mean_max_duration_days": null,
+    "mean_n_spells": null,
+    "mean_spells_10_days": null,
+    "mean_spells_15_days": null,
+    "mean_spells_20_days": null,
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-spells/1",
+   "spells": [
+    {
+     "duration_days": 29,
+     "end_date": "2001-01-31",
+     "open_end": true,
+     "open_start": true,
+     "start_date": "2001-01-03",
+     "year": 2001
+    }
+   ],
+   "threshold_mm": 1.0,
+   "year_type": "calendar",
+   "years": [
+    {
+     "complete": false,
+     "max_duration_days": null,
+     "max_end_date": null,
+     "max_start_date": null,
+     "n_spells": null,
+     "spells_10_days": null,
+     "spells_15_days": null,
+     "spells_20_days": null,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo spi": {
+  "notices": [
+   {
+    "code": "accumulated_totals",
+    "details": {
+     "column": "P_flag",
+     "count": 1
+    },
+    "level": "info",
+    "message": "1 values of P_flag are accumulated totals of the missing days before them: they stand for those days in the monthly sums and are missing days in the daily statistics"
+   },
+   {
+    "code": "spi_not_fitted",
+    "details": {
+     "months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ],
+     "scale_months": 1
+    },
+    "level": "warning",
+    "message": "The 1-month sums of month(s) 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 2 more have no gamma fit (sums in fewer than 80 % of the years or fewer than 3 positive): their SPI is null"
+   },
+   {
+    "code": "spi_not_fitted",
+    "details": {
+     "months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ],
+     "scale_months": 3
+    },
+    "level": "warning",
+    "message": "The 3-month sums of month(s) 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 2 more have no gamma fit (sums in fewer than 80 % of the years or fewer than 3 positive): their SPI is null"
+   },
+   {
+    "code": "spi_not_fitted",
+    "details": {
+     "months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ],
+     "scale_months": 6
+    },
+    "level": "warning",
+    "message": "The 6-month sums of month(s) 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 2 more have no gamma fit (sums in fewer than 80 % of the years or fewer than 3 positive): their SPI is null"
+   },
+   {
+    "code": "spi_not_fitted",
+    "details": {
+     "months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ],
+     "scale_months": 12
+    },
+    "level": "warning",
+    "message": "The 12-month sums of month(s) 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 2 more have no gamma fit (sums in fewer than 80 % of the years or fewer than 3 positive): their SPI is null"
+   },
+   {
+    "code": "normal_not_computed",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "required": 1,
+     "years": 0
+    },
+    "level": "warning",
+    "message": "The normal of 2001-2001 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2001,
+     "last_year": 2001,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2001-2001 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2001,
+   "last_year": 2001,
+   "months": [
+    {
+     "month": 1,
+     "percent_of_normal": 100.0,
+     "precipitation_class": "normal",
+     "spi": [
+      null,
+      null,
+      null,
+      null
+     ],
+     "total_mm": 9.2,
+     "year": 2001
+    }
+   ],
+   "period": {
+    "months_normal_mm": [
+     9.2,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "normal_mm": null,
+    "normal_years": 0,
+    "scales": [
+     {
+      "fits": [
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 1,
+        "n_values": 1,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 2,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 3,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 4,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 5,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 6,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 7,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 8,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 9,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 10,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 11,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 12,
+        "n_values": 0,
+        "zero_probability": null
+       }
+      ],
+      "scale_months": 1
+     },
+     {
+      "fits": [
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 1,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 2,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 3,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 4,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 5,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 6,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 7,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 8,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 9,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 10,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 11,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 12,
+        "n_values": 0,
+        "zero_probability": null
+       }
+      ],
+      "scale_months": 3
+     },
+     {
+      "fits": [
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 1,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 2,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 3,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 4,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 5,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 6,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 7,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 8,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 9,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 10,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 11,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 12,
+        "n_values": 0,
+        "zero_probability": null
+       }
+      ],
+      "scale_months": 6
+     },
+     {
+      "fits": [
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 1,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 2,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 3,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 4,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 5,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 6,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 7,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 8,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 9,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 10,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 11,
+        "n_values": 0,
+        "zero_probability": null
+       },
+       {
+        "alpha": null,
+        "beta": null,
+        "month": 12,
+        "n_values": 0,
+        "zero_probability": null
+       }
+      ],
+      "scale_months": 12
+     }
+    ]
+   },
+   "period_years": 1,
+   "reference_first_year": 2001,
+   "reference_last_year": 2001,
+   "reference_period_years": 1,
+   "scales_months": [
+    1,
+    3,
+    6,
+    12
+   ],
+   "schema": "hydrolog-meteo-spi/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "percent_of_normal": null,
+     "precipitation_class": null,
+     "total_mm": null,
+     "year": 2001
+    }
+   ]
+  }
+ },
+ "meteo temperature#days": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2023-2023 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "frost_tmin_c": 0.0,
+   "hot_tmax_c": 30.0,
+   "ice_tmax_c": 0.0,
+   "index": "days",
+   "last_year": 2023,
+   "period": {
+    "frost_days": null,
+    "hot_days": null,
+    "ice_days": null,
+    "months": [
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 1,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 2,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 3,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 4,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 5,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 6,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 7,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 8,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 9,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 10,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 11,
+      "summer_days": null,
+      "tropical_nights": null
+     },
+     {
+      "frost_days": null,
+      "hot_days": null,
+      "ice_days": null,
+      "month": 12,
+      "summer_days": null,
+      "tropical_nights": null
+     }
+    ],
+    "summer_days": null,
+    "tropical_nights": null
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-temperature/1",
+   "summer_tmax_c": 25.0,
+   "tropical_tmin_c": 20.0,
+   "year_type": "calendar",
+   "years": [
+    {
+     "frost_days": null,
+     "hot_days": null,
+     "ice_days": null,
+     "months": [
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 1,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 2,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 3,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 4,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 5,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 6,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 7,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 8,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 9,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 10,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 11,
+       "summer_days": null,
+       "tropical_nights": null
+      },
+      {
+       "frost_days": null,
+       "hot_days": null,
+       "ice_days": null,
+       "month": 12,
+       "summer_days": null,
+       "tropical_nights": null
+      }
+     ],
+     "summer_days": null,
+     "tropical_nights": null,
+     "year": 2023
+    }
+   ]
+  }
+ },
+ "meteo temperature#degree_days": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2023-2023 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "growing_base_c": 5.0,
+   "heating_base_c": 18.0,
+   "heating_limit_c": 15.0,
+   "index": "degree_days",
+   "last_year": 2023,
+   "period": {
+    "growing_degree_days": null,
+    "heating_degree_days": null,
+    "months": [
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 1
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 2
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 3
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 4
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 5
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 6
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 7
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 8
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 9
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 10
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 11
+     },
+     {
+      "growing_degree_days": null,
+      "heating_degree_days": null,
+      "month": 12
+     }
+    ],
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-temperature/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "growing_degree_days": null,
+     "heating_degree_days": null,
+     "months": [
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 1
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 2
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 3
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 4
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 5
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 6
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 7
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 8
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 9
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 10
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 11
+      },
+      {
+       "growing_degree_days": null,
+       "heating_degree_days": null,
+       "month": 12
+      }
+     ],
+     "year": 2023
+    }
+   ]
+  }
+ },
+ "meteo temperature#means": {
+  "notices": [
+   {
+    "code": "normal_not_computed",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "required": 1,
+     "years": 0
+    },
+    "level": "warning",
+    "message": "The normal of 2023-2023 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2023-2023 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "index": "means",
+   "last_year": 2023,
+   "period": {
+    "max_c": 12.9,
+    "max_date": "2023-10-22",
+    "min_c": 0.0,
+    "min_date": "2023-11-19",
+    "months": [
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 1,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 2,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 3,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 4,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 5,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 6,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 7,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 8,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 9,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": 12.9,
+      "max_date": "2023-10-22",
+      "min_c": 3.4,
+      "min_date": "2023-10-30",
+      "month": 10,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": 9.4,
+      "max_date": "2023-11-08",
+      "min_c": 0.0,
+      "min_date": "2023-11-19",
+      "month": 11,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     },
+     {
+      "max_c": null,
+      "max_date": null,
+      "min_c": null,
+      "min_date": null,
+      "month": 12,
+      "n_years": 0,
+      "normal_c": null,
+      "tmax_c": null,
+      "tmean_c": null,
+      "tmin_c": null
+     }
+    ],
+    "normal_c": null,
+    "normal_years": 0,
+    "tmax_c": null,
+    "tmean_c": null,
+    "tmin_c": null
+   },
+   "period_years": 1,
+   "reference_first_year": 2023,
+   "reference_last_year": 2023,
+   "reference_period_years": 1,
+   "schema": "hydrolog-meteo-temperature/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "anomaly_c": null,
+     "max_c": 12.9,
+     "max_date": "2023-10-22",
+     "min_c": 0.0,
+     "min_date": "2023-11-19",
+     "months": [
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 1,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 2,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 3,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 4,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 5,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 6,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 7,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 8,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 9,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": 12.9,
+       "max_date": "2023-10-22",
+       "min_c": 3.4,
+       "min_date": "2023-10-30",
+       "month": 10,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": 9.4,
+       "max_date": "2023-11-08",
+       "min_c": 0.0,
+       "min_date": "2023-11-19",
+       "month": 11,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      },
+      {
+       "anomaly_c": null,
+       "max_c": null,
+       "max_date": null,
+       "min_c": null,
+       "min_date": null,
+       "month": 12,
+       "tmax_c": null,
+       "tmean_c": null,
+       "tmin_c": null
+      }
+     ],
+     "tmax_c": null,
+     "tmean_c": null,
+     "tmin_c": null,
+     "year": 2023
+    }
+   ]
+  }
+ },
+ "meteo temperature#range": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2023,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2023-2023 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "index": "range",
+   "last_year": 2023,
+   "period": {
+    "dtr_c": null,
+    "months": [
+     {
+      "dtr_c": null,
+      "month": 1
+     },
+     {
+      "dtr_c": null,
+      "month": 2
+     },
+     {
+      "dtr_c": null,
+      "month": 3
+     },
+     {
+      "dtr_c": null,
+      "month": 4
+     },
+     {
+      "dtr_c": null,
+      "month": 5
+     },
+     {
+      "dtr_c": null,
+      "month": 6
+     },
+     {
+      "dtr_c": null,
+      "month": 7
+     },
+     {
+      "dtr_c": null,
+      "month": 8
+     },
+     {
+      "dtr_c": null,
+      "month": 9
+     },
+     {
+      "dtr_c": null,
+      "month": 10
+     },
+     {
+      "dtr_c": null,
+      "month": 11
+     },
+     {
+      "dtr_c": null,
+      "month": 12
+     }
+    ],
+    "n_years": 0
+   },
+   "period_years": 1,
+   "schema": "hydrolog-meteo-temperature/1",
+   "year_type": "calendar",
+   "years": [
+    {
+     "dtr_c": null,
+     "months": [
+      {
+       "dtr_c": null,
+       "month": 1
+      },
+      {
+       "dtr_c": null,
+       "month": 2
+      },
+      {
+       "dtr_c": null,
+       "month": 3
+      },
+      {
+       "dtr_c": null,
+       "month": 4
+      },
+      {
+       "dtr_c": null,
+       "month": 5
+      },
+      {
+       "dtr_c": null,
+       "month": 6
+      },
+      {
+       "dtr_c": null,
+       "month": 7
+      },
+      {
+       "dtr_c": null,
+       "month": 8
+      },
+      {
+       "dtr_c": null,
+       "month": 9
+      },
+      {
+       "dtr_c": null,
+       "month": 10
+      },
+      {
+       "dtr_c": null,
+       "month": 11
+      },
+      {
+       "dtr_c": null,
+       "month": 12
+      }
+     ],
+     "year": 2023
+    }
+   ]
+  }
+ },
+ "stats baseflow": {
+  "notices": [
+   {
+    "code": "short_years_left_out",
+    "details": {
+     "count": 1,
+     "minimum": 300,
+     "years": [
+      2025
+     ]
+    },
+    "level": "info",
+    "message": "1 hydrological year(s) of the period have fewer than 300 days with a value to use and no values of their own: 2025"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2025,
+     "minimum": 30,
+     "years": 3
+    },
+    "level": "info",
+    "message": "The reference period 2023-2025 has 3 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "alpha": 0.925,
+   "bfi": 0.8665854741742427,
+   "first_year": 2023,
+   "last_year": 2025,
+   "n_spans": 2,
+   "n_values": 730,
+   "passes": 3,
+   "period_years": 3,
+   "recession": {
+    "half_life_days": null,
+    "k": null,
+    "n_segments": 0
+   },
+   "schema": "hydrolog-stats-baseflow/1",
+   "series_baseflow": [
+    3.2100008694199103,
+    3.2059468858593623,
+    3.1937804171452564,
+    3.1727626131300073,
+    3.1420947168973052,
+    3.1009537479970866,
+    3.048409457294148,
+    2.983496710588268,
+    2.906616012461785,
+    2.596,
+    2.7,
+    2.804,
+    2.909,
+    2.906289885162285,
+    2.8931377136889562,
+    2.870202933717791,
+    2.836611279694909,
+    2.7914581402107124,
+    2.735416489164292,
+    2.671725262461446,
+    2.277,
+    2.39,
+    2.505,
+    2.621,
+    2.7111927620875744,
+    2.7043164995541344,
+    2.6872745941125777,
+    2.6592022639054895,
+    2.6212914982713063,
+    2.5772208803919825,
+    2.5285345448934207,
+    2.076,
+    2.201,
+    2.326,
+    2.453,
+    2.582,
+    2.5911777848376785,
+    2.576192199824517,
+    2.552149355439756,
+    2.5231790587107854,
+    2.490673702203704,
+    2.4536237938856997,
+    2.001,
+    2.137,
+    2.275,
+    2.413,
+    2.4978764233318898,
+    2.4992722947120978,
+    2.4950642139472725,
+    2.4734271650678963,
+    2.448714166516636,
+    2.4198992608698684,
+    2.3859254655932554,
+    2.054,
+    2.202,
+    2.351,
+    2.409465999196629,
+    2.3958416207531124,
+    2.3722514884075485,
+    2.343518364868646,
+    2.3110424476025937,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "series_dates": [
+    "2024-11-01",
+    "2024-11-02",
+    "2024-11-03",
+    "2024-11-04",
+    "2024-11-05",
+    "2024-11-06",
+    "2024-11-07",
+    "2024-11-08",
+    "2024-11-09",
+    "2024-11-10",
+    "2024-11-11",
+    "2024-11-12",
+    "2024-11-13",
+    "2024-11-14",
+    "2024-11-15",
+    "2024-11-16",
+    "2024-11-17",
+    "2024-11-18",
+    "2024-11-19",
+    "2024-11-20",
+    "2024-11-21",
+    "2024-11-22",
+    "2024-11-23",
+    "2024-11-24",
+    "2024-11-25",
+    "2024-11-26",
+    "2024-11-27",
+    "2024-11-28",
+    "2024-11-29",
+    "2024-11-30",
+    "2024-12-01",
+    "2024-12-02",
+    "2024-12-03",
+    "2024-12-04",
+    "2024-12-05",
+    "2024-12-06",
+    "2024-12-07",
+    "2024-12-08",
+    "2024-12-09",
+    "2024-12-10",
+    "2024-12-11",
+    "2024-12-12",
+    "2024-12-13",
+    "2024-12-14",
+    "2024-12-15",
+    "2024-12-16",
+    "2024-12-17",
+    "2024-12-18",
+    "2024-12-19",
+    "2024-12-20",
+    "2024-12-21",
+    "2024-12-22",
+    "2024-12-23",
+    "2024-12-24",
+    "2024-12-25",
+    "2024-12-26",
+    "2024-12-27",
+    "2024-12-28",
+    "2024-12-29",
+    "2024-12-30",
+    "2024-12-31",
+    "2025-01-01",
+    "2025-01-02",
+    "2025-01-03",
+    "2025-01-04",
+    "2025-01-05",
+    "2025-01-06",
+    "2025-01-07",
+    "2025-01-08",
+    "2025-01-09",
+    "2025-01-10",
+    "2025-01-11",
+    "2025-01-12",
+    "2025-01-13",
+    "2025-01-14",
+    "2025-01-15",
+    "2025-01-16",
+    "2025-01-17",
+    "2025-01-18",
+    "2025-01-19",
+    "2025-01-20",
+    "2025-01-21",
+    "2025-01-22",
+    "2025-01-23",
+    "2025-01-24",
+    "2025-01-25",
+    "2025-01-26",
+    "2025-01-27",
+    "2025-01-28",
+    "2025-01-29",
+    "2025-01-30",
+    "2025-01-31",
+    "2025-02-01",
+    "2025-02-02",
+    "2025-02-03",
+    "2025-02-04",
+    "2025-02-05",
+    "2025-02-06",
+    "2025-02-07",
+    "2025-02-08",
+    "2025-02-09",
+    "2025-02-10",
+    "2025-02-11",
+    "2025-02-12",
+    "2025-02-13",
+    "2025-02-14",
+    "2025-02-15",
+    "2025-02-16",
+    "2025-02-17",
+    "2025-02-18",
+    "2025-02-19",
+    "2025-02-20",
+    "2025-02-21",
+    "2025-02-22",
+    "2025-02-23",
+    "2025-02-24",
+    "2025-02-25",
+    "2025-02-26",
+    "2025-02-27",
+    "2025-02-28",
+    "2025-03-01",
+    "2025-03-02",
+    "2025-03-03",
+    "2025-03-04",
+    "2025-03-05",
+    "2025-03-06",
+    "2025-03-07",
+    "2025-03-08",
+    "2025-03-09",
+    "2025-03-10",
+    "2025-03-11",
+    "2025-03-12",
+    "2025-03-13",
+    "2025-03-14",
+    "2025-03-15",
+    "2025-03-16",
+    "2025-03-17",
+    "2025-03-18",
+    "2025-03-19",
+    "2025-03-20",
+    "2025-03-21",
+    "2025-03-22",
+    "2025-03-23",
+    "2025-03-24",
+    "2025-03-25",
+    "2025-03-26",
+    "2025-03-27",
+    "2025-03-28",
+    "2025-03-29",
+    "2025-03-30",
+    "2025-03-31",
+    "2025-04-01",
+    "2025-04-02",
+    "2025-04-03",
+    "2025-04-04",
+    "2025-04-05",
+    "2025-04-06",
+    "2025-04-07",
+    "2025-04-08",
+    "2025-04-09",
+    "2025-04-10",
+    "2025-04-11",
+    "2025-04-12",
+    "2025-04-13",
+    "2025-04-14",
+    "2025-04-15",
+    "2025-04-16",
+    "2025-04-17",
+    "2025-04-18",
+    "2025-04-19",
+    "2025-04-20",
+    "2025-04-21",
+    "2025-04-22",
+    "2025-04-23",
+    "2025-04-24",
+    "2025-04-25",
+    "2025-04-26",
+    "2025-04-27",
+    "2025-04-28",
+    "2025-04-29",
+    "2025-04-30",
+    "2025-05-01",
+    "2025-05-02",
+    "2025-05-03",
+    "2025-05-04",
+    "2025-05-05",
+    "2025-05-06",
+    "2025-05-07",
+    "2025-05-08",
+    "2025-05-09",
+    "2025-05-10",
+    "2025-05-11",
+    "2025-05-12",
+    "2025-05-13",
+    "2025-05-14",
+    "2025-05-15",
+    "2025-05-16",
+    "2025-05-17",
+    "2025-05-18",
+    "2025-05-19",
+    "2025-05-20",
+    "2025-05-21",
+    "2025-05-22",
+    "2025-05-23",
+    "2025-05-24",
+    "2025-05-25",
+    "2025-05-26",
+    "2025-05-27",
+    "2025-05-28",
+    "2025-05-29",
+    "2025-05-30",
+    "2025-05-31",
+    "2025-06-01",
+    "2025-06-02",
+    "2025-06-03",
+    "2025-06-04",
+    "2025-06-05",
+    "2025-06-06",
+    "2025-06-07",
+    "2025-06-08",
+    "2025-06-09",
+    "2025-06-10",
+    "2025-06-11",
+    "2025-06-12",
+    "2025-06-13",
+    "2025-06-14",
+    "2025-06-15",
+    "2025-06-16",
+    "2025-06-17",
+    "2025-06-18",
+    "2025-06-19",
+    "2025-06-20",
+    "2025-06-21",
+    "2025-06-22",
+    "2025-06-23",
+    "2025-06-24",
+    "2025-06-25",
+    "2025-06-26",
+    "2025-06-27",
+    "2025-06-28",
+    "2025-06-29",
+    "2025-06-30",
+    "2025-07-01",
+    "2025-07-02",
+    "2025-07-03",
+    "2025-07-04",
+    "2025-07-05",
+    "2025-07-06",
+    "2025-07-07",
+    "2025-07-08",
+    "2025-07-09",
+    "2025-07-10",
+    "2025-07-11",
+    "2025-07-12",
+    "2025-07-13",
+    "2025-07-14",
+    "2025-07-15",
+    "2025-07-16",
+    "2025-07-17",
+    "2025-07-18",
+    "2025-07-19",
+    "2025-07-20",
+    "2025-07-21",
+    "2025-07-22",
+    "2025-07-23",
+    "2025-07-24",
+    "2025-07-25",
+    "2025-07-26",
+    "2025-07-27",
+    "2025-07-28",
+    "2025-07-29",
+    "2025-07-30",
+    "2025-07-31",
+    "2025-08-01",
+    "2025-08-02",
+    "2025-08-03",
+    "2025-08-04",
+    "2025-08-05",
+    "2025-08-06",
+    "2025-08-07",
+    "2025-08-08",
+    "2025-08-09",
+    "2025-08-10",
+    "2025-08-11",
+    "2025-08-12",
+    "2025-08-13",
+    "2025-08-14",
+    "2025-08-15",
+    "2025-08-16",
+    "2025-08-17",
+    "2025-08-18",
+    "2025-08-19",
+    "2025-08-20",
+    "2025-08-21",
+    "2025-08-22",
+    "2025-08-23",
+    "2025-08-24",
+    "2025-08-25",
+    "2025-08-26",
+    "2025-08-27",
+    "2025-08-28",
+    "2025-08-29",
+    "2025-08-30",
+    "2025-08-31",
+    "2025-09-01",
+    "2025-09-02",
+    "2025-09-03",
+    "2025-09-04",
+    "2025-09-05",
+    "2025-09-06",
+    "2025-09-07",
+    "2025-09-08",
+    "2025-09-09",
+    "2025-09-10",
+    "2025-09-11",
+    "2025-09-12",
+    "2025-09-13",
+    "2025-09-14",
+    "2025-09-15",
+    "2025-09-16",
+    "2025-09-17",
+    "2025-09-18",
+    "2025-09-19",
+    "2025-09-20",
+    "2025-09-21",
+    "2025-09-22",
+    "2025-09-23",
+    "2025-09-24",
+    "2025-09-25",
+    "2025-09-26",
+    "2025-09-27",
+    "2025-09-28",
+    "2025-09-29",
+    "2025-09-30",
+    "2025-10-01",
+    "2025-10-02",
+    "2025-10-03",
+    "2025-10-04",
+    "2025-10-05",
+    "2025-10-06",
+    "2025-10-07",
+    "2025-10-08",
+    "2025-10-09",
+    "2025-10-10",
+    "2025-10-11",
+    "2025-10-12",
+    "2025-10-13",
+    "2025-10-14",
+    "2025-10-15",
+    "2025-10-16",
+    "2025-10-17",
+    "2025-10-18",
+    "2025-10-19",
+    "2025-10-20",
+    "2025-10-21",
+    "2025-10-22",
+    "2025-10-23",
+    "2025-10-24",
+    "2025-10-25",
+    "2025-10-26",
+    "2025-10-27",
+    "2025-10-28",
+    "2025-10-29",
+    "2025-10-30",
+    "2025-10-31"
+   ],
+   "series_year": 2025,
+   "years": [
+    {
+     "baseflow_mean": 5.9711859109398535,
+     "bfi": 0.8732466505569831,
+     "discharge_mean": 6.837914473684211,
+     "n_values": 304,
+     "year": 2023
+    },
+    {
+     "baseflow_mean": 5.406481149813731,
+     "bfi": 0.858992388675107,
+     "discharge_mean": 6.293980273972602,
+     "n_values": 365,
+     "year": 2024
+    }
+   ]
+  }
+ },
+ "stats characteristic": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": "2023-12-02",
+     "missing": 89,
+     "total": 91
+    },
+    "level": "warning",
+    "message": "89 of 91 values are missing (NaN) and were removed before the analysis"
+   },
+   {
+    "code": "years_with_missing_days",
+    "details": {
+     "count": 1,
+     "total": 1,
+     "years": [
+      2024
+     ]
+    },
+    "level": "warning",
+    "message": "1 of 1 hydrological years have days without a value; their extremes are included and may be milder than the true ones: 2024"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2024,
+     "last_year": 2024,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2024-2024 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_degree_labels": {
+    "max": "WW",
+    "mean": "SW",
+    "min": "NW"
+   },
+   "first_year": 2024,
+   "incomplete_years": [
+    2024
+   ],
+   "labels": {
+    "nnx": "NNW",
+    "nsx": "NSW",
+    "nwx": "NWW",
+    "snx": "SNW",
+    "ssx": "SSW",
+    "swx": "SWW",
+    "wnx": "WNW",
+    "wsx": "WSW",
+    "wwx": "WWW",
+    "znx": "ZNW",
+    "zsx": "ZSW",
+    "zwx": "ZWW"
+   },
+   "last_year": 2024,
+   "nnx": 154.0,
+   "nsx": 158.0,
+   "nwx": 162.0,
+   "parameter": "H",
+   "period_years": 1,
+   "schema": "hydrolog-stats-characteristic/1",
+   "snx": 154.0,
+   "source": "daily",
+   "ssx": 158.0,
+   "summer": {
+    "nnx": null,
+    "nsx": null,
+    "nwx": null,
+    "period_years": 0,
+    "snx": null,
+    "ssx": null,
+    "swx": null,
+    "wnx": null,
+    "wsx": null,
+    "wwx": null,
+    "znx": null,
+    "zsx": null,
+    "zwx": null
+   },
+   "swx": 162.0,
+   "winter": {
+    "nnx": 154.0,
+    "nsx": 158.0,
+    "nwx": 162.0,
+    "period_years": 1,
+    "snx": 154.0,
+    "ssx": 158.0,
+    "swx": 162.0,
+    "wnx": 154.0,
+    "wsx": 158.0,
+    "wwx": 162.0,
+    "znx": 154.0,
+    "zsx": 158.0,
+    "zwx": 162.0
+   },
+   "wnx": 154.0,
+   "wsx": 158.0,
+   "wwx": 162.0,
+   "years": [
+    {
+     "annual": {
+      "days": 366,
+      "days_with_data": 2,
+      "max": 162.0,
+      "max_date": "2023-12-01",
+      "mean": 158.0,
+      "min": 154.0,
+      "min_date": "2024-02-29"
+     },
+     "summer": {
+      "days": 184,
+      "days_with_data": 0,
+      "max": null,
+      "max_date": null,
+      "mean": null,
+      "min": null,
+      "min_date": null
+     },
+     "winter": {
+      "days": 182,
+      "days_with_data": 2,
+      "max": 162.0,
+      "max_date": "2023-12-01",
+      "mean": 158.0,
+      "min": 154.0,
+      "min_date": "2024-02-29"
+     },
+     "year": 2024
+    }
+   ],
+   "znx": 154.0,
+   "zsx": 158.0,
+   "zwx": 162.0
+  }
+ },
+ "stats daily": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": "2023-12-02",
+     "missing": 89,
+     "total": 91
+    },
+    "level": "warning",
+    "message": "89 of 91 values are missing (NaN) and were removed before the analysis"
+   }
+  ],
+  "result": {
+   "count": [
+    1.0,
+    1.0
+   ],
+   "day_of_year": [
+    31.0,
+    121.0
+   ],
+   "max_values": [
+    162.0,
+    154.0
+   ],
+   "mean_values": [
+    162.0,
+    154.0
+   ],
+   "median_values": [
+    162.0,
+    154.0
+   ],
+   "min_values": [
+    162.0,
+    154.0
+   ],
+   "schema": "hydrolog-stats-daily/1"
+  }
+ },
+ "stats duration-curve": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": "2023-12-02",
+     "missing": 89,
+     "total": 91
+    },
+    "level": "warning",
+    "message": "89 of 91 values are missing (NaN) and were removed before the analysis"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2024,
+     "last_year": 2024,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2024-2024 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "bin_count": null,
+   "bin_method": "width",
+   "bin_width": 10.0,
+   "classes": [
+    {
+     "days": 1,
+     "days_with_higher": 1,
+     "days_with_lower": 2,
+     "lower": 160.0,
+     "months": [
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "share_percent": 50.0,
+     "upper": 170.0
+    },
+    {
+     "days": 1,
+     "days_with_higher": 2,
+     "days_with_lower": 1,
+     "lower": 150.0,
+     "months": [
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "share_percent": 50.0,
+     "upper": 160.0
+    }
+   ],
+   "curve_exceedance_percents": [
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    7.0,
+    8.0,
+    9.0,
+    10.0,
+    11.0,
+    12.0,
+    13.0,
+    14.0,
+    15.0,
+    16.0,
+    17.0,
+    18.0,
+    19.0,
+    20.0,
+    21.0,
+    22.0,
+    23.0,
+    24.0,
+    25.0,
+    26.0,
+    27.0,
+    28.0,
+    29.0,
+    30.0,
+    31.0,
+    32.0,
+    33.0,
+    34.0,
+    35.0,
+    36.0,
+    37.0,
+    38.0,
+    39.0,
+    40.0,
+    41.0,
+    42.0,
+    43.0,
+    44.0,
+    45.0,
+    46.0,
+    47.0,
+    48.0,
+    49.0,
+    50.0,
+    51.0,
+    52.0,
+    53.0,
+    54.0,
+    55.0,
+    56.0,
+    57.0,
+    58.0,
+    59.0,
+    60.0,
+    61.0,
+    62.0,
+    63.0,
+    64.0,
+    65.0,
+    66.0,
+    67.0,
+    68.0,
+    69.0,
+    70.0,
+    71.0,
+    72.0,
+    73.0,
+    74.0,
+    75.0,
+    76.0,
+    77.0,
+    78.0,
+    79.0,
+    80.0,
+    81.0,
+    82.0,
+    83.0,
+    84.0,
+    85.0,
+    86.0,
+    87.0,
+    88.0,
+    89.0,
+    90.0,
+    91.0,
+    92.0,
+    93.0,
+    94.0,
+    95.0,
+    96.0,
+    97.0,
+    98.0,
+    99.0,
+    99.5,
+    99.8,
+    99.9
+   ],
+   "curve_values": [
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    161.84,
+    161.6,
+    161.35999999999999,
+    161.12,
+    160.88,
+    160.64,
+    160.4,
+    160.16,
+    159.92,
+    159.68,
+    159.44,
+    159.2,
+    158.96,
+    158.72,
+    158.48,
+    158.24,
+    158.0,
+    157.76,
+    157.52,
+    157.28,
+    157.04,
+    156.8,
+    156.56,
+    156.32,
+    156.07999999999998,
+    155.84,
+    155.6,
+    155.35999999999999,
+    155.12,
+    154.88,
+    154.64,
+    154.4,
+    154.16,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0
+   ],
+   "exceedance_percents": [
+    1.0,
+    5.0,
+    10.0,
+    30.0,
+    50.0,
+    70.0,
+    90.0,
+    95.0,
+    99.0
+   ],
+   "first_year": 2024,
+   "last_year": 2024,
+   "max": 162.0,
+   "mean": 158.0,
+   "median": 158.0,
+   "min": 154.0,
+   "modal_class": {
+    "days": 1,
+    "lower": 150.0,
+    "share_percent": 50.0,
+    "upper": 160.0
+   },
+   "month": null,
+   "n_values": 2,
+   "period_years": 1,
+   "schema": "hydrolog-stats-duration-curve/1",
+   "values": [
+    162.0,
+    162.0,
+    162.0,
+    162.0,
+    158.0,
+    154.0,
+    154.0,
+    154.0,
+    154.0
+   ]
+  }
+ },
+ "stats flood-frequency": {
+  "error": {
+   "code": "calculation_error",
+   "details": {
+    "count": 0,
+    "incomplete_years": [
+     2024
+    ],
+    "minimum": 3
+   },
+   "exit_code": 13,
+   "hint": "A hydrological year counts only with a value for every day of it; fill the gaps or provide a longer series. Annual maxima that are already extracted go without dates.",
+   "message": "Flood frequency analysis needs at least 3 complete hydrological years, got 0; incomplete years: 2024 (1 of 366 days)",
+   "schema": "hydrolog-error/1",
+   "title": "Calculation error"
+  }
+ },
+ "stats harmonics": {
+  "notices": [
+   {
+    "code": "short_years_left_out",
+    "details": {
+     "count": 2,
+     "minimum": 300,
+     "years": [
+      2023,
+      2024
+     ]
+    },
+    "level": "info",
+    "message": "2 hydrological year(s) of the period have fewer than 300 days with a value to use and no values of their own: 2023, 2024"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2024,
+     "minimum": 30,
+     "years": 2
+    },
+    "level": "info",
+    "message": "The reference period 2023-2024 has 2 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "first_year": 2023,
+   "last_year": 2024,
+   "n_harmonics": 2,
+   "period": {
+    "harmonics": [
+     {
+      "amplitude": 661.7783461105654,
+      "explained_variance": -10792.676435102223,
+      "phase_day": 2.1425207135167446
+     },
+     {
+      "amplitude": 167.37276928318613,
+      "explained_variance": 10793.662062573989,
+      "phase_day": 94.31224132762841
+     }
+    ],
+    "mean": -487.9759793308249,
+    "n_values": 31,
+    "r_squared": 0.985627471765918
+   },
+   "period_days": 365.25,
+   "period_years": 2,
+   "schema": "hydrolog-stats-harmonics/1",
+   "years": []
+  }
+ },
+ "stats homogeneity": {
+  "error": {
+   "code": "calculation_error",
+   "details": {
+    "count": 0,
+    "incomplete_years": [
+     2024
+    ],
+    "minimum": 3
+   },
+   "exit_code": 13,
+   "hint": "A hydrological year counts only with a value for every day of it; fill the gaps or provide a longer series. Annual maxima that are already extracted go without dates.",
+   "message": "Homogeneity testing needs at least 3 complete hydrological years, got 0; incomplete years: 2024 (1 of 366 days)",
+   "schema": "hydrolog-error/1",
+   "title": "Calculation error"
+  }
+ },
+ "stats low-flow": {
+  "error": {
+   "code": "calculation_error",
+   "details": {
+    "count": 0,
+    "incomplete_years": [
+     2024
+    ],
+    "minimum": 3
+   },
+   "exit_code": 13,
+   "hint": "A hydrological year counts only with a value for every day of it; fill the gaps or provide a longer series.",
+   "message": "Low-flow frequency analysis needs at least 3 complete hydrological years, got 0; incomplete years: 2024 (1 of 366 days)",
+   "schema": "hydrolog-error/1",
+   "title": "Calculation error"
+  }
+ },
+ "stats low-flow-sequences": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2024,
+     "last_year": 2024,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2024-2024 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "exceedance_percent": null,
+   "first_year": 2024,
+   "last_year": 2024,
+   "max_duration_days": 0,
+   "max_gap_days": 4,
+   "min_duration_days": 5,
+   "n_days": 91,
+   "n_events": 0,
+   "n_missing_days": 90,
+   "parameter": "Q",
+   "period_years": 1,
+   "schema": "hydrolog-stats-low-flow-sequences/1",
+   "sequences": [],
+   "threshold": 3.4,
+   "threshold_method": "mean_annual_minimum",
+   "total_deficit": 0,
+   "total_deficit_volume_m3": 0.0,
+   "years": [
+    {
+     "deficit": 0.0,
+     "deficit_volume_m3": 0.0,
+     "duration_days": 0,
+     "max_duration_days": 0,
+     "missing_days": 90,
+     "n_events": 0,
+     "year": 2024
+    }
+   ]
+  }
+ },
+ "stats mann-kendall": {
+  "notices": [],
+  "result": {
+   "p_value": 0.2962698714842864,
+   "s_statistic": -3.0,
+   "schema": "hydrolog-stats-mann-kendall/1",
+   "sen_intercept": 8105.545999999999,
+   "sen_slope": -3.9995,
+   "sen_slope_lower": null,
+   "sen_slope_upper": null,
+   "significance_level": 0.05,
+   "trend_detected": false,
+   "trend_direction": "none",
+   "var_s": 3.6666666666666665,
+   "z_score": -1.044465935734187
+  }
+ },
+ "stats monthly": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": "2024-06-15",
+     "missing": 1,
+     "total": 731
+    },
+    "level": "warning",
+    "message": "1 of 731 values are missing (NaN) and were removed before the analysis"
+   }
+  ],
+  "result": {
+   "ci_lower": [
+    61.93460914206375,
+    72.95798969878737,
+    85.47866063273159,
+    96.68674772883656,
+    103.40476154580682,
+    103.282775149503,
+    96.30960057699981,
+    84.91781320798388,
+    72.00013415319177,
+    61.10559542957115,
+    55.2927578442066,
+    55.40118109828744
+   ],
+   "ci_upper": [
+    63.87184247083948,
+    75.07709802051087,
+    87.65037162533292,
+    98.41325227116343,
+    104.4984642606448,
+    104.44603840981902,
+    98.10975426170985,
+    87.11444485653224,
+    74.23319918014155,
+    63.02343682849336,
+    56.87390882246007,
+    57.01817374042224
+   ],
+   "confidence_level": 0.95,
+   "cv_values": [
+    0.060635451152200974,
+    0.05395016535552853,
+    0.04939462838770495,
+    0.03425626389582791,
+    0.020715034290604062,
+    0.02148842052430919,
+    0.036460085300603295,
+    0.05027996201659146,
+    0.05911320818063845,
+    0.06083967898751913,
+    0.05456812946876691,
+    0.05663886598405355
+   ],
+   "max_values": [
+    71.0,
+    82.0,
+    95.0,
+    104.0,
+    108.0,
+    108.0,
+    105.0,
+    94.0,
+    83.0,
+    70.0,
+    62.0,
+    63.0
+   ],
+   "mean_values": [
+    62.903225806451616,
+    74.01754385964912,
+    86.56451612903226,
+    97.55,
+    103.95161290322581,
+    103.86440677966101,
+    97.20967741935483,
+    86.01612903225806,
+    73.11666666666666,
+    62.064516129032256,
+    56.083333333333336,
+    56.20967741935484
+   ],
+   "median_values": [
+    63.0,
+    74.0,
+    86.5,
+    98.0,
+    104.0,
+    104.0,
+    97.0,
+    86.0,
+    73.0,
+    62.0,
+    56.0,
+    56.0
+   ],
+   "min_values": [
+    55.0,
+    65.0,
+    77.0,
+    91.0,
+    100.0,
+    98.0,
+    90.0,
+    78.0,
+    63.0,
+    54.0,
+    50.0,
+    50.0
+   ],
+   "months": [
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    7.0,
+    8.0,
+    9.0,
+    10.0,
+    11.0,
+    12.0
+   ],
+   "schema": "hydrolog-stats-monthly/1",
+   "skewness_values": [
+    -0.05013048672491416,
+    -0.06054601469066919,
+    0.002775935321454052,
+    -0.061415217767113076,
+    0.07293902317077856,
+    0.0026151057673066956,
+    -0.20772264551360647,
+    0.05757095888182085,
+    -0.05225701675679795,
+    -0.0578208685475499,
+    0.03149726043191415,
+    0.009994740695767692
+   ],
+   "std_values": [
+    3.8141654757029646,
+    3.9932587304381557,
+    4.275822105755039,
+    3.341698543038012,
+    2.153361225853922,
+    2.2318820503892662,
+    3.544273130753807,
+    4.3248877005561654,
+    4.322160738141014,
+    3.775985237806026,
+    3.0603625943733443,
+    3.18365238636172
+   ]
+  }
+ },
+ "stats regime": {
+  "notices": [
+   {
+    "code": "missing_values_removed",
+    "details": {
+     "first_date": "2024-06-15",
+     "missing": 1,
+     "total": 731
+    },
+    "level": "warning",
+    "message": "1 of 731 values are missing (NaN) and were removed before the analysis"
+   },
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2023,
+     "last_year": 2025,
+     "minimum": 30,
+     "years": 3
+    },
+    "level": "info",
+    "message": "The reference period 2023-2025 has 3 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "annual_mean": 6.2390613698630135,
+   "first_year": 2023,
+   "last_year": 2025,
+   "monthly_mean": [
+    3.1820499999999985,
+    2.760064516129032,
+    3.319000000000001,
+    4.559964912280701,
+    6.314141935483871,
+    8.064250000000001,
+    9.285822580645162,
+    9.690440677966098,
+    9.180709677419356,
+    7.88667741935484,
+    6.172849999999999,
+    4.4424838709677426
+   ],
+   "months": [
+    11,
+    12,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "n_values": 730,
+   "parde": [
+    0.5100206283224722,
+    0.44238457558073874,
+    0.5319710455216877,
+    0.7308735468298208,
+    1.0120339520914996,
+    1.2925421825394006,
+    1.4883364708510702,
+    1.5531888698473988,
+    1.4714889200746764,
+    1.2640807569950225,
+    0.9893876072155917,
+    0.7120436244507213
+   ],
+   "period_years": 3,
+   "regime_type": {
+    "code": 5,
+    "criteria": {
+     "nearly_equal": 0.95,
+     "nival_limits": [
+      1.3,
+      1.8
+     ],
+     "spring_coefficient": 1.2925421825394006,
+     "spring_month": 4,
+     "summer_coefficient": 1.5531888698473988,
+     "summer_month": 6,
+     "summer_rise": 1.0
+    }
+   },
+   "schema": "hydrolog-stats-regime/1",
+   "seasonality_index": 0.3549793412804229,
+   "spring_share": 0.19187771619502422
+  }
+ },
+ "stats runoff-volume": {
+  "notices": [
+   {
+    "code": "short_reference_period",
+    "details": {
+     "first_year": 2024,
+     "last_year": 2024,
+     "minimum": 30,
+     "years": 1
+    },
+    "level": "info",
+    "message": "The reference period 2024-2024 has 1 year(s) with values; at least 30 years are recommended"
+   }
+  ],
+  "result": {
+   "cumulative_volume_m3": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0,
+    293760.0
+   ],
+   "cumulative_year": 2024,
+   "first_year": 2024,
+   "last_year": 2024,
+   "mean_annual_volume_m3": null,
+   "mean_cumulative_volume_m3": null,
+   "monthly_mean_volume_m3": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "n_complete_years": 0,
+   "period_years": 1,
+   "schema": "hydrolog-stats-runoff-volume/1",
+   "years": [
+    {
+     "complete": false,
+     "days": 366,
+     "days_with_data": 1,
+     "months": [
+      {
+       "days": 30,
+       "days_with_data": 0,
+       "month": 11,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 12,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 1,
+       "volume_m3": null
+      },
+      {
+       "days": 29,
+       "days_with_data": 1,
+       "month": 2,
+       "volume_m3": 293760.0
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 3,
+       "volume_m3": null
+      },
+      {
+       "days": 30,
+       "days_with_data": 0,
+       "month": 4,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 5,
+       "volume_m3": null
+      },
+      {
+       "days": 30,
+       "days_with_data": 0,
+       "month": 6,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 7,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 8,
+       "volume_m3": null
+      },
+      {
+       "days": 30,
+       "days_with_data": 0,
+       "month": 9,
+       "volume_m3": null
+      },
+      {
+       "days": 31,
+       "days_with_data": 0,
+       "month": 10,
+       "volume_m3": null
+      }
+     ],
+     "volume_m3": 293760.0,
+     "year": 2024
+    }
+   ]
+  }
+ },
+ "stats seasonality": {
+  "error": {
+   "code": "calculation_error",
+   "details": {
+    "incomplete_years": [
+     2024
+    ],
+    "reason": "no_complete_years"
+   },
+   "exit_code": 13,
+   "hint": "A hydrological year counts only with a value for every day of it; fill the gaps or choose other years.",
+   "message": "The period has no complete hydrological year: 2024 (1 of 366 days)",
+   "schema": "hydrolog-error/1",
+   "title": "Calculation error"
+  }
+ },
+ "stats threshold-events": {
+  "notices": [],
+  "result": {
+   "days_beyond": 1,
+   "direction": "above",
+   "events": [
+    {
+     "days_beyond": 1,
+     "duration_days": 1,
+     "end_date": "2023-12-01",
+     "hydrological_year": 2024,
+     "missing_days": 0,
+     "open_end": true,
+     "open_start": true,
+     "peak": 162.0,
+     "peak_date": "2023-12-01",
+     "start_date": "2023-12-01"
+    }
+   ],
+   "first_year": 2024,
+   "last_year": 2024,
+   "max_duration_days": 1,
+   "max_gap_days": 0,
+   "min_duration_days": 1,
+   "n_days": 91,
+   "n_events": 1,
+   "n_missing_days": 89,
+   "period_years": 1,
+   "schema": "hydrolog-stats-threshold-events/1",
+   "threshold": 162.0,
+   "years": [
+    {
+     "days": 366,
+     "days_beyond": 1,
+     "days_with_data": 2,
+     "n_events": 1,
+     "year": 2024
+    }
+   ]
+  }
+ }
+}

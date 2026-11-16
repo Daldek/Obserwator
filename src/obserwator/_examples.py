@@ -1,0 +1,641 @@
+"""
+Example calls of the command catalog (AGI-2.2): a complete ``obserwator`` line and an excerpt of its result.
+
+Every call is the canonical line of `obserwator.commands.format_command` (AGI-2.1):
+`obserwator.commands.parse_command` reads it into a call that ``format_command``
+writes as the same line, and its options pass `obserwator.commands.validate_command`.
+A call whose result is a JSON document ends with ``--json`` (the CLI prints the
+envelope, not the summary for a person); the call of a stream to stdout has no
+``--json``, its data lines are the same either way.
+Paths are absolute (``/data/obserwator-raw`` is the raw root and ``/data/obserwator``
+the data root of the examples, ADR-017), so the line is the same in every working
+directory and under every default root.
+
+The result is an excerpt of the ``result`` of the ``obserwator-result/1`` envelope in
+its JSON form: some fields of the result object; for a list command the list of
+its first item with some fields; for a stream command the
+start of the text, or the `obserwator.output.OutputReport` of a written file.
+Store paths are relative to the command's root, as in every result
+(``obserwator._jsonable``); a path in the other root (the raw sources of a build)
+stays absolute.
+`obserwator.commands.command_schema` publishes the examples in ``examples`` of each command.
+"""
+
+from collections.abc import Mapping
+from typing import NamedTuple
+
+__all__ = ["EXAMPLES", "Example"]
+
+
+class Example(NamedTuple):
+    """An example call: the canonical command line and an excerpt of its result."""
+
+    call: str
+    result: object
+
+
+_ROOT = "/data/obserwator"
+_RAW_ROOT = "/data/obserwator-raw"
+_DAILY_VERSION = (
+    "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/"
+    "2026-10-19_b6a19f65/codz_2024.zip"
+)
+_SERIES_VERSION = "series/versions/hydro_daily/2026-10-19_9a64f921/series.json"
+_CELL_VERSION = "pmaxtp/versions/POT/751_317/2026-10-25_3f9c2a71/cell.json"
+_PMAXTP = {"method": "POT", "latitude": 52.23, "longitude": 21.01}
+_RABA_ITEM = {
+    "kind": "hydro",
+    "station_code": "149190310",
+    "name": "Raba Górna",
+    "river": "Raba",
+    "provider": "IMGW-PIB",
+}
+_ANALYSES_VERSION = "analyses/versions/pl.imgw/2026-11-13_5d1e0a27/analyses.json"
+_RABA_ANALYSIS = {
+    "station": "149190310",
+    "analysis": "flood_frequency.Q",
+    "command": "stats flood-frequency",
+    "status": "ok",
+    "analyses_version": "2026-11-13_5d1e0a27",
+}
+
+
+def _page(item: Mapping[str, object], schema: str) -> list[dict[str, object]]:
+    """The excerpt of a list result: its first item, led by the item's ``schema``."""
+    return [{"schema": schema, **item}]
+
+
+def _plan(item: Mapping[str, object], *, root: str = _RAW_ROOT) -> dict[str, object]:
+    """The excerpt of an ``obserwator-plan/1`` plan of a root of the examples."""
+    return {"schema": "obserwator-plan/1", "root": root, "items": [item]}
+
+
+_DAILY_PLAN = _plan(
+    {
+        "dataset": "pl.imgw.hydro_daily",
+        "server_path": "dane_hydrologiczne/dobowe/2024/codz_2024.zip",
+        "status": "unchanged",
+        "local_path": _DAILY_VERSION,
+    }
+)
+_DAILY_SYNC = {
+    "items": [
+        {
+            "slot": "archive:pl.imgw.hydro_daily:2024/codz_2024.zip",
+            "status": "unchanged",
+            "version": _DAILY_VERSION,
+        }
+    ],
+    "cancelled": False,
+}
+
+EXAMPLES: Mapping[str, tuple[Example, ...]] = {
+    "datasets list": (
+        Example(
+            "obserwator datasets list --kind hydro --json",
+            _page(
+                {
+                    "key": "pl.imgw.hydro_daily",
+                    "kind": "hydro",
+                    "title": "Daily hydrological data",
+                    "variables": {"H": "cm", "Q": "m3/s", "T": "degC"},
+                    "first_year": 1951,
+                    "provider": "IMGW-PIB",
+                },
+                "obserwator-dataset/1",
+            ),
+        ),
+        Example(
+            "obserwator datasets list --provider CHMI --json",
+            _page(
+                {
+                    "key": "cz.chmi.hydro_daily",
+                    "kind": "hydro",
+                    "year_type": "calendar",
+                    "first_year": 1887,
+                    "provider": "CHMI",
+                },
+                "obserwator-dataset/1",
+            ),
+        ),
+    ),
+    "datasets files": (
+        Example(
+            "obserwator datasets files --dataset pl.imgw.hydro_daily --years 2022,2023 --json",
+            _page(
+                {
+                    "dataset": "pl.imgw.hydro_daily",
+                    "server_path": "dane_hydrologiczne/dobowe/2022/codz_2022_01.zip",
+                    "year": 2022,
+                    "month": 1,
+                    "period_start": "2021-11-01",
+                    "period_end": "2021-11-30",
+                },
+                "obserwator-archive-file/1",
+            ),
+        ),
+        Example(
+            "obserwator datasets files --dataset cz.chmi.hydro_daily --years 2024 "
+            "--stations 0-203-1-900001 --json",
+            _page(
+                {
+                    "dataset": "cz.chmi.hydro_daily",
+                    "server_path": "hydrology/historical/data/daily/"
+                    "H_0-203-1-900001_DQ_2024.json",
+                    "year": 2024,
+                    "station_code": "0-203-1-900001",
+                },
+                "obserwator-archive-file/1",
+            ),
+        ),
+    ),
+    "datasets download": (
+        Example(
+            "obserwator datasets download --dataset pl.imgw.hydro_daily --years 2024 "
+            "--root /data/obserwator-raw --json",
+            {
+                "mode": "store",
+                "root": _RAW_ROOT,
+                "items": [
+                    {
+                        "slot": "archive:pl.imgw.hydro_daily:2024/codz_2024.zip",
+                        "status": "new",
+                        "path": _DAILY_VERSION,
+                    }
+                ],
+                "cancelled": False,
+            },
+        ),
+        Example(
+            "obserwator datasets download --dataset pl.imgw.hydro_daily --years 2024 "
+            "--root /data/obserwator-raw --check --json",
+            _DAILY_PLAN,
+        ),
+        Example(
+            "obserwator datasets download --dataset pl.imgw.meteo_synop_monthly "
+            "--years 2023 --output-dir /data/pobrane --json",
+            {
+                "mode": "plain",
+                "output_dir": "/data/pobrane",
+                "files": [
+                    {
+                        "path": "/data/pobrane/dane_meteorologiczne/miesieczne/synop/"
+                        "2023/2023_m_s.zip",
+                        "status": "written",
+                    }
+                ],
+            },
+        ),
+    ),
+    "datasets providers": (
+        Example(
+            "obserwator datasets providers --json",
+            _page(
+                {
+                    "id": "IMGW-PIB",
+                    "country": "PL",
+                    "key_prefix": "pl.imgw",
+                    "license": {"id": "IMGW-PIB"},
+                },
+                "obserwator-provider/1",
+            ),
+        ),
+    ),
+    "stations find": (
+        Example(
+            "obserwator stations find --kind hydro --query raba --json",
+            _page(_RABA_ITEM, "obserwator-station/1"),
+        ),
+        Example(
+            "obserwator stations find --kind hydro --query spindleruv --provider CHMI --json",
+            _page(
+                {
+                    "kind": "hydro",
+                    "station_code": "0-203-1-001000",
+                    "name": "Špindlerův Mlýn",
+                    "river": "Labe",
+                    "provider": "CHMI",
+                },
+                "obserwator-station/1",
+            ),
+        ),
+    ),
+    "stations export": (
+        Example(
+            "obserwator stations export --root /data/obserwator --provider CHMI --kind hydro",
+            '{"type":"FeatureCollection","schema":"obserwator-stations-export/1",',
+        ),
+        Example(
+            "obserwator stations export --root /data/obserwator --format csv "
+            "--output /data/stations.csv --json",
+            {
+                "output": "/data/stations.csv",
+                "files": [{"path": "/data/stations.csv", "status": "written"}],
+            },
+        ),
+    ),
+    "current hydro": (
+        Example(
+            "obserwator current hydro --station 149190310 --json",
+            _page(
+                {
+                    "station_code": "149190310",
+                    "station_name": "Raba Górna",
+                    "river": "Raba",
+                    "water_level_cm": 162.0,
+                    "water_level_date": "2026-10-25 08:00:00",
+                },
+                "obserwator-hydro-current/1",
+            ),
+        ),
+    ),
+    "current meteo": (
+        Example(
+            "obserwator current meteo --json",
+            _page(
+                {
+                    "station_code": "250180590",
+                    "station_name": "Warszawa-Bielany",
+                    "air_temp_c": 8.4,
+                    "air_temp_date": "2026-10-25 08:00:00",
+                },
+                "obserwator-meteo-current/1",
+            ),
+        ),
+    ),
+    "current synop": (
+        Example(
+            "obserwator current synop --station 12375 --json",
+            _page(
+                {
+                    "station_code": "12375",
+                    "station_name": "Warszawa",
+                    "measurement_date": "2026-10-25",
+                    "measurement_hour": 8,
+                    "temperature_c": 8.1,
+                    "pressure_hpa": 1016.2,
+                },
+                "obserwator-synop/1",
+            ),
+        ),
+    ),
+    "current warnings": (
+        Example(
+            "obserwator current warnings --kind meteo --json",
+            _page(
+                {
+                    "kind": "meteo",
+                    "event": "Silny wiatr",
+                    "level": 1,
+                    "valid_from": "2026-10-25T10:00:00Z",
+                    "valid_to": "2026-10-25T20:00:00Z",
+                },
+                "obserwator-warning/1",
+            ),
+        ),
+    ),
+    "current hydro-states": (
+        Example(
+            "obserwator current hydro-states --main-only --json",
+            _page(
+                {
+                    "station_code": "149190310",
+                    "name": "Raba Górna",
+                    "river": "Raba",
+                    "water_state": "normal",
+                },
+                "obserwator-hydro-state/1",
+            ),
+        ),
+    ),
+    "pmaxtp fetch": (
+        Example(
+            "obserwator pmaxtp fetch --latitude 52.23 --longitude 21.01 --json",
+            {**_PMAXTP, "data": {"ks": {}, "sg": {}, "rb": {}}},
+        ),
+    ),
+    "pmaxtp url": (
+        Example(
+            "obserwator pmaxtp url --latitude 52.23 --longitude 21.01 --json",
+            {
+                "schema": "obserwator-pmaxtp-url/1",
+                "url": "https://powietrze.imgw.pl/tpmax-api/point/P/KS/52.2300/21.0100",
+            },
+        ),
+    ),
+    "pmaxtp check": (
+        Example(
+            "obserwator pmaxtp check --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _RAW_ROOT,
+                "actions": [{"command": "pmaxtp sync", "status": "unverifiable"}],
+            },
+        ),
+    ),
+    "pmaxtp sync": (
+        Example(
+            "obserwator pmaxtp sync --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 --json",
+            {
+                "status": "new",
+                "version": _CELL_VERSION,
+                "ind_x": 751,
+                "ind_y": 317,
+            },
+        ),
+        Example(
+            "obserwator pmaxtp sync --root /data/obserwator-raw --latitude 52.23 --longitude 21.01 "
+            "--check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _RAW_ROOT,
+                "actions": [{"command": "pmaxtp sync", "status": "unverifiable"}],
+            },
+        ),
+    ),
+    "pmaxtp read": (
+        Example(
+            "obserwator pmaxtp read --root /data/obserwator-raw --ind-x 751 --ind-y 317 --json",
+            _PMAXTP,
+        ),
+    ),
+    "store init": (
+        Example(
+            "obserwator store init --root /data/obserwator-raw --json",
+            {"root": _RAW_ROOT, "schema": "obserwator-store/1"},
+        ),
+        Example(
+            "obserwator store init --root /data/obserwator --kind data --json",
+            {"root": _ROOT, "schema": "obserwator-data/1"},
+        ),
+    ),
+    "store info": (
+        Example(
+            "obserwator store info --root /data/obserwator --json",
+            {
+                "schema": "obserwator-store-info/1",
+                "root": _ROOT,
+                "exists": True,
+                "store_schema": "obserwator-data/1",
+                "supported": True,
+                "problems": [],
+            },
+        ),
+    ),
+    "store scan": (
+        Example(
+            "obserwator store scan --root /data/obserwator --kind problem --json",
+            _page(
+                {
+                    "kind": "problem",
+                    "version": _SERIES_VERSION,
+                    "problem_code": "missing_sidecar",
+                },
+                "obserwator-store-entry/1",
+            ),
+        ),
+    ),
+    "store check": (
+        Example(
+            "obserwator store check --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
+            "--years 2023,2024 --json",
+            _DAILY_PLAN,
+        ),
+        Example(
+            "obserwator store check --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
+            "--years 2023,2024 --plan /data/plan.json --json",
+            _DAILY_PLAN,
+        ),
+    ),
+    "store sync": (
+        Example(
+            "obserwator store sync --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
+            "--years 2024 --json",
+            _DAILY_SYNC,
+        ),
+        Example(
+            "obserwator store sync --root /data/obserwator-raw --datasets pl.imgw.hydro_daily "
+            "--years 2024 --check --json",
+            _DAILY_PLAN,
+        ),
+        Example(
+            "obserwator store sync --root /data/obserwator-raw --plan /data/plan.json --json",
+            _DAILY_SYNC,
+        ),
+    ),
+    "store catalog": (
+        Example(
+            "obserwator store catalog --root /data/obserwator --raw-root /data/obserwator-raw --json",
+            {
+                "status": "new",
+                "version": "stations/versions/2026-10-25_da58e6b7/stations.geojson",
+                "station_count": 1705,
+                "without_location": 37,
+            },
+        ),
+    ),
+    "store export": (
+        Example(
+            f"obserwator store export --version /data/obserwator-raw/{_DAILY_VERSION} --root /data/obserwator-raw "
+            "--format jsonl --output /data/codz_2024.jsonl --json",
+            {
+                "output": "/data/codz_2024.jsonl",
+                "files": [{"path": "/data/codz_2024.jsonl", "status": "written"}],
+            },
+        ),
+    ),
+    "series build": (
+        Example(
+            "obserwator series build --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--dataset pl.imgw.hydro_daily --json",
+            {
+                "status": "new",
+                "version": _SERIES_VERSION,
+                "stations": 2,
+                "source_files": [f"{_RAW_ROOT}/{_DAILY_VERSION}"],
+            },
+        ),
+        Example(
+            "obserwator series build --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--dataset pl.imgw.hydro_daily --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _ROOT,
+                "series_state": {"hydro_daily": "current"},
+                "actions": [{"command": "series build", "status": "current"}],
+            },
+        ),
+    ),
+    "series select": (
+        Example(
+            "obserwator series select --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--stations 149190310 --variables H,Q --years 2020,2021,2022,2023 --json",
+            {
+                "dataset": "pl.imgw.hydro_daily",
+                "version": _SERIES_VERSION,
+                "stations": ["149190310"],
+                "variables": ["H", "Q"],
+                "years": [2020, 2021, 2022, 2023],
+                "year_type": "hydrological",
+            },
+        ),
+    ),
+    "series read": (
+        Example(
+            "obserwator series read --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --start 2024-01-01 --end 2024-01-31 --limit 10 --json",
+            _page(
+                {
+                    "station_code": "149190310",
+                    "date": "2024-01-01",
+                    "hydro_year": 2024,
+                    "measurements": {"H": {"value": 158.0, "flag": "value"}},
+                },
+                "obserwator-record/1",
+            ),
+        ),
+    ),
+    "series summary": (
+        Example(
+            "obserwator series summary --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--stations 149190310 --json",
+            _page(
+                {
+                    "station_code": "149190310",
+                    "variable": "H",
+                    "unit": "cm",
+                    "first": "2023-12-01",
+                    "last": "2024-02-29",
+                    "gaps": [["2023-12-02", "2023-12-31"]],
+                },
+                "obserwator-coverage/1",
+            ),
+        ),
+    ),
+    "series export": (
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format csv --output /data/raba.csv --json",
+            {
+                "output": "/data/raba.csv",
+                "files": [{"path": "/data/raba.csv", "status": "written"}],
+            },
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format json",
+            '{"schema":"obserwator-series-export/1","dataset":"pl.imgw.hydro_daily",',
+        ),
+        Example(
+            "obserwator series export --root /data/obserwator --dataset pl.imgw.hydro_daily "
+            "--station 149190310 --format parquet --output /data/raba.parquet --json",
+            {
+                "output": "/data/raba.parquet",
+                "files": [{"path": "/data/raba.parquet", "status": "written"}],
+            },
+        ),
+    ),
+    "analyses build": (
+        Example(
+            "obserwator analyses build --root /data/obserwator --json",
+            {
+                "status": "new",
+                "hydrolog_version": "1.0.0",
+                "providers": [
+                    {
+                        "provider": "IMGW-PIB",
+                        "status": "new",
+                        "version": _ANALYSES_VERSION,
+                        "stations": 2,
+                        "computed": 2,
+                        "carried": 0,
+                    }
+                ],
+            },
+        ),
+        Example(
+            "obserwator analyses build --root /data/obserwator --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _ROOT,
+                "actions": [{"command": "analyses build", "status": "newer"}],
+            },
+        ),
+    ),
+    "analyses list": (
+        Example(
+            "obserwator analyses list --root /data/obserwator --station 149190310 --json",
+            _page(_RABA_ANALYSIS, "obserwator-analysis-summary/1"),
+        ),
+    ),
+    "analyses read": (
+        Example(
+            "obserwator analyses read --root /data/obserwator --station 149190310 "
+            "--analysis flood_frequency.Q --json",
+            {
+                **_RABA_ANALYSIS,
+                "envelope": {
+                    "schema": "hydrolog-result/1",
+                    "result": {"schema": "hydrolog-stats-flood-frequency/1"},
+                },
+            },
+        ),
+    ),
+    "analyses export": (
+        Example(
+            "obserwator analyses export --root /data/obserwator --station 149190310 "
+            "--format csv --output /data/raba-analyses.csv --json",
+            {
+                "output": "/data/raba-analyses.csv",
+                "files": [{"path": "/data/raba-analyses.csv", "status": "written"}],
+            },
+        ),
+    ),
+    "commands list": (
+        Example(
+            "obserwator commands list --json",
+            {
+                "schema": "obserwator-command-list/1",
+                "tool": "obserwator",
+                "lang": "en",
+                "commands": [
+                    {
+                        "name": "datasets list",
+                        "operation_id": "obserwator_datasets_list",
+                        "group": "datasets",
+                        "read_only": True,
+                    }
+                ],
+            },
+        ),
+    ),
+    "commands schema": (
+        Example(
+            "obserwator commands schema --command 'store sync' --json",
+            {
+                "schema": "obserwator-commands/1",
+                "tool": "obserwator",
+                "commands": [
+                    {
+                        "name": "store sync",
+                        "operation_id": "obserwator_store_sync",
+                        "check": "store sync",
+                    }
+                ],
+            },
+        ),
+    ),
+    "commands guide": (
+        Example(
+            "obserwator commands guide",
+            "# Obserwator — guide for agents",
+        ),
+        Example(
+            "obserwator commands guide --format llms --output /data/llms.txt --json",
+            {
+                "output": "/data/llms.txt",
+                "files": [{"path": "/data/llms.txt", "status": "written"}],
+            },
+        ),
+    ),
+}

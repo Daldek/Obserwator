@@ -1,505 +1,101 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Instructions for Claude Code (claude.ai/code) working in this repository. Reference material lives in `docs/` (section 5).
 
-## Project Overview
+## 1. Project
 
-IMGWTools is a Python library and tools for downloading public data from IMGW (Polish Institute of Meteorology and Water Management). It provides four interfaces:
-- **Python Library** - `pip install imgwtools` for integration with other projects
-- **CLI** - Command-line tool for local data downloading
-- **REST API** - FastAPI-based API for generating download URLs
-- **Web GUI** - HTMX + Jinja2 web interface
+Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.0.0, unreleased: `3.0.0.dev0`, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog` and `_borders` for settings, JSON, Hydrolog's program and the packaged borders). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Key principle:** Data is NEVER stored on the server by default. The service generates direct links to IMGW servers, and users download data directly from IMGW.
+## 2. Critical rules
 
-**Optional feature:** SQLite database caching for hydrological data. When enabled (`IMGW_DB_ENABLED=true`), data is cached locally using lazy loading for efficient repeated queries.
+- Write only where the user says: `--output-dir` (plain files) or `--root`; without `--root`, downloads go to the raw root (`OBSERWATOR_RAW_ROOT`, default `<data_dir>/obserwator-raw`) and the series, catalogs and analyses to the data root (`OBSERWATOR_ROOT`, default `<data_dir>/obserwator`) (DEV-19.2, ADR-007, ADR-017). A build reads the raw root (`--raw-root`) and never writes it; a function needing one kind of root refuses the other (`wrong_root`). A server writes only to its configured `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, never to a default. No database.
+- Never add hand-written commands to the CLI, REST or MCP adapters: they are generated from the catalog (`cli/_dispatch.py`, `api/routes/commands.py`, `mcp/_tools.py`). A command goes into `_CATALOG` in `commands.py`, calls exactly one public function and takes its texts (`help`, `description`, `rules`) from `obserwator.messages.commands`. Outside the catalog stay only `version`, `server`, `mcp`, `admin` (the REST API keys of `api_keys.json`), `config show` and `gui serve` (`cli/main.py`, `cli/admin.py`, `cli/config_cmd.py`, `cli/gui_cmd.py`).
+- Never edit `AGENTS.md` and `llms.txt` by hand: they are derived from the catalog. A change of catalog texts, of the dataset/provider/error registries or of the templates in `src/obserwator/_data/agents/` regenerates both in the same change (commands in section 3); `tests/unit/test_agent_guide.py` compares the bytes.
+- Keep the contract Python = CLI = REST = MCP (`tests/contract/`); one option name per parameter, one envelope `obserwator-result/1`, one error registry `ERROR_CODES`.
+- Never run tests with the global Python (a non-editable `obserwator` there shadows `src/`): use `uv run`.
+- `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: from the environment or `.env` only, never from `nogat.toml`, never printed. So is the GUI's admin key (Nogat DEV-15.13, ADR-020): `OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every admin request, never generated, logged or taken from `nogat.toml`; it is not one of the REST API keys of `obserwator admin`.
+- Text for a person (an error `detail`, a notice, a progress or plan line, a printed line, a command description or option help) is never inline: it is an entry of `obserwator.messages.<area>` (`Text(en, pl)`, English first) rendered by `message("<area>.<name>", value=…)` (ADR-006); `tests/unit/test_messages.py` checks both languages, the call sites and that no Polish literal is left outside the catalog.
+- Every functional change updates the Markdown docs, docstrings and OpenAPI where affected; no change without tests.
+- Approvals (DEV-3.3): without the author's approval in the current session never merge a pull request, create or move tags, publish a release, force-push a shared branch or rewrite the history of `main`/`develop`. A change of a public interface or across more than one module starts with a plan approved by the author (DEV-17.4).
+- Change only this repository (DEV-17.5); a need in another project is a GitHub issue there labelled `request`.
+- Commits: English Conventional Commits, no AI attribution lines (`scripts/check-commits.sh`).
+- Document budgets (DOC-1.7): `CLAUDE.md` 200 lines, `docs/PROGRESS.md` 300, `README.md` 400; reference material goes to `docs/`, history to `docs/HISTORY.md`.
 
-**Version:** 2.1.1
-
-## Installation
-
-```bash
-# Core library only (httpx, pydantic)
-pip install imgwtools
-
-# With CLI
-pip install imgwtools[cli]
-
-# With REST API server
-pip install imgwtools[api]
-
-# Full installation
-pip install imgwtools[full]
-
-# For development
-pip install -e ".[dev]"
-```
-
-## Commands
+## 3. Environment and commands
 
 ```bash
-# Install for development
-pip install -e ".[dev]"
-
-# Run API server
-imgw server --reload
-
-# Run tests
-pytest
-
-# Lint code
-ruff check src/
-
-# CLI examples
-imgw version                                    # Show version
-imgw server --host 0.0.0.0 --port 8000         # Run API server
-imgw fetch hydro -i dobowe -y 2023 -m 1        # Download daily hydro data
-imgw fetch meteo -i miesieczne -s synop -y 2023 # Download monthly meteo data
-imgw fetch current hydro                        # Get current hydro data from API
-imgw fetch pmaxtp --lat 52.23 --lon 21.01      # Get PMAXTP data
-imgw fetch warnings --type hydro               # Get hydro warnings
-imgw list stations --type hydro                # List hydro stations
-imgw list datasets                             # List available datasets
-imgw list intervals                            # List available intervals
-imgw admin keys                                # List API keys
-imgw admin create --name "User1"               # Create API key
-imgw admin revoke <key_id>                     # Revoke API key
-imgw admin delete <key_id>                     # Delete API key
-imgw admin stats                               # Show API key statistics
-
-# Database commands (requires IMGW_DB_ENABLED=true)
-imgw db init                                   # Initialize database
-imgw db status                                 # Show database status
-imgw db stations --refresh                     # Fetch stations from IMGW
-imgw db cache --years 2020-2023 -i dobowe      # Pre-cache daily data
-imgw db query -s 149180020 -y 2023 -i dobowe   # Query cached data
-imgw db clear                                  # Clear all cached data
-imgw db vacuum                                 # Optimize database
+uv sync --locked                                   # development environment (.venv, uv.lock)
+scripts/gate.sh                                    # gate: ruff format --check, ruff check, mypy, pytest + coverage (offline), commit check
+uv run pytest tests/unit/test_models.py -v         # one test file (add -k <expr> for one test)
+uv run pytest tests/live -m live                   # live tests (network, outside the gate)
+uv run pytest tests/e2e                            # the GUI in Chromium (once: uv run playwright install chromium)
+obserwator server --reload                         # REST API, /mcp with OBSERWATOR_MCP_ENABLED=true (GET / redirects to /docs)
+obserwator gui serve --no-browser                  # web GUI on 127.0.0.1:8060 (extras cli and gui)
+obserwator config show --json                      # every setting with its source
+obserwator commands guide --format agents --output AGENTS.md --force  # regenerate AGENTS.md (English)
+obserwator commands guide --format llms --output llms.txt --force  # regenerate llms.txt (English)
 ```
 
-## Architecture
+Extras: `obserwator[cli|api|store|mcp|gui|pandas|full]` (install lines in the README). Settings (`OBSERWATOR_*`, `NOGAT_*`, `nogat.toml`): [docs/CODEBASE.md](docs/CODEBASE.md) section "Versioned Store → Configuration". Test layout and markers: [docs/TESTING.md](docs/TESTING.md).
+
+## 4. Code map
 
 ```
-src/imgwtools/
-├── __init__.py           # PUBLIC API - main entry point with exports
-├── _version.py           # Version: 2.1.1
-├── fetch.py              # PUBLIC: Data fetching (fetch_pmaxtp, fetch_hydro_current, etc.)
-├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, etc.)
-├── stations.py           # PUBLIC: Station functions (list_hydro_stations, etc.)
-├── exceptions.py         # PUBLIC: Exceptions (IMGWError, IMGWConnectionError, etc.)
-├── urls.py               # PUBLIC: Re-exports from core/url_builder.py
-├── parsers.py            # PUBLIC: Re-exports from db/parsers.py
-├── config.py             # Settings (pydantic-settings)
-│
-├── api/                  # FastAPI REST API [optional: imgwtools[api]]
-│   ├── main.py           # App entry point
-│   ├── routes/           # Endpoint handlers
-│   │   ├── hydro.py      # Hydrological data
-│   │   ├── meteo.py      # Meteorological data
-│   │   ├── download.py   # Unified URL generation
-│   │   └── pmaxtp.py     # Max precipitation
-│   └── schemas.py        # Pydantic models
-├── cli/                  # Typer CLI [optional: imgwtools[cli]]
-│   ├── main.py           # Entry point (imgw command)
-│   ├── fetch.py          # Download commands
-│   ├── list_cmd.py       # Listing commands
-│   ├── admin.py          # API key management
-│   └── db.py             # Database management
-├── db/                   # SQLite cache [optional: imgwtools[db]]
-│   ├── connection.py     # SQLite connection manager
-│   ├── schema.py         # DDL and migrations
-│   ├── models.py         # Pydantic models for records
-│   ├── repository.py     # Data access layer
-│   ├── cache_manager.py  # Lazy loading logic
-│   └── parsers.py        # CSV parsing from ZIP files
-├── core/                 # Internal core logic
-│   ├── url_builder.py    # URL generation (key module!)
-│   ├── imgw_api.py       # Legacy API classes (DEPRECATED)
-│   ├── imgw_datastore.py # Legacy downloader
-│   └── imgw_spatial.py   # Spatial utilities
-└── web/                  # Web GUI (HTMX + Jinja2)
-    ├── app.py            # Web routes
-    ├── templates/        # Jinja2 templates
-    └── static/           # CSS, JavaScript
+src/obserwator/
+├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
+├── commands.py           # command catalog (35 commands), run_command, command_schema
+├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
+├── coverage.py, exceptions.py (ERROR_CODES), error_report.py, output.py, testing.py, config.py, reference_data.py
+├── nogat_logging.py      # Nogat's server logs: reference module, byte copy, never edited (ADR-019)
+├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
+├── messages/             # message catalog: English text with a Polish variant per key (ADR-006); gui/ = the GUI's texts
+├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
+├── _data/                # borders, agents/ templates, packaged fixtures
+├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
+├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
+├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
+├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
+└── gui/                  # web GUI server (Starlette), web/ (the page; admin/ the admin panel)  [obserwator[gui]]
+tests/{unit,contract,e2e,live}  AGENTS.md, llms.txt (derived)  docker/  scripts/  docs/
 ```
 
-### Public Library API
-
-The public API is exposed via `from imgwtools import ...`:
-
-**Data Fetching Functions:**
-| Function | Description |
-|----------|-------------|
-| `fetch_pmaxtp(lat, lon, method)` | Get PMAXTP precipitation data |
-| `fetch_pmaxtp_async(...)` | Async version |
-| `fetch_hydro_current(station_id)` | Get current hydro data |
-| `fetch_synop(station_id, station_name)` | Get current synop data |
-| `fetch_warnings(warning_type)` | Get weather/hydro warnings |
-| `download_hydro_data(interval, year, month)` | Download archive ZIP as bytes |
-| `download_meteo_data(interval, subtype, year)` | Download meteo archive |
-
-**Station Functions:**
-| Function | Description |
-|----------|-------------|
-| `list_hydro_stations()` | List stations from IMGW CSV |
-| `get_hydro_stations_with_coords()` | Get stations with lat/lon from hydro-back.imgw.pl |
-| `list_meteo_stations()` | List meteo stations |
-
-**Data Models:**
-| Model | Description |
-|-------|-------------|
-| `PMaXTPData` | Precipitation quantiles (ks, sg, rb) with `get_precipitation(duration, prob)` |
-| `PMaXTPResult` | Complete PMAXTP result with metadata |
-| `HydroCurrentData` | Current hydro measurement |
-| `SynopData` | Current synop measurement |
-| `WarningData` | Weather/hydro warning |
-| `HydroStation` | Station with coordinates and water_state |
-
-**Exceptions:**
-| Exception | Description |
-|-----------|-------------|
-| `IMGWError` | Base exception |
-| `IMGWConnectionError` | Connection/timeout errors |
-| `IMGWDataError` | Data parsing errors |
-| `IMGWValidationError` | Input validation errors (e.g., coords outside Poland) |
-
-**Parsers:**
-| Function | Description |
-|----------|-------------|
-| `parse_zip_file(zip_data, interval)` | Parse downloaded ZIP file |
-| `parse_daily_csv(content)` | Parse daily CSV |
-| `parse_monthly_csv(content)` | Parse monthly CSV |
-| `parse_stations_csv(content)` | Parse station list CSV |
-| `IMGW_ENCODING` | CP1250 encoding constant |
-
-### Key Module: `url_builder.py`
-
-The `url_builder.py` module is the core of the application. It contains:
-- `build_hydro_url()` - Generates URLs for hydrological data
-- `build_meteo_url()` - Generates URLs for meteorological data
-- `build_pmaxtp_url()` - Generates URLs for PMAXTP API
-- `build_api_url()` - Generates URLs for IMGW real-time API
-
-## Data Flow
-
-```
-User → CLI/API/Web → URL Builder → IMGW Servers → User's computer
-                          ↓
-                   (generates links only)
-```
-
-No data is stored on our server - station lists are fetched directly from IMGW.
-
-## External Data Sources
-
-### Station Lists (CSV)
-- **Hydro stations**: `https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/dane_hydrologiczne/lista_stacji_hydro.csv`
-  - Format: `ID, nazwa, rzeka (id_cieku), kod`
-  - Encoding: CP1250
-- **Meteo stations**: `https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/dane_meteorologiczne/wykaz_stacji.csv`
-  - Format: `ID, nazwa, kod`
-  - Encoding: CP1250
-
-### Real-time API
-- **Hydro data**: `https://danepubliczne.imgw.pl/api/data/hydro`
-- **Synop data**: `https://danepubliczne.imgw.pl/api/data/synop`
-
-### Map Stations API
-- **Hydro stations with coordinates**: `https://hydro-back.imgw.pl/map/stations/hydrologic?onlyMainStations=false`
-  - Requires headers: `User-Agent`, `Referer: https://hydro.imgw.pl/`
-  - Returns: 900+ stations with lat/lon and water state (alarm, warning, high, medium, low, etc.)
-
-### Station Pages
-- **Hydro**: `https://hydro.imgw.pl/#/station/hydro/{station_id}`
-- **Meteo**: `https://hydro.imgw.pl/#/station/meteo/{station_id}`
-
-## API Endpoints
-
-### Hydrological Data (`/api/v1/hydro`)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/stations` | GET | List hydrological stations |
-| `/stations/{station_id}` | GET | Get station details |
-| `/current` | GET | Current hydro data from IMGW API |
-| `/download-url` | POST | Generate single download URL |
-| `/download-urls` | POST | Generate multiple download URLs |
-| `/data` | GET | Get cached data (requires DB enabled) |
-
-### Meteorological Data (`/api/v1/meteo`)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/stations` | GET | List meteorological stations |
-| `/synop` | GET | Current synoptic data |
-| `/current` | GET | Current meteo data from IMGW API |
-| `/download-url` | POST | Generate single download URL |
-| `/download-urls` | POST | Generate multiple download URLs |
-
-### Unified Download (`/api/v1/download`)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/datasets` | GET | List available datasets |
-| `/url` | GET | Generate single download URL (hydro or meteo) |
-| `/urls` | GET | Generate multiple download URLs |
-
-### PMAXTP (`/api/v1/pmaxtp`)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/methods` | GET | List available PMAXTP methods (POT, AMP) |
-| `/url` | POST | Generate PMAXTP URL |
-| `/data` | POST | Fetch PMAXTP data |
-
-**PMAXTP response data:**
-- `ks` - Kwantyle opadu maksymalnego [mm]
-- `sg` - Górne granice przedziału ufności [mm]
-- `rb` - Błędy estymacji kwantyli [mm]
-
-**Web GUI exports:** CSV, XLSX (4 arkusze), JSON
-
-### System
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/api/v1` | GET | API information |
-
-### Web GUI Routes
-
-| Route | Description |
-|-------|-------------|
-| `/` | Main dashboard |
-| `/download` | Download page |
-| `/download/hydro` | Hydro download form |
-| `/download/meteo` | Meteo download form |
-| `/download/pmaxtp` | PMAXTP download form |
-| `/stations` | Stations list page (data from IMGW CSV) |
-| `/stations/hydro` | Hydro stations partial (HTMX) |
-| `/stations/meteo` | Meteo stations partial (HTMX) |
-| `/map` | Interactive map with stations (Leaflet, color-coded by water state) |
-| `/map/stations` | JSON endpoint for map markers (from hydro-back.imgw.pl, includes water state) |
-
-## CLI Commands
-
-### Main Commands
-
-| Command | Description |
-|---------|-------------|
-| `imgw version` | Show version |
-| `imgw server` | Run API server (`--host`, `--port`, `--reload`) |
-
-### Fetch Commands (`imgw fetch`)
-
-| Command | Description |
-|---------|-------------|
-| `fetch hydro` | Download hydro data (`-i interval`, `-y year`, `-m month`, `-p param`, `-o output`) |
-| `fetch meteo` | Download meteo data (`-i interval`, `-s subtype`, `-y year`, `-m month`, `-o output`) |
-| `fetch current <type>` | Get current data from API (hydro/meteo/synop) |
-| `fetch pmaxtp` | Get PMAXTP data (`--method`, `--lat`, `--lon`) |
-| `fetch warnings` | Get warnings (`--type hydro/meteo`) |
-
-### List Commands (`imgw list`)
-
-| Command | Description |
-|---------|-------------|
-| `list stations` | List stations (`--type hydro/meteo`, `--search`, `--limit`) |
-| `list datasets` | List available datasets (`--type`) |
-| `list intervals` | List available intervals and subtypes |
-
-### Admin Commands (`imgw admin`)
-
-| Command | Description |
-|---------|-------------|
-| `admin keys` | List API keys |
-| `admin create` | Create new API key (`--name`, `--limit`) |
-| `admin revoke <id>` | Revoke API key |
-| `admin delete <id>` | Delete API key (`--force`) |
-| `admin stats` | Show usage statistics |
-
-### Database Commands (`imgw db`)
-
-Requires `IMGW_DB_ENABLED=true` environment variable.
-
-| Command | Description |
-|---------|-------------|
-| `db init` | Initialize database (create tables) |
-| `db status` | Show database status (size, records, cached years) |
-| `db stations` | List cached stations (`--search`, `--refresh`) |
-| `db cache` | Pre-cache data (`--years 2020-2023`, `--interval dobowe/miesieczne/polroczne`) |
-| `db query` | Query cached data (`--station`, `--years`, `--interval`, `--output`) |
-| `db clear` | Clear cached data (`--interval`, `--force`) |
-| `db vacuum` | Optimize database (reclaim space) |
-
-## IMGW Data Structure
-
-### Hydrological data (1951-2024+)
-- `dobowe` (daily):
-  - Before 2023: `codz_{year}_{month:02d}.zip` (monthly files)
-  - From 2023: `codz_{year}.zip` (single yearly file)
-- `miesieczne` (monthly): `mies_{year}.zip`
-- `polroczne_i_roczne` (semi-annual): `polr_{param}_{year}.zip` (param: T, Q, H)
-
-### Meteorological data (1950-current)
-
-Real IMGW layout, verified against live server listings (2026-07-05):
-
-**Folders:** 5-year ranges until 2000 (e.g. `1996_2000`), yearly from 2001 (e.g. `2023`).
-First folder differs per subtype: klimat `1951_1955`, opad `1950_1955`, synop `1960_1965` (six years); from `1966_1970` all subtypes share the same grid.
-
-**Files per interval/subtype:**
-- `miesieczne` (all subtypes): ONE file per folder — `{folder}_m_{k|o|s}.zip` (e.g. `1996_2000_m_s.zip`, `2023_m_s.zip`)
-- `dobowe`/`terminowe` klimat & opad: yearly `{year}_{k|o}.zip` until 2000, monthly `{year}_{month:02d}_{k|o}.zip` from 2001
-- `dobowe`/`terminowe` synop: PER-STATION files `{folder}_{station}_s.zip` — `build_meteo_url` raises ValueError (not supported)
-- `terminowe` opad: dataset does not exist — `build_meteo_url` raises ValueError
-
-**Subtypes:** `k` (klimat), `o` (opad), `s` (synop)
-
-## Docker Deployment
-
-```bash
-cd docker
-docker-compose up -d
-```
-
-Services: app (FastAPI), nginx (reverse proxy). No Redis needed.
-
----
-
-## Cloud & Deployment Details
-
-### Deployment Model
-Aplikacja hostowana na prywatnym serwerze. Komponenty:
-- **Nginx** — reverse proxy + HTTPS + rate limiting
-- **FastAPI (Uvicorn)** — backend API
-
-### Rate limiting
-- Nginx: `limit_req_zone` (10 req/s per IP)
-- API keys support rate limits (configured per key, stored in JSON)
-
-### Authorization (Planned)
-Klucze API w pliku JSON (`api_keys.json`). Naglowek: `X-API-Key: <token>`
-
-**Note:** API key validation middleware is not yet implemented. Keys are managed via CLI but not enforced in API requests.
-
-### API versioning
-Wszystkie endpointy pod `/api/v1/...`
-
----
-
-## Database Cache (Optional)
-
-SQLite-based cache for hydrological data. Disabled by default.
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMGW_DB_ENABLED` | `false` | Enable database caching |
-| `IMGW_DB_PATH` | `./data/imgw_hydro.db` | Database file path |
-
-### Database Schema
-
-```sql
--- Stations
-hydro_stations (station_code, station_name, river_name, latitude, longitude, updated_at)
-
--- Cache tracking
-cached_ranges (interval, year, month, param, source_file, cached_at, record_count)
-
--- Data tables
-hydro_daily (station_code, hydro_year, hydro_month, day, water_level_cm, flow_m3s, water_temp_c, measurement_date)
-hydro_monthly (station_code, hydro_year, hydro_month, extremum, water_level_cm, flow_m3s, water_temp_c)
-hydro_semi_annual (station_code, hydro_year, period, param, extremum, value, extremum_start_date, extremum_end_date)
-```
-
-### Lazy Loading Flow
-
-```
-Query: station X, years 2020-2023
-    │
-    ├─ Check cached_ranges for each year
-    │   ├─ Not cached → Download ZIP → Parse CSV → INSERT → Mark cached
-    │   └─ Cached → Skip download
-    │
-    └─ SELECT from database → Return results
-```
-
-### IMGW CSV Format Notes
-
-Archive files are inconsistent between years — parsers auto-detect the format per file:
-
-- **Encoding**: CP1250 (Polish Windows encoding) for most archives; `codz_2023.zip` is UTF-8 with BOM (auto-detected)
-- **Delimiter**: comma with quoted fields (e.g. 2019-2022, 2024) or semicolon (e.g. 2023) — auto-detected from the first line
-- **Quoting**: daily/monthly 2024 files wrap whole lines in outer quotes with doubled inner quotes (auto-unwrapped); some files carry a header row of column codes (skipped)
-- **Missing data codes**: `9999` (water level), `99999.999` (flow), `99.9` (temperature)
-- **Hydrological year**: November 1 - October 31 (month 1 = November)
-
----
-
-## Testing
-
-The project includes comprehensive unit tests for the public API.
-
-### Running Tests
-
-Always run tests and lint through the project venv — the global (pyenv) Python has an
-older non-editable `imgwtools` installed, which shadows the local `src/` and breaks
-test collection.
-
-```bash
-# Run all tests
-.venv/bin/python -m pytest
-
-# Run with coverage
-.venv/bin/python -m pytest --cov=imgwtools
-
-# Run specific test file
-.venv/bin/python -m pytest tests/unit/test_models.py -v
-
-# Lint
-.venv/bin/ruff check src/ tests/
-
-# Type check (pyright reads [tool.pyright] in pyproject.toml; legacy core/ modules excluded)
-npx -y pyright src/imgwtools/
-```
-
-### Test Structure
-
-| File | Tests | Description |
-|------|-------|-------------|
-| `tests/conftest.py` | - | Shared fixtures (API responses, CSV data) |
-| `tests/unit/test_models.py` | 17 | PMaXTPData, HydroCurrentData, SynopData, WarningData |
-| `tests/unit/test_fetch.py` | 19 | fetch_pmaxtp, fetch_hydro_current, fetch_synop |
-| `tests/unit/test_parsers.py` | 28 | CSV parsers: delimiter/encoding/quoting detection |
-| `tests/unit/test_stations.py` | 17 | list_hydro_stations, get_hydro_stations_with_coords |
-| `tests/unit/test_urls.py` | 28 | build_hydro_url, build_meteo_url, build_pmaxtp_url |
-
-**Total: 109 tests**
-
----
-
-## Additional Documentation
-
-Detailed project documentation is available in the `docs/` folder:
-
-| File | Description |
-|------|-------------|
-| `docs/PROGRESS.md` | Progress tracker, cross-project analysis, and backlog |
-| `docs/ARCHITECTURE.md` | Detailed system architecture and component diagrams |
-| `docs/PRD.md` | Product Requirements Document - project goals and requirements |
-| `docs/RULES.md` | Development rules and conventions |
-
-## Cross-Project Integration
-
-IMGWTools is part of a 4-project ecosystem:
-
-```
-HYDROGRAF (main app)
-    ├── IMGWTools ← THIS PROJECT
-    ├── Kartograf
-    └── Hydrolog → IMGWTools (required dependency)
-```
-
-See `docs/PROGRESS.md` for cross-project analysis and integration details.
+Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Package Tree").
+
+## 5. Documentation map
+
+| Task | Read |
+|---|---|
+| What the project is, install, quick start | [README.md](README.md) |
+| Usage of every interface, long command listings, store schemas | [docs/USAGE.md](docs/USAGE.md) |
+| Architecture, layers, store layout, CI/CD | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
+| Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
+| Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
+| Why a design was chosen (ADR-001..023) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
+| Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
+| What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
+| Code style, naming, errors, docstrings | [docs/RULES.md](docs/RULES.md), the Nogat [development standard](https://github.com/Daldek/Nogat/blob/main/standards/DEVELOPMENT_STANDARDS.md) (standard 1.0) |
+| Contributor licence | [docs/CLA.md](docs/CLA.md) |
+| The name Obserwator (ADR-009; IMGWTools until 2.1.1) and the 2026-08 draft of a provider layer | [docs/DECISIONS.md](docs/DECISIONS.md) ADR-009, [docs/OBSERWATOR_SPEC.md](docs/OBSERWATOR_SPEC.md), [docs/OBSERWATOR_RESEARCH.md](docs/OBSERWATOR_RESEARCH.md) |
+| Plans, specs and research behind 3.0.0 | `docs/superpowers/` (plans, specs, research), the GUI's plan in `docs/plans/` |
+| Using the tool as an agent (not developing it) | `AGENTS.md`, `llms.txt` (derived, never edited by hand) |
+
+## 6. Session workflow
+
+1. Start (DEV-17.1): read this file and [docs/PROGRESS.md](docs/PROGRESS.md), run `git status` and `git log --oneline -10`, confirm the branch, list open GitHub issues labelled `request`.
+2. Plan a change of a public interface or across several modules and get it approved (DEV-17.4); record decisions with alternatives as ADRs in [docs/DECISIONS.md](docs/DECISIONS.md).
+3. Work on a topic branch (`feature/*`, `hotfix/*`); commit in this repository (DEV-3.5).
+4. Before the last commit: `scripts/gate.sh` green, [docs/CHANGELOG.md](docs/CHANGELOG.md) and [docs/PROGRESS.md](docs/PROGRESS.md) updated (DEV-17.3).
+
+## 7. Cross-project context
+
+Obserwator is a tool of the Nogat ecosystem; its entry (interfaces, provided contracts `obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, ..., data sources) is `Obserwator` in [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml). Hydrolog reads the CSV of `obserwator series export` and calls `fetch_pmaxtp` in its extras `pmaxtp` and `gui`; Hydrograf and Hydraulik call `fetch_pmaxtp`; Kartograf is a neighbour. Store consumers: **Archiwista** (public read API only; IMGW-PIB and ČHMÚ through the same adapter, `provider` fields, read-only `kind="observation"` entries; it owns the projects that pin store versions, `archiwista-project/1`, ADR-008, and in Nogat keeps the raw root) and **Retman** (command catalog: `command_schema` — English by default, `lang="pl"` for Polish — `x-obserwator.writes`/`network`, `validate_command`, `format_command`, `check_command`, `run_command`). What a consumer changes: [docs/CHANGELOG.md](docs/CHANGELOG.md), "Changed" → "Migration from 2.1.1" (its parts "Data output", ADR-007, and "Two roots", ADR-017), and [docs/USAGE.md](docs/USAGE.md) "Splitting a store". Cross-project analysis: [docs/HISTORY.md](docs/HISTORY.md).
+
+## Deviations
+
+Deviations from the Nogat standard (DEV-1.2), one line each.
+
+- DEV-7.3: `tests/` is checked by mypy with the `tests.*` override of `pyproject.toml` (`disallow_untyped_defs`, `disallow_incomplete_defs`, `disallow_untyped_calls`, `disallow_untyped_decorators`, `check_untyped_defs` off): the test functions and fixtures are not annotated. `src/` is `strict` without overrides, except `pyarrow` (no type information: `ignore_missing_imports`).
+- DEV-19.5, DEV-19.6: the two files of `obserwator pmaxtp sync --output-dir` are named by the cell indices of the answer, so only a call that gives `--ind-x` and `--ind-y` is refused before the request; any other is checked after the one small answer and before the first file is written (ADR-007 D3).
+- AGI-6.1: the GUI's private API (`api/…` relative to its page, `obserwator gui serve`) is no REST interface: no `/api/v1`, no OpenAPI, no stability promise, as Hydrolog's GUI; scripts and agents use REST, the CLI or MCP (ADR-013).

@@ -1,0 +1,1220 @@
+"""``obserwator`` generated from the command catalog (spec §13.10): envelope, errors, flags."""
+
+import functools
+import hashlib
+import importlib
+import io
+import json
+import os
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import httpx
+import pytest
+import respx
+import typer
+from typer.testing import CliRunner
+
+from obserwator import store
+from obserwator.cli import _dispatch
+from obserwator.cli.main import app
+from obserwator.commands import (
+    check_command,
+    command_schema,
+    data_commands,
+    format_command,
+    list_commands,
+    parse_command,
+    run_command,
+    validate_command,
+)
+from obserwator.config import settings
+from obserwator.exceptions import ERROR_CODES, ObserwatorError
+from obserwator.messages import localize, message
+from obserwator.store.types import (
+    CommandCall,
+    CommandResult,
+    Notice,
+    Progress,
+    SeriesReport,
+    SyncReport,
+    page_cursor,
+)
+from obserwator.urls import IMGW_API_URL
+from tests.contract.support import (
+    DAILY,
+    H2023,
+    H2024,
+    NEW,
+    PRECIP,
+    RABA,
+    V1,
+    V3,
+    FakeImgw,
+    archive_bytes,
+    snapshot,
+    stamps,
+    violations,
+)
+from tests.unit.test_commands import SAMPLES
+
+# Help is compared as plain text of a fixed width. Typer forces a terminal
+# under GitHub Actions or FORCE_COLOR/PY_COLORS (escape codes even into a
+# pipe); rich writes no escape codes to a dumb terminal, whatever forces it.
+PLAIN_TERMINAL = {"TERM": "dumb", "COLUMNS": "80"}
+RUNNER = CliRunner(env=PLAIN_TERMINAL)
+SPECS = {spec.name: spec for spec in data_commands()}
+CATALOG = command_schema(lang="pl")
+EXIT_CODES = CATALOG["exit_codes"]
+FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
+O2001 = f"archive:{PRECIP}:2001/2001_01_o.zip"
+INSTALLED = Path(sys.executable).with_name(
+    "obserwator.exe" if sys.platform == "win32" else "obserwator"
+)
+# Last stderr line of a failed command: the obserwator-error/1 document (AGI-4.3).
+CLI_ERROR = {
+    "type": "object",
+    "required": ["schema", "code", "title", "message", "details", "exit_code"],
+    "properties": {
+        "schema": {"const": "obserwator-error/1"},
+        "code": {
+            "enum": [
+                "validation_error",
+                "not_found",
+                "conflict",
+                "source_unavailable",
+                "missing_dependency",
+                "data_error",
+                "store_unavailable",
+                "io_error",
+                "cancelled",
+                "forbidden",
+                "unsupported",
+                "internal_error",
+            ]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "hint": {"type": "string", "minLength": 1},
+        "details": {"type": "object"},
+        "exit_code": {"type": "integer"},
+        "command": {"type": "string", "pattern": "^[a-z][a-z0-9-]* [a-z][a-z0-9-]*$"},
+    },
+    "additionalProperties": False,
+}
+
+
+@pytest.fixture(autouse=True)
+def no_obserwator_root(monkeypatch):
+    """The developer's roots and OBSERWATOR_LANG must not reach the commands."""
+    monkeypatch.delenv("OBSERWATOR_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_RAW_ROOT", raising=False)
+    monkeypatch.delenv("OBSERWATOR_LANG", raising=False)
+
+
+@pytest.fixture
+def imgw():
+    with respx.mock(assert_all_called=False) as router:
+        yield FakeImgw(router)
+
+
+@pytest.fixture
+def offline(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise AssertionError("komenda nie może używać sieci")
+
+    monkeypatch.setattr(httpx.Client, "send", refuse)
+    monkeypatch.setattr(httpx.AsyncClient, "send", refuse)
+
+
+@pytest.fixture
+def frozen(monkeypatch):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return FROZEN_AT.astimezone(tz)
+
+    for name in (
+        "obserwator.store.writer",
+        "obserwator.store.series",
+        "obserwator.store.catalog",
+        "obserwator.store.sync",
+        "obserwator.store.pmaxtp",
+        "obserwator.commands",
+    ):
+        monkeypatch.setattr(importlib.import_module(name), "datetime", Frozen)
+
+
+def invoke(*args, env=None):
+    return RUNNER.invoke(app, [str(arg) for arg in args], env=env)
+
+
+def envelope(result):
+    """The one-line envelope printed on stdout by a successful command."""
+    assert result.exit_code == 0, result.output
+    assert result.stdout.endswith("\n") and result.stdout.count("\n") == 1
+    return json.loads(result.stdout)
+
+
+def error_line(result, code):
+    """The JSON error line ending stderr of a failed command with an empty stdout."""
+    assert result.stdout == ""
+    document = json.loads(result.stderr.splitlines()[-1])
+    assert violations(document, CLI_ERROR) == []
+    assert document["code"] == code, document
+    assert result.exit_code == document["exit_code"] == ERROR_CODES[code].exit_code
+    return document
+
+
+def click_command(name):
+    command = typer.main.get_command(app)
+    for word in name.split():
+        command = command.commands[word]
+    return command
+
+
+def argv(command, options, *, aliases=False):
+    """CLI words of ``options``: canonical flags, or short aliases with list items
+    given as repeated flags."""
+    spec = SPECS[command]
+    flags = {option.flag: option for option in spec.options}
+    flags |= {f"--no-{o.flag[2:]}": o for o in spec.options if o.type == "bool"}
+    words = shlex.split(format_command(command, options=options))[3:]
+    args = command.split()
+    while words:
+        flag = words.pop(0)
+        option = flags[flag]
+        if option.type == "bool":
+            args.append(flag)
+            continue
+        value = words.pop(0)
+        if not aliases:
+            args += [flag, value]
+            continue
+        name = option.aliases[0] if option.aliases else flag
+        for item in value.split(",") if option.type == "list" else [value]:
+            args += [name, item]
+    return args
+
+
+def raising(monkeypatch, module, name, error):
+    original = getattr(module, name)
+
+    @functools.wraps(original)
+    def fake(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(module, name, fake)
+
+
+def run_installed(*args, lang=None, **kwargs):
+    """
+    The installed ``obserwator`` in its own process, without its roots or network.
+
+    ``lang`` is the OBSERWATOR_LANG of the process (unset by default).
+    """
+    command = [str(INSTALLED)] if INSTALLED.exists() else [sys.executable, "-m"]
+    if not INSTALLED.exists():
+        command.append("obserwator.cli.main")
+    dead = "http://127.0.0.1:9"
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("OBSERWATOR_ROOT", "OBSERWATOR_RAW_ROOT", "OBSERWATOR_LANG")
+    }
+    env |= {"HTTP_PROXY": dead, "HTTPS_PROXY": dead, "NO_PROXY": ""}
+    env |= PLAIN_TERMINAL
+    if lang is not None:
+        env["OBSERWATOR_LANG"] = lang
+    return subprocess.run(
+        [*command, *map(str, args)], env=env, timeout=120, check=False, **kwargs
+    )
+
+
+def shown(text):
+    """Rendered help as one line of words (rich wraps lines and draws borders)."""
+    return " ".join(text.replace("│", " ").split())
+
+
+def tree(command, path=("obserwator",)):
+    """Words and Click command of every command of the ``obserwator`` tree."""
+    yield path, command
+    for name, sub in getattr(command, "commands", {}).items():
+        yield from tree(sub, (*path, name))
+
+
+# --- rejestracja, help i flagi ---------------------------------------------------------------
+
+
+def test_cli_catalog_registers_every_group_and_command_of_the_catalog():
+    root = typer.main.get_command(app)
+    for group, description in CATALOG["groups"].items():
+        assert root.commands[group].help == description
+        assert list(click_command(group).commands) == [
+            spec.name.split(" ", 1)[1]
+            for spec in data_commands()
+            if spec.name.split()[0] == group
+        ]
+    shown = " ".join(invoke("--help").output.replace("│", " ").split())
+    for group, description in CATALOG["groups"].items():
+        assert f"{group} {description}" in shown
+
+
+@pytest.mark.parametrize("spec", data_commands(), ids=lambda spec: spec.name)
+def test_cli_catalog_command_help_and_flags_are_the_catalog(spec):
+    command = click_command(spec.name)
+    assert command.help == localize(spec.description, "pl")
+    params = {param.name: param for param in command.params}
+    reserved = {"schema", "json", "lang"} | ({"check"} if spec.check else set())
+    assert set(params) == {option.name for option in spec.options} | reserved
+    for option in spec.options:
+        param = params[option.name]
+        assert param.opts == [option.flag, *option.aliases]
+        assert param.help == localize(option.help, "pl")
+        if option.type == "bool":
+            negative = [f"--no-{option.flag[2:]}"] if option.default is True else []
+            assert param.secondary_opts == negative
+        assert param.envvar is None
+    shown = " ".join(invoke(*spec.name.split(), "--help").output.split())
+    assert localize(spec.description, "pl") in shown
+    assert ("Opcje wymagane" in shown) == any(o.required for o in spec.options)
+
+
+@pytest.fixture
+def dispatched(monkeypatch):
+    """``(command, check, options)`` of each call the CLI dispatches, not run."""
+    calls = []
+
+    def dispatcher(check):
+        def dispatch(name, /, *, options, on_progress, on_notice, cancel):
+            calls.append((name, check, options))
+            return CommandResult(name, check, "ok", None, ())
+
+        return dispatch
+
+    monkeypatch.setattr(_dispatch, "run_command", dispatcher(False))
+    monkeypatch.setattr(_dispatch, "check_command", dispatcher(True))
+    return calls
+
+
+def dispatched_call(dispatched, args):
+    """The call the CLI dispatches for ``args`` with ``--json``, as a ``CommandCall``."""
+    result = invoke(*args[:2], "--json", *args[2:])
+    assert result.exit_code == 0, (args, result.output)
+    name, check, options = dispatched.pop()
+    return CommandCall(name, options, {"check": True} if check else {})
+
+
+@pytest.mark.parametrize(("command", "options"), SAMPLES)
+def test_cli_catalog_passes_the_given_option_text_to_the_dispatcher(
+    dispatched, command, options
+):
+    variants = [
+        (argv(command, options), False),
+        (argv(command, options, aliases=True), False),
+    ]
+    if SPECS[command].check is not None:
+        variants.append(([*argv(command, options), "--check"], True))
+    for args, check in variants:
+        call = dispatched_call(dispatched, args)
+        assert (call.command, call.run) == (command, {"check": True} if check else {})
+        # Click validates nothing: the raw text of each given option reaches the catalog.
+        assert all(
+            isinstance(value, str | bool)
+            or all(isinstance(item, str) for item in value)
+            for value in call.options.values()
+        )
+        assert validate_command(command, options=call.options) == validate_command(
+            command, options=options
+        )
+        # parse_command reads the same words into the same call.
+        assert parse_command(args) == call
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        (
+            *("store", "sync", "-r/data/obserwator", f"--datasets={DAILY}"),
+            *("-y", "2023", "-y", "2024,2025", "--force", "--check"),
+            "--",
+        ),
+        ("store", "info", "--root", "/a", "-r", "/b"),
+        ("stations", "find", "--query", "-raba", "--kind=hydro"),
+    ],
+    ids=" ".join,
+)
+def test_parse_command_reads_joined_values_and_repeated_flags_as_the_cli(
+    dispatched, args
+):
+    assert parse_command(args) == dispatched_call(dispatched, args)
+
+
+@pytest.mark.parametrize("spec", data_commands(), ids=lambda spec: spec.name)
+def test_cli_catalog_schema_flag_prints_the_commands_schema_envelope(spec):
+    # Without the required options: a run would fail validation instead of printing.
+    printed = invoke(*spec.name.split(), "--schema", "--json")
+    expected = invoke("commands", "schema", "--command", spec.name, "--json")
+    assert printed.stdout == expected.stdout
+    assert envelope(printed)["result"] == json.loads(
+        json.dumps(command_schema(spec.name))
+    )
+
+
+# --- język: OBSERWATOR_LANG i --lang ---------------------------------------------------------
+
+
+def test_cli_help_of_every_command_is_polish_by_default():
+    for path, _ in tree(typer.main.get_command(app)):
+        text = shown(invoke(*path[1:], "--help").output)
+        assert f"Użycie: {' '.join(path)} [OPCJE]" in text, path
+        assert "Pokaż pomoc i zakończ." in text, path
+        for english in ("Usage:", "Show this message", "[OPTIONS]", "COMMAND", "ARGS"):
+            assert english not in text, path
+    store_sync = shown(invoke("store", "sync", "--help").output)
+    for element in (
+        "─ Opcje ─",
+        "ŚCIEŻKA",
+    ):
+        assert element in store_sync
+    listed = shown(invoke("--help").output)
+    assert "─ Komendy ─" in listed
+    assert "Użycie: obserwator [OPCJE] KOMENDA [ARGUMENTY]..." in listed
+    assert "─ Argumenty ─" in shown(invoke("admin", "delete", "--help").output)
+
+
+def test_cli_help_follows_obserwator_lang_en():
+    spec = SPECS["store sync"]
+
+    printed = run_installed(
+        "store", "sync", "--help", lang="en", capture_output=True, encoding="utf-8"
+    )
+    listed = run_installed("--help", lang="en", capture_output=True, encoding="utf-8")
+
+    assert printed.returncode == 0, printed.stderr
+    text = shown(printed.stdout)
+    assert str(spec.description) in text
+    for option in spec.options:
+        assert str(option.help) in text, option.name
+    for element in (
+        "Usage: obserwator store sync [OPTIONS]",
+        "─ Options ─",
+        "Show this message and exit.",
+        "PATH",
+    ):
+        assert element in text
+    for word in ("Użycie", "Opcje", "Pokaż", "zmienna"):
+        assert word not in text
+    roots = shown(listed.stdout)
+    assert "─ Commands ─" in roots
+    assert "Usage: obserwator [OPTIONS] COMMAND [ARGS]..." in roots
+    for group, description in command_schema(lang="en")["groups"].items():
+        assert f"{group} {description}" in roots
+
+
+def test_cli_obserwator_lang_outside_pl_and_en_ends_every_call_with_validation_error(
+    monkeypatch,
+):
+    result = run_installed("datasets", "list", lang="de", capture_output=True)
+    assert (result.returncode, result.stdout) == (2, b"")
+    line = json.loads(result.stderr.decode("utf-8").splitlines()[-1])
+    assert line["code"] == "validation_error"
+    assert line["details"] == {
+        "option": "OBSERWATOR_LANG",
+        "value": "de",
+        "allowed": ["en", "pl"],
+    }
+    # The language is checked before Click parses anything, help included.
+    monkeypatch.setattr(settings, "lang", "english")
+    for args in (("--help",), ("version",), ("admin", "keys"), ("store", "info")):
+        document = error_line(invoke(*args), "validation_error")
+        assert document["details"]["option"] == "OBSERWATOR_LANG"
+
+
+def test_cli_commands_schema_is_english_and_polish_only_on_request():
+    english = json.loads(json.dumps(command_schema()))
+    polish = json.loads(json.dumps(command_schema(lang="pl")))
+
+    assert envelope(invoke("commands", "schema", "--json"))["result"] == english
+    assert (
+        envelope(invoke("commands", "schema", "--lang", "en", "--json"))["result"]
+        == english
+    )
+    assert (
+        envelope(invoke("commands", "schema", "--lang", "pl", "--json"))["result"]
+        == polish
+    )
+    # OBSERWATOR_LANG is the language of the human lines, not of the machine output.
+    by_variable = invoke("commands", "schema", "--json", env={"OBSERWATOR_LANG": "pl"})
+    assert envelope(by_variable)["result"] == english
+    flag = run_installed(
+        "store", "sync", "--schema", "--json", lang="pl", capture_output=True
+    )
+    assert flag.returncode == 0, flag.stderr
+    assert json.loads(flag.stdout)["result"] == json.loads(
+        json.dumps(command_schema("store sync"))
+    )
+
+
+# --- wyjście ---------------------------------------------------------------------------------
+
+
+def test_cli_catalog_object_and_list_commands_print_the_run_command_envelope(
+    fixture_root, fixture_raw_root, offline
+):
+    root, raw = fixture_root, fixture_raw_root
+    cases = [
+        (("store", "info", "--root", root), "store info", {"root": root}),
+        (
+            (
+                *("store", "scan", "-r", raw, "-k", "archive"),
+                *("--limit", 2, "--cursor", page_cursor(1)),
+            ),
+            "store scan",
+            {"root": raw, "kind": "archive", "limit": 2, "cursor": page_cursor(1)},
+        ),
+        (
+            (
+                "series",
+                "read",
+                "-r",
+                root,
+                "-d",
+                "hydro/dobowe",
+                "-s",
+                RABA,
+                "--variables",
+                "H",
+                "--start",
+                "2024-01-01",
+                "--end",
+                "2024-01-03",
+            ),
+            "series read",
+            {
+                "root": root,
+                "dataset": DAILY,
+                "station": RABA,
+                "variables": ["H"],
+                "start": "2024-01-01",
+                "end": "2024-01-03",
+            },
+        ),  # fmt: skip
+        (("datasets", "list", "-k", "meteo"), "datasets list", {"kind": "meteo"}),
+    ]
+    for args, command, options in cases:
+        expected = run_command(command, options=options).to_json(
+            root=options.get("root")
+        )
+        assert envelope(invoke(*args, "--json")) == expected
+
+
+def test_cli_catalog_series_build_prints_the_envelope_of_the_same_run(
+    tmp_path, fixture_root, fixture_raw_root, frozen
+):
+    cli_root, api_root = tmp_path / "cli", tmp_path / "api"
+    shutil.copytree(fixture_root, cli_root)
+    shutil.copytree(fixture_root, api_root)
+    raw = fixture_raw_root
+    printed = envelope(
+        invoke(
+            *("series", "build", "-r", cli_root, "--raw-root", raw, "-d", PRECIP),
+            "--json",
+        )
+    )
+    expected = run_command(
+        "series build", options={"root": api_root, "raw_root": raw, "dataset": PRECIP}
+    ).to_json(root=api_root)
+    assert printed == expected
+    assert printed["result"]["status"] == "new"
+    assert snapshot(cli_root) == snapshot(api_root)
+
+
+def test_cli_catalog_check_flag_prints_the_plan_without_writing(
+    tmp_path, fixture_root, fixture_raw_root, offline, frozen
+):
+    root, raw = tmp_path / "data", tmp_path / "raw"
+    shutil.copytree(fixture_root, root)
+    shutil.copytree(fixture_raw_root, raw)
+    before = stamps(tmp_path)
+    printed = envelope(
+        invoke(
+            *("series", "build", "-r", root, "--raw-root", raw, "-d", PRECIP),
+            *("--check", "--json"),
+        )
+    )
+    assert stamps(tmp_path) == before
+    expected = check_command(
+        "series build", options={"root": root, "raw_root": raw, "dataset": PRECIP}
+    )
+    assert printed == expected.to_json(root=root)
+    assert (printed["check"], printed["result"]["schema"]) == (
+        True,
+        "obserwator-plan/1",
+    )
+
+
+def test_cli_catalog_streams_print_only_the_data_lines(
+    tmp_path, fixture_root, fixture_raw_root, offline
+):
+    version = store.current_version(fixture_raw_root, slot=O2001).version
+    cases = [
+        (("store", "export", "--version", version), store.export_archive(version)),
+        (
+            ("store", "export", "--version", version, "-f", "jsonl"),
+            store.export_archive(version, format="jsonl"),
+        ),
+        (
+            ("series", "export", "-r", fixture_root, "-d", DAILY, "-s", RABA),
+            store.export_series(root=fixture_root, dataset=DAILY, station=RABA),
+        ),
+    ]
+    for args, lines in cases:
+        wanted = "".join(lines).encode("utf-8")
+        for mode in ((), ("--json",)):  # the same data lines in both modes
+            result = invoke(*args, *mode)
+            assert result.exit_code == 0, result.output
+            # stdout_bytes: Result.stdout folds the CSV CRLF row ends to LF.
+            assert result.stdout_bytes == wanted
+            assert b"obserwator-result/1" not in result.stdout_bytes
+            assert "Informacja: Źródłem pochodzenia danych jest" in result.stderr
+    target = tmp_path / "opad.csv"
+    printed = envelope(
+        invoke("store", "export", "--version", version, "--output", target, "--json")
+    )
+    wanted = "".join(store.export_archive(version)).encode()
+    assert printed["result"] == {
+        "schema": "obserwator-output/1",
+        "output": str(target),
+        "files": [
+            {
+                "path": str(target),
+                "size_bytes": len(wanted),
+                "sha256": hashlib.sha256(wanted).hexdigest(),
+                "status": "written",
+            }
+        ],
+    }
+    assert target.read_bytes() == wanted
+
+
+def test_cli_catalog_prints_each_distinct_notice_once(monkeypatch, tmp_path):
+    received = []
+    original = store.sync_store
+
+    @functools.wraps(original)
+    def sync_store(root, /, *, on_notice, **kwargs):
+        for level, code, text in (
+            ("info", "license_terms", "Licencja IMGW-PIB"),
+            ("info", "license_terms", "Licencja IMGW-PIB"),
+            ("info", "license_terms", "Inny tekst"),
+            ("warning", "other", "Licencja IMGW-PIB"),
+        ):
+            received.append(Notice(level, code, text))
+            on_notice(received[-1])
+        return SyncReport((), cancelled=False)
+
+    monkeypatch.setattr(store, "sync_store", sync_store)
+    result = invoke("store", "sync", "-r", tmp_path, "-d", DAILY, "-y", 2024, "--json")
+    assert len(received) == 4
+    assert len(envelope(result)["notices"]) == 3
+    assert result.stderr.count("Informacja: Licencja IMGW-PIB") == 1
+    assert result.stderr.count("Informacja: Inny tekst") == 1
+    assert result.stderr.count("Ostrzeżenie: Licencja IMGW-PIB") == 1
+
+
+@pytest.mark.parametrize(
+    ("lang", "label", "text"),
+    [("pl", "Ostrzeżenie", "brak wersji"), ("en", "Warning", "no version")],
+)
+def test_cli_catalog_stderr_lines_follow_obserwator_lang_while_the_envelope_is_english(
+    monkeypatch, tmp_path, lang, label, text
+):
+    monkeypatch.setattr(_dispatch, "_LANG", lang)
+
+    @functools.wraps(store.sync_store)
+    def sync_store(root, /, *, on_notice, on_progress, **kwargs):
+        on_progress(Progress(1, 1, "archive", "new", message("catalog.no_version")))
+        on_notice(Notice("warning", "other", message("catalog.no_version")))
+        return SyncReport((), cancelled=False)
+
+    monkeypatch.setattr(store, "sync_store", sync_store)
+
+    result = invoke("store", "sync", "-r", tmp_path, "-d", DAILY, "-y", 2024, "--json")
+
+    assert f"[1/1] {text}" in result.stderr
+    assert f"{label}: {text}" in result.stderr
+    assert [notice["message"] for notice in envelope(result)["notices"]] == [
+        "no version"
+    ]
+
+
+# --- wyjście dla człowieka (bez --json) ------------------------------------------------------
+
+# The language of a call: OBSERWATOR_LANG (unset: Polish) or --lang.
+POLISH, ENGLISH = (), ("--lang", "en")
+
+
+@pytest.mark.parametrize(
+    ("lang", "status", "page"),
+    [
+        (POLISH, "Gotowe", "Strona: 2 z {total}, dalej: --cursor {cursor}"),
+        (ENGLISH, "Done", "Page: 2 of {total}, more: --cursor {cursor}"),
+    ],
+)
+def test_cli_without_json_prints_a_list_as_a_table_of_key_fields_and_the_page(
+    lang, status, page
+):
+    expected = run_command("datasets list", options={"kind": "meteo", "limit": 2})
+    paged = expected.to_json()["page"]
+
+    result = invoke("datasets", "list", "-k", "meteo", "--limit", 2, *lang)
+
+    assert (result.exit_code, result.stderr) == (0, "")
+    lines = result.stdout.splitlines()
+    assert lines[0] == f"{status}: obserwator datasets list"
+    assert lines[1].split() == ["key", "kind", "provider", "first_year", "title"]
+    assert [line.split()[:4] for line in lines[2:4]] == [
+        [item.key, item.kind, item.provider, str(item.first_year)]
+        for item in expected.result
+    ]
+    assert lines[4:] == [page.format(total=paged["total"], cursor=paged["next_cursor"])]
+
+
+@pytest.mark.parametrize(
+    ("lang", "status", "yes"), [(POLISH, "Gotowe", "tak"), (ENGLISH, "Done", "yes")]
+)
+def test_cli_without_json_prints_the_main_fields_of_a_document(
+    fixture_root, offline, lang, status, yes
+):
+    result = invoke("store", "info", "-r", fixture_root, *lang)
+
+    assert (result.exit_code, result.stderr) == (0, "")
+    lines = result.stdout.splitlines()
+    assert lines[0] == f"{status}: obserwator store info"
+    fields = dict(line.split(": ", 1) for line in lines[1:6])
+    assert {name: value.strip() for name, value in fields.items()} == {
+        "root": str(fixture_root),
+        "exists": yes,
+        "supported": yes,
+        "store_schema": "obserwator-data/1",
+        "problems": "—",
+    }
+    assert lines[6:8] == ["providers: 2", "  id        country  name"]
+    assert [line.split()[:2] for line in lines[8:]] == [
+        ["IMGW-PIB", "PL"],
+        ["CHMI", "CZ"],
+    ]
+
+
+@pytest.mark.parametrize("lang", ["pl", "en"])
+def test_cli_without_json_lists_the_commands_in_the_language_of_the_call(lang):
+    listed = list_commands(lang=lang)
+
+    result = invoke("commands", "list", "--lang", lang)
+
+    rows = [line.split() for line in result.stdout.splitlines()]
+    for entry in [*listed["groups"], *listed["commands"]]:
+        assert [*entry["name"].split(), *entry["summary"].split()] in rows, entry
+    assert "obserwator-command-list/1" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("lang", "status", "warning"),
+    [
+        (POLISH, "Częściowo, część pozycji nieudana", "Ostrzeżenie"),
+        (ENGLISH, "Partly done, some items failed", "Warning"),
+    ],
+)
+def test_cli_without_json_prints_a_partial_outcome_failed_items_first_and_exits_10(
+    tmp_path, imgw, lang, status, warning
+):
+    root = tmp_path / "store"
+    store.init_store(root)
+    imgw.publish(H2023, V1, archive_bytes(H2023))
+    imgw.publish(H2024, V3, NEW)
+    imgw.router.get(H2024.url).mock(return_value=httpx.Response(500))
+
+    result = invoke(
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
+        *lang,
+    )
+
+    assert result.exit_code == EXIT_CODES["partial"] == 10
+    lines = result.stdout.splitlines()
+    assert lines[:2] == [
+        f"{status}: obserwator store sync",
+        "items: 2 (new 1, failed 1)",
+    ]
+    assert lines[2].split() == ["slot", "status", "error_code", "error"]
+    assert lines[3].split()[:3] == [
+        f"archive:{DAILY}:2024/codz_2024.zip",
+        "failed",
+        "source_unavailable",
+    ]
+    assert lines[4].split() == [f"archive:{DAILY}:2023/codz_2023.zip", "new", "—", "—"]
+    # The notices close the summary instead of reaching stderr.
+    assert lines[-1].startswith(
+        f"{warning}: dane_hydrologiczne/dobowe/2024/codz_2024.zip"
+    )
+    assert all(line.startswith("[") for line in result.stderr.splitlines())
+
+
+@pytest.mark.parametrize(
+    ("lang", "readable"),
+    [
+        (
+            POLISH,
+            "Błąd: Nieprawidłowe dane wejściowe: Szerokość geograficzna 1.0 poza "
+            "zakresem Polski (49.0–55.0)",
+        ),
+        (ENGLISH, "Error: Invalid input: Latitude 1.0 is outside Poland (49.0–55.0)"),
+    ],
+)
+def test_cli_error_without_json_puts_one_readable_line_before_the_error_document(
+    lang, readable
+):
+    args = ("pmaxtp", "fetch", "--latitude", 1, "--longitude", 1)
+
+    person = invoke(*args, *lang)
+    machine = invoke(*args, *lang, "--json")
+
+    document = error_line(person, "validation_error")
+    assert person.stderr.splitlines() == [readable, machine.stderr.strip()]
+    assert error_line(machine, "validation_error") == document
+
+
+# --- --root z OBSERWATOR_ROOT i --raw-root z OBSERWATOR_RAW_ROOT ----------------------------
+
+
+def test_cli_catalog_root_falls_back_to_obserwator_root(
+    monkeypatch, tmp_path, fixture_root, offline
+):
+    env = {"OBSERWATOR_ROOT": str(fixture_root)}
+    info = run_command("store info", options={"root": fixture_root})
+    assert envelope(invoke("store", "info", "--json", env=env)) == info.to_json(
+        root=fixture_root
+    )
+    other = tmp_path / "inny"
+    flagged = envelope(invoke("store", "info", "-r", other, "--json", env=env))
+    assert flagged["result"]["root"] == str(other)
+    found = run_command(
+        "stations find",
+        options={"source": "store", "root": fixture_root, "query": "raba"},
+    )
+    printed = invoke(
+        "stations", "find", "--source", "store", "-q", "raba", "--json", env=env
+    )
+    assert envelope(printed) == found.to_json(root=fixture_root)
+    calls = []
+
+    def dispatch(name, /, *, options, on_progress, on_notice, cancel):
+        calls.append(options)
+        return CommandResult(name, False, "ok", None, ())
+
+    monkeypatch.setattr(_dispatch, "run_command", dispatch)
+    # A live search rejects root, so the environment default does not apply to it.
+    assert invoke("stations", "find", "-q", "raba", env=env).exit_code == 0
+    assert calls == [{"query": "raba"}]
+
+
+@pytest.fixture
+def filled(monkeypatch):
+    """Options of each call the CLI dispatches, with the defaults run_command fills."""
+    calls = []
+
+    def dispatch(name, /, *, options, on_progress, on_notice, cancel):
+        calls.append(validate_command(name, options=options))
+        return CommandResult(name, False, "ok", None, ())
+
+    monkeypatch.setattr(_dispatch, "run_command", dispatch)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("store", "info"), {"root": "data"}),
+        (("store", "scan", "-k", "analyses"), {"root": "data"}),
+        (("store", "init"), {"root": "raw"}),
+        (("store", "init", "--kind", "data"), {"root": "data"}),
+        (("store", "check", "-d", DAILY, "-y", 2024), {"root": "raw"}),
+        (("pmaxtp", "check", "--latitude", 52.2, "--longitude", 21.0), {"root": "raw"}),
+        (("series", "summary", "-d", DAILY), {"root": "data"}),
+        (("analyses", "build"), {"root": "data"}),
+        (("series", "build", "-d", DAILY), {"root": "data", "raw_root": "raw"}),
+        (("store", "catalog"), {"root": "data", "raw_root": "raw"}),
+    ],
+    ids=lambda value: " ".join(map(str, value)) if isinstance(value, tuple) else None,
+)
+def test_cli_catalog_each_root_falls_back_to_the_variable_of_its_kind(
+    tmp_path, filled, args, expected
+):
+    env = {
+        "OBSERWATOR_ROOT": str(tmp_path / "data"),
+        "OBSERWATOR_RAW_ROOT": str(tmp_path / "raw"),
+    }
+
+    assert invoke(*args, env=env).exit_code == 0
+
+    (options,) = filled
+    assert {name: options.get(name) for name in ("root", "raw_root")} == {
+        name: tmp_path / expected[name] if name in expected else None
+        for name in ("root", "raw_root")
+    }
+
+
+def test_cli_catalog_roots_default_to_the_data_directory_by_kind(tmp_path, filled):
+    env = {"OBSERWATOR_DATA_DIR": str(tmp_path), "NOGAT_CONFIG": os.devnull}
+
+    for args in (
+        ("store", "init"),
+        ("store", "init", "-k", "data"),
+        ("store", "catalog"),
+    ):
+        assert invoke(*args, env=env).exit_code == 0
+
+    raw_init, data_init, catalog = filled
+    assert raw_init["root"] == tmp_path / "obserwator-raw"
+    assert data_init["root"] == tmp_path / "obserwator"
+    assert (catalog["root"], catalog["raw_root"]) == (
+        tmp_path / "obserwator",
+        tmp_path / "obserwator-raw",
+    )
+
+
+def test_cli_store_init_of_kind_data_writes_the_data_marker(tmp_path):
+    root = tmp_path / "data"
+
+    printed = envelope(invoke("store", "init", "--kind", "data", "-r", root, "--json"))
+
+    assert printed["result"]["schema"] == "obserwator-data/1"
+    assert [path.name for path in root.iterdir()] == ["obserwator-data.json"]
+    marker = json.loads((root / "obserwator-data.json").read_text(encoding="utf-8"))
+    assert (marker["schema"], marker["tool"]) == ("obserwator-data/1", "obserwator")
+    # The same directory is no raw root.
+    refused = invoke("store", "init", "-r", root, "--json")
+    assert error_line(refused, "store_unavailable")["details"]["reason"] == (
+        "wrong_root"
+    )
+
+
+# --- błędy i kody wyjścia --------------------------------------------------------------------
+
+
+def _validation(tmp_path, roots, router, monkeypatch):
+    return ["pmaxtp", "fetch", "--latitude", "1", "--longitude", "1"]
+
+
+def _not_found(tmp_path, roots, router, monkeypatch):
+    return ["pmaxtp", "read", "-r", roots.raw.root, "--ind-x", "1", "--ind-y", "1"]
+
+
+def _conflict(tmp_path, roots, router, monkeypatch):
+    busy = tmp_path / "zajety"
+    busy.mkdir()
+    (busy / "notatki.txt").write_text("nie magazyn", encoding="utf-8")
+    return ["store", "init", "-r", busy]
+
+
+def _source_unavailable(tmp_path, roots, router, monkeypatch):
+    router.get(f"{IMGW_API_URL}/hydro").mock(return_value=httpx.Response(503))
+    return ["current", "hydro"]
+
+
+def _missing_dependency(tmp_path, roots, router, monkeypatch):
+    copy = tmp_path / "store"
+    shutil.copytree(roots.data.root, copy)
+    monkeypatch.setitem(sys.modules, "pyarrow", None)
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", None)
+    return ["series", "build", "-r", copy, "--raw-root", roots.raw.root, "-d", PRECIP]
+
+
+def _data_error(tmp_path, roots, router, monkeypatch):
+    copy = tmp_path / "store"
+    shutil.copytree(roots.raw.root, copy)
+    version = store.current_version(copy, slot=O2001).version
+    version.write_bytes(b"uszkodzone archiwum")
+    return ["store", "export", "--version", version]
+
+
+def _store_unavailable(tmp_path, roots, router, monkeypatch):
+    # A raw root given as the data root of a build.
+    return ["series", "build", "-r", roots.raw.root, "-d", DAILY]
+
+
+def _io_error(tmp_path, roots, router, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("chmod only sets the read-only attribute on Windows")
+    if os.geteuid() == 0:
+        pytest.skip("użytkownik root pomija prawa dostępu do katalogów")
+    locked = tmp_path / "tylko-odczyt"
+    locked.mkdir()
+    locked.chmod(0o555)
+    return [
+        "datasets",
+        "download",
+        "-d",
+        "hydro/dobowe",
+        "-y",
+        2024,
+        "-o",
+        locked / "x",
+    ]
+
+
+def _forbidden(tmp_path, roots, router, monkeypatch):
+    # No CLI path refuses a write itself; a refusal raised below reaches exit 12.
+    refusal = ObserwatorError(
+        "Write refused", code="forbidden", details={"reason": "writes_disabled"}
+    )
+    raising(monkeypatch, store, "store_info", refusal)
+    return ["store", "info", "-r", roots.data.root]
+
+
+def _unsupported(tmp_path, roots, router, monkeypatch):
+    # No catalog command refuses a combination itself; a refusal below reaches exit 15.
+    refusal = ObserwatorError(
+        "Not rebuildable", code="unsupported", details={"reason": "test"}
+    )
+    raising(monkeypatch, store, "store_info", refusal)
+    return ["store", "info", "-r", roots.data.root]
+
+
+def _internal_error(tmp_path, roots, router, monkeypatch):
+    raising(monkeypatch, store, "store_info", RuntimeError("awaria testowa"))
+    return ["store", "info", "-r", roots.data.root]
+
+
+ERRORS = {
+    "validation_error": _validation,
+    "not_found": _not_found,
+    "conflict": _conflict,
+    "source_unavailable": _source_unavailable,
+    "missing_dependency": _missing_dependency,
+    "data_error": _data_error,
+    "store_unavailable": _store_unavailable,
+    "io_error": _io_error,
+    "forbidden": _forbidden,
+    "unsupported": _unsupported,
+    "internal_error": _internal_error,
+}
+
+
+@pytest.mark.parametrize(("code", "case"), ERRORS.items(), ids=list(ERRORS))
+def test_cli_catalog_error_leaves_stdout_empty_and_ends_stderr_with_json(
+    code, case, tmp_path, fixture_roots, monkeypatch
+):
+    with respx.mock(assert_all_called=False) as router:
+        args = case(tmp_path, fixture_roots, router, monkeypatch)
+        result = invoke(*args)
+    error_line(result, code)
+
+
+@pytest.mark.parametrize(
+    ("args", "option"),
+    [
+        (("datasets", "list", "--colour", "red"), "colour"),
+        (("store", "check", "-r", "/r", "-d", DAILY, "-y", 2024, "--check"), "check"),
+        (("datasets", "files", "-d", DAILY, "--years"), "years"),
+        (("store", "sync", "--force=tak"), "force"),
+        (("stor",), None),
+        (("store",), None),
+        ((), None),
+        (("store", "info", "nadmiarowy"), None),
+    ],
+    ids=str,
+)
+def test_cli_catalog_click_syntax_error_is_a_validation_error_line(args, option):
+    document = error_line(invoke(*args), "validation_error")
+    assert document["details"].get("option") == option
+    assert document["details"]["click"]
+    words = [str(arg) for arg in args]
+    assert document.get("command") == (" ".join(words[:2]) if len(words) > 1 else None)
+    assert "--help" in document["hint"]
+    # parse_command refuses the same words as a mistake of the line.
+    with pytest.raises(ObserwatorError) as error:
+        parse_command([str(arg) for arg in args])
+    assert (error.value.code, error.value.details["reason"]) == (
+        "validation_error",
+        "usage",
+    )
+    assert error.value.details.get("option") == option
+
+
+def test_cli_catalog_unknown_flag_is_reported_in_english_whatever_obserwator_lang():
+    detail = "Unknown option --bogus of the command obserwator datasets list"
+    hint = "obserwator datasets list --help lists the options and commands"
+    document = error_line(
+        invoke("datasets", "list", "--bogus", "red"), "validation_error"
+    )
+    assert (document["message"], document["hint"]) == (detail, hint)
+    polish = run_installed(
+        "datasets", "list", "--bogus", "red", lang="pl", capture_output=True
+    )
+    line = json.loads(polish.stderr.decode("utf-8").splitlines()[-1])
+    assert (polish.returncode, line["message"], line["hint"]) == (2, detail, hint)
+    assert document["details"]["click"] == "No such option: --bogus"
+
+
+def test_cli_catalog_unknown_flag_close_to_a_known_one_hints_at_it():
+    document = error_line(invoke("store", "info", "--rot", "/r"), "validation_error")
+    assert document["hint"] == (
+        "Did you mean --root? obserwator store info --help lists the options"
+    )
+
+
+@pytest.mark.parametrize(
+    ("failing", "status"), [((H2024,), "partial"), ((H2023, H2024), "failed")]
+)
+def test_cli_catalog_sync_with_failed_items_prints_the_envelope_and_exits_10_or_11(
+    tmp_path, imgw, failing, status
+):
+    root = tmp_path / "store"
+    store.init_store(root)
+    imgw.publish(H2023, V1, archive_bytes(H2023))
+    imgw.publish(H2024, V3, NEW)
+    for archive in failing:
+        imgw.router.get(archive.url).mock(return_value=httpx.Response(500))
+    result = invoke(
+        *("store", "sync", "-r", root, "-d", DAILY, "-y", "2023-2024"),
+        "--json",
+    )
+    assert (
+        result.exit_code == EXIT_CODES[status] == {"partial": 10, "failed": 11}[status]
+    )
+    printed = json.loads(result.stdout)
+    assert printed["status"] == status
+    failed = [item for item in printed["result"]["items"] if item["status"] == "failed"]
+    assert [item["error_code"] for item in failed] == ["source_unavailable"] * len(
+        failing
+    )
+
+
+def test_cli_catalog_first_ctrl_c_prints_the_partial_report_and_exits_130(
+    monkeypatch, tmp_path
+):
+    seen = []
+    original = store.build_series
+
+    @functools.wraps(original)
+    def build_series(root, /, *, raw_root, dataset, on_progress, on_notice, cancel):
+        before = cancel()
+        signal.raise_signal(signal.SIGINT)
+        seen.append((before, cancel()))
+        return SeriesReport("cancelled", None, 0, (), ())
+
+    monkeypatch.setattr(store, "build_series", build_series)
+    handler = signal.getsignal(signal.SIGINT)
+    result = invoke("series", "build", "-r", tmp_path, "-d", DAILY, "--json")
+    assert seen == [(False, True)]
+    assert result.exit_code == EXIT_CODES["cancelled"] == 130
+    printed = json.loads(result.stdout)
+    assert (printed["status"], printed["result"]["status"]) == (
+        "cancelled",
+        "cancelled",
+    )
+    assert "Ostrzeżenie: Przerwanie (Ctrl+C)" in result.stderr
+    assert signal.getsignal(signal.SIGINT) is handler
+
+
+def test_cli_catalog_second_ctrl_c_aborts_with_the_cancelled_error_line(
+    monkeypatch, tmp_path
+):
+    original = store.build_series
+
+    @functools.wraps(original)
+    def build_series(root, /, **kwargs):
+        signal.raise_signal(signal.SIGINT)
+        signal.raise_signal(signal.SIGINT)
+        raise AssertionError("drugie Ctrl+C musi przerwać operację")
+
+    monkeypatch.setattr(store, "build_series", build_series)
+    result = invoke("series", "build", "-r", tmp_path, "-d", DAILY)
+    error_line(result, "cancelled")
+
+
+# --- zainstalowany obserwator ----------------------------------------------------------------
+
+
+def test_cli_catalog_installed_obserwator_reports_the_error_line_of_the_spec():
+    result = run_installed(
+        "pmaxtp", "fetch", "--latitude", "1", "--longitude", "1", capture_output=True
+    )
+    assert (result.returncode, result.stdout) == (2, b"")
+    assert result.stderr.decode("utf-8").splitlines()[-1] == (
+        '{"schema":"obserwator-error/1","code":"validation_error",'
+        '"title":"Invalid input","message":"Latitude 1.0 is outside Poland '
+        '(49.0–55.0)","details":{"option":"latitude","value":1.0},"exit_code":2,'
+        '"command":"pmaxtp fetch"}'
+    )
+    unknown = run_installed("store", "info", "--colour", "red", capture_output=True)
+    assert unknown.returncode == 2
+    assert json.loads(unknown.stderr.splitlines()[-1])["code"] == "validation_error"
+
+
+def test_cli_catalog_installed_obserwator_prints_the_envelope_of_run_command():
+    result = run_installed(
+        "datasets", "list", "-k", "meteo", "--limit", 2, "--json", capture_output=True
+    )
+    assert result.returncode == 0, result.stderr
+    expected = run_command("datasets list", options={"kind": "meteo", "limit": 2})
+    assert json.loads(result.stdout) == expected.to_json()
+
+
+def test_cli_catalog_installed_obserwator_writes_utf8_whatever_the_locale(monkeypatch):
+    # cp1252 is the encoding of a pipe on Windows; it has no "ł", and its "–"
+    # is another byte than in UTF-8.
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    schema = run_installed(
+        "commands", "schema", "--lang", "pl", "--json", capture_output=True
+    )
+    assert schema.returncode == 0, schema.stderr
+    assert json.loads(schema.stdout.decode("utf-8"))["result"] == json.loads(
+        json.dumps(command_schema(lang="pl"))
+    )
+    refused = run_installed(
+        "pmaxtp", "fetch", "--latitude", "1", "--longitude", "1", capture_output=True
+    )
+    assert "(49.0–55.0)" in refused.stderr.decode("utf-8").splitlines()[-1]
+
+
+def test_cli_streams_are_utf8_with_lf_like_on_windows(monkeypatch):
+    # A Windows console stream: code page cp1252 and "\n" written as "\r\n".
+    streams = {
+        name: io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="\r\n")
+        for name in ("stdout", "stderr")
+    }
+    for name, stream in streams.items():
+        monkeypatch.setattr(sys, name, stream)
+    _dispatch._utf8_streams()
+    for stream in streams.values():
+        stream.write('{"detail":"ł"}\n')
+        stream.flush()
+        assert stream.buffer.getvalue() == '{"detail":"ł"}\n'.encode()
+
+
+def test_cli_catalog_installed_obserwator_stream_ends_quietly_when_the_reader_leaves(
+    fixture_raw_root,
+):
+    version = store.current_version(
+        fixture_raw_root, slot=f"archive:{DAILY}:2024/codz_2024.zip"
+    ).version
+    reader, writer = os.pipe()
+    os.close(reader)  # like ``| head`` that already exited: every write gets EPIPE
+    try:
+        result = run_installed(
+            "store", "export", "--version", version, stdout=writer,
+            stderr=subprocess.PIPE, encoding="utf-8",
+        )  # fmt: skip
+    finally:
+        os.close(writer)
+    assert result.returncode == 0, result.stderr
+    assert all(
+        line.startswith(("Informacja:", "[")) for line in result.stderr.splitlines()
+    )

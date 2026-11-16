@@ -1,0 +1,240 @@
+{
+  "recorded_at": "2026-11-14T10:01:26Z",
+  "base_url": "https://hydro-back.imgw.pl/",
+  "description": "Odpowiedzi hydro-back.imgw.pl (backend hydro.imgw.pl) dla szczegółów stacji pl.imgw.hydro_details (ADR-021), nagrane 2026-11-14 między 10:01 a 10:07 UTC: mapa stacji (map/stations/hydrologic?onlyMainStations=false) z trzema stacjami nagranej mapy (910) i ich karty (station/hydro/status?id=…) bez zmian: Kłodzko, Warszawa-Bulwary, Świnoujście. Odpowiedź null backend daje na kod, którego nie zna (kod 999999999 fikcyjny).",
+  "interactions": [
+    {
+      "case": "map",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/map/stations/hydrologic?onlyMainStations=false",
+      "status": 200,
+      "json": {
+        "numOfAlarmStates": 0,
+        "numOfWarningStates": 0,
+        "numOfBelowStates": 5,
+        "stations": [
+          {
+            "s": "low",
+            "p": "02",
+            "d": "0208",
+            "c": "12",
+            "o": "WROC",
+            "id": "150160180",
+            "n": "KŁODZKO",
+            "lo": 16.6586,
+            "la": 50.4425
+          },
+          {
+            "s": "low",
+            "p": "14",
+            "d": "1465",
+            "c": "25",
+            "o": "SOWR",
+            "id": "152210170",
+            "n": "WARSZAWA-BULWARY",
+            "lo": 21.0208,
+            "la": 52.2472
+          },
+          {
+            "s": "medium",
+            "p": "32",
+            "d": "3263",
+            "c": "33",
+            "o": "GDYN",
+            "id": "153140010",
+            "n": "ŚWINOUJŚCIE",
+            "lo": 14.2644,
+            "la": 53.9083
+          }
+        ]
+      }
+    },
+    {
+      "case": "status_150160180",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status?id=150160180",
+      "status": 200,
+      "json": {
+        "properties": {
+          "maximumStateValue": 890,
+          "maximumStateDate": "1997-07-08",
+          "minimumStateValue": 28,
+          "minimumStateDate": "1950-08-31",
+          "district": "kłodzki",
+          "dataClause": null,
+          "waterGaugeZeroOrdinate": 281.617,
+          "waterGaugeZeroOrdinateReferrenceSystem": "EVRF2007",
+          "yearOfEstablishment": "1884"
+        },
+        "stateCode": "low",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 93,
+          "name": "150160180",
+          "description": "KŁODZKO",
+          "river": "Nysa Kłodzka (12)",
+          "parameter": "B00020S",
+          "currentState": {
+            "date": "2026-11-14T09:50:00Z",
+            "value": 93.0
+          },
+          "previousState": {
+            "date": "2026-11-14T09:40:00Z",
+            "value": 93.0
+          },
+          "lastState": null,
+          "status": 140,
+          "outdatedState": false,
+          "riverCourseKm": 130.04,
+          "catchmentArea": 1082.27,
+          "trend": 0,
+          "province": "dolnośląskie",
+          "notes": [
+            {
+              "content": "Wpływ obiektów hydrotechnicznych na dopływach",
+              "severity": 0
+            }
+          ],
+          "waterGaugeZeroOrdinate": null,
+          "waterGaugeZeroOrdinateReferenceSystem": null,
+          "alarmValue": 240.0,
+          "warningValue": 160.0
+        },
+        "id": "150160180",
+        "coordinates": {
+          "y": 50.4425,
+          "x": 16.6586113
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_152210170",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status?id=152210170",
+      "status": 200,
+      "json": {
+        "properties": {
+          "maximumStateValue": 873,
+          "maximumStateDate": "1960-07-31",
+          "minimumStateValue": 104,
+          "minimumStateDate": "2025-09-02, 2025-09-03, 2025-09-04, 2025-09-05",
+          "district": "Warszawa",
+          "dataClause": null,
+          "waterGaugeZeroOrdinate": 75.168,
+          "waterGaugeZeroOrdinateReferrenceSystem": "EVRF2007",
+          "yearOfEstablishment": "2017"
+        },
+        "stateCode": "low",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 105950800,
+          "name": "152210170",
+          "description": "WARSZAWA-BULWARY",
+          "river": "Wisła (2)",
+          "parameter": "B00020S",
+          "currentState": {
+            "date": "2026-11-14T09:50:00Z",
+            "value": 114.0
+          },
+          "previousState": {
+            "date": "2026-11-14T09:40:00Z",
+            "value": 114.0
+          },
+          "lastState": null,
+          "status": 140,
+          "outdatedState": false,
+          "riverCourseKm": 421.68,
+          "catchmentArea": 84855.61,
+          "trend": 0,
+          "province": "mazowieckie",
+          "notes": [
+            {
+              "content": "Powyżej stacji hydrologicznej zrzuty wód podgrzanych",
+              "severity": 0
+            }
+          ],
+          "waterGaugeZeroOrdinate": null,
+          "waterGaugeZeroOrdinateReferenceSystem": null,
+          "alarmValue": 750.0,
+          "warningValue": 700.0
+        },
+        "id": "152210170",
+        "coordinates": {
+          "y": 52.2472229,
+          "x": 21.020834
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_153140010",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status?id=153140010",
+      "status": 200,
+      "json": {
+        "properties": {
+          "maximumStateValue": 696,
+          "maximumStateDate": "1874-02-10",
+          "minimumStateValue": 366,
+          "minimumStateDate": "18.10.1967",
+          "district": "Świnoujście",
+          "dataClause": null,
+          "waterGaugeZeroOrdinate": -4.915,
+          "waterGaugeZeroOrdinateReferrenceSystem": "EVRF2007",
+          "yearOfEstablishment": "1810"
+        },
+        "stateCode": "medium",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 4708,
+          "name": "153140010",
+          "description": "ŚWINOUJŚCIE",
+          "river": "Morze Bałtyckie (0)",
+          "parameter": "B00020S",
+          "currentState": {
+            "date": "2026-11-14T09:50:00Z",
+            "value": 521.0
+          },
+          "previousState": {
+            "date": "2026-11-14T09:40:00Z",
+            "value": 520.0
+          },
+          "lastState": null,
+          "status": 160,
+          "outdatedState": false,
+          "riverCourseKm": 0.0,
+          "catchmentArea": 0.0,
+          "trend": -10,
+          "province": "zachodniopomorskie",
+          "notes": [
+            {
+              "content": "Stany wody pod wpływem wahań poziomu morza",
+              "severity": 0
+            }
+          ],
+          "waterGaugeZeroOrdinate": null,
+          "waterGaugeZeroOrdinateReferenceSystem": null,
+          "alarmValue": 580.0,
+          "warningValue": 560.0
+        },
+        "id": "153140010",
+        "coordinates": {
+          "y": 53.9083328,
+          "x": 14.2644444
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_unknown",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status?id=999999999",
+      "status": 200,
+      "json": null
+    }
+  ]
+}

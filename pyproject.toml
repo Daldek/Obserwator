@@ -1,13 +1,14 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "imgwtools"
-version = "2.1.1"
-description = "Python library for accessing IMGW (Polish Institute of Meteorology and Water Management) public data"
+name = "obserwator"
+dynamic = ["version"]
+description = "Download IMGW-PIB (Poland) and ČHMÚ (Czechia) hydrological and meteorological data and PMAXTP precipitation to plain files or a versioned store. Python library, CLI, REST API and MCP server."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
     { name = "Piotr de Bever", email = "git@debever.pl" }
@@ -19,7 +20,6 @@ classifiers = [
     "Environment :: Web Environment",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -30,10 +30,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Core dependencies - minimal for library usage
+# Core dependencies - minimal for library usage (obserwator.config needs pydantic-settings)
 dependencies = [
     "httpx>=0.25",
-    "pydantic>=2.0",
+    "platformdirs>=4",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
 ]
 
 [project.optional-dependencies]
@@ -41,59 +43,65 @@ dependencies = [
 api = [
     "fastapi>=0.100",
     "uvicorn[standard]>=0.24",
-    "pydantic-settings>=2.0",
-    "jinja2>=3.1",
-    "python-multipart>=0.0.6",
 ]
 
 # Command-line interface
 cli = [
     "typer>=0.9",
     "rich>=13.0",
-    "pydantic-settings>=2.0",
 ]
 
-# SQLite database cache for hydro data
-db = [
-    "pydantic-settings>=2.0",
+# Versioned store: Parquet series (obserwator.store)
+store = [
+    "pyarrow>=15",
 ]
 
-# Spatial/GIS utilities (pandas, projections, shapefiles)
-spatial = [
+# DataFrame export (PMaXTPData.to_dataframe)
+pandas = [
     "pandas>=2.0",
-    "pyproj>=3.6",
-    "pyshp>=2.3",
+]
+
+# MCP server for AI agents (obserwator mcp; official SDK v2, low-level Server)
+mcp = [
+    "obserwator[cli]",
+    "mcp>=2.3,<3",
+]
+
+# Web GUI (obserwator gui serve, entry point nogat.gui; ADR-013)
+gui = [
+    "obserwator[store]",
+    "starlette>=1.9,<2",
+    "uvicorn[standard]>=0.24",
 ]
 
 # Full installation with all features
 full = [
-    "imgwtools[api,cli,db,spatial]",
-]
-
-# Development dependencies
-dev = [
-    "imgwtools[full]",
-    "pytest>=7.4",
-    "pytest-cov>=4.1",
-    "pytest-asyncio>=0.21",
-    "ruff>=0.1",
-    "respx>=0.20",
+    "obserwator[api,cli,gui,mcp,pandas,store]",
 ]
 
 [project.scripts]
-imgw = "imgwtools.cli.main:app"
+obserwator = "obserwator.cli.main:app"
+
+[project.entry-points."nogat.gui"]
+obserwator = "obserwator.gui:gui_module"
 
 [project.urls]
-Homepage = "https://github.com/Daldek/IMGWTools"
-Repository = "https://github.com/Daldek/IMGWTools"
-Issues = "https://github.com/Daldek/IMGWTools/issues"
+Homepage = "https://github.com/Daldek/Obserwator"
+Repository = "https://github.com/Daldek/Obserwator"
+Issues = "https://github.com/Daldek/Obserwator/issues"
+
+[tool.hatch.version]
+path = "src/obserwator/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/imgwtools"]
+packages = ["src/obserwator"]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+# Local agent worktrees; Markdown code blocks are documentation examples, not
+# formatted by ruff.
+extend-exclude = [".claude", "*.md"]
 
 [tool.ruff.lint]
 select = [
@@ -102,29 +110,74 @@ select = [
     "F",      # Pyflakes
     "I",      # isort
     "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
     "C4",     # flake8-comprehensions
     "UP",     # pyupgrade
+    "D",      # pydocstyle (numpy convention)
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # function call in argument defaults (common in FastAPI)
     "B904",   # raise ... from err (not always needed for HTTP exceptions)
+    "D401",   # imperative mood (route/CLI summaries are descriptive noun phrases)
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+# tests: docstrings not required (test names are self-documenting)
+"tests/**" = ["D"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["imgwtools"]
+known-first-party = ["obserwator"]
 
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-# Legacy core modules (deprecated, broken imports: wget/matplotlib/imgw_api)
-# are excluded from type checking pending removal — see docs/PROGRESS.md
-ignore = [
-    "src/imgwtools/core/imgw_api.py",
-    "src/imgwtools/core/imgw_datastore.py",
-    "src/imgwtools/core/imgw_spatial.py",
-]
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+# Local agent worktrees (also excluded from ruff)
+exclude = ['^\.claude/']
+
+[[tool.mypy.overrides]]
+# pyarrow and jsonschema (contract tests) ship no type information.
+module = ["pyarrow", "pyarrow.*", "jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Deviation DEV-7.3 (listed in CLAUDE.md): the test functions and fixtures are not
+# annotated, so tests are checked without the untyped-code strictness.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "--strict-markers -m 'not live'"
+markers = [
+    "live: real network services",
+    "e2e: the GUI in Chromium (Playwright); skipped without a browser",
+    "slow: more than ~10 s or Docker",
+    "db: needs a database",
+    "hydrolog: needs Hydrolog's program (OBSERWATOR_HYDROLOG_COMMAND); skipped without it",
+]
+
+[tool.coverage.report]
+fail_under = 80
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.18",
+    "mypy>=1.19",
+    "pandas-stubs>=2.0",
+    "playwright>=1.64,<2",
+    "pytest>=8",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=6",
+    "respx>=0.20",
+    "ruff>=0.15",
+]

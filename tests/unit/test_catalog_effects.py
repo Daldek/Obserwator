@@ -1,0 +1,319 @@
+"""Effects declared by the catalog (spec 2026-10-19 §3.2, §9): network, writes, twins.
+
+Every contract case (``CASES`` of ``tests/contract/test_interface_contract.py``)
+runs through ``run_command`` on the root of its command's kind (ADR-017): a
+command declaring ``network=False`` sends no request, a command declaring
+``writes="none"`` leaves both roots and the working directory as they were, a
+command declaring ``writes="add"`` keeps every existing file of both roots (a
+build never writes into the raw root it reads), and every option declaring a
+write creates (or replaces) its file. The declarations are the §3.2 table,
+published in the catalog (``effects`` and the ``writes`` of an option).
+"""
+
+import re
+import shutil
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any, cast
+
+import pytest
+import respx
+
+from obserwator import init_store, run_command, sync_pmaxtp, sync_store
+from obserwator.commands import command_schema, data_commands
+from obserwator.testing import FixtureRoots
+from tests.contract.support import (
+    H2024,
+    NEW,
+    V3,
+    FakeImgw,
+    build_served_analyses,
+    snapshot,
+    stamps,
+    use_fake_hydrolog,
+)
+from tests.contract.test_interface_contract import (
+    BUILDS,
+    CASES,
+    IMGW_SOURCES,
+    Case,
+    Roots,
+    placed,
+    resolved,
+)
+
+SPECS = {spec.name: spec for spec in data_commands()}
+# MCP tool names (AGI-5.2): the project prefix and at most 48 characters of [a-z0-9_].
+TOOL_NAME = re.compile(r"obserwator_[a-z0-9_]{1,37}")
+# Spec 2026-10-19 §3.2: command → (writes, network, writing options).
+EFFECTS = {
+    "datasets list": ("none", False, {}),
+    "datasets files": ("none", False, {}),
+    "datasets download": ("add", True, {"output_dir": "add", "force": "replace"}),
+    "datasets providers": ("none", False, {}),
+    "stations find": ("none", True, {}),
+    "current hydro": ("none", True, {}),
+    "current meteo": ("none", True, {}),
+    "current synop": ("none", True, {}),
+    "current warnings": ("none", True, {}),
+    "current hydro-states": ("none", True, {}),
+    "pmaxtp fetch": ("none", True, {}),
+    "pmaxtp url": ("none", False, {}),
+    "pmaxtp check": ("none", False, {}),
+    "pmaxtp sync": ("add", True, {"output_dir": "add", "force": "replace"}),
+    "pmaxtp read": ("none", False, {}),
+    "store init": ("add", False, {}),
+    "store info": ("none", False, {}),
+    "store scan": ("none", False, {}),
+    "store check": ("none", True, {"plan": "replace"}),
+    "store sync": ("add", True, {"output_dir": "add", "force": "replace"}),
+    # Offline: the catalog reads the station sources a store sync stored (ADR-015).
+    "store catalog": ("add", False, {}),
+    "store export": ("none", False, {"output": "add", "force": "replace"}),
+    "stations export": ("none", False, {"output": "add", "force": "replace"}),
+    "series build": ("add", False, {}),
+    "series select": ("none", False, {}),
+    "series read": ("none", False, {}),
+    "series summary": ("none", False, {}),
+    "series export": ("none", False, {"output": "add", "force": "replace"}),
+    # Hydrolog's program runs locally: no request.
+    "analyses build": ("add", False, {}),
+    "analyses list": ("none", False, {}),
+    "analyses read": ("none", False, {}),
+    "analyses export": ("none", False, {"output": "add", "force": "replace"}),
+    "commands list": ("none", False, {}),
+    "commands schema": ("none", False, {}),
+    "commands guide": ("none", False, {"output": "add", "force": "replace"}),
+}
+# Writing options of local commands (without a contract case); the plain ones are
+# held by tests/unit/test_plain_output.py.
+LOCAL_WRITES = {
+    ("datasets download", "output_dir"),
+    ("datasets download", "force"),
+    ("store sync", "output_dir"),
+    ("store sync", "force"),
+    ("pmaxtp sync", "output_dir"),
+    ("pmaxtp sync", "force"),
+    ("store export", "force"),
+    ("series export", "force"),
+    ("stations export", "force"),
+    ("analyses export", "force"),
+    ("commands guide", "force"),
+}
+
+
+@pytest.fixture(scope="module")
+def served_roots(tmp_path_factory, fixture_roots):
+    """The fixture roots plus a PMAXTP cell and analyses, as served to the contract cases."""
+    base = tmp_path_factory.mktemp("served")
+    roots = Roots(base / "data", base / "raw")
+    shutil.copytree(fixture_roots.data.root, roots.data)
+    shutil.copytree(fixture_roots.raw.root, roots.raw)
+    with respx.mock(assert_all_called=False) as router:
+        FakeImgw(router).publish_pmaxtp("pmaxtp_pot_first")
+        sync_pmaxtp(roots.raw, latitude=52.23, longitude=21.01)
+    build_served_analyses(roots.data)
+    return roots
+
+
+@pytest.fixture(autouse=True)
+def hydrolog(monkeypatch):
+    """Hydrolog's program of the analyses commands is the recorded fake."""
+    use_fake_hydrolog(monkeypatch)
+
+
+@pytest.fixture
+def workdir(tmp_path, monkeypatch):
+    """Empty working directory of the commands: relative defaults land here."""
+    directory = tmp_path / "workdir"
+    directory.mkdir()
+    monkeypatch.chdir(directory)
+    return directory
+
+
+@pytest.fixture
+def recorded():
+    """Recorded sources of every contract case; any other request fails the test."""
+    with respx.mock(assert_all_called=False) as router:
+        imgw = FakeImgw(router)
+        imgw.publish(H2024, V3, NEW)
+        imgw.publish_catalog_sources()
+        imgw.publish_live()
+        imgw.publish_pmaxtp("pmaxtp_pot_first", "pmaxtp_amp")
+        yield imgw
+
+
+def case_roots(
+    case: Case, target: Path, served: Roots, fixture: FixtureRoots
+) -> Roots | None:
+    """Fresh roots of the case under ``target`` (``None`` for a case without root)."""
+    if case.store is None:
+        return None
+    roots = Roots(target / "data", target / "raw")
+    if case.store in ("sources", "empty"):
+        init_store(roots.data, kind="data")
+        init_store(roots.raw)
+    if case.store == "sources":
+        # Empty with the IMGW-PIB station sources synced from the recordings.
+        with respx.mock(assert_all_called=False) as router:
+            FakeImgw(router).publish_catalog_sources()
+            sync_store(roots.raw, datasets=IMGW_SOURCES)
+    if case.store in ("served", "fixture"):
+        copied = (
+            served
+            if case.store == "served"
+            else Roots(fixture.data.root, fixture.raw.root)
+        )
+        shutil.copytree(copied.data, roots.data)
+        shutil.copytree(copied.raw, roots.raw)
+    return roots
+
+
+def run(command: str, options: dict[str, object], roots: Roots | None) -> str:
+    """Run a case through Python, reading a stream to its end; return the status."""
+    root = None if roots is None else roots.root(command)
+    given = placed(command, resolved(options, root), roots)
+    outcome = run_command(command, options=given)
+    if SPECS[command].result == "stream" and "output" not in options:
+        "".join(cast(Iterable[str], outcome.result))
+    return outcome.status
+
+
+def cases_of(predicate) -> list[Any]:
+    """Contract cases of the commands meeting ``predicate``, one test each."""
+    return [
+        pytest.param(command, case, id=f"{command} #{index}")
+        for command, cases in CASES.items()
+        if predicate(SPECS[command])
+        for index, case in enumerate(cases, start=1)
+    ]
+
+
+def writing_cases() -> list[tuple[str, Case, str]]:
+    """The first case of a contract command with each of its writing options."""
+    return [
+        (command, cases[0], option.name)
+        for command, cases in CASES.items()
+        for option in SPECS[command].options
+        if option.writes != "none"
+        and option.type == "path"
+        and option.name != "output_dir"
+    ]
+
+
+def test_catalog_declares_the_effects_of_spec_section_3_2():
+    commands = command_schema()["commands"]
+    assert {spec.name: spec.writes for spec in data_commands()} == {
+        name: writes for name, (writes, _, _) in EFFECTS.items()
+    }
+    assert {
+        entry["name"]: (
+            entry["effects"]["network"],
+            {o["name"]: o["writes"] for o in entry["options"] if "writes" in o},
+        )
+        for entry in commands
+    } == {name: (network, options) for name, (_, network, options) in EFFECTS.items()}
+    for entry in commands:
+        # The effects of the command: the strongest write of a run or an option.
+        run, _, options = EFFECTS[entry["name"]]
+        writes = max((run, *options.values()), key=("none", "add", "replace").index)
+        assert entry["effects"]["writes"] == writes, entry["name"]
+        assert entry["effects"]["read_only"] == (writes == "none")
+        assert entry["effects"]["destructive"] == (writes == "replace")
+        assert isinstance(entry["effects"]["idempotent"], bool)
+    names = [entry["operation_id"] for entry in commands]
+    assert names == [
+        "obserwator_" + entry["name"].replace(" ", "_").replace("-", "_")
+        for entry in commands
+    ]
+    assert len(set(names)) == len(names)
+    assert all(TOOL_NAME.fullmatch(name) for name in names)
+
+
+def test_every_write_can_be_planned_by_a_check_twin():
+    for spec in data_commands():
+        if spec.writes != "none":
+            assert spec.check is not None, spec.name
+        for option in spec.options:
+            if option.writes != "none":
+                # A check itself (store check) plans by running.
+                is_check = spec.function.startswith("check_")
+                assert spec.check is not None or is_check, (spec.name, option.name)
+
+
+@pytest.mark.parametrize(("command", "case"), cases_of(lambda spec: not spec.network))
+def test_offline_commands_send_no_request(
+    command, case, tmp_path, served_roots, fixture_roots, workdir
+):
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    with respx.mock(assert_all_called=False) as router:
+        anything = router.route().respond(503)
+        status = run(command, case.options, roots)
+    assert status == "ok"
+    assert anything.call_count == 0
+
+
+@pytest.mark.parametrize(("command", "case"), cases_of(lambda s: s.writes == "none"))
+def test_reading_commands_leave_the_roots_and_working_directory_unchanged(
+    command, case, tmp_path, served_roots, fixture_roots, workdir, recorded
+):
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    trees = [workdir, *([roots.data, roots.raw] if roots is not None else [])]
+    before = [(snapshot(tree), stamps(tree)) for tree in trees]
+
+    assert run(command, case.options, roots) == "ok"
+
+    assert [(snapshot(tree), stamps(tree)) for tree in trees] == before
+
+
+@pytest.mark.parametrize(("command", "case"), cases_of(lambda s: s.writes == "add"))
+def test_adding_commands_keep_every_existing_file(
+    command, case, tmp_path, served_roots, fixture_roots, workdir, recorded
+):
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    assert roots is not None
+    base = tmp_path / "roots"  # both roots
+    files = {path: digest for path, digest in snapshot(base).items() if digest}
+    touched = {path: stamp for path, stamp in stamps(base).items() if path in files}
+    raw = stamps(roots.raw)
+
+    assert run(command, case.options, roots) == "ok"
+
+    after, times = snapshot(base), stamps(base)
+    assert {path: after.get(path) for path in files} == files
+    assert {path: times.get(path) for path in touched} == touched
+    if command in BUILDS:  # a build reads the raw root and never writes there
+        assert stamps(roots.raw) == raw
+
+
+def test_every_writing_option_has_a_case():
+    covered = {(command, option) for command, _, option in writing_cases()}
+    assert covered | LOCAL_WRITES == {
+        (spec.name, option.name)
+        for spec in data_commands()
+        for option in spec.options
+        if option.writes != "none"
+    }
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["new", "existing"])
+@pytest.mark.parametrize(
+    ("command", "case", "option"),
+    [pytest.param(*row, id=f"{row[0]} {row[2]}") for row in writing_cases()],
+)
+def test_a_writing_option_writes_its_file(
+    command, case, option, existing, tmp_path, served_roots, fixture_roots, recorded
+):
+    roots = case_roots(case, tmp_path / "roots", served_roots, fixture_roots)
+    target = tmp_path / "out" / f"{option}.txt"
+    target.parent.mkdir()
+    options = {**case.options, option: target}
+    if existing and any(o.name == "force" for o in SPECS[command].options):
+        options["force"] = True  # an existing output is replaced only with force
+    if existing:  # "replace": an existing file is overwritten
+        target.write_text("stara treść\n", encoding="utf-8")
+
+    assert run(command, options, roots) == "ok"
+
+    assert target.is_file()
+    assert target.read_text(encoding="utf-8") != "stara treść\n"

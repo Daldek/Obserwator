@@ -1,61 +1,65 @@
-# IMGWTools — Zasady pracy i standardy
+# Obserwator — Working rules and standards
 
-## 1. Styl i jakość kodu
-- styl: **PEP8**
-- docstringi: **NumPy Style**
-- linting/formatowanie: **ruff**
-- typowanie: **typing** (obowiązkowe)
-
----
-
-## 2. Testy
-- wymagane **testy jednostkowe i integracyjne**
-- pokrycie min. 80%
-- nie merge'ujemy PR bez testów
+## 1. Code style and quality
+- style: **PEP8**
+- docstrings: **NumPy Style** (enforced by the `D` rules in ruff, `convention = "numpy"`)
+- linting/formatting: **ruff** (`ruff check`, `ruff format` — the whole repository)
+- typing: **typing** (mandatory)
 
 ---
 
-## 3. Workflow Git
-Branch'e:
-- `master` — stabilne wydania
-- `slave` — główna gałąź rozwojowa
-- `feature/*` — nowe funkcje
-- `hotfix/*` — poprawki krytyczne
-
-Commit:
-- znaczący opis w języku polskim lub angielskim
-- brak commitów typu "fix" bez kontekstu
+## 2. Tests
+- **unit and contract tests** — required, status: 3325 tests in `tests/unit` and `tests/contract` (2026-11-15), all offline
+- **browser tests of the GUI** — 152 tests in `tests/e2e` (Playwright, Chromium; marker `e2e`, skipped without Chromium; 44 also marked `hydrolog`, skipped without Hydrolog's program)
+- **live tests** — 72 tests in `tests/live` (marker `live`, outside the gate: `pytest -m live`): 50 against IMGW-PIB servers (35 commands × Python/CLI/REST, live errors, MCP leg `-k obserwator_mcp`) and 22 against opendata.chmi.cz (ČHMÚ provider)
+- coverage: last measurement **94.54%** (2026-11-15), gate threshold **80%**
+- a change of the command catalog, CLI, REST or MCP must keep the Python = CLI = REST = MCP contract (`tests/contract/test_interface_contract.py`, `test_mcp_contract.py`, `test_mcp_http_contract.py`)
+- a change of catalog texts, registries (datasets, providers, error codes) or guide templates regenerates `AGENTS.md` and `llms.txt` in the same change (drift test in `tests/unit/test_agent_guide.py`)
+- we do not merge a PR without tests
 
 ---
 
-## 4. Dokumentacja
-Każda zmiana funkcjonalna musi:
-- aktualizować dokumentację Markdown,
-- aktualizować komentarze i docstringi,
-- aktualizować OpenAPI (jeśli dotyczy).
+## 3. Git workflow
+Branches:
+- `main` — stable releases
+- `develop` — main development branch
+- `feature/*` — new features
+- `hotfix/*` — critical fixes
+
+Commit (`scripts/check-commits.sh`, in the gate):
+- an English Conventional Commits subject (`feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `style`, `build`, `ci`, `chore`; DEV-4.1) with a meaningful description
+- no AI attribution lines (DEV-4.3)
 
 ---
 
-## 5. Integracja z Claude Code
-Projekt używa **Claude Code** (claude.ai/code) do wspomagania developmentu.
+## 4. Documentation
+Every functional change must:
+- update the Markdown documentation,
+- update comments and docstrings,
+- update OpenAPI (if applicable).
 
-Konfiguracja:
-- `CLAUDE.md` w katalogu głównym — automatycznie ładowany przez Claude Code
-- Zawiera instrukcje, komendy, strukturę projektu
+---
 
-Claude Code pomaga w:
-- generowaniu i modyfikacji kodu,
-- aktualizacji dokumentacji,
-- utrzymaniu spójności projektu.
+## 5. Claude Code integration
+The project uses **Claude Code** (claude.ai/code) to support development.
+
+Configuration:
+- `CLAUDE.md` in the root directory — loaded automatically by Claude Code
+- Contains instructions, commands, project structure
+
+Claude Code helps with:
+- generating and modifying code,
+- updating documentation,
+- keeping the project consistent.
 
 ---
 
 ## 6. Code Review
-- min. 1 osoba review (jeśli zespół > 1)
-- sprawdzenie testów
-- sprawdzenie dokumentacji
+- at least 1 reviewer (if the team > 1)
+- checking the tests
+- checking the documentation
 
 ---
 
-## 7. Licencja
-Projekt **Open Source**, licencja MIT.
+## 7. License
+**Open Source** project, MIT license.

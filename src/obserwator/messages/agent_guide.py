@@ -1,0 +1,251 @@
+"""Messages of ``agent_guide.py``: the words of AGENTS.md and llms.txt."""
+
+from obserwator.messages import Text
+
+MESSAGES = {
+    "country_poland": Text(
+        "Poland",
+        "Polska",
+    ),
+    "country_czechia": Text(
+        "Czechia",
+        "Czechy",
+    ),
+    "effect_read": Text(
+        "Read — no network, no writes",
+        "Odczyt — bez sieci i bez zapisu",
+    ),
+    "effect_network": Text(
+        "Network — connects to a source, writes nothing",
+        "Sieć — łączy się ze źródłem, nic nie zapisuje",
+    ),
+    "effect_add": Text(
+        "Write — new files, versions or tasks; `--check` first",
+        "Zapis — nowe pliki, wersje albo zadania; najpierw `--check`",
+    ),
+    "effect_replace": Text(
+        "Overwrite — may replace an existing file or manifest; `--check` first",
+        "Nadpisanie — może zastąpić istniejący plik albo manifest; najpierw `--check`",
+    ),
+    "mark_add": Text(
+        "write",
+        "zapis",
+    ),
+    "mark_replace": Text(
+        "overwrite",
+        "nadpisanie",
+    ),
+    "mark_itself": Text(
+        "is a check",
+        "jest sprawdzeniem",
+    ),
+    "mark_local": Text(
+        "local",
+        "lokalna",
+    ),
+    "outside_store": Text(
+        "Download only (`datasets download`):",
+        "Do pobrania (`datasets download`):",
+    ),
+    "more_variables": Text("… ({count})", "… ({count})"),
+    "header_status": Text(
+        "Status",
+        "Status",
+    ),
+    "header_exit_code": Text(
+        "CLI exit code",
+        "Kod wyjścia CLI",
+    ),
+    "header_meaning": Text(
+        "Meaning",
+        "Znaczenie",
+    ),
+    "header_key": Text(
+        "Key",
+        "Klucz",
+    ),
+    "header_variables": Text(
+        "Variables",
+        "Zmienne",
+    ),
+    "header_first_year": Text(
+        "First year",
+        "Od roku",
+    ),
+    "status_ok": Text(
+        "no failures",
+        "bez porażek",
+    ),
+    "status_partial": Text(
+        "some items failed — read `items[].status` and `error_code`; the others are "
+        "done",
+        "część pozycji nieudana — przeczytaj `items[].status` i `error_code`; "
+        "pozostałe są gotowe",
+    ),
+    "status_failed": Text(
+        "no item succeeded (in a plan: `check_failed`); the envelope is complete",
+        "żadna pozycja się nie udała (w planie: `check_failed`); koperta jest pełna",
+    ),
+    "status_cancelled": Text(
+        "cancelled (Ctrl+C, a cancelled request); a partial `result` or `null`",
+        "przerwano (Ctrl+C, anulowanie żądania); `result` częściowy albo `null`",
+    ),
+    "rule_learn_commands": Text(
+        "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
+        "commands schema --command … --json` or `obserwator "
+        "<group> <command> --schema --json`; REST `GET /api/v1/commands/list` and "
+        "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
+        "Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules "
+        "they do not express are in `rules`, effects in `effects` (`writes`, `network`, "
+        "`idempotent`).",
+        "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
+        "commands schema --command … --json` albo `obserwator "
+        "<grupa> <komenda> --schema --json`; REST `GET /api/v1/commands/list` i `/schema`; "
+        "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
+        "`options` (`name`, `type`, `required`, `flags`, `enum`); reguły, których nie "
+        "wyrażają, są w `rules`, skutki w `effects` (`writes`, `network`, `idempotent`).",
+    ),
+    "rule_check_first": Text(
+        "**Check without writing:** `--check` (CLI), `?check=true` (REST, POST), "
+        "`check: true` (MCP; the default of writing commands), `check_command()` "
+        "(Python) → an `obserwator-plan/1` plan without writing and without downloading "
+        "content. `store check` is a check itself. Ask the user about a large plan.",
+        "**Sprawdź bez zapisu:** `--check` (CLI), `?check=true` (REST, POST), "
+        "`check: true` (MCP; domyślne dla komend zapisujących), `check_command()` "
+        "(Python) → plan `obserwator-plan/1` bez zapisu i bez pobierania treści. `store "
+        "check` sam jest sprawdzeniem. Przy dużym planie zapytaj użytkownika.",
+    ),
+    "rule_run": Text(
+        "**Run:** without `check`; read the `status` of the envelope, not only the "
+        "exit code.",
+        "**Uruchom:** bez `check`; czytaj `status` koperty, nie tylko kod wyjścia.",
+    ),
+    "rule_read_offline": Text(
+        "**Read offline:** `store info`, `store scan`, `series summary`, `series "
+        "read` (`limit`/`cursor`), `pmaxtp read` — without downloading again.",
+        "**Czytaj offline:** `store info`, `store scan`, `series summary`, `series "
+        "read` (`limit`/`cursor`), `pmaxtp read` — bez ponownego pobierania.",
+    ),
+    "rule_decide_by_codes": Text(
+        "**Decide by codes:** `code`, `status`, `items[].status`, `error_code`; the "
+        "`message` text is for humans, the `hint` names the option or command that "
+        "fixes the error.",
+        "**Decyduj po kodach:** `code`, `status`, `items[].status`, `error_code`; "
+        "tekst `message` jest dla człowieka, `hint` wskazuje opcję albo komendę, "
+        "która naprawia błąd.",
+    ),
+    "symbol_station_code": Text(
+        "STATION_CODE",
+        "KOD_STACJI",
+    ),
+    "symbol_wigos_id": Text(
+        "WIGOS_ID",
+        "KOD_WIGOS",
+    ),
+    "flow_precipitation_title": Text(
+        "Daily precipitation at the Poznań station, 2010–2020",
+        "Opady dobowe ze stacji Poznań, 2010–2020",
+    ),
+    "flow_precipitation_find_station": Text(
+        "several hits → ask the user; the code of the chosen station is "
+        "`STATION_CODE`.",
+        "kilka trafień → zapytaj użytkownika; kod wybranej stacji to `KOD_STACJI`.",
+    ),
+    "flow_precipitation_choose_dataset": Text(
+        "Choose the dataset: `pl.imgw.meteo_precip_daily` (precipitation stations, "
+        "`P`) or `pl.imgw.meteo_climate_daily` (climate stations, `P` and "
+        "temperatures) — the station list does not tell the network of a station.",
+        "Wybierz zbiór: `pl.imgw.meteo_precip_daily` (stacje opadowe, `P`) albo "
+        "`pl.imgw.meteo_climate_daily` (stacje klimatyczne, `P` i temperatury) — "
+        "lista stacji nie mówi, w której sieci jest stacja.",
+    ),
+    "flow_precipitation_plan": Text(
+        "plan: the number of files and bytes; the archives cover the whole country, "
+        "so tell the user the size.",
+        "plan: liczba plików i bajtów; archiwa obejmują cały kraj, więc podaj "
+        "użytkownikowi rozmiar.",
+    ),
+    "flow_after_consent": Text(
+        "after the user agrees.",
+        "po zgodzie użytkownika.",
+    ),
+    "flow_series_build": Text(
+        "the station series in the data root.",
+        "szeregi stacji w katalogu danych.",
+    ),
+    "flow_precipitation_summary": Text(
+        "the station is missing → repeat steps 3–6 with "
+        "`pl.imgw.meteo_{{climate,synop}}_daily` in turn; missing from all → tell "
+        "the user, do not substitute another station.",
+        "brak stacji → powtórz kroki 3–6 z `pl.imgw.meteo_{{climate,synop}}_daily` "
+        "po kolei; brak we wszystkich → powiedz to użytkownikowi, nie podstawiaj "
+        "innej stacji.",
+    ),
+    "flow_czech_discharge_title": Text(
+        "Daily discharge of a Czech station (ČHMÚ)",
+        "Przepływy dobowe stacji czeskiej (ČHMÚ)",
+    ),
+    "flow_czech_discharge_find_station": Text(
+        "the WIGOS identifier of the chosen station is `WIGOS_ID`.",
+        "identyfikator WIGOS wybranej stacji to `KOD_WIGOS`.",
+    ),
+    "flow_czech_discharge_plan": Text(
+        "plan: the station files by year.",
+        "plan: pliki stacji po latach.",
+    ),
+    "flow_next_pages": Text(
+        "next pages: `--cursor` = `page.next_cursor`.",
+        "kolejne strony: `--cursor` = `page.next_cursor`.",
+    ),
+    "summary": Text(
+        "Version {version}. Providers: {providers}. Datasets in the registry: "
+        "{datasets}. Commands of the catalog shared by every interface: {commands} "
+        "(groups: {groups}).",
+        "Wersja {version}. Dostawcy: {providers}. Zbiory w rejestrze: {datasets}. "
+        "Komendy katalogu wspólnego dla wszystkich interfejsów: {commands} (grupy: "
+        "{groups}).",
+    ),
+    "provider_line": Text(
+        "- {label} — {country}: keys {keys}, station code {station}, license {license}",
+        "- {label} — {country}: klucze {keys}, kod stacji {station}, licencja "
+        "{license}",
+    ),
+    "flags_lists": Text(
+        "- Lists ({lists}): comma-separated values (`--months 1,2`) or a repeated "
+        "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023`, `2020,2022` or "
+        "`2018,2020-2023`. Dates ({dates}): ISO `YYYY-MM-DD`.",
+        "- Listy ({lists}): wartości po przecinku (`--months 1,2`) albo powtórzona "
+        "flaga (`-s A -s B`). Roczniki ({years}): `2024`, `2020-2023`, `2020,2022` "
+        "albo `2018,2020-2023`. Daty ({dates}): ISO `RRRR-MM-DD`.",
+    ),
+    "flags_switches": Text(
+        "- Switches on by default: {toggles} (`--no-…` turns it off); the other "
+        "boolean flags ({switches}) take no value and turn their option on.",
+        "- Przełączniki domyślnie włączone: {toggles} (`--no-…` wyłącza); pozostałe "
+        "flagi logiczne ({switches}) nie mają wartości i włączają swoją opcję.",
+    ),
+    "flags_output": Text(
+        "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
+        "only that; without it, a summary for a person in the language of `--lang`. A "
+        "stream without `--output` prints its data lines in both modes.",
+        "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
+        "ją; bez niego podsumowanie dla człowieka w języku `--lang`. Strumień bez "
+        "`--output` wypisuje swoje linie danych w obu trybach.",
+    ),
+    "flags_environment": Text(
+        "- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else "
+        "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default "
+        "`--raw-root` and `--root` of {raw}, else `<data_dir>/obserwator-raw` (CLI, "
+        "MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help, of the "
+        "progress lines and the default `--lang` (`pl`, `en`).",
+        "- Środowisko: `OBSERWATOR_ROOT` — katalog danych, domyślne `--root`, inaczej "
+        "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — katalog surowy, domyślne "
+        "`--raw-root` i `--root` {raw}, inaczej `<data_dir>/obserwator-raw` "
+        "(CLI, MCP stdio; {roots}); `OBSERWATOR_LANG` — język pomocy CLI, linii "
+        "postępu i domyślny `--lang` (`pl`, `en`).",
+    ),
+    "flags_root_when": Text(
+        "{command} — only with {conditions}",
+        "{command} — tylko przy {conditions}",
+    ),
+}

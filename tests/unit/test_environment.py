@@ -1,0 +1,310 @@
+"""User environment (DEV-18): ``nogat.toml``, ``NOGAT_*``, directories, ``obserwator config show``."""
+
+import json
+import os
+from pathlib import Path
+
+import platformdirs
+import pytest
+from typer.testing import CliRunner
+
+from obserwator import _environment as environment
+from obserwator.cli import main as cli_main
+from obserwator.config import Settings, check_config, environment_report
+from obserwator.exceptions import ObserwatorValidationError
+
+RUNNER = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def user_environment(tmp_path, monkeypatch):
+    """No OBSERWATOR_/NOGAT_ variable, ``.env`` or user ``nogat.toml`` of the machine."""
+    for name in list(os.environ):
+        if name.startswith(("OBSERWATOR_", "NOGAT_")):
+            monkeypatch.delenv(name)
+    home = tmp_path / "home"
+    monkeypatch.setattr(
+        platformdirs, "user_config_path", lambda *a, **k: home / "config"
+    )
+    monkeypatch.setattr(platformdirs, "user_data_path", lambda *a, **k: home / "data")
+    monkeypatch.setattr(platformdirs, "user_cache_path", lambda *a, **k: home / "cache")
+    monkeypatch.setattr(platformdirs, "user_state_path", lambda *a, **k: home / "state")
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    return home
+
+
+def write_config(tmp_path: Path, monkeypatch, text: str) -> Path:
+    path = tmp_path / "custom" / "nogat.toml"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("NOGAT_CONFIG", str(path))
+    return path
+
+
+def source_of(key):
+    entry = environment_report()["keys"][key]
+    return entry["value"], entry["source"], entry["name"]
+
+
+def test_a_shared_key_comes_from_the_first_layer_of_dev_18_1(tmp_path, monkeypatch):
+    write_config(
+        tmp_path,
+        monkeypatch,
+        '[nogat]\ndata_dir = "/nogat-file"\n\n[obserwator]\ndata_dir = "/obserwator-file"\n',
+    )
+    (Path.cwd() / ".env").write_text("OBSERWATOR_DATA_DIR=/dotenv\n", encoding="utf-8")
+    monkeypatch.setenv("NOGAT_DATA_DIR", "/nogat-env")
+    monkeypatch.setenv("OBSERWATOR_DATA_DIR", "/obserwator-env")
+
+    expected = [
+        ("/obserwator-env", "env", "OBSERWATOR_DATA_DIR"),
+        ("/dotenv", "dotenv", "OBSERWATOR_DATA_DIR"),
+        ("/nogat-env", "env", "NOGAT_DATA_DIR"),
+        ("/obserwator-file", "file", "[obserwator]"),
+        ("/nogat-file", "file", "[nogat]"),
+    ]
+    for value, source, name in expected:
+        # data_dir is a path, reported in its native form (``\obserwator-env`` on Windows).
+        assert source_of("data_dir") == (str(Path(value)), source, name)
+        assert Settings().data_dir == Path(value)
+        # Drop the layer that won, so the next one shows.
+        if source == "env":
+            monkeypatch.delenv(name)
+        elif source == "dotenv":
+            (Path.cwd() / ".env").unlink()
+        else:
+            path = Path(os.environ["NOGAT_CONFIG"])
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    f'data_dir = "{value}"', "x = 1"
+                ),
+                encoding="utf-8",
+            )
+    assert source_of("data_dir")[1:] == ("default", None)
+    assert Settings().data_dir == environment.default_data_dir()
+
+
+def test_the_nogat_section_holds_only_the_shared_keys(tmp_path, monkeypatch):
+    write_config(
+        tmp_path,
+        monkeypatch,
+        '[nogat]\nlang = "en"\nhost = "ignored"\n\n[kartograf]\nlang = "de"\n\n'
+        '[obserwator]\nhost = "127.0.0.1"\nport = 9000\n',
+    )
+
+    settings = Settings()
+
+    assert (settings.lang, settings.host, settings.port) == ("en", "127.0.0.1", 9000)
+    assert source_of("lang")[1:] == ("file", "[nogat]")
+    assert source_of("port")[1:] == ("file", "[obserwator]")
+
+
+def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
+    write_config(
+        tmp_path,
+        monkeypatch,
+        '[obserwator]\nstore_write_token = "from-file"\nport = 1\n'
+        'admin_api_key = "admin-from-file"\nfoo = 2\n',
+    )
+
+    missing = environment_report()
+    assert Settings().store_write_token is None
+    assert Settings().admin_api_key is None
+    assert missing["credentials"] == {
+        "OBSERWATOR_STORE_WRITE_TOKEN": "missing",
+        "OBSERWATOR_ADMIN_API_KEY": "missing",
+        "OBSERWATOR_ADMIN_API_KEY_FILE": "missing",
+    }
+    assert "store_write_token" not in missing["keys"]
+    assert "admin_api_key" not in missing["keys"]
+    assert missing["config_file"]["ignored"] == [
+        {"key": "store_write_token", "reason": "credential"},
+        {"key": "admin_api_key", "reason": "credential"},
+        {"key": "foo", "reason": "unknown"},
+    ]
+
+    monkeypatch.setenv("OBSERWATOR_STORE_WRITE_TOKEN", "from-env")
+    monkeypatch.setenv("OBSERWATOR_ADMIN_API_KEY_FILE", str(tmp_path / "admin.key"))
+    present = environment_report()
+    assert present["credentials"] == {
+        "OBSERWATOR_STORE_WRITE_TOKEN": "present",
+        "OBSERWATOR_ADMIN_API_KEY": "missing",
+        "OBSERWATOR_ADMIN_API_KEY_FILE": "present",
+    }
+    text = json.dumps(present)
+    assert "from-env" not in text and "from-file" not in text
+    assert "admin.key" not in text
+
+
+def test_directories_stay_out_of_the_working_directory(user_environment, monkeypatch):
+    home = user_environment
+    settings = Settings()
+
+    assert settings.data_dir == home / "data"
+    assert settings.cache_dir == home / "cache"
+    assert settings.reference_dir == home / "cache" / "obserwator" / "reference"
+    assert settings.api_keys_file == home / "data" / "obserwator" / "api_keys.json"
+
+    monkeypatch.setenv("NOGAT_CACHE_DIR", "/elsewhere")  # the shared key moves it
+    assert Settings().reference_dir == Path("/elsewhere/obserwator/reference")
+    monkeypatch.setenv("OBSERWATOR_REFERENCE_DIR", "/reference")
+    assert Settings().reference_dir == Path("/reference")
+
+
+def test_the_servers_logs_follow_the_shared_state_dir(
+    user_environment, tmp_path, monkeypatch
+):
+    home = user_environment
+    assert Settings().log_dir == home / "state" / "obserwator" / "logs"
+    assert source_of("state_dir") == (str(home / "state"), "default", None)
+
+    write_config(tmp_path, monkeypatch, '[nogat]\nstate_dir = "/nogat-file"\n')
+    assert Settings().log_dir == Path("/nogat-file/obserwator/logs").absolute()
+    monkeypatch.setenv("NOGAT_STATE_DIR", "/nogat-env")
+    assert Settings().log_dir == Path("/nogat-env/obserwator/logs").absolute()
+    monkeypatch.setenv("OBSERWATOR_STATE_DIR", "~/state")
+    assert Settings().log_dir == Path.home() / "state" / "obserwator" / "logs"
+    assert source_of("state_dir")[1:] == ("env", "OBSERWATOR_STATE_DIR")
+
+
+def test_a_file_that_cannot_be_used_is_reported_and_not_applied(tmp_path, monkeypatch):
+    assert environment.config_file().error is None  # the default file may be absent
+    check_config()
+
+    path = write_config(tmp_path, monkeypatch, "[obserwator\nport = 1\n")
+    assert Settings().port == 8000
+    reported = environment_report()["config_file"]
+    assert reported["error"].startswith("invalid TOML") and reported["exists"]
+    with pytest.raises(ObserwatorValidationError) as caught:
+        check_config()
+    assert caught.value.code == "validation_error"
+    assert "invalid TOML" in caught.value.detail  # the cause is in the message
+    assert caught.value.details == {
+        "option": "NOGAT_CONFIG",
+        "path": str(path),
+        "reason": "invalid_config",  # snake_case, the same for every cause
+    }
+
+    monkeypatch.setenv("NOGAT_CONFIG", str(tmp_path / "missing.toml"))
+    assert environment.config_file().error == "the file does not exist"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'[obserwator]\nlang = "za\xbf\xf3\xb3\xe6"\n',
+        b"\xff\xfe[\x00i\x00m\x00g\x00w\x00]\x00",
+    ],
+    ids=["cp1250-text", "utf-16"],
+)
+def test_a_file_that_is_not_utf_8_is_reported_like_any_unusable_file(
+    content, tmp_path, monkeypatch
+):
+    path = write_config(tmp_path, monkeypatch, "")
+    path.write_bytes(content)
+    cause = "cannot read the file: not UTF-8 text"
+
+    assert environment.config_file().error == cause
+    assert Settings().port == 8000  # nothing of the file is applied
+    with pytest.raises(ObserwatorValidationError) as caught:
+        check_config()
+    assert cause in caught.value.detail
+    assert caught.value.details == {
+        "option": "NOGAT_CONFIG",
+        "path": str(path),
+        "reason": "invalid_config",
+    }
+
+    version = RUNNER.invoke(cli_main.app, ["version"])
+    shown = RUNNER.invoke(cli_main.app, ["config", "show", "--json"])
+    assert version.exit_code == 2
+    error = json.loads(version.stderr.splitlines()[-1])
+    assert error["code"] == "validation_error"
+    assert error["details"]["reason"] == "invalid_config"
+    assert cause in error["message"]
+    assert shown.exit_code == 0, shown.output
+    assert json.loads(shown.stdout)["config_file"]["error"] == cause
+
+
+def test_obserwator_stops_on_an_unusable_file_but_config_show_still_reports_it(
+    tmp_path, monkeypatch
+):
+    write_config(tmp_path, monkeypatch, "not toml")
+
+    version = RUNNER.invoke(cli_main.app, ["version"])
+    shown = RUNNER.invoke(cli_main.app, ["config", "show", "--json"])
+
+    assert version.exit_code == 2
+    error = json.loads(version.stderr.splitlines()[-1])
+    assert error["code"] == "validation_error"
+    assert error["details"]["reason"] == "invalid_config"
+    assert shown.exit_code == 0, shown.output
+    assert json.loads(shown.stdout)["config_file"]["error"].startswith("invalid TOML")
+
+
+def test_config_show_json_gives_every_key_its_source_and_the_store_size(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "store"
+    (root / "versions").mkdir(parents=True)
+    (root / "a.bin").write_bytes(b"x" * 100)
+    os.link(root / "a.bin", root / "versions" / "b.bin")  # one file, two names
+    (root / "c.txt").write_bytes(b"y" * 7)
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(root))
+    monkeypatch.setenv("OBSERWATOR_PORT", "9001")
+
+    result = RUNNER.invoke(cli_main.app, ["config", "show", "--json"])
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)  # exactly one document
+    assert (report["schema"], report["tool"]) == ("obserwator-config/1", "obserwator")
+    assert report["keys"]["port"] == {
+        "value": 9001,
+        "source": "env",
+        "name": "OBSERWATOR_PORT",
+    }
+    assert report["keys"]["host"]["source"] == "default"
+    assert all(
+        {"value", "source", "name"} <= set(entry) for entry in report["keys"].values()
+    )
+    assert report["store"] == {
+        "root": str(root),
+        "source": "env",
+        "name": "OBSERWATOR_ROOT",
+        "exists": True,
+        "size_bytes": 107,
+    }
+    assert report["raw_store"] == {
+        "root": str(Settings().data_dir / "obserwator-raw"),
+        "source": "default",
+        "name": None,
+        "exists": False,
+        "size_bytes": None,
+    }
+
+
+def test_config_show_without_json_is_text_and_a_missing_store_has_no_size(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "OBSERWATOR_LANG", "en"
+    )  # help and text follow the CLI language at import
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(tmp_path / "data-root"))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(tmp_path / "raw-root"))
+
+    result = RUNNER.invoke(cli_main.app, ["config", "show"])
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "data_dir = " in result.stdout
+        and "OBSERWATOR_STORE_WRITE_TOKEN" in result.stdout
+    )
+    roots = [line for line in result.stdout.splitlines() if not line.startswith(" ")]
+    (data_line,) = (line for line in roots if str(tmp_path / "data-root") in line)
+    (raw_line,) = (line for line in roots if str(tmp_path / "raw-root") in line)
+    assert "OBSERWATOR_ROOT" in data_line and "OBSERWATOR_RAW_ROOT" in raw_line
+    report = environment_report()
+    assert report["store"]["size_bytes"] is None
+    assert report["raw_store"]["size_bytes"] is None

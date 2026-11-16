@@ -1,0 +1,188 @@
+/*
+ * Obserwator GUI: the user guide (instrukcja/index.html), after Hydrolog's guide
+ * (src/hydrolog/gui/web/instrukcja/instrukcja.css). A document that scrolls, under the
+ * app's top bar (../css/app.css) and on Nogat's tokens only, in both themes: the title,
+ * the contents and the text, with the contents in a column of their own on a desktop and
+ * between the title and the text on narrow screens. The station symbols take hydro.imgw.pl's
+ * colours from ../css/map.css, as the app's legend does.
+ */
+
+html.guide-page, html.guide-page body { height: auto; }
+html.guide-page { scroll-padding-top: calc(var(--header-height) + var(--space-4)); }
+html.guide-page body { overflow: visible; font-size: var(--text-site); line-height: 1.55; }
+
+.skip {
+  position: absolute; left: var(--space-2); top: calc(-1 * var(--header-height)); z-index: 20;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+  font-size: var(--text-base);
+}
+.skip:focus { top: var(--space-2); }
+
+html.guide-page .topbar { position: sticky; top: 0; height: var(--header-height); }
+.top-actions .back-btn { padding: 0 var(--space-2); }
+
+.guide {
+  display: grid; grid-template-columns: 250px minmax(0, 1fr); grid-template-areas: "toc head" "toc text";
+  column-gap: var(--space-8);
+  max-width: 1200px; margin: 0 auto; padding: var(--space-8) var(--space-6) var(--space-16);
+}
+.guide-head { grid-area: head; max-width: 860px; padding: 0 0 var(--space-6); }
+.guide-toc { grid-area: toc; }
+.guide-text { grid-area: text; min-width: 0; max-width: 860px; }
+
+/* ---------- Contents ---------- */
+.guide-toc {
+  position: sticky; top: calc(var(--header-height) + var(--space-6)); align-self: start;
+  max-height: calc(100vh - var(--header-height) - var(--space-12)); overflow-y: auto;
+  font-size: var(--text-base); line-height: var(--line-height);
+}
+.guide-toc h2 {
+  margin: 0 0 var(--space-2); color: var(--text-3);
+  font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.toc-hint {
+  margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-soft); color: var(--text); font-size: var(--text-sm);
+}
+.toc, .toc ol { margin: 0; padding: 0; list-style: none; }
+.toc a {
+  display: flex; gap: var(--space-2); padding: 3px var(--space-2);
+  border-radius: var(--radius-sm); color: var(--text-2); text-decoration: none;
+}
+.toc a:hover { background: var(--surface-2); color: var(--text); }
+.toc-num { flex: none; min-width: 22px; color: var(--text-3); font: var(--weight-bold) var(--text-xs)/1.9 var(--font-mono); }
+.toc-start { margin: 0 0 var(--space-2); padding: 0 0 var(--space-2); border-bottom: 1px solid var(--line); }
+.toc-start > a { color: var(--accent); font-weight: var(--weight-bold); }
+.toc-start > a .toc-num { color: var(--accent); }
+.toc-start ol a { padding-left: calc(var(--space-2) + 30px); font-size: var(--text-sm); }
+
+/* ---------- Text ---------- */
+.guide-head h1 { margin: 0 0 var(--space-3); font-size: var(--text-2xl); line-height: 1.2; }
+.guide-head p { margin: 0 0 var(--space-3); }
+.guide-text h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); line-height: 1.25; }
+.guide-text h3 { margin: var(--space-8) 0 var(--space-3); font-size: var(--text-lg); line-height: 1.3; }
+.guide-text h4 { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-md); line-height: 1.3; }
+.guide-text section > h3:first-child { margin-top: var(--space-6); }
+.guide-text p { margin: 0 0 var(--space-3); }
+.guide-text ul, .guide-text ol { margin: 0 0 var(--space-3); padding-left: var(--space-6); }
+.guide-text li { margin: 0 0 var(--space-2); }
+.guide-text code { overflow-wrap: anywhere; }
+.kicker {
+  margin: 0 0 var(--space-1); color: var(--accent);
+  font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.lead { color: var(--text-2); font-size: var(--text-lg); }
+.part { padding: var(--space-8) 0 var(--space-6); border-top: 1px solid var(--line); }
+.back { margin: var(--space-6) 0 0; font-size: var(--text-sm); }
+
+.guide-head .note-box, .guide-text .note-box, .guide-text .hint-box {
+  margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md); color: var(--text); font-size: inherit; line-height: inherit;
+}
+.guide-head .note-box, .guide-text .note-box {
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); background: var(--warn-bg);
+}
+.guide-text .hint-box { border: 1px solid color-mix(in srgb, var(--info) 40%, var(--line)); background: var(--info-bg); }
+
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.col-title { margin: 0 0 var(--space-2); color: var(--text-2); font-size: var(--text-md); }
+.guide-text .card {
+  min-width: 0; margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.guide-text .card strong { display: block; }
+.guide-text .card p { margin: var(--space-1) 0 0; color: var(--text-2); font-size: var(--text-md); }
+
+.steps-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); list-style: none; }
+.guide-text .steps-3 { padding: 0; }
+.guide-text .steps-3 li { margin: 0; }
+.steps-3 .number { display: block; margin: 0 0 var(--space-1); color: var(--accent); font: var(--weight-bold) var(--text-xl)/1 var(--font-mono); }
+
+.defs { display: grid; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.defs dt { font-weight: var(--weight-bold); }
+.defs dd { margin: 2px 0 0; color: var(--text-2); }
+.glossary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-6); }
+
+/* Marks of the app's controls quoted in the text: (i) as .info-btn, × as a key */
+.i-mark {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; vertical-align: -3px;
+  border: 1px solid var(--line-2); border-radius: 50%; background: var(--surface); color: var(--accent);
+  font: italic var(--weight-bold) var(--text-xs)/1 var(--font-sans);
+}
+.key-mark { padding: 0 4px; border: 1px solid var(--line-2); border-radius: var(--radius-xs); font-size: 0.9em; }
+.guide-text kbd {
+  padding: 0 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: var(--radius-xs);
+  background: var(--surface-2); color: var(--text); font: var(--text-sm) var(--font-mono);
+}
+
+/* ---------- Station symbols and the colours of „Pomiary bieżące” ---------- */
+.symbols { padding: 0; list-style: none; }
+.guide-text .symbols li { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-1); }
+.symbols .sym-box { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 3px; min-width: 40px; }
+.symbols .sym { align-self: center; }
+.g-hydro, .g-medium { --sym-fill: var(--imgw-medium); }
+.g-meteo, .g-dry { --sym-fill: var(--imgw-no-precip); }
+.g-alarm { --sym-fill: var(--imgw-alarm); }
+.g-warning { --sym-fill: var(--imgw-warning); }
+.g-high { --sym-fill: var(--imgw-high); }
+.g-low { --sym-fill: var(--imgw-low); }
+.g-below { --sym-fill: var(--imgw-below); }
+.g-no-data { --sym-fill: var(--imgw-no-data); }
+.g-unknown { --sym-fill: var(--imgw-unknown); }
+.g-heavy { --sym-fill: var(--imgw-high-precip); }
+.g-precip { --sym-fill: var(--imgw-precip); }
+
+/* ---------- Pictures, tables, commands, quoted lines ---------- */
+.guide-text figure { margin: var(--space-4) 0 var(--space-6); }
+.guide-text figure a { display: block; }
+.guide-text figure img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); background: var(--surface);
+}
+.guide-text figcaption { margin: var(--space-2) 0 0; color: var(--text-3); font-size: var(--text-sm); }
+.guide-text .panel-figure { max-width: 400px; }
+.guide-text .map-figure { max-width: 740px; }
+.guide-text .phone-figure { max-width: 260px; }
+
+.table-scroll { margin: 0 0 var(--space-4); overflow-x: auto; }
+.guide-table { width: 100%; }
+.guide-table caption { margin: 0 0 var(--space-2); color: var(--text-3); font-size: var(--text-sm); text-align: left; }
+.guide-table th, .guide-table td { padding: 6px 8px; white-space: normal; text-align: left; vertical-align: top; }
+.guide-table thead th { position: static; }
+.guide-table td code, .guide-table th code { white-space: nowrap; }
+
+.guide-text pre.cmd {
+  margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4); overflow-x: auto;
+  border-radius: var(--radius-md); background: var(--code-bg); color: var(--code-text); font-size: var(--text-md);
+}
+.guide-text pre.cmd code { overflow-wrap: normal; }
+/* A command line wraps between its words, so the whole line shows on a phone */
+.guide-text pre.cli-line { white-space: pre-wrap; }
+
+.guide-text .legal {
+  margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--line-2); background: var(--surface-2); color: var(--text);
+  font-size: var(--text-md); overflow-wrap: anywhere;
+}
+.guide-text .legal a { color: inherit; }
+.guide-text .legal-label { margin: var(--space-3) 0 var(--space-1); color: var(--text-2); font-size: var(--text-sm); font-weight: var(--weight-bold); }
+
+/* ---------- Narrow screens: one column, the contents between the title and the text ---------- */
+@media (max-width: 1000px) {
+  .guide {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "toc" "text";
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
+  .guide-toc { position: static; max-height: none; overflow: visible; margin: 0 0 var(--space-6); }
+}
+@media (max-width: 860px) {
+  html.guide-page { scroll-padding-top: 64px; }
+  html.guide-page .topbar { height: 48px; }
+  .top-actions .back-btn .label { display: none; }
+  .top-actions .back-btn { width: var(--control); padding: 0; }
+  .guide-head h1 { font-size: var(--text-xl); }
+  .cols, .steps-3, .glossary { grid-template-columns: minmax(0, 1fr); }
+  .guide-text .phone-figure { max-width: 220px; }
+}

@@ -1,0 +1,98 @@
+"""Messages of ``store/export.py``."""
+
+from obserwator.messages import Text
+
+MESSAGES = {
+    "unsupported_export_format_available": Text(
+        "Unsupported export format {value!r}; available: {allowed}",
+        "Nieobsługiwany format eksportu {value!r}; dostępne: {allowed}",
+    ),
+    "output_is_directory": Text(
+        "The output of the export is a directory, not a file: {target}",
+        "Wyjście eksportu jest katalogiem, nie plikiem: {target}",
+    ),
+    "force_needs_output": Text(
+        "force replaces the output file of an export, so it needs output",
+        "force zastępuje plik wyjścia eksportu, więc wymaga output",
+    ),
+    "binary_format_needs_output": Text(
+        "The format {format} is a binary file, not text lines: give output, the one "
+        "file to write (REST answers it as an attachment)",
+        "Format {format} to plik binarny, nie linie tekstu: podaj output, jedyny plik "
+        "do zapisania (REST zwraca go jako załącznik)",
+    ),
+    "unknown_kind_allowed": Text(
+        "Unknown kind of stations {kind!r}; allowed: {kinds}",
+        "Nieznany rodzaj stacji {kind!r}; dozwolone: {kinds}",
+    ),
+    "store_has_no_station_catalog": Text(
+        "The store has no station catalog of any provider; build one with "
+        "obserwator store catalog",
+        "Magazyn nie zawiera katalogu stacji żadnego dostawcy; buduje go obserwator "
+        "store catalog",
+    ),
+    "no_station_of_kind": Text(
+        "The catalogs of {providers} have no station of the kind {kind}; the export "
+        "was rejected so as not to lose the attribution formulas",
+        "Katalogi {providers} nie mają stacji rodzaju {kind}; eksport odrzucono, by "
+        "nie utracić formuł atrybucji",
+    ),
+    "record_station_from_has_columns": Text(
+        "The record of the station {station_code} from {date} has columns outside "
+        "the dataset {dataset}: {unknown}",
+        "Rekord stacji {station_code} z {date} ma kolumny spoza zbioru {dataset}: "
+        "{unknown}",
+    ),
+    "unknown_year_type_allowed": Text(
+        "Unknown year_type {year_type!r}; allowed: {year_types}",
+        "Nieznany year_type {year_type!r}; dozwolone: {year_types}",
+    ),
+    "semi_annual_annual_characteristics_have": Text(
+        "Semi-annual and annual characteristics ({dataset}) have only hydrological "
+        "years; year_type='calendar' is not allowed",
+        "Charakterystyki półroczne i roczne ({dataset}) mają tylko lata "
+        "hydrologiczne; year_type='calendar' niedozwolony",
+    ),
+    "series_station_empty_chosen_range": Text(
+        "The series of the station {station} in {dataset} is empty in the chosen "
+        "range; the export was rejected so as not to lose the attribution formulas",
+        "Szereg stacji {station} w {dataset} jest pusty w wybranym zakresie; eksport "
+        "odrzucono, by nie utracić formuł atrybucji",
+    ),
+    "cancelled": Text(
+        "The export was cancelled; the target file stays untouched",
+        "Anulowano eksport; plik docelowy pozostaje nietknięty",
+    ),
+    "station_progress": Text(
+        "Station {station}",
+        "Stacja {station}",
+    ),
+    "series_exported": Text(
+        "Exported the series of the station {station}",
+        "Wyeksportowano szereg stacji {station}",
+    ),
+    "rows_written": Text(
+        "{label}: {written} rows",
+        "{label}: {written} wierszy",
+    ),
+    "archive_progress": Text(
+        "Archive {source}",
+        "Archiwum {source}",
+    ),
+    "archive_exported": Text(
+        "Exported the archive {source}",
+        "Wyeksportowano archiwum {source}",
+    ),
+    "stations_progress": Text(
+        "Stations",
+        "Stacje",
+    ),
+    "stations_exported": Text(
+        "Exported {count} stations",
+        "Wyeksportowano stacje: {count}",
+    ),
+    "exported_to_file": Text(
+        "{done} to {target}",
+        "{done} do {target}",
+    ),
+}
