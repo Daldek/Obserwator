@@ -4,7 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
-## [Unreleased]
+## [3.0.0] - 2026-11-16
 
 Changes since 2.1.1, to be released as 3.0.0, a member of the first joint release of the Nogat
 ecosystem (release set candidate-6, Nogat ECO-074). The tool released as IMGWTools 2.1.1 is called
