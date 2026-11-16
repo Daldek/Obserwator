@@ -263,6 +263,16 @@ _Open backlog items are in [PROGRESS.md](PROGRESS.md), section "Next". Closed it
 - [x] Raising Python to `>=3.12` for consistency with other projects (cross-project recommendation, v2.1.0)
 - [x] DEVELOPMENT_STANDARDS.md in the Hydrolog format (cross-project recommendation, v2.1.0)
 
+### Nogat standard 1.0 compliance (`chore/nogat-2.1`, moved from PROGRESS on 2026-11-16)
+
+- **Done:** pyright → mypy `strict` (ECO-010; tests without annotations are a DEV-7.3 deviation in `CLAUDE.md`), `scripts/gate.sh` + `check-commits.sh`, `uv.lock`, the `live` marker instead of `IMGW_LIVE=1`, coverage ≥ 80% (DEV-7.5), CI/Dependabot from the Nogat templates (they work after the branch rename), `forbidden` with exit code 12 (ERR §4), erratum to ADR-001 D1 (hard links), MCP prefix `obserwator_` = the catalog `operation_id` = the OpenAPI `operationId`, the full set of MCP annotations with `idempotentHint`, the `commands list` command (ECO-018, AGI-5.2, AGI-5.4, AGI-5.9, AGI-6.2; ADR-004 erratum of 2026-10-24); user environment DEV-18: `nogat.toml` via `tomllib`, `NOGAT_*`, `cache_dir`, `IMGW_DATA_DIR` → `OBSERWATOR_REFERENCE_DIR` (breaking change), `obserwator config show --json`, 18 variables in README and `.env.example` (ADR-005).
+- **Done (document budgets, DOC-1.7), as of 2026-10-31:** `CLAUDE.md` 96 lines (budget 200), `README.md` 221 (400), `docs/PROGRESS.md` 191 (300), `AGENTS.md` 174 lines and 16.0 KiB in both languages (200 lines and 16 KiB), `llms.txt` 2,810 characters before the first list of links (8,000); the `AGENTS.md` and `llms.txt` budgets are guarded by `tests/unit/test_agent_guide.py`, the rest are limits for review. Content moved out of `CLAUDE.md` and `README.md` lives in `docs/CODEBASE.md`, `docs/TESTING.md` and `docs/USAGE.md`. The "unusable `nogat.toml`" error has `details.reason = "invalid_config"` (the cause text in the message), and a file not in UTF-8 ends with `validation_error` (test `test_environment.py`).
+- **README by DOC-2.1 (2026-11-16):** the sections, their order and the summary of 337 characters follow DOC-2.1 to DOC-2.5; the reference material it held (store details, GUI, server logs, configuration) is in `docs/USAGE.md`.
+
+### Decided questions
+
+- **`/mcp` on the public server (the author's decision of 2026-11-09).** Off by default: `OBSERWATOR_MCP_ENABLED=false` stays in `Settings`, `.env.example` and `docker/docker-compose.yml`, and an operator enables `/mcp` explicitly (ADR-004, open question 2).
+
 
 ---
 

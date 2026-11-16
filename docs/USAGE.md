@@ -703,9 +703,9 @@ A systemd user unit, e.g. `~/.config/systemd/user/obserwator-gui.service`, where
 Description=Obserwator GUI
 
 [Service]
-Environment=TMPDIR=/home/<user>/data/tmp
+Environment=TMPDIR=%h/data/tmp
 Environment=OBSERWATOR_HYDROLOG_COMMAND=/path/to/hydrolog
-Environment=OBSERWATOR_ADMIN_API_KEY_FILE=/home/<user>/.config/obserwator/admin-key
+Environment=OBSERWATOR_ADMIN_API_KEY_FILE=%h/.config/obserwator/admin-key
 Environment=FORWARDED_ALLOW_IPS=127.0.0.1
 WorkingDirectory=<checkout>
 ExecStart=<checkout>/.venv/bin/obserwator gui serve --no-browser --host 127.0.0.1 --port 8060 --root <data root>
@@ -980,7 +980,7 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
 
 Versions are immutable and append-only: no overwriting, no permanent links and no `latest` path. The current version is computed by `current_version(root, slot=...)`, and the slot decides the kind of root it needs; slots of the raw root: `archive:<key>:<file>` (e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `archive:cz.chmi.hydro_daily:H_0-203-1-001000_DQ_2025.json`), `pmaxtp:pl.imgw.pmaxtp:<METHOD>/<indX>_<indY>`; slots of the data root: `series:<key>`, `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`, `analyses:pl.imgw.analyses`, `analyses:cz.chmi.analyses`. Every main file has a `*.meta.json` sidecar (`obserwator-meta/1`) with SHA-256, size, request, HTTP headers and the provider license; sidecars of ČHMÚ archives with a canonical form also have `content_sha256`. A path in a sidecar is relative to its own root, as its first directory tells: a series or catalog names its sources under `archives/` of the raw root and the series a catalog read under `series/` of the data root. The `observations/` directory (`obserwator-observation/1`) records a new source signal when the downloaded bytes have the same content as the current version — it is not a version; `store scan --root <raw root> --kind observation` shows it as publication history.
 
-A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement — see "Installation"). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
+A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement in [README "Install"](../README.md#install)). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
 
 ### Splitting a store
 
@@ -1060,7 +1060,7 @@ Full list with migration tables: [`docs/CHANGELOG.md`](CHANGELOG.md) (also earli
 
 ### Breaking changes
 
-- The tool is called Obserwator (ADR-009): `pip install obserwator` and `import obserwator` instead of
+- The tool is called Obserwator (ADR-009): the distribution `obserwator` and `import obserwator` instead of
   `imgwtools`, the command `obserwator` instead of `imgw`, the variables `OBSERWATOR_<KEY>` instead of
   `IMGW_<KEY>`, the section `[obserwator]` of `nogat.toml`, `ObserwatorError` and its subclasses instead of
   `IMGWError`; the dataset keys `pl.imgw.*` and the provider IMGW-PIB keep their names.
