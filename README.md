@@ -10,7 +10,7 @@ Until release 2.1.1 the tool was called IMGWTools (`pip install imgwtools`, comm
 
 ## Features
 
-- **Python library** - `pip install obserwator` for integration with other projects
+- **Python library** - the package `obserwator` (installation below) for integration with other projects
 - **CLI** - `obserwator`, commands generated from the command catalog
 - **REST API** - FastAPI with OpenAPI/Swagger documentation, routes generated from the same catalog
 - **MCP server** - `obserwator mcp` (extra `obserwator[mcp]`) and the `/mcp` endpoint of the REST server: the catalog commands as tools for AI agents, read-only by default
@@ -40,30 +40,35 @@ Since 3.0.0 all interfaces use one catalog of 35 commands (`obserwator commands 
 
 ## Installation
 
+Python 3.12 or newer. Obserwator is not on PyPI yet (the name `imgwtools` there holds the releases up to 2.1.1), so the lines below install the release tag `v3.0.0` from Git; a project that depends on Obserwator pins the same tag (`obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.0.0`, Nogat REL-5.1).
+
 ```bash
 # Library only (minimal dependencies: httpx, pydantic, pydantic-settings, platformdirs)
-pip install obserwator
+pip install "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With CLI
-pip install obserwator[cli]
+pip install "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With REST API
-pip install obserwator[api]
+pip install "obserwator[api] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With the versioned store and Parquet series (pyarrow)
-pip install obserwator[store]
+pip install "obserwator[store] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With DataFrame export (PMaXTPData.to_dataframe)
-pip install obserwator[pandas]
+pip install "obserwator[pandas] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With the MCP server for AI agents (obserwator mcp; includes the CLI)
-pip install obserwator[mcp]
+pip install "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # With the web GUI (obserwator gui serve needs the CLI too; create_app and serve need only [gui])
-pip install "obserwator[cli,gui]"
+pip install "obserwator[cli,gui] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # Full installation (CLI + API + GUI + MCP + store + pandas)
-pip install obserwator[full]
+pip install "obserwator[full] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
+
+# As a project dependency with uv
+uv add "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 
 # For developers (from the repository; uv, environment from uv.lock)
 git clone https://github.com/Daldek/Obserwator.git
@@ -136,7 +141,7 @@ Read-only by default (writing commands return a plan); `--allow-writes` enables 
 ### GUI
 
 ```bash
-pip install "obserwator[cli,gui]"
+pip install "obserwator[cli,gui] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
 obserwator gui serve --root /dane/obserwator   # opens http://127.0.0.1:8060/; Ctrl+C stops it
 ```
 

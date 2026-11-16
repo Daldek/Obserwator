@@ -5,9 +5,9 @@
 System consists of six main components:
 
 1. **Python Library** (v3.0.0)
-   - `pip install obserwator` for integration with external projects
+   - the package `obserwator` (installed from Git by its tag, README "Installation") for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
-   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (22 descriptors: 16 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
+   - Provider registry (`IMGW-PIB`, `CHMI` — ČHMÚ, ADR-003) and dataset registry (27 descriptors: 21 `pl.imgw.*`, 6 `cz.chmi.*`, with slugs and legacy aliases), IMGW-PIB and ČHMÚ parsers with value flags
    - Command catalog (`obserwator.commands`): 35 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); English texts with a Polish variant (ADR-006), declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
 
