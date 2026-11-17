@@ -113,6 +113,7 @@ Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-ca
 
 - C4: a plain plan (`--check` with `--output-dir`) into another tool's store lists `ATTRIBUTION.txt` as `write` while the run refuses every target (DEV-19.10, DEV-19.11) — fixed on `fix/3.0.1`: the plan lists it as a `conflict` (`output_in_store`) like every target.
 - C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — fixed on `fix/3.0.1`: the hint is `obserwator store init --root <path>` (`--kind data` for a data root).
+- C7: `test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib[read]` fails under a long `TMPDIR` (2,050 bytes), as it puts `tmp_path` paths into the instructions — fixed on `fix/3.0.1`: the test names fixed paths.
 - E3-02: `pl.imgw.meteo_synop_terms` and `pl.imgw.meteo_climate_terms` are download-only (`in_store` false) without a parser, so Archiwista refuses them and Hydrograf gets only daily precipitation — deferred to the next release.
 - GEO-03: in the IMGW-PIB catalog 2,143 of 3,811 stations have no location and meteo stations no `meteo_kind` or `established_year`, partly for a reference file not downloaded, which only `problems` hints — deferred to the next release.
 - GEO-04: `stations find --source live` gives no coordinates and no area filter — deferred to the next release.

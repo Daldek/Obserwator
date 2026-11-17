@@ -31,6 +31,11 @@ Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
   the hint `Run obserwator store init with the same --root` (a raw root) or `... --kind data
   with the same --root` (a data root) without the path. The hint is now `obserwator store init
   --root <path>` or `obserwator store init --kind data --root <path>`, in English and Polish.
+- **The test of the MCP instructions below 2 KiB no longer depends on `TMPDIR` (C7 of Nogat's
+  integration run of candidate-5).** `test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib`
+  put `tmp_path` paths into the instructions, so a long `TMPDIR` took the `read` case past 2,048
+  bytes; it now names fixed paths, and the docstring of `_instructions` says the text is below
+  2 KiB besides the paths it names. The instructions themselves are unchanged.
 
 ## [3.0.0] - 2026-11-16
 
