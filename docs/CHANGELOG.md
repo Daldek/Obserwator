@@ -20,6 +20,12 @@ Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
   `DT`, and a `T` row at any term is skipped like `06:00`, `13:00` and `20:00`; two rows of one
   date are one record when they are equal and an error otherwise. All 3,351 files parse
   (53,407,676 days). The `variable_notes` of `cz.chmi.meteo_daily` name the older terms.
+- **The plan of a plain write into a store lists `ATTRIBUTION.txt` as a conflict too
+  (DEV-19.10, DEV-19.11; C4 of Nogat's integration run of candidate-5).** `--check` with an
+  `--output-dir` that is or lies in a store of any tool listed every data file as `conflict`
+  (`output_in_store`) but the directory's `ATTRIBUTION.txt` as `write`, while the run refuses
+  every target before any request. The attribution file is now a `conflict` with the same
+  reason, and `obserwator.output.write_attribution` refuses such a directory the same way.
 
 ## [3.0.0] - 2026-11-16
 

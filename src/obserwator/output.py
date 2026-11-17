@@ -611,6 +611,8 @@ def plan_attribution(directory: Path, lines: Attribution) -> PlanEntry | None:
     Returns
     -------
     PlanEntry or None
+        ``conflict`` (``output_in_store``) when ``directory`` is or lies in a
+        store, as for every other target of the write (DEV-19.11); else
         ``write`` for a missing file, ``replace`` for a file that lacks some
         of the lines (they are merged in, none is removed, so ``force`` does
         not matter), ``conflict`` (``output_exists``) for a path that is no
@@ -619,6 +621,8 @@ def plan_attribution(directory: Path, lines: Attribution) -> PlanEntry | None:
     if not lines:
         return None
     path = directory / ATTRIBUTION_FILE
+    if store_around(directory) is not None:
+        return PlanEntry(path, "conflict", "output_in_store")
     try:
         content = _attribution_content(path, lines)
     except (OSError, UnicodeDecodeError):
@@ -651,8 +655,9 @@ def write_attribution(directory: Path, lines: Attribution) -> FileResult | None:
     Raises
     ------
     ObserwatorError
-        Code ``conflict`` (``output_exists``) when the path is no readable
-        UTF-8 file; nothing is written.
+        Code ``conflict``: ``output_in_store`` when ``directory`` is or lies in
+        a store, ``output_exists`` when the path is no readable UTF-8 file;
+        nothing is written.
     """
     entry = plan_attribution(directory, lines)
     if entry is None:
