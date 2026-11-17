@@ -575,7 +575,7 @@ curl -OJ 'http://127.0.0.1:8000/api/v1/series/export?dataset=pl.imgw.hydro_daily
 
 ## REST API
 
-After starting the server (`obserwator server`):
+After starting the server (`obserwator server`; it needs the extra `api`, and without FastAPI or uvicorn it ends with `missing_dependency`, exit code 6, `details` `{"extra": "api", "module": ...}` and the hint `pip install "obserwator[api]"`):
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 - `GET /api/v1` — version and list of catalog routes, `GET /health` — server status, `GET /llms.txt` — guide for agents (llms.txt) in the language from `Accept-Language` (English by default)

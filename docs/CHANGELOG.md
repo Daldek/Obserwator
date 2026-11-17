@@ -36,6 +36,12 @@ Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
   put `tmp_path` paths into the instructions, so a long `TMPDIR` took the `read` case past 2,048
   bytes; it now names fixed paths, and the docstring of `_instructions` says the text is below
   2 KiB besides the paths it names. The instructions themselves are unchanged.
+- **`obserwator server` without the extra `api` ends with `missing_dependency` (E3-06 of the
+  scenario test of 2026-11-15/16).** Without FastAPI or uvicorn the command ended with a
+  `ModuleNotFoundError` traceback (exit code 1). It now checks both before it imports the
+  server and ends with the error line `missing_dependency` (exit code 6, `details`
+  `{"extra": "api", "module": ...}`, hint `pip install "obserwator[api]"`), as
+  `obserwator gui serve` does for the extra `gui`; stdout stays empty.
 
 ## [3.0.0] - 2026-11-16
 

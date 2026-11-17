@@ -86,6 +86,26 @@ def test_cli_main_mcp_without_the_extra_ends_with_missing_dependency(monkeypatch
     assert "pip install obserwator[mcp]" in error["message"]
 
 
+@pytest.mark.parametrize("module", ["fastapi", "uvicorn"])
+def test_cli_main_server_without_the_extra_ends_with_missing_dependency(
+    monkeypatch, uvicorn_calls, module
+):
+    monkeypatch.setitem(sys.modules, module, None)  # obserwator[api] is not installed
+
+    result = RUNNER.invoke(cli_main.app, ["server"])
+
+    assert result.exit_code == 6
+    assert result.stdout == ""
+    error = json.loads(result.stderr.splitlines()[-1])
+    assert (error["code"], error["details"], error["hint"]) == (
+        "missing_dependency",
+        {"extra": "api", "module": module},
+        'pip install "obserwator[api]"',
+    )
+    assert module in error["message"]
+    assert uvicorn_calls == []
+
+
 def test_cli_main_entry_point_runs_command_from_argv(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["obserwator", "version"])
 

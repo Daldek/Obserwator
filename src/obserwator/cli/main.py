@@ -22,6 +22,7 @@ Examples::
 command, which writes nothing to stdout, the channel of the protocol.
 """
 
+import importlib
 from pathlib import Path
 
 import typer
@@ -83,7 +84,20 @@ def server(
 
     It prints nothing of its own: the lifecycle record ``start`` on standard error names
     the address (Nogat DEV-12.7); the logs are in ``<state_dir>/obserwator/logs``.
+    Without FastAPI or uvicorn (the ``api`` extra) it ends with ``missing_dependency``.
     """
+    for module in ("fastapi", "uvicorn"):
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            raise typer.Exit(
+                _error_line(
+                    "missing_dependency",
+                    message("cli.server_needs_extra", module=module),
+                    {"extra": "api", "module": module},
+                    hint='pip install "obserwator[api]"',
+                )
+            ) from None
     from obserwator.api.main import run_server
 
     run_server(host=host, port=port, reload=reload)
