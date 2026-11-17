@@ -109,7 +109,7 @@ Not taken (2026-11-14): a request to IMGW-PIB for permission to use hydro-back.i
 
 ### Known defects, deferred to the next release (the author's decision of 2026-11-16)
 
-Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0.
+Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0. Release 3.0.1 takes defect fixes only: those on `fix/3.0.1` (not merged) say so; the rest wait for the author's list.
 
 - C4: a plain plan (`--check` with `--output-dir`) into another tool's store lists `ATTRIBUTION.txt` as `write` while the run refuses every target (DEV-19.10, DEV-19.11) — deferred to the next release.
 - C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — deferred to the next release.
@@ -121,6 +121,7 @@ Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-ca
 - E7-11: an idle `obserwator gui serve` holds about 1 GB in swap (test and production instance; to be checked) — deferred to the next release.
 - E7-13 (every member's deployment): `uv sync --locked --no-editable` does not reinstall the package while its version stays, so a deployment of a new commit keeps the old code (workaround `--reinstall-package obserwator`; to be described in the deployment instructions) — deferred to the next release.
 - B4 (with Hydrograf and Nogat): precipitation from Obserwator to Hydrograf (E3-02, E3-03, E3-04); Obserwator's part is a parser and the store of the synop and climate term data, Hydrograf's the import of `obserwator-series-csv` and attribution in `custom_precipitation`, Nogat's the edge in `ecosystem.yaml` — deferred to the next release.
+- ČHMÚ daily meteo at older observation terms (found on the deployment's raw root, 2026-11-17): `series build --dataset cz.chmi.meteo_daily` failed as a whole (exit 11) on the rows of 85 of 3,351 files stamped at a station's term of the time (`SRA` 05:00 or 07:00, `TMA`/`TMI` 18:00 to 21:00, `T` terms 05:00 to 21:00) — fixed on `fix/3.0.1` (ADR-003 erratum of 2026-11-17).
 
 ### AI agent support (after 3.0.0, ADR-004)
 

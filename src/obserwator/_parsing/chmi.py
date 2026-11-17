@@ -52,14 +52,14 @@ ELEMENT_VARIABLES: Mapping[str, str] = {
 _HYDRO_SERIES = {"HD": ("H", "CM"), "QD": ("Q", "M3_S"), "TD": ("T", "0C")}
 _HYDRO_CODES = ("HD", "QD", "TD", "PD")
 _HYDRO_VARIABLES = ("H", "Q", "T")
-# Element → (TIMEFUNC, time of DT) of its daily value; T terms are skipped.
-_METEO_TIMING = {
-    "SRA": ("06:00", "06:00"),
-    "T": ("AVG", "00:00"),
-    "TMA": ("20:00", "20:00"),
-    "TMI": ("20:00", "20:00"),
-}
-_T_TERMS = frozenset({"06:00", "13:00", "20:00"})
+# A daily value of SRA, TMA and TMI carries the term of its observation: TIMEFUNC
+# is that clock time and equals the time of DT. Today's terms are 06:00 (SRA) and
+# 20:00 (TMA, TMI); older records carry the station's term of the time (ČHMÚ's
+# historical meta2 SCHEDULE, e.g. SRA 05:00 or 07:00, TMA and TMI 19:00 or 21:00).
+# T: AVG at 00:00 is the daily mean, and a row at a term is a reading of that
+# term, skipped (ADR-003, erratum of 2026-11-17).
+_TERM = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
+_T_MEAN = ("AVG", "00:00")
 _CSV_HEADER = ["STATION", "ELEMENT", "TIMEFUNC", "DT", "VALUE", "FLAG", "QUALITY"]
 _ISO_UTC = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?Z"
@@ -418,11 +418,15 @@ def parse_chmi_meteo_daily(
 
     The file ``dly-<WIGOS>-<ELEMENT>.csv`` (``historical_csv``) holds the
     whole history of one element of one station. Elements map to variables
-    ``SRA`` → ``P`` [mm] (``TIMEFUNC`` ``06:00``, ``DT`` ``D T06:00Z``),
-    ``T`` → ``Tmean`` [degC] (``AVG``, ``D T00:00Z``; the term rows
-    ``06:00``, ``13:00`` and ``20:00`` are skipped), ``TMA`` → ``Tmax`` and
-    ``TMI`` → ``Tmin`` [degC] (``20:00``, ``D T20:00Z``); the date is the
-    date of ``DT`` (``HH:MMZ`` or ``HH:MM:SSZ``), never shifted.
+    ``SRA`` → ``P`` [mm], ``T`` → ``Tmean`` [degC], ``TMA`` → ``Tmax`` and
+    ``TMI`` → ``Tmin`` [degC]. A daily value of ``SRA``, ``TMA`` or ``TMI``
+    carries the term of its observation: ``TIMEFUNC`` is a clock time equal
+    to the time of ``DT``, today ``06:00`` (``SRA``, ``D T06:00Z``) and
+    ``20:00`` (``TMA``, ``TMI``, ``D T20:00Z``), in older records the term of
+    the time (e.g. ``05:00``, ``07:00``, ``19:00``, ``21:00``). ``T`` gives the
+    daily mean ``AVG`` (``D T00:00Z``); its rows at a term (today ``06:00``,
+    ``13:00`` and ``20:00``) are readings of that term and are skipped. The
+    date is the date of ``DT`` (``HH:MMZ`` or ``HH:MM:SSZ``), never shifted.
 
     Flags: an empty ``VALUE`` is ``"missing"``; precipitation ``0.0``
     without ``FLAG`` is ``"no_phenomenon"`` (value ``0.0``); every other
@@ -432,7 +436,8 @@ def parse_chmi_meteo_daily(
     ``Measurement.source_flag``, also codes unknown to ČHMÚ ``meta3``;
     neither changes the value or the flag. Rows may come in any order;
     explicit missing rows inside a block are records, and days without a
-    row give no record.
+    row give no record. Rows of one date (also at two terms, where a
+    station changed its term) are one record when they are equal.
 
     Parameters
     ----------
@@ -459,14 +464,15 @@ def parse_chmi_meteo_daily(
         ``STATION,ELEMENT,TIMEFUNC,DT,VALUE,FLAG,QUALITY`` (with an optional
         empty eighth column), a row has a column count other than 7 or 8
         (eighth empty), ``STATION`` or ``ELEMENT`` differ from ``filename``,
-        ``TIMEFUNC`` and the time of ``DT`` do not fit the element,
-        ``VALUE`` is not numeric, ``QUALITY`` is not an integer, or one date
-        has two different rows. The message names the file and the line.
+        ``TIMEFUNC`` and the time of ``DT`` do not fit the element (a
+        function other than a term, except ``AVG`` of ``T`` at ``00:00``, or a
+        term other than the time of ``DT``), ``VALUE`` is not numeric,
+        ``QUALITY`` is not an integer, or one date has two different rows.
+        The message names the file and the line.
     """
     match = _filename_match(filename, _CHMI_METEO_FILE, "dly-<code>-<element>.csv")
     code, element = match.group(1), match.group(2)
     variable = ELEMENT_VARIABLES[element]
-    timefunc, clock = _METEO_TIMING[element]
     reader = csv.reader(io.StringIO(_decode(content, filename)))
     by_day: dict[date, Measurement] = {}
     try:
@@ -526,9 +532,14 @@ def parse_chmi_meteo_daily(
             time = parts.group(2)
             if seconds not in (None, "00"):
                 time = f"{time}:{seconds}"
-            if element == "T" and row_timefunc in _T_TERMS and time == row_timefunc:
-                continue
-            if (row_timefunc, time) != (timefunc, clock):
+            term = time == row_timefunc and _TERM.fullmatch(time) is not None
+            if element == "T":
+                if term:
+                    continue  # a reading at a term, not the daily mean
+                daily = (row_timefunc, time) == _T_MEAN
+            else:
+                daily = term
+            if not daily:
                 raise _csv_error(
                     filename,
                     line,

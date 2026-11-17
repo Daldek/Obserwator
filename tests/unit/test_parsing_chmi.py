@@ -389,6 +389,96 @@ def test_meteo_temperatures_are_values_even_at_zero():
     ]
 
 
+# Older records carry the station's term of the time (ČHMÚ's historical meta2
+# SCHEDULE); the rows follow the files of the raw root of 2026-11-17, e.g.
+# dly-0-203-0-11461-SRA.csv (07:00 until 1894-04-30, then 06:00) and
+# dly-0-203-0-11705-TMA.csv (21:00 until 1867-09-30).
+
+
+def test_meteo_precipitation_at_an_older_term_is_the_value_of_the_date_of_dt():
+    content = meteo_file(
+        "0-203-0-90001,SRA,06:00,1894-05-01T06:00Z,0.5,,0.0,",
+        "0-203-0-90001,SRA,05:00,1887-03-01T05:00Z,0.0,,0.0,",
+        "0-203-0-90001,SRA,07:00,1894-04-29T07:00Z,0.0,T,0.0,",
+        "0-203-0-90001,SRA,07:00,1894-04-30T07:00Z,,,4.0,",
+    )
+
+    records = list(parse_chmi_meteo_daily(content, filename=SRA_NAME))
+
+    # The date of DT, never shifted; the term changes no value and no flag.
+    assert [(record.date, record.measurements["P"]) for record in records] == [
+        (date(1887, 3, 1), Measurement(0.0, "no_phenomenon", 0, None)),
+        (date(1894, 4, 29), Measurement(0.0, "value", 0, "T")),
+        (date(1894, 4, 30), Measurement(None, "missing", 4, None)),
+        (date(1894, 5, 1), Measurement(0.5, "value", 0, None)),
+    ]
+
+
+@pytest.mark.parametrize(("element", "variable"), [("TMA", "Tmax"), ("TMI", "Tmin")])
+def test_meteo_extremes_at_older_evening_terms_are_the_values_of_their_dates(
+    element, variable
+):
+    content = meteo_file(
+        f"0-203-0-90001,{element},21:00,1867-09-30T21:00Z,14.2,,0.0,",
+        f"0-203-0-90001,{element},19:00,1876-02-01T19:00:00Z,-3.1,,1.0,",
+        f"0-203-0-90001,{element},18:00,1878-04-01T18:00Z,6.0,,0.0,",
+        f"0-203-0-90001,{element},20:00,1961-01-01T20:00Z,-2.0,,0.0,",
+    )
+
+    days = by_date(
+        parse_chmi_meteo_daily(content, filename=f"dly-0-203-0-90001-{element}.csv")
+    )
+
+    assert {day: record.measurements[variable] for day, record in days.items()} == {
+        date(1867, 9, 30): Measurement(14.2, "value", 0, None),
+        date(1876, 2, 1): Measurement(-3.1, "value", 1, None),
+        date(1878, 4, 1): Measurement(6.0, "value", 0, None),
+        date(1961, 1, 1): Measurement(-2.0, "value", 0, None),
+    }
+
+
+def test_meteo_temperature_skips_the_readings_at_older_terms():
+    # dly-0-203-0-11401021001-T.csv, 1870-01-01: terms 05:00, 13:00 and 21:00,
+    # AVG = (T05 + T13 + 2·T21)/4 = -5.4.
+    content = meteo_file(
+        "0-203-0-90001,T,AVG,1870-01-01T00:00Z,-5.4,,0.0,",
+        "0-203-0-90001,T,05:00,1870-01-01T05:00Z,-6.0,,0.0,",
+        "0-203-0-90001,T,13:00,1870-01-01T13:00Z,-4.0,,0.0,",
+        "0-203-0-90001,T,21:00,1870-01-01T21:00Z,-5.8,,0.0,",
+        # Readings without the mean of their day give no record.
+        "0-203-0-90001,T,07:00,1876-01-01T07:00Z,-1.0,,0.0,",
+        "0-203-0-90001,T,19:00,1876-01-01T19:00Z,-2.0,,0.0,",
+    )
+
+    records = list(parse_chmi_meteo_daily(content, filename="dly-0-203-0-90001-T.csv"))
+
+    assert [(record.date, record.measurements) for record in records] == [
+        (date(1870, 1, 1), {"Tmean": Measurement(-5.4, "value", 0, None)})
+    ]
+
+
+def test_meteo_two_terms_of_one_date_are_one_record_only_when_their_rows_are_equal():
+    # Where a station changed its term on a date that both terms hold.
+    old, new = (
+        "0-203-0-90001,SRA,07:00,1894-05-01T07:00Z,0.5,,0.0,",
+        "0-203-0-90001,SRA,06:00,1894-05-01T06:00Z,0.5,,0.0,",
+    )
+    path = f"{CSV_DAILY}/precipitation/{SRA_NAME}"
+
+    equal = list(parse_chmi_meteo_daily(meteo_file(old, new), filename=path))
+    with pytest.raises(ObserwatorDataError, match="1894-05-01") as error:
+        list(
+            parse_chmi_meteo_daily(
+                meteo_file(old, new.replace(",0.5,", ",0.7,")), filename=path
+            )
+        )
+
+    assert [(record.date, record.measurements["P"]) for record in equal] == [
+        (date(1894, 5, 1), Measurement(0.5, "value", 0, None))
+    ]
+    assert error.value.details == {"file": path, "line": 3}
+
+
 @pytest.mark.parametrize(
     ("content", "line"),
     [
@@ -446,7 +536,8 @@ def test_meteo_malformed_content_names_file_and_line(content, line):
         ("T", "0-203-0-90001,T,13:00,2023-10-20T06:00Z,4.1,,0.0,"),
         ("T", "0-203-0-90001,T,AVG,2023-10-20T06:00Z,4.1,,0.0,"),
         ("TMA", "0-203-0-90001,TMA,AVG,2023-10-20T00:00Z,9.1,,0.0,"),
-        ("TMI", "0-203-0-90001,TMI,06:00,2023-10-20T06:00Z,1.1,,0.0,"),
+        ("TMI", "0-203-0-90001,TMI,24:00,2023-10-20T24:00Z,1.1,,0.0,"),
+        ("SRA", "0-203-0-90001,SRA,AVG,2023-10-20T00:00Z,1.1,,0.0,"),
     ],
 )
 def test_meteo_timefunc_must_fit_the_element(element, row):

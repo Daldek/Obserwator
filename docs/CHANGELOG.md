@@ -8,6 +8,19 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
 
+### Fixed
+
+- **ČHMÚ daily meteo at older observation terms (ADR-003, erratum of 2026-11-17).**
+  `parse_chmi_meteo_daily` took only today's terms (`SRA` at `06:00`, `TMA` and `TMI` at
+  `20:00`, `T` as `AVG` with its term rows `06:00`, `13:00` and `20:00`), so `series build
+  --dataset cz.chmi.meteo_daily` failed as a whole (`data_error`, exit 11) at the first row of
+  an older record: 85 of the 3,351 files of ČHMÚ's `historical_csv` hold rows at the station's
+  term of the time (e.g. `SRA,05:00,1887-03-01T05:00Z`). A row of `SRA`, `TMA` or `TMI` at any
+  term (`TIMEFUNC` a clock time equal to the time of `DT`) is now the value of the date of
+  `DT`, and a `T` row at any term is skipped like `06:00`, `13:00` and `20:00`; two rows of one
+  date are one record when they are equal and an error otherwise. All 3,351 files parse
+  (53,407,676 days). The `variable_notes` of `cz.chmi.meteo_daily` name the older terms.
+
 ## [3.0.0] - 2026-11-16
 
 Changes since 2.1.1, to be released as 3.0.0, a member of the first joint release of the Nogat
