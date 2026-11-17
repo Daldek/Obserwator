@@ -96,9 +96,9 @@ MESSAGES = {
         "magazynu Obserwatora",
     ),
     "hint_no_marker": Text(
-        "Run obserwator store init with the same --root: it verifies the layout and "
-        "writes the marker",
-        "Uruchom obserwator store init z tym samym --root: sprawdzi układ i zapisze "
+        "Run obserwator store init --root {path}: it verifies the layout and writes "
+        "the marker",
+        "Uruchom obserwator store init --root {path}: sprawdzi układ i zapisze "
         "znacznik",
     ),
     "hint_missing_store": Text(
@@ -108,9 +108,9 @@ MESSAGES = {
         "istniejącego magazynu",
     ),
     "hint_no_marker_data": Text(
-        "Run obserwator store init --kind data with the same --root: it verifies the "
-        "layout and writes the marker",
-        "Uruchom obserwator store init --kind data z tym samym --root: sprawdzi układ i "
+        "Run obserwator store init --kind data --root {path}: it verifies the layout "
+        "and writes the marker",
+        "Uruchom obserwator store init --kind data --root {path}: sprawdzi układ i "
         "zapisze znacznik",
     ),
     "hint_missing_raw_root": Text(

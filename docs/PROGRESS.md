@@ -112,7 +112,7 @@ Not taken (2026-11-14): a request to IMGW-PIB for permission to use hydro-back.i
 Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0. Release 3.0.1 takes defect fixes only: those on `fix/3.0.1` (not merged) say so; the rest wait for the author's list.
 
 - C4: a plain plan (`--check` with `--output-dir`) into another tool's store lists `ATTRIBUTION.txt` as `write` while the run refuses every target (DEV-19.10, DEV-19.11) — fixed on `fix/3.0.1`: the plan lists it as a `conflict` (`output_in_store`) like every target.
-- C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — deferred to the next release.
+- C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — fixed on `fix/3.0.1`: the hint is `obserwator store init --root <path>` (`--kind data` for a data root).
 - E3-02: `pl.imgw.meteo_synop_terms` and `pl.imgw.meteo_climate_terms` are download-only (`in_store` false) without a parser, so Archiwista refuses them and Hydrograf gets only daily precipitation — deferred to the next release.
 - GEO-03: in the IMGW-PIB catalog 2,143 of 3,811 stations have no location and meteo stations no `meteo_kind` or `established_year`, partly for a reference file not downloaded, which only `problems` hints — deferred to the next release.
 - GEO-04: `stations find --source live` gives no coordinates and no area filter — deferred to the next release.

@@ -26,6 +26,11 @@ Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
   (`output_in_store`) but the directory's `ATTRIBUTION.txt` as `write`, while the run refuses
   every target before any request. The attribution file is now a `conflict` with the same
   reason, and `obserwator.output.write_attribution` refuses such a directory the same way.
+- **The hint of a layout without a marker names the root (DEV-19.13; C5 of Nogat's
+  integration run of candidate-5).** `store_unavailable` with `details.reason="no_marker"` gave
+  the hint `Run obserwator store init with the same --root` (a raw root) or `... --kind data
+  with the same --root` (a data root) without the path. The hint is now `obserwator store init
+  --root <path>` or `obserwator store init --kind data --root <path>`, in English and Polish.
 
 ## [3.0.0] - 2026-11-16
 

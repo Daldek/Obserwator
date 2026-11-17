@@ -94,6 +94,10 @@ _WRONG_ROOT: Mapping[RootKind, str] = MappingProxyType(
 _MISSING_ROOT: Mapping[RootKind, str] = MappingProxyType(
     {"raw": "errors.hint_missing_raw_root", "data": "errors.hint_missing_data_root"}
 )
+# Hint for the layout of a root without its marker, by the kind of the root.
+_NO_MARKER: Mapping[RootKind, str] = MappingProxyType(
+    {"raw": "errors.hint_no_marker", "data": "errors.hint_no_marker_data"}
+)
 OBSERVATION_SCHEMA = "obserwator-observation/1"
 # Observation register of an archive slot, beside its version directories.
 _OBSERVATIONS = "observations"
@@ -697,7 +701,7 @@ def _unmarked(path: Path, kind: RootKind) -> ObserwatorStoreError:
     return ObserwatorStoreError(
         _unmarked_message(path, kind),
         details={"reason": "no_marker"},
-        hint=None if kind == "raw" else message("errors.hint_no_marker_data"),
+        hint=message(_NO_MARKER[kind], path=path),
     )
 
 
