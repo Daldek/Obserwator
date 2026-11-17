@@ -151,6 +151,11 @@ MESSAGES = {
         "The MCP server needs the extra: pip install obserwator[mcp]",
         "Serwer MCP wymaga dodatku: pip install obserwator[mcp]",
     ),
+    "server_needs_extra": Text(
+        "The API server needs the api extra (FastAPI, uvicorn): cannot import {module}",
+        "Serwer API wymaga dodatku api (FastAPI, uvicorn): nie można zaimportować "
+        "{module}",
+    ),
     # Help of the commands outside the catalog.
     "app_help": Text(
         "Tool for downloading the public data of IMGW-PIB and ČHMÚ. The result of a "

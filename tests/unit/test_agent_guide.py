@@ -443,10 +443,10 @@ def test_render_replaces_markers_and_rejects_unknown_or_repeated_blocks():
 
 
 @pytest.mark.parametrize("mode", ["read", "write", "http"])
-def test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib(
-    mode, tmp_path
-):
-    workdir, root = tmp_path / "praca", tmp_path / "magazyn"
+def test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib(mode):
+    # Fixed paths: the text is below 2 KiB besides the paths it names, and
+    # _instructions does not touch the file system.
+    workdir, root = "/srv/obserwator/praca", "/srv/obserwator/magazyn"
 
     with_store = _instructions(mode=mode, workdir=workdir, root=root)
     without = _instructions(mode=mode, workdir=workdir, root=None)

@@ -744,7 +744,7 @@ def _instructions(
     Returns
     -------
     str
-        Markdown text below 2 KiB in UTF-8.
+        Markdown text below 2 KiB in UTF-8 besides the paths it names.
     """
     lines = ["Rules of Obserwator:", _principles("en"), "", _MODES[mode]]
     # The roots by kind (ADR-017 D4) and the options that name them.

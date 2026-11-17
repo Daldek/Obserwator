@@ -4,6 +4,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [Unreleased]
+
+Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
+
+### Fixed
+
+- **ČHMÚ daily meteo at older observation terms (ADR-003, erratum of 2026-11-17).**
+  `parse_chmi_meteo_daily` took only today's terms (`SRA` at `06:00`, `TMA` and `TMI` at
+  `20:00`, `T` as `AVG` with its term rows `06:00`, `13:00` and `20:00`), so `series build
+  --dataset cz.chmi.meteo_daily` failed as a whole (`data_error`, exit 11) at the first row of
+  an older record: 85 of the 3,351 files of ČHMÚ's `historical_csv` hold rows at the station's
+  term of the time (e.g. `SRA,05:00,1887-03-01T05:00Z`). A row of `SRA`, `TMA` or `TMI` at any
+  term (`TIMEFUNC` a clock time equal to the time of `DT`) is now the value of the date of
+  `DT`, and a `T` row at any term is skipped like `06:00`, `13:00` and `20:00`; two rows of one
+  date are one record when they are equal and an error otherwise. All 3,351 files parse
+  (53,407,676 days). The `variable_notes` of `cz.chmi.meteo_daily` name the older terms.
+- **The plan of a plain write into a store lists `ATTRIBUTION.txt` as a conflict too
+  (DEV-19.10, DEV-19.11; C4 of Nogat's integration run of candidate-5).** `--check` with an
+  `--output-dir` that is or lies in a store of any tool listed every data file as `conflict`
+  (`output_in_store`) but the directory's `ATTRIBUTION.txt` as `write`, while the run refuses
+  every target before any request. The attribution file is now a `conflict` with the same
+  reason, and `obserwator.output.write_attribution` refuses such a directory the same way.
+- **The hint of a layout without a marker names the root (DEV-19.13; C5 of Nogat's
+  integration run of candidate-5).** `store_unavailable` with `details.reason="no_marker"` gave
+  the hint `Run obserwator store init with the same --root` (a raw root) or `... --kind data
+  with the same --root` (a data root) without the path. The hint is now `obserwator store init
+  --root <path>` or `obserwator store init --kind data --root <path>`, in English and Polish.
+- **The test of the MCP instructions below 2 KiB no longer depends on `TMPDIR` (C7 of Nogat's
+  integration run of candidate-5).** `test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib`
+  put `tmp_path` paths into the instructions, so a long `TMPDIR` took the `read` case past 2,048
+  bytes; it now names fixed paths, and the docstring of `_instructions` says the text is below
+  2 KiB besides the paths it names. The instructions themselves are unchanged.
+- **`obserwator server` without the extra `api` ends with `missing_dependency` (E3-06 of the
+  scenario test of 2026-11-15/16).** Without FastAPI or uvicorn the command ended with a
+  `ModuleNotFoundError` traceback (exit code 1). It now checks both before it imports the
+  server and ends with the error line `missing_dependency` (exit code 6, `details`
+  `{"extra": "api", "module": ...}`, hint `pip install "obserwator[api]"`), as
+  `obserwator gui serve` does for the extra `gui`; stdout stays empty.
+
 ## [3.0.0] - 2026-11-16
 
 Changes since 2.1.1, to be released as 3.0.0, a member of the first joint release of the Nogat
