@@ -4,6 +4,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [Unreleased]
+
+Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
+
+### Fixed
+
+- **The GUI's charts no longer hang on values a few ulps apart (T25 of the formula audit of
+  2026-11-18).** `niceDomain` of `gui/web/src/charts/scale.js` widened only a span of 0, so
+  two values that differ by float noise alone (`0.3` and `0.30000000000000004`, e.g. annual
+  means of a constant record) on an axis without `zero` (the H, Q and T charts of a station,
+  the regime, the trends, the temperature and the rating curve) gave a step of about 10⁻¹⁷,
+  and `linearTicks` counted its multiples from about 3·10¹⁶, beyond 2⁵³, where adding 1
+  changes nothing: the browser's tab hung. A span within 10⁻⁹ of the larger absolute end (at
+  least 1) is now one value, which spans 10 % of itself above it (1 for a value within 10⁻⁸ of
+  0), as a single value did; `stepDigits` gives a step below 10⁻⁹ its decimals, where it gave
+  0 and rounded both ends of the domain to one number; and `linearTicks` counts from 0 and
+  gives no ticks rather than more than 1,000, so it ends for every domain.
+- **A precipitation total after missing days at the end of the previous monthly archive is
+  `accumulated` (T24 of the formula audit of 2026-11-18).** `pl.imgw.meteo_precip_daily`
+  flags a daily total `accumulated` when it directly follows a listed day without a
+  measurement (status 8; `o_d_format.txt`: such a total is a collective sum of the days
+  without one), but every IMGW-PIB `o_d` archive since 2001 is one month and was parsed
+  alone, so a total on the 1st after such days at the end of the month before stayed
+  `value`: BORUCINO (254170210) 2024-07-01, 13.1 mm after no reading on 28–30 June, and 2 more
+  of the 39 such totals of 2023-01 to 2026-09 (250140010 2025-11-01, 253200160 2026-07-01).
+  Each entered Hydrolog's daily statistics (1-day maxima, heavy-precipitation days,
+  intensity, spells, the annual maxima of `precipitation_quantiles`) as one day's
+  precipitation. `series build` now carries the missing days of a station from one archive
+  to the next, and the status `Z` of IMGW-PIB's collective total is read: such a total is
+  `accumulated` wherever it stands (the code never read `Z`, while the dataset's note on `P`
+  said the flag came from it; the note now gives both rules). `normalize_archive` and
+  `parse_meteo_precip_daily` still parse one archive or file, where only `Z` marks a total on
+  its first day. **The stored series change only when rebuilt:** `series build` keeps a
+  version whose input archives are unchanged, so the flags of a stored
+  `pl.imgw.meteo_precip_daily` series, and the precipitation analyses built from it, change
+  with its next version (the next new or changed archive of the dataset).
+- **PMAXTP is named as IMGW-PIB names it, with IMGW-PIB's own advice on POT and AMP (T26 of
+  the formula audit of 2026-11-18).** The title of `pl.imgw.pmaxtp`, the PMAXTP view's hint,
+  `docs/USAGE.md` and the agent guide called PMAXTP „probable maximum precipitation” /
+  „opady maksymalne prawdopodobne”, which is PMP (WMO-No. 1045), the physical upper bound of
+  precipitation with no probability, not a quantile; the dataset's title is now „Maximum
+  precipitation of a given duration and probability of exceedance (PMAXTP)” / „Maksymalne
+  opady o określonym czasie trwania i prawdopodobieństwie przewyższenia (PMAXTP)”, the name of
+  the PMAXTP monograph (ed. B. Ozga-Zieliński, IMGW-PIB 2022), and the docstrings, the PRD
+  and the GUI's guide use it. `fetch_pmaxtp` said POT „is recommended for most
+  applications” without a source: the monograph (p. 23) recommends POT for p ≥ 50 % (e.g.
+  drainage design, on the safe side) and holds AMP and POT equivalent for p < 50 %, as the
+  docstring, `docs/USAGE.md`, the methods of the PMAXTP view and the guide now say. The texts
+  also say that the answer is the cell of IMGW-PIB's grid kriged from the estimates at 100
+  stations (1986–2015), which may differ from IMGW-PIB's own estimate for a station at the
+  same place (the PMAXTP view, the PMAXTP column of „Opady”, the guide). Texts only: no value
+  changes.
+- **The GUI's „Przepływy minimalne” shows the low-flow results of Hydrolog's corrected
+  maximum likelihood (follow-up of Hydrolog's `hotfix/ml-fits`, T28 of the formula audit of
+  2026-11-18).** Hydrolog's `stats low-flow` gives a discharge quantile that would fall below
+  0 m³/s as `null`, with the warning `negative_quantiles` (`details.return_periods`,
+  `details.zero_return_period`), and ends a sample it cannot fit with `calculation_error`
+  (`unbounded_likelihood`, `constant_values`, fewer than 4 complete years). The part now
+  leaves such points out of the curve, shows „–” in the table and in „NQ 10-letni” with a note
+  („F = 10 %: poniżej 0 m³/s”; under the table the return period at which the distribution
+  reaches 0 m³/s), and words the notice `negative_quantiles` in Polish and English; a failed
+  `low_flow.Q` shows Hydrolog's error in place of the part, as before. The other consumers of
+  `low_flow.Q` take `null` as it is: `analyses read` (Python, CLI, REST, MCP) passes the stored
+  document through, `analyses export` writes an empty CSV cell, the CLI's summary „—”, and the
+  analyses build reads no number of it. Tested on Hydrolog's own answers
+  (`tests/fixtures/hydrolog/low_flow_negative_quantiles.json`). The stored `low_flow.Q`
+  analyses change only when they are built again with that Hydrolog.
+- **The option `percentiles` of `precipitation.heavy` refuses 100 (T32 of the formula audit of
+  2026-11-18).** The registry declared it with the inclusive `maximum` 100, so the GUI's
+  `api/analysis/<station>/precipitation.heavy?percentiles=50,100` passed it on to Hydrolog,
+  whose range is (0, 100) and which now refuses 100 (`validation_error`, `details.reason`
+  `exclusive_maximum`). The option has `exclusive_maximum` 100, as `AnalysisOption` already
+  allows: 100 is a `validation_error` naming `percentiles` before Hydrolog runs.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.

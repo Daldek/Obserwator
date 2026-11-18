@@ -211,6 +211,25 @@ def test_polish_literals_stay_only_in_the_catalog():
     assert found == [], "a Polish text belongs in obserwator.messages"
 
 
+def test_no_text_calls_pmaxtp_the_probable_maximum_precipitation():
+    # T26 of the formula audit of 2026-11-18: PMAXTP gives quantiles of maximum
+    # precipitation of a duration and a probability of exceedance; the probable maximum
+    # precipitation (PMP, WMO-No. 1045) is an upper bound without a probability
+    pmp = re.compile(
+        r"probable maximum precipitation|opad\w* maksymaln\w* prawdopodobn", re.I
+    )
+    texts = [(key, value) for key, text in entries() for value in (text.en, text.pl)]
+    texts += [
+        (
+            f"{form} guide ({lang})",
+            "".join(obserwator.agent_guide(format=form, lang=lang)),
+        )
+        for form in ("agents", "llms")
+        for lang in LANGS
+    ]
+    assert [key for key, value in texts if pmp.search(value)] == []
+
+
 # --------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------

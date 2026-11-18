@@ -385,7 +385,8 @@ MESSAGES: dict[str, Text] = {
         "The precipitation total of the chosen number of days that the annual maximum "
         "exceeds with the probability p, that is once in T years on average. Computed "
         "from distributions fitted to the annual maxima; beside them IMGW-PIB's PMAXTP "
-        "for the station's point.\n\n"
+        "of the cell of its grid at the station's point (kriged, so it may differ from "
+        "IMGW-PIB's own estimate for a station).\n\n"
         "T = 1 / p\n"
         "pₘ = m / (n + 1)\n"
         "where: p – exceedance probability [–], T – return period [years], pₘ – "
@@ -397,8 +398,9 @@ MESSAGES: dict[str, Text] = {
         "Sources: Hosking and Wallis 1997; Weiss 1964; PMAXTP: IMGW-PIB",
         "Suma opadu z wybranej liczby dni, którą maksimum roczne przekracza z "
         "prawdopodobieństwem p, czyli średnio raz na T lat. Liczona z rozkładów "
-        "dopasowanych do maksimów rocznych; obok PMAXTP IMGW-PIB dla punktu "
-        "stacji.\n\n"
+        "dopasowanych do maksimów rocznych; obok PMAXTP IMGW-PIB dla oczka jego siatki "
+        "w punkcie stacji (z krigingu, więc może różnić się od oszacowania IMGW-PIB "
+        "dla samej stacji).\n\n"
         "T = 1 / p\n"
         "pₘ = m / (n + 1)\n"
         "gdzie: p – prawdopodobieństwo przewyższenia [–], T – okres powtarzalności "
@@ -441,12 +443,12 @@ MESSAGES: dict[str, Text] = {
     ),
     "meteo.opady.quantiles.t_col": Text("T [years]", "T [lata]"),
     "meteo.opady.quantiles.pmaxtp_caption": Text(
-        "POT and AMP: IMGW-PIB's PMAXTP (precipitation lasting {hours} h) at the point "
-        "{point}, asked of IMGW-PIB, not computed here. PMAXTP's data have their own "
-        "terms:",
-        "POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania {hours} h) dla punktu "
-        "{point}, pobrane z IMGW-PIB, nie liczone tutaj. Dane PMAXTP mają własne "
-        "warunki korzystania:",
+        "POT and AMP: IMGW-PIB's PMAXTP (precipitation lasting {hours} h) of the cell "
+        "of its grid at the point {point}, asked of IMGW-PIB, not computed here. "
+        "PMAXTP's data have their own terms:",
+        "POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania {hours} h) dla oczka jego "
+        "siatki w punkcie {point}, pobrane z IMGW-PIB, nie liczone tutaj. Dane PMAXTP "
+        "mają własne warunki korzystania:",
     ),
     "meteo.opady.quantiles.pmaxtp_link": Text(
         "All PMAXTP tables of this point", "Wszystkie tabele PMAXTP tego punktu"

@@ -44,7 +44,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-1.1 | Real-time data (IMGW API) | Implemented | Current hydro/meteo/synop data |
 | FR-1.2 | Archive data (ZIP/CSV) | Implemented | Dataset registry (21 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
 | FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmi.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
-| FR-1.4 | PMAXTP data | Implemented | Probabilistic max precipitation (IMGW-PIB grid only) |
+| FR-1.4 | PMAXTP data | Implemented | Maximum precipitation of a given duration and probability of exceedance (IMGW-PIB grid only) |
 | FR-1.5 | Warnings | Implemented | Hydro/meteo warnings from API |
 | FR-1.6 | Versioned store | Implemented (3.0.0) | Immutable versions with provenance (both providers) in a raw root (archives, station sources, PMAXTP cells) and a data root (Parquet series, `stations.geojson` per provider, Hydrolog's stored analyses; ADR-016, ADR-017), freshness plan, canonical content (`content_sha256`) and the observation register for ČHMÚ |
 | FR-1.7 | Projects (pins of store versions) | Moved to Archiwista (ADR-008, 2026-10-31) | Obserwator's project manifest and the `imgw project` command group are removed; Archiwista keeps projects in `archiwista-project/1` and pins versions by the store's `sha256` and `content_sha256` |

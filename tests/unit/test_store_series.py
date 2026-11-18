@@ -276,6 +276,69 @@ def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root, dat
     ]
 
 
+def _o_d_archive(root, month, rows):
+    """Store IMGW-PIB's daily precipitation archive of a month of 2024 with these rows."""
+    (archive,) = archive_files(
+        "pl.imgw.meteo_precip_daily", years=[2024], months=[month]
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(f"o_d_{month:02d}_2024.csv", "".join(rows).encode("cp1250"))
+    content = buffer.getvalue()
+    response = DownloadResult(content, archive.url, SIGNAL[0], SIGNAL[1], len(content))
+    write_archive(root, archive=archive, response=response)
+
+
+def test_precip_total_after_missing_days_of_the_previous_archive_is_accumulated(
+    root, data
+):
+    # BORUCINO 254170210 (T24 of the formula audit of 2026-11-18): no reading from
+    # Friday 28 to Sunday 30 June 2024, the last rows of 2024_06_o.zip, then 13.1 mm on
+    # Monday 1 July, the first row of 2024_07_o.zip: the weekend's total
+    borucino = '"254170210","BORUCINO{}"'.format(" " * 22)
+    june = [
+        f'{borucino},"2024","06","{day}",,"9",,,"9",,"8",,"8",,"9"\n'
+        for day in (26, 27)
+    ] + [
+        f'{borucino},"2024","06","{day}",,"8",,,"8",,"8",,"8",,"8"\n'
+        for day in (28, 29, 30)
+    ]
+    july = [
+        f'{borucino},"2024","07","{day:02d}",{value},,"W",,"9",,"8",,"8",,"9"\n'
+        for day, value in ((1, "13.1"), (2, "23.0"), (3, "0.1"))
+    ]
+    # A station without a reading on 30 June whose July starts on the 2nd: its
+    # 1 July has no precipitation, so the 2nd is one day's
+    other = '"254170220","OTHER"'
+    june.append(f'{other},"2024","06","30",,"8",,,"8",,"8",,"8",,"8"\n')
+    july.append(f'{other},"2024","07","02",4.2,,"W",,"9",,"8",,"8",,"9"\n')
+    _o_d_archive(root, 6, june)
+    _o_d_archive(root, 7, july)
+    report = build_series(data, raw_root=root, dataset="pl.imgw.meteo_precip_daily")
+    rows = {
+        row["date"]: (row["P_value"], row["P_flag"])
+        for row in station_table(report, "254170210").to_pylist()
+    }
+    assert [rows[date(2024, 6, day)] for day in (27, 28, 29, 30)] == [
+        (0.0, "no_phenomenon"),
+        (None, "missing"),
+        (None, "missing"),
+        (None, "missing"),
+    ]
+    assert rows[date(2024, 7, 1)] == (13.1, "accumulated")
+    assert rows[date(2024, 7, 2)] == (23.0, "value")
+    assert (
+        read_index(report)["stations"]["254170210"]["variables"]["P"]["accumulated"]
+        == 1
+    )
+    others = {
+        row["date"]: (row["P_value"], row["P_flag"])
+        for row in station_table(report, "254170220").to_pylist()
+    }
+    assert others[date(2024, 7, 1)] == (0.0, "no_phenomenon")
+    assert others[date(2024, 7, 2)] == (4.2, "value")
+
+
 def test_monthly_and_semiannual_snapshots(root, data):
     store_archives(root, "pl.imgw.hydro_monthly", [2024])
     monthly = build_series(data, raw_root=root, dataset="pl.imgw.hydro_monthly")

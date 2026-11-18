@@ -19,7 +19,8 @@ Quick Start:
     >>> print(f"Found stations: {len(stations)}")
 
 Features:
-    - PMAXTP data (probabilistic maximum precipitation)
+    - PMAXTP data (maximum precipitation of a given duration and probability of
+      exceedance, IMGW-PIB)
     - Current hydrological, meteorological and synoptic data
     - Weather and hydro warnings
     - Archive data download (daily, monthly, semi-annual)

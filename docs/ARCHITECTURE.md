@@ -311,7 +311,7 @@ IMGW-PIB archives are inconsistent between years; parsers auto-detect the format
 - Encoding: CP1250 for most archives, UTF-8 with BOM for the 2023 daily archive (auto-detected)
 - Delimiter: comma with quoted fields (e.g. 2019-2022, 2024) or semicolon (e.g. 2023), auto-detected
 - Quoting: 2024 daily/monthly files wrap whole lines in outer quotes with doubled inner quotes (auto-unwrapped)
-- Missing data codes: `9999` (H), `99999.999` (Q), `99.9` (T); meteo status 8 = `missing`, 9 = `no_phenomenon`; accumulated precipitation = `accumulated`
+- Missing data codes: `9999` (H), `99999.999` (Q), `99.9` (T); meteo status 8 = `missing`, 9 = `no_phenomenon`; an `o_d` precipitation total with status `Z` or directly after a listed day without a measurement (status 8) = `accumulated`, the series build carrying such days from one monthly archive to the next
 - Synop archives (`s_d`, 65 columns, and `s_d_t`, 23 columns, per station and folder or per month of the whole country): the first 18 columns of `s_d` are those of `k_d`; a station file holds only codes ending with its number; every day of the archive's period is a record of each station (ADR-022)
 - Hydrological year: Nov 1 - Oct 31
 - ZIP reading with member count/size limits and no path traversal; unreadable ZIP → `ObserwatorDataError`

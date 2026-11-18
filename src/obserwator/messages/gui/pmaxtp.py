@@ -14,11 +14,17 @@ MESSAGES: dict[str, Text] = {
         "Selection of every rainfall event exceeding a threshold, whatever the year it "
         "occurred in.\n\n"
         "A year may give several such events or none.\n\n"
+        "IMGW-PIB recommends POT for p ≥ 50 %, e.g. for designing drainage, where the "
+        "result then lies on the safe side; for p < 50 % it holds AMP and POT "
+        "equivalent (the monograph, p. 23).\n\n"
         "Sources: IMGW-PIB, the PMAXTP project, ed. B. Ozga-Zieliński, Warsaw 2022 "
         "(klimat.imgw.pl/opady-maksymalne)",
         "Wybór wszystkich zdarzeń opadowych przekraczających próg, niezależnie od roku "
         "wystąpienia.\n\n"
         "Jeden rok może dać kilka takich zdarzeń albo żadnego.\n\n"
+        "IMGW-PIB zaleca POT dla p ≥ 50 %, np. przy projektowaniu odwodnień, gdzie "
+        "wynik leży wtedy po bezpiecznej stronie; dla p < 50 % uznaje AMP i POT za "
+        "równorzędne (monografia, s. 23).\n\n"
         "Źródła: IMGW-PIB, Projekt PMAXTP, red. B. Ozga-Zieliński, Warszawa 2022 "
         "(klimat.imgw.pl/opady-maksymalne)",
     ),
@@ -26,19 +32,25 @@ MESSAGES: dict[str, Text] = {
         "Selection of only the largest rainfall of each year of the measurement "
         "series.\n\n"
         "Each year of the series gives exactly one value.\n\n"
+        "For p < 50 % IMGW-PIB holds AMP and POT equivalent; for p ≥ 50 % it "
+        "recommends POT (the monograph, p. 23).\n\n"
         "Sources: IMGW-PIB, the PMAXTP project, ed. B. Ozga-Zieliński, Warsaw 2022 "
         "(klimat.imgw.pl/opady-maksymalne)",
         "Wybór tylko największego opadu każdego roku serii pomiarowej.\n\n"
         "Każdy rok serii daje dokładnie jedną wartość.\n\n"
+        "Dla p < 50 % IMGW-PIB uznaje AMP i POT za równorzędne; dla p ≥ 50 % zaleca "
+        "POT (monografia, s. 23).\n\n"
         "Źródła: IMGW-PIB, Projekt PMAXTP, red. B. Ozga-Zieliński, Warszawa 2022 "
         "(klimat.imgw.pl/opady-maksymalne)",
     ),
     # The form of the left panel
     "pmaxtp.form.hint": Text(
         "Click a point on the map or type its coordinates: the panel on the right will "
-        "show IMGW-PIB's PMAXTP probable maximum precipitation for that place.",
+        "show IMGW-PIB's PMAXTP, the maximum precipitation of a given duration and "
+        "probability of exceedance, for the cell of its grid at that place.",
         "Kliknij punkt na mapie albo wpisz jego współrzędne: panel po prawej pokaże "
-        "opady maksymalne prawdopodobne PMAXTP IMGW-PIB dla tego miejsca.",
+        "PMAXTP IMGW-PIB, maksymalne opady o określonym czasie trwania i "
+        "prawdopodobieństwie przewyższenia, dla oczka jego siatki w tym miejscu.",
     ),
     "pmaxtp.form.method": Text("Method", "Metoda"),
     "pmaxtp.form.method_label": Text("PMAXTP method", "Metoda PMAXTP"),
@@ -46,10 +58,14 @@ MESSAGES: dict[str, Text] = {
     "pmaxtp.form.longitude": Text("Longitude [° E]", "Długość [° E]"),
     "pmaxtp.form.example": Text("e.g. {value}", "np. {value}"),
     "pmaxtp.form.bounds": Text(
-        "Range: {bounds}; IMGW-PIB answers for the points of its grid in Poland. The "
-        "point is rounded to 4 decimal places, as in the address of IMGW-PIB's API.",
-        "Zakres: {bounds}; IMGW-PIB odpowiada dla punktów swojej siatki w Polsce. Punkt "
-        "jest zaokrąglany do 4 miejsc po przecinku, jak w adresie API IMGW-PIB.",
+        "Range: {bounds}; IMGW-PIB answers with the values of the cells of its grid in "
+        "Poland, interpolated by kriging from estimates at 100 stations, so its own "
+        "estimate for a station may differ at the same place. The point is rounded to "
+        "4 decimal places, as in the address of IMGW-PIB's API.",
+        "Zakres: {bounds}; IMGW-PIB odpowiada wartościami oczek swojej siatki w "
+        "Polsce, interpolowanymi krigingiem z oszacowań na 100 stacjach, więc jego "
+        "oszacowanie dla stacji w tym samym miejscu może się różnić. Punkt jest "
+        "zaokrąglany do 4 miejsc po przecinku, jak w adresie API IMGW-PIB.",
     ),
     "pmaxtp.form.error_number": Text(
         "Enter the latitude and the longitude in decimal degrees.",

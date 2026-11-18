@@ -509,6 +509,21 @@ _EXTREMES: dict[str, Text] = {
         "Minima roczne i rozkład Fishera–Tippetta",
     ),
     "hydro.extremes.fig_low_10": Text("NQ, 10 years", "NQ 10-letni"),
+    "hydro.extremes.low_below_zero": Text(
+        "F = 10 %: below 0 m³/s", "F = 10 %: poniżej 0 m³/s"
+    ),
+    "hydro.extremes.low_negative": Text(
+        "„–”: the fitted distribution reaches 0 m³/s at T = {years} [years], so the "
+        "quantiles of longer return periods would be negative and are not given.",
+        "„–”: dopasowany rozkład osiąga 0 m³/s przy T = {years} [lata], więc kwantyle "
+        "dłuższych okresów powtarzalności byłyby ujemne i nie są podane.",
+    ),
+    "hydro.extremes.low_negative_any": Text(
+        "„–”: the fitted distribution falls below 0 m³/s at this return period, so its "
+        "quantile would be negative and is not given.",
+        "„–”: dopasowany rozkład schodzi poniżej 0 m³/s przy tym okresie "
+        "powtarzalności, więc jego kwantyl byłby ujemny i nie jest podany.",
+    ),
 }
 
 _NOTICES: dict[str, Text] = {
@@ -548,6 +563,12 @@ _NOTICES: dict[str, Text] = {
     "sections.notice.homogeneity_rejected": Text(
         "Homogeneity of the series rejected at α = {alpha} by: {tests}.",
         "Jednorodność szeregu odrzucona przy α = {alpha} przez: {tests}.",
+    ),
+    "sections.notice.negative_quantiles": Text(
+        "The fitted Fisher–Tippett distribution reaches below zero flow: the quantiles "
+        "of the longer return periods would be negative discharges and are not given.",
+        "Dopasowany rozkład Fishera–Tippetta sięga poniżej przepływu zerowego: kwantyle "
+        "dłuższych okresów powtarzalności byłyby ujemnymi przepływami i nie są podane.",
     ),
 }
 

@@ -21,7 +21,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal
 
-from obserwator._parsing import normalize_archive
+from obserwator._parsing import normalize_in_sequence
 from obserwator._version import __version__
 from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import (
@@ -1174,6 +1174,10 @@ def build_series(
     per_station = descriptor.archive_scope != "country"
     spans: dict[str, list[tuple[date, date]]] = defaultdict(list)
     superseded = _superseded(inputs) if per_station else set()
+    # What an archive leaves to the next of the same dataset (missing days of IMGW-PIB
+    # precipitation before a multi-day total): the inputs are in slot order, which is
+    # date order for every IMGW-PIB folder (`1991_1995/1995_o`, `2024/2024_07_o`).
+    carry: dict[str, date] = {}
     with tempfile.TemporaryDirectory(prefix="obserwator-series-") as local:
         spill = _Spill(Path(local), descriptor)
         try:
@@ -1190,7 +1194,7 @@ def build_series(
                     )
                 # Records go to their station files and are dropped: neither the
                 # parsed records nor the values of all stations stay in memory.
-                records = normalize_archive(item.archive, data=data)
+                records = normalize_in_sequence(item.archive, data=data, carry=carry)
                 if per_station:
                     monthly = item.archive.month is not None
                     _spill_station_file(

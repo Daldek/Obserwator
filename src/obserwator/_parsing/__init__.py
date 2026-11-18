@@ -1,6 +1,7 @@
 """Archive parsing for IMGW-PIB ZIP/CSV files and ČHMÚ JSON/CSV files."""
 
 from collections.abc import Iterator
+from datetime import date
 
 from obserwator._parsing.chmi import parse_chmi_hydro_daily, parse_chmi_meteo_daily
 from obserwator._parsing.hydro import normalize_hydro_archive
@@ -54,6 +55,23 @@ def normalize_archive(
         If the archive is unreadable or unsafe, or contains malformed or
         contradictory data.
     """
+    yield from normalize_in_sequence(archive, data=data, carry=None)
+
+
+def normalize_in_sequence(
+    archive: ArchiveFile, /, *, data: bytes, carry: dict[str, date] | None
+) -> Iterator[NormalizedRecord]:
+    """
+    `normalize_archive` of one of a dataset's archives parsed in date order.
+
+    ``carry`` takes what one archive leaves to the next: for IMGW-PIB's daily
+    precipitation (``pl.imgw.meteo_precip_daily``), per station, the last day
+    whose ``P`` was listed missing, so a total on the first day of a monthly
+    archive after missing days at the end of the previous one is
+    ``"accumulated"`` as one within an archive is. Pass one dictionary,
+    empty at first, to every archive of the sequence; ``None`` parses the
+    archive alone, as ``normalize_archive``. Other datasets ignore it.
+    """
     if archive.dataset in {
         "pl.imgw.hydro_daily",
         "pl.imgw.hydro_monthly",
@@ -70,6 +88,7 @@ def normalize_archive(
             data,
             year=archive.year,
             month=archive.month,
+            carry=carry,
         )
     elif archive.dataset == "pl.imgw.meteo_synop_daily":
         yield from normalize_synop_archive(
