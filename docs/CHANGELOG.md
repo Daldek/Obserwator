@@ -71,6 +71,12 @@ Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
   analyses build reads no number of it. Tested on Hydrolog's own answers
   (`tests/fixtures/hydrolog/low_flow_negative_quantiles.json`). The stored `low_flow.Q`
   analyses change only when they are built again with that Hydrolog.
+- **The option `percentiles` of `precipitation.heavy` refuses 100 (T32 of the formula audit of
+  2026-11-18).** The registry declared it with the inclusive `maximum` 100, so the GUI's
+  `api/analysis/<station>/precipitation.heavy?percentiles=50,100` passed it on to Hydrolog,
+  whose range is (0, 100) and which now refuses 100 (`validation_error`, `details.reason`
+  `exclusive_maximum`). The option has `exclusive_maximum` 100, as `AnalysisOption` already
+  allows: 100 is a `validation_error` naming `percentiles` before Hydrolog runs.
 
 ## [3.0.1] - 2026-11-18
 

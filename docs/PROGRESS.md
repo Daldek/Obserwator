@@ -141,6 +141,7 @@ Defects found by Nogat's formula audit of 2026-11-18 (its `TRIAGE.md`: T24, T25,
 - T24: a precipitation total on the 1st of a monthly `o_d` archive after missing days at the end of the previous one stayed `value` (BORUCINO 2024-07-01, 13.1 mm), and status `Z` was never read — fixed: `series build` carries the missing days across archives and `Z` is `accumulated`; the stored `pl.imgw.meteo_precip_daily` series takes it in its next version (not rebuilt).
 - T26: PMAXTP was called „probable maximum precipitation” / „opady maksymalne prawdopodobne” (that is PMP) and POT „recommended for most applications” without a source — fixed: the monograph's name, its advice (POT for p ≥ 50 %, AMP and POT equivalent below) and the grid product (kriged from 100 stations, may differ from a station's own estimate) in the messages, USAGE, the GUI and its guide, docstrings and the agent guide.
 - Hydrolog's `hotfix/ml-fits` (T28): `low_flow.Q` may hold `null` quantiles (notice `negative_quantiles`) or end in `calculation_error` — the GUI's „Przepływy minimalne” leaves the points out of the curve and shows „–” with a note; exports, REST, CLI and the analyses build take `null` as it is. The stored analyses change when rebuilt with that Hydrolog.
+- T32: `precipitation.heavy` took `percentiles` up to 100 inclusive, which Hydrolog refuses — fixed: `exclusive_maximum` 100.
 
 ### AI agent support (after 3.0.0, ADR-004)
 

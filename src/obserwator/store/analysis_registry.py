@@ -973,7 +973,7 @@ def _meteo_definitions() -> list[AnalysisDefinition]:
                     "array",
                     items="number",
                     exclusive_minimum=0.0,
-                    maximum=100.0,
+                    exclusive_maximum=100.0,
                     min_items=1,
                     max_items=5,
                 ),

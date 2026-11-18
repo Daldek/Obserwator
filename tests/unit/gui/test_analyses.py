@@ -176,6 +176,8 @@ def test_an_id_lists_the_options_it_passes_on_to_what_it_depends_on(
             "reference_first_year=1991",
             "reference_first_year",
         ),
+        # Hydrolog's range of percentiles is (0, 100): 100 fails inside its computation
+        (PRECIPITATION, "precipitation.heavy", "percentiles=50,100", "percentiles"),
     ],
 )
 def test_a_wrong_option_is_refused_before_hydrolog_runs(
