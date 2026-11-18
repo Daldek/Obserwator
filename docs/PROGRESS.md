@@ -79,6 +79,13 @@ Further open backlog items (priority in the text):
 - [ ] Better KS/SG/RB naming in `PMaXTPData` — property aliases and a `get_design_precipitation()` method; details in the section "TODO: Improve PMaXTPData readability" below. Priority: medium.
 - [ ] Native PMAXTP grid in `fetch_pmaxtp` — since 3.0.0 the PMAXTP store (`sync_pmaxtp`/`read_pmaxtp`) keys cells by the `indX/indY` indices from the response and stores the cell centre in `cell.json`, but the `PMaXTPResult` from `fetch_pmaxtp` still has no `point` fields, and there are no cell conversion/iteration functions either; details in the section "TODO: Native PMAXTP grid" below. Reported from Hydrograf (2026-09-28). Priority: high.
 - [x] ČHMÚ data in the GUI — done by the GUI (ADR-013): ČHMÚ stations on its map with their series, analyses and files beside IMGW-PIB's.
+- [ ] Environmental data from other public publishers (the author, 2026-11-18; potential, not planned): measurements that public bodies publish openly beside IMGW-PIB and ČHMÚ, each a provider of its own with its licence and attribution (DEV §20). Named so far:
+  - GIOŚ: water quality of the Odra in continuous mode from automatic stations along the whole river („Pilotażowy Monitoring Rzeki Odry w trybie ciągłym”, e.g. water temperature, dissolved oxygen, conductivity and pH, with source data for download and archived stations, <https://pomiary.gios.gov.pl/>); GIOŚ also has a public API of air quality (`api.gios.gov.pl/pjp-api`);
+  - universities (research stations and catchments);
+  - GDDKiA (road weather stations);
+  - other bodies that publish such data publicly.
+
+  Before a plan: for each source its terms of use, format and access (files, API or only a page), history and update rate, station metadata, and whether it fits the versioned store as a dataset of the registry. Priority: low.
 
 ### GUI: open gaps
 
