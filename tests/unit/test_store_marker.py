@@ -345,15 +345,25 @@ def layout(root, schema="obserwator-meta/1", tree="archives"):
 @pytest.mark.parametrize(
     "call", [prepare_store, lenient_store, open_store], ids=lambda call: call.__name__
 )
-def test_a_layout_without_a_marker_is_unavailable_with_the_hint_to_init(tmp_path, call):
-    layout(tmp_path / "s")
+@pytest.mark.parametrize(
+    ("kind", "tree", "command"),
+    [
+        ("raw", "archives", "obserwator store init --root"),
+        ("data", "series", "obserwator store init --kind data --root"),
+    ],
+)
+def test_a_layout_without_a_marker_is_unavailable_with_the_hint_to_init(
+    tmp_path, call, kind, tree, command
+):
+    layout(tmp_path / "s", tree=tree)
 
     with pytest.raises(ObserwatorStoreError) as error:
-        call(tmp_path / "s")
+        call(tmp_path / "s", kind=kind)
 
     assert error.value.code == "store_unavailable"
     assert error.value.details["reason"] == "no_marker"
-    assert f"obserwator store init --root {tmp_path / 's'}" in error.value.detail
+    assert f"{command} {tmp_path / 's'}" in error.value.detail
+    assert f"{command} {tmp_path / 's'}" in (error.value.hint or "")
     assert not (tmp_path / "s" / MARKER).exists()
 
 

@@ -45,7 +45,6 @@ _REASON_HINTS = {
     "output_in_store": "errors.hint_output_in_store",
     "nested_store": "errors.hint_nested_store",
     "not_empty": "errors.hint_not_empty",
-    "no_marker": "errors.hint_no_marker",
     "not_in_store": "errors.hint_not_in_store",
     "writes_disabled": "errors.hint_writes_disabled",
     "no_allowed_dir": "errors.hint_allow_dir",

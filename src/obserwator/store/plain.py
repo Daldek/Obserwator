@@ -54,7 +54,8 @@ def plain_actions(
     lines : Attribution or None, optional
         The lines of the providers' data the write puts into ``directory``:
         the plan ends with the action of its ``ATTRIBUTION.txt`` when the file
-        would be written or merged into (ADR-012).
+        would be written or merged into (ADR-012), a ``conflict`` like every
+        other target when ``directory`` is or lies in a store (DEV-19.11).
 
     Returns
     -------

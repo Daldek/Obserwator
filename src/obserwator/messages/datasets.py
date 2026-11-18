@@ -443,27 +443,35 @@ MESSAGES = {
     ),
     "note_chmi_meteo_daily_p": Text(
         "Precipitation sum (SRA) from the morning term (06:00Z) of day D to the "
-        "morning term of day D+1, assigned to D",
+        "morning term of day D+1, assigned to D; in older records the station's "
+        "morning term of the time (e.g. 05:00Z or 07:00Z)",
         "Suma opadu (SRA) od terminu porannego (06:00Z) dnia D do terminu porannego "
-        "dnia D+1, przypisana do D",
+        "dnia D+1, przypisana do D; w starszych zapisach poranny termin stacji z "
+        "tamtego czasu (np. 05:00Z albo 07:00Z)",
     ),
     "note_chmi_meteo_daily_tmean": Text(
         "Daily mean air temperature (T, AVG) = (T06 + T13 + 2·T20)/4 of the UTC "
-        "terms of day D",
+        "terms of day D; in older records from the station's terms of the time "
+        "(e.g. 05:00, 13:00 and 21:00)",
         "Średnia dobowa temperatura powietrza (T, AVG) = (T06 + T13 + 2·T20)/4 z "
-        "terminów UTC dnia D",
+        "terminów UTC dnia D; w starszych zapisach z terminów stacji z tamtego "
+        "czasu (np. 05:00, 13:00 i 21:00)",
     ),
     "note_chmi_meteo_daily_tmax": Text(
         "Maximum air temperature (TMA) of the period (D−1 20:00, D 20:00] UTC, "
-        "assigned to D",
+        "assigned to D; in older records the period ends at the station's evening "
+        "term of the time (e.g. 19:00 or 21:00)",
         "Maksymalna temperatura powietrza (TMA) okresu (D−1 20:00, D 20:00] UTC, "
-        "przypisana do D",
+        "przypisana do D; w starszych zapisach okres kończy wieczorny termin stacji "
+        "z tamtego czasu (np. 19:00 albo 21:00)",
     ),
     "note_chmi_meteo_daily_tmin": Text(
         "Minimum air temperature (TMI) of the period (D−1 20:00, D 20:00] UTC, "
-        "assigned to D",
+        "assigned to D; in older records the period ends at the station's evening "
+        "term of the time (e.g. 19:00 or 21:00)",
         "Minimalna temperatura powietrza (TMI) okresu (D−1 20:00, D 20:00] UTC, "
-        "przypisana do D",
+        "przypisana do D; w starszych zapisach okres kończy wieczorny termin stacji "
+        "z tamtego czasu (np. 19:00 albo 21:00)",
     ),
     "title_chmi_hydro_stations": Text(
         "ČHMÚ — list of hydrological stations",

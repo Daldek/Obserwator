@@ -25,6 +25,7 @@ from obserwator import (
 from obserwator.datasets import archive_files
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
 from obserwator.fetch import download_archives
+from obserwator.output import STORE_MARKERS
 from obserwator.testing import build_fixture_store
 from tests.contract.support import V1, FakeImgw
 
@@ -178,6 +179,32 @@ def test_a_marker_of_kartograf_counts_as_a_store_too(respx_mock, tmp_path):
 
     assert error.value.details["reason"] == "output_in_store"
     assert not (foreign / "plain").exists()
+
+
+@pytest.mark.parametrize("marker", STORE_MARKERS)
+def test_the_plan_into_a_store_lists_every_target_and_the_attribution_as_a_conflict(
+    respx_mock, tmp_path, marker
+):
+    # C4 of Nogat's integration run of candidate-5: the plan listed ATTRIBUTION.txt
+    # as `write` while the run refuses every target (DEV-19.10, DEV-19.11).
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / marker).write_text("{}", encoding="utf-8")
+    output = store / "plain"
+    options = {"dataset": SEMIANNUAL, "years": 2024, "output_dir": output}
+
+    plan = check_command("datasets download", options=options)
+    with pytest.raises(ObserwatorError) as error:
+        run_command("datasets download", options=options)
+
+    assert plan.status == "ok"  # a conflict is an entry of the plan
+    assert [(a.action, a.reason, a.path) for a in plan.result.actions] == [
+        ("conflict", "output_in_store", output.joinpath(*name.split("/")))
+        for name in (*(archive.server_path for archive in FILES), "ATTRIBUTION.txt")
+    ]
+    assert error.value.details == {"reason": "output_in_store", "paths": [str(output)]}
+    assert respx_mock.calls.call_count == 0
+    assert not output.exists()
 
 
 def test_plain_download_needs_no_hard_links(respx_mock, tmp_path, monkeypatch):

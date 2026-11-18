@@ -6,9 +6,9 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 
 | Field | Value |
 |------|---------|
-| **Version** | 3.0.0, frozen on 2026-11-16 (tag `v3.0.0` pending; "Next" item 1) |
-| **Date** | 2026-11-16 |
-| **Working branch** | `develop` (formerly `slave`, ECO-008); `docs/release-3.0.0` holds the closure of the release. Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
+| **Version** | 3.0.0, released on 2026-11-16 (tag `v3.0.0` on `main` `707b4a5`); next 3.0.1, defect fixes only, at `3.0.1.dev0` ("Known defects" below) |
+| **Date** | 2026-11-17 |
+| **Working branch** | `fix/3.0.1` (from `develop` `46f5fe3`): the fixes of 3.0.1, not merged until the author approves; `develop` (formerly `slave`, ECO-008); `docs/release-3.0.0` holds the closure of the release. Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
 | **Python** | >=3.12 |
 
 | Component | State | Notes |
@@ -93,9 +93,9 @@ Further open backlog items (priority in the text):
 - A result computed on request cannot be downloaded from its section: plan D14 offers it as its JSON, and `api/files/analysis/{code}/{id}` takes the options, but only „Pobierz” links the stored results.
 - On-request computations of the longest records come close to the 30 s limit (plan D8) on a busy server: at the acceptance of 2026-11-13 (4 CPUs, load about 12) a chain for Praha-Klementinum (1775–2025, `mann_kendall.temperature.summer_days`) took 28 s alone and passed 30 s beside other computations; the part then names Hydrolog's limit.
 
-### Release 3.0.1 (after 3.0.0; the author's decision of 2026-11-14)
+### Release 3.1.0 (the author's decisions of 2026-11-14 and 2026-11-17)
 
-Not before 3.0.0 is released; these changes make 3.0.1. The first five were found on 2026-11-14 while checking how the GUI serves „Pomiary bieżące”: the browser asks only this server (`api/current`, CSP `connect-src 'self'` and the tile host), which fetches IMGW-PIB and keeps each source in process memory for `CURRENT_TTL_S` (600 s), shared by all users (`gui/_live.py`). That stays: direct requests from browsers would multiply the load on IMGW-PIB (its answers are `no-store`), send every user's address to it and duplicate the parsers in JS.
+Planned on 2026-11-14 as 3.0.1; on 2026-11-17 the author made 3.0.1 a release of defect fixes only, beside the patches of the other members, and moved these changes to 3.1.0. The first five were found on 2026-11-14 while checking how the GUI serves „Pomiary bieżące”: the browser asks only this server (`api/current`, CSP `connect-src 'self'` and the tile host), which fetches IMGW-PIB and keeps each source in process memory for `CURRENT_TTL_S` (600 s), shared by all users (`gui/_live.py`). That stays: direct requests from browsers would multiply the load on IMGW-PIB (its answers are `no-store`), send every user's address to it and duplicate the parsers in JS.
 
 - [ ] Honest request headers to hydro-back.imgw.pl: `_MAP_HEADERS` (`stations.py`) drop the `Referer: https://hydro.imgw.pl/` that passes this program off as IMGW-PIB's own page, and the `User-Agent` names the program and its project address (`Obserwator/<version> (+<URL>)`, no personal data); the docstrings that say the backend requires both headers are corrected. Checked on 2026-11-14: the map (`map/stations/hydrologic`) and a station's card (`station/hydro/status`) answer 200 to `Obserwator/<version>` without a `Referer`, and 403 only to the default user agents of curl and httpx.
 - [ ] Refresh in the background: when an entry of `_live.py` expires, the requests get the last good data while one refresh runs, instead of all waiting on the lock for the upstream call (up to 30 s per source).
@@ -109,18 +109,20 @@ Not taken (2026-11-14): a request to IMGW-PIB for permission to use hydro-back.i
 
 ### Known defects, deferred to the next release (the author's decision of 2026-11-16)
 
-Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0.
+Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0. Release 3.0.1 takes defect fixes only: those on `fix/3.0.1` (not merged) say so; the rest wait for the author's list.
 
-- C4: a plain plan (`--check` with `--output-dir`) into another tool's store lists `ATTRIBUTION.txt` as `write` while the run refuses every target (DEV-19.10, DEV-19.11) — deferred to the next release.
-- C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — deferred to the next release.
+- C4: a plain plan (`--check` with `--output-dir`) into another tool's store lists `ATTRIBUTION.txt` as `write` while the run refuses every target (DEV-19.10, DEV-19.11) — fixed on `fix/3.0.1`: the plan lists it as a `conflict` (`output_in_store`) like every target.
+- C5: the hint of `store_unavailable` `no_marker` does not name the path (DEV-19.13; Kartograf's half of C5 is Kartograf's) — fixed on `fix/3.0.1`: the hint is `obserwator store init --root <path>` (`--kind data` for a data root).
+- C7: `test_instructions_are_english_and_hold_the_rules_and_the_mode_below_2_kib[read]` fails under a long `TMPDIR` (2,050 bytes), as it puts `tmp_path` paths into the instructions — fixed on `fix/3.0.1`: the test names fixed paths.
 - E3-02: `pl.imgw.meteo_synop_terms` and `pl.imgw.meteo_climate_terms` are download-only (`in_store` false) without a parser, so Archiwista refuses them and Hydrograf gets only daily precipitation — deferred to the next release.
 - GEO-03: in the IMGW-PIB catalog 2,143 of 3,811 stations have no location and meteo stations no `meteo_kind` or `established_year`, partly for a reference file not downloaded, which only `problems` hints — deferred to the next release.
 - GEO-04: `stations find --source live` gives no coordinates and no area filter — deferred to the next release.
 - E3-01: `series build` has no station or year filter (for 12 stations it built the national sets, 2 × 763 s, 479 MB) — deferred to the next release.
-- E3-06: `obserwator server` without the extra `api` ends with a `ModuleNotFoundError` traceback (exit 1) instead of `missing_dependency` (exit 6) — deferred to the next release.
+- E3-06: `obserwator server` without the extra `api` ends with a `ModuleNotFoundError` traceback (exit 1) instead of `missing_dependency` (exit 6) — fixed on `fix/3.0.1`: without FastAPI or uvicorn it ends with `missing_dependency` (`details.extra="api"`, hint `pip install "obserwator[api]"`).
 - E7-11: an idle `obserwator gui serve` holds about 1 GB in swap (test and production instance; to be checked) — deferred to the next release.
 - E7-13 (every member's deployment): `uv sync --locked --no-editable` does not reinstall the package while its version stays, so a deployment of a new commit keeps the old code (workaround `--reinstall-package obserwator`; to be described in the deployment instructions) — deferred to the next release.
 - B4 (with Hydrograf and Nogat): precipitation from Obserwator to Hydrograf (E3-02, E3-03, E3-04); Obserwator's part is a parser and the store of the synop and climate term data, Hydrograf's the import of `obserwator-series-csv` and attribution in `custom_precipitation`, Nogat's the edge in `ecosystem.yaml` — deferred to the next release.
+- ČHMÚ daily meteo at older observation terms (found on the deployment's raw root, 2026-11-17): `series build --dataset cz.chmi.meteo_daily` failed as a whole (exit 11) on the rows of 85 of 3,351 files stamped at a station's term of the time (`SRA` 05:00 or 07:00, `TMA`/`TMI` 18:00 to 21:00, `T` terms 05:00 to 21:00) — fixed on `fix/3.0.1` (ADR-003 erratum of 2026-11-17).
 
 ### AI agent support (after 3.0.0, ADR-004)
 

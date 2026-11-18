@@ -316,7 +316,7 @@ IMGW-PIB archives are inconsistent between years; parsers auto-detect the format
 - Hydrological year: Nov 1 - Oct 31
 - ZIP reading with member count/size limits and no path traversal; unreadable ZIP → `ObserwatorDataError`
 
-ČHMÚ files (`_parsing/chmi.py`): hydro JSON `{"objID", "tsList"}` (`HD`/`QD`/`TD` → H/Q/T, `PD` skipped, `null` → `missing`, missing row = no record), meteo CSV `STATION,ELEMENT,TIMEFUNC,DT,VALUE,FLAG,QUALITY` (term rows of `T` skipped; `QUALITY` → `quality`, `FLAG` → `source_flag`; `0.0` without flag → `no_phenomenon`, trace `T` → `value`), metadata JSON located by column names (meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude; numbers read as `Decimal`), nginx listings (name from `href`, UTC minute, size). Errors → `ObserwatorDataError` with file name and place.
+ČHMÚ files (`_parsing/chmi.py`): hydro JSON `{"objID", "tsList"}` (`HD`/`QD`/`TD` → H/Q/T, `PD` skipped, `null` → `missing`, missing row = no record), meteo CSV `STATION,ELEMENT,TIMEFUNC,DT,VALUE,FLAG,QUALITY` (`SRA`, `TMA`, `TMI`: a row at the term of its observation, `TIMEFUNC` = the time of `DT`, today's or an older one, is the value of the date of `DT`; `T`: `AVG` is the daily mean and its term rows are skipped; `QUALITY` → `quality`, `FLAG` → `source_flag`; `0.0` without flag → `no_phenomenon`, trace `T` → `value`), metadata JSON located by column names (meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude; numbers read as `Decimal`), nginx listings (name from `href`, UTC minute, size). Errors → `ObserwatorDataError` with file name and place.
 
 ---
 
