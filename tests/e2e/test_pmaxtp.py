@@ -1,5 +1,6 @@
 """The view „PMAXTP” in the browser: a point from the map or typed, its tables and files."""
 
+import contextlib
 import csv
 import io
 import json
@@ -7,6 +8,7 @@ from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect
 
 from tests.e2e.conftest import PMAXTP_POINT, THEMES, WIDTHS
@@ -47,8 +49,15 @@ def _table(page: Any, answer: dict[str, Any]) -> None:
 def test_a_point_clicked_on_the_map_shows_its_tables_and_no_grid(open_page):
     page = open_page(VIEW)
     seen = _pmaxtp_requests(page)
+    # the map takes clicks once it has loaded: its layers are added and its click
+    # handlers bound in one go (map.js, „load”); a click on the bare canvas is lost
+    page.wait_for_function(
+        "() => { const element = document.querySelector('.map');"
+        " return Boolean(element && element.maplibre"
+        " && element.maplibre.getLayer('pmaxtp-dot')); }",
+        timeout=15_000,
+    )
     canvas = page.locator(".maplibregl-canvas")
-    canvas.wait_for()
     box = canvas.bounding_box()
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     _table(page, _answer(page))
@@ -98,10 +107,16 @@ def test_typed_coordinates_show_the_tables_with_the_link_to_imgw(
         if line not in answer["attribution"]
     ]
     assert borders
-    assert (
-        strip.evaluate("(element) => element.attribution")
-        == answer["attribution"] + borders
-    )
+    # the borders join once the map has its background, which may be after the tables
+    expected = answer["attribution"] + borders
+    with contextlib.suppress(PlaywrightTimeout):
+        page.wait_for_function(
+            "(want) => JSON.stringify(document.querySelector("
+            "'.view-foot nogat-sources')?.attribution) === JSON.stringify(want)",
+            arg=expected,
+            timeout=15_000,
+        )
+    assert strip.evaluate("(element) => element.attribution") == expected
     assert strip.evaluate("(element) => element.termsNotice") == answer["terms_notice"]
 
 
