@@ -195,8 +195,10 @@ MESSAGES = {
         "zero wodowskazu",
     ),
     "title_pmaxtp": Text(
-        "Probable maximum precipitation PMAXTP",
-        "Opady maksymalne prawdopodobne PMAXTP",
+        "Maximum precipitation of a given duration and probability of exceedance "
+        "(PMAXTP)",
+        "Maksymalne opady o określonym czasie trwania i prawdopodobieństwie "
+        "przewyższenia (PMAXTP)",
     ),
     "title_hydro_phenomena": Text(
         "Daily hydrological phenomena",

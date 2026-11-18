@@ -301,7 +301,7 @@ def _validate_poland_coords(latitude: float, longitude: float) -> None:
 
 
 # ============================================================================
-# PMAXTP (Probabilistic Maximum Precipitation)
+# PMAXTP (maximum precipitation of a given duration and probability of exceedance)
 # ============================================================================
 
 _PMAXTP_OUTSIDE_GRID = ("poza obszarem", "undefined: lat")
@@ -381,10 +381,17 @@ def fetch_pmaxtp(
     validate_coords: bool = True,
 ) -> PMaXTPResult:
     """
-    Fetch PMAXTP (probabilistic maximum precipitation) data.
+    Fetch PMAXTP data of a point: IMGW-PIB's maximum precipitation.
 
-    PMAXTP provides precipitation quantiles for 16 durations and 27 probabilities,
-    useful for hydrological modeling and flood risk assessment.
+    PMAXTP („maksymalne opady o określonym czasie trwania i prawdopodobieństwie
+    przewyższenia”, the PMAXTP project of IMGW-PIB, ed. B. Ozga-Zieliński, 2022)
+    gives precipitation quantiles for 16 durations and 27 probabilities of
+    exceedance, for design storms and hydrological modelling. It is not the
+    probable maximum precipitation (PMP) of WMO-No. 1045, an upper bound of
+    precipitation rather than a quantile. The answer is the cell of IMGW-PIB's
+    grid that holds the point, interpolated by kriging from the estimates at
+    100 stations (1986-2015); IMGW-PIB's own answer for one of those stations
+    may differ at the same place.
 
     Parameters
     ----------
@@ -393,9 +400,11 @@ def fetch_pmaxtp(
     longitude : float
         Longitude in decimal degrees (Poland: 14-24.5).
     method : {"POT", "AMP"}, optional
-        Calculation method. "POT" (Peak Over Threshold) is recommended for
-        most applications, "AMP" (Annual Max Precipitation) is an
-        alternative method.
+        Sample of the model: "POT" (Peak Over Threshold, the default) or
+        "AMP" (Annual Max Precipitation). IMGW-PIB recommends POT for
+        probabilities of 50 % and more (e.g. drainage design, where the result
+        lies on the safe side) and holds both equivalent below 50 % (the
+        monograph, p. 23).
     timeout : float, optional
         Request timeout in seconds.
     validate_coords : bool, optional

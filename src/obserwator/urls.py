@@ -29,7 +29,7 @@ def build_pmaxtp_url(
     method: Literal["POT", "AMP"] = "POT",
 ) -> str:
     """
-    Build URL for PMAXTP (probabilistic max precipitation) API.
+    Build the URL of a point in IMGW-PIB's PMAXTP API (grid cells).
 
     Parameters
     ----------

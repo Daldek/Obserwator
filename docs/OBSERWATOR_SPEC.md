@@ -103,7 +103,7 @@ class Capability(StrEnum):
     ARCHIVE_WEATHER = "archive_weather"    # meteo archives
     STATIONS = "stations"                  # station list with coordinates
     WARNINGS = "warnings"                  # warnings
-    PMAX = "pmax"                          # probable maximum precipitation (IMGW-only)
+    PMAX = "pmax"                          # PMAXTP maximum precipitation (IMGW-only)
 
 
 @dataclass(frozen=True)

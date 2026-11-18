@@ -40,6 +40,22 @@ Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
   version whose input archives are unchanged, so the flags of a stored
   `pl.imgw.meteo_precip_daily` series, and the precipitation analyses built from it, change
   with its next version (the next new or changed archive of the dataset).
+- **PMAXTP is named as IMGW-PIB names it, with IMGW-PIB's own advice on POT and AMP (T26 of
+  the formula audit of 2026-11-18).** The title of `pl.imgw.pmaxtp`, the PMAXTP view's hint,
+  `docs/USAGE.md` and the agent guide called PMAXTP „probable maximum precipitation” /
+  „opady maksymalne prawdopodobne”, which is PMP (WMO-No. 1045), the physical upper bound of
+  precipitation with no probability, not a quantile; the dataset's title is now „Maximum
+  precipitation of a given duration and probability of exceedance (PMAXTP)” / „Maksymalne
+  opady o określonym czasie trwania i prawdopodobieństwie przewyższenia (PMAXTP)”, the name of
+  the PMAXTP monograph (ed. B. Ozga-Zieliński, IMGW-PIB 2022), and the docstrings, the PRD
+  and the GUI's guide use it. `fetch_pmaxtp` said POT „is recommended for most
+  applications” without a source: the monograph (p. 23) recommends POT for p ≥ 50 % (e.g.
+  drainage design, on the safe side) and holds AMP and POT equivalent for p < 50 %, as the
+  docstring, `docs/USAGE.md`, the methods of the PMAXTP view and the guide now say. The texts
+  also say that the answer is the cell of IMGW-PIB's grid kriged from the estimates at 100
+  stations (1986–2015), which may differ from IMGW-PIB's own estimate for a station at the
+  same place (the PMAXTP view, the PMAXTP column of „Opady”, the guide). Texts only: no value
+  changes.
 
 ## [3.0.1] - 2026-11-18
 

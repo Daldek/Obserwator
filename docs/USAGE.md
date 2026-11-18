@@ -19,7 +19,9 @@ A detailed guide to the Obserwator interfaces (Python library, CLI, REST, the GU
 
 Obserwator can be used as a library in other Python projects (e.g. HydroLOG). Functions take the first object positionally and every further argument by name; a station code is always the string `station_code` (IMGW-PIB: 9 digits, ČHMÚ: a WIGOS identifier, e.g. `0-203-1-001000`).
 
-### PMAXTP data (probable maximum precipitation)
+### PMAXTP data (maximum precipitation of a given duration and probability of exceedance)
+
+PMAXTP is IMGW-PIB's „maksymalne opady o określonym czasie trwania i prawdopodobieństwie przewyższenia” (the PMAXTP project, ed. B. Ozga-Zieliński, 2022): quantiles of precipitation of 16 durations (5 min to 72 h) for 27 probabilities of exceedance, the basis of design storms. It is not the probable maximum precipitation (PMP) of WMO-No. 1045, which is an upper bound and has no probability. IMGW-PIB fitted the models at 100 stations (1986–2015) and interpolated their quantiles over a grid of Poland by kriging; `fetch_pmaxtp` asks for the cell of that grid holding the point, so IMGW-PIB's own answer for one of its stations may differ at the same place. Of the two samples, IMGW-PIB recommends POT for p ≥ 50 % (e.g. drainage design: the result lies on the safe side) and holds AMP and POT equivalent for p < 50 % (the monograph, p. 23).
 
 ```python
 from obserwator import fetch_pmaxtp

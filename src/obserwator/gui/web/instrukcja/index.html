@@ -639,7 +639,7 @@
       <li><strong>Rozkłady</strong>: log-normalny, GEV, Pearsona III i Weibulla („Rozkład”, domyślnie wszystkie cztery), dopasowane domyślnie metodą L-momentów (Hosking i Wallis 1997); „Metoda” daje też największą wiarygodność, momenty i najmniejsze kwadraty.</li>
       <li><strong>Zgodność</strong>: test Kołmogorowa–Smirnowa (KS) z wartością p, statystyka A² Andersona–Darlinga i kryterium informacyjne Akaikego AIC. Rozkład o najmniejszym AIC jest pierwszy i najlepszy: na wykresie pogrubiony, a tabela „Opad maksymalny P_p [mm]” podaje jego wartości; wszystkie rozkłady są w „Wszystkie rozkłady i miary zgodności”. Wartość p testu KS jest orientacyjna, bo parametry oszacowano z tej samej próby. Rozkład, który nie daje gęstości któremuś maksimum, ma puste AIC i jest ostatni.</li>
       <li><strong>Wykres i tabela</strong>: siatka Gumbela; punkty to maksima roczne z prawdopodobieństwem przewyższenia m/(n+1), gdzie m to numer maksimum od największego, a n liczba lat. Tabela podaje opad dla T = 2, 5, 10, 20, 50, 100, 200, 500 i 1000 lat (p = 1/T). Gdy lat jest mało, uwaga przy wyniku mówi, że oszacowania mogą być niepewne.</li>
-      <li><strong>PMAXTP</strong>: przy maksimach z 1, 2 i 3 dni stoją kwantyle PMAXTP IMGW-PIB dla punktu stacji, opad o czasie trwania 24, 48 i 72&nbsp;h, metody POT i AMP (<a href="#pmaxtp">rozdział 05</a>), pobrane z IMGW-PIB, nie liczone tutaj; tylko dla stacji IMGW-PIB ze współrzędnymi. Suma dobowa ze stacji (doba 06–06 UTC) jest mniejsza od największej sumy 24-godzinnej w przesuwanym oknie, średnio około 1,13 raza (Weiss 1964), i nie jest przeliczana.</li>
+      <li><strong>PMAXTP</strong>: przy maksimach z 1, 2 i 3 dni stoją kwantyle PMAXTP IMGW-PIB dla oczka jego siatki w punkcie stacji (z krigingu, nie oszacowanie IMGW-PIB dla samej stacji), opad o czasie trwania 24, 48 i 72&nbsp;h, metody POT i AMP (<a href="#pmaxtp">rozdział 05</a>), pobrane z IMGW-PIB, nie liczone tutaj; tylko dla stacji IMGW-PIB ze współrzędnymi. Suma dobowa ze stacji (doba 06–06 UTC) jest mniejsza od największej sumy 24-godzinnej w przesuwanym oknie, średnio około 1,13 raza (Weiss 1964), i nie jest przeliczana.</li>
     </ul>
 
     <h3 id="metody-susze">„Susze i okresy bezopadowe”</h3>
@@ -811,10 +811,10 @@
 <!-- ============================ 05 PMAXTP ============================ -->
 <section class="part" id="pmaxtp" aria-labelledby="pmaxtp-title">
   <p class="kicker">05 · Widok „PMAXTP”</p>
-  <h2 id="pmaxtp-title">PMAXTP: opady maksymalne</h2>
-  <p>PMAXTP to opracowanie IMGW-PIB: ile milimetrów deszczu może spaść w czasie t, od 5 minut do 72 godzin, z prawdopodobieństwem przewyższenia p, np. 1&nbsp;% to opad, który zdarza się średnio raz na 100 lat. IMGW-PIB policzył je w siatce punktów w całej Polsce dwiema metodami:</p>
+  <h2 id="pmaxtp-title">PMAXTP: maksymalne opady o określonym czasie trwania i prawdopodobieństwie przewyższenia</h2>
+  <p>PMAXTP to opracowanie IMGW-PIB „Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia” (projekt PMAXTP, red. B. Ozga-Zieliński, 2022): wysokość opadu o czasie trwania t, od 5 minut do 72 godzin, przewyższana z prawdopodobieństwem p, np. 1&nbsp;% to opad przewyższany średnio raz na 100 lat. To kwantyle rozkładów prawdopodobieństwa, a nie opad maksymalny prawdopodobny (PMP, <span lang="en">probable maximum precipitation</span>) Światowej Organizacji Meteorologicznej, który jest fizyczną górną granicą opadu, bez prawdopodobieństwa. IMGW-PIB dopasował modele do opadów ze 100 swoich stacji z lat 1986–2015 i przeniósł ich kwantyle krigingiem na siatkę w całej Polsce. Ta strona pokazuje wartości oczka siatki, w którym leży punkt; oszacowanie IMGW-PIB dla jego stacji w tym samym miejscu może się od nich różnić. Kwantyle policzono dwiema metodami doboru próby:</p>
   <dl class="defs">
-    <div><dt>POT (Peak Over Threshold, wartości szczytowe powyżej progu)</dt><dd>Wszystkie zdarzenia opadowe przekraczające próg, niezależnie od roku wystąpienia: jeden rok może dać kilka takich zdarzeń albo żadnego. Metoda domyślna na tej stronie.</dd></div>
+    <div><dt>POT (Peak Over Threshold, wartości szczytowe powyżej progu)</dt><dd>Wszystkie zdarzenia opadowe przekraczające próg, niezależnie od roku wystąpienia: jeden rok może dać kilka takich zdarzeń albo żadnego. Metoda domyślna na tej stronie. IMGW-PIB zaleca ją dla p ≥ 50&nbsp;%, np. przy projektowaniu odwodnień, gdzie wynik leży wtedy po bezpiecznej stronie; dla p &lt; 50&nbsp;% uznaje AMP i POT za równorzędne (monografia projektu PMAXTP, s. 23).</dd></div>
     <div><dt>AMP (Annual Max Precipitation, maksima roczne)</dt><dd>Tylko największy opad każdego roku serii pomiarowej: każdy rok daje dokładnie jedną wartość.</dd></div>
   </dl>
   <figure>
@@ -1033,7 +1033,7 @@ ORDER BY year;</code></pre>
     <div><dt>R95p, R99p, SDII, CDD, CWD</dt><dd>Wskaźniki klimatyczne ETCCDI: opad dni bardzo mokrych, natężenie opadu dnia mokrego, najdłuższy ciąg dni bez opadu i z opadem.</dd></div>
     <div><dt>Stopniodni</dt><dd>Suma nadwyżek (albo niedoborów) średniej temperatury dobowej względem progu, np. 5&nbsp;°C dla wzrostu roślin.</dd></div>
     <div><dt>Współczynnik hydrotermiczny</dt><dd>Współczynnik Sielianinowa: opad miesiąca w stosunku do sumy temperatur; ocenia, czy miesiąc był suchy, czy wilgotny.</dd></div>
-    <div><dt>PMAXTP, POT, AMP</dt><dd>Opracowanie IMGW-PIB opadów maksymalnych o czasie trwania t i prawdopodobieństwie p oraz jego dwie metody: wartości powyżej progu i maksima roczne.</dd></div>
+    <div><dt>PMAXTP, POT, AMP</dt><dd>Opracowanie IMGW-PIB maksymalnych opadów o określonym czasie trwania t i prawdopodobieństwie przewyższenia p (kwantyle, nie opad maksymalny prawdopodobny PMP) oraz jego dwie metody doboru próby: wartości powyżej progu i maksima roczne.</dd></div>
     <div><dt>ks, sg, rb</dt><dd>Tabele PMAXTP: kwantyle opadu, górne granice ich przedziału ufności i błędy estymacji.</dd></div>
     <div><dt>SYNOP</dt><dd>Depesza synoptyczna: raport stacji synoptycznej o pogodzie w terminie obserwacji.</dd></div>
     <div><dt>WGS84, UTC</dt><dd>Układ współrzędnych geograficznych map i GPS oraz uniwersalny czas koordynowany (w Polsce zimą UTC+1, latem UTC+2).</dd></div>
