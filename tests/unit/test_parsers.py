@@ -513,6 +513,34 @@ def test_meteo_precip_missing_days_accumulation_and_absent_month():
     assert len(annual_direct) == 365
 
 
+def test_meteo_precip_status_z_is_a_collective_total():
+    # o_d_format.txt: "Z - opad zbiorczy". WINNICA's row of 15 October 2024 (the total
+    # of 9 to 14 October) and OSOWIEC's of 18 February 2026 (13 to 17 February,
+    # unquoted), moved into one month: each is the first row of its station here,
+    # so only status Z tells the total from a day's precipitation
+    pad = " " * 23
+    rows = (
+        f'"252200050","WINNICA{pad}","2024","10","15","20.8","Z","W",,"9",,"8",,"8",,"9"\n'
+        f'"252200050","WINNICA{pad}","2024","10","16",,"9",,,"9",,"8",,"8",,"9"\n'
+        '"253220120",OSOWIEC,"2024","10","18",5.2,Z,,,"8",,"8",,"8",,"8"\n'
+        '"253220120",OSOWIEC,"2024","10","19",0.4,,W,8,,,"9","7",,*,\n'
+    )
+    archive = _archive("pl.imgw.meteo_precip_daily", "2024/2024_10_o.zip", 2024, 10)
+    records = list(normalize_archive(archive, data=_make_zip("o_d_10_2024.csv", rows)))
+    found = {
+        (r.station_code, r.date.day): (
+            r.measurements["P"].value,
+            r.measurements["P"].flag,
+        )
+        for r in records
+    }
+    assert found[("252200050", 14)] == (0.0, "no_phenomenon")
+    assert found[("252200050", 15)] == (20.8, "accumulated")
+    assert found[("252200050", 16)] == (0.0, "no_phenomenon")
+    assert found[("253220120", 18)] == (5.2, "accumulated")
+    assert found[("253220120", 19)] == (0.4, "value")
+
+
 def test_meteo_archive_selects_only_daily_csv_and_reports_line():
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w") as zf:

@@ -21,6 +21,25 @@ Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
   0), as a single value did; `stepDigits` gives a step below 10⁻⁹ its decimals, where it gave
   0 and rounded both ends of the domain to one number; and `linearTicks` counts from 0 and
   gives no ticks rather than more than 1,000, so it ends for every domain.
+- **A precipitation total after missing days at the end of the previous monthly archive is
+  `accumulated` (T24 of the formula audit of 2026-11-18).** `pl.imgw.meteo_precip_daily`
+  flags a daily total `accumulated` when it directly follows a listed day without a
+  measurement (status 8; `o_d_format.txt`: such a total is a collective sum of the days
+  without one), but every IMGW-PIB `o_d` archive since 2001 is one month and was parsed
+  alone, so a total on the 1st after such days at the end of the month before stayed
+  `value`: BORUCINO (254170210) 2024-07-01, 13.1 mm after no reading on 28–30 June, and 2 more
+  of the 39 such totals of 2023-01 to 2026-09 (250140010 2025-11-01, 253200160 2026-07-01).
+  Each entered Hydrolog's daily statistics (1-day maxima, heavy-precipitation days,
+  intensity, spells, the annual maxima of `precipitation_quantiles`) as one day's
+  precipitation. `series build` now carries the missing days of a station from one archive
+  to the next, and the status `Z` of IMGW-PIB's collective total is read: such a total is
+  `accumulated` wherever it stands (the code never read `Z`, while the dataset's note on `P`
+  said the flag came from it; the note now gives both rules). `normalize_archive` and
+  `parse_meteo_precip_daily` still parse one archive or file, where only `Z` marks a total on
+  its first day. **The stored series change only when rebuilt:** `series build` keeps a
+  version whose input archives are unchanged, so the flags of a stored
+  `pl.imgw.meteo_precip_daily` series, and the precipitation analyses built from it, change
+  with its next version (the next new or changed archive of the dataset).
 
 ## [3.0.1] - 2026-11-18
 

@@ -305,11 +305,14 @@ MESSAGES = {
         "Suma dobowa opadów (SMDB)",
     ),
     "note_imgw_precip_p": Text(
-        "Daily precipitation sum (SMDB); flag accumulated (status Z): a collective sum "
-        "for the preceding days without measurement, with no indication of when it "
-        "fell",
-        "Suma dobowa opadów (SMDB); flaga accumulated (status Z): opad zbiorczy za "
-        "poprzedzające dni z brakiem pomiaru, bez określenia, kiedy wystąpił",
+        "Daily precipitation sum (SMDB); flag accumulated: a collective sum for the "
+        "preceding days without measurement (status 8), with no indication of when it "
+        "fell: a sum with status Z or directly after such a day, also one at the end "
+        "of the previous monthly archive",
+        "Suma dobowa opadów (SMDB); flaga accumulated: opad zbiorczy za poprzedzające "
+        "dni z brakiem pomiaru (status 8), bez określenia, kiedy wystąpił: suma o "
+        "statusie Z albo bezpośrednio po takim dniu, także na końcu poprzedniego "
+        "archiwum miesięcznego",
     ),
     "note_imgw_snow_cover": Text(
         "Snow cover depth (PKSN)",

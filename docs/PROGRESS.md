@@ -138,6 +138,7 @@ Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-ca
 Defects found by Nogat's formula audit of 2026-11-18 (its `TRIAGE.md`: T24, T25, T26 and the follow-up of Hydrolog's `hotfix/ml-fits`), fixed on `fix/presentation` before the public presentation of 2026-11-19 (not merged until the author approves):
 
 - T25: two values a few ulps apart on a chart's axis without `zero` (H, Q, T, regime, trends, temperature, rating curve) hung the browser's tab in `linearTicks` — fixed: such a span is one value, and `linearTicks` ends for every domain.
+- T24: a precipitation total on the 1st of a monthly `o_d` archive after missing days at the end of the previous one stayed `value` (BORUCINO 2024-07-01, 13.1 mm), and status `Z` was never read — fixed: `series build` carries the missing days across archives and `Z` is `accumulated`; the stored `pl.imgw.meteo_precip_daily` series takes it in its next version (not rebuilt).
 
 ### AI agent support (after 3.0.0, ADR-004)
 

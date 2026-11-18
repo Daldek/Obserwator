@@ -113,6 +113,7 @@ def _parse_daily(
     kind: str,
     year: int | None = None,
     month: int | None = None,
+    carry: dict[str, date] | None = None,
 ) -> Iterator[NormalizedRecord]:
     text = _decode_content(content) if isinstance(content, bytes) else content
     text = text.lstrip("\ufeff")
@@ -161,6 +162,10 @@ def _parse_daily(
                     )
                     for key, offset in (("P", 5), ("snow_cover", 8), ("fresh_snow", 10))
                 }
+                # Status Z (o_d_format.txt): a collective total of the days without a
+                # measurement before it, with no indication of when it fell
+                if row[6].strip() == "Z" and values["P"].flag == "value":
+                    values["P"] = Measurement(values["P"].value, "accumulated")
             attributes = {
                 key: row[column].strip() or None
                 for key, column in _ATTRIBUTE_COLUMNS[kind]
@@ -198,7 +203,7 @@ def _parse_daily(
     )
     for station, entries in fields.items():
         present_months = {(day.year, day.month) for day in entries}
-        previous_missing: date | None = None
+        previous_missing = None if carry is None else carry.get(station)
         for y, m in sorted(months):
             for day in range(1, calendar.monthrange(y, m)[1] + 1):
                 measured = date(y, m, day)
@@ -251,6 +256,11 @@ def _parse_daily(
                     else None
                 )
                 yield record
+        if carry is not None:
+            if previous_missing is None:
+                carry.pop(station, None)
+            else:
+                carry[station] = previous_missing
 
 
 def _period_from_filename(filename: str, kind: str) -> tuple[int | None, int | None]:
@@ -436,11 +446,19 @@ def parse_meteo_precip_daily(
     in which the station has rows gets ``P = 0.0`` flagged
     ``"no_phenomenon"``, a day in a month without any station rows gets
     ``P`` flagged ``"missing"``; other variables of absent days are
-    ``"missing"``. A ``P`` value directly following a listed day with missing
-    ``P`` is an IMGW multi-day total and is flagged ``"accumulated"``; the
-    preceding days stay ``"missing"``. A leading row of column codes (IMGW
-    header, e.g. ``kansp,kapost,dorok,...`` in ``o_d_08_2025.csv``) is
-    skipped; any other row must be a data row.
+    ``"missing"``. A ``P`` value is an IMGW multi-day total, flagged
+    ``"accumulated"`` while the preceding days stay ``"missing"``, when its
+    status is ``Z`` (o_d_format.txt: a collective total of the days without
+    a measurement) or when it directly follows a listed day whose ``P`` is
+    missing (status 8). IMGW-PIB's format note gives the second rule for a
+    month whose total it computed; it is applied to every month, as a
+    reading after days without one (a weekend) is such a total in any month.
+    A file knows no day before its first, so a total on the first day of a
+    monthly file after missing days at the end of the previous month is
+    flagged here only by status ``Z``; the series build of the store carries
+    the missing days from one archive of a station to the next. A leading
+    row of column codes (IMGW header, e.g. ``kansp,kapost,dorok,...`` in
+    ``o_d_08_2025.csv``) is skipped; any other row must be a data row.
 
     Parameters
     ----------
@@ -534,7 +552,13 @@ def parse_meteo_synop_daily(
 
 
 def normalize_meteo_archive(
-    dataset: str, filename: str, data: bytes, *, year: int | None, month: int | None
+    dataset: str,
+    filename: str,
+    data: bytes,
+    *,
+    year: int | None,
+    month: int | None,
+    carry: dict[str, date] | None = None,
 ) -> Iterator[NormalizedRecord]:
     """
     Normalize a daily meteorological IMGW archive.
@@ -564,6 +588,11 @@ def normalize_meteo_archive(
     month : int or None
         Calendar month covered by the archive, or ``None`` for a yearly
         archive.
+    carry : dict of str to date or None, optional
+        For ``o_d`` archives parsed in date order: per station, the last day
+        of the archives before whose ``P`` was listed missing. It is read
+        (a total on the next day is ``"accumulated"``) and replaced by the
+        state this archive leaves; ``None`` parses the archive alone.
 
     Yields
     ------
@@ -585,7 +614,12 @@ def normalize_meteo_archive(
             continue
         matched = True
         yield from _parse_daily(
-            content, filename=f"{filename}/{member}", kind=kind, year=year, month=month
+            content,
+            filename=f"{filename}/{member}",
+            kind=kind,
+            year=year,
+            month=month,
+            carry=carry if kind == "o_d" else None,
         )
     if not matched:
         raise ObserwatorDataError(
