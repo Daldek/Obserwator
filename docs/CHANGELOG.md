@@ -6,7 +6,7 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
+Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
 
 ### Fixed
 
