@@ -133,6 +133,12 @@ Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-ca
 - B4 (with Hydrograf and Nogat): precipitation from Obserwator to Hydrograf (E3-02, E3-03, E3-04); Obserwator's part is a parser and the store of the synop and climate term data, Hydrograf's the import of `obserwator-series-csv` and attribution in `custom_precipitation`, Nogat's the edge in `ecosystem.yaml` — deferred to the next release.
 - ČHMÚ daily meteo at older observation terms (found on the deployment's raw root, 2026-11-17): `series build --dataset cz.chmi.meteo_daily` failed as a whole (exit 11) on the rows of 85 of 3,351 files stamped at a station's term of the time (`SRA` 05:00 or 07:00, `TMA`/`TMI` 18:00 to 21:00, `T` terms 05:00 to 21:00) — fixed on `fix/3.0.1` (ADR-003 erratum of 2026-11-17).
 
+### Formula audit of 2026-11-18 (branch `fix/presentation`)
+
+Defects found by Nogat's formula audit of 2026-11-18 (its `TRIAGE.md`: T24, T25, T26 and the follow-up of Hydrolog's `hotfix/ml-fits`), fixed on `fix/presentation` before the public presentation of 2026-11-19 (not merged until the author approves):
+
+- T25: two values a few ulps apart on a chart's axis without `zero` (H, Q, T, regime, trends, temperature, rating curve) hung the browser's tab in `linearTicks` — fixed: such a span is one value, and `linearTicks` ends for every domain.
+
 ### AI agent support (after 3.0.0, ADR-004)
 
 - [ ] Filter MCP tools by group or provider (`--groups`, `--provider`, `data_commands(provider=…)`), if the context cost of the tool list (about 53 KB for 35 tools since ADR-016) turns out to be a problem (ADR-004, question 4). Priority: low.

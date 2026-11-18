@@ -4,6 +4,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [Unreleased]
+
+Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
+
+### Fixed
+
+- **The GUI's charts no longer hang on values a few ulps apart (T25 of the formula audit of
+  2026-11-18).** `niceDomain` of `gui/web/src/charts/scale.js` widened only a span of 0, so
+  two values that differ by float noise alone (`0.3` and `0.30000000000000004`, e.g. annual
+  means of a constant record) on an axis without `zero` (the H, Q and T charts of a station,
+  the regime, the trends, the temperature and the rating curve) gave a step of about 10⁻¹⁷,
+  and `linearTicks` counted its multiples from about 3·10¹⁶, beyond 2⁵³, where adding 1
+  changes nothing: the browser's tab hung. A span within 10⁻⁹ of the larger absolute end (at
+  least 1) is now one value, which spans 10 % of itself above it (1 for a value within 10⁻⁸ of
+  0), as a single value did; `stepDigits` gives a step below 10⁻⁹ its decimals, where it gave
+  0 and rounded both ends of the domain to one number; and `linearTicks` counts from 0 and
+  gives no ticks rather than more than 1,000, so it ends for every domain.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.

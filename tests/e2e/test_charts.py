@@ -221,6 +221,85 @@ def test_probability_ticks_name_the_exceedance_and_the_return_period(
     assert found["rows"][:2] == ["p [%]", years]
 
 
+def _evaluate_within(page: Any, expression: str, seconds: float) -> Any:
+    """
+    The value of a synchronous expression, which Chromium ends after ``seconds``.
+
+    ``page.evaluate`` would wait for a function that never returns as long as the test
+    runs; DevTools' ``Runtime.evaluate`` terminates it, so a hang fails the test.
+    """
+    session = page.context.new_cdp_session(page)
+    try:
+        answer = session.send(
+            "Runtime.evaluate",
+            {
+                "expression": expression,
+                "returnByValue": True,
+                "timeout": seconds * 1000,
+            },
+        )
+    finally:
+        session.detach()
+    if "exceptionDetails" in answer:
+        details = answer["exceptionDetails"]
+        raise AssertionError(details.get("exception", {}).get("description") or details)
+    return answer["result"]["value"]
+
+
+def test_linear_domains_of_values_a_few_ulps_apart_are_padded_and_ticked(open_page):
+    # Values that differ by float noise only (annual means of a constant record) made
+    # linearTicks count past 2^53, where k + 1 === k: the tab hung (T25)
+    page = _open(open_page)
+    found = _evaluate_within(
+        page,
+        """(() => {
+          const { niceDomain, linearTicks } = window.charts;
+          const bits = new Float64Array(1);
+          const whole = new BigInt64Array(bits.buffer);
+          const ulpsAway = (value, n) => {
+            bits[0] = value;
+            whole[0] += BigInt(n);
+            return bits[0];
+          };
+          const sizes = [0, 1e-300, 1e-12, 1e-9, 2e-8, 1e-6, 0.3, 1, 7, 250, 1e6, 1e15, 1e100, 1e300];
+          const wrong = [];
+          let checked = 0;
+          for (const size of sizes) for (const sign of [1, -1]) for (const gap of [0, 1, 4, 1024]) {
+            const values = [sign * size, ulpsAway(sign * size, gap)];
+            for (const zero of [true, false]) for (const count of [6, 10]) {
+              const d = niceDomain(values, { zero, count });
+              const ticks = d.ticks.map((tick) => tick.value);
+              const labels = new Set(d.ticks.map((tick) => tick.label));
+              const ok = [d.min, d.max, d.step].every(Number.isFinite) && d.step > 0 &&
+                d.min < d.max && d.min <= Math.min(...values) && d.max >= Math.max(...values) &&
+                ticks.length >= 2 && ticks.length <= count + 2 && labels.size === ticks.length &&
+                ticks.every((tick, at) => tick >= d.min && tick <= d.max && (!at || tick > ticks[at - 1]));
+              if (!ok) wrong.push({ values, zero, count, d });
+              checked += 1;
+            }
+          }
+          const extreme = [
+            niceDomain([Number.MAX_VALUE], { zero: false }),
+            niceDomain([-Number.MAX_VALUE, Number.MAX_VALUE]),
+            niceDomain([Number.MIN_VALUE, 2 * Number.MIN_VALUE], { zero: false }),
+          ].map((d) => d.ticks.length);
+          const direct = [
+            linearTicks(0.3, 0.3, 1e-17),
+            linearTicks(0, 1, 1e-12),
+            linearTicks(2 ** 60, 2 ** 60 + 4096, 1),
+          ].map((ticks) => ticks.length);
+          const ulp = niceDomain([0.3, 0.30000000000000004], { zero: false });
+          return { wrong, checked, extreme, direct, ulp: [ulp.min, ulp.max, ulp.step] };
+        })()""",
+        seconds=10,
+    )
+    assert found["wrong"] == []
+    assert found["checked"] == 448
+    assert all(length <= 1001 for length in found["extreme"] + found["direct"])
+    # A value a few ulps from another is one value: 10 % of it above, rounded ticks
+    assert found["ulp"] == [0.3, 0.34, 0.01]
+
+
 # --- decimation ------------------------------------------------------------------------
 
 
