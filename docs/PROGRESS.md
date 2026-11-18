@@ -6,9 +6,9 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 
 | Field | Value |
 |------|---------|
-| **Version** | 3.0.0, released on 2026-11-16 (tag `v3.0.0` on `main` `707b4a5`); next 3.0.1, defect fixes only, at `3.0.1.dev0` ("Known defects" below) |
-| **Date** | 2026-11-17 |
-| **Working branch** | `fix/3.0.1` (from `develop` `46f5fe3`): the fixes of 3.0.1, not merged until the author approves; `develop` (formerly `slave`, ECO-008); `docs/release-3.0.0` holds the closure of the release. Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
+| **Version** | 3.0.1, released on 2026-11-18 (tag `v3.0.1` on `main` `533c42a`); next 3.1.0 (plan `docs/plans/` of 3.1.0: ČHMÚ snow, half-year characteristics), at `3.1.0.dev0` on `develop` |
+| **Date** | 2026-11-18 |
+| **Working branch** | `develop` (formerly `slave`, ECO-008), with the fixes of the formula audit of 2026-11-18 (`fix/presentation`, merged `04c017f`; deployed on :8060). Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
 | **Python** | >=3.12 |
 
 | Component | State | Notes |
