@@ -56,6 +56,21 @@ Changes since 3.0.1: defect fixes of Nogat's formula audit of 2026-11-18.
   stations (1986–2015), which may differ from IMGW-PIB's own estimate for a station at the
   same place (the PMAXTP view, the PMAXTP column of „Opady”, the guide). Texts only: no value
   changes.
+- **The GUI's „Przepływy minimalne” shows the low-flow results of Hydrolog's corrected
+  maximum likelihood (follow-up of Hydrolog's `hotfix/ml-fits`, T28 of the formula audit of
+  2026-11-18).** Hydrolog's `stats low-flow` gives a discharge quantile that would fall below
+  0 m³/s as `null`, with the warning `negative_quantiles` (`details.return_periods`,
+  `details.zero_return_period`), and ends a sample it cannot fit with `calculation_error`
+  (`unbounded_likelihood`, `constant_values`, fewer than 4 complete years). The part now
+  leaves such points out of the curve, shows „–” in the table and in „NQ 10-letni” with a note
+  („F = 10 %: poniżej 0 m³/s”; under the table the return period at which the distribution
+  reaches 0 m³/s), and words the notice `negative_quantiles` in Polish and English; a failed
+  `low_flow.Q` shows Hydrolog's error in place of the part, as before. The other consumers of
+  `low_flow.Q` take `null` as it is: `analyses read` (Python, CLI, REST, MCP) passes the stored
+  document through, `analyses export` writes an empty CSV cell, the CLI's summary „—”, and the
+  analyses build reads no number of it. Tested on Hydrolog's own answers
+  (`tests/fixtures/hydrolog/low_flow_negative_quantiles.json`). The stored `low_flow.Q`
+  analyses change only when they are built again with that Hydrolog.
 
 ## [3.0.1] - 2026-11-18
 

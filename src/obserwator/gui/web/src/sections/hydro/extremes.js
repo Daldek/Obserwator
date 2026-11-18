@@ -146,13 +146,17 @@ function Homogeneity({ state }) {
 function LowFlow({ state, code, session, periods }) {
   const result = state.result;
   const fitted = result && result.fisher_tippett;
+  // A discharge quantile below 0 m³/s is null in Hydrolog's result (notice `negative_quantiles`)
+  const notices = (state.data && state.data.envelope && state.data.envelope.notices) || [];
+  const negative = notices.find((notice) => notice.code === "negative_quantiles");
+  const zero = negative && negative.details ? negative.details.zero_return_period : null;
   const spec = useMemo(() => {
     if (!fitted) return null;
     return {
       x: { scale: "gumbel", domain: [99, 0.1], label: t("hydro.extremes.low_axis") },
       y: { label: "NQ [m³/s]", unit: "m³/s" },
       series: [
-        { id: "ft", kind: "line", cls: "s3", label: t("hydro.extremes.low_curve"), data: fitted.non_exceedance_probabilities.map((p, i) => [p * 100, fitted.quantiles[i]]).sort((a, b) => b[0] - a[0]) },
+        { id: "ft", kind: "line", cls: "s3", label: t("hydro.extremes.low_curve"), data: fitted.non_exceedance_probabilities.map((p, i) => [p * 100, fitted.quantiles[i]]).filter(([, q]) => Number.isFinite(q)).sort((a, b) => b[0] - a[0]) },
         { id: "emp", kind: "points", label: t("hydro.extremes.low_points"), data: result.empirical.non_exceedance_probabilities.map((p, i) => [p * 100, result.empirical.values_ascending[i]]), readout: false },
       ],
       legend: true,
@@ -175,6 +179,7 @@ function LowFlow({ state, code, session, periods }) {
         .filter((row) => row >= 0)
         .map((row) => ({ f: percent(fitted.non_exceedance_probabilities[row]), T: fitted.return_periods[row], q: fitted.quantiles[row] }))
     : [];
+  const tenMissing = ten >= 0 && !Number.isFinite(fitted.quantiles[ten]);
   const years = result ? result.hydrological_years : [];
   return html`<${Section} title=${t("hydro.extremes.low_title")} info=${t("hydro.extremes.low_info")} guide="metody-extremes-minima" states=${[state]}>
     ${result &&
@@ -182,12 +187,15 @@ function LowFlow({ state, code, session, periods }) {
         items=${[
           { label: t("hydro.extremes.fig_years"), value: fmt(result.n_years, 0), note: years.length ? `${years[0]}–${years[years.length - 1]}` : "" },
           { label: "NNQ", value: withUnit(lowest, "Q"), note: lowestYear ? t("hydro.common.year_n", { year: lowestYear }) : "" },
-          { label: t("hydro.extremes.fig_low_10"), value: ten >= 0 ? withUnit(fitted.quantiles[ten], "Q") : "–", note: "F = 10 %" },
+          { label: t("hydro.extremes.fig_low_10"), value: ten >= 0 ? withUnit(fitted.quantiles[ten], "Q") : "–", note: tenMissing ? t("hydro.extremes.low_below_zero") : "F = 10 %" },
           { label: t("hydro.extremes.col_parameters"), value: Object.entries(fitted.parameters).map(([k, v]) => `${k} ${fmt(v, 3)}`).join(", ") },
         ]}
       />
       <${Chart} spec=${spec} />
       <${Table} columns=${columns} rows=${rows} />
+      ${rows.some((row) => !Number.isFinite(row.q))
+        ? html`<p class="muted hy-caption">${Number.isFinite(zero) ? t("hydro.extremes.low_negative", { years: fmt(zero, 1) }) : t("hydro.extremes.low_negative_any")}</p>`
+        : null}
       ${result.incomplete_years && result.incomplete_years.length
         ? html`<p class="muted hy-caption">${t("hydro.extremes.incomplete", { years: result.incomplete_years.join(", ") })}</p>`
         : null}
