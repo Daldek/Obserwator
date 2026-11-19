@@ -473,7 +473,7 @@ MESSAGES = {
         "Trend rocznej średniej temperatury powietrza",
     ),
     "title_trend_frost_days": Text(
-        "Trend of the frost days", "Trend liczby dni przymrozkowych"
+        "Trend of the frost days", "Trend liczby dni z przymrozkiem"
     ),
     "title_trend_summer_days": Text(
         "Trend of the summer days", "Trend liczby dni gorących"
