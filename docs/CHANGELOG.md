@@ -81,6 +81,19 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   whose range is (0, 100) and which now refuses 100 (`validation_error`, `details.reason`
   `exclusive_maximum`). The option has `exclusive_maximum` 100, as `AnalysisOption` already
   allows: 100 is a `validation_error` naming `percentiles` before Hydrolog runs.
+- **`current hydro` tells a stale flow from a current one (a tester's report of 2026-11-19).**
+  IMGW-PIB keeps publishing the last flow of a station that no longer computes one, next to a
+  current water level: on 2026-11-19 Ujście Nysy Kłodzkiej (150170130, Odra) gave 1,550 m³/s
+  of 2024-09-17 09:50, the peak of the September 2024 flood, with 274 cm of 10:50 that day, and
+  so did Opole-Groszowice and Oława (same time), Biała Nyska and Pustynia; 42 of the 696
+  stations with a flow had one at least 2 days older than their level. `fetch_hydro_current`
+  passed it on as a current value. `HydroCurrentData` has a new computed field `flow_stale`
+  (Python, CLI, REST, MCP): `true` when `flow_date` precedes `water_level_date` by more than
+  3 hours (`HydroCurrentData.FLOW_STALE_AFTER`), `false` otherwise, `null` without a flow or
+  without both dates; `flow_m3s` and `flow_date` stay as published. The threshold is short
+  because a flood rises within hours: on that day 570 of the 696 flows had the time of their
+  level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
+  tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
 
 ## [3.0.1] - 2026-11-18
 

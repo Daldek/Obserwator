@@ -684,10 +684,11 @@ function StationTip({ station }) {
   `;
 }
 
-/** A value with its unit and the time of its measurement, or nothing without a value. */
-function Reading({ label, value, digits = 0, unit, at }) {
+/** A value with its unit and the time of its measurement, or nothing without a value; a
+ * stale value (`current hydro`'s `flow_stale`) is struck through and says so. */
+function Reading({ label, value, digits = 0, unit, at, stale = false }) {
   if (value === null || value === undefined) return null;
-  return html`<span class="tip-value">${label}: <strong>${fmt(value, digits)} ${unit}</strong>${at ? html` <span class="muted">${measuredAt(at)}</span>` : null}</span>`;
+  return html`<span class=${stale ? "tip-value stale" : "tip-value"}>${label}: <strong>${fmt(value, digits)} ${unit}</strong>${at ? html` <span class="muted">${measuredAt(at)}</span>` : null}${stale ? html` <span class="stale-note">${t("stations.tip.flow_stale")}</span>` : null}</span>`;
 }
 
 function HydroTip({ row, station }) {
@@ -698,7 +699,7 @@ function HydroTip({ row, station }) {
     <span class="muted"><code>${row.code}</code> · ${providerName("IMGW-PIB")} · ${kindName("hydro")}</span>
     <span class="tip-class"><${SymbolIcon} shape="hydro" color=${state.color} hollow=${state.outdated} size=${13} />${state.label}${state.outdated ? ` ${t("stations.tip.outdated")}` : ""}</span>
     <${Reading} label=${t("stations.tip.water_level")} value=${row.h} unit="cm" at=${row.h_at} />
-    <${Reading} label=${t("stations.tip.discharge")} value=${row.q} digits=${row.q !== null && row.q < 10 ? 2 : 1} unit="m³/s" at=${row.q_at} />
+    <${Reading} label=${t("stations.tip.discharge")} value=${row.q} digits=${row.q !== null && row.q < 10 ? 2 : 1} unit="m³/s" at=${row.q_at} stale=${row.q_stale === true} />
     <${Reading} label=${t("stations.tip.water_temperature")} value=${row.t} digits=${1} unit="°C" at=${row.t_at} />
     ${row.h === null && row.q === null && row.t === null ? html`<span class="muted">${t("stations.tip.no_values")}</span>` : null}
   `;

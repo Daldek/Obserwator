@@ -377,6 +377,9 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .figures dt { font-size: var(--text-xs); color: var(--text-3); }
 .figures dd { margin: 2px 0 0; font-size: var(--text-md); font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
 .figures small { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--text-2); line-height: 1.25; }
+/* A stale value (`current hydro`'s `flow_stale`): struck through, with a warning note */
+.figures .stale dd { color: var(--text-3); text-decoration: line-through; }
+.stale-note { color: var(--warn-ink); }
 
 .params { width: 100%; border-collapse: collapse; font-size: var(--text-sm); margin: 0 0 var(--space-2); }
 .params th, .params td { padding: 5px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: var(--weight-regular); vertical-align: baseline; }

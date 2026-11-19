@@ -227,6 +227,7 @@ def hydro_points(states: Snapshot, hydro: Snapshot) -> list[dict[str, Any]]:
                 "h_at": record.get("water_level_date"),
                 "q": record.get("flow_m3s"),
                 "q_at": record.get("flow_date"),
+                "q_stale": record.get("flow_stale"),
                 "t": record.get("water_temp_c"),
                 "t_at": record.get("water_temp_date"),
             }

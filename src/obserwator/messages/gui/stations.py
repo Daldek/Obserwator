@@ -55,6 +55,10 @@ MESSAGES: dict[str, Text] = {
     ),
     "stations.tip.water_level": Text("Water level H", "Stan wody H"),
     "stations.tip.discharge": Text("Discharge Q", "Przepływ Q"),
+    "stations.tip.flow_stale": Text(
+        "(stale: more than 3 h older than the water level)",
+        "(nieaktualny: starszy od stanu wody o ponad 3 h)",
+    ),
     "stations.tip.water_temperature": Text("Water temperature", "Temperatura wody"),
     "stations.tip.no_values": Text(
         "IMGW-PIB gives no current measurements of this station.",

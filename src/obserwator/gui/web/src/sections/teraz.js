@@ -44,7 +44,7 @@ function HydroNow({ doc }) {
     <${Figures}
       items=${[
         { label: t("station.now.water_level"), value: amount(r.water_level_cm, 0, "cm"), note: at(r.water_level_date) },
-        { label: t("station.now.discharge"), value: amount(r.flow_m3s, r.flow_m3s !== null && r.flow_m3s < 10 ? 2 : 1, "m³/s"), note: at(r.flow_date) },
+        { label: t("station.now.discharge"), value: amount(r.flow_m3s, r.flow_m3s !== null && r.flow_m3s < 10 ? 2 : 1, "m³/s"), note: at(r.flow_date), stale: r.flow_stale === true ? t("station.now.flow_stale") : null },
         { label: t("station.now.water_temperature"), value: amount(r.water_temp_c, 1, "°C"), note: at(r.water_temp_date) },
       ]}
     />

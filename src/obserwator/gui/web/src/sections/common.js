@@ -229,12 +229,13 @@ export function Table({ columns, rows, className, max = 0 }) {
 }
 
 /**
- * Key figures in a row of tiles.
+ * Key figures in a row of tiles; a tile with `stale` strikes its value through and adds
+ * that text below it.
  *
- * @param {{items: {label: string, value: string, note?: string}[]}} props
+ * @param {{items: {label: string, value: string, note?: string, stale?: string | null}[]}} props
  */
 export function Figures({ items }) {
-  return html`<dl class="figures">${items.map((i) => html`<div><dt>${i.label}</dt><dd>${i.value}</dd>${i.note && html`<small>${i.note}</small>`}</div>`)}</dl>`;
+  return html`<dl class="figures">${items.map((i) => html`<div class=${i.stale ? "stale" : null}><dt>${i.label}</dt><dd>${i.value}</dd>${i.note && html`<small>${i.note}</small>`}${i.stale && html`<small class="stale-note">${i.stale}</small>`}</div>`)}</dl>`;
 }
 
 /**

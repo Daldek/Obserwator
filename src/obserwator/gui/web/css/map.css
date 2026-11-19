@@ -138,6 +138,7 @@
 .map-tip code { font-size: var(--text-xs); }
 .tip-class { display: flex; align-items: center; gap: 6px; margin: 2px 0 1px; font-weight: var(--weight-bold); }
 .tip-value strong { font-variant-numeric: tabular-nums; }
+.tip-value.stale strong { color: var(--text-3); text-decoration: line-through; }
 
 /* Legend, bottom left */
 .map-legend {

@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from numbers import Real
 from typing import Any, ClassVar, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
@@ -351,9 +351,15 @@ class HydroCurrentData(BaseModel):
     Current hydrological measurement from IMGW API.
 
     Data comes from: https://danepubliczne.imgw.pl/api/data/hydro
+
+    IMGW-PIB keeps publishing the last flow of a station after it stops
+    computing new ones (e.g. canalized reaches of the Odra since the flood of
+    September 2024), next to a current water level; `flow_stale` tells such a
+    flow from a current one.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-hydro-current/1"
+    FLOW_STALE_AFTER: ClassVar[timedelta] = timedelta(hours=3)
 
     station_code: str = Field(description="Station code")
     station_name: str = Field(description="Station name")
@@ -377,6 +383,33 @@ class HydroCurrentData(BaseModel):
     )
     ice_phenomenon: str | None = Field(default=None, description="Ice phenomenon code")
     overgrowth: str | None = Field(default=None, description="Overgrowth code")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description=(
+            "Whether the flow was measured more than 3 hours before the water "
+            "level (IMGW-PIB still publishes the last flow of a station that no "
+            "longer computes one); None without a flow or without both dates"
+        )
+    )
+    @property
+    def flow_stale(self) -> bool | None:
+        """
+        Whether the flow is older than the water level by more than 3 hours.
+
+        Returns
+        -------
+        bool or None
+            True when `flow_date` precedes `water_level_date` by more than
+            `FLOW_STALE_AFTER`; None without a flow or when either date is
+            missing or unreadable.
+        """
+        if self.flow_m3s is None:
+            return None
+        level_at = _api_datetime(self.water_level_date)
+        flow_at = _api_datetime(self.flow_date)
+        if level_at is None or flow_at is None:
+            return None
+        return level_at - flow_at > self.FLOW_STALE_AFTER
 
     @classmethod
     def from_api_response(cls, data: dict[str, Any]) -> HydroCurrentData:
@@ -410,6 +443,16 @@ class HydroCurrentData(BaseModel):
             ice_phenomenon=data.get("zjawisko_lodowe"),
             overgrowth=data.get("zjawisko_zarastania"),
         )
+
+
+def _api_datetime(text: str | None) -> datetime | None:
+    """A measurement time of the IMGW API (``YYYY-MM-DD HH:MM:SS``), or None."""
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 class MeteoCurrentData(BaseModel):
