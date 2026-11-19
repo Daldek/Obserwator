@@ -238,6 +238,54 @@ class TestHydroCurrentData:
             None,
         )
 
+    @pytest.mark.parametrize(
+        ("flow_date", "expected"),
+        [
+            # Ujście Nysy Kłodzkiej (150170130) on 2026-11-19: the flood flow of 2024
+            ("2024-09-17 09:50:00", True),
+            ("2026-11-19 07:40:00", True),  # 3 h 10 min before the level
+            ("2026-11-19 07:50:00", False),  # exactly 3 h: not yet stale
+            ("2026-11-19 10:50:00", False),
+            ("2026-11-19 11:00:00", False),  # flow newer than the level
+            (None, None),
+            ("brak", None),
+        ],
+    )
+    def test_flow_stale_compares_flow_with_level_time(self, flow_date, expected):
+        data = HydroCurrentData.from_api_response(
+            {
+                "id_stacji": "150170130",
+                "stacja": "Ujście Nysy Kłodzkiej",
+                "stan_wody": "274",
+                "stan_wody_data_pomiaru": "2026-11-19 10:50:00",
+                "przeplyw": "1550",
+                "przeplyw_data": flow_date,
+            }
+        )
+
+        assert data.flow_stale is expected
+        assert data.model_dump(mode="json")["flow_stale"] is expected
+
+    def test_flow_stale_is_none_without_flow_or_level_time(self):
+        no_flow = HydroCurrentData.from_api_response(
+            {
+                "id_stacji": "150170130",
+                "stacja": "Ujście Nysy Kłodzkiej",
+                "stan_wody_data_pomiaru": "2026-11-19 10:50:00",
+                "przeplyw_data": "2024-09-17 09:50:00",
+            }
+        )
+        no_level_time = HydroCurrentData.from_api_response(
+            {
+                "id_stacji": "150170130",
+                "stacja": "Ujście Nysy Kłodzkiej",
+                "przeplyw": "1550",
+                "przeplyw_data": "2024-09-17 09:50:00",
+            }
+        )
+
+        assert (no_flow.flow_stale, no_level_time.flow_stale) == (None, None)
+
 
 class TestMeteoCurrentData:
     """Tests for MeteoCurrentData model."""

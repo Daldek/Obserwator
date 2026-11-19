@@ -334,6 +334,10 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.now.water_level": Text("Water level H", "Stan wody H"),
     "station.now.discharge": Text("Discharge Q", "Przepływ Q"),
+    "station.now.flow_stale": Text(
+        "stale: more than 3 h older than the water level",
+        "nieaktualny: starszy od stanu wody o ponad 3 h",
+    ),
     "station.now.water_temperature": Text("Water temperature", "Temperatura wody"),
     "station.now.precipitation_10min": Text("Precipitation (10 min)", "Opad (10 min)"),
     "station.now.air_temperature": Text("Air temperature", "Temperatura powietrza"),
