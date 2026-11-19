@@ -264,7 +264,6 @@ The response contains **16 durations × 27 probabilities** for each of the `ks`/
 
 Decisions waiting for the author (remove once resolved):
 
-- IMGW-PIB's terms for serving its series and analysis results on the public instance (Nogat plan `2026-11-12-station-data-and-analyses.md`, question 4, „do sprawdzenia”); until answered the public GUI stays behind Cloudflare Access.
 - Hydrolog's version for production builds of the analyses (ADR-016): Hydrolog's development builds all report one development version, so the carry-forward does not see a Hydrolog change within one development version; should a deployment build only with a released Hydrolog version (or recompute into a data root without analyses versions after each Hydrolog update)? Since 2026-11-19 Hydrolog's `develop` raises N of `X.Y.Z.devN` with every change a consumer computes with (Hydrolog PROGRESS), so each such commit is a new version for the carry rule; the question for released builds stays.
 
 **For the author (outside the agent's reach):** branch/tag rulesets (none on 2026-11-14: `main` and `develop` are unprotected), Dependabot security updates and private vulnerability reporting (DEV-3.6, DEV-13.7; reporting is off on 2026-11-14, although `SECURITY.md` sends reports there); the CLA text.
