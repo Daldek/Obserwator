@@ -7,8 +7,8 @@ Current state of the project (Nogat standard 1.0, DOC-6.1). Release history, cro
 | Field | Value |
 |------|---------|
 | **Version** | 3.0.1, released on 2026-11-18 (tag `v3.0.1` on `main` `533c42a`); next 3.1.0 (plan `docs/plans/` of 3.1.0: ČHMÚ snow, half-year characteristics), at `3.1.0.dev0` on `develop` |
-| **Date** | 2026-11-18 |
-| **Working branch** | `develop` (formerly `slave`, ECO-008), with the fixes of the formula audit of 2026-11-18 (`fix/presentation`, merged `04c017f`; deployed on :8060). Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
+| **Date** | 2026-11-19 |
+| **Working branch** | `develop` (formerly `slave`, ECO-008), with the fixes of the formula audit of 2026-11-18 (`fix/presentation`, merged `04c017f`; `fix/frost-days-title`, merged `c3587ae`); deployed on :8060 at `c3587ae` with Hydrolog `0.9.0.dev0` (worktree `~/workspace/Hydrolog-obs`, Hydrolog `cec5d97`), which rebuilt every analysis on 2026-11-19: `pl.imgw` `2026-11-19_8e30de18` (3,240 stations, 83,550 ok, 1,154 failed) and `cz.chmi` `2026-11-19_1df2234d` (2,321 stations, 63,900 ok, 1,069 failed); the 162 + 168 more failures than on 2026-11-18 are all `low_flow.Q`, whose Fisher–Tippett fit by maximum likelihood is now refused where its likelihood has no maximum (`unbounded_likelihood`, 299 stations), instead of the degenerate fit of 0.8.1. Awaiting the author's decision: `fix/archiwista-compat` (superseded by `fix/archiwista-compat-2`, but `e9d8886` and `2e78eb6` are in no other branch) and `backup/versioned-store-master-base` `7263212` (8 commits not present elsewhere, local and on GitHub); local only, not merged: `feat/gui-mockup` (head `5aafe0c`, the checkout kept to roll the public deployment back) and `feature/data-root-o2` (an earlier form of `ba68ed4`) |
 | **Python** | >=3.12 |
 
 | Component | State | Notes |
@@ -135,7 +135,7 @@ Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-ca
 
 ### Formula audit of 2026-11-18 (branch `fix/presentation`)
 
-Defects found by Nogat's formula audit of 2026-11-18 (its `TRIAGE.md`: T24, T25, T26 and the follow-up of Hydrolog's `hotfix/ml-fits`), fixed on `fix/presentation` before the public presentation of 2026-11-19 (not merged until the author approves):
+Defects found by Nogat's formula audit of 2026-11-18 (its `TRIAGE.md`: T24, T25, T26 and the follow-up of Hydrolog's `hotfix/ml-fits`), fixed on `fix/presentation` before the public presentation of 2026-11-19, merged into `develop` (`04c017f`) and deployed on :8060:
 
 - T25: two values a few ulps apart on a chart's axis without `zero` (H, Q, T, regime, trends, temperature, rating curve) hung the browser's tab in `linearTicks` — fixed: such a span is one value, and `linearTicks` ends for every domain.
 - T24: a precipitation total on the 1st of a monthly `o_d` archive after missing days at the end of the previous one stayed `value` (BORUCINO 2024-07-01, 13.1 mm), and status `Z` was never read — fixed: `series build` carries the missing days across archives and `Z` is `accumulated`; the stored `pl.imgw.meteo_precip_daily` series takes it in its next version (not rebuilt).
@@ -264,10 +264,10 @@ The response contains **16 durations × 27 probabilities** for each of the `ks`/
 Decisions waiting for the author (remove once resolved):
 
 - IMGW-PIB's terms for serving its series and analysis results on the public instance (Nogat plan `2026-11-12-station-data-and-analyses.md`, question 4, „do sprawdzenia”); until answered the public GUI stays behind Cloudflare Access.
-- Hydrolog's version for production builds of the analyses (ADR-016): Hydrolog's development builds all report one development version (`0.8.0.dev0` since Hydrolog `e5df06d`, `1.0.0.dev0` before), so the carry-forward does not see a Hydrolog change within one development version; should a deployment build only with a released Hydrolog version (or recompute into a data root without analyses versions after each Hydrolog update)?
+- Hydrolog's version for production builds of the analyses (ADR-016): Hydrolog's development builds all report one development version, so the carry-forward does not see a Hydrolog change within one development version; should a deployment build only with a released Hydrolog version (or recompute into a data root without analyses versions after each Hydrolog update)? Since 2026-11-19 Hydrolog's `develop` raises N of `X.Y.Z.devN` with every change a consumer computes with (Hydrolog PROGRESS), so each such commit is a new version for the carry rule; the question for released builds stays.
 
 **For the author (outside the agent's reach):** branch/tag rulesets (none on 2026-11-14: `main` and `develop` are unprotected), Dependabot security updates and private vulnerability reporting (DEV-3.6, DEV-13.7; reporting is off on 2026-11-14, although `SECURITY.md` sends reports there); the CLA text.
 
 ---
 
-**Last updated:** 2026-11-16
+**Last updated:** 2026-11-19
