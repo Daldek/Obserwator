@@ -10,6 +10,10 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
+  „Trend liczby dni przymrozkowych”, but the series counts the days with Tmin < 0 °C (FD of
+  the ETCCDI), while IMGW-PIB's „dzień przymrozkowy” has Tmin < 0 °C and Tmax > 0 °C
+  (Hydrolog ADR-0044); it now reads „Trend liczby dni z przymrozkiem”, as the GUI's labels.
 - **The GUI's charts no longer hang on values a few ulps apart (T25 of the formula audit of
   2026-11-18).** `niceDomain` of `gui/web/src/charts/scale.js` widened only a span of 0, so
   two values that differ by float noise alone (`0.3` and `0.30000000000000004`, e.g. annual
