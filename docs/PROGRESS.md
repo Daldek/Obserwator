@@ -139,6 +139,24 @@ Deeper changes (each needs a plan approved by the author, DEV-17.4):
 - [ ] Availability: one process behind one tunnel connector; the first requests after a start took 5.3–7.3 s (2026-11-14). Warm the snapshot and the station layer before the server reports itself ready, an external check of availability (requests to `/health` already come and get `404`), a second connector of the tunnel; the basemap depends on `tiles.openfreemap.org`, and without it the map is empty.
 - [ ] To decide by the author: on a phone's first visit the notice of sources and terms is several screens long before „Rozumiem”; a short notice with the details folded is a change of what the regulamin shows.
 
+### Release 3.1.1 (the author's decision of 2026-11-20)
+
+Small fixes after 3.1.0.
+
+- [ ] `.env` in `.gitignore`: `git check-ignore .env` exits 1, while `.env` may hold credentials (the store write token, the GUI's admin key and, from 3.2.0, provider API keys). Step 0 of Nogat's plan `docs/plans/2026-11-20-hydromet-providers.md` (branch `plan/hydromet-providers`).
+
+### Release 3.2.0 (the author's decisions of 2026-11-20)
+
+Providers beyond the national services and ČHMÚ's groundwater. Nogat's plan `docs/plans/2026-11-20-hydromet-providers.md` (approval pending) holds the decisions P1 to P13; it starts with an ADR of this repository.
+
+- [ ] Provider adapters (plan P1, P2, step 2): `obserwator.providers`, one module per provider behind one `Protocol`; IMGW-PIB and ČHMÚ move onto it with the same bytes of archives, sidecars, series, catalogs, envelopes and AGENTS.md.
+- [ ] Provider credentials and errors (P3, P4, step 3): `OBSERWATOR_<PROVIDER>_API_KEY` or `…_API_KEY_FILE` in `CREDENTIAL_KEYS`; a missing or rejected key is `forbidden` with `details.reason` `missing_credentials` or `invalid_credentials`.
+- [ ] Hourly series (P5, step 4): `time_unit` `hour`, additive in `obserwator-series/1`, with daily aggregation by the provider's day.
+- [ ] Gdańskie Wody (P6–P13, step 5): the first adapter of a provider that is no national service, with the source classes `nmhs`/`other` and their GUI (class switch, class headings, outlines, panel badge). Storing and the public GUI wait for the provider's regulamin (the plan's question 1).
+- [ ] ČHMÚ groundwater (the author, 2026-11-20): `https://opendata.chmi.cz/hydrology/groundwater/`, checked on 2026-11-20. `historical/data/H_<WIGOS>_{W|D}_<year>.json`: 86,758 files of 1,928 objects (1,582 bores, 302 springs), 1933–2024, a median record of 52 years, 1,311 records of at least 30 years; `recent/data/<WIGOS>_D_<yyyymm>.json` from 2025-01 (563 objects); `now/data/` (279 objects); `characteristic/data/GCHAR_<WIGOS>.json` (674 objects, `GCHAR_SCHEMA.json`); `*/metadata/meta1.json` (name, `bore`/`spring`, coordinates, altitude) and `meta2.json` (the series: `HD`/`HT` level daily/weekly in m n.m., `YD`/`YT` spring yield in l/s, `TD`/`TT` water temperature in °C). Datasets of the provider ČHMÚ (`cz.chmi.groundwater_*`), the same JSON family and WIGOS codes as `cz.chmi.hydro_daily`; the level in m a.s.l. is the variable `H_asl` of plan P7, not `H`; a station kind for groundwater objects (bore, spring) in the catalog and the GUI. To check before code: the licence of the folder (`read_me/`, CC BY 4.0 like the rest of opendata.chmi.cz?) and `read_me/Popis_*` for the codes and the time stamps (daily values at 06:00 or 07:00 UTC).
+
+Open: PIG-PIB's groundwater monitoring (MWP) for Poland, the author to decide (2026-11-20). Publicly only one month of measurements (ArcGIS `cbdgmapa.pgi.gov.pl/arcgis/rest/services/hydrogeologia/mwp/MapServer`, table 1, on 2026-11-20 the month 2026-09: 26,117 values of 1,291 points, depth to water in m below ground) and the points (layer 0, 3,502, with ground elevation); dane.gov.pl gives CC BY 4.0 (dataset 170); the full history since 1966 only on a paper request, free for public bodies and research.
+
 ### Known defects, deferred to the next release (the author's decision of 2026-11-16)
 
 Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0. Release 3.0.1 takes defect fixes only: those on `fix/3.0.1` (not merged) say so; the rest wait for the author's list.
