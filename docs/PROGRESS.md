@@ -117,6 +117,28 @@ Planned on 2026-11-14 as 3.0.1; on 2026-11-17 the author made 3.0.1 a release of
 
 Not taken (2026-11-14): a request to IMGW-PIB for permission to use hydro-back.imgw.pl, which is the undocumented backend of hydro.imgw.pl and not a public API, and a move of the water states to danepubliczne.imgw.pl.
 
+### Release 3.1.0: responsiveness and accessibility of the public GUI (the author's decision of 2026-11-20)
+
+Found on 2026-11-20 from the access logs of 2026-11-14 to 2026-11-20 (about 4,300 requests; 2,664 on 2026-11-19, the day of the presentation, at about 500 an hour, with no `429` and no `5xx`), `curl` against `127.0.0.1:8060` and through the Cloudflare tunnel (about 130–150 ms of round trip per request), and a headless browser emulating an iPhone 13 on `fast3g` with a 4× slower CPU, with axe-core 4.13 on the start page and on a station. The start today is a chain: the HTML and 71 files (63 modules of `src/`, MapLibre, CSS) end at 1.23 s, `api/texts` only then (to 1.99 s), then `api/session`, `api/downloads/stations` and `api/stations` (to 3.5 s), then the basemap's tiles. The first four items touch every visit and change no interface.
+
+Quick fixes:
+
+- [ ] `api/stations` answers `304` without building its answer: today the layer (1.63 MB of JSON, 141 KB gzipped) is assembled on every request, about 220 ms, and a `304` still takes about 100 ms. Check `If-None-Match` against the layer's ETag first and keep the built, compressed answer in memory until the snapshot changes.
+- [ ] The start does not wait in a chain: `index.html` preloads `api/texts?lang=…`, `api/session` and `api/stations` (`<link rel="preload" as="fetch" crossorigin>`) and the entry modules (`modulepreload`), or `main.js` asks for them together; two to three round trips less.
+- [ ] `favicon.ico`, `robots.txt` and `apple-touch-icon.png` (with `apple-touch-icon-precomposed.png`) are served: 43 answers `404` in the logs.
+- [ ] The data root's snapshot is read again in the background: `DataRoot.snapshot` reads it on a request when the last read is older than a minute, so at low traffic nearly every visit pays for it (`api/session` cold about 190 ms against 1 ms warm, median 314 ms in the logs). The requests take the last snapshot while one read runs, as the refresh of `/api/current` in the section above, which today takes about 1 s cold against 36 ms.
+- [ ] Long cache of static files: everything is `Cache-Control: no-cache`, so each visit asks again for 71 files and MapLibre's module (286 KB gzipped) goes through the tunnel every time (`cf-cache-status: DYNAMIC`). Files of `vendor/` get the version in their address (the worker already has `?v=6.14.0`, the module and its CSS do not) and `src/`, `css/` a digest of the build, all with `max-age=31536000, immutable`; `index.html` and `api/` stay `no-cache`.
+- [ ] Narrow screens: the attribution strip takes 127 of 844 px (15 %) at all times, over an open station's panel too; one line with „Źródła i warunki” opening the full text instead. The station button of the top bar overflows the screen by 5 px and cuts the name (ANNOPOL); a maximum width with an ellipsis.
+- [ ] Accessibility (axe-core): no `<h1>` on the page (a visually hidden one); two landmarks named „Mapa stacji” (`.view-center`), each gets its own name; serious: `<dl class="figures">` of the station's „Pomiary bieżące” holds children other than `dt`/`dd` groups or `div`.
+
+Deeper changes (each needs a plan approved by the author, DEV-17.4):
+
+- [ ] A built frontend: one minified bundle of `src/` (about 605 KB of source in 63 modules imported in cascade) with MapLibre loaded when the map is drawn; the release gets a build step it does not have today. The largest gain on a phone's start.
+- [ ] A light station layer: the map gets at start the full properties of every station (1.63 MB) while it needs the code, the location, the kind and the state; the details come from `api/stations/{code}` anyway. A change of the GUI's API.
+- [ ] Computations on request: `api/analysis/…` 95 % within 4.2 s, the longest 65 s; series 95 % within 2.9 s. Compute ahead the results most asked for, beside the gap of the 30 s limit in "GUI: open gaps".
+- [ ] Availability: one process behind one tunnel connector; the first requests after a start took 5.3–7.3 s (2026-11-14). Warm the snapshot and the station layer before the server reports itself ready, an external check of availability (requests to `/health` already come and get `404`), a second connector of the tunnel; the basemap depends on `tiles.openfreemap.org`, and without it the map is empty.
+- [ ] To decide by the author: on a phone's first visit the notice of sources and terms is several screens long before „Rozumiem”; a short notice with the details folded is a change of what the regulamin shows.
+
 ### Known defects, deferred to the next release (the author's decision of 2026-11-16)
 
 Found by Nogat's integration run of candidate-5 (Nogat `docs/plans/2026-11-16-candidate-5-integration.md`, "Known failures") and by the scenario test of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its `REPORT.md`, section 4 and flow B4 of section 6). None is fixed in 3.0.0. Release 3.0.1 takes defect fixes only: those on `fix/3.0.1` (not merged) say so; the rest wait for the author's list.
