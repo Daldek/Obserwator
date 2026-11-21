@@ -34,6 +34,13 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `details.reason` is `precondition_failed` (worded by `details.constraint`, e.g. a
   likelihood without a maximum), `outside_physical_range` or `invalid_type`, with the
   distribution and method of a fit, instead of Hydrolog's English message.
+- **A rating curve without a least-squares minimum says why (Hydrolog 0.9.0.dev5, spec
+  `rating_curve_fit` formula version 2, Hydrolog ADR-0071).** A period of „Krzywa natężenia
+  przepływu” whose `reason` is `no_least_squares_minimum` reads „brak krzywej: pary rosną jak
+  funkcja wykładnicza, np. dwie krzywe w okresie”, and a curve refused with
+  `details.constraint` `least_squares_minimum` names the cause (the discharge rises like an
+  exponential of the stage, as with two ratings in the years) and asks for the years of one
+  rating; the guide's part on the periods lists the reasons.
 - **„metoda p” in the Mann–Kendall tables** of „Trendy i bilans” and „Trendy”: Hydrolog
   0.9.0's `p_value_method`, „rozkład dokładny” below 10 values and „przybliżenie normalne”
   from 10 (Hydrolog ADR-0049), also beside p over each chart of „Trendy”.

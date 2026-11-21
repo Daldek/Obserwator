@@ -161,8 +161,13 @@ MESSAGES: dict[str, Text] = {
         "the discharges are all equal", "wszystkie przepływy są równe"
     ),
     "sections.constraint.least_squares_minimum": Text(
-        "the least-squares search finds no minimum for these pairs",
-        "metoda najmniejszych kwadratów nie znajduje minimum dla tych par",
+        "the pairs do not follow one curve: their discharge rises like an exponential "
+        "of the stage, as with two ratings in the years (a moved gauge zero, a changed "
+        "channel), so least squares have no minimum; choose the years of one rating",
+        "pary nie układają się w jedną krzywą: przepływ rośnie jak funkcja wykładnicza "
+        "stanu, jak przy dwóch krzywych w wybranych latach (przesunięte zero "
+        "wodowskazu, zmienione koryto), więc suma kwadratów nie ma minimum; wybierz "
+        "lata jednej krzywej",
     ),
     "sections.constraint.enough_gaugings": Text(
         "WMO-No. 1044 recommends at least 12 to 15 gaugings for a rating curve",

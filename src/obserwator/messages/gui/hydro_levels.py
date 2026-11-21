@@ -342,6 +342,10 @@ _RATING: dict[str, Text] = {
     "hydro.rating.reason.too_few_pairs": Text(
         "fewer than 30 H–Q pairs", "mniej niż 30 par H–Q"
     ),
+    "hydro.rating.reason.no_least_squares_minimum": Text(
+        "no curve: the pairs rise like an exponential, e.g. two ratings in the period",
+        "brak krzywej: pary rosną jak funkcja wykładnicza, np. dwie krzywe w okresie",
+    ),
     "hydro.rating.reason.fit_failed": Text(
         "the fit failed", "dopasowanie się nie powiodło"
     ),
