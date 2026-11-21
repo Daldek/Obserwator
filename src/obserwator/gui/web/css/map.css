@@ -25,6 +25,8 @@
   --map-place-3: #344054;
   --map-place-4: #667085;
   --map-border: #8a94a6;
+  /* The outline of an operator's area (ADR-025): Obserwator's colour of the theme */
+  --map-area: var(--tool-obserwator);
   /* The station symbols: hydro.imgw.pl's colours (IMGW-PIB, version 2.1.13.1, read on
      2026-11-13), its CSS variables --<class>-status-color and its icons' outline. They mean
      the same in both themes, so only the outline changes in the dark one. */
@@ -163,6 +165,8 @@
 .legend-title:first-child { margin-top: 0; }
 .legend-gap { display: inline-block; width: 15px; flex: none; }
 .pick-ring { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; }
+.legend-more { margin-top: 6px; }
+.legend-area { width: 18px; height: 12px; flex: none; border: 2px solid var(--map-area); background: color-mix(in srgb, var(--map-area) 6%, transparent); box-sizing: border-box; }
 
 /* Without WebGL */
 .map-failure {

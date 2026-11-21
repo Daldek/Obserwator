@@ -4,7 +4,9 @@
 // instrukcja/), Nogat's app menu „Aplikacje” (the kit's <nogat-app-menu>, the deployment's
 // [nogat.gui] of nogat.toml from the session, with „Regulamin” in a public deployment),
 // the language switch „PL | EN” (remembered under "obserwator-lang") and the theme switch
-// Auto, Jasny, Ciemny. Inside Nogat's shell ("?nogat=1") the shell's own bar replaces it.
+// Auto, Jasny, Ciemny. On an operator's instance (ADR-025, I14) the operator's logo and
+// title follow Obserwator's mark and name, and the title ends the page's title. Inside
+// Nogat's shell ("?nogat=1") the shell's own bar replaces it.
 
 import "../../nogat/nogat-app-menu.js";
 import { LANGS, lang, loadTexts } from "../i18n.js";
@@ -62,23 +64,44 @@ export function AppMenu({ apps, terms }) {
 }
 
 /**
+ * The operator's mark on an instance (Nogat design/README.md „Operator's mark”): after a
+ * divider right of Obserwator's mark and name, the operator's logo (`api/logo`, the GUI's
+ * own origin; at most 24 px high, the title as its `alt`) and title; a phone shows the logo
+ * only.
+ *
+ * @param {{instance: {title: string|null, logo: string|null}}} props the session's `instance`
+ * @returns {object}
+ */
+function OperatorMark({ instance }) {
+  return html`<span class=${instance.logo ? "operator" : "operator no-logo"}>
+    ${instance.logo ? html`<img src=${instance.logo} alt=${instance.title || t("shell.operator_logo")} />` : null}
+    ${instance.title ? html`<span class="operator-name">${instance.title}</span>` : null}
+  </span>`;
+}
+
+/**
  * The top bar.
  *
  * @param {{session: object|null, station: {code: string, name?: string, river?: string}|null,
- *   section: string, context?: string|null}} props the session (its `gui` and `terms`), the
- *   selected station, the view's name and, without a station, what the view shows
+ *   section: string, context?: string|null}} props the session (its `gui`, `terms` and
+ *   `instance`), the selected station, the view's name and, without a station, what the
+ *   view shows
  * @returns {object} the bar
  */
 export function TopBar({ session, station, section, context = null }) {
   const name = station ? station.name || station.code : context;
+  const instance = session ? session.instance : null;
+  const operator = instance ? instance.title : null;
   useEffect(() => {
-    document.title = name ? `${name} — Obserwator` : "Obserwator";
-  }, [name]);
+    const app = operator ? `Obserwator · ${operator}` : "Obserwator";
+    document.title = name ? `${name} — ${app}` : app;
+  }, [name, operator]);
   return html`<header class="topbar">
     <a class="brand" href="./" aria-label=${t("shell.home")}>
       <img src="nogat/marks/obserwator.svg" alt="" width="24" height="24" />
       <span class="name">Obserwator</span>
     </a>
+    ${instance && (instance.logo || instance.title) ? html`<${OperatorMark} instance=${instance} />` : null}
     <nav class="crumbs" aria-label=${station ? t("shell.selected_station") : section}>
       <span class="crumb-section">${section}</span>
       ${name

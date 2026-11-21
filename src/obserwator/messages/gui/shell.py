@@ -52,6 +52,7 @@ MESSAGES: dict[str, Text] = {
     # The top bar
     "shell.home": Text("Obserwator: start page", "Obserwator: strona główna"),
     "shell.selected_station": Text("Selected station", "Wybrana stacja"),
+    "shell.operator_logo": Text("The operator's logo", "Logo operatora"),
     "shell.guide": Text("Guide", "Instrukcja"),
     "shell.guide_title": Text(
         "The guide to this application (in Polish)", "Instrukcja obsługi aplikacji"
@@ -75,6 +76,12 @@ MESSAGES: dict[str, Text] = {
         " ČHMÚ on a map: choose one to see its measurements, analyses and files.",
         "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne IMGW-PIB"
         " i ČHMÚ: wybierz stację, aby zobaczyć jej pomiary, analizy i pliki.",
+    ),
+    "shell.welcome.intro_instance": Text(
+        "Obserwator shows hydrological and meteorological stations on a map: choose one"
+        " to see its measurements, analyses and files.",
+        "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne: wybierz"
+        " stację, aby zobaczyć jej pomiary, analizy i pliki.",
     ),
     "shell.welcome.start": Text("Got it", "Rozumiem"),
     "shell.welcome.close": Text("Close", "Zamknij"),
