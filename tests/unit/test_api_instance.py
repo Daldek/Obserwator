@@ -1,6 +1,7 @@
 """The REST server serves only what ``[obserwator.instance]`` serves (ADR-025)."""
 
 import json
+import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -774,8 +775,15 @@ def test_an_instance_refuses_to_start_on_a_weak_write_token(
     shared.write_text("t" * 64, encoding="utf-8")
     shared.chmod(0o644)
     monkeypatch.setenv("OBSERWATOR_STORE_WRITE_TOKEN_FILE", str(shared))
-    with pytest.raises(ObserwatorValidationError) as readable:
+    if os.name == "nt":  # no permission bits: only the length is checked
         started()
+    else:
+        with pytest.raises(ObserwatorValidationError) as readable:
+            started()
+        assert readable.value.details == {
+            "option": "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
+            "reason": "secret_file_mode",
+        }
     shared.chmod(0o600)
     started()
 
@@ -785,10 +793,6 @@ def test_an_instance_refuses_to_start_on_a_weak_write_token(
     }
     assert result.exit_code == 2
     assert error_line(result)["details"] == short.value.details
-    assert readable.value.details == {
-        "option": "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
-        "reason": "secret_file_mode",
-    }
     assert uvicorn_calls == []
 
 
