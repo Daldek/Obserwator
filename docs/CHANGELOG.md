@@ -105,6 +105,26 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   (+https://github.com/Daldek/Obserwator)`, never the person running it. The backend answers
   both without the `Referer` (checked on 2026-11-14 and 2026-11-21); the docstrings and docs that
   said it requires one are corrected.
+- **The GUI's current data refresh in the background and in parallel (ADR-013 erratum of
+  2026-11-21).** When a snapshot of IMGW-PIB's current data expires (10 minutes), the requests
+  get the last good one while one refresh runs in a background thread, instead of all waiting
+  on the lock for IMGW-PIB (up to 30 s per source); only a source that never answered is waited
+  for. The sources of one answer are fetched at the same time, so the first `api/current`
+  after a start waits for the slowest of `states`, `hydro` and `meteo`, not for their sum
+  (measured on a local instance, see `docs/PROGRESS.md`). Still at most one request per source
+  at a time and one per 10 minutes, a failure kept beside the last snapshot and retried after a
+  minute.
+- **`api/current` and `api/current/{code}` answer `304 Not Modified`.** They carry a strong
+  `ETag` of their snapshots, the station and the language, with `Cache-Control: no-cache`, and
+  a request with that `If-None-Match` gets `304` before the answer is built, so the poll every
+  10 minutes of an open tab no longer downloads the whole answer (about 300 KB) while no
+  snapshot changed. The page needs no change: the browser revalidates by itself.
+- **The GUI logs every request to IMGW-PIB.** Each fetch of current data (`states`, `hydro`,
+  `meteo`, `synop`) and of a PMAXTP point is one `nogat-log/1` app record `upstream_fetch`:
+  `info` „IMGW-PIB <source>: answered in <ms> ms, <n> records”, `warning` „… failed after <ms>
+  ms, <code>: <reason>” with the error registry's code, `error` with the trace when the program
+  fails on an answer. No client address and never PMAXTP's point. So the failures of IMGW-PIB
+  and the number of requests to it can be read from the app log.
 
 ## [3.0.1] - 2026-11-18
 

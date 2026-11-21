@@ -314,6 +314,47 @@ def test_current_measurements_replace_the_station_layer_and_stations_bring_it_ba
     wait_drawn(page, ["current", "current-selected"], set())
 
 
+def test_the_poll_of_current_measurements_is_revalidated_and_keeps_the_points(
+    open_page, catalog, gui_url
+):
+    page = open_page()
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
+    current = api(gui_url, "api/current")
+    (west, south), (east, north) = page.evaluate(
+        "() => document.querySelector('.map').maplibre.getBounds().toArray()"
+    )
+    points = {
+        r["code"]
+        for r in current["hydro"] + current["meteo"]
+        if west <= r["lon"] <= east and south <= r["lat"] <= north
+    }
+    answers: list[Any] = []
+    page.on(
+        "response",
+        lambda r: answers.append(r) if r.url.endswith("/api/current") else None,
+    )
+    page.clock.install()
+    page.get_by_role("radio", name="Pomiary bieżące").click()
+    page.clock.run_for(1000)
+    wait_drawn(page, ["current"], points)
+
+    page.clock.run_for(600_000)  # the view asks again every 10 minutes
+    for _ in range(50):
+        if len(answers) >= 2:
+            break
+        page.wait_for_timeout(100)
+
+    first, poll = answers
+    etag = first.headers["etag"]
+    # The browser revalidates by itself: the server's 304 carries no body, and the page
+    # gets the kept answer (200) and draws the same points.
+    assert poll.request.all_headers()["if-none-match"] == etag
+    assert first.request.sizes()["responseBodySize"] > 0
+    assert poll.request.sizes()["responseBodySize"] == 0
+    assert poll.status == 200
+    wait_drawn(page, ["current"], points)
+
+
 def test_a_point_names_its_station_and_a_click_selects_it(open_page, catalog):
     page = open_page()
     wait_drawn(page, ["stations"], codes(active(catalog), located=True))

@@ -619,14 +619,17 @@ async def current(request: Request) -> Response:
     """The points of „Pomiary bieżące”: IMGW-PIB's hydrological and meteorological stations."""
     params.only(request.query_params, ())
     live = _gui(request).current
-    names = ("states", "hydro", "meteo")
-    snaps = {name: await _thread(partial(live.get, name)) for name in names}
+    snaps = await _thread(partial(live.get_many, ("states", "hydro", "meteo")))
     if all(snap.items is None for snap in snaps.values()):
         error = next(
             (snap.error for snap in snaps.values() if snap.error is not None), None
         )
         raise error or GuiError("source_unavailable", message("gui.errors.no_current"))
     lang = page_lang(request)
+    etag = _etag(request, "current", lang, {k: s.serial for k, s in snaps.items()})
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
     document = {
         "source": "IMGW-PIB",
         "snapshots": _snapshot_times(snaps, lang),
@@ -634,7 +637,7 @@ async def current(request: Request) -> Response:
         "meteo": meteo_points(snaps["meteo"]),
         **attribution("imgw", "imgw_hydro").fields(),
     }
-    return json_response(request, document)
+    return json_response(request, document, etag=etag)
 
 
 @_route
@@ -658,13 +661,24 @@ async def current_station(request: Request) -> Response:
         if kind == "hydro"
         else (("meteo", "synop") if code in indices else ("meteo",))
     )
-    snaps = {name: await _thread(partial(live.get, name)) for name in names}
+    snaps = await _thread(partial(live.get_many, names))
     main = snaps[names[0]]
     if main.items is None:
         raise main.error or GuiError(
             "source_unavailable", message("gui.errors.no_current")
         )
     lang = page_lang(request)
+    etag = _etag(
+        request,
+        "current-station",
+        snapshot.key,
+        code,
+        lang,
+        {k: s.serial for k, s in snaps.items()},
+    )
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
     document: dict[str, Any] = {
         "station": code,
         "kind": kind,
@@ -682,7 +696,7 @@ async def current_station(request: Request) -> Response:
         document["state"] = state.get("water_state") if state else None
     elif "synop" in snaps:
         document["synop"] = synop_record(code, feature, indices, snaps["synop"])
-    return json_response(request, document)
+    return json_response(request, document, etag=etag)
 
 
 def _pmaxtp_query(query: Mapping[str, str]) -> tuple[PmaxtpMethod, float, float]:
@@ -1496,8 +1510,8 @@ def build_app(
             config=config,
             root=DataRoot(config.root),
             analyses=Analyses(config.root),
-            current=CurrentData(),
-            pmaxtp=Pmaxtp(),
+            current=CurrentData(log=log),
+            pmaxtp=Pmaxtp(log=log),
             traffic=TrafficState(
                 limit=config.request_limit,
                 window=config.request_window,

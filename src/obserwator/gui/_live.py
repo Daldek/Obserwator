@@ -3,28 +3,44 @@ Live data through the server only, kept in memory and never stored (GUI plan D8)
 
 - Snapshots of IMGW-PIB's current data (`fetch_hydro_states`, `fetch_hydro_current`,
   `fetch_meteo_current`, `fetch_synop`): each fetched on demand at most once per 10
-  minutes, one request at a time (single flight), with the library's timeout. A failed
-  refresh keeps the last snapshot, shown with its time, and the next try waits a minute.
+  minutes, one request per source at a time (single flight), with the library's
+  timeout, the sources of one request at the same time. An expired snapshot is served
+  while its refresh runs in the background; only a source that never answered makes a
+  request wait. A failed refresh keeps the last snapshot, shown with its time, and the
+  next try waits a minute.
 - PMAXTP of a point (`fetch_pmaxtp`): per method and point at the four decimals of
   IMGW-PIB's address, 24 hours, at most 1,000 points, one live request at a time.
+
+Every request to IMGW-PIB is one app record ``upstream_fetch`` (`log_fetch`): its
+source, duration, outcome and error code, never a client's address.
 
 The page itself never calls a provider: it asks this server.
 """
 
 from __future__ import annotations
 
+import itertools
+import logging
 import threading
 import time
 import unicodedata
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any, Literal
+from functools import partial
+from typing import TYPE_CHECKING, Any, Literal
 
 import obserwator
 from obserwator.exceptions import ObserwatorError
+from obserwator.messages import message
 from obserwator.store.types import StationFeature
+
+if TYPE_CHECKING:
+    from obserwator.nogat_logging import ServerLog
+
+_LOG = logging.getLogger(__name__)
+
 
 CURRENT_TTL_S = 600.0
 """How long a snapshot of IMGW-PIB's current data is served before it is fetched again."""
@@ -36,11 +52,76 @@ PMAXTP_ENTRIES = 1000
 """How many points of PMAXTP stay in memory."""
 PMAXTP_METHODS = ("POT", "AMP")
 PmaxtpMethod = Literal["POT", "AMP"]
+FETCH_EVENT = "upstream_fetch"
+"""The ``event`` of the app record of a request to IMGW-PIB (`log_fetch`)."""
+
+_SERIALS = itertools.count(1)
+"""The serial numbers of the snapshots of the process, each new one the next."""
 
 
 def utc_now() -> str:
     """The current UTC time, ISO 8601 with ``Z``, to the second."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def log_fetch(
+    log: ServerLog | None,
+    source: str,
+    seconds: float,
+    *,
+    records: int | None = None,
+    error: BaseException | None = None,
+) -> None:
+    """
+    One app record of a request to IMGW-PIB: its source, duration, outcome, error code.
+
+    ``info`` for an answer, ``warning`` for an `ObserwatorError` (IMGW-PIB failed or
+    refused; its code), ``error`` with the trace for any other exception (a defect of
+    this program, code ``internal_error``). Never a client's address or a point.
+
+    Parameters
+    ----------
+    log : ServerLog or None
+        The server's logs (``nogat-log/1``); None logs through `logging`, for a host
+        that mounts the app with its own logs.
+    source : str
+        ``states``, ``hydro``, ``meteo``, ``synop`` or ``pmaxtp``.
+    seconds : float
+        How long the request took.
+    records : int or None, optional
+        The records of an answer of current data; None for PMAXTP.
+    error : BaseException or None, optional
+        Why the request failed; None when it answered.
+    """
+    duration_ms = round(seconds * 1000)
+    info = None
+    if error is not None:
+        known = isinstance(error, ObserwatorError)
+        level = logging.WARNING if known else logging.ERROR
+        if not known:
+            info = (type(error), error, error.__traceback__)
+        text = message(
+            "gui.server.upstream_failed",
+            source=source,
+            duration_ms=duration_ms,
+            code=error.code if isinstance(error, ObserwatorError) else "internal_error",
+            reason=str(error),
+        )
+    elif records is None:
+        level = logging.INFO
+        text = message("gui.server.upstream_ok", source=source, duration_ms=duration_ms)
+    else:
+        level = logging.INFO
+        text = message(
+            "gui.server.upstream_records",
+            source=source,
+            duration_ms=duration_ms,
+            records=records,
+        )
+    if log is not None:
+        log.application(level, FETCH_EVENT, str(text), info)
+    else:
+        _LOG.log(level, "%s", text, exc_info=info, extra={"event": FETCH_EVENT})
 
 
 @dataclass(frozen=True)
@@ -56,22 +137,32 @@ class Snapshot:
         When they were fetched (UTC, ISO 8601 with ``Z``).
     error : ObserwatorError or None
         Why the last attempt failed; None when it answered.
+    serial : int
+        Unique in the process for each answer or failure of a source (0 before the
+        first): an answer made from the same serials is the same (its ETag).
     """
 
     items: Mapping[str, dict[str, Any]] | None = None
     fetched_at: str | None = None
     error: ObserwatorError | None = None
+    serial: int = 0
 
 
 @dataclass
 class _Source:
-    """One source: its function, its last snapshot, when it last answered and was asked."""
+    """One source: its function, its last snapshot, when it answered and was asked."""
 
     fetch: Callable[[], Any]
     snapshot: Snapshot = field(default_factory=Snapshot)
     ok_at: float = -1e18
     tried_at: float = -1e18
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    running: threading.Event | None = None
+    """Set when the refresh that runs ends; None while none runs."""
+
+
+def _in_thread(run: Callable[[], None]) -> None:
+    """Run ``run`` in a daemon thread, which a stop of the server does not wait for."""
+    threading.Thread(target=run, name="obserwator-current", daemon=True).start()
 
 
 SOURCES: Mapping[str, Callable[[], Any]] = {
@@ -94,6 +185,10 @@ class CurrentData:
         ``model_dump``); the library's fetchers by default, recorded answers in tests.
     clock : callable, optional
         Monotonic time in seconds.
+    log : ServerLog or None, optional
+        Where each request to IMGW-PIB is logged (`log_fetch`).
+    start : callable, optional
+        Runs a refresh in the background: a daemon thread by default.
     """
 
     def __init__(
@@ -101,15 +196,20 @@ class CurrentData:
         sources: Mapping[str, Callable[[], Any]] | None = None,
         *,
         clock: Callable[[], float] = time.monotonic,
+        log: ServerLog | None = None,
+        start: Callable[[Callable[[], None]], None] = _in_thread,
     ) -> None:
         self._sources = {
             name: _Source(fetch) for name, fetch in (sources or SOURCES).items()
         }
         self._clock = clock
+        self._log = log
+        self._start = start
+        self._lock = threading.Lock()
 
     def get(self, name: str) -> Snapshot:
         """
-        One source, fetched at most once per `CURRENT_TTL_S` (single flight).
+        One source, as `get_many` gives it.
 
         Parameters
         ----------
@@ -119,32 +219,85 @@ class CurrentData:
         Returns
         -------
         Snapshot
-            The last successful answer (``items`` None before the first one) and
-            the error of the last attempt.
+            The last successful answer and the error of the last attempt.
         """
-        source = self._sources[name]
-        with source.lock:
+        return self.get_many((name,))[name]
+
+    def get_many(self, names: Iterable[str]) -> dict[str, Snapshot]:
+        """
+        Sources, each fetched at most once per `CURRENT_TTL_S`, all at the same time.
+
+        A source whose snapshot expired starts its refresh in the background (one at a
+        time, the next try a `CURRENT_RETRY_S` after a failure) and gives its last
+        snapshot at once; only a source without any answer yet is waited for.
+
+        Parameters
+        ----------
+        names : iterable of str
+            Of ``states``, ``hydro``, ``meteo`` and ``synop``.
+
+        Returns
+        -------
+        dict of str to Snapshot
+            Per name the last successful answer (``items`` None before the first one)
+            and the error of the last attempt.
+        """
+        names = tuple(names)
+        started: list[Callable[[], None]] = []
+        waits: list[threading.Event] = []
+        with self._lock:
             now = self._clock()
-            last = source.snapshot
-            if last.items is not None and now - source.ok_at < CURRENT_TTL_S:
-                return last
-            if now - source.tried_at < CURRENT_RETRY_S:
-                return last
-            source.tried_at = now
-            try:
-                records = source.fetch()
-            except ObserwatorError as exc:
-                source.snapshot = replace(last, error=exc)
-                return source.snapshot
-            source.snapshot = Snapshot(
-                {
-                    str(record.station_code): record.model_dump(mode="json")
-                    for record in records
-                },
-                utc_now(),
-            )
-            source.ok_at = now
-            return source.snapshot
+            for name in names:
+                source = self._sources[name]
+                if source.running is None and self._due(source, now):
+                    source.tried_at = now
+                    source.running = threading.Event()
+                    started.append(
+                        partial(self._refresh, name, source, source.running, now)
+                    )
+                if source.running is not None and source.snapshot.items is None:
+                    waits.append(source.running)
+        for run in started:
+            self._start(run)
+        for done in waits:
+            done.wait()
+        with self._lock:
+            return {name: self._sources[name].snapshot for name in names}
+
+    @staticmethod
+    def _due(source: _Source, now: float) -> bool:
+        fresh = source.snapshot.items is not None and now - source.ok_at < CURRENT_TTL_S
+        return not fresh and now - source.tried_at >= CURRENT_RETRY_S
+
+    def _refresh(
+        self, name: str, source: _Source, done: threading.Event, asked_at: float
+    ) -> None:
+        """Fetch one source and keep its answer, or its error beside the last one."""
+        began = time.perf_counter()
+        try:
+            records = source.fetch()
+            items = {
+                str(record.station_code): record.model_dump(mode="json")
+                for record in records
+            }
+        except Exception as exc:
+            # IMGW-PIB failed (an ObserwatorError, kept beside the last answer) or this
+            # program did (logged with its trace): the last answer stays.
+            log_fetch(self._log, name, time.perf_counter() - began, error=exc)
+            if isinstance(exc, ObserwatorError):
+                with self._lock:
+                    source.snapshot = replace(
+                        source.snapshot, error=exc, serial=next(_SERIALS)
+                    )
+        else:
+            log_fetch(self._log, name, time.perf_counter() - began, records=len(items))
+            with self._lock:
+                source.snapshot = Snapshot(items, utc_now(), serial=next(_SERIALS))
+                source.ok_at = asked_at
+        finally:
+            with self._lock:
+                source.running = None
+            done.set()
 
 
 _STROKES = str.maketrans({0x141: "L"})
@@ -265,6 +418,8 @@ class Pmaxtp:
         `obserwator.fetch_pmaxtp` by default, a recorded answer in tests.
     clock : callable, optional
         Monotonic time in seconds.
+    log : ServerLog or None, optional
+        Where each request to IMGW-PIB is logged (`log_fetch`), without the point.
     """
 
     def __init__(
@@ -272,9 +427,11 @@ class Pmaxtp:
         fetch: Callable[..., Any] | None = None,
         *,
         clock: Callable[[], float] = time.monotonic,
+        log: ServerLog | None = None,
     ) -> None:
         self._fetch = fetch or obserwator.fetch_pmaxtp
         self._clock = clock
+        self._log = log
         self._points: OrderedDict[
             tuple[str, str, str], tuple[float, dict[str, Any]]
         ] = OrderedDict()
@@ -323,7 +480,13 @@ class Pmaxtp:
             found = self._hit(key)
             if found is not None:
                 return found
-            result = self._fetch(latitude, longitude, method=method)
+            began = time.perf_counter()
+            try:
+                result = self._fetch(latitude, longitude, method=method)
+            except ObserwatorError as exc:
+                log_fetch(self._log, "pmaxtp", time.perf_counter() - began, error=exc)
+                raise
+            log_fetch(self._log, "pmaxtp", time.perf_counter() - began)
             data = result.data.model_dump(mode="json")
             first: dict[str, Any] = next(iter(data["ks"].values()), {})
             document = {
