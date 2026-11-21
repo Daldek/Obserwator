@@ -46,6 +46,15 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **The GUI no longer holds over a gigabyte once idle (E7-11).** On a full data root an idle
+  `obserwator gui serve` held 1.5 GB after a typical set of requests, mostly the gap ranges
+  of the precipitation series' index (shown only as a count) and memory Python could not
+  return after reading large indexes. It now keeps a summary of each series index, copies
+  what a large read keeps once the read is over, holds at most 2 million cells of series
+  documents as well as 32 documents, and imports pyarrow's Parquet modules at start (about
+  50 MB more right after start). Measured on the deployed root with the same 554 requests:
+  1,490 → 722 MB RSS when idle, peak 2,258 → 1,127 MB, snapshot of the root 724 → 113 MB;
+  the answers are unchanged (ADR-027).
 - **`store catalog` says which inputs left IMGW-PIB stations without a location or a `meteo_kind`
   (GEO-03 of the 2026-11-15 end-to-end test).** Without the reference file
   `hydro_stations_locations.csv` (the coordinates of the hydro.imgw.pl map; IMGW-PIB data are

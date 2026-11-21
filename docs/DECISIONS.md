@@ -31,6 +31,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-023](#adr-023-download-only-datasets-of-the-rest-of-imgw-pibs-public-data) | Download-only datasets of the rest of IMGW-PIB's public data | 2026-11-15 | Accepted |
 | [ADR-024](#adr-024-coordinates-and-an-area-filter-in-the-live-station-search) | Coordinates and an area filter in the live station search | 2026-11-21 | Accepted |
 | [ADR-026](#adr-026-series-of-chosen-stations-and-years) | Series of chosen stations and years | 2026-11-21 | Accepted |
+| [ADR-027](#adr-027-the-guis-memory-what-it-keeps-of-the-data-root) | The GUI's memory: what it keeps of the data root | 2026-11-21 | Accepted |
 
 ---
 
@@ -1034,3 +1035,28 @@ Additive: `StationListEntry` of a live IMGW-PIB search has coordinates for the r
 ### Consequences
 
 Additive: two options of `series build` (Python, CLI, REST, MCP), the type `SeriesSubset`, the plan reason `full_series` and its hint, the notice `stations_missing`, the optional `subset` and `request` fields; readers need no change. A root of subsets serves only its stations: the GUI, `store catalog`, `analyses build` and Archiwista see the current version as before, and a subset tells itself by `subset` and `request`. A choice of stations still reads every archive of a country-wide dataset (unzipping and splitting rows); a choice of years reads only its archives.
+
+---
+
+## ADR-027: The GUI's memory: what it keeps of the data root
+
+**Date:** 2026-11-21  
+**Status:** Accepted (finding E7-11 of the 3.1.0 review: an idle `obserwator gui serve` held about 1 GB in swap)  
+**Standard:** amends ADR-013 D5 (what the GUI holds in memory)
+
+### Context and options
+
+On the deployed data root an idle GUI held 1.5 GB (RSS) after a typical set of requests, 2.4 GB plus 0.8 GB of swap after two days. Measured (`/proc/<pid>/smaps_rollup`, `sys._debugmallocstats`, `mallinfo2`): the snapshot kept every series index whole, 234 MB of it the 1.8 million ranges without a value of the precipitation series' snow variables, of which the GUI shows only the number; up to 32 series documents of any size (a synoptic station's is 50 to 70 MB); and Python's small-object allocator held 440 MB of free memory it could not return, as an arena (1 MiB) goes back to the system only when every object in it is gone: what a large read keeps, and the modules pyarrow imports on its first read (pandas with it), was made among the read's objects and the free lists kept some of them. pyarrow's pool (mimalloc) and glibc's arenas held little (0 and 47 MB free).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **The snapshot keeps a summary of each index**: per station its rows and per variable the unit, period, first and last day, units with a value, accumulated units and the number of ranges without a value. | Keeping the index (234 MB, its ranges never shown); a store change of `series.json` (a contract change, left to the author). |
+| D2 | **What a large read keeps is copied once the read is over** (`compact`): kept as bytes (`pickle`) while the read's objects go and the free lists are emptied (`gc.collect`), then made again; for the summary of an index and a station's series document. A cache miss costs a full collection (tenths of a second, beside seconds of reading). | `PYTHONMALLOC=malloc` with `malloc_trim` or `PYTHONMALLOC=mimalloc` (a setting of each deployment; measured: mimalloc kept 592 MB, glibc 800 MB until trimmed); reading in a subprocess (spawn cost, state of tests and hosts). |
+| D3 | **Series documents in memory: at most 32 and 2 million cells** (rows times columns, and flags; 30 to 60 bytes each), the most recent kept even when larger alone. | A count alone (a synoptic station's document is 600 times a half-year one). |
+| D4 | **The modules of a Parquet read are imported when the data root is made** (`pyarrow.parquet`, `pyarrow.dataset`; pandas with them when installed), not during the first request of a series. | Leaving them to the first read (190 MB kept for the life of the server). |
+
+### Consequences
+
+Measured on the deployed data root (method and numbers in the item's report): the snapshot of the root takes 113 MB instead of 724 MB in one process, a cached precipitation document grows the process by its own size instead of 100–200 MB. The GUI's answers are unchanged.
