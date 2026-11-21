@@ -44,3 +44,64 @@ versioned store. Reports about the following are in scope:
 
 Problems of the IMGW-PIB or ČHMÚ services themselves are out of scope; report them to the
 institute.
+
+## Threat model: an instance on someone else's infrastructure (ADR-025)
+
+An operator other than the author may run Obserwator on his own servers for his own
+users, described by `[obserwator.instance]` of `nogat.toml` (`docs/USAGE.md`, „Deploying
+an instance for an operator”). This section says what is protected, from whom, and who
+does what.
+
+**Assets.** The data root and the raw root (the published series, catalogs, analyses and
+archives: integrity and availability, not secrecy; ADR-017); the two secrets, the REST
+write token and the GUI's admin key; the reports of „Zgłoś uwagę” (`feedback.jsonl`) and
+the daily totals (`stats.jsonl`); the servers' logs (`<state_dir>/obserwator/logs`, no
+client address, 14 days); the operator's files under its configuration directory
+(`nogat.toml`, the area, the logo, the regulamin, the secret files).
+
+**Entry points.** The GUI's private API (`api/…`, GET and HEAD, `POST api/feedback`),
+rate-limited per client address; the REST API `/api/v1` (reads; writes only with
+`OBSERWATOR_STORE_WRITES_ENABLED` and the token); the admin panel (`/admin`, `/admin/*`,
+`/api/admin/*`, header `X-Admin-Key`); `/mcp` when enabled (reads and plans only); the
+outbound fetches: IMGW-PIB's current data and PMAXTP by the servers, the basemap by the
+browser.
+
+**Threats and what Obserwator does about them.**
+
+- *A source the instance does not serve leaks* (a guessed station code, a hidden route):
+  the filter runs on the server, once per read of the data root, for every route of both
+  servers; a station not served answers `not_found` exactly like a code that does not
+  exist; an `off` provider and `pmaxtp = "off"` make no outbound request.
+- *A misconfiguration starts silently*: every field of `[obserwator.instance]` is checked
+  at start (`validation_error`, exit 2, `details.option`), as are a data root of an
+  unknown layout and, on an instance, weak secrets (shorter than 32 bytes, or a key file
+  group or others may access); `obserwator config show --json` lists what remains as
+  `problems`.
+- *A stolen or guessed secret*: one token and one key, compared in constant time, read
+  from the environment or from `*_FILE` files of mode 0600, never from `nogat.toml`,
+  never logged or printed; the REST API keys of `obserwator admin` are checked by nothing,
+  deprecated and removed in v4.0.0.
+- *Script injection through the operator's files*: the logo is served from the GUI's own
+  origin as an image whose type is read from its content, an SVG with
+  `Content-Security-Policy: sandbox; default-src 'none'` and `nosniff`; the regulamin is
+  Markdown rendered with raw HTML escaped and links only to `https`, `http`, `mailto`,
+  `#` or a field; the page's own CSP allows its origin and the basemap's only.
+- *Overload*: the rate limit per client address of the GUI (`OBSERWATOR_REQUEST_LIMIT`),
+  the page size limit of REST lists, the readers' limit of the GUI.
+
+**Trust in the reverse proxy.** TLS ends at the operator's edge. The servers trust the
+client address only from the proxies named by uvicorn's `FORWARDED_ALLOW_IPS`; set it to
+the proxy's address, never `*` on a reachable port. Both servers listen on `127.0.0.1`
+behind the proxy.
+
+**What the operator must provide.** TLS and a reverse proxy at the edge; a rule of the
+edge (SSO, Cloudflare Access, an IP list) in front of `/admin`, `/admin/*` and
+`/api/admin/*` on every instance, and in front of everything when the data are private
+(Obserwator has no accounts); the secret files (0600, owned by the service's user); backups
+of the two roots, `state_dir` and the configuration directory; updates by installing the
+next git tag in a maintenance window; the regulamin and the data sources' terms
+(DEV §20) of the deployment.
+
+**What Obserwator guarantees.** No secret in any tracked file; a start refused rather than
+a wrong instance served; the same filter in both servers; no client address in its logs
+or files; every change released under a tag with its CHANGELOG.
