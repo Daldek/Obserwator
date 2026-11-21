@@ -96,14 +96,10 @@ MESSAGES: dict[str, Text] = {
     "stations.precip.last_10_min": Text("in the last 10 min", "w ostatnich 10 min"),
     # The legend
     "stations.legend.title": Text("Legend", "Legenda"),
-    "stations.legend.chmi": Text(
-        "{provider} (dashed outline)", "{provider} (obrys przerywany)"
-    ),
+    "stations.legend.featured": Text("Stations: {provider}", "Stacje: {provider}"),
     "stations.legend.inactive": Text("inactive (faded)", "nieczynna (blado)"),
     "stations.legend.selected": Text("selected", "wybrana"),
-    "stations.legend.others": Text(
-        "other sources (smaller, faded)", "inne źródła (mniejsze, blado)"
-    ),
+    "stations.legend.others": Text("Other sources", "Pozostałe źródła"),
     "stations.legend.area": Text("service area", "obszar serwisu"),
     "stations.legend.stations_note": Text(
         "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl; the view "

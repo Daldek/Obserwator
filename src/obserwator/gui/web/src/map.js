@@ -10,9 +10,9 @@
 // The three views of main.js share it, each with only its own layer:
 // - „Stacje”: every located station of the catalogs in hydro.imgw.pl's symbols
 //   (symbols.js): a triangle for a hydrological station, a circle for a meteorological
-//   one, in the colours hydro.imgw.pl gives a station of each kind in its legend; a hollow
-//   centre when the station is only in the catalog, a dashed outline for ČHMÚ, inactive
-//   ones faded;
+//   one, in the colours hydro.imgw.pl gives a station of each kind in its legend, whoever
+//   provides it; a hollow centre when the station is only in the catalog, inactive ones
+//   faded;
 // - „Pomiary bieżące”: only IMGW-PIB's current measurements (api/current through
 //   current.js), hydrological stations filled by their water state and meteorological ones
 //   by their precipitation, as hydro.imgw.pl fills them;
@@ -34,7 +34,9 @@
 // station or a PMAXTP point or the map has moved first; it draws the outline of the area
 // (api/area) over the background and under the stations, and in `clip` stays within the
 // area's bounds; the featured provider's stations lie on top and, while „Pokaż inne
-// źródła” is off, the other providers' are drawn smaller and faded (`fade`).
+// źródła” is off, the other providers' are drawn smaller and at the instance's
+// `others_opacity` (`fade`), and the legend names the featured provider's stations apart
+// from „Pozostałe źródła”.
 
 import { get } from "./api.js";
 import { REFRESH_MS, clock, measuredAt } from "./current.js";
@@ -96,10 +98,9 @@ const ICON_RATIO = 4;
 const ICON_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 0.6, 6, 0.8, 7, 1];
 const SELECTED_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 1.5, 7, 2];
 /** A station of a provider beside the featured one while „Pokaż inne źródła” is off (I6):
- * ICON_SIZE times FADED_SIZE, its opacity times FADED_OPACITY. */
+ * ICON_SIZE times FADED_SIZE, its opacity times the instance's `others_opacity`. */
 const FADED = ["==", ["get", "dim"], 1];
 const FADED_SIZE = 0.7;
-const FADED_OPACITY = 0.4;
 const SHRINK = ["case", FADED, FADED_SIZE, 1];
 const STATION_SIZE = ["interpolate", ["linear"], ["zoom"], 4, ["*", 0.6, SHRINK], 6, ["*", 0.8, SHRINK], 7, SHRINK];
 /** Room the tooltip needs right of and around the pointer [px], else it opens on the other side. */
@@ -287,19 +288,17 @@ function paintBackground(map, colors) {
 
 // --- the symbols (symbols.js) ----------------------------------------------------------------
 
-/** The image of a station in the view „Stacje”. */
-function stationIcon(kind, provider, data) {
-  return `st-${kind === "meteo" ? "meteo" : "hydro"}-${provider === "CHMI" ? "chmi" : "imgw"}-${data ? 1 : 0}`;
+/** The image of a station in the view „Stacje”: its kind and whether it has series. */
+function stationIcon(kind, data) {
+  return `st-${kind === "meteo" ? "meteo" : "hydro"}-${data ? 1 : 0}`;
 }
 
 /** Every image the map draws: its name and look. */
 function looks() {
   const out = [];
   for (const kind of ["hydro", "meteo"]) {
-    for (const provider of ["IMGW-PIB", "CHMI"]) {
-      for (const data of [true, false]) {
-        out.push({ name: stationIcon(kind, provider, data), shape: kind, color: KIND_COLORS[kind], hollow: !data, dashed: provider === "CHMI" });
-      }
+    for (const data of [true, false]) {
+      out.push({ name: stationIcon(kind, data), shape: kind, color: KIND_COLORS[kind], hollow: !data });
     }
   }
   for (const state of HYDRO_STATES) {
@@ -342,7 +341,7 @@ function corners([west, south, east, north]) {
 
 /**
  * The features of „Stacje”: the featured provider's stations on top and, while `fade`, the
- * other providers' marked to be drawn smaller and faded (I6).
+ * other providers' marked to be drawn smaller and fainter (I6).
  *
  * @param {object[]} stations
  * @param {string|null} featured the instance's featured provider
@@ -357,7 +356,7 @@ function stationFeatures(stations, featured, fade) {
     features.push(
       point(station.lon, station.lat, {
         code: station.code,
-        icon: stationIcon(station.kind, station.provider, data),
+        icon: stationIcon(station.kind, data),
         active: station.active ? 1 : 0,
         rank: (first ? 4 : 0) + (data ? 2 : 0) + (station.active ? 1 : 0),
         dim: fade && featured !== null && !first ? 1 : 0,
@@ -386,6 +385,17 @@ function currentFeatures(doc) {
 }
 
 const NONE = ["==", ["get", "code"], ""];
+
+/** The opacity of „Stacje”'s symbols: an inactive station half, a faded one `others` times. */
+function stationOpacity(others) {
+  return ["*", ["case", ["==", ["get", "active"], 1], 1, 0.5], ["case", FADED, others, 1]];
+}
+
+/** The instance's `others_opacity` (api/session); 1 without an instance, which fades nothing. */
+function othersOpacity(scope) {
+  return scope && scope.instance ? scope.instance.others_opacity : 1;
+}
+
 /** The layers of each view; every other layer of these is hidden. */
 const VIEW_LAYERS = {
   stations: ["stations", "stations-selected"],
@@ -417,8 +427,7 @@ function addLayers(map, colors) {
     },
     paint,
   });
-  const faded = ["case", FADED, FADED_OPACITY, 1];
-  map.addLayer(symbols("stations", "stations", { size: STATION_SIZE, paint: { "icon-opacity": ["*", ["case", ["==", ["get", "active"], 1], 1, 0.5], faded] } }));
+  map.addLayer(symbols("stations", "stations", { size: STATION_SIZE, paint: { "icon-opacity": stationOpacity(1) } }));
   map.addLayer(symbols("stations-selected", "stations", { size: SELECTED_SIZE, filter: NONE }));
   map.addLayer(symbols("current", "current"));
   map.addLayer(symbols("current-selected", "current", { size: SELECTED_SIZE, filter: NONE }));
@@ -486,6 +495,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   const basemap = session ? session.basemap || null : undefined;
   const basemapUrl = basemap ? basemap.url : basemap;
   const featured = scope ? scope.featured : null;
+  const others = othersOpacity(scope);
   const area = scope && scope.instance ? scope.instance.area : null;
   const outline = area ? area.outline : null;
   const bounds = area ? area.bounds : null;
@@ -671,6 +681,13 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
     map.getSource("stations").setData(stationFeatures(stations, featured, fade));
   }, [ready, stations, featured, fade]);
 
+  // The opacity of the stations faded beside the featured provider (the instance's)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    map.setPaintProperty("stations", "icon-opacity", stationOpacity(others));
+  }, [ready, others]);
+
   // The points of „Pomiary bieżące”
   useEffect(() => {
     const map = mapRef.current;
@@ -828,30 +845,41 @@ function MeteoTip({ row, station }) {
   `;
 }
 
+/** A station's symbol of size `size` for each kind, each with its name. */
+function KindItems({ opacity = null, size = 14 }) {
+  return ["hydro", "meteo"].map(
+    (kind) => html`<li key=${kind}><${SymbolIcon} shape=${kind} color=${KIND_COLORS[kind]} opacity=${opacity} size=${size} className="st-sym" />${kindName(kind)}</li>`,
+  );
+}
+
 /**
- * The symbols of „Stacje”; on an instance ČHMÚ's outline only while it is served, the faded
- * stations of a provider beside the featured one while they are, and no word of a view the
- * instance does not serve.
+ * The symbols of „Stacje”: one per kind of station, whoever provides it. While the other
+ * providers' stations are faded beside the featured one (`fade`), the featured provider's
+ * stations are one group and, while another provider is shown, „Pozostałe źródła” another,
+ * drawn as the map draws them (smaller, at the instance's `others_opacity`); no word of a
+ * view the instance does not serve.
  *
  * @param {{scope: object|null, fade: boolean}} props what the deployment shows (null until
  *   the session answers) and whether the other providers' stations are faded
  */
 function StationsLegend({ scope, fade }) {
-  const other = scope && scope.featured ? scope.providers.find((id) => id !== scope.featured && !scope.hidden.includes(id)) : null;
-  return html`<ul class="legend-list two">
-      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />${kindName("hydro")}</li>
-      <li><${StationSymbol} kind="meteo" provider="IMGW-PIB" data=${true} />${kindName("meteo")}</li>
-      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${false} />${t("stations.catalog_only")}</li>
-      ${!scope || scope.providers.includes("CHMI")
-        ? html`<li><${StationSymbol} kind="hydro" provider="CHMI" data=${true} />${t("stations.legend.chmi", { provider: providerName("CHMI") })}</li>`
-        : null}
-      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} active=${false} />${t("stations.legend.inactive")}</li>
-      <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} size=${24} />${t("stations.legend.selected")}</li>
-      ${fade && other
-        ? html`<li><${SymbolIcon} shape="hydro" color=${KIND_COLORS.hydro} dashed=${other === "CHMI"} faded=${true} size=${10} />${t("stations.legend.others")}</li>`
-        : null}
-    </ul>
-    <p class="legend-note">${t(!scope || scope.views.includes("current") ? "stations.legend.stations_note" : "stations.legend.symbols_note")}</p>`;
+  const featured = fade && scope ? scope.featured : null;
+  const other = featured ? scope.providers.find((id) => id !== featured && !scope.hidden.includes(id)) : null;
+  const marks = html`<li><${StationSymbol} kind="hydro" data=${false} />${t("stations.catalog_only")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} active=${false} />${t("stations.legend.inactive")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} size=${24} />${t("stations.legend.selected")}</li>`;
+  const note = html`<p class="legend-note">${t(!scope || scope.views.includes("current") ? "stations.legend.stations_note" : "stations.legend.symbols_note")}</p>`;
+  if (!featured) {
+    return html`<ul class="legend-list two"><${KindItems} />${marks}</ul>${note}`;
+  }
+  return html`<p class="legend-title">${t("stations.legend.featured", { provider: providerName(featured) })}</p>
+    <ul class="legend-list two"><${KindItems} /></ul>
+    ${other
+      ? html`<p class="legend-title">${t("stations.legend.others")}</p>
+          <ul class="legend-list two"><${KindItems} opacity=${othersOpacity(scope)} size=${Number((14 * FADED_SIZE).toFixed(1))} /></ul>`
+      : null}
+    <ul class="legend-list two legend-marks">${marks}</ul>
+    ${note}`;
 }
 
 /** The words of a snapshot of api/current ("states", "hydro", "meteo"), its name when unknown. */

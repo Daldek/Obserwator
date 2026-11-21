@@ -114,6 +114,14 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   mark and serves the operator's regulamin (`terms`, Markdown built as the kit's) with the
   source blocks of the served providers only. `api/session` gains `instance`; `api/area`
   serves the area. Without the section nothing changes.
+- **`others_opacity` of `[obserwator.instance]` (ADR-025 erratum of 2026-11-21, the
+  author's decision).** How faded the other providers' stations are beside the featured
+  one while „Pokaż inne źródła” is off: a number from 0.1 to 1.0, 0.4 by default (the
+  opacity the GUI used); it needs `featured_provider`. A wrong value, a boolean, a text or
+  the field without a featured provider refuses the start (`validation_error`, exit 2,
+  `details.option` `instance.others_opacity` with `minimum` and `maximum`). It is part of
+  the instance's key, `obserwator config show --json` reports it and `api/session`'s
+  `instance` carries it; the faded stations stay at 70 % of the size.
 - **`OBSERWATOR_STORE_WRITE_TOKEN_FILE`**: the REST write token from a file (mode 0600),
   read on each write, used without `OBSERWATOR_STORE_WRITE_TOKEN`.
 - **`obserwator config show`** reports `instance` (the resolved section) and `problems`: an
@@ -167,6 +175,16 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Changed
 
+- **GUI: one symbol per kind of station for every provider, and the legend of „Stacje”
+  (ADR-025 and ADR-013 errata of 2026-11-21, the author's decision).** No provider has a
+  symbol of its own: ČHMÚ's dashed outline is gone from the map, the list, the dataset
+  chips, the legend and the guide, and a station is a triangle (hydrological) or a circle
+  (meteorological) whoever provides it; a hollow centre, a faded inactive station and the
+  selected one at 32 px stay. The legend names no provider (its entry „ČHMÚ (obrys
+  przerywany)” is gone) unless an instance fades the others beside its featured provider:
+  then it has a group „Stacje: <provider>” and, while another provider is shown, a group
+  „Pozostałe źródła” (it was one entry „inne źródła (mniejsze, blado)”) with both kinds
+  drawn as the map draws them, at the instance's `others_opacity`.
 - **GUI: on a phone the sources strip is one line (Nogat ECO-080, DEV-20.5).** The kit's
   `<nogat-sources>` (copied from Nogat `5f8cce0`) folds its lines to one line cut with an
   ellipsis up to 860 px, followed by „więcej”, which unfolds them in place, and „Źródła i

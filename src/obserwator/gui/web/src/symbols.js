@@ -14,8 +14,10 @@
 //   `gui.stations.state.*` and `gui.stations.precip.*` of the message catalog in both
 //   languages, looked up when a class is asked for.
 // The outlines are drawn here, the same on the map's canvas and in SVG; no path is copied.
-// Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own marks: a
-// hollow centre for a station that is only in the catalog and a dashed outline for ČHMÚ.
+// Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own mark: a
+// hollow centre for a station that is only in the catalog. A station is drawn by its kind
+// alone, whoever provides it: no provider has a symbol of its own (ADR-025, erratum of
+// 2026-11-21).
 
 import { fmt, html, t } from "./lib.js";
 
@@ -143,8 +145,6 @@ const HOLES = {
   hydro: roundedPolygon(scaled(TRIANGLE, 0.55), 1.2),
   meteo: circle(8),
 };
-/** The dashes of a ČHMÚ outline [units]. */
-const DASH = [5, 3];
 
 /**
  * The paths of a symbol: the filled body (even-odd, so a hole stays empty) and the edges.
@@ -161,7 +161,7 @@ function symbolPaths(shape, hollow) {
  * Draw a symbol on a canvas at `scale` pixels per unit, the box's top left at the origin.
  *
  * @param {CanvasRenderingContext2D} context
- * @param {{shape: "hydro"|"meteo", fill: string, outline: string, hollow?: boolean, dashed?: boolean}} look
+ * @param {{shape: "hydro"|"meteo", fill: string, outline: string, hollow?: boolean}} look
  *   colours as CSS colours
  * @param {number} scale
  */
@@ -173,8 +173,7 @@ export function drawSymbol(context, look, scale) {
   context.fill(new Path2D(paths.body), "evenodd");
   context.strokeStyle = look.outline;
   context.lineJoin = "round";
-  context.lineWidth = look.dashed ? 2.6 : 2;
-  context.setLineDash(look.dashed ? DASH : []);
+  context.lineWidth = 2;
   for (const edge of paths.edges) context.stroke(new Path2D(edge));
   context.restore();
 }
@@ -182,21 +181,23 @@ export function drawSymbol(context, look, scale) {
 /**
  * A symbol as SVG, for the legend, the list, the tooltip and the panel: the map's drawing.
  *
- * @param {{shape?: "hydro"|"meteo", color: string, hollow?: boolean, dashed?: boolean,
- *   faded?: boolean, size?: number, className?: string, label?: string}} props `color`
- *   names the CSS variable of the fill; `size` is the height [px]; `label` makes it an
- *   image with that name, otherwise it is hidden from assistive technology
+ * @param {{shape?: "hydro"|"meteo", color: string, hollow?: boolean, faded?: boolean,
+ *   opacity?: number, size?: number, className?: string, label?: string}} props `color`
+ *   names the CSS variable of the fill; `faded` draws an inactive station; `opacity`
+ *   draws the symbol at that opacity (0–1), as the map draws the stations it fades beside
+ *   a featured provider; `size` is the height [px]; `label` makes it an image with that
+ *   name, otherwise it is hidden from assistive technology
  */
-export function SymbolIcon({ shape = "hydro", color, hollow = false, dashed = false, faded = false, size = SYMBOL_PX, className, label }) {
+export function SymbolIcon({ shape = "hydro", color, hollow = false, faded = false, opacity = null, size = SYMBOL_PX, className, label }) {
   const box = SHAPES[shape];
   const paths = symbolPaths(shape, hollow);
-  const classes = ["sym", shape, hollow ? "hollow" : "", dashed ? "dashed" : "", faded ? "faded" : "", className || ""].filter(Boolean).join(" ");
+  const classes = ["sym", shape, hollow ? "hollow" : "", faded ? "faded" : "", className || ""].filter(Boolean).join(" ");
   return html`<svg
     class=${classes}
     width=${((size * box.width) / box.height).toFixed(1)}
     height=${size}
     viewBox=${`0 0 ${box.width} ${box.height}`}
-    style=${{ "--sym-fill": `var(${color})` }}
+    style=${{ "--sym-fill": `var(${color})`, ...(opacity === null ? {} : { opacity: String(opacity) }) }}
     role=${label ? "img" : null}
     aria-label=${label || null}
     aria-hidden=${label ? null : "true"}
@@ -210,10 +211,10 @@ export function SymbolIcon({ shape = "hydro", color, hollow = false, dashed = fa
  * A station's symbol in the view „Stacje”, as the map draws it: for the list, the dataset
  * filter and the legend.
  *
- * @param {{kind: string, provider: string, data: boolean, active?: boolean, size?: number}} props
+ * @param {{kind: string, data: boolean, active?: boolean, size?: number}} props
  *   `data` whether the store holds a series of the station (else a hollow centre)
  */
-export function StationSymbol({ kind, provider, data, active = true, size = 14 }) {
+export function StationSymbol({ kind, data, active = true, size = 14 }) {
   const shape = kind === "meteo" ? "meteo" : "hydro";
-  return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} dashed=${provider === "CHMI"} faded=${!active} size=${size} className="st-sym" />`;
+  return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} faded=${!active} size=${size} className="st-sym" />`;
 }

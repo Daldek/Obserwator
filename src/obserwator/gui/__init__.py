@@ -168,6 +168,7 @@ def serve(
             "key": config.instance.key,
             "providers": dict(config.instance.providers),
             "featured": config.instance.featured,
+            "others_opacity": config.instance.others_opacity,
             "area_mode": None
             if config.instance.area is None
             else config.instance.area.mode,

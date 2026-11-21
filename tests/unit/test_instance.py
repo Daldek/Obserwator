@@ -23,8 +23,10 @@ from obserwator.instance import (
     AREA_MAX_BYTES,
     AREA_MAX_VERTICES,
     LOGO_MAX_BYTES,
+    OTHERS_OPACITY,
     Instance,
     load_instance,
+    parse_instance,
     provider_of_code,
 )
 from obserwator.store.types import StationFeature
@@ -107,7 +109,8 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
         tmp_path,
         monkeypatch,
         '[obserwator.instance]\ntitle = " Wody Testowe "\nfeatured_provider = "CHMI"\n'
-        'start_view = "featured"\narea = "area.geojson"\narea_mode = "clip"\n'
+        'others_opacity = 0.3\nstart_view = "featured"\narea = "area.geojson"\n'
+        'area_mode = "clip"\n'
         'pmaxtp = "off"\nlogo = "logo.svg"\nterms = "terms.md"\n\n'
         '[obserwator.instance.providers]\nIMGW-PIB = "hidden"\n',
         area__geojson=polygon(SQUARE),
@@ -135,6 +138,7 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
     assert report["area"]["mode"] == "clip" and report["area"]["vertices"] == 5
     assert report["logo"]["media_type"] == "image/svg+xml"
     assert report["pmaxtp"] == "off"
+    assert report["others_opacity"] == 0.3
 
 
 def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkeypatch):
@@ -197,6 +201,62 @@ def test_the_instance_table_must_be_a_table(tmp_path, monkeypatch):
     deployment(tmp_path, monkeypatch, '[obserwator]\ninstance = "yes"\n')
 
     refused("instance")
+
+
+# --- the others' opacity ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("given", "read"), [(0.1, 0.1), (1.0, 1.0), (1, 1.0)])
+def test_the_others_opacity_is_taken_at_its_bounds(tmp_path, given, read):
+    table = {"featured_provider": "CHMI", "others_opacity": given}
+
+    instance = parse_instance(table, base=tmp_path)
+
+    assert instance.others_opacity == read
+    assert isinstance(instance.others_opacity, float)
+    assert instance.report()["others_opacity"] == read
+
+
+def test_the_others_opacity_defaults_and_is_part_of_the_key(tmp_path):
+    plain = parse_instance({"featured_provider": "CHMI"}, base=tmp_path)
+    same = parse_instance(
+        {"featured_provider": "CHMI", "others_opacity": OTHERS_OPACITY}, base=tmp_path
+    )
+    fainter = parse_instance(
+        {"featured_provider": "CHMI", "others_opacity": 0.25}, base=tmp_path
+    )
+
+    assert plain.others_opacity == 0.4
+    assert plain.key == same.key
+    assert fainter.key != plain.key
+
+
+@pytest.mark.parametrize("given", [0.09, 1.01, 0, True, "0.5", [0.5]])
+def test_an_others_opacity_outside_its_range_or_no_number_is_refused(tmp_path, given):
+    table = {"featured_provider": "CHMI", "others_opacity": given}
+
+    with pytest.raises(ObserwatorValidationError) as caught:
+        parse_instance(table, base=tmp_path)
+
+    assert caught.value.code == "validation_error"
+    assert caught.value.details["option"] == "instance.others_opacity"
+    assert (caught.value.details["minimum"], caught.value.details["maximum"]) == (
+        0.1,
+        1.0,
+    )
+
+
+def test_an_others_opacity_without_a_featured_provider_is_refused(
+    tmp_path, monkeypatch
+):
+    deployment(tmp_path, monkeypatch, "[obserwator.instance]\nothers_opacity = 0.5\n")
+
+    refused("instance.others_opacity")
+    problem = environment_report()["problems"][0]
+    assert (problem["code"], problem["option"]) == (
+        "invalid_instance",
+        "instance.others_opacity",
+    )
 
 
 # --- the area --------------------------------------------------------------------------

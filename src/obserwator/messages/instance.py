@@ -49,6 +49,17 @@ MESSAGES = {
         "area_mode needs area: without an area nothing is clipped",
         "area_mode wymaga area: bez obszaru nic nie jest przycinane",
     ),
+    "opacity_needs_featured": Text(
+        "others_opacity needs featured_provider: without it no station is faded",
+        "others_opacity wymaga featured_provider: bez niego żadna stacja nie jest "
+        "przygaszona",
+    ),
+    "bad_opacity": Text(
+        "others_opacity of [obserwator.instance] is {value}; it must be a number from "
+        "{minimum} to {maximum}",
+        "others_opacity w [obserwator.instance] ma wartość {value}; musi być liczbą od "
+        "{minimum} do {maximum}",
+    ),
     "bad_title": Text(
         "title of [obserwator.instance] must be one line of 1 to {maximum} characters",
         "title w [obserwator.instance] musi być jednym wierszem o długości od 1 do "

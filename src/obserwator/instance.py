@@ -2,15 +2,16 @@
 The section ``[obserwator.instance]`` of ``nogat.toml``: what one deployment serves (ADR-025).
 
 One table describes an instance of the servers (I1, I2): the state of each provider
-(``visible``, ``hidden`` or ``off``), the provider it features, its area (one GeoJSON
-Polygon or MultiPolygon in WGS84, ``focus`` or ``clip``), its start view, PMAXTP (``on``
-or ``off``) and the operator's title, logo and regulamin. `load_instance` reads and
-checks the table once, when a server starts (I7): an unknown field or provider, a
-featured provider that is ``off``, an area file that is missing, too large, no polygon
-or outside the WGS84 range, a logo that is no PNG, WebP or SVG, a regulamin without its
-title, any wrong value is ``validation_error`` naming the field in ``details.option``
-(``instance.<field>``), so a server starts only from a valid description. Without the
-table there is no instance: the servers serve everything, as before.
+(``visible``, ``hidden`` or ``off``), the provider it features and how strongly the
+others are drawn beside it (``others_opacity``), its area (one GeoJSON Polygon or
+MultiPolygon in WGS84, ``focus`` or ``clip``), its start view, PMAXTP (``on`` or ``off``)
+and the operator's title, logo and regulamin. `load_instance` reads and checks the table
+once, when a server starts (I7): an unknown field or provider, a featured provider that
+is ``off``, an area file that is missing, too large, no polygon or outside the WGS84
+range, a logo that is no PNG, WebP or SVG, a regulamin without its title, any wrong value
+is ``validation_error`` naming the field in ``details.option`` (``instance.<field>``), so
+a server starts only from a valid description. Without the table there is no instance:
+the servers serve everything, as before.
 
 `Instance` is the one filter of both servers (I3). `Instance.keeps` says whether a
 station of a catalog is served: its provider is not ``off`` and, with ``area_mode =
@@ -49,6 +50,9 @@ __all__ = [
     "AREA_MAX_VERTICES",
     "FIELDS",
     "LOGO_MAX_BYTES",
+    "OTHERS_OPACITY",
+    "OTHERS_OPACITY_MAX",
+    "OTHERS_OPACITY_MIN",
     "TERMS_MAX_BYTES",
     "Area",
     "Instance",
@@ -71,6 +75,7 @@ FIELDS: tuple[str, ...] = (
     "title",
     "logo",
     "featured_provider",
+    "others_opacity",
     "start_view",
     "area",
     "area_mode",
@@ -93,6 +98,12 @@ LOGO_MAX_BYTES = 200_000
 """The largest logo [bytes] (I14)."""
 TERMS_MAX_BYTES = 200_000
 """The largest regulamin [bytes] (I15)."""
+OTHERS_OPACITY = 0.4
+"""The opacity of the other providers' stations beside the featured one, by default (I6)."""
+OTHERS_OPACITY_MIN = 0.1
+"""The least ``others_opacity``: a fainter station is not seen at all."""
+OTHERS_OPACITY_MAX = 1.0
+"""The greatest ``others_opacity``: the others at full strength, only smaller."""
 START_MARGIN = 0.05
 """The margin of the featured provider's box: this share of its size on each side (I5)."""
 START_MARGIN_MIN = 0.02
@@ -606,6 +617,9 @@ class Instance:
         names another, I2), in registry order.
     featured : str or None
         The featured provider (I6), never ``off``.
+    others_opacity : float
+        The opacity of the other providers' stations while the page fades them beside
+        the featured one (I6), from `OTHERS_OPACITY_MIN` to `OTHERS_OPACITY_MAX`.
     start_view : {"all", "featured", "area"}
         Where the map starts (I5).
     area : Area or None
@@ -622,6 +636,7 @@ class Instance:
 
     providers: Mapping[str, ProviderState]
     featured: str | None = None
+    others_opacity: float = OTHERS_OPACITY
     start_view: StartView = "all"
     area: Area | None = None
     pmaxtp: bool = True
@@ -771,6 +786,7 @@ class Instance:
         document = {
             "providers": dict(self.providers),
             "featured": self.featured,
+            "others_opacity": self.others_opacity,
             "start_view": self.start_view,
             "area": None if self.area is None else [self.area.mode, self.area.sha256],
             "pmaxtp": self.pmaxtp,
@@ -856,6 +872,7 @@ class Instance:
         return {
             "title": self.title,
             "featured_provider": self.featured,
+            "others_opacity": self.others_opacity,
             "start_view": self.start_view,
             "pmaxtp": "on" if self.pmaxtp else "off",
             "providers": dict(self.providers),
@@ -927,6 +944,33 @@ def _choice(
             allowed=list(allowed),
         )
     return str(value)
+
+
+def _opacity(table: Mapping[str, Any], featured: str | None) -> float:
+    """``others_opacity``: a number in its range, only beside a featured provider."""
+    if "others_opacity" not in table:
+        return OTHERS_OPACITY
+    if featured is None:
+        raise _invalid("others_opacity", message("instance.opacity_needs_featured"))
+    value = table["others_opacity"]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not OTHERS_OPACITY_MIN <= value <= OTHERS_OPACITY_MAX
+    ):
+        raise _invalid(
+            "others_opacity",
+            message(
+                "instance.bad_opacity",
+                value=json.dumps(value, default=str)[:80],
+                minimum=OTHERS_OPACITY_MIN,
+                maximum=OTHERS_OPACITY_MAX,
+            ),
+            value=value if isinstance(value, str | int | float) else repr(value)[:80],
+            minimum=OTHERS_OPACITY_MIN,
+            maximum=OTHERS_OPACITY_MAX,
+        )
+    return float(value)
 
 
 def _file(base: Path, value: str) -> Path:
@@ -1023,6 +1067,7 @@ def parse_instance(table: object, *, base: Path) -> Instance:
                 message("instance.featured_off", provider=featured),
                 value=featured,
             )
+    others_opacity = _opacity(table, featured)
     start_view = cast(StartView, _choice(table, "start_view", START_VIEWS, "all"))
     area_mode = cast(AreaMode, _choice(table, "area_mode", AREA_MODES, "focus"))
     pmaxtp = _choice(table, "pmaxtp", PMAXTP_STATES, "on") == "on"
@@ -1052,6 +1097,7 @@ def parse_instance(table: object, *, base: Path) -> Instance:
     return Instance(
         providers=states,
         featured=featured,
+        others_opacity=others_opacity,
         start_view=start_view,
         area=area,
         pmaxtp=pmaxtp,

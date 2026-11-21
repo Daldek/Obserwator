@@ -114,7 +114,6 @@
 .sym { flex: none; overflow: visible; vertical-align: middle; }
 .sym .body { fill: var(--sym-fill, var(--imgw-unknown)); }
 .sym .edge { fill: none; stroke: var(--imgw-outline); stroke-width: 2; stroke-linejoin: round; }
-.sym.dashed .edge { stroke-width: 2.6; stroke-dasharray: 5 3; }
 .sym.faded { opacity: 0.5; }
 
 /* The class of a station in its section „Pomiary bieżące” (src/sections/teraz.js) */
@@ -166,6 +165,8 @@
 .legend-gap { display: inline-block; width: 15px; flex: none; }
 .pick-ring { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; }
 .legend-more { margin-top: 6px; }
+/* Below the groups of an instance's featured provider and the other sources: the marks of every station */
+.legend-marks { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .legend-area { width: 18px; height: 12px; flex: none; border: 2px solid var(--map-area); background: color-mix(in srgb, var(--map-area) 6%, transparent); box-sizing: border-box; }
 
 /* Without WebGL */
