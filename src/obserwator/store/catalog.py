@@ -66,6 +66,7 @@ from obserwator.exceptions import (
 from obserwator.fetch import DEFAULT_TIMEOUT
 from obserwator.messages import Message, message, reason
 from obserwator.models import StationListEntry
+from obserwator.store.content import stored_form
 from obserwator.store.series import _current_series, _raw, _series_versions
 from obserwator.store.types import (
     Cancel,
@@ -549,8 +550,10 @@ def _stored_source(
         "sha256": meta["sha256"],
     }
     if "content_sha256" in meta:
+        # A form renamed since the version was written: its current id (ADR-028).
         record.update(
-            content_sha256=meta["content_sha256"], content_form=meta["content_form"]
+            content_sha256=meta["content_sha256"],
+            content_form=stored_form(meta["content_form"]),
         )
     return data, record
 

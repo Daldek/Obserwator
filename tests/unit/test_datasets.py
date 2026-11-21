@@ -13,6 +13,7 @@ from obserwator.datasets import (
     archive_files,
     datasets,
     get_dataset,
+    get_provider,
     parse_months,
     parse_years,
     resolve_dataset_key,
@@ -204,16 +205,15 @@ def test_every_dataset_key_follows_the_key_convention():
         assert old not in keys and current in keys, (old, current)
 
 
-def test_renamed_key_resolves_to_the_current_key(monkeypatch):
-    monkeypatch.setattr(
-        DATASETS_MODULE,
-        "DATASET_KEY_ALIASES",
-        {"pl.imgw.hydro_day": "pl.imgw.hydro_daily"},
-    )
-
-    assert resolve_dataset_key("pl.imgw.hydro_day") == "pl.imgw.hydro_daily"
-    assert get_dataset("pl.imgw.hydro_day") is get_dataset("pl.imgw.hydro_daily")
-    assert resolve_dataset_key("pl.imgw.hydro_daily") == "pl.imgw.hydro_daily"
+def test_a_renamed_key_is_read_from_the_store_but_no_input_takes_it():
+    # ADR-028: ČHMÚ's keys of 3.0.x resolve, as stored history, to the current ones.
+    assert resolve_dataset_key("cz.chmi.hydro_daily") == "cz.chmu.hydro_daily"
+    assert resolve_dataset_key("cz.chmu.hydro_daily") == "cz.chmu.hydro_daily"
+    with pytest.raises(ObserwatorValidationError) as exc:
+        get_dataset("cz.chmi.hydro_daily")
+    assert exc.value.details["value"] == "cz.chmi.hydro_daily"
+    with pytest.raises(ObserwatorValidationError):
+        get_provider("CHMI")
     # Unknown keys, slugs and legacy input words are not keys Obserwator knows.
     for value in ("sk.shmu.hydro_daily", "hydro_daily", "hydro/dobowe"):
         assert resolve_dataset_key(value) is None

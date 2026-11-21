@@ -47,7 +47,7 @@ from obserwator.output import (
     FileResult,
     store_below,
 )
-from obserwator.store.content import CONTENT_FORMS, content_sha256
+from obserwator.store.content import CONTENT_FORMS, content_sha256, stored_form
 from obserwator.store.types import (
     Cancel,
     Notice,
@@ -1410,13 +1410,14 @@ def _content_fields(
     ``content_sha256`` and ``content_form`` of a new version's sidecar.
 
     A relabeled copy keeps the fields of the stored version with the same
-    bytes; otherwise the fields come from the dataset's form (none without
-    a form, so IMGW-PIB sidecars keep their bytes).
+    bytes, its form by the current identifier (ADR-028); otherwise the fields
+    come from the dataset's form (none without a form, so IMGW-PIB sidecars
+    keep their bytes).
     """
     for _, old_meta, _ in same:
         digest, old_form = old_meta.get("content_sha256"), old_meta.get("content_form")
         if isinstance(digest, str) and isinstance(old_form, str):
-            return {"content_sha256": digest, "content_form": old_form}
+            return {"content_sha256": digest, "content_form": stored_form(old_form)}
     if content is None or form is None:
         return {}
     return {"content_sha256": content, "content_form": form}

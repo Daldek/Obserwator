@@ -18,6 +18,7 @@ from obserwator._parsing.stations import parse_stations_csv
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     DATASET_KEY_PATTERN,
+    PROVIDER_ID_ALIASES,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -51,6 +52,7 @@ from obserwator.store.catalog import (
     _signal_time,
     _timestamp,
 )
+from obserwator.store.content import stored_form
 from obserwator.store.pmaxtp import CELL_FILE, CELL_SCHEMA, RESPONSE_FILE
 from obserwator.store.series import (
     _FLAGS,
@@ -363,7 +365,7 @@ def _content_fields(payload: Mapping[str, Any]) -> tuple[str | None, str | None]
     digest = payload["content_sha256"]
     if not isinstance(digest, str) or not _SHA.fullmatch(digest):
         raise _Invalid("invalid_meta", message("reader.field_content_sha256_must_have"))
-    return digest, _text(payload, "content_form")
+    return digest, stored_form(_text(payload, "content_form"))
 
 
 def _parse_meta(payload: object) -> Meta:
@@ -391,7 +393,9 @@ def _parse_meta(payload: object) -> Meta:
         raise _Invalid(
             "invalid_meta", message("reader.field_country_must_country_code")
         )
+    # A sidecar written before a provider was renamed holds its old id (ADR-028).
     provider = _text(payload, "provider")
+    provider = PROVIDER_ID_ALIASES.get(provider, provider)
     origin = _registry_origin(dataset)
     if origin is not None and (country, provider) != origin:
         raise _Invalid(
@@ -860,7 +864,7 @@ def _parse_observation(payload: object) -> Observation:
         raise _Invalid("invalid_meta", message("reader.field_size_bytes_must_non"))
     sha = _digest(payload, "sha256")
     content_sha256 = _digest(payload, "content_sha256")
-    content_form = _text(payload, "content_form")
+    content_form = stored_form(_text(payload, "content_form"))
     same = payload.get("same_content_as")
     if not isinstance(same, str) or not _SAME_CONTENT.fullmatch(same):
         raise _Invalid(

@@ -35,15 +35,35 @@ _CATALOG_DATASETS: Mapping[str, str] = MappingProxyType(
     {"IMGW-PIB": CATALOG_DATASET, "CHMU": "cz.chmu.stations"}
 )
 
-DATASET_KEY_ALIASES: Mapping[str, str] = MappingProxyType({})
+DATASET_KEY_ALIASES: Mapping[str, str] = MappingProxyType(
+    {
+        "cz.chmi.hydro_daily": "cz.chmu.hydro_daily",
+        "cz.chmi.meteo_daily": "cz.chmu.meteo_daily",
+        "cz.chmi.hydro_stations": "cz.chmu.hydro_stations",
+        "cz.chmi.meteo_stations": "cz.chmu.meteo_stations",
+        "cz.chmi.hydro_now": "cz.chmu.hydro_now",
+        "cz.chmi.meteo_now": "cz.chmu.meteo_now",
+    }
+)
 """
-Renamed dataset keys: published key → current key (ADR-001, IMGW-20).
+Renamed dataset keys: published key → current key (ADR-001, IMGW-20; ADR-028).
 
-A key published in a release with the store never changes, and sidecars keep
-their raw ``dataset`` forever; a renamed dataset adds its old key here, and the
-entry is recorded in the changelog. Empty in 3.0.0. Unlike ``legacy_alias``
-(pre-3.0 input words), entries are stored keys that `read_meta` resolves into
-``Meta.dataset_key``.
+Sidecars keep their raw ``dataset`` forever; a renamed dataset adds its old key
+here, and the entry is recorded in the changelog. The entries are the reading of
+stored history, not input: `read_meta` resolves them into ``Meta.dataset_key``,
+so a raw root written before a rename is read under the current keys, while
+`get_dataset` and every option take the current keys only. Since 3.1.0 the ČHMÚ
+archive datasets of 3.0.x (``cz.chmi.*``). Unlike ``legacy_alias`` (pre-3.0 input
+words), entries are stored keys.
+"""
+
+PROVIDER_ID_ALIASES: Mapping[str, str] = MappingProxyType({"CHMI": "CHMU"})
+"""
+Renamed provider identifiers: published id → current id (ADR-028).
+
+The reading of stored history, as `DATASET_KEY_ALIASES`: `read_meta` gives the
+current id as ``Meta.provider`` for the ``provider`` of a sidecar written before the
+rename; no input takes an old id.
 """
 
 _YEAR = re.compile(r"([0-9]{1,4})(?:-([0-9]{1,4}))?")
@@ -1203,14 +1223,14 @@ def datasets(
 
 def get_dataset(dataset: str, /) -> DatasetDescriptor:
     """
-    Find a dataset by its key, slug, legacy alias or renamed key.
+    Find a dataset by its key, slug or legacy alias.
 
     Parameters
     ----------
     dataset : str
         Full key (``"pl.imgw.hydro_daily"``), slug (``"hydro_daily"``) or
-        legacy alias (``"hydro/dobowe"``), tried in this order, then a renamed
-        key of ``DATASET_KEY_ALIASES``.
+        legacy alias (``"hydro/dobowe"``), tried in this order. A renamed key
+        of ``DATASET_KEY_ALIASES`` is no input (ADR-028).
 
     Returns
     -------
@@ -1226,10 +1246,6 @@ def get_dataset(dataset: str, /) -> DatasetDescriptor:
     """
     if isinstance(dataset, str):
         if (descriptor := _BY_NAME.get(dataset)) is not None:
-            return descriptor
-        if (
-            descriptor := _BY_NAME.get(DATASET_KEY_ALIASES.get(dataset, ""))
-        ) is not None:
             return descriptor
         if dataset in _UNSUPPORTED:
             reason, text = _UNSUPPORTED[dataset]

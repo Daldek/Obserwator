@@ -584,7 +584,9 @@ def export_archive(
     if root is not None:
         source = _open(root, kind="raw") / source
     records = read_archive(source)
-    descriptor = get_dataset(read_meta(_archive_main(source)).dataset)
+    meta = read_meta(_archive_main(source))
+    # The current key: a sidecar of a renamed dataset keeps its old one (ADR-028).
+    descriptor = get_dataset(meta.dataset_key or meta.dataset)
     target = _target(output, force=force)
     head, rows = _archive_lines(records, format)
     _check_cancel(cancel)

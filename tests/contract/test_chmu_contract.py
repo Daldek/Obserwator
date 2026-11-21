@@ -1660,3 +1660,61 @@ def test_imgw_19_k3_every_chmu_sidecar_and_export_names_cc_by_and_chmu(pl_cz):
             )
             assert [row["attribution"] for row in rows[:2]] == [SOURCE, PROCESSED]
             assert [notice.code for notice in notices] == ["license_terms"]
+
+
+# --------------------------------------------------------------------------
+# ADR-028: a raw root written under the old names
+# --------------------------------------------------------------------------
+
+
+def _old_names(raw: Path) -> int:
+    """Rewrite the ČHMÚ sidecars and observations of a raw root as 3.0.x wrote them."""
+    renamed = 0
+    for path in sorted(raw.rglob("*.json")):
+        if not (path.name.endswith(".meta.json") or path.parent.name == "observations"):
+            continue
+        document = load(path)
+        if not str(document.get("dataset", "")).startswith("cz.chmu."):
+            continue
+        document["dataset"] = document["dataset"].replace("cz.chmu.", "cz.chmi.")
+        if "provider" in document:
+            document["provider"] = "CHMI"
+        if "content_form" in document:
+            document["content_form"] = "chmi-json/1"
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        renamed += 1
+    return renamed
+
+
+def test_a_raw_root_of_the_old_names_builds_the_cz_chmu_series_and_catalog(
+    pl_cz, tmp_path
+):
+    roots = copy_of(pl_cz, tmp_path / "store")
+    assert _old_names(roots.raw) > 0
+    data = init_store(tmp_path / "data", kind="data").root
+
+    for dataset in (HYDRO, METEO):
+        assert build_series(data, raw_root=roots.raw, dataset=dataset).status == "new"
+    assert build_catalog(data, raw_root=roots.raw, provider="CHMU").status == "new"
+
+    # Stored history keeps its raw names and is read under the current ones.
+    archives = list(iter_store(roots.raw, kind="archive", provider="CHMU"))
+    assert archives and all(entry.problem_code is None for entry in archives)
+    assert {entry.meta.dataset.split(".")[1] for entry in archives} == {"chmi"}
+    assert {
+        (entry.meta.dataset_key[:8], entry.meta.provider) for entry in archives
+    } == {("cz.chmu.", "CHMU")}
+    assert {entry.meta.content_form for entry in archives} == {"chmu-json/1", None}
+    # The data root is the one the current names give, and only they are written.
+    for slot, part in (
+        (f"series:{HYDRO}", "stations"),
+        (f"series:{METEO}", "stations"),
+        ("catalog:cz.chmu.stations", "features"),
+    ):
+        built, fixture = version_of(data, slot), version_of(pl_cz.data, slot)
+        assert load(built)[part] == load(fixture)[part], slot
+    written = " ".join(path.read_text("utf-8") for path in data.rglob("*.json"))
+    assert "cz.chmi." not in written and "chmi-json" not in written
+    assert '"CHMI"' not in written
+    with pytest.raises(ObserwatorValidationError):
+        build_series(data, raw_root=roots.raw, dataset="cz.chmi.hydro_daily")
