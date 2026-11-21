@@ -27,6 +27,22 @@ MESSAGES = {
         "The station search phrase must not be empty",
         "Fraza wyszukiwania stacji nie może być pusta",
     ),
+    "bbox_needs_four_numbers": Text(
+        "bbox must be four numbers west,south,east,north (WGS84 degrees); got {bbox}",
+        "bbox musi być czterema liczbami zachód,południe,wschód,północ (stopnie "
+        "WGS84); podano {bbox}",
+    ),
+    "bbox_out_of_range": Text(
+        "bbox {bbox} is out of range: longitudes (west, east) must lie within "
+        "-180..180 and latitudes (south, north) within -90..90",
+        "bbox {bbox} poza zakresem: długości (zachód, wschód) muszą leżeć w "
+        "-180..180, a szerokości (południe, północ) w -90..90",
+    ),
+    "bbox_inverted": Text(
+        "bbox {bbox} is inverted: west must not exceed east, nor south exceed north",
+        "bbox {bbox} jest odwrócony: zachód nie może przekraczać wschodu ani "
+        "południe północy",
+    ),
     "unreadable_listing_no_file": Text(
         "Unreadable listing {url}: no file {newest}",
         "Nieczytelny listing {url}: brak pliku {newest}",

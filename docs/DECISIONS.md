@@ -29,6 +29,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-021](#adr-021-station-details-of-hydroimgwpl) | Station details of hydro.imgw.pl | 2026-11-14 | Accepted |
 | [ADR-022](#adr-022-daily-synoptic-data-and-the-stations-joined-daily-record) | Daily synoptic data and the station's joined daily record | 2026-11-15 | Accepted |
 | [ADR-023](#adr-023-download-only-datasets-of-the-rest-of-imgw-pibs-public-data) | Download-only datasets of the rest of IMGW-PIB's public data | 2026-11-15 | Accepted |
+| [ADR-024](#adr-024-coordinates-and-an-area-filter-in-the-live-station-search) | Coordinates and an area filter in the live station search | 2026-11-21 | Accepted |
 
 ---
 
@@ -980,3 +981,27 @@ Three parts of the public data had no dataset: the observation-time synop archiv
 ### Consequences
 
 Additive: four registry entries (the IMGW-PIB download-only datasets are nine), the alias `meteo/terminowe/synop` resolves (no longer `per_station`), `archive_scope` `station_year` is used by IMGW-PIB too, ArchiveFile URLs are percent-encoded (`quote`, identical for the ASCII paths of before), and `AGENTS.md` folds the download-only keys as `pl.imgw.{…}`. Tests replay real files and indexes recorded on 2026-11-14 (`tests/fixtures/download_only/`: one station's 1966_1970 synop archive, the hydrological warnings of 2018-12, the index of Kłodzko, two of its DAN files and the summary; the root index and one year index trimmed to fewer rows).
+
+---
+
+## ADR-024: Coordinates and an area filter in the live station search
+
+**Date:** 2026-11-21  
+**Status:** Accepted (end-to-end finding GEO-04 of 2026-11-15; branch `fix/3.1.0-geo04`)  
+**Standard:** Nogat AGI-2.3 (one option name per parameter), DEV-19.1; extends ADR-002 (the catalog) and ADR-017 (the two sources of `stations find`)
+
+### Context and options
+
+`stations find --source live` gave IMGW-PIB stations without coordinates, since the station list CSVs have none, and no command could select stations by area: an area search needed `store catalog` and a GIS. Coordinate sources for the live IMGW-PIB lists: (a) the current-data API `api/data/hydro` and `api/data/meteo` (`lat`, `lon` of every reporting station; the first location source of `store catalog` too); (b) the map of hydro.imgw.pl (`fetch_hydro_states`, a backend that needs a `Referer`); (c) the reference file `hydro_stations_locations.csv` of `reference_dir`, a snapshot of (b) present only after `python -m obserwator.reference_data`; (d) the newest catalog of a configured data root. Measured on 2026-11-21: of the 1,301 hydrological stations of the list (a) locates 807, (b) 807 of the same and 6 more; of the 2,185 meteorological ones (a) locates 570; the rest are closed stations no live source locates. Area filters: (e) a bounding box; (f) voivodeship or river basin, which no source gives for every station (the province is in the hydro.imgw.pl details of hydrological stations only); (g) a point and a radius. No command of the catalog had an area filter before (the `latitude`/`longitude` of `pmaxtp` name one point in Poland).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **IMGW-PIB live coordinates come from the current-data API**: a live IMGW-PIB search reads the family's API answer after its list (two GETs per family) and gives each listed station the `lat`/`lon` published for its code, as published, without the border check of `store catalog` (as the live ČHMÚ coordinates); a listed station the API does not report keeps None. `stations find --check` names both URLs. An API answer that is no JSON list is `data_error`. | (b): 6 more stations for a third request to a backend that is no public API; (c): local state that changes a live answer and is missing on most machines; (d): a live search refuses a root (ADR-017), and `--source store` already gives the catalog's coordinates. |
+| D2 | **One option `bbox`** of `stations find` (`find_stations(bbox=…)`), for both sources: a list of four numbers `west,south,east,north` in WGS84 degrees, bounds included (list item type `float`, which keeps order and repeats). Four finite numbers, longitudes within ±180, latitudes within ±90, west ≤ east and south ≤ north, else `validation_error` with `details.option` `bbox`. No box crossing the antimeridian. | (f): not available for every station of either provider; (g): a second geometry for the same need, and a box is what map clients and GIS tools pass. |
+| D3 | **A station without coordinates is outside every area**: an area search leaves it out (live: an IMGW-PIB station the API does not report; store: a catalog station with `geometry` null); the command's help and rules say so. | Keeping them (an area search would return every closed station of the country). |
+
+### Consequences
+
+Additive: `StationListEntry` of a live IMGW-PIB search has coordinates for the reporting stations, `stations find` has `--bbox` in every interface (`commands schema`: an array of numbers within ±180), and a live IMGW-PIB search makes two requests per family instead of one, so an outage of the current-data API fails it (`source_unavailable`). The `hydrographic_code` of a live IMGW-PIB row stays the number the list publishes in parentheses (`"14"` for the Barycz).

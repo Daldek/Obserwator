@@ -11,9 +11,10 @@ hydro.imgw.pl map API, whose station pages also give the station details
 from __future__ import annotations
 
 import json
+import math
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
@@ -62,6 +63,15 @@ _KINDS: tuple[Literal["hydro", "meteo"], ...] = ("hydro", "meteo")
 _SOURCES = ("live", "store")
 # The newest dated file of a listed directory, as plans name it.
 _NEWEST = "meta1-<YYYYMMDD>.json"
+# IMGW-PIB current-data API answer of each family whose ``lon``/``lat`` locate the
+# rows of the live list (the first location source of the catalog too), and the
+# key of the station code in it.
+_IMGW_LOCATIONS: Mapping[str, tuple[str, str]] = {
+    "hydro": ("pl.imgw.hydro_now", "id_stacji"),
+    "meteo": ("pl.imgw.meteo_now", "kod_stacji"),
+}
+# Area of a search: west, south, east, north (WGS84 degrees, bounds included).
+Area = tuple[float, float, float, float]
 
 # Polish ``ł`` has no decomposition, so ``_normalize`` maps it by hand.
 _L_STROKE = unicodedata.lookup("LATIN SMALL LETTER L WITH STROKE")
@@ -82,10 +92,57 @@ def _normalize(text: str) -> str:
     return "".join(char for char in folded if not unicodedata.combining(char))
 
 
-def _search_kinds(
-    kind: str | None, query: str | None, source: str, root: object
-) -> tuple[tuple[Literal["hydro", "meteo"], ...], str | None]:
-    """Validate the search options; return the families and stripped query."""
+def _area(bbox: Sequence[float] | None) -> Area | None:
+    """
+    Validate the bounding box of a search; return it as ``(w, s, e, n)``.
+
+    Four finite WGS84 degrees in order west, south, east, north: longitudes
+    within ±180, latitudes within ±90, west not east of east and south not
+    north of north.
+    """
+    if bbox is None:
+        return None
+    values = (
+        list(bbox) if isinstance(bbox, Sequence) and not isinstance(bbox, str) else []
+    )
+    shown = ",".join(map(str, values)) if values else repr(bbox)
+    if len(values) != 4 or not all(
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        for value in values
+    ):
+        raise ObserwatorValidationError(
+            message("stations.bbox_needs_four_numbers", bbox=shown),
+            details={"option": "bbox", "value": shown},
+        )
+    west, south, east, north = (float(value) for value in values)
+    if not (
+        -180.0 <= west <= 180.0
+        and -180.0 <= east <= 180.0
+        and -90.0 <= south <= 90.0
+        and -90.0 <= north <= 90.0
+    ):
+        raise ObserwatorValidationError(
+            message("stations.bbox_out_of_range", bbox=shown),
+            details={"option": "bbox", "value": shown},
+        )
+    if west > east or south > north:
+        raise ObserwatorValidationError(
+            message("stations.bbox_inverted", bbox=shown),
+            details={"option": "bbox", "value": shown},
+        )
+    return west, south, east, north
+
+
+def _search_options(
+    kind: str | None,
+    query: str | None,
+    source: str,
+    root: object,
+    bbox: Sequence[float] | None = None,
+) -> tuple[tuple[Literal["hydro", "meteo"], ...], str | None, Area | None]:
+    """Validate the search options; return the families, stripped query and area."""
     if kind is not None and kind not in _KINDS:
         raise ObserwatorValidationError(
             message("stations.unknown_kind_station_allowed_hydro", kind=kind),
@@ -115,7 +172,7 @@ def _search_kinds(
                 details={"option": "query"},
             )
     kinds = _KINDS if kind is None else (kind,)
-    return kinds, needle
+    return kinds, needle, _area(bbox)
 
 
 def _owners(provider: str | None) -> tuple[ProviderDescriptor, ...]:
@@ -123,10 +180,18 @@ def _owners(provider: str | None) -> tuple[ProviderDescriptor, ...]:
     return providers() if provider is None else (get_provider(provider),)
 
 
+def _inside(entry: StationListEntry, area: Area) -> bool:
+    """Whether a station lies in ``area`` (bounds included); never without coordinates."""
+    if entry.latitude is None or entry.longitude is None:
+        return False
+    west, south, east, north = area
+    return west <= entry.longitude <= east and south <= entry.latitude <= north
+
+
 def _matching(
-    entries: Iterable[StationListEntry], query: str | None
+    entries: Iterable[StationListEntry], query: str | None, area: Area | None
 ) -> tuple[StationListEntry, ...]:
-    """Stations matching ``query``, by provider, family, normalized name and code."""
+    """Stations matching ``query`` (normalized name, river, code) and ``area``, ordered."""
     rows = list(entries)
     if query is not None:
         needle = _normalize(query)
@@ -137,6 +202,8 @@ def _matching(
             or (entry.river is not None and needle in _normalize(entry.river))
             or entry.station_code.startswith(query)
         ]
+    if area is not None:
+        rows = [entry for entry in rows if _inside(entry, area)]
     rank = {owner.id: index for index, owner in enumerate(providers())}
     order = {family: index for index, family in enumerate(_KINDS)}
     return tuple(
@@ -158,13 +225,16 @@ class _LiveSource:
     Live station list of one provider and family.
 
     ``listing`` marks the URL of a directory listing whose newest
-    ``meta1-<YYYYMMDD>.json`` is the list (ČHMÚ meteo ``now`` metadata).
+    ``meta1-<YYYYMMDD>.json`` is the list (ČHMÚ meteo ``now`` metadata);
+    ``locations`` is the URL of the IMGW-PIB current-data API answer of the
+    family, read after the list for the coordinates of its stations.
     """
 
     provider: ProviderDescriptor
     kind: Literal["hydro", "meteo"]
     url: str
     listing: bool = False
+    locations: str | None = None
 
 
 def _live_sources(
@@ -185,10 +255,19 @@ def _live_sources(
             )
         else:
             hydro_list, meteo_list = station_source_files(provider=owner.id)
-            hydro = _LiveSource(owner, "hydro", hydro_list.url)
-            meteo = _LiveSource(owner, "meteo", meteo_list.url)
+            hydro = _LiveSource(
+                owner, "hydro", hydro_list.url, locations=_locations_url("hydro")
+            )
+            meteo = _LiveSource(
+                owner, "meteo", meteo_list.url, locations=_locations_url("meteo")
+            )
         sources.extend(hydro if family == "hydro" else meteo for family in kinds)
     return sources
+
+
+def _locations_url(kind: Literal["hydro", "meteo"]) -> str:
+    """URL of the IMGW-PIB current-data API answer of a family."""
+    return _station_files(_IMGW_LOCATIONS[kind][0])[0].url
 
 
 def _live_urls(
@@ -201,6 +280,8 @@ def _live_urls(
         urls.append(source.url)
         if source.listing:
             urls.append(source.url + _NEWEST)
+        if source.locations is not None:
+            urls.append(source.locations)
     return urls
 
 
@@ -235,15 +316,68 @@ def _parsed(source: _LiveSource, content: bytes, url: str) -> list[StationListEn
     return list(parse_stations_csv(content, kind=source.kind))
 
 
+def _degrees(value: object) -> float | None:
+    """A published coordinate (number or numeric text) as a finite float, else None."""
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _located(
+    entries: list[StationListEntry], source: _LiveSource, response: httpx.Response
+) -> list[StationListEntry]:
+    """
+    The rows of an IMGW-PIB live list with the coordinates of the current-data API.
+
+    Each row whose code the API answer lists with a numeric ``lat`` and ``lon``
+    gets them as published (no border check); other rows keep None.
+    """
+    url = str(response.url)
+    payload = _json_payload(response)
+    if not isinstance(payload, list):
+        raise ObserwatorDataError(
+            message("stations.unexpected_response_from_list_stations", url=url),
+            details={"url": url},
+        )
+    code_key = _IMGW_LOCATIONS[source.kind][1]
+    points: dict[str, tuple[float, float]] = {}
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get(code_key) or "").strip()
+        latitude, longitude = _degrees(row.get("lat")), _degrees(row.get("lon"))
+        if code and latitude is not None and longitude is not None:
+            points.setdefault(code, (latitude, longitude))
+    return [
+        replace(entry, latitude=point[0], longitude=point[1])
+        if (point := points.get(entry.station_code)) is not None
+        else entry
+        for entry in entries
+    ]
+
+
 def _read_live(source: _LiveSource, timeout: float) -> list[StationListEntry]:
-    """Stations of one live list (one GET; a listed directory adds its listing)."""
+    """
+    Stations of one live list.
+
+    One GET; a listed directory adds its listing, an IMGW-PIB list the
+    current-data API answer of its coordinates.
+    """
     headers, name = _identity(source)
     url = source.url
     if source.listing:
         listing = _get(url, timeout=timeout, headers=headers, source=name)
         url = _newest(source, listing.content)
     response = _get(url, timeout=timeout, headers=headers, source=name)
-    return _parsed(source, response.content, url)
+    entries = _parsed(source, response.content, url)
+    if source.locations is None:
+        return entries
+    answer = _get(source.locations, timeout=timeout, headers=headers, source=name)
+    return _located(entries, source, answer)
 
 
 async def _read_live_async(
@@ -256,7 +390,13 @@ async def _read_live_async(
         listing = await _get_async(url, timeout=timeout, headers=headers, source=name)
         url = _newest(source, listing.content)
     response = await _get_async(url, timeout=timeout, headers=headers, source=name)
-    return _parsed(source, response.content, url)
+    entries = _parsed(source, response.content, url)
+    if source.locations is None:
+        return entries
+    answer = await _get_async(
+        source.locations, timeout=timeout, headers=headers, source=name
+    )
+    return _located(entries, source, answer)
 
 
 def _text(value: object) -> str | None:
@@ -336,10 +476,11 @@ def find_stations(
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
     provider: str | None = None,
+    bbox: Sequence[float] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[StationListEntry, ...]:
     """
-    Find stations of IMGW-PIB and ČHMÚ by name, river or code prefix.
+    Find stations of IMGW-PIB and ČHMÚ by name, river, code prefix or area.
 
     Parameters
     ----------
@@ -352,8 +493,9 @@ def find_stations(
         station code. None returns every station.
     source : {"live", "store"}, optional
         ``"live"`` downloads the current lists of each provider: the
-        IMGW-PIB station list CSV of each family (one GET per family) and
-        the ČHMÚ metadata ``hydrology/now/metadata/meta1.json`` and the
+        IMGW-PIB station list CSV of each family and its current-data API
+        answer (``api/data/hydro``, ``api/data/meteo``: two GETs per family)
+        and the ČHMÚ metadata ``hydrology/now/metadata/meta1.json`` and the
         newest ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
         (its directory listing, then the file). ``"store"`` reads the
         current station catalogs of a data root offline (ADR-017), which
@@ -365,6 +507,11 @@ def find_stations(
         Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMI"``,
         ``"cz.chmi"``); None searches every provider and, with
         ``source="store"``, skips providers without a station catalog.
+    bbox : sequence of four floats or None, optional
+        Area of the search: ``(west, south, east, north)`` in WGS84 degrees,
+        bounds included; only stations with coordinates inside it are
+        returned, so a station without coordinates is left out. None
+        searches everywhere.
     timeout : float, optional
         Request timeout in seconds (live source).
 
@@ -374,20 +521,26 @@ def find_stations(
         Matching stations ordered by provider (registry order), family
         (hydro, meteo), normalized name and code, each with its
         ``provider``; a code listed twice on the live IMGW-PIB meteo list is
-        returned for each row. Live ČHMÚ entries carry the coordinates
-        published in the metadata, without validation against the country
-        border; live IMGW-PIB lists have no coordinates. With
-        ``source="store"`` every station of a catalog is one entry with its
-        code, family, name, river, hydrographic code and river order, the
+        returned for each row. Live entries carry the coordinates as their
+        provider publishes them, without validation against the country
+        border: ČHMÚ those of the metadata, IMGW-PIB the ``lat``/``lon`` of
+        the current-data API answer of the family; a station of the IMGW-PIB
+        list the API does not report (closed or not reporting now) has None.
+        The hydrographic code is the one of the list as published (IMGW-PIB:
+        a short number in parentheses, e.g. ``"14"`` for the Barycz).
+        With ``source="store"`` every station of a catalog is one entry with
+        its code, family, name, river, hydrographic code and river order, the
         coordinates of its geometry (None for stations with ``geometry:
-        null``) and ``short_code`` None.
+        null``, validated by ``store catalog``) and ``short_code`` None.
 
     Raises
     ------
     ObserwatorValidationError
         If ``kind``, ``source`` or ``provider`` is unknown, ``query`` is
-        blank, or ``root`` is missing with ``source="store"`` or given with
-        ``source="live"``.
+        blank, ``root`` is missing with ``source="store"`` or given with
+        ``source="live"``, or ``bbox`` is not four finite numbers with
+        longitudes within ±180, latitudes within ±90, west ≤ east and
+        south ≤ north (``details.option`` ``"bbox"``).
     ObserwatorConnectionError
         If a provider's server cannot be reached or answers with an HTTP
         error (``details`` ``url``, ``reason`` and, for HTTP errors,
@@ -399,26 +552,27 @@ def find_stations(
         the catalog of a named ``provider`` (code ``not_found``, with the
         ``store catalog`` hint).
     ObserwatorDataError
-        If a live list or listing, or a stored list or catalog, is malformed
-        or does not match its sidecar.
+        If a live list, listing or current-data API answer, or a stored list
+        or catalog, is malformed or does not match its sidecar.
 
     Examples
     --------
     >>> [s.name for s in find_stations(kind="hydro", query="lodz")]
     >>> find_stations(provider="CHMI", query="spindleruv")
     >>> find_stations(query="1491", source="store", root="data/store")
+    >>> find_stations(kind="hydro", bbox=(16.5, 51.3, 17.9, 51.7))  # Barycz
     """
-    kinds, needle = _search_kinds(kind, query, source, root)
+    kinds, needle, area = _search_options(kind, query, source, root, bbox)
     owners = _owners(provider)
     if root is not None:  # validated: root is given exactly with source="store"
         stored = _stored(root, kinds, owners, explicit=provider is not None)
-        return _matching(stored, needle)
+        return _matching(stored, needle, area)
     entries = [
         entry
         for live in _live_sources(kinds, owners)
         for entry in _read_live(live, timeout)
     ]
-    return _matching(entries, needle)
+    return _matching(entries, needle, area)
 
 
 async def find_stations_async(
@@ -428,6 +582,7 @@ async def find_stations_async(
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
     provider: str | None = None,
+    bbox: Sequence[float] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[StationListEntry, ...]:
     """
@@ -435,15 +590,15 @@ async def find_stations_async(
 
     See `find_stations` for full documentation.
     """
-    kinds, needle = _search_kinds(kind, query, source, root)
+    kinds, needle, area = _search_options(kind, query, source, root, bbox)
     owners = _owners(provider)
     if root is not None:  # validated: root is given exactly with source="store"
         stored = _stored(root, kinds, owners, explicit=provider is not None)
-        return _matching(stored, needle)
+        return _matching(stored, needle, area)
     entries: list[StationListEntry] = []
     for live in _live_sources(kinds, owners):
         entries.extend(await _read_live_async(live, timeout))
-    return _matching(entries, needle)
+    return _matching(entries, needle, area)
 
 
 # ============================================================================

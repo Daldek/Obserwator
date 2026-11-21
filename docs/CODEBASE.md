@@ -96,6 +96,7 @@ obserwator datasets list -k hydro                    # Dataset registry
 obserwator datasets files -d hydro/dobowe -y 2023 -m 1  # Archive URLs (no download)
 obserwator datasets download -d hydro/dobowe -y 2023 -m 1 -o dane  # Download archives
 obserwator stations find -k hydro -q wisla --limit 20  # Search station lists
+obserwator stations find --bbox 16.5,51.3,17.9,51.7    # Stations in an area (west,south,east,north, WGS84)
 obserwator current hydro -s 150160180                # Current hydro data
 obserwator current warnings -k meteo                 # Warnings
 obserwator pmaxtp fetch --lat 52.23 --lon 21.01      # PMAXTP data (method POT)
@@ -133,7 +134,7 @@ The public API is exposed via `from obserwator import ...` (one `__all__`, also 
 |`fetch_synop(*, station=None, station_name=None)`|Current synop data (`SynopData`)|
 |`fetch_warnings(*, kind=None)`|Hydro/meteo warnings (`WarningData`; `None` = both)|
 |`fetch_hydro_states(*, main_only=False)`|Hydro stations with coordinates and water state (`HydroState`)|
-|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None)`|Search IMGW-PIB and/or ČHMÚ station lists live, or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint) (`StationListEntry`)|
+|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None, bbox=None)`|Search IMGW-PIB and/or ČHMÚ station lists live (coordinates: ČHMÚ metadata; IMGW-PIB `lat`/`lon` of the current-data API `api/data/hydro` and `api/data/meteo`, None for a listed station it does not report), or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint); `bbox=(west, south, east, north)` in WGS84 degrees keeps the stations with coordinates inside it, bounds included (`StationListEntry`)|
 |`download_archives(dataset, /, *, years, months, params, stations, output_dir, root, force)`|Download archives as plain files named by the provider's server path (`output_dir`) or into the raw root (`root`; neither = the default raw root) (`DownloadReport`: `mode`, `output_dir`, `root`, `files[]`; ČHMÚ 404 → `not_published`)|
 |`download_hydro_data(interval, year, month, param)`|One hydro archive as `DownloadResult` (bytes in `.data`)|
 |`download_meteo_data(interval, subtype, year, month)`|One meteo archive as `DownloadResult`|
