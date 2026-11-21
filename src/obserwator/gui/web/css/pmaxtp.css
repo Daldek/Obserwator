@@ -1,8 +1,9 @@
 /*
  * The view „PMAXTP” (src/pmaxtp/): the form of the left panel (method, coordinates,
  * examples, the methods) and the results of the right one (the tables of durations by
- * probabilities with a sticky first row and column, the lines, the files, the link to
- * IMGW-PIB's answer, the command line). Colours from the tokens only.
+ * probabilities with a sticky first row and column, the intensity curves' colours, the
+ * lines, the files, the link to IMGW-PIB's answer, the command line). Colours from the
+ * tokens only.
  */
 
 .pmaxtp-form { display: grid; gap: var(--space-2); }
@@ -31,3 +32,19 @@
   background: var(--surface-2); color: var(--text-2); font-weight: var(--weight-bold); text-align: right;
 }
 .pm-table thead th:first-child { left: 0; z-index: 2; }
+
+/* The rainfall intensity curves (result.js IntensityChart): one per probability p, a ramp
+   of the tokens from the rarest p (--bad, the highest curve) to the most frequent (--info);
+   `.pm-pK` is the step K of 26 along the answer's probabilities */
+.pm-p { --pm-c: color-mix(in oklab, var(--bad) calc(100% - var(--pm-k) * 100% / 26), var(--info)); }
+.chart .ser.pm-p { stroke: var(--pm-c); stroke-width: 1.6; }
+.chart .readout-dot.pm-p { stroke: var(--pm-c); }
+.sw-line.pm-p { border-top-color: var(--pm-c); }
+.pm-chart .chart-legend { font-size: var(--text-xs); }
+.pm-p0 { --pm-k: 0; } .pm-p1 { --pm-k: 1; } .pm-p2 { --pm-k: 2; } .pm-p3 { --pm-k: 3; }
+.pm-p4 { --pm-k: 4; } .pm-p5 { --pm-k: 5; } .pm-p6 { --pm-k: 6; } .pm-p7 { --pm-k: 7; }
+.pm-p8 { --pm-k: 8; } .pm-p9 { --pm-k: 9; } .pm-p10 { --pm-k: 10; } .pm-p11 { --pm-k: 11; }
+.pm-p12 { --pm-k: 12; } .pm-p13 { --pm-k: 13; } .pm-p14 { --pm-k: 14; } .pm-p15 { --pm-k: 15; }
+.pm-p16 { --pm-k: 16; } .pm-p17 { --pm-k: 17; } .pm-p18 { --pm-k: 18; } .pm-p19 { --pm-k: 19; }
+.pm-p20 { --pm-k: 20; } .pm-p21 { --pm-k: 21; } .pm-p22 { --pm-k: 22; } .pm-p23 { --pm-k: 23; }
+.pm-p24 { --pm-k: 24; } .pm-p25 { --pm-k: 25; } .pm-p26 { --pm-k: 26; }

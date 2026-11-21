@@ -11,6 +11,7 @@ import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect
 
+from obserwator.messages import message
 from tests.e2e.conftest import PMAXTP_POINT, THEMES, WIDTHS
 
 LAT, LON = PMAXTP_POINT
@@ -166,3 +167,138 @@ def test_the_files_carry_the_tables_and_the_lines_of_pmaxtp(open_page):
     document = json.loads(_download(page, "json"))
     assert document["data"] == answer["data"]
     assert [*document["attribution"], *document["terms_notice"]] == lines
+
+
+def _intensity(page: Any) -> Any:
+    """The chart of the rainfall intensity curves, once drawn."""
+    chart = page.locator(".pmaxtp-result .pm-chart")
+    chart.locator("svg path.ser").first.wait_for(state="attached", timeout=15_000)
+    return chart
+
+
+def _readout(page: Any, chart: Any, key: str) -> str:
+    """The chart's readout after a key on its plot, as a screen reader hears it."""
+    chart.locator("svg").focus()
+    page.keyboard.press(key)
+    return str(chart.locator(".chart-sr").text_content())
+
+
+def test_the_intensity_curves_give_q_of_the_recorded_quantiles(open_page):
+    page = open_page(f"{VIEW}&lat={LAT:.4f}&lon={LON:.4f}", lang="en")
+    answer = _answer(page)
+    _table(page, answer)
+    chart = _intensity(page)
+    # one curve per probability of the answer, named by its p in the legend
+    probabilities = answer["probabilities"]
+    assert chart.locator("path.ser").count() == len(probabilities)
+    assert chart.locator(".chart-legend span").all_text_contents() == [
+        f"p = {p} %" for p in probabilities
+    ]
+    # q = 166.7 · h / t of the quantile h of the first duration t and probability p
+    duration, p = answer["durations"][0], probabilities[0]
+    q = 166.7 * answer["data"]["ks"][duration][p] / float(duration)
+    text = _readout(page, chart, "Home")
+    assert f"t = {duration} min" in text
+    assert f"p = {p} %: {q:.1f}\u00a0dm³/(s·ha)" in text, text
+    # the curves are processed data: the view's strip carries PMAXTP's line PP
+    processed = str(message("legal.pmaxtp_processed_attribution"))
+    assert processed in answer["attribution"]
+    page.wait_for_function(
+        "(line) => (document.querySelector('.view-foot nogat-sources')?.attribution"
+        " || []).includes(line)",
+        arg=processed,
+        timeout=15_000,
+    )
+
+
+# The durations [min] and probabilities [%] of a full answer of IMGW-PIB (models.py)
+_DURATIONS = [
+    5,
+    10,
+    15,
+    30,
+    45,
+    60,
+    90,
+    120,
+    180,
+    360,
+    720,
+    1080,
+    1440,
+    2160,
+    2880,
+    4320,
+]
+_PROBABILITIES = [
+    "0.01",
+    "0.02",
+    "0.03",
+    "0.05",
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.5",
+    "1",
+    "2",
+    "3",
+    "5",
+    "10",
+    "20",
+    "30",
+    "40",
+    "50",
+    "60",
+    "70",
+    "80",
+    "90",
+    "95",
+    "98",
+    "98.5",
+    "99",
+    "99.5",
+    "99.9",
+]
+
+
+def test_a_full_answer_draws_a_curve_per_probability_over_every_duration(open_page):
+    page = open_page(VIEW, lang="en")
+    answer = _answer(page)
+    # a full table of quantiles growing with t and falling with p, in place of the
+    # recording's one cell
+    ks = {
+        str(t): {
+            p: round(10 * t**0.3 * (1 + 2 / float(p) ** 0.25), 2)
+            for p in _PROBABILITIES
+        }
+        for t in _DURATIONS
+    }
+    full = {
+        **answer,
+        "durations": [str(t) for t in _DURATIONS],
+        "probabilities": _PROBABILITIES,
+        "data": {"ks": ks, "sg": ks, "rb": ks},
+    }
+    page.route(
+        "**/api/pmaxtp?*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(full)
+        ),
+    )
+    page.goto(f"{page.url.split('?')[0]}{VIEW}&lat={LAT:.4f}&lon={LON:.4f}")
+    chart = _intensity(page)
+    curves = chart.locator("path.ser")
+    assert curves.count() == len(_PROBABILITIES)
+    # every curve runs over the 16 durations: one move and 15 segments
+    for d in curves.evaluate_all("(paths) => paths.map((p) => p.getAttribute('d'))"):
+        assert d.count("M") == 1 and d.count("L") == len(_DURATIONS) - 1, d
+    # the rarest and the most frequent p are told apart by colour
+    strokes = curves.evaluate_all(
+        "(paths) => paths.map((p) => getComputedStyle(p).stroke)"
+    )
+    assert strokes[0] != strokes[-1]
+    # the last duration, 72 h, read on the curve of the rarest p
+    q = 166.7 * ks["4320"]["0.01"] / 4320
+    text = _readout(page, chart, "End")
+    assert "t = 4,320 min" in text
+    assert f"p = 0.01 %: {q:.1f}\u00a0dm³/(s·ha)" in text, text

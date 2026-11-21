@@ -8,6 +8,19 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
 
+### Added
+
+- **Rainfall intensity curves in the GUI's view „PMAXTP”.** Under the tables of a point, the
+  shared chart module draws the maximum rainfall intensity q [dm³/(s·ha)] against the
+  duration t [min] (5 min to 72 h), one curve per exceedance probability p of the answer, as
+  klimat.imgw.pl/opady-maksymalne does: PMAXTP's q = 166.7·J, J = h/t [mm/min] of the
+  quantile h (ks) of the point and method shown. Both axes are logarithmic; the curves run
+  from the rarest p (the highest, red) to the most frequent (blue), the legend names p in %,
+  and the readout gives q of every curve at a duration. The curves are processed data, so
+  the view's strip keeps PMAXTP's line PP („…zostały przetworzone”) beside PS, which
+  `api/pmaxtp` already carried; no image export (the module's other charts have none). The
+  guide's part 05 describes the chart.
+
 ### Fixed
 
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
