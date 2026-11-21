@@ -120,7 +120,7 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 
 ### Security (Current State)
 - Rate limiting via Nginx (`limit_req_zone`)
-- CORS middleware configured
+- CORS: only the origins of `OBSERWATOR_CORS_ORIGINS` (none by default; `*` for every origin), never with credentials
 - GZip compression enabled
 - Store routes: server-side roots only (clients never pass a root, a raw root or an absolute path; `version` is confined to `*/versions/` under the command's root, no `..`, symlinks rejected), write token compared in constant time, unknown/server-only/local options rejected (400 `validation_error`); answers hide server directories (both roots, `OBSERWATOR_USER_LOCATIONS_DIR`, `OBSERWATOR_DATA_DIR`, TMPDIR, CWD)
 - `/mcp`: off by default (`OBSERWATOR_MCP_ENABLED`), read and plan only (POST routes always with `?check=true`, so the write token is never used), `Host` restricted to `OBSERWATOR_MCP_ALLOWED_HOSTS`, browser origins refused by the SDK (403); nginx `location = /mcp` shares the `api_limit` zone

@@ -103,6 +103,18 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `obserwator admin` (`api_keys.json`) and key files. `.env` and `.env.*` (but the template
   `.env.example`), `api_keys.json`, `*.key`, `*.pem` and `*.secret` are now ignored in every
   directory. Planned for 3.1.1, taken into 3.1.0.
+- **The REST server allows cross-origin requests only from configured origins, never with
+  credentials (`OBSERWATOR_CORS_ORIGINS`).** `obserwator server` answered every origin with
+  `Access-Control-Allow-Origin` set to it and `Access-Control-Allow-Credentials: true`
+  (`allow_origins=["*"]` with `allow_credentials=True`, marked „Configure for production”),
+  so any web page could read its answers with a visitor's credentials. The allowed origins
+  are now the setting `OBSERWATOR_CORS_ORIGINS` (also `cors_origins` in `[obserwator]` of
+  `nogat.toml`, `.env`; listed by `obserwator config show`): comma-separated origins
+  (`https://example.org`) or `*` for every origin. **Unset, the default, allows no
+  cross-origin request** (a preflight answers 400, no answer carries CORS headers): a page
+  of another origin that called the API needs its origin in the setting. Credentials are
+  never allowed (the API authenticates with the `X-API-Key` header, not cookies); methods
+  `GET`, `HEAD` and `POST`. `docker-compose.yml` passes the variable through.
 
 ## [3.0.1] - 2026-11-18
 

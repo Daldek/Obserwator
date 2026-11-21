@@ -9,7 +9,9 @@ the documentation ``/docs``. With ``OBSERWATOR_MCP_ENABLED=true`` and the ``mcp`
 extra, ``/mcp`` serves the MCP server in mode ``http`` (Streamable HTTP, spec §6.2,
 §6.9), in English like every MCP server; its session manager runs in the lifespan of
 this application. The web GUI is a server of its own, ``obserwator gui serve``
-(ADR-013), which this application does not serve.
+(ADR-013), which this application does not serve. A browser page of another origin may
+call it only from an origin of ``OBSERWATOR_CORS_ORIGINS`` (`cors_options`; none by
+default), never with credentials.
 
 The server keeps Nogat's logs (DEV-12.4 to DEV-12.9) with `SERVER_LOG`: the access log
 of the outermost middleware `obserwator.nogat_logging.AccessLog` (no client address,
@@ -22,9 +24,9 @@ command line ``--no-access-log --log-level warning``).
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, nullcontext
-from typing import cast
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,6 +158,33 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         SERVER_LOG.stop()
 
 
+def cors_options(origins: Sequence[str]) -> dict[str, Any]:
+    """
+    Options of the CORS middleware for the allowed origins (``OBSERWATOR_CORS_ORIGINS``).
+
+    Parameters
+    ----------
+    origins : sequence of str
+        Origins a browser may call the API from (``https://example.org``), or ``*``
+        among them for every origin. Empty: no cross-origin access (a preflight is
+        refused and no answer carries ``Access-Control-Allow-Origin``).
+
+    Returns
+    -------
+    dict of {str : Any}
+        Keyword arguments of `CORSMiddleware`. Credentials are never allowed: the
+        API authenticates with the ``X-API-Key`` header, which a cross-origin
+        request may send without them, and ``*`` with credentials would let every
+        site act with a browser's cookies.
+    """
+    return {
+        "allow_origins": ["*"] if "*" in origins else list(origins),
+        "allow_credentials": False,
+        "allow_methods": ["GET", "HEAD", "POST"],
+        "allow_headers": ["*"],
+    }
+
+
 def _operation_id(route: APIRoute) -> str:
     """``operationId`` of a route outside the catalog: ``obserwator_system_<function>``."""
     # Catalog routes name their id themselves (obserwator_<group>_<verb>, AGI-6.2).
@@ -189,13 +218,7 @@ app = FastAPI(
 
 # Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, **cors_options(settings.cors_origins))
 # Outermost: the access log records every answer, the middleware's own too (DEV-12.8).
 app.add_middleware(AccessLog, log=SERVER_LOG, quiet=QUIET)
 

@@ -27,6 +27,8 @@ services:
       # OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d
       - OBSERWATOR_MCP_ENABLED=${OBSERWATOR_MCP_ENABLED:-false}
       - OBSERWATOR_MCP_ALLOWED_HOSTS=${OBSERWATOR_MCP_ALLOWED_HOSTS:-127.0.0.1,localhost}
+      # Browser origins allowed cross-origin (CORS, comma-separated or *); empty: none
+      - OBSERWATOR_CORS_ORIGINS=${OBSERWATOR_CORS_ORIGINS:-}
     # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
     logging:
       driver: local

@@ -139,6 +139,10 @@ Deeper changes (each needs a plan approved by the author, DEV-17.4):
 - [ ] Availability: one process behind one tunnel connector; the first requests after a start took 5.3–7.3 s (2026-11-14). Warm the snapshot and the station layer before the server reports itself ready, an external check of availability (requests to `/health` already come and get `404`), a second connector of the tunnel; the basemap depends on `tiles.openfreemap.org`, and without it the map is empty.
 - [ ] To decide by the author: on a phone's first visit the notice of sources and terms is several screens long before „Rozumiem”; a short notice with the details folded is a change of what the regulamin shows.
 
+### Release 3.1.0: findings of the release round (the coordinator's list of 2026-11-21)
+
+- [x] REST CORS: `allow_origins=["*"]` with `allow_credentials=True` replaced by `OBSERWATOR_CORS_ORIGINS` (`cors_origins` in `[obserwator]`; default no cross-origin access, never credentials; `config show` lists it).
+
 ### Release 3.1.1 (the author's decision of 2026-11-20)
 
 Small fixes after 3.1.0.

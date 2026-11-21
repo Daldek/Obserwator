@@ -939,6 +939,7 @@ api_max_limit = 500
 | `OBSERWATOR_STORE_WRITE_TOKEN` | — (environment only) | none | write token in the `X-API-Key` header |
 | `OBSERWATOR_USER_LOCATIONS_DIR` | `user_locations_dir` | none | directory of user location files for REST routes |
 | `OBSERWATOR_API_MAX_LIMIT` | `api_max_limit` | `1000` | default and maximum `limit` of REST and MCP list commands |
+| `OBSERWATOR_CORS_ORIGINS` | `cors_origins` | none | browser origins that may call `obserwator server` cross-origin (CORS): comma-separated `https://example.org` (scheme and host, optional port) or `*` for every origin; never with credentials; none: no cross-origin access |
 | `OBSERWATOR_API_KEYS_FILE` | `api_keys_file` | `<data_dir>/obserwator/api_keys.json` | the file of the REST API keys of `obserwator admin` |
 | `OBSERWATOR_RATE_LIMIT` | `rate_limit` | `100` | requests per hour (0 = no limit); read by no component: `obserwator server` limits no rate, and the GUI's limit is `OBSERWATOR_REQUEST_LIMIT` |
 | `OBSERWATOR_ENV` | `env` | `development` | `development` or `production` |

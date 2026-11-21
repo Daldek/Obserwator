@@ -11,11 +11,13 @@ from pathlib import Path
 
 import pytest
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 import obserwator
 from obserwator import agent_guide
-from obserwator.api.main import app, run_server
+from obserwator.api.main import app, cors_options, run_server
 from obserwator.config import settings
 from tests.contract.nogat import validate
 from tests.contract.support import SERVER_FLAGS, STOP_SIGNAL
@@ -72,25 +74,50 @@ def test_api_main_llms_txt_is_the_llms_guide_in_the_accepted_language(
     assert "content-disposition" not in response.headers
 
 
-def test_api_main_cors_preflight_allows_any_origin(client):
-    response = client.options(
-        "/api/v1/stations/find",
-        headers={
-            "Origin": "https://raba.example",
-            "Access-Control-Request-Method": "GET",
-            "Access-Control-Request-Headers": "X-API-Key",
-        },
+PREFLIGHT = {
+    "Origin": "https://raba.example",
+    "Access-Control-Request-Method": "GET",
+    "Access-Control-Request-Headers": "X-API-Key",
+}
+
+
+def cors_client(origins: list[str]) -> TestClient:
+    """A small app behind the CORS middleware of the REST server for ``origins``."""
+    probe = FastAPI()
+    probe.add_middleware(CORSMiddleware, **cors_options(origins))
+    probe.get("/health")(lambda: {"status": "ok"})
+    return TestClient(probe)
+
+
+def test_api_main_allows_no_cross_origin_request_by_default(client):
+    assert settings.cors_origins == []
+    preflight = client.options("/api/v1/stations/find", headers=PREFLIGHT)
+    assert preflight.status_code == 400
+    assert "access-control-allow-origin" not in preflight.headers
+    simple = client.get("/health", headers={"Origin": "https://raba.example"})
+    assert "access-control-allow-origin" not in simple.headers
+
+
+def test_api_main_cors_allows_only_the_configured_origins_without_credentials():
+    probe = cors_client(["https://raba.example"])
+    preflight = probe.options("/health", headers=PREFLIGHT)
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == "https://raba.example"
+    assert "access-control-allow-credentials" not in preflight.headers
+    assert "x-api-key" in preflight.headers["access-control-allow-headers"].lower()
+    other = probe.get("/health", headers={"Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in other.headers
+
+
+def test_api_main_cors_star_allows_every_origin_never_with_credentials():
+    probe = cors_client(["https://raba.example", "*"])
+    answer = probe.get(
+        "/health", headers={"Origin": "https://evil.example", "Cookie": "a=b"}
     )
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "https://raba.example"
-    assert response.headers["access-control-allow-credentials"] == "true"
-    assert "x-api-key" in response.headers["access-control-allow-headers"].lower()
-
-
-def test_api_main_cors_simple_request_echoes_origin(client):
-    response = client.get("/health", headers={"Origin": "https://raba.example"})
-    assert response.headers["access-control-allow-origin"] == "https://raba.example"
-    assert "access-control-allow-origin" not in client.get("/health").headers
+    assert answer.headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in answer.headers
+    preflight = probe.options("/health", headers=PREFLIGHT)
+    assert "access-control-allow-credentials" not in preflight.headers
 
 
 def test_api_main_gzip_applies_only_above_threshold(client):
