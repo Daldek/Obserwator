@@ -22,12 +22,13 @@ uvicorn in a thread, on a free port of 127.0.0.1:
 * ``admin_site``: the GUI on the fixture root as ``gui_url`` but its own server, with the
   admin key `ADMIN_KEY` set and its own directory (``feedback.jsonl``, ``stats.jsonl``)
   given to the test, for the admin panel of Nogat DEV-15.13.
-* ``operator_url``, ``hidden_url``, ``featured_url``: the fixture root on operators'
-  instances (``[obserwator.instance]``, ADR-025) with their files beside ``nogat.toml``:
-  `OPERATOR_INSTANCE` (public, its title, logo and regulamin, ČHMÚ featured, IMGW-PIB
-  off, the area `INSTANCE_AREA` clipped, PMAXTP off), `HIDDEN_INSTANCE` (ČHMÚ featured,
-  IMGW-PIB hidden, the same area in focus, the map starting on it) and
-  `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB, nothing else).
+* ``operator_url``, ``hidden_url``, ``featured_url``, ``no_pmaxtp_url``: the fixture root
+  on operators' instances (``[obserwator.instance]``, ADR-025) with their files beside
+  ``nogat.toml``: `OPERATOR_INSTANCE` (public, its title, logo and regulamin, ČHMÚ
+  featured, IMGW-PIB off, the area `INSTANCE_AREA` clipped, PMAXTP off),
+  `HIDDEN_INSTANCE` (ČHMÚ featured, IMGW-PIB hidden, the same area in focus, the map
+  starting on it), `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB, nothing
+  else) and `NO_PMAXTP_INSTANCE` (every provider served, PMAXTP off).
 
 A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
 it computes nothing for its whole life.
@@ -101,6 +102,9 @@ IMGW-PIB = "hidden"
 """
 FEATURED_INSTANCE = """[obserwator.instance]
 featured_provider = "CHMI"
+"""
+NO_PMAXTP_INSTANCE = """[obserwator.instance]
+pmaxtp = "off"
 """
 
 _CSP_LISTENER = """
@@ -379,6 +383,14 @@ def featured_url(gui_root, tmp_path_factory) -> Iterator[str]:
     """The GUI on the fixture root as an instance featuring ČHMÚ (`FEATURED_INSTANCE`)."""
     work = tmp_path_factory.mktemp("gui-featured")
     with _start(gui_root, work, instance=FEATURED_INSTANCE) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def no_pmaxtp_url(stored_root, tmp_path_factory) -> Iterator[str]:
+    """`stored_url`'s root as an instance without PMAXTP (`NO_PMAXTP_INSTANCE`)."""
+    work = tmp_path_factory.mktemp("gui-no-pmaxtp")
+    with _start(stored_root, work, instance=NO_PMAXTP_INSTANCE) as server:
         yield server.url
 
 

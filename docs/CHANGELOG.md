@@ -266,6 +266,11 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **„Opady” no longer asks for PMAXTP on an instance with PMAXTP off (ADR-025).** The
+  quantiles of an IMGW-PIB station requested `api/pmaxtp` beside them even with
+  `pmaxtp = "off"`, which answers 404 (two console errors per station). The card now reads
+  `instance.pmaxtp` of `api/session`: with PMAXTP off it neither asks nor shows the PMAXTP
+  lines and captions beside the quantiles.
 - **A null interval of Hydrolog 0.9.0 no longer shows as numbers.** Sen's interval of a
   trend of fewer than 10 years read „(0 … 0)” in „Trendy i bilans” (null times 10 is 0) and
   „– … –” in „Trendy”, and a monthly confidence interval of one year „–––”; each is now

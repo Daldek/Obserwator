@@ -20,7 +20,12 @@ from urllib.request import urlopen
 
 import pytest
 
-from tests.e2e.conftest import INSTANCE_AREA, INSTANCE_TITLE, OPERATOR_ADDRESS
+from tests.e2e.conftest import (
+    FIXTURE_STATIONS,
+    INSTANCE_AREA,
+    INSTANCE_TITLE,
+    OPERATOR_ADDRESS,
+)
 
 expect = pytest.importorskip("playwright.sync_api").expect
 PlaywrightTimeout = pytest.importorskip("playwright.sync_api").TimeoutError
@@ -434,6 +439,66 @@ def test_the_views_bar_offers_only_the_views_served(open_page, operator_url, add
     expect(views).to_have_attribute("aria-checked", "true")
     page.wait_for_url(re.compile(r"^[^?]*$"))
     wait_listed(page, shown(catalog(operator_url)))
+
+
+def test_with_pmaxtp_off_the_precipitation_card_never_asks_for_it(
+    open_page, stored_url, no_pmaxtp_url
+):
+    # An IMGW-PIB station's „Opady” asks for PMAXTP of its point beside the quantiles;
+    # an instance with PMAXTP off serves no api/pmaxtp (a 404 and a console error, which
+    # open_page fails on), so the card does not ask. The fixture's one year has no
+    # quantiles: the station's list gains them, their result failed as Hydrolog's would
+    def quantiles_listed(route: Any) -> None:
+        document = route.fetch().json()
+        (maxima,) = [
+            entry
+            for entry in document["analyses"]
+            if entry["analysis"] == "precipitation.maxima"
+        ]
+        document["analyses"].append({**maxima, "analysis": "precipitation_quantiles"})
+        route.fulfill(json=document)
+
+    def quantiles_failed(route: Any) -> None:
+        maxima = route.request.url.split("?")[0].replace(
+            "precipitation_quantiles", "precipitation.maxima"
+        )
+        stored = route.fetch(url=maxima).json()
+        route.fulfill(
+            json={
+                **stored,
+                "analysis": "precipitation_quantiles",
+                "status": "failed",
+                "envelope": None,
+                "error": {"schema": "hydrolog-error/1", "message": "za mało lat"},
+                "stored": False,
+                "source": "computed",
+            }
+        )
+
+    code = FIXTURE_STATIONS["meteo"]
+    asked: dict[str, list[str]] = {}
+    for name, base in (("served", stored_url), ("off", no_pmaxtp_url)):
+        page = open_page(base=base)
+        seen = asked[name] = []
+        page.on(
+            "request",
+            lambda request, seen=seen: (
+                seen.append(request.url) if "/api/pmaxtp?" in request.url else None
+            ),
+        )
+        page.route(f"**/api/analyses/{code}", quantiles_listed)
+        page.route(f"**/api/analysis/{code}/precipitation_quantiles*", quantiles_failed)
+        if name == "served":
+            page.route("**/api/pmaxtp?*", lambda route: route.fulfill(json={}))
+        page.goto(f"{base}?station={code}&section=opady")
+        card = page.locator('[data-section="opady"]')
+        expect(
+            card.get_by_text("Opad maksymalny o prawdopodobieństwie p")
+        ).to_be_visible(timeout=15_000)
+        expect(card).to_contain_text("za mało lat")
+        page.wait_for_load_state("networkidle")
+    assert len(asked["served"]) == 2
+    assert asked["off"] == []
 
 
 @pytest.mark.parametrize("width", [1440, 390])
