@@ -57,6 +57,8 @@ Installed in `.venv`: pytest 9.0, pytest-cov 7.0, pytest-asyncio 1.3 (`asyncio_m
 > `synop_api_response`, `hydro_stations_csv` and `map_stations_api_response` of `tests/conftest.py`; the autouse fixture
 > named `isolated_data_dir` below is now `isolated_reference_dir` (it sets `settings.reference_dir`). State: 3500 tests
 > (3428 offline, 148 of them in `tests/e2e`; 72 live; `docs/TESTING.md`).
+>
+> **Update 2026-11-21 (3.1.0, ADR-028):** the files of ČHMÚ's tests are named `*_chmu*` (`test_*_chmu.py`, `tests/contract/test_chmu_contract.py`, `tests/live/test_chmu_live.py`).
 
 Base commands:
 

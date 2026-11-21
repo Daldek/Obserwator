@@ -43,7 +43,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |---|---------|--------|-------------|
 | FR-1.1 | Real-time data (IMGW API) | Implemented | Current hydro/meteo/synop data |
 | FR-1.2 | Archive data (ZIP/CSV) | Implemented | Dataset registry (21 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
-| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmi.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
+| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmu.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
 | FR-1.4 | PMAXTP data | Implemented | Maximum precipitation of a given duration and probability of exceedance (IMGW-PIB grid only) |
 | FR-1.5 | Warnings | Implemented | Hydro/meteo warnings from API |
 | FR-1.6 | Versioned store | Implemented (3.0.0) | Immutable versions with provenance (both providers) in a raw root (archives, station sources, PMAXTP cells) and a data root (Parquet series, `stations.geojson` per provider, Hydrolog's stored analyses; ADR-016, ADR-017), freshness plan, canonical content (`content_sha256`) and the observation register for ČHMÚ |
@@ -175,7 +175,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 | NFR-3 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
 | NFR-4 | Unit and contract tests | Implemented | 3325 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-15); Python = CLI = REST = MCP contract |
 | NFR-5 | GUI browser tests | Implemented | 152 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-15) |
-| NFR-6 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
+| NFR-6 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmu_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
 | NFR-7 | API response time < 2s | Implemented | For proxied requests |
 | NFR-8 | Online documentation | Implemented | Swagger at `/docs` |
 

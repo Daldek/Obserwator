@@ -6,7 +6,7 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21 and an operator's instance (ADR-025).
+Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
 
 ### Added
 
@@ -54,7 +54,7 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   the view's strip keeps PMAXTP's line PP („…zostały przetworzone”) beside PS, which
   `api/pmaxtp` already carried; no image export (the module's other charts have none). The
   guide's part 05 describes the chart.
-- **ČHMÚ's daily snow in `cz.chmi.meteo_daily` (the author's decision of 2026-11-18; ADR-003
+- **ČHMÚ's daily snow in `cz.chmu.meteo_daily` (the author's decision of 2026-11-18; ADR-003
   erratum of 2026-11-21).** The dataset reads two more element files of ČHMÚ's
   `historical_csv/data/daily/snow/` folder: `SCE`, the total snow depth at the morning term
   (06:00Z) of day D, as `snow_cover` [cm], and `SNO`, the new snow from the morning of D to the
@@ -66,7 +66,7 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   files|download`, `store check|sync`, whose check reads a third listing), and the series and
   its exports gain the eight columns of both variables. So Hydrolog's `snow` analysis and the
   GUI's card „Śnieg” cover ČHMÚ stations as IMGW-PIB's once a deployment syncs the files
-  (`obserwator store sync --datasets cz.chmi.meteo_daily --stations …`) and rebuilds the series
+  (`obserwator store sync --datasets cz.chmu.meteo_daily --stations …`) and rebuilds the series
   and the analyses. ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's
   `snow_water_equivalent` [mm/cm] (water per centimetre of snow) and is not read.
 - **`analyses build` resumes an interrupted build (Nogat ECO-073; ADR-016 erratum of
@@ -86,7 +86,7 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 - **ČHMÚ stations get half-year characteristics, computed by Obserwator from their daily
   series** (the author's decision of 2026-11-18, ADR-016 erratum 2026-11-21). ČHMÚ publishes
   none, so `characteristic.{H,Q,T}.half_years` of a ČHMÚ station read the file Obserwator
-  computes of `cz.chmi.hydro_daily` with the definitions and columns of IMGW-PIB's
+  computes of `cz.chmu.hydro_daily` with the definitions and columns of IMGW-PIB's
   `pl.imgw.hydro_semiannual`: per hydrological year the winter (XI–IV) and summer (V–X)
   lowest, mean and highest daily value with the first and last day and the runs of each
   extreme, and the annual mean; a half-year with a day without a value has none. IMGW-PIB
@@ -174,6 +174,30 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   stations under load: `pl.imgw.hydro_daily` 118 s instead of 763 s, 1.2 MB.
 
 ### Changed
+
+- **ČHMÚ is `CHMU` in every identifier, a location's source is named by its dataset, and the
+  CSV's attribution columns are `attribution` and `terms_notice` (ADR-028; the author's
+  decisions of 2026-11-21, Nogat ECO-082).** The provider `CHMI` is `CHMU`, the keys
+  `cz.chmi.*` are `cz.chmu.*` with the slugs `chmu_*` and the data root's directories
+  `series/versions/chmu_*`, `stations/versions/chmu_stations` and `analyses/versions/cz.chmu`,
+  the content form `chmi-json/1` is `chmu-json/1`, the modules are `_parsing/chmu.py` and
+  `messages/chmu.py`, and the regulamin's block is `chmu` (Nogat's kit 1.1.0, copied byte for
+  byte from Nogat `c2507fa`); texts for people keep „ČHMÚ” and the provider's addresses stay.
+  `location_source` is the key of the dataset whose file gave the point: `api_hydro` →
+  `pl.imgw.hydro_now`, `api_meteo` → `pl.imgw.meteo_now`, `chmi_hydro_now` and
+  `chmi_hydro_meta3` → `cz.chmu.hydro_now`, `chmi_hydro_stations` → `cz.chmu.hydro_stations`,
+  `chmi_meteo_now` → `cz.chmu.meteo_now`, `chmi_meteo_stations` → `cz.chmu.meteo_stations`;
+  `static` and `user` stay, and the catalog's `sources` keep naming the file. The CSV of a
+  series, of the stations and of an analysis drops `attribution_source` and
+  `attribution_processed`, which repeated the first two cells of `attribution`. Every schema
+  stays `/1`, and no input takes an old name. **Migration:** say `CHMU`, `cz.chmu.*` and the
+  new `location_source` values, and read the lines from `attribution`. A data root built by
+  3.0.x or by an earlier `3.1.0.dev0` is built again into a new data root from its raw root,
+  which stays as it is: its sidecars keep `cz.chmi.*`, `CHMI` and `chmi-json/1` and are read
+  under the new names (`Meta.dataset` raw, `Meta.dataset_key` and `Meta.provider` current).
+  `obserwator series build --root DATA --raw-root RAW --dataset <key>` for every dataset of
+  the series, `obserwator store catalog --root DATA --raw-root RAW --provider IMGW-PIB` and
+  `--provider CHMU`, then `obserwator analyses build --root DATA`.
 
 - **GUI: one symbol per kind of station for every provider, and the legend of „Stacje”
   (ADR-025 and ADR-013 errata of 2026-11-21, the author's decision).** No provider has a
