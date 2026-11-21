@@ -11,13 +11,13 @@ MESSAGES = {
         "Choose at least one dataset",
         "Wybierz co najmniej jeden zbiór",
     ),
-    "imgw_pib_archives_cover_whole": Text(
+    "imgw_archives_cover_whole": Text(
         "The IMGW-PIB archives cover the whole country; the option stations applies "
         "only to station datasets (ČHMÚ, the IMGW-PIB synop archives)",
         "Archiwa IMGW-PIB obejmują cały kraj; opcja stations dotyczy wyłącznie "
         "zbiorów stacji (ČHMÚ, archiwa synop IMGW-PIB)",
     ),
-    "imgw_pib_datasets_need_option": Text(
+    "imgw_datasets_need_option": Text(
         "The IMGW-PIB datasets need the option years",
         "Zbiory IMGW-PIB wymagają opcji years",
     ),

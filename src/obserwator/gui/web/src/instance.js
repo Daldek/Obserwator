@@ -13,7 +13,7 @@
 import { VIEWS } from "./state.js";
 
 /** The providers of the registry in its order: every one without an instance. */
-export const PROVIDERS = ["IMGW-PIB", "CHMU"];
+export const PROVIDERS = ["IMGW", "CHMU"];
 
 /**
  * What a deployment shows.

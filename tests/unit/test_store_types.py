@@ -420,7 +420,7 @@ def test_chmu_fields_default_so_3_0_constructors_keep_working():
     assert (item.local_observation, plan.requests) == (None, None)
     assert StoreInfo(Path("/s"), True, None, True, {}, ()).providers == ()
     assert StoreEntry("problem", None, None, None, "x", "Brak").provider is None
-    assert CatalogReport("new", None, 0, 0, 0, ()).provider == "IMGW-PIB"
+    assert CatalogReport("new", None, 0, 0, 0, ()).provider == "IMGW"
 
 
 def test_fields_added_to_the_read_api_default_so_older_constructors_keep_working():

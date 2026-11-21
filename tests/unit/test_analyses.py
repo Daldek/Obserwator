@@ -74,7 +74,7 @@ ANSWERS: dict[str, Any] = json.loads(
 )
 FAILING = {key for key, answer in ANSWERS.items() if "error" in answer}
 VERSION = "1.0.0.dev0"  # the fake's version
-SLOTS = {"IMGW-PIB": "pl.imgw", "CHMU": "cz.chmu"}
+SLOTS = {"IMGW": "pl.imgw", "CHMU": "cz.chmu"}
 METEO = "123750000"  # an IMGW-PIB precipitation station of the fixture
 CHMU_METEO = "0-203-0-90001"  # a ČHMÚ climate station of the fixture
 # The options of the series files Hydrolog reads (AnalysisInput.option).
@@ -320,7 +320,7 @@ def test_build_stores_each_line_of_hydrolog_verbatim_with_its_record_and_sidecar
     report = build_analyses(root)
 
     assert (report.status, report.hydrolog_version) == ("new", VERSION)
-    assert [item.provider for item in report.providers] == ["IMGW-PIB", "CHMU"]
+    assert [item.provider for item in report.providers] == ["IMGW", "CHMU"]
     assert [(file.path, file.status) for file in report.files] == [
         (item.version, "new") for item in report.providers
     ]
@@ -452,7 +452,7 @@ def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_othe
     tmp_path, built, fixture_raw_root, batches
 ):
     root = copy(built, tmp_path / "store")
-    (old,) = slot(root, "IMGW-PIB").iterdir()
+    (old,) = slot(root, "IMGW").iterdir()
     stored, kept = records(old), snapshot(old)
 
     def precipitation():
@@ -505,7 +505,7 @@ def test_stations_computes_only_the_chosen_stations_and_keeps_the_stored_ones(
 
     (imgw,) = first.providers
     assert (imgw.provider, imgw.status, imgw.stations, imgw.computed) == (
-        "IMGW-PIB",
+        "IMGW",
         "new",
         1,
         1,
@@ -602,7 +602,7 @@ def test_without_hydrologs_program_nothing_runs(
         (RABA, "hydro", DAILY, attribution("imgw")),
         (CHMU_METEO, "meteo", "cz.chmu.meteo_daily", attribution("chmu")),
     ],
-    ids=["IMGW-PIB", "CHMU"],
+    ids=["IMGW", "CHMU"],
 )
 def test_list_and_read_give_hydrologs_answers_with_their_provenance(
     station, kind, dataset, lines, built
@@ -674,7 +674,7 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     ) == (
         "obserwator-analyses-export/1",
         RABA,
-        "IMGW-PIB",
+        "IMGW",
         summary.analyses_version,
         VERSION,
     )
@@ -777,7 +777,7 @@ def test_export_writes_one_file_and_replaces_it_only_with_force(tmp_path, built)
 )
 def test_a_tampered_stored_file_is_a_data_error(tampered, tmp_path, built):
     root = copy(built, tmp_path / "store")
-    (version,) = slot(root, "IMGW-PIB").iterdir()
+    (version,) = slot(root, "IMGW").iterdir()
     path = version / tampered
     path.write_bytes(path.read_bytes() + b" ")  # still JSON, no longer the stored bytes
 
@@ -875,10 +875,10 @@ def test_a_broken_analyses_version_is_refused_not_passed_over(
     tmp_path, built, monkeypatch
 ):
     root = copy(built, tmp_path / "store")
-    (older,) = slot(root, "IMGW-PIB").iterdir()
+    (older,) = slot(root, "IMGW").iterdir()
     monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
     assert build_analyses(root).status == "new"
-    (newer,) = set(slot(root, "IMGW-PIB").iterdir()) - {older}
+    (newer,) = set(slot(root, "IMGW").iterdir()) - {older}
     (newer / "analyses.json.meta.json").write_text("{", encoding="utf-8")
     before = snapshot(root / "analyses")
 

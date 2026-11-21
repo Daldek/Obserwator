@@ -64,7 +64,7 @@ Symbole wielkimi literami (`KOD_STACJI`, `KOD_WIGOS`) zastąp wartościami z pop
 
 ## Czego nie robić
 
-1. Nie składaj ani nie przeszukuj URL-i serwerów IMGW-PIB i ČHMÚ — `datasets files`, `datasets download`, `store sync`.
+1. Nie składaj ani nie przeszukuj URL-i serwerów dostawców — `datasets files`, `datasets download`, `store sync`.
 2. Kody wyjścia 10 i 11 to nie awaria programu — czytaj kopertę (`items[].status`, `error_code`).
 3. Nie uruchamiaj zapisu (`store sync`, `series build`, `datasets download`) bez planu i zgody użytkownika.
 4. Nie zgaduj stacji ani zbioru: przy kilku trafieniach `stations find` zapytaj; obecność stacji w zbiorze sprawdź `series summary`.

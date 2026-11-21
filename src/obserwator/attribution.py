@@ -91,7 +91,7 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
     "pmaxtp": ((_PS, _M), (_PP,), (_RK,)),
     "chmu": ((_C,), (_CP,), ()),
 }
-_PROVIDERS: dict[str, Origin] = {"IMGW-PIB": "imgw", "CHMU": "chmu"}
+_PROVIDERS: dict[str, Origin] = {"IMGW": "imgw", "CHMU": "chmu"}
 _PREFIXES: dict[str, Origin] = {"pl.imgw": "imgw", "cz.chmu": "chmu"}
 # Datasets of an IMGW-PIB origin other than danepubliczne.imgw.pl: PMAXTP's own
 # pages and hydro.imgw.pl's station details (ADR-021).
@@ -374,7 +374,7 @@ def provider_origin(provider: str, /) -> Origin:
     Parameters
     ----------
     provider : str
-        Provider identifier, ``"IMGW-PIB"`` or ``"CHMU"``.
+        Provider identifier, ``"IMGW"`` or ``"CHMU"``.
 
     Returns
     -------
@@ -403,7 +403,7 @@ def border_origin(provider: str, /) -> Origin:
     Parameters
     ----------
     provider : str
-        Provider identifier, ``"IMGW-PIB"`` or ``"CHMU"``.
+        Provider identifier, ``"IMGW"`` or ``"CHMU"``.
 
     Returns
     -------

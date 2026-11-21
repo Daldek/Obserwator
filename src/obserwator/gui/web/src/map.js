@@ -823,7 +823,7 @@ function HydroTip({ row, station }) {
   return html`
     <strong>${(station && station.name) || row.name || row.code}</strong>
     ${row.river ? html`<span>${row.river}</span>` : null}
-    <span class="muted"><code>${row.code}</code> · ${providerName("IMGW-PIB")} · ${kindName("hydro")}</span>
+    <span class="muted"><code>${row.code}</code> · ${providerName("IMGW")} · ${kindName("hydro")}</span>
     <span class="tip-class"><${SymbolIcon} shape="hydro" color=${state.color} hollow=${state.outdated} size=${13} />${state.label}${state.outdated ? ` ${t("stations.tip.outdated")}` : ""}</span>
     <${Reading} label=${t("stations.tip.water_level")} value=${row.h} unit="cm" at=${row.h_at} />
     <${Reading} label=${t("stations.tip.discharge")} value=${row.q} digits=${row.q !== null && row.q < 10 ? 2 : 1} unit="m³/s" at=${row.q_at} stale=${row.q_stale === true} />
@@ -836,7 +836,7 @@ function MeteoTip({ row, station }) {
   const entry = meteoClass(row.p10);
   return html`
     <strong>${(station && station.name) || row.name || row.code}</strong>
-    <span class="muted"><code>${row.code}</code> · ${providerName("IMGW-PIB")} · ${kindName("meteo")}</span>
+    <span class="muted"><code>${row.code}</code> · ${providerName("IMGW")} · ${kindName("meteo")}</span>
     <span class="tip-class"><${SymbolIcon} shape="meteo" color=${entry.color} size=${13} />${entry.label}${entry.note ? ` (${entry.note})` : ""}</span>
     <${Reading} label=${t("stations.tip.precipitation")} value=${row.p10} digits=${1} unit="mm" />
     <${Reading} label=${t("stations.tip.air_temperature")} value=${row.t} digits=${1} unit="°C" at=${row.t_at} />

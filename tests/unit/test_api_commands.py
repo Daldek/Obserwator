@@ -77,7 +77,7 @@ GET_CASES = [
     ),
     (
         "stations find",
-        {"kind": "hydro", "query": "raba", "provider": "IMGW-PIB"},
+        {"kind": "hydro", "query": "raba", "provider": "IMGW"},
         None,
     ),
     ("stations find", {"source": "store", "query": "1491"}, "data"),
@@ -902,7 +902,7 @@ def test_api_store_info_and_scan_describe_the_data_root(client, served):
 
 def test_api_stations_find_needs_the_root_only_for_the_store_source(client, live):
     found = client.get(
-        "/api/v1/stations/find", params={"query": "raba", "provider": "IMGW-PIB"}
+        "/api/v1/stations/find", params={"query": "raba", "provider": "IMGW"}
     )
     stored = client.get("/api/v1/stations/find", params={"source": "store"})
 

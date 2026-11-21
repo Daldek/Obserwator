@@ -137,8 +137,8 @@ def test_without_provider_both_providers_are_searched_in_registry_order(router):
 
     # "ra" is in RABA GÓRNA (IMGW-PIB) and Srážková Lhota (ČHMÚ, without diacritics).
     assert [(s.provider, s.kind, s.station_code) for s in found] == [
-        ("IMGW-PIB", "hydro", "149190310"),
-        ("IMGW-PIB", "meteo", "249190310"),
+        ("IMGW", "hydro", "149190310"),
+        ("IMGW", "meteo", "249190310"),
         ("CHMU", "meteo", "0-203-0-90000000002"),
     ]
 
@@ -232,14 +232,12 @@ def test_data_root_without_a_catalog_of_a_named_provider_is_not_found(tmp_path):
     empty = init_store(tmp_path / "empty", kind="data")
 
     with pytest.raises(ObserwatorStoreError) as named:
-        find_stations(source="store", root=data_root(store), provider="IMGW-PIB")
+        find_stations(source="store", root=data_root(store), provider="IMGW")
     with pytest.raises(ObserwatorStoreError) as nothing:
         find_stations(source="store", root=empty.root)
 
     assert named.value.code == nothing.value.code == "not_found"
-    assert nothing.value.hint == message(
-        "errors.hint_store_catalog", provider="IMGW-PIB"
-    )
+    assert nothing.value.hint == message("errors.hint_store_catalog", provider="IMGW")
 
 
 def test_stored_lists_without_a_catalog_are_not_searched(tmp_path):

@@ -6,7 +6,7 @@
 import { has, t } from "./i18n.js";
 
 /** Providers' short names by their catalog id: names, the same in every language. */
-const SHORT = { "IMGW-PIB": "IMGW-PIB", CHMU: "ČHMÚ" };
+const SHORT = { IMGW: "IMGW-PIB", CHMU: "ČHMÚ" };
 
 /** The catalog's form of a store key: "pl.imgw.hydro_daily" → "pl_imgw_hydro_daily". */
 function slug(key) {

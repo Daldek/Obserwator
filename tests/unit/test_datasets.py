@@ -142,7 +142,7 @@ _CHMU_KEYS = [
 
 
 def test_registry_has_the_imgw_descriptors_with_spec_fields():
-    descriptors = datasets(provider="IMGW-PIB")
+    descriptors = datasets(provider="IMGW")
     assert [
         (
             d.key,
@@ -212,8 +212,9 @@ def test_a_renamed_key_is_read_from_the_store_but_no_input_takes_it():
     with pytest.raises(ObserwatorValidationError) as exc:
         get_dataset("cz.chmi.hydro_daily")
     assert exc.value.details["value"] == "cz.chmi.hydro_daily"
-    with pytest.raises(ObserwatorValidationError):
-        get_provider("CHMI")
+    for old in ("CHMI", "IMGW-PIB"):
+        with pytest.raises(ObserwatorValidationError):
+            get_provider(old)
     # Unknown keys, slugs and legacy input words are not keys Obserwator knows.
     for value in ("sk.shmu.hydro_daily", "hydro_daily", "hydro/dobowe"):
         assert resolve_dataset_key(value) is None

@@ -129,10 +129,10 @@ ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
-CURRENT_PROVIDER = "IMGW-PIB"
+CURRENT_PROVIDER = "IMGW"
 """The provider of the current measurements view: the only live data the GUI serves."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
-    "IMGW-PIB": ("imgw", "imgw_hydro"),
+    "IMGW": ("imgw", "imgw_hydro"),
     "CHMU": ("chmu",),
 }
 """The origins of each provider's data (``obserwator.attribution``), dropped when an
@@ -404,16 +404,12 @@ def _station_origins(
     carries them (``details_source``, ADR-021).
     """
     lines = attribution(provider_origin(provider))
-    if (
-        details
-        and provider == "IMGW-PIB"
-        and properties.get("details_source") is not None
-    ):
+    if details and provider == "IMGW" and properties.get("details_source") is not None:
         lines = lines | attribution("imgw_hydro")
     if not location:
         return lines
     lines = lines | attribution(border_origin(provider))
-    if provider == "IMGW-PIB" and properties.get("location_source") == "static":
+    if provider == "IMGW" and properties.get("location_source") == "static":
         lines = lines | attribution("imgw_hydro")
     return lines
 
@@ -828,7 +824,7 @@ async def current(request: Request) -> Response:
     if unchanged is not None:
         return unchanged
     document = {
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
         "hydro": _inside(request, hydro_points(snaps["states"], snaps["hydro"])),
         "meteo": _inside(request, meteo_points(snaps["meteo"])),
@@ -845,7 +841,7 @@ async def current_station(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     feature = snapshot.features[code]
-    if feature.provider != "IMGW-PIB":
+    if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
             message("gui.errors.no_current_chmu"),
@@ -880,7 +876,7 @@ async def current_station(request: Request) -> Response:
     document: dict[str, Any] = {
         "station": code,
         "kind": kind,
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
         "record": main.items.get(code),
         **(

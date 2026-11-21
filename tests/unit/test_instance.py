@@ -112,7 +112,7 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
         'others_opacity = 0.3\nstart_view = "featured"\narea = "area.geojson"\n'
         'area_mode = "clip"\n'
         'pmaxtp = "off"\nlogo = "logo.svg"\nterms = "terms.md"\n\n'
-        '[obserwator.instance.providers]\nIMGW-PIB = "hidden"\n',
+        '[obserwator.instance.providers]\nIMGW = "hidden"\n',
         area__geojson=polygon(SQUARE),
         logo__svg=SVG,
         terms__md=TERMS,
@@ -122,8 +122,8 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
 
     assert instance is not None
     assert instance.title == "Wody Testowe"
-    assert dict(instance.providers) == {"IMGW-PIB": "hidden", "CHMU": "visible"}
-    assert instance.served == ("CHMU", "IMGW-PIB")
+    assert dict(instance.providers) == {"IMGW": "hidden", "CHMU": "visible"}
+    assert instance.served == ("CHMU", "IMGW")
     assert (instance.featured, instance.start_view, instance.pmaxtp) == (
         "CHMU",
         "featured",
@@ -134,7 +134,7 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
     assert instance.logo is not None and instance.logo.media_type == "image/svg+xml"
     assert instance.terms is not None and instance.terms.text == TERMS
     report = environment_report()["instance"]
-    assert report["providers"] == {"IMGW-PIB": "hidden", "CHMU": "visible"}
+    assert report["providers"] == {"IMGW": "hidden", "CHMU": "visible"}
     assert report["area"]["mode"] == "clip" and report["area"]["vertices"] == 5
     assert report["logo"]["media_type"] == "image/svg+xml"
     assert report["pmaxtp"] == "off"
@@ -147,10 +147,10 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
     instance = load_instance()
 
     assert instance is not None
-    assert dict(instance.providers) == {"IMGW-PIB": "visible", "CHMU": "visible"}
+    assert dict(instance.providers) == {"IMGW": "visible", "CHMU": "visible"}
     assert (instance.start_view, instance.area, instance.pmaxtp) == ("all", None, True)
     assert not instance.clips
-    assert instance.keeps(feature("149190310", "IMGW-PIB", None))
+    assert instance.keeps(feature("149190310", "IMGW", None))
 
 
 @pytest.mark.parametrize(
@@ -159,6 +159,12 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
         ('colour = "red"\n', "instance.colour"),
         ('admin_api_key = "secret"\n', "instance.admin_api_key"),
         ('[obserwator.instance.providers]\nKNMI = "off"\n', "instance.providers.KNMI"),
+        # The ids of 3.0.x are no input (ADR-028).
+        (
+            '[obserwator.instance.providers]\nIMGW-PIB = "off"\n',
+            "instance.providers.IMGW-PIB",
+        ),
+        ('featured_provider = "IMGW-PIB"\n', "instance.featured_provider"),
         (
             '[obserwator.instance.providers]\nCHMU = "invisible"\n',
             "instance.providers.CHMU",
@@ -178,7 +184,7 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
         (f'title = "{"x" * 81}"\n', "instance.title"),
         (
             'pmaxtp = "off"\n[obserwator.instance.providers]\n'
-            'IMGW-PIB = "off"\nCHMU = "off"\n',
+            'IMGW = "off"\nCHMU = "off"\n',
             "instance.providers",
         ),
         ('area = "missing.geojson"\n', "instance.area"),
@@ -518,7 +524,7 @@ def test_the_filter_keeps_the_served_providers_and_the_stations_inside(
         tmp_path,
         monkeypatch,
         '[obserwator.instance]\narea = "area.geojson"\narea_mode = "clip"\n'
-        '[obserwator.instance.providers]\nIMGW-PIB = "off"\n',
+        '[obserwator.instance.providers]\nIMGW = "off"\n',
         area__geojson=polygon(SQUARE),
     )
     instance = load_instance()
@@ -527,28 +533,28 @@ def test_the_filter_keeps_the_served_providers_and_the_stations_inside(
         "0-203-0-90001": feature("0-203-0-90001", "CHMU", (14.8213, 50.2147)),
         "0-203-1-900002": feature("0-203-1-900002", "CHMU", (17.25, 49.85)),
         "0-20000-0-99903": feature("0-20000-0-99903", "CHMU", None),
-        "149190310": feature("149190310", "IMGW-PIB", (15.0, 50.0)),
+        "149190310": feature("149190310", "IMGW", (15.0, 50.0)),
     }
 
     assert [code for code, item in stations.items() if instance.keeps(item)] == [
         "0-203-0-90001"
     ]
-    assert not instance.serves("IMGW-PIB") and instance.serves("CHMU")
-    assert provider_of_code("149190310") == "IMGW-PIB"
+    assert not instance.serves("IMGW") and instance.serves("CHMU")
+    assert provider_of_code("149190310") == "IMGW"
     assert provider_of_code("0-203-1-900002") == "CHMU"
     assert provider_of_code("../etc") is None
 
 
 def test_the_start_view_falls_back_to_the_whole_extent_when_empty():
     instance = Instance(
-        providers={"IMGW-PIB": "visible", "CHMU": "visible"},
+        providers={"IMGW": "visible", "CHMU": "visible"},
         featured="CHMU",
         start_view="featured",
     )
     stations = {
         "a": feature("a", "CHMU", (15.0, 50.0)),
         "b": feature("b", "CHMU", (16.0, 49.0)),
-        "c": feature("c", "IMGW-PIB", (21.0, 52.0)),
+        "c": feature("c", "IMGW", (21.0, 52.0)),
     }
 
     view, box = instance.start(stations)

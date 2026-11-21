@@ -792,7 +792,7 @@ class CatalogReport:
     without_location: int
     from_series: int
     problems: tuple[str, ...]
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
     files: tuple[FileResult, ...] = ()
 
 
@@ -832,7 +832,9 @@ class Meta:
         Identifier of the canonical form behind ``content_sha256``, e.g.
         ``"chmu-json/1"``; present exactly when ``content_sha256`` is.
     provider : str, optional
-        ``provider`` field of the sidecar, e.g. ``"IMGW-PIB"`` or ``"CHMU"``.
+        ``provider`` field of the sidecar by its current identifier, ``"IMGW"`` or
+        ``"CHMU"`` (a sidecar of 3.0.x holds ``"IMGW-PIB"`` or ``"CHMI"``, read
+        through `PROVIDER_ID_ALIASES`, ADR-028).
     country : str, optional
         ``country`` field of the sidecar, e.g. ``"PL"`` or ``"CZ"``.
     producer : str, optional
@@ -858,7 +860,7 @@ class Meta:
     extra: Mapping[str, object]
     content_sha256: str | None = None
     content_form: str | None = None
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
     country: str = "PL"
     producer: str = "obserwator"
     producer_version: str | None = None
@@ -991,7 +993,7 @@ class StationFeature:
     station_code: str
     geometry: tuple[float, float] | None
     properties: Mapping[str, str | int | float | bool | Mapping[str, object] | None]
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
 
 
 @dataclass(frozen=True)

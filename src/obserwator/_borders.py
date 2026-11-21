@@ -24,7 +24,7 @@ POLAND = "poland_border_wgs84.geojson"
 """The state border of Poland, from PRG (GUGiK)."""
 CZECHIA = "czechia_border_wgs84.geojson"
 """The state border of Czechia, from RÚIAN (ČÚZK)."""
-PROVIDERS: Mapping[str, str] = MappingProxyType({"IMGW-PIB": POLAND, "CHMU": CZECHIA})
+PROVIDERS: Mapping[str, str] = MappingProxyType({"IMGW": POLAND, "CHMU": CZECHIA})
 """The border each provider's station locations are checked against."""
 
 

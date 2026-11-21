@@ -741,7 +741,7 @@ class StationListEntry:
     longitude : float or None
         Longitude (WGS84), as ``latitude``.
     provider : str, optional
-        Provider identifier of the list: ``"IMGW-PIB"`` (default) or
+        Provider identifier of the list: ``"IMGW"`` (default) or
         ``"CHMU"``.
     """
 
@@ -756,7 +756,7 @@ class StationListEntry:
     short_code: str | None = None
     latitude: float | None = None
     longitude: float | None = None
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
 
 
 class HydroArchiveStation(BaseModel):

@@ -353,8 +353,8 @@ MESSAGES = {
         "niedozwolone dla innych zbiorów pl.imgw.*",
     ),
     "provider_help": Text(
-        "Data provider: IMGW-PIB or CHMU (ČHMÚ); none = all providers",
-        "Dostawca danych: IMGW-PIB albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Data provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca danych: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "variables_help": Text(
         "Comma-separated dataset variables, e.g. H,Q (default: all)",
@@ -726,8 +726,8 @@ MESSAGES = {
         "Rodzina zbiorów: hydro albo meteo; brak = wszystkie",
     ),
     "datasets_list_provider_help": Text(
-        "Dataset provider: IMGW-PIB or CHMU (ČHMÚ); none = all providers",
-        "Dostawca zbiorów: IMGW-PIB albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Dataset provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca zbiorów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "stations_find_family_help": Text(
         "Station kind; none = both families",
@@ -749,8 +749,8 @@ MESSAGES = {
         "source=store)",
     ),
     "stations_find_provider_help": Text(
-        "Station provider: IMGW-PIB or CHMU (ČHMÚ); none = all providers",
-        "Dostawca stacji: IMGW-PIB albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Station provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca stacji: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "stations_find_bbox_help": Text(
         "Area: west,south,east,north in WGS84 degrees (e.g. 16.5,51.3,17.9,51.7); "
@@ -799,10 +799,10 @@ MESSAGES = {
         "problem; brak = wszystkie",
     ),
     "store_scan_provider_help": Text(
-        "Entry provider: IMGW-PIB or CHMU (ČHMÚ); none = all providers (problems "
-        "without a slot always)",
-        "Dostawca wpisów: IMGW-PIB albo CHMU (ČHMÚ); brak = wszyscy dostawcy "
-        "(problemy bez slotu zawsze)",
+        "Entry provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers "
+        "(problems without a slot always)",
+        "Dostawca wpisów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy "
+        "dostawcy (problemy bez slotu zawsze)",
     ),
     "store_sync_plan_help": Text(
         "obserwator-plan/1 plan file of the store check command (instead of datasets, "
@@ -811,10 +811,10 @@ MESSAGES = {
         "months i stations)",
     ),
     "store_catalog_provider_help": Text(
-        "Catalog provider: IMGW-PIB or CHMU (ČHMÚ); one catalog version of one "
-        "provider per call",
-        "Dostawca katalogu: IMGW-PIB albo CHMU (ČHMÚ); jedna wersja katalogu jednego "
-        "dostawcy na wywołanie",
+        "Catalog provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); one catalog version of "
+        "one provider per call",
+        "Dostawca katalogu: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); jedna wersja katalogu "
+        "jednego dostawcy na wywołanie",
     ),
     "store_catalog_user_locations_help": Text(
         "User's UTF-8 CSV file with the columns "

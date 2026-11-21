@@ -108,7 +108,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         },
         "limit": {"type": "integer", "minimum": 1},
         "cursor": {"type": "string", "minLength": 1},
-        "provider": {"enum": ["IMGW-PIB", "CHMU"]},
+        "provider": {"enum": ["IMGW", "CHMU"]},
         "bbox": {
             "type": "array",
             "items": {"type": "number", "minimum": -180.0, "maximum": 180.0},

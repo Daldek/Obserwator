@@ -807,7 +807,7 @@ def test_details_sync_keeps_the_reference_data_of_each_station(root, server):
     # some fields of each answer.
     (terms,) = [notice for notice in notices if notice.code == "license_terms"]
     lines = attribution("imgw_hydro", processed=True)
-    assert terms.message == get_provider("IMGW-PIB").license_notice(lines)
+    assert terms.message == get_provider("IMGW").license_notice(lines)
     assert str(message("legal.imgw_terms_hydro")) in terms.message
     assert str(message("legal.imgw_processed_attribution")) in terms.message
     assert str(message("legal.imgw_terms_danepubliczne")) not in terms.message

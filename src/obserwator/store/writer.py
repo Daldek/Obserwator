@@ -103,10 +103,10 @@ OBSERVATION_SCHEMA = "obserwator-observation/1"
 _OBSERVATIONS = "observations"
 _SEEN_AT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 # File types each provider publishes as archives.
-_SUFFIXES = {"IMGW-PIB": (".zip", ".csv"), "CHMU": (".json", ".csv")}
+_SUFFIXES = {"IMGW": (".zip", ".csv"), "CHMU": (".json", ".csv")}
 # Provider whose archive sidecars keep the 3.0.0 layout: no station_code or
 # param in request and no station_code in extra.period (the same bytes).
-_COUNTRY_LAYOUT = "IMGW-PIB"
+_COUNTRY_LAYOUT = "IMGW"
 
 
 def _canonical_text(value: object) -> str:

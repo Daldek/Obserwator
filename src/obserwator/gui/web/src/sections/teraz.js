@@ -115,7 +115,7 @@ function Snapshots({ doc }) {
 }
 
 function Teraz({ station }) {
-  const imgw = station.provider === "IMGW-PIB";
+  const imgw = station.provider === "IMGW";
   const [state, setState] = useState({ doc: null, error: null, loading: imgw });
   const [round, setRound] = useState(0);
   useEffect(() => {

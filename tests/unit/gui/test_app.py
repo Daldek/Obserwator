@@ -184,7 +184,7 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
         "hydrolog": None,
     }
     root = session["root"]
-    assert set(root["catalogs"]) == {"IMGW-PIB", "CHMU"}
+    assert set(root["catalogs"]) == {"IMGW", "CHMU"}
     assert set(root["series"]) == {
         "pl.imgw.hydro_daily",
         "pl.imgw.meteo_precip_daily",
@@ -197,8 +197,8 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
     # The fixture root stores no analyses
-    assert root["analyses"] == {"IMGW-PIB": None, "CHMU": None}
-    assert set(session["providers"]) == {"IMGW-PIB", "CHMU"}
+    assert root["analyses"] == {"IMGW": None, "CHMU": None}
+    assert set(session["providers"]) == {"IMGW", "CHMU"}
     assert session["providers"]["CHMU"]["attribution"] == list(
         attribution("chmu").attribution
     )
@@ -216,7 +216,7 @@ def test_the_session_names_the_stored_analyses_of_each_provider(
     analyses = make_client(stored_root).get("/api/session").json()["root"]["analyses"]
 
     for provider, folder, station in (
-        ("IMGW-PIB", "pl.imgw", HYDRO),
+        ("IMGW", "pl.imgw", HYDRO),
         ("CHMU", "cz.chmu", HYDRO_CHMU),
     ):
         (version,) = (stored_root / "analyses" / "versions" / folder).iterdir()
@@ -282,7 +282,7 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
         "code": HYDRO,
         "name": "Raba Górna",
         "river": "Raba",
-        "provider": "IMGW-PIB",
+        "provider": "IMGW",
         "kind": "hydro",
         "meteo_kind": None,
         "active": True,
@@ -342,7 +342,7 @@ def test_a_station_answers_its_properties_series_and_lines(client):
 
     assert (hydro["code"], hydro["provider"], hydro["lon"], hydro["lat"]) == (
         HYDRO,
-        "IMGW-PIB",
+        "IMGW",
         20.1,
         49.7,
     )
@@ -423,8 +423,8 @@ def test_the_lines_of_stations_files_name_hydro_imgw_pl_for_stations_with_detail
     make_client, client, details_root
 ):
     detailed = make_client(details_root)
-    hydro = {"provider": "IMGW-PIB", "kind": "hydro"}
-    meteo = {"provider": "IMGW-PIB", "kind": "meteo"}
+    hydro = {"provider": "IMGW", "kind": "hydro"}
+    meteo = {"provider": "IMGW", "kind": "meteo"}
     with_details = detailed.get("/api/downloads/stations", params=hydro).json()
     without = detailed.get("/api/downloads/stations", params=meteo).json()
     before = client.get("/api/downloads/stations", params=hydro).json()
@@ -665,10 +665,10 @@ def test_an_analysis_outside_the_registry_or_the_station_is_refused(
 # --- current data and PMAXTP -----------------------------------------------------------------
 
 
-def test_the_current_data_of_imgw_pib_are_points_of_the_map(client):
+def test_the_current_data_of_imgw_are_points_of_the_map(client):
     current = client.get("/api/current").json()
 
-    assert current["source"] == "IMGW-PIB"
+    assert current["source"] == "IMGW"
     for name in ("states", "hydro", "meteo"):
         assert current["snapshots"][name]["fetched_at"].endswith("Z")
         assert current["snapshots"][name]["error"] is None
@@ -740,7 +740,7 @@ def test_current_data_answer_304_until_a_snapshot_changes(make_client, live, pat
     assert other_lang.headers["etag"] != etag
     assert refreshed.status_code == 200
     assert refreshed.headers["etag"] != etag
-    assert refreshed.json()["source"] == "IMGW-PIB"
+    assert refreshed.json()["source"] == "IMGW"
 
 
 def test_pmaxtp_of_a_point_with_its_tables_its_source_and_command(client):
@@ -805,7 +805,7 @@ def test_wrong_pmaxtp_parameters_are_refused(client, query, option):
     bad_parameter(client.get("/api/pmaxtp", params=query), option)
 
 
-def test_a_point_outside_the_pmaxtp_grid_is_refused_with_imgw_pibs_reason(make_client):
+def test_a_point_outside_the_pmaxtp_grid_is_refused_with_imgws_reason(make_client):
     def fetch(latitude, longitude, *, method="POT"):
         with _recorded_http(["pmaxtp_outside_grid"], recordings=("recordings.json",)):
             return obserwator.fetch_pmaxtp(latitude, longitude, method=method)

@@ -21,7 +21,7 @@ from tests.contract.support import use_fake_hydrolog
 
 RAW_TREES = ("archives", "pmaxtp")
 DATA_TREES = ("series", "stations", "analyses")
-SLOTS = {"analyses:pl.imgw.analyses": "IMGW-PIB", "analyses:cz.chmu.analyses": "CHMU"}
+SLOTS = {"analyses:pl.imgw.analyses": "IMGW", "analyses:cz.chmu.analyses": "CHMU"}
 
 
 @pytest.fixture(scope="module")

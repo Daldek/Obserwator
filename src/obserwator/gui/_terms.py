@@ -33,7 +33,7 @@ BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmu", "gugik", "cuz
 """The blocks of Obserwator's data sources, the packaged borders of PRG (GUGiK) and
 RÚIAN (ČÚZK) among them (ADR-018); ``osm`` joins them with a basemap."""
 PROVIDER_BLOCKS: Mapping[str, tuple[str, ...]] = {
-    "IMGW-PIB": ("imgw", "imgw-hydro"),
+    "IMGW": ("imgw", "imgw-hydro"),
     "CHMU": ("chmu",),
 }
 """The blocks of each provider's data, dropped when an instance turns it ``off``."""

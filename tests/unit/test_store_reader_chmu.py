@@ -82,7 +82,7 @@ def test_store_info_lists_the_providers_of_the_registry(tmp_path):
     for path in (root, tmp_path / "brak"):
         info = store_info(path)
         assert info.providers == providers()
-        assert [provider.id for provider in info.providers] == ["IMGW-PIB", "CHMU"]
+        assert [provider.id for provider in info.providers] == ["IMGW", "CHMU"]
 
 
 def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path):
@@ -105,7 +105,7 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     for entry in entries:
         expected = None
         if entry.slot is not None:
-            expected = "CHMU" if ":cz.chmu." in entry.slot else "IMGW-PIB"
+            expected = "CHMU" if ":cz.chmu." in entry.slot else "IMGW"
         assert entry.provider == expected, entry
     chmu = scan(provider="CHMU")
     assert chmu == [entry for entry in entries if entry.provider in ("CHMU", None)]
@@ -117,17 +117,17 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
         ("problem", None),
         ("catalog", "catalog:cz.chmu.stations"),
     ]
-    imgw = scan(provider="IMGW-PIB")
-    assert {entry.provider for entry in imgw} == {"IMGW-PIB", None}
+    imgw = scan(provider="IMGW")
+    assert {entry.provider for entry in imgw} == {"IMGW", None}
     assert [entry.slot for entry in imgw if entry.kind == "problem"] == [None]
     assert list(iter_store(root, kind="catalog")) == []
     assert [(e.slot, e.provider) for e in iter_store(data, kind="catalog")] == [
-        ("catalog:pl.imgw.stations", "IMGW-PIB"),
+        ("catalog:pl.imgw.stations", "IMGW"),
         ("catalog:cz.chmu.stations", "CHMU"),
     ]
     with pytest.raises(ObserwatorValidationError) as error:
         iter_store(root, provider="SHMU")
-    assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
+    assert error.value.details["allowed"] == ["IMGW", "CHMU"]
 
 
 def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path):
@@ -140,7 +140,7 @@ def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path
     assert imgw is not None and chmu is not None
     assert imgw.version.parent.parent == data / "stations/versions"
     assert chmu.version.parent.parent == data / "stations/versions/chmu_stations"
-    assert (imgw.provider, chmu.provider) == ("IMGW-PIB", "CHMU")
+    assert (imgw.provider, chmu.provider) == ("IMGW", "CHMU")
     assert (chmu.meta.dataset_key, chmu.meta.provider) == ("cz.chmu.stations", "CHMU")
     with pytest.raises(ObserwatorValidationError, match="cz.chmu.stations"):
         current_version(data, slot="catalog:sk.shmu.stations")
@@ -183,19 +183,19 @@ def test_read_catalog_reads_a_version_or_the_current_catalog_of_each_provider(
     assert thresholds["0-203-1-900001"]["thresholds"]["source"] == "chmu_hydro_now"
     assert "thresholds" not in thresholds["0-203-0-90001"]
     with pytest.raises(ObserwatorStoreError) as missing:
-        read_catalog(root=data, provider="IMGW-PIB")
+        read_catalog(root=data, provider="IMGW")
     assert missing.value.code == "not_found"
 
     imgw = imgw_catalog(root)
     both = read_catalog(root=data)
-    assert [station.provider for station in both] == [
-        "IMGW-PIB"
-    ] * imgw.station_count + ["CHMU"] * len(CODES)
+    assert [station.provider for station in both] == ["IMGW"] * imgw.station_count + [
+        "CHMU"
+    ] * len(CODES)
     assert len({(s.provider, s.station_code) for s in both}) == len(both)
     assert read_catalog(root=data, provider="CHMU") == chmu
     version = current_version(data, slot="catalog:cz.chmu.stations").version
     assert read_catalog(version) == read_catalog(version.parent) == chmu
-    assert {s.provider for s in read_catalog(imgw.version)} == {"IMGW-PIB"}
+    assert {s.provider for s in read_catalog(imgw.version)} == {"IMGW"}
     for call in (
         lambda: read_catalog(),
         lambda: read_catalog(version, root=data),
@@ -332,6 +332,6 @@ def test_complete_fixture_store_scans_without_problems_as_imgw(tmp_path):
     for root in (roots.raw.root, roots.data.root):
         entries = list(iter_store(root))
         assert entries and not [entry for entry in entries if entry.kind == "problem"]
-        assert {entry.provider for entry in entries} == {"IMGW-PIB"}
-        assert list(iter_store(root, provider="IMGW-PIB")) == entries
+        assert {entry.provider for entry in entries} == {"IMGW"}
+        assert list(iter_store(root, provider="IMGW")) == entries
         assert list(iter_store(root, provider="CHMU")) == []

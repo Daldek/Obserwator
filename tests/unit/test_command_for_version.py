@@ -66,7 +66,7 @@ STATION_SOURCES = {
 }
 # Catalogs → the provider of their store catalog.
 CATALOGS = {
-    "imgw_catalog": ("pl.imgw.stations", "IMGW-PIB"),
+    "imgw_catalog": ("pl.imgw.stations", "IMGW"),
     "chmu_catalog": ("cz.chmu.stations", "CHMU"),
 }
 

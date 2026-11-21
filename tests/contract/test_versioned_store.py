@@ -325,7 +325,7 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
         assert re.fullmatch(r"[A-Z]{2}", document["country"]), where
         assert scope == document["country"].lower(), where
         assert key_provider and name, where
-        assert document["provider"] in ("IMGW-PIB", "CHMU"), where
+        assert document["provider"] in ("IMGW", "CHMU"), where
         # size_bytes and sha256 of the main file
         assert document["size_bytes"] == main.stat().st_size, where
         assert re.fullmatch(r"[0-9a-f]{64}", document["sha256"]), where
@@ -353,8 +353,8 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
     assert seen == {
         (kind, provider)
         for kind in ("archive", "series", "catalog")
-        for provider in ("IMGW-PIB", "CHMU")
-    } | {("pmaxtp", "IMGW-PIB")}
+        for provider in ("IMGW", "CHMU")
+    } | {("pmaxtp", "IMGW")}
 
 
 @pytest.mark.parametrize(

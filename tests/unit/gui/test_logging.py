@@ -132,7 +132,7 @@ def test_no_log_holds_the_admin_key(make_client, tmp_path, monkeypatch):
     assert key.encode() not in written
 
 
-def test_every_request_to_imgw_pib_is_one_app_record(make_client, live, tmp_path):
+def test_every_request_to_imgw_is_one_app_record(make_client, live, tmp_path):
     def defect():
         raise RuntimeError("a defect of the parser")
 

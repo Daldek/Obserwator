@@ -880,7 +880,7 @@ def test_provider_is_validated_and_key_prefix_names_it(store):
     for call in (build_catalog, check_catalog):
         with pytest.raises(ObserwatorValidationError) as error:
             call(data_root(store), raw_root=store, provider="SHMU")
-        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
+        assert error.value.details["allowed"] == ["IMGW", "CHMU"]
     sync_sources(store)
     with respx.mock(assert_all_mocked=True):
         built = build_catalog(data_root(store), raw_root=store, provider="cz.chmu")

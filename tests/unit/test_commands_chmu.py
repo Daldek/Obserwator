@@ -122,7 +122,7 @@ def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
     planned = check_command("datasets providers", options={})
 
     assert listed.status == "ok"
-    assert [provider.id for provider in listed.result] == ["IMGW-PIB", "CHMU"]
+    assert [provider.id for provider in listed.result] == ["IMGW", "CHMU"]
     assert (listed.result, listed.page.total) == (providers(), 2)
     assert [action.status for action in planned.result.actions] == ["current"]
     chmu = run_command("datasets list", options={"provider": "CHMU"}).result
@@ -146,10 +146,10 @@ def _values(option):
 def test_command_schema_publishes_provider_stations_and_their_rules():
     for name in ("datasets list", "stations find", "store scan"):
         provider = _options(name)["provider"]
-        assert _values(provider) == ["IMGW-PIB", "CHMU"]
+        assert _values(provider) == ["IMGW", "CHMU"]
         assert "default" not in provider
     catalog = _options("store catalog")["provider"]
-    assert (_values(catalog), catalog["default"]) == (["IMGW-PIB", "CHMU"], "IMGW-PIB")
+    assert (_values(catalog), catalog["default"]) == (["IMGW", "CHMU"], "IMGW")
     for name in ("datasets files", "datasets download", "store check", "store sync"):
         entry = _entry(name)
         stations = _options(name)["stations"]
@@ -198,7 +198,7 @@ def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
                     None,
                 )
     assert data_commands(provider="cz.chmu") == view
-    imgw = data_commands(provider="IMGW-PIB")
+    imgw = data_commands(provider="IMGW")
     assert [command.name for command in imgw] == [c.name for c in data_commands()]
     assert all(
         key.startswith("pl.imgw.")
