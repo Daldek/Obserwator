@@ -269,6 +269,12 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **A regulamin saved on Windows reads as the same text (ADR-025).** The `terms` of
+  `[obserwator.instance]` kept the CRLF line ends of a file written on Windows in its text
+  and its SHA-256, and a UTF-8 BOM (older Notepad) refused it as having no `# ` title. The
+  file now loses a BOM and its CRLF (or CR) line ends become LF before it is checked, so
+  `config show` reports, the page shows and the ETags use the same text and digest
+  whatever editor wrote it.
 - **„Opady” no longer asks for PMAXTP on an instance with PMAXTP off (ADR-025).** The
   quantiles of an IMGW-PIB station requested `api/pmaxtp` beside them even with
   `pmaxtp = "off"`, which answers 404 (two console errors per station). The card now reads

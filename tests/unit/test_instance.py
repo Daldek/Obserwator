@@ -406,6 +406,28 @@ def test_a_regulamin_may_link_to_web_mail_anchors_and_fields(tmp_path, monkeypat
     assert instance is not None and instance.terms is not None
 
 
+def test_a_regulamin_written_on_windows_reads_as_the_same_text(tmp_path, monkeypatch):
+    lf = TERMS.encode("utf-8")
+    read = []
+    for data in (
+        lf,
+        lf.replace(b"\n", b"\r\n"),
+        b"\xef\xbb\xbf" + lf.replace(b"\n", b"\r\n"),
+    ):
+        deployment(
+            tmp_path,
+            monkeypatch,
+            '[obserwator.instance]\nterms = "terms.md"\n',
+            terms__md=data,
+        )
+        instance = load_instance()
+        assert instance is not None and instance.terms is not None
+        read.append((instance.terms.text, instance.terms.sha256, instance.key))
+
+    assert read[0][0] == TERMS
+    assert read[1] == read[0] and read[2] == read[0]
+
+
 # --- the filter --------------------------------------------------------------------------
 
 

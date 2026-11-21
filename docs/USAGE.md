@@ -851,7 +851,7 @@ start_view = "featured"                # all | featured | area
 area = "area.geojson"                  # one Polygon/MultiPolygon, WGS84, ≤ 1 MB, ≤ 100,000 vertices
 area_mode = "clip"                     # focus (outline, start) | clip (stations outside not served)
 pmaxtp = "off"                         # on | off: PMAXTP served and fetched or not
-terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md
+terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md (UTF-8; LF or CRLF)
 
 [obserwator.instance.providers]        # visible (default) | hidden | off
 IMGW-PIB = "hidden"
