@@ -252,6 +252,21 @@ def test_an_area_is_one_polygon_with_its_holes(tmp_path, monkeypatch, document):
     assert instance.keeps_point(20.2, 52.1) is (multi == "MultiPolygon")
 
 
+def test_an_area_saved_on_windows_is_read(tmp_path, monkeypatch):
+    text = json.dumps({"type": "Polygon", "coordinates": [SQUARE]}, indent=2)
+    deployment(
+        tmp_path,
+        monkeypatch,
+        '[obserwator.instance]\narea = "area.geojson"\n',
+        area__geojson=b"\xef\xbb\xbf" + text.replace("\n", "\r\n").encode("utf-8"),
+    )
+
+    instance = load_instance()
+
+    assert instance is not None and instance.area is not None
+    assert instance.area.box == (14.0, 49.5, 16.0, 50.6)
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -324,7 +339,12 @@ def test_an_area_has_at_most_its_bytes_and_vertices(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     ("content", "media_type"),
-    [(PNG, "image/png"), (WEBP, "image/webp"), (SVG, "image/svg+xml")],
+    [
+        (PNG, "image/png"),
+        (WEBP, "image/webp"),
+        (SVG, "image/svg+xml"),
+        (b"\xef\xbb\xbf" + SVG + b"\r\n", "image/svg+xml"),  # saved by Notepad
+    ],
 )
 def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_type):
     deployment(

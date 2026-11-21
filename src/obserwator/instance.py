@@ -408,7 +408,8 @@ def read_area(path: Path, mode: AreaMode = "focus") -> Area:
         the geometry itself, a Feature or a FeatureCollection of one Feature; longitude
         and latitude in WGS84 (RFC 7946; a ``crs`` member may only name WGS84), at most
         `AREA_MAX_VERTICES` positions, every ring closed with 4 positions or more. No
-        buffer is added: the polygon is the area.
+        buffer is added: the polygon is the area. UTF-8, a BOM ignored (RFC 8259 §8.1;
+        Windows editors write one).
     mode : {"focus", "clip"}, optional
         What the area does.
 
@@ -424,7 +425,7 @@ def read_area(path: Path, mode: AreaMode = "focus") -> Area:
     """
     data = _read_bytes("area", path, AREA_MAX_BYTES)
     try:
-        document = json.loads(data.decode("utf-8"))
+        document = json.loads(data.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as exc:
         raise _invalid(
             "area",

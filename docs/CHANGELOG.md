@@ -270,6 +270,10 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **An area saved with a BOM is read (ADR-025).** The `area` of `[obserwator.instance]`
+  refused a GeoJSON file that begins with a UTF-8 BOM (Notepad, some Windows tools) as
+  not JSON; the BOM is now ignored (RFC 8259 §8.1). The logo already accepted an SVG
+  with one, and the regulamin does too since the fix below.
 - **A secret file saved on Windows is read, or named when it cannot be (ADR-025).**
   `OBSERWATOR_STORE_WRITE_TOKEN_FILE` and `OBSERWATOR_ADMIN_API_KEY_FILE` kept a UTF-8 BOM
   (Notepad) in the key, so no client could match it. A file in another encoding, such as
