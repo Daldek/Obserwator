@@ -351,6 +351,11 @@ def test_build_stores_each_line_of_hydrolog_verbatim_with_its_record_and_sidecar
                 assert (result["status"], result["error_code"]) == (
                     ("failed", "calculation_error") if failed else ("ok", None)
                 )
+                assert result["formula_versions"] == (
+                    {}
+                    if failed
+                    else ANSWERS[answer_key(result)].get("formula_versions", {})
+                )
                 files.add(result["file"])
             for source in record["inputs"]:  # the current series of the station
                 assert AnalysisSource(**source) == source_of(
@@ -422,10 +427,11 @@ def test_a_rebuild_carries_every_station_until_hydrologs_version_changes(
     assert batches() == []
     assert snapshot(root / "analyses") == before
 
-    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
+    # Hydrolog's next development build of the same release (REL-1.1) computes anew.
+    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.0.dev1")
     upgraded = build_analyses(root)
 
-    assert (upgraded.status, upgraded.hydrolog_version) == ("new", "1.0.1")
+    assert (upgraded.status, upgraded.hydrolog_version) == ("new", "1.0.0.dev1")
     assert [
         (item.status, item.computed, item.carried) for item in upgraded.providers
     ] == [("new", item.stations, 0) for item in upgraded.providers]
@@ -615,6 +621,7 @@ def test_list_and_read_give_hydrologs_answers_with_their_provenance(
                 None,
             )
             assert result.error == {**ANSWERS[key]["error"], "command": summary.command}
+            assert (summary.formula_versions, result.formula_versions) == ({}, {})
         else:
             assert (result.status, result.error_code, result.error) == (
                 "ok",
@@ -624,6 +631,11 @@ def test_list_and_read_give_hydrologs_answers_with_their_provenance(
             assert result.envelope is not None
             assert result.envelope["result"] == ANSWERS[key]["result"]
             assert result.envelope["notices"] == ANSWERS[key]["notices"]
+            formulas = ANSWERS[key].get("formula_versions", {})
+            assert (summary.formula_versions, result.formula_versions) == (
+                formulas,
+                formulas,
+            )
     # A version given as its directory, main file or sidecar, or relative to the root.
     for given, root in (
         (version, None),
@@ -665,6 +677,9 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
             )
         else:
             assert (result["result"], result["error"]) == (ANSWERS[key]["result"], None)
+            assert result["formula_versions"] == ANSWERS[key].get(
+                "formula_versions", {}
+            )
     assert Attribution(
         tuple(document["attribution"]), tuple(document["terms_notice"])
     ) == attribution("imgw")
@@ -683,8 +698,9 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     rows = text.splitlines(keepends=True)
     assert all(row.endswith("\r\n") for row in rows)
     assert rows[0] == (
-        "station,analysis,command,series_version,hydrolog_version,path,value,"
-        "attribution_source,attribution_processed,attribution,terms_notice\r\n"
+        "station,analysis,command,series_version,hydrolog_version,formula_versions,"
+        "path,value,attribution_source,attribution_processed,attribution,terms_notice"
+        "\r\n"
     )
     table = list(csv.DictReader(io.StringIO(text, newline="")))
     keys = {name: answer_key(vars(summaries[name])) for name in chosen}
@@ -703,6 +719,19 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     )
     assert {(row["series_version"], row["hydrolog_version"]) for row in table} == {
         (summary.inputs[0].series_version, VERSION)
+    }
+    assert {(row["analysis"], row["formula_versions"]) for row in table} == {
+        (
+            name,
+            ";".join(
+                f"{formula}={number}"
+                for formula, number in ANSWERS[keys[name]]
+                .get("formula_versions", {})
+                .items()
+            ),
+        )
+        for name in chosen
+        if keys[name] not in FAILING
     }
     assert [
         (row["attribution_source"], row["attribution_processed"]) for row in table

@@ -1,5 +1,9 @@
 {
  "hydrometrics rating-curve": {
+  "formula_versions": {
+   "rating_curve_fit": 1,
+   "rating_curve_plausibility": 1
+  },
   "notices": [
    {
     "code": "missing_pairs_removed",
@@ -9,25 +13,40 @@
     },
     "level": "warning",
     "message": "1 of 731 measurement pairs have a missing value (NaN) and were removed before the fit"
+   },
+   {
+    "code": "unreferenced_formula",
+    "details": {
+     "formula": "rating_curve_plausibility",
+     "formula_version": 1,
+     "title": "Plausibility of a rating curve as the curve of one stage-discharge relation (Hydrolog's rule of ADR-0041)"
+    },
+    "level": "info",
+    "message": "rating_curve_plausibility: Plausibility of a rating curve as the curve of one stage-discharge relation (Hydrolog's rule of ADR-0041) has no reference case and no oracle, so its result is not verified against a source (Nogat CMP-5.1)."
    }
   ],
   "result": {
-   "a": 0.08891328165750424,
-   "b": 1.083515218363621,
+   "a": 0.0889153693352478,
+   "b": 1.0835104215148186,
    "first_year": 2023,
-   "h0": 29.649139940693242,
+   "h0": 29.649342444040688,
+   "implausibility_reasons": [],
    "last_year": 2025,
    "n_outliers_removed": 0,
    "n_points": 730,
    "periods": null,
-   "r_squared": 0.8878226737277249,
+   "plausible": true,
+   "r_squared": 0.8878226737280959,
    "reference_discharge_m3s": null,
    "reference_level": null,
    "schema": "hydrolog-hydrometrics-rating-curve/1",
-   "std_residuals": 0.8457727676598533
+   "std_residuals": 0.8457727676644275
   }
  },
  "hydrometrics water-level-zones": {
+  "formula_versions": {
+   "rybczynski_zones": 1
+  },
   "notices": [
    {
     "code": "missing_values_removed",
@@ -38,6 +57,16 @@
     },
     "level": "warning",
     "message": "89 of 91 values are missing (NaN) and were removed before the analysis"
+   },
+   {
+    "code": "unreferenced_formula",
+    "details": {
+     "formula": "rybczynski_zones",
+     "formula_version": 1,
+     "title": "Rybczyński's zones of low, medium and high background water levels (NTW, STW, WTW)"
+    },
+    "level": "info",
+    "message": "rybczynski_zones: Rybczyński's zones of low, medium and high background water levels (NTW, STW, WTW) has no reference case and no oracle, so its result is not verified against a source (Nogat CMP-5.1)."
    }
   ],
   "result": {
@@ -1180,7 +1209,7 @@
      "years": 0
     },
     "level": "warning",
-    "message": "The normal of 2001-2001 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+    "message": "A monthly normal of 2001-2001 needs values in 1 of its years and the month with the fewest has 0 (WMO-No. 1203, 4.4.2): that normal, the annual, half-year and season normals made of it (4.3.3) and the percentages of them are null"
    },
    {
     "code": "short_reference_period",
@@ -1522,6 +1551,9 @@
   }
  },
  "meteo spells": {
+  "formula_versions": {
+   "spell_lengths": 1
+  },
   "notices": [
    {
     "code": "accumulated_totals",
@@ -1645,6 +1677,9 @@
   }
  },
  "meteo spi": {
+  "formula_versions": {
+   "month_precipitation_class": 1
+  },
   "notices": [
    {
     "code": "accumulated_totals",
@@ -1752,7 +1787,7 @@
      "years": 0
     },
     "level": "warning",
-    "message": "The normal of 2001-2001 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+    "message": "A monthly normal of 2001-2001 needs values in 1 of its years and the month with the fewest has 0 (WMO-No. 1203, 4.4.2): that normal, the annual, half-year and season normals made of it (4.3.3) and the percentages of them are null"
    },
    {
     "code": "short_reference_period",
@@ -2183,6 +2218,9 @@
   }
  },
  "meteo temperature#days": {
+  "formula_versions": {
+   "threshold_days": 1
+  },
   "notices": [
    {
     "code": "short_reference_period",
@@ -2204,11 +2242,13 @@
    "index": "days",
    "last_year": 2023,
    "period": {
+    "freeze_thaw_days": null,
     "frost_days": null,
     "hot_days": null,
     "ice_days": null,
     "months": [
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2217,6 +2257,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2225,6 +2266,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2233,6 +2275,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2241,6 +2284,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2249,6 +2293,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2257,6 +2302,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2265,6 +2311,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2273,6 +2320,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2281,6 +2329,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2289,6 +2338,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2297,6 +2347,7 @@
       "tropical_nights": null
      },
      {
+      "freeze_thaw_days": null,
       "frost_days": null,
       "hot_days": null,
       "ice_days": null,
@@ -2315,11 +2366,13 @@
    "year_type": "calendar",
    "years": [
     {
+     "freeze_thaw_days": null,
      "frost_days": null,
      "hot_days": null,
      "ice_days": null,
      "months": [
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2328,6 +2381,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2336,6 +2390,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2344,6 +2399,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2352,6 +2408,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2360,6 +2417,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2368,6 +2426,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2376,6 +2435,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2384,6 +2444,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2392,6 +2453,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2400,6 +2462,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2408,6 +2471,7 @@
        "tropical_nights": null
       },
       {
+       "freeze_thaw_days": null,
        "frost_days": null,
        "hot_days": null,
        "ice_days": null,
@@ -2424,6 +2488,9 @@
   }
  },
  "meteo temperature#degree_days": {
+  "formula_versions": {
+   "degree_days": 1
+  },
   "notices": [
    {
     "code": "short_reference_period",
@@ -2596,7 +2663,7 @@
      "years": 0
     },
     "level": "warning",
-    "message": "The normal of 2023-2023 needs annual values in 1 of its years and 0 have one (WMO-No. 1203): the normal and the percentages of it are null"
+    "message": "A monthly normal of 2023-2023 needs values in 1 of its years and the month with the fewest has 0 (WMO-No. 1203, 4.4.2): that normal, the annual, half-year and season normals made of it (4.3.3) and the percentages of them are null"
    },
    {
     "code": "short_reference_period",
@@ -3060,6 +3127,10 @@
   }
  },
  "stats baseflow": {
+  "formula_versions": {
+   "baseflow_index": 1,
+   "lyne_hollick": 1
+  },
   "notices": [
    {
     "code": "short_years_left_out",
@@ -4036,6 +4107,9 @@
   }
  },
  "stats duration-curve": {
+  "formula_versions": {
+   "exceedance_values": 1
+  },
   "notices": [
    {
     "code": "missing_values_removed",
@@ -4255,7 +4329,7 @@
     162.0,
     161.84,
     161.6,
-    161.35999999999999,
+    161.36,
     161.12,
     160.88,
     160.64,
@@ -4277,10 +4351,10 @@
     156.8,
     156.56,
     156.32,
-    156.07999999999998,
+    156.08,
     155.84,
     155.6,
-    155.35999999999999,
+    155.36,
     155.12,
     154.88,
     154.64,
@@ -4459,11 +4533,11 @@
     "incomplete_years": [
      2024
     ],
-    "minimum": 3
+    "minimum": 4
    },
    "exit_code": 13,
    "hint": "A hydrological year counts only with a value for every day of it; fill the gaps or provide a longer series.",
-   "message": "Low-flow frequency analysis needs at least 3 complete hydrological years, got 0; incomplete years: 2024 (1 of 366 days)",
+   "message": "Low-flow frequency analysis needs at least 4 complete hydrological years, got 0; incomplete years: 2024 (1 of 366 days)",
    "schema": "hydrolog-error/1",
    "title": "Calculation error"
   }
@@ -4514,9 +4588,14 @@
   }
  },
  "stats mann-kendall": {
+  "formula_versions": {
+   "mann_kendall": 1,
+   "sen_slope": 1
+  },
   "notices": [],
   "result": {
-   "p_value": 0.2962698714842864,
+   "p_value": 0.3333333333333333,
+   "p_value_method": "exact",
    "s_statistic": -3.0,
    "schema": "hydrolog-stats-mann-kendall/1",
    "sen_intercept": 8105.545999999999,
@@ -4531,6 +4610,12 @@
   }
  },
  "stats monthly": {
+  "formula_versions": {
+   "coefficient_of_variation": 1,
+   "fisher_pearson_skewness": 1,
+   "mean_interval_half_width": 1,
+   "sample_standard_deviation": 1
+  },
   "notices": [
    {
     "code": "missing_values_removed",
@@ -4545,47 +4630,47 @@
   ],
   "result": {
    "ci_lower": [
-    61.93460914206375,
-    72.95798969878737,
-    85.47866063273159,
-    96.68674772883656,
-    103.40476154580682,
-    103.282775149503,
-    96.30960057699981,
-    84.91781320798388,
-    72.00013415319177,
-    61.10559542957115,
-    55.2927578442066,
-    55.40118109828744
+    41.99946962758358,
+    59.96560807998796,
+    79.3916586166756,
+    95.22052913170126,
+    102.51704140075451,
+    101.25014166727571,
+    91.26645262340215,
+    74.74449579855467,
+    52.15142885197844,
+    39.521249661625546,
+    31.306234097792693,
+    30.592329160938128
    ],
    "ci_upper": [
-    63.87184247083948,
-    75.07709802051087,
-    87.65037162533292,
-    98.41325227116343,
-    104.4984642606448,
-    104.44603840981902,
-    98.10975426170985,
-    87.11444485653224,
-    74.23319918014155,
-    63.02343682849336,
-    56.87390882246007,
-    57.01817374042224
+    83.80698198531965,
+    88.06947963931029,
+    93.73737364138891,
+    99.87947086829874,
+    105.38618440569711,
+    106.47867189204631,
+    103.15290221530752,
+    97.28776226596146,
+    94.08190448135488,
+    84.60778259643897,
+    80.86043256887397,
+    81.82702567777156
    ],
    "confidence_level": 0.95,
    "cv_values": [
     0.060635451152200974,
     0.05395016535552853,
-    0.04939462838770495,
+    0.049394628387704954,
     0.03425626389582791,
-    0.020715034290604062,
+    0.020715034290604055,
     0.02148842052430919,
     0.036460085300603295,
     0.05027996201659146,
     0.05911320818063845,
     0.06083967898751913,
-    0.05456812946876691,
-    0.05663886598405355
+    0.05456812946876692,
+    0.05663886598405356
    ],
    "max_values": [
     71.0,
@@ -4659,36 +4744,42 @@
    ],
    "schema": "hydrolog-stats-monthly/1",
    "skewness_values": [
-    -0.05013048672491416,
-    -0.06054601469066919,
-    0.002775935321454052,
-    -0.061415217767113076,
-    0.07293902317077856,
-    0.0026151057673066956,
-    -0.20772264551360647,
-    0.05757095888182085,
-    -0.05225701675679795,
-    -0.0578208685475499,
-    0.03149726043191415,
-    0.009994740695767692
+    -0.050130486724912,
+    -0.06054601469066867,
+    0.0027759353214528186,
+    -0.061415217767115574,
+    0.07293902317078048,
+    0.0026151057672974486,
+    -0.2077226455136118,
+    0.05757095888182034,
+    -0.052257016756802686,
+    -0.057820868547551287,
+    0.03149726043191664,
+    0.009994740695768632
    ],
    "std_values": [
     3.8141654757029646,
     3.9932587304381557,
-    4.275822105755039,
+    4.27582210575504,
     3.341698543038012,
-    2.153361225853922,
+    2.1533612258539216,
     2.2318820503892662,
-    3.544273130753807,
+    3.5442731307538073,
     4.3248877005561654,
     4.322160738141014,
     3.775985237806026,
-    3.0603625943733443,
-    3.18365238636172
+    3.060362594373345,
+    3.1836523863617203
    ]
   }
  },
  "stats regime": {
+  "formula_versions": {
+   "dynowska_regime_type": 1,
+   "parde_coefficients": 1,
+   "seasonality_index": 1,
+   "spring_share": 1
+  },
   "notices": [
    {
     "code": "missing_values_removed",
@@ -4717,17 +4808,17 @@
    "first_year": 2023,
    "last_year": 2025,
    "monthly_mean": [
-    3.1820499999999985,
-    2.760064516129032,
-    3.319000000000001,
-    4.559964912280701,
+    3.18205,
+    2.7600645161290323,
+    3.319,
+    4.5599649122807016,
     6.314141935483871,
-    8.064250000000001,
+    8.06425,
     9.285822580645162,
-    9.690440677966098,
-    9.180709677419356,
-    7.88667741935484,
-    6.172849999999999,
+    9.690440677966102,
+    9.180709677419355,
+    7.886677419354839,
+    6.1728499999999995,
     4.4424838709677426
    ],
    "months": [
@@ -4746,17 +4837,17 @@
    ],
    "n_values": 730,
    "parde": [
-    0.5100206283224722,
-    0.44238457558073874,
-    0.5319710455216877,
-    0.7308735468298208,
+    0.5100206283224724,
+    0.44238457558073885,
+    0.5319710455216876,
+    0.7308735468298209,
     1.0120339520914996,
-    1.2925421825394006,
+    1.2925421825394001,
     1.4883364708510702,
-    1.5531888698473988,
-    1.4714889200746764,
-    1.2640807569950225,
-    0.9893876072155917,
+    1.5531888698473995,
+    1.4714889200746761,
+    1.2640807569950223,
+    0.9893876072155918,
     0.7120436244507213
    ],
    "period_years": 3,
@@ -4768,16 +4859,16 @@
       1.3,
       1.8
      ],
-     "spring_coefficient": 1.2925421825394006,
+     "spring_coefficient": 1.2925421825394001,
      "spring_month": 4,
-     "summer_coefficient": 1.5531888698473988,
+     "summer_coefficient": 1.5531888698473995,
      "summer_month": 6,
      "summer_rise": 1.0
     }
    },
    "schema": "hydrolog-stats-regime/1",
-   "seasonality_index": 0.3549793412804229,
-   "spring_share": 0.19187771619502422
+   "seasonality_index": 0.35497934128042274,
+   "spring_share": 0.1918777161950242
   }
  },
  "stats runoff-volume": {

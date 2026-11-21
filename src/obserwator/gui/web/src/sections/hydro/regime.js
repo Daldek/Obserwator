@@ -228,7 +228,8 @@ export function Regime({ station, analyses }) {
     {
       key: "low",
       label: t("hydro.regime.col.ci", { level: mr ? fmt(mr.confidence_level * 100, 0) : "" }),
-      format: (v, row) => `${fmtV(row.low, variable)}–${fmtV(row.high, variable)}`,
+      // null for a month of a single year (notice `single_year_month`, Hydrolog 0.9.0)
+      format: (v, row) => (Number.isFinite(row.low) && Number.isFinite(row.high) ? `${fmtV(row.low, variable)}–${fmtV(row.high, variable)}` : "–"),
     },
   ];
   const type = rr && rr.regime_type;

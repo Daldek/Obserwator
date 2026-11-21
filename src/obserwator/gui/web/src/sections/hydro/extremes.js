@@ -95,7 +95,8 @@ function FitTable({ items, many }) {
     { key: "label", label: t("hydro.extremes.distribution"), format: (v) => v },
     { key: "aic", label: "AIC", format: (v) => fmt(v, 1) },
     { key: "ks", label: "KS (p)", format: (v, row) => `${fmt(row.ks_statistic, 3)} (${fmt(v, 2)}${row.ks_valid === false ? "*" : ""})` },
-    { key: "ad", label: "A²", format: (v, row) => `${fmt(v, 3)}${row.ad5 !== undefined && v > row.ad5 ? " > 5 %" : ""}` },
+    // the 5 % critical value of the fit: L-moments only, null for the other methods
+    { key: "ad", label: "A²", format: (v, row) => `${fmt(v, 3)}${Number.isFinite(row.ad5) && v > row.ad5 ? " > 5 %" : ""}` },
     { key: "params", label: t("hydro.extremes.col_parameters"), format: (v) => v },
   ];
   const rows = items.map((item) => ({

@@ -232,10 +232,13 @@ function Means({ station, means, range }) {
 
 // --- characteristic days and degree days ----------------------------------------------------
 
-/** The day counts of `temperature.days` and the sums of `temperature.degree_days`. */
-const DAY_KEYS = ["frost_days", "ice_days", "summer_days", "hot_days", "tropical_nights"];
+/**
+ * The day counts of `temperature.days` and the sums of `temperature.degree_days`;
+ * `freeze_thaw_days` (IMGW-PIB's „dni przymrozkowe”) comes from Hydrolog 0.9.0 on.
+ */
+const DAY_KEYS = ["frost_days", "freeze_thaw_days", "ice_days", "summer_days", "hot_days", "tropical_nights"];
 const DEGREE_KEYS = ["growing_degree_days", "heating_degree_days"];
-const COLD = new Set(["frost_days", "ice_days", "heating_degree_days"]);
+const COLD = new Set(["frost_days", "freeze_thaw_days", "ice_days", "heating_degree_days"]);
 
 /** The definition of an index with the thresholds Hydrolog used. */
 function ruleOf(key, days, degree) {
@@ -243,6 +246,8 @@ function ruleOf(key, days, degree) {
   switch (key) {
     case "frost_days":
       return `Tmin < ${degrees(days.frost_tmin_c)} °C`;
+    case "freeze_thaw_days":
+      return `Tmin < ${degrees(days.frost_tmin_c)} °C, Tmax > ${degrees(days.ice_tmax_c)} °C`;
     case "ice_days":
       return `Tmax < ${degrees(days.ice_tmax_c)} °C`;
     case "summer_days":

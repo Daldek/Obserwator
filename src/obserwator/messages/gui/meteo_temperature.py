@@ -104,9 +104,10 @@ MESSAGES: dict[str, Text] = {
     ),
     "meteo.temperature.days.info": Text(
         "Characteristic days are set by a temperature threshold: frost days (Tmin < 0 "
-        "°C), ice days (Tmax < 0 °C), summer days (Tmax > 25 °C), hot days (Tmax > 30 "
-        "°C) and tropical nights (Tmin > 20 °C). Degree days sum the daily departures "
-        "of Tmean from a threshold.\n\n"
+        "°C, FD), freeze-thaw days (Tmin < 0 °C and Tmax > 0 °C, IMGW-PIB's „dni "
+        "przymrozkowe”), ice days (Tmax < 0 °C), summer days (Tmax > 25 °C), hot days "
+        "(Tmax > 30 °C) and tropical nights (Tmin > 20 °C). Degree days sum the daily "
+        "departures of Tmean from a threshold.\n\n"
         "GDD = Σ max(Tmean − 5 °C, 0)\n"
         "HDD = Σ (18 °C − Tmean), over the days with Tmean ≤ 15 °C\n"
         "where: GDD – growing degree days [°C·d], HDD – heating degree days [°C·d], "
@@ -114,12 +115,14 @@ MESSAGES: dict[str, Text] = {
         "The tiles give the mean per year of the period. A year without a bar on the "
         "chart has a month with too many missing days, for degree days a month with "
         "any missing day.\n\n"
-        "Sources: Zhang et al. 2011 (ETCCDI: FD, ID, SU, TR); Eurostat 2024 (heating "
-        "degree days); WMO-No. 1203 (2017), 4.4.1 d; data: IMGW-PIB or ČHMÚ",
+        "Sources: Zhang et al. 2011 (ETCCDI: FD, ID, SU, TR); Słownik meteorologiczny "
+        "2003 (freeze-thaw days); Eurostat 2024 (heating degree days); WMO-No. 1203 "
+        "(2017), 4.4.1 d; data: IMGW-PIB or ČHMÚ",
         "Dni charakterystyczne wyznacza próg temperatury: dni z przymrozkiem (Tmin < "
-        "0 °C), mroźne (Tmax < 0 °C), gorące (Tmax > 25 °C), upalne (Tmax > 30 °C) i "
-        "noce tropikalne (Tmin > 20 °C). Stopniodni sumują dobowe odchylenia Tśr od "
-        "progu.\n\n"
+        "0 °C, FD), przymrozkowe (Tmin < 0 °C i Tmax > 0 °C, jak w normalnych "
+        "IMGW-PIB), mroźne (Tmax < 0 °C), gorące (Tmax > 25 °C), upalne (Tmax > 30 "
+        "°C) i noce tropikalne (Tmin > 20 °C). Stopniodni sumują dobowe odchylenia Tśr "
+        "od progu.\n\n"
         "GDD = Σ max(Tśr − 5 °C, 0)\n"
         "HDD = Σ (18 °C − Tśr), w dniach z Tśr ≤ 15 °C\n"
         "gdzie: GDD – stopniodni wzrostu [°C·d], HDD – stopniodni grzania [°C·d], Tśr "
@@ -127,10 +130,12 @@ MESSAGES: dict[str, Text] = {
         "Kafelki podają średnią na rok okresu. Rok bez słupka na wykresie ma miesiąc "
         "z za dużą liczbą braków, a przy stopniodniach – miesiąc z jakimkolwiek "
         "brakiem.\n\n"
-        "Źródła: Zhang i in. 2011 (ETCCDI: FD, ID, SU, TR); Eurostat 2024 (stopniodni "
-        "grzania); WMO-No. 1203 (2017), 4.4.1 d; dane: IMGW-PIB albo ČHMÚ",
+        "Źródła: Zhang i in. 2011 (ETCCDI: FD, ID, SU, TR); Słownik meteorologiczny "
+        "2003 (dni przymrozkowe); Eurostat 2024 (stopniodni grzania); WMO-No. 1203 "
+        "(2017), 4.4.1 d; dane: IMGW-PIB albo ČHMÚ",
     ),
     "meteo.temperature.day.frost_days": Text("frost days", "z przymrozkiem"),
+    "meteo.temperature.day.freeze_thaw_days": Text("freeze-thaw days", "przymrozkowe"),
     "meteo.temperature.day.ice_days": Text("ice days", "mroźne"),
     "meteo.temperature.day.summer_days": Text("summer days", "gorące"),
     "meteo.temperature.day.hot_days": Text("hot days", "upalne"),
@@ -241,32 +246,34 @@ MESSAGES: dict[str, Text] = {
     "meteo.hydrothermal.info": Text(
         "Sielianinov's coefficient compares the precipitation with the sum of "
         "temperatures, a measure of the evaporation. It is computed for the months "
-        "IV–IX and for the period of the days with a mean daily temperature above 10 "
-        "°C.\n\n"
+        "IV–IX and for the season: the days of April–September with a mean daily "
+        "temperature above 10 °C.\n\n"
         "k = P / (0.1·Σt)\n"
         "where: k – the hydrothermal coefficient [–], P – the precipitation total of "
-        "the month or the period [mm], Σt – the sum of the daily mean temperatures of "
-        "its days [°C], for a month its mean times its days\n\n"
+        "the month or of the season's days [mm], Σt – the sum of the daily mean "
+        "temperatures of those days [°C], for a month its mean times its days\n\n"
         "The optimal class is 1.3 < k ≤ 1.6; a lower k marks ever drier conditions, "
         "extremely dry at k ≤ 0.4, and a higher k ever wetter ones, extremely wet at "
         "k > 3.0.\n\n"
-        "Sources: Selyaninov 1928; Skowera and Puła 2004, Acta Agrophysica 3(1) "
-        "(classes); WMO-No. 1203 (2017), 4.4.1 a, c; data: IMGW-PIB or ČHMÚ",
+        "Sources: Selyaninov 1928; Miś 2026, eq. 4 (season); Skowera and Puła 2004, "
+        "Acta Agrophysica 3(1) (classes); WMO-No. 1203 (2017), 4.4.1 a, c; data: "
+        "IMGW-PIB or ČHMÚ",
         "Współczynnik Sielianinowa porównuje opad z sumą temperatur, która jest miarą "
-        "parowania. Liczony dla miesięcy IV–IX i dla okresu dni ze średnią dobową "
-        "temperaturą powyżej 10 °C.\n\n"
+        "parowania. Liczony dla miesięcy IV–IX i dla sezonu: dni od kwietnia do "
+        "września ze średnią dobową temperaturą powyżej 10 °C.\n\n"
         "k = P / (0,1·Σt)\n"
-        "gdzie: k – współczynnik hydrotermiczny [–], P – suma opadu miesiąca albo "
-        "okresu [mm], Σt – suma średnich dobowych temperatur jego dni [°C], w "
+        "gdzie: k – współczynnik hydrotermiczny [–], P – suma opadu miesiąca albo dni "
+        "sezonu [mm], Σt – suma średnich dobowych temperatur tych dni [°C], w "
         "miesiącu średnia miesięczna razy liczba dni\n\n"
         "Klasa optymalna to 1,3 < k ≤ 1,6; niższy k oznacza warunki coraz suchsze, do "
         "skrajnie suchych przy k ≤ 0,4, a wyższy – coraz wilgotniejsze, do skrajnie "
         "wilgotnych przy k > 3,0.\n\n"
-        "Źródła: Sielianinow 1928; Skowera i Puła 2004, Acta Agrophysica 3(1) "
-        "(klasy); WMO-No. 1203 (2017), 4.4.1 a, c; dane: IMGW-PIB albo ČHMÚ",
+        "Źródła: Sielianinow 1928; Miś 2026, wzór 4 (sezon); Skowera i Puła 2004, "
+        "Acta Agrophysica 3(1) (klasy); WMO-No. 1203 (2017), 4.4.1 a, c; dane: "
+        "IMGW-PIB albo ČHMÚ",
     ),
     "meteo.hydrothermal.season": Text(
-        "k of the season Tmean > 10 °C", "k okresu Tśr > 10 °C"
+        "k of the season IV–IX, Tmean > 10 °C", "k okresu IV–IX z Tśr > 10 °C"
     ),
     "meteo.hydrothermal.mean_class": Text("on average: {name}", "średnio: {name}"),
     "meteo.hydrothermal.month_mean": Text(
@@ -278,7 +285,7 @@ MESSAGES: dict[str, Text] = {
     "meteo.hydrothermal.months_table": Text(
         "Classes of the months {first}–{last}", "Klasy miesięcy {first}–{last}"
     ),
-    "meteo.hydrothermal.col.season": Text("Tmean > 10", "Tśr > 10"),
+    "meteo.hydrothermal.col.season": Text("Apr–Sep > 10 °C", "IV–IX > 10 °C"),
     "meteo.hydrothermal.last_years": Text(
         "The last {shown} years of {count}; the class frequencies below cover them all.",
         "Ostatnie {shown} lat z {count}; częstości klas niżej obejmują wszystkie.",
@@ -602,12 +609,14 @@ MESSAGES: dict[str, Text] = {
         "where: xᵢ – the value of the series in the year tᵢ [mm, days or °C], S – the "
         "test statistic [–], b – Sen's slope [mm, days or °C per year]\n\n"
         "A trend is significant when p < α = 0.05 (two-sided test), and the sign of S "
-        "tells whether the series rises or falls. The slope and its confidence "
-        "interval are given per 10 years, and the line on the chart is Sen's "
-        "trend.\n\n"
+        "tells whether the series rises or falls. Below 10 years p is exact, from the "
+        "distribution of S, and Sen's interval is not given; from 10 years both come "
+        "from the normal approximation. The slope and its interval are given per 10 "
+        "years, and the line on the chart is Sen's trend.\n\n"
         "Sources: Mann 1945; Kendall 1975 (variance of S corrected for ties); Sen "
-        "1968; Gilbert 1987, 16.5 (confidence interval); Conover 1980 (intercept); "
-        "WMO-No. 1203 (2017), years with a complete value; data: IMGW-PIB or ČHMÚ",
+        "1968; Gilbert 1987, 16.4.1 (exact p), 16.5 (confidence interval); Conover "
+        "1980 (intercept); WMO-No. 1203 (2017), years with a complete value; data: "
+        "IMGW-PIB or ČHMÚ",
         "Test Manna–Kendalla sprawdza, czy seria roczna ma trend monotoniczny, a "
         "nachylenie Sena to mediana nachyleń odcinków łączących wszystkie pary "
         "lat.\n\n"
@@ -616,11 +625,14 @@ MESSAGES: dict[str, Text] = {
         "gdzie: xᵢ – wartość serii w roku tᵢ [mm, dni albo °C], S – statystyka testu "
         "[–], b – nachylenie Sena [mm, dni albo °C na rok]\n\n"
         "Trend jest istotny, gdy p < α = 0,05 (test dwustronny), a znak S mówi, czy "
-        "seria rośnie, czy maleje. Nachylenie i jego przedział ufności podano na 10 "
-        "lat, a linia na wykresie to trend Sena.\n\n"
+        "seria rośnie, czy maleje. Poniżej 10 lat p jest dokładne, z rozkładu S, a "
+        "przedziału Sena nie ma; od 10 lat oba wynikają z przybliżenia normalnego. "
+        "Nachylenie i przedział podano na 10 lat, a linia na wykresie to trend "
+        "Sena.\n\n"
         "Źródła: Mann 1945; Kendall 1975 (wariancja S z poprawką na powtórzenia); Sen "
-        "1968; Gilbert 1987, 16.5 (przedział ufności); Conover 1980 (wyraz wolny); "
-        "WMO-No. 1203 (2017), lata z pełną wartością; dane: IMGW-PIB albo ČHMÚ",
+        "1968; Gilbert 1987, 16.4.1 (dokładne p), 16.5 (przedział ufności); Conover "
+        "1980 (wyraz wolny); WMO-No. 1203 (2017), lata z pełną wartością; dane: "
+        "IMGW-PIB albo ČHMÚ",
     ),
     "meteo.trends.series.precipitation_sums": Text(
         "Annual precipitation total", "Suma roczna opadu"

@@ -6,7 +6,7 @@
 // result (`options`); the page draws them with the trend line Hydrolog fitted.
 
 import { Chart, fmt, html, t } from "../../lib.js";
-import { Notices, Section, Table, YearRange } from "../common.js";
+import { Notices, Section, Table, YearRange, pValueMethod, refusal } from "../common.js";
 import { num, recordYears, useMeteo, useOptions, yearAxis, yearReadout } from "./util.js";
 
 /** The series in the mockup's order: the id, the store's variable and the unit (null = days). */
@@ -67,7 +67,7 @@ function SeriesChart({ item }) {
     <h5>${label}</h5>
     <p>
       ${result
-        ? html`<span class=${result.trend_detected ? "me-sig" : ""}>${t("meteo.trends.per_decade", { value: perDecade(result.sen_slope), unit })}</span> · p = ${fmt(result.p_value, 3)}`
+        ? html`<span class=${result.trend_detected ? "me-sig" : ""}>${t("meteo.trends.per_decade", { value: perDecade(result.sen_slope), unit })}</span> · p = ${fmt(result.p_value, 3)}${result.p_value_method ? ` (${pValueMethod(result)})` : ""}`
         : item.failure || ""}
     </p>
     <${Chart} spec=${spec} />
@@ -98,7 +98,7 @@ export function Trendy({ station, analyses }) {
       result: item.state.result,
       years: options.values ? options.years || [] : [],
       values: options.values || [],
-      failure: doc && doc.status !== "ok" ? (doc.error && doc.error.message) || t("sections.failed") : item.state.error ? item.state.error.message : "",
+      failure: doc && doc.status !== "ok" ? (doc.error ? refusal(doc.error) : t("sections.failed")) : item.state.error ? item.state.error.message : "",
     };
   });
   const alpha = items.map((item) => item.result && item.result.significance_level).find((value) => value !== null && value !== undefined);
@@ -106,9 +106,14 @@ export function Trendy({ station, analyses }) {
     { key: "label", label: t("meteo.trends.col.series"), format: (v) => v },
     { key: "values", label: t("meteo.trends.col.years"), format: (v) => (v.length ? String(v.length) : "–") },
     { key: "result", label: t("meteo.trends.col.sen"), format: (v, r) => (v ? `${perDecade(v.sen_slope)} ${r.unit}` : "–") },
-    { key: "result", label: t("meteo.trends.col.interval"), format: (v) => (v ? `${perDecade(v.sen_slope_lower)} … ${perDecade(v.sen_slope_upper)}` : "–") },
+    {
+      key: "result",
+      label: t("meteo.trends.col.interval"),
+      format: (v) => (v && v.sen_slope_lower !== null && v.sen_slope_lower !== undefined ? `${perDecade(v.sen_slope_lower)} … ${perDecade(v.sen_slope_upper)}` : "–"),
+    },
     { key: "result", label: "Z", format: (v) => (v ? num(v.z_score, 2) : "–") },
     { key: "result", label: "p", format: (v) => (v ? num(v.p_value, 3) : "–") },
+    { key: "result", label: t("sections.p_value_method"), format: (v) => pValueMethod(v) },
     {
       key: "result",
       label: alpha === undefined ? t("meteo.trends.col.trend") : t("meteo.trends.col.trend_at", { alpha: fmt(alpha, 2) }),
