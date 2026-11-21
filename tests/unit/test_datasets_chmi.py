@@ -243,6 +243,8 @@ def test_chmi_descriptors_follow_the_spec_table():
         "Tmean": "degC",
         "Tmax": "degC",
         "Tmin": "degC",
+        "snow_cover": "cm",
+        "fresh_snow": "cm",
     }
     assert set(meteo.variable_notes) == set(meteo.variables)
     assert (meteo.first_year, meteo.archive_scope, meteo.update_signal) == (
@@ -310,26 +312,24 @@ def test_hydro_files_are_station_year_candidates_in_code_order():
     assert archive_files("chmi_hydro_daily", stations=[A], years=1887)[0].year == 1887
 
 
-def test_meteo_files_are_four_elements_per_station():
+def test_meteo_files_are_six_elements_per_station():
     foreign = "0-20000-0-99903"
     files = archive_files(METEO, stations=[M, foreign])
-    # Stations in code order ("0-20000-…" < "0-203-…"), elements SRA, T, TMA, TMI.
+    # Stations in code order ("0-20000-…" < "0-203-…"), elements SRA, T, TMA, TMI,
+    # SCE, SNO.
+    elements = ("SRA", "T", "TMA", "TMI", "SCE", "SNO")
     assert [(item.station_code, item.param) for item in files] == [
-        (foreign, "SRA"),
-        (foreign, "T"),
-        (foreign, "TMA"),
-        (foreign, "TMI"),
-        (M, "SRA"),
-        (M, "T"),
-        (M, "TMA"),
-        (M, "TMI"),
+        *((foreign, element) for element in elements),
+        *((M, element) for element in elements),
     ]
     base = "meteorology/climate/historical_csv/data/daily"
-    assert [item.server_path for item in files[4:]] == [
+    assert [item.server_path for item in files[6:]] == [
         f"{base}/precipitation/dly-{M}-SRA.csv",
         f"{base}/temperature/dly-{M}-T.csv",
         f"{base}/temperature/dly-{M}-TMA.csv",
         f"{base}/temperature/dly-{M}-TMI.csv",
+        f"{base}/snow/dly-{M}-SCE.csv",
+        f"{base}/snow/dly-{M}-SNO.csv",
     ]
     assert all(
         (item.year, item.month, item.year_type, item.period_start, item.period_end)
@@ -337,7 +337,7 @@ def test_meteo_files_are_four_elements_per_station():
         for item in files
     )
     assert (
-        files[4].url == f"https://opendata.chmi.cz/{base}/precipitation/dly-{M}-SRA.csv"
+        files[6].url == f"https://opendata.chmi.cz/{base}/precipitation/dly-{M}-SRA.csv"
     )
 
 

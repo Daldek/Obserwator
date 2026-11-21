@@ -516,23 +516,23 @@ MESSAGES: dict[str, Text] = {
     # --- „Śnieg” -------------------------------------------------------------------------
     "meteo.snow.title": Text("Snow cover", "Pokrywa śnieżna"),
     "meteo.snow.info": Text(
-        "A day with snow cover has a cover at least 1 cm deep in IMGW-PIB's morning "
-        "observation. A winter runs from 1 August to 31 July and bears on the chart's "
-        "axis the year it ends in (1990/91 is 1991).\n\n"
+        "A day with snow cover has a cover at least 1 cm deep in the morning "
+        "observation (06 UTC). A winter runs from 1 August to 31 July and bears on "
+        "the chart's axis the year it ends in (1990/91 is 1991).\n\n"
         "The tiles give the means, the largest depth with its date and the medians of "
         "the first and the last day with snow cover over the winters with enough "
         "observations in every month October–May; a note under the tables lists the "
         "others.\n\n"
         "Sources: WMO-No. 1203 (2017), 4.3 and 4.4.1 d; data: IMGW-PIB (fresh snow "
-        "from the precipitation posts)",
+        "from the precipitation posts), ČHMÚ (total snow depth SCE, new snow SNO)",
         "Dzień z pokrywą śnieżną ma pokrywę o grubości co najmniej 1 cm w porannym "
-        "pomiarze IMGW-PIB. Sezon zimowy trwa od 1 VIII do 31 VII, a na osi wykresu "
+        "pomiarze (06 UTC). Sezon zimowy trwa od 1 VIII do 31 VII, a na osi wykresu "
         "nosi rok swojego końca (1990/91 to 1991).\n\n"
         "Kafelki podają średnie, największą grubość z datą i mediany pierwszego i "
         "ostatniego dnia z pokrywą z sezonów, które mają dość pomiarów w każdym "
         "miesiącu X–V; pozostałe sezony wymienia notka pod tabelami.\n\n"
         "Źródła: WMO-No. 1203 (2017), 4.3 i 4.4.1 d; dane: IMGW-PIB (śnieg świeży z "
-        "posterunków opadowych)",
+        "posterunków opadowych), ČHMÚ (wysokość pokrywy SCE, śnieg świeży SNO)",
     ),
     "meteo.snow.winters": Text("Winters", "Sezony"),
     "meteo.snow.cover_days": Text(

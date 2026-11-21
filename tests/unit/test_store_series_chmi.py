@@ -43,7 +43,7 @@ from tests.unit.test_store_sync_chmi import (
 )
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
-ELEMENTS = ("SRA", "T", "TMA", "TMI")
+ELEMENTS = ("SRA", "T", "TMA", "TMI", "SCE", "SNO")
 HYDRO_GETS = {
     H1_2023: "h900001_2023_get",
     H1_2024: "h900001_2024_get",
@@ -278,12 +278,16 @@ def test_meteo_series_keeps_quality_and_source_flags_with_element_periods(root, 
         "Tmean": [],
         "Tmax": [["2023-10-30", "2023-11-07"]],
         "Tmin": [["2023-11-05", "2023-11-05"]],
+        "snow_cover": [["2023-11-05", "2023-11-05"]],
+        "fresh_snow": [["2023-11-04", "2023-11-04"]],
     }
     assert {name: entry["with_value"] for name, entry in full["variables"].items()} == {
         "P": 30,
         "Tmean": 31,
         "Tmax": 22,
         "Tmin": 30,
+        "snow_cover": 10,
+        "fresh_snow": 10,
     }
     assert {entry["accumulated"] for entry in full["variables"].values()} == {0}
     assert (rain["rows"], rain["variables"]["Tmax"]["first"]) == (12, None)
@@ -294,7 +298,7 @@ def test_meteo_series_keeps_quality_and_source_flags_with_element_periods(root, 
         "hydro_year",
         *(
             f"{name}_{column}"
-            for name in ("P", "Tmean", "Tmax", "Tmin")
+            for name in ("P", "Tmean", "Tmax", "Tmin", "snow_cover", "fresh_snow")
             for column in ("value", "flag", "quality", "source_flag")
         ),
     ]
@@ -318,6 +322,10 @@ def test_meteo_series_keeps_quality_and_source_flags_with_element_periods(root, 
     assert cells(27) == (1.5, "value", 0, "R")
     # Days of the TMA block without rows carry neither quality nor a source flag.
     assert cells(30, "Tmax") == (None, "missing", None, None)
+    # Snow: 0 without a flag is no snow, a dusting (P) a measured 0.
+    assert cells(28, "snow_cover") == (0.0, "no_phenomenon", 0, None)
+    assert cells(31, "snow_cover") == (3.0, "value", 0, None)
+    assert cells(31, "fresh_snow") == (0.0, "value", 0, "P")
     assert json.loads(table.schema.metadata[b"variable_notes"]) == dict(
         get_dataset(METEO).variable_notes
     )
@@ -328,7 +336,7 @@ def test_meteo_series_keeps_quality_and_source_flags_with_element_periods(root, 
         "CHMI",
         CHMI_LICENSE,
     )
-    assert len(meta["extra"]["source_files"]) == 5
+    assert len(meta["extra"]["source_files"]) == 7
     assert all(
         set(entry) == {"name", "file", "sha256", "label"}
         for entry in meta["extra"]["source_files"]
@@ -488,7 +496,7 @@ def test_build_after_a_correction_writes_a_new_series_version(root, data, server
 
 
 def test_meteo_series_is_built_once_and_rebuilt_after_new_csv_bytes(root, data, server):
-    serve(server, "precipitation_listing", "temperature_listing")
+    serve(server, "precipitation_listing", "temperature_listing", "snow_listing")
     serve(
         server,
         "m90000000002_SRA_head",
@@ -502,9 +510,8 @@ def test_meteo_series_is_built_once_and_rebuilt_after_new_csv_bytes(root, data, 
     first = sync_store(root, datasets=[METEO], stations=[FULL, RAIN])
     # Elements of station 90000000002 that are not published do not block it.
     assert [item.status for item in first.items] == [
-        "new",
-        *["unchanged"] * 3,
-        *["new"] * 4,
+        *("new" if element == "SRA" else "unchanged" for element in sorted(ELEMENTS)),
+        *["new"] * 6,
     ]
     created = build_series(data, raw_root=root, dataset=METEO)
     assert (created.status, created.stations) == ("new", 2)

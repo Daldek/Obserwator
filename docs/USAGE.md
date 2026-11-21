@@ -192,7 +192,7 @@ print(station.station_code, station.name, station.river)  # 0-203-1-001000 Špin
 for file in archive_files("cz.chmi.hydro_daily", stations=[station.station_code], years="2024-2025"):
     print(file.year, file.url)  # …/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2024.json
 for file in archive_files("cz.chmi.meteo_daily", stations=["0-203-0-11799"]):
-    print(file.param, file.server_path)  # SRA, T, TMA, TMI
+    print(file.param, file.server_path)  # SRA, T, TMA, TMI, SCE, SNO
 
 # Store (the roots raw and data of the example above): one GET of the server directory listing instead of a HEAD per file
 plan = check_store(raw, datasets=["cz.chmi.hydro_daily"], stations=[station.station_code],
@@ -268,7 +268,7 @@ for definition in analysis_definitions("meteo")[:2]:
 
 # 1. Compute and store every station in the data root (stations=[...] computes only these; workers = Hydrolog processes)
 report = build_analyses(data, workers=2)
-print(report.status, report.hydrolog_version, [(p.provider, p.status, p.computed, p.carried) for p in report.providers])
+print(report.status, report.hydrolog_version, [(p.provider, p.status, p.computed, p.carried, p.resumed) for p in report.providers])
 
 # 2. Read: the analyses of a station (the code names the provider) and one of them
 for summary in list_analyses(root=data, station="149190310"):
@@ -285,9 +285,12 @@ subset = compute_analysis(data, station="149190310", analysis="characteristic.Q"
 ```
 
 - **Carry-forward:** a station whose station Parquet files (SHA-256 per dataset), catalog thresholds, Hydrolog version and registry are unchanged is carried into the new version by hard links without a Hydrolog call; a provider with nothing to compute is `unchanged` and gets no new version. The version is compared as a string: Hydrolog's `develop` raises N of its `0.9.0.devN` with each change its consumers compute with (Nogat REL-1.1), so every new development build computes every station again, and a change of Hydrolog without a new number is not seen.
+- **Resume (Nogat ECO-073):** a build that ends before it publishes a provider's version (cancelled, an error, Ctrl+C, a killed process) keeps the stations it computed in its staging directory `.incoming/<host>_<pid>_<token>/` of the data root. The next `analyses build` takes them from there by hard links, without a Hydrolog call (progress status `resumed`, `ProviderAnalyses.resumed`; `--check` counts them), when a station's record is whole, its result files match their SHA-256 and its series versions, station Parquet files, catalog thresholds, Hydrolog version and registry are those of now; it computes the rest and publishes the version an uninterrupted build would. It never changes another build's staging directory (that build may still run); the cleanup removes those older than 24 hours once their stations are taken. Run a long build outside an agent's or a terminal's session, as a user systemd unit on an account with `loginctl enable-linger` (Nogat DEV-17.6), and if it stops anyway, start it again: `systemd-run --user --unit=obserwator-analyses --collect -p StandardOutput=file:"$HOME/analyses.out" -p StandardError=file:"$HOME/analyses.err" "$(command -v obserwator)" analyses build --root "$DATA" --workers 2`.
 - **Failures:** an analysis Hydrolog answers with an error is stored with `status="failed"` and Hydrolog's `hydrolog-error/1` document; one whose input number (a pick from another analysis) is missing is not stored.
 - **Options on the fly:** `compute_analysis` takes only the overridable options of the analysis or of an analysis it depends on (`analysis_definitions()` lists them with types and bounds), never a file or a column, minus `locked` (e.g. `durations_days` for `precipitation_quantiles.2d`, whose pick reads a position of that list); anything else is `validation_error`. `timeout` (30 s) bounds the whole computation (`source_unavailable`, `details.reason="timeout"`). It is a Python function only, not a catalog command, so REST and MCP never start Hydrolog on request.
 - **Spells:** the stored `spells.dry`/`spells.wet` list only spells of 10 days or more; their summaries count every spell.
+- **Half-years of ČHMÚ:** ČHMÚ publishes no half-year characteristics, so `characteristic.{H,Q,T}.half_years` of a ČHMÚ station read the file Obserwator computes of its daily series (`cz.chmi.hydro_daily`) with the definitions of IMGW-PIB's `pl.imgw.hydro_semiannual`, in the columns `series export` gives of that file: per hydrological year (XI–X) `winter` (XI–IV) and `summer` (V–X) with the lowest, mean and highest daily value, the first and last day of each extreme and the number of its runs of days, and `annual` with the mean of the year only, as IMGW-PIB publishes it; a half-year with a day without a value has no values. IMGW-PIB stations read IMGW-PIB's published file; the flood frequency, homogeneity and seasonality of ČHMÚ stations read the daily series. Such a result says so: `derived` is `"half_years"` in its entry of `stations/<code>.json`, in `AnalysisSummary` and `AnalysisResult` and in `export_analyses` (`json`: per result; `csv`: the column `derived` after `value`); it is None (an empty cell) where an analysis read the provider's series (ADR-016, erratum 2026-11-21).
+- **Analyses of one provider:** every analysis of the registry exists for both providers except `threshold_events.{H,Q}.{spa1,spa2,spa3,q50,drought}` (ČHMÚ only: days beyond ČHMÚ's own levels of its station catalog) and `snow` (snow depth, which ČHMÚ's daily series lack until `cz.chmi.meteo_daily` reads ČHMÚ's daily snow); a station gets the analyses its series allow.
 
 ### Command catalog
 
@@ -427,7 +430,7 @@ obserwator series export -d hydro/miesieczne -s 152210170 --variables Q_mean --o
 obserwator pmaxtp sync --lat 52.23 --lon 21.01        # PMAXTP cell in the raw root
 
 # Stored analyses computed by Hydrolog (OBSERWATOR_HYDROLOG_COMMAND or hydrolog on PATH)
-obserwator analyses build --check                     # stations to compute and to carry forward
+obserwator analyses build --check                     # stations to compute, to carry forward and to resume
 obserwator analyses build --workers 2                 # analyses/versions/<pl.imgw|cz.chmi>/…
 obserwator analyses list -s 149190310
 obserwator analyses read -s 149190310 --analysis characteristic.Q --json
@@ -859,7 +862,7 @@ OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator OBSERWATOR_RAW_ROOT=
 
 ### ČHMÚ data (opendata.chmi.cz)
 - **daily hydro** (`cz.chmi.hydro_daily`): `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and calendar year (the oldest from 1887); series `HD`, `QD`, `TD` → H [cm], Q [m3/s], T [°C] (suspended sediment `PD` skipped); no measurement = no row
-- **daily meteo** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/precipitation/dly-<WIGOS>-SRA.csv` and `…/temperature/dly-<WIGOS>-{T,TMA,TMI}.csv` — the whole station history in the element file; P = total from the morning observation (06:00Z) of day D to the morning of D+1, Tmean = (T06 + T13 + 2·T20)/4, Tmax and Tmin — extremes of the period (D−1 20:00, D 20:00] UTC; older records use the station's terms of the time (e.g. P at 05:00Z or 07:00Z, Tmax and Tmin at 19:00 or 21:00), and the date stays the date of the row (descriptions in the dataset's `variable_notes`, ADR-003 erratum of 2026-11-17); `QUALITY` (0–5) and `FLAG` (e.g. `T` — trace of precipitation) kept
+- **daily meteo** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/precipitation/dly-<WIGOS>-SRA.csv`, `…/temperature/dly-<WIGOS>-{T,TMA,TMI}.csv` and `…/snow/dly-<WIGOS>-{SCE,SNO}.csv` (since 3.1.0) — the whole station history in the element file; P = total from the morning observation (06:00Z) of day D to the morning of D+1, Tmean = (T06 + T13 + 2·T20)/4, Tmax and Tmin — extremes of the period (D−1 20:00, D 20:00] UTC, `snow_cover` [cm] = total snow depth (SCE) at the morning observation of day D, `fresh_snow` [cm] = new snow (SNO) from the morning of D to the morning of D+1, the quantities of IMGW-PIB's `snow_cover` and `fresh_snow` (ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's `snow_water_equivalent` [mm/cm] and is not read); older records use the station's terms of the time (e.g. P at 05:00Z or 07:00Z, Tmax and Tmin at 19:00 or 21:00), and the date stays the date of the row (descriptions in the dataset's `variable_notes`, ADR-003 erratum of 2026-11-17); `QUALITY` (0–5) and `FLAG` (e.g. `T` — trace of precipitation) kept
 - **station lists**: `hydrology/historical/metadata/meta1.json` and `meteorology/climate/historical/metadata/meta1.json` (JSON with a `zaznamID`/`datumVytvoreni` envelope that changes with every generation)
 - **station metadata** (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`): `hydrology/now/metadata/meta1.json` and `meta3.json`, the newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` — station metadata only (names, rivers, coordinates, SPA thresholds), stored verbatim for the catalog; the measurements of `now/data/` are never read
 - **inventory**: server directory listings (name, time to the minute, size) — one GET of the hydro listing (about 5.3 MB) replaces a HEAD of each of about 39 thousand files; the server keeps only the latest version of a file, and a year enters `historical` only with the annual publication (hydro 2025: 2026-05-21)
@@ -1044,7 +1047,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 | `pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive` | — | Monthly archives of hydrological and meteorological warnings (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`, from September 2017) (download only) |
 | `pl.imgw.actinometric` | — | Actinometric data (solar radiation) of 28 stations, 1990–2017, files as published, found in the server's folder index; years select every station and folder kind, plus the summary xlsx (download only; `datasets files` refuses it, ADR-023) |
 | `cz.chmi.hydro_daily` | — | ČHMÚ daily hydro: H [cm], Q [m3/s], T [°C]; one file per station and year |
-| `cz.chmi.meteo_daily` | — | ČHMÚ daily meteo: P [mm], Tmean, Tmax, Tmin [°C] with quality (`QUALITY`) and the ČHMÚ flag; 4 files per station |
+| `cz.chmi.meteo_daily` | — | ČHMÚ daily meteo: P [mm], Tmean, Tmax, Tmin [°C], snow_cover, fresh_snow [cm] with quality (`QUALITY`) and the ČHMÚ flag; 6 files per station |
 | `cz.chmi.hydro_stations`, `cz.chmi.meteo_stations` | — | ČHMÚ station lists (JSON) — input of the ČHMÚ catalog |
 | `cz.chmi.hydro_now`, `cz.chmi.meteo_now` | — | ČHMÚ `now` station metadata (JSON) — input of the ČHMÚ catalog |
 

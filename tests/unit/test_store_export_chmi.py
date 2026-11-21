@@ -30,7 +30,8 @@ TERMS = (
     "commercial use provided that the author ČHMÚ is credited, the licence is given "
     "and the changes are marked."
 )
-METEO_VARIABLES = ("P", "Tmean", "Tmax", "Tmin")
+METEO_VARIABLES = ("P", "Tmean", "Tmax", "Tmin", "snow_cover", "fresh_snow")
+METEO_UNITS = ("mm", "degC", "degC", "degC", "cm", "cm")
 
 
 @pytest.fixture
@@ -68,9 +69,7 @@ def test_meteo_series_export_has_quality_columns_and_the_chmi_attribution(root, 
         "year",
         *(
             column
-            for name, unit in zip(
-                METEO_VARIABLES, ("mm", "degC", "degC", "degC"), strict=True
-            )
+            for name, unit in zip(METEO_VARIABLES, METEO_UNITS, strict=True)
             for column in (
                 f"{name} [{unit}]",
                 f"{name}_flag",
@@ -181,9 +180,7 @@ def test_meteo_archive_export_adds_quality_and_source_flag(root):
         "period",
         *(
             f"{name}{suffix}"
-            for name, unit in zip(
-                METEO_VARIABLES, ("mm", "degC", "degC", "degC"), strict=True
-            )
+            for name, unit in zip(METEO_VARIABLES, METEO_UNITS, strict=True)
             for suffix in (f" [{unit}]", "_flag", "_quality", "_source_flag")
         ),
         "attribution",
@@ -200,7 +197,7 @@ def test_meteo_archive_export_adds_quality_and_source_flag(root):
         "value",
         "0",
         "T",
-        *[""] * 12,
+        *[""] * 20,
         "",
         "",
     ]

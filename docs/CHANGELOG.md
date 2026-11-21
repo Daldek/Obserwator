@@ -143,6 +143,53 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   button now shrinks to what the bar leaves, cuts the name with an ellipsis and names it
   whole in its `title`.
 
+### Added
+
+- **ČHMÚ's daily snow in `cz.chmi.meteo_daily` (the author's decision of 2026-11-18; ADR-003
+  erratum of 2026-11-21).** The dataset reads two more element files of ČHMÚ's
+  `historical_csv/data/daily/snow/` folder: `SCE`, the total snow depth at the morning term
+  (06:00Z) of day D, as `snow_cover` [cm], and `SNO`, the new snow from the morning of D to the
+  morning of D+1, as `fresh_snow` [cm] — the quantities of IMGW-PIB's `snow_cover` and
+  `fresh_snow` under their names, with their terms in `variable_notes`. A `0.0` without a ČHMÚ
+  `FLAG` is `no_phenomenon` (no cover, no new snow), a flagged one (`P` dusting, `N`
+  discontinuous cover, `R` melted) a `value`; `QUALITY` and `FLAG` stay in `<V>_quality` and
+  `<V>_source_flag`. A station has six files instead of four (`archive_files`, `datasets
+  files|download`, `store check|sync`, whose check reads a third listing), and the series and
+  its exports gain the eight columns of both variables. So Hydrolog's `snow` analysis and the
+  GUI's card „Śnieg” cover ČHMÚ stations as IMGW-PIB's once a deployment syncs the files
+  (`obserwator store sync --datasets cz.chmi.meteo_daily --stations …`) and rebuilds the series
+  and the analyses. ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's
+  `snow_water_equivalent` [mm/cm] (water per centimetre of snow) and is not read.
+- **`analyses build` resumes an interrupted build (Nogat ECO-073; ADR-016 erratum of
+  2026-11-21).** A build that ends before it publishes a provider's version (cancelled, an
+  error, Ctrl+C, a killed process) keeps the stations it computed in its staging directory
+  `.incoming/<host>_<pid>_<token>/` of the data root, where the next build's cleanup used to
+  remove them (on 2026-11-15 the deployment lost 2,332 of 3,240 stations, about 2 hours). The
+  next build takes them by hard links, without a Hydrolog call, before the 24-hour cleanup:
+  each station whose record is whole, whose result files match their SHA-256 and whose series
+  versions, station Parquet files, catalog thresholds, Hydrolog version and registry digest are
+  those of now; it computes the rest and publishes the version an uninterrupted build would.
+  Another build's staging directory is only read and linked from, never changed (the store has
+  no locks). `ProviderAnalyses.resumed` (new last field, default 0), progress status `resumed`
+  (`analyses.station_resumed`), the plan of `analyses build --check` counts the stations to
+  resume, and the CLI's summary of the providers shows `computed`, `carried` and `resumed`;
+  `results_ok` and `results_failed` count the analyses of the computed and resumed stations.
+- **ČHMÚ stations get half-year characteristics, computed by Obserwator from their daily
+  series** (the author's decision of 2026-11-18, ADR-016 erratum 2026-11-21). ČHMÚ publishes
+  none, so `characteristic.{H,Q,T}.half_years` of a ČHMÚ station read the file Obserwator
+  computes of `cz.chmi.hydro_daily` with the definitions and columns of IMGW-PIB's
+  `pl.imgw.hydro_semiannual`: per hydrological year the winter (XI–IV) and summer (V–X)
+  lowest, mean and highest daily value with the first and last day and the runs of each
+  extreme, and the annual mean; a half-year with a day without a value has none. IMGW-PIB
+  stations keep IMGW-PIB's published file; ČHMÚ's flood frequency, homogeneity and
+  seasonality keep the daily series. `AnalysisInput` gains the last field `derived`
+  (`"half_years"` for such a file; part of the registry digest, so the next `analyses build`
+  computes every station again); each result entry of `stations/<code>.json`,
+  `AnalysisSummary`, `AnalysisResult` and the JSON of `export_analyses` gain `derived`, and
+  its CSV the column `derived` after `value`. The GUI's „Stany charakterystyczne” says that
+  such half-years are computed from ČHMÚ's daily series, not published, and the titles of
+  `characteristic.{H,Q,T}.half_years` name both sources.
+
 ### Fixed
 
 - **A null interval of Hydrolog 0.9.0 no longer shows as numbers.** Sen's interval of a

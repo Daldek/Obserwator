@@ -226,11 +226,14 @@ def test_the_meteorological_stations_show_precipitation_and_temperatures(
     data = card(page, "dane")
     chips = data.locator(".chips button")
     chips.first.wait_for(timeout=WAIT)
+    # Air temperature, precipitation and, since 3.1.0, ČHMÚ's snow (SCE, SNO).
     assert sorted(text.split()[0] for text in chips.all_inner_texts()) == [
         "P",
         "Tmax",
         "Tmean",
         "Tmin",
+        "fresh_snow",
+        "snow_cover",
     ]
     pressed = data.locator('.chips button[aria-pressed="true"]')
     assert sorted(text.split()[0] for text in pressed.all_inner_texts()) == [

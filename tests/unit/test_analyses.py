@@ -48,6 +48,7 @@ from obserwator import (
 )
 from obserwator._hydrolog import program_words
 from obserwator.attribution import Attribution, attribution
+from obserwator.store.export import _export_half_years
 from tests.contract.support import (
     BEZ_Q,
     DAILY,
@@ -203,7 +204,9 @@ def recreate_series(root: Path, version: Path) -> Path:
 
     The envelopes name them (``inputs``) in the scratch directory of the build,
     which the build removed; each export gives the bytes the build gave
-    Hydrolog (``export_sha256`` of the record).
+    Hydrolog (``export_sha256`` of the record), and the half-year
+    characteristics computed of a series are computed again where an analysis
+    read them (``derived``).
     """
     stations = records(version)
     named = {
@@ -216,13 +219,23 @@ def recreate_series(root: Path, version: Path) -> Path:
     (directory,) = {path.parent for path in named}
     assert not directory.exists()
     for code, record in stations.items():
+        derived = {
+            key
+            for entry in record["results"]
+            if entry.get("derived") == "half_years"
+            for key in entry["datasets"]
+        }
         for item in record["inputs"]:
+            series = root / item["series_version"]
+            name = f"{code}_{get_dataset(item['dataset']).slug}"
             exported = export_series(
-                root / item["series_version"],
-                station=code,
-                output=directory / f"{code}_{get_dataset(item['dataset']).slug}.csv",
+                series, station=code, output=directory / f"{name}.csv"
             )
             assert exported.files[0].sha256 == item["export_sha256"]
+            if item["dataset"] in derived:
+                _export_half_years(
+                    series, station=code, output=directory / f"{name}_half_years.csv"
+                )
     assert all(path.is_file() for path in named)
     return directory
 
@@ -699,8 +712,8 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     assert all(row.endswith("\r\n") for row in rows)
     assert rows[0] == (
         "station,analysis,command,series_version,hydrolog_version,formula_versions,"
-        "path,value,attribution_source,attribution_processed,attribution,terms_notice"
-        "\r\n"
+        "path,value,derived,attribution_source,attribution_processed,attribution,"
+        "terms_notice\r\n"
     )
     table = list(csv.DictReader(io.StringIO(text, newline="")))
     keys = {name: answer_key(vars(summaries[name])) for name in chosen}

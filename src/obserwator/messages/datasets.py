@@ -443,8 +443,8 @@ MESSAGES = {
         "Średnia dobowa temperatura wody (TD)",
     ),
     "title_chmi_meteo_daily": Text(
-        "ČHMÚ — daily meteorological data (precipitation, air temperature)",
-        "ČHMÚ — dane meteorologiczne dobowe (opad, temperatura powietrza)",
+        "ČHMÚ — daily meteorological data (precipitation, air temperature, snow)",
+        "ČHMÚ — dane meteorologiczne dobowe (opad, temperatura powietrza, śnieg)",
     ),
     "note_chmi_meteo_daily_p": Text(
         "Precipitation sum (SRA) from the morning term (06:00Z) of day D to the "
@@ -477,6 +477,16 @@ MESSAGES = {
         "Minimalna temperatura powietrza (TMI) okresu (D−1 20:00, D 20:00] UTC, "
         "przypisana do D; w starszych zapisach okres kończy wieczorny termin stacji "
         "z tamtego czasu (np. 19:00 albo 21:00)",
+    ),
+    "note_chmi_meteo_daily_snow_cover": Text(
+        "Total snow depth (SCE) at the morning term (06:00Z) of day D",
+        "Całkowita wysokość pokrywy śnieżnej (SCE) w terminie porannym (06:00Z) dnia D",
+    ),
+    "note_chmi_meteo_daily_fresh_snow": Text(
+        "Depth of new snow (SNO) fallen from the morning term (06:00Z) of day D to "
+        "the morning term of day D+1, assigned to D",
+        "Wysokość śniegu świeżo spadłego (SNO) od terminu porannego (06:00Z) dnia D "
+        "do terminu porannego dnia D+1, przypisana do D",
     ),
     "title_chmi_hydro_stations": Text(
         "ČHMÚ — list of hydrological stations",

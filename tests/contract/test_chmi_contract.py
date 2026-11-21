@@ -290,9 +290,9 @@ def test_imgw_15_chmi_documents_meet_the_1_contracts_and_imgw_bytes_stay(
         "stations.geojson": "stations.geojson",
     }
     found = sidecars(pl_cz)
-    # 12 archives, 2 station lists, 3 current-metadata files (hydro meta1 and
+    # 14 archives, 2 station lists, 3 current-metadata files (hydro meta1 and
     # meta3, meteo meta1-<date>), 3 series versions and the catalog.
-    assert len(found) == 21
+    assert len(found) == 23
     for sidecar, meta in found.items():
         assert schema_errors(meta, "obserwator-meta/1") == [], sidecar
         main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
@@ -393,7 +393,7 @@ def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
     assert {row[2] for row in imgw} == {"IMGW-PIB"}
     assert sorted(chmi + imgw, key=repr) == sorted(_scan(pl_cz), key=repr)
     assert Counter(row[0] for row in chmi) == {
-        "archive": 17,  # 12 data files, 2 station lists, 3 current-metadata files
+        "archive": 19,  # 14 data files, 2 station lists, 3 current-metadata files
         "observation": 1,
         "series": 3,
         "catalog": 1,
@@ -431,16 +431,16 @@ def test_imgw_16_k1_check_states_come_from_one_listing_without_any_content(
     assert chmi.traffic() == [("GET", CHMI["hydro_listing"]["url"])]
     assert plan.requests == {"made": 1, "planned": 2}
 
-    chmi.serve("precipitation_listing", "temperature_listing")
+    chmi.serve("precipitation_listing", "temperature_listing", "snow_listing")
     start = len(chmi.router.calls)
     meteo = check_store(pl_cz.raw, datasets=[METEO], stations=[FULL, RAIN])
     assert Counter((item.station_code, item.status) for item in meteo.items) == {
-        (FULL, "current"): 4,
+        (FULL, "current"): 6,
         (RAIN, "current"): 1,
-        (RAIN, "unverifiable"): 3,
+        (RAIN, "unverifiable"): 5,
     }
-    assert [method for method, _ in chmi.traffic(start)] == ["GET", "GET"]
-    assert meteo.requests == {"made": 2, "planned": 0}
+    assert [method for method, _ in chmi.traffic(start)] == ["GET", "GET", "GET"]
+    assert meteo.requests == {"made": 3, "planned": 0}
 
     empty = init_store(tmp_path / "empty").root
     chmi.serve("hydro_listing")
@@ -508,12 +508,16 @@ def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmi, frozen
     chmi.serve(
         "precipitation_listing_corrected",
         "temperature_listing",
+        "snow_listing",
         "m90001_SRA_corrected_head",
         "m90001_SRA_corrected_get",
     )
     meteo_series = snapshot(roots.data / "series" / "versions" / "chmi_meteo_daily")
     corrected = sync_store(root, datasets=[METEO], stations=[FULL])
+    # Items by file name: SCE, SNO, SRA, T, TMA, TMI.
     assert statuses(corrected.items) == [
+        "unchanged",
+        "unchanged",
         "new",
         "unchanged",
         "unchanged",
@@ -550,6 +554,7 @@ def test_imgw_16_k2_cancelling_a_write_leaves_no_version_and_no_observation(
         chmi.serve(
             "precipitation_listing_corrected",
             "temperature_listing",
+            "snow_listing",
             "m90001_SRA_corrected_head",
             get,
         )
@@ -750,7 +755,14 @@ def test_imgw_17_k3_a_new_metadata_envelope_creates_no_version(
 # --------------------------------------------------------------------------
 
 HYDRO_SERIES = {"HD": "H", "QD": "Q", "TD": "T"}
-METEO_ELEMENTS = {"SRA": "P", "T": "Tmean", "TMA": "Tmax", "TMI": "Tmin"}
+METEO_ELEMENTS = {
+    "SRA": "P",
+    "T": "Tmean",
+    "TMA": "Tmax",
+    "TMI": "Tmin",
+    "SCE": "snow_cover",
+    "SNO": "fresh_snow",
+}
 
 
 @dataclass
@@ -940,16 +952,23 @@ def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
         assert int(row["year"]) == (
             _hydro_year(day) if year_type == "hydrological" else day.year
         )
-        source = meteo.rows["P"].get(day)
-        if source is None or not source["VALUE"]:
-            assert row["P_flag"] == "missing"
-            continue
-        no_rain = float(source["VALUE"]) == 0.0 and not source["FLAG"]
-        flag = "no_phenomenon" if no_rain else "value"
-        assert (float(row["P [mm]"]), row["P_flag"]) == (float(source["VALUE"]), flag)
-        assert row["P_source_flag"] == source["FLAG"]
-        quality = source["QUALITY"]
-        assert row["P_quality"] == (str(int(float(quality))) if quality else "")
+        # Precipitation, snow depth and new snow: 0 without a flag is no phenomenon.
+        for name, unit in (("P", "mm"), ("snow_cover", "cm"), ("fresh_snow", "cm")):
+            source = meteo.rows[name].get(day)
+            if source is None or not source["VALUE"]:
+                assert row[f"{name}_flag"] == "missing"
+                continue
+            nothing = float(source["VALUE"]) == 0.0 and not source["FLAG"]
+            flag = "no_phenomenon" if nothing else "value"
+            assert (float(row[f"{name} [{unit}]"]), row[f"{name}_flag"]) == (
+                float(source["VALUE"]),
+                flag,
+            )
+            assert row[f"{name}_source_flag"] == source["FLAG"]
+            quality = source["QUALITY"]
+            assert row[f"{name}_quality"] == (
+                str(int(float(quality))) if quality else ""
+            )
 
 
 def test_imgw_18_k2_every_station_of_a_chmi_dataset_is_in_its_series(pl_cz):
@@ -1079,7 +1098,7 @@ RUNS = [
         "store check",
         {"datasets": [METEO], "stations": [FULL, RAIN]},
         "served",
-        ("precipitation_listing", "temperature_listing"),
+        ("precipitation_listing", "temperature_listing", "snow_listing"),
     ),
     # An unreadable listing: check_failed items, no exception (spec §15).
     Run(
@@ -1106,10 +1125,19 @@ RUNS = [
         (
             "precipitation_listing",
             "temperature_listing",
+            "snow_listing",
             "m90000000002_SRA_head",
             "m90000000002_SRA_get",
         ),
-        statuses=("new", "unchanged", "unchanged", "unchanged"),
+        # Items by file name: SCE, SNO (not published), SRA, T, TMA, TMI.
+        statuses=(
+            "unchanged",
+            "unchanged",
+            "new",
+            "unchanged",
+            "unchanged",
+            "unchanged",
+        ),
     ),
     Run(
         "store sync",
@@ -1604,7 +1632,7 @@ def test_imgw_19_k3_every_chmi_sidecar_and_export_names_cc_by_and_chmi(pl_cz):
                 ("info", "license_terms", terms)
             ]
             exported += 1
-    assert exported == 2 * 12
+    assert exported == 2 * 14
     for dataset, codes in ((HYDRO, (S1, S2)), (METEO, (FULL, RAIN))):
         for code in codes:
             notices = []

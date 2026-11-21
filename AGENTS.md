@@ -66,7 +66,7 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 | `pl.imgw.hydro_details` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
 | `cz.chmi.hydro_daily` | `H`, `Q`, `T` | 1887 |
-| `cz.chmi.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin` | — |
+| `cz.chmi.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
 | `cz.chmi.hydro_stations` | — | — |
 | `cz.chmi.meteo_stations` | — | — |
 | `cz.chmi.hydro_now` | — | — |

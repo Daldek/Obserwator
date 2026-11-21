@@ -169,7 +169,7 @@ def test_recordings_follow_the_nginx_format_of_the_source():
         for entry in RECORDING["interactions"]
         if "listing" in entry["case"] and entry["status"] == 200
     ]
-    assert len(files) == 17 and len(listings) == 10
+    assert len(files) == 19 and len(listings) == 11
     for entry in listings:
         assert {"ETag", "Last-Modified"}.isdisjoint(entry["headers"])
         if entry["case"].endswith(("_empty", "_foreign")):
@@ -673,11 +673,9 @@ def test_broken_observation_of_the_current_version_fails_only_its_item(root, ser
     ]
 
 
-def test_meteo_station_has_four_files_and_missing_elements_are_unpublished(
-    root, server
-):
-    serve(server, "precipitation_listing", "temperature_listing")
-    elements = ("SRA", "T", "TMA", "TMI")
+def test_meteo_station_has_six_files_and_missing_elements_are_unpublished(root, server):
+    serve(server, "precipitation_listing", "temperature_listing", "snow_listing")
+    elements = ("SRA", "T", "TMA", "TMI", "SCE", "SNO")
     serve(
         server,
         "m90000000002_SRA_head",
@@ -691,32 +689,36 @@ def test_meteo_station_has_four_files_and_missing_elements_are_unpublished(
 
     plan = check_store(root, datasets=[METEO], stations=[FULL, RAIN, S1])
 
-    assert len(server.calls) == 2  # one listing per directory, no HEAD or GET
+    # Items by station and file name: SCE, SNO, SRA, T, TMA, TMI.
+    ordered = sorted(elements)
+    assert len(server.calls) == 3  # one listing per directory, no HEAD or GET
     assert [
         (item.station_code, item.archive.param, item.status) for item in plan.items
     ] == [
-        (RAIN, "SRA", "missing"),
-        (RAIN, "T", "unverifiable"),
-        (RAIN, "TMA", "unverifiable"),
-        (RAIN, "TMI", "unverifiable"),
-        *((FULL, element, "missing") for element in elements),
+        *(
+            (RAIN, element, "missing" if element == "SRA" else "unverifiable")
+            for element in ordered
+        ),
+        *((FULL, element, "missing") for element in ordered),
     ]
-    assert {item.error for item in plan.items[1:4]} == {"not published"}
+    rain_sra = ordered.index("SRA")
+    assert {item.error for item in plan.items[:6] if item.archive.param != "SRA"} == {
+        "not published"
+    }
     assert [action.detail for action in plan.actions] == [
         f"station {S1}: no files of the dataset {METEO} at the source"
     ]
     report = sync_store(root, plan=plan)
     assert [item.status for item in report.items] == [
-        "new",
-        *["unchanged"] * 3,
-        *["new"] * 4,
+        *("new" if element == "SRA" else "unchanged" for element in ordered),
+        *["new"] * 6,
     ]
     meta = json.loads(
-        Path(f"{report.items[0].version}.meta.json").read_text(encoding="utf-8")
+        Path(f"{report.items[rain_sra].version}.meta.json").read_text(encoding="utf-8")
     )
     assert "content_sha256" not in meta and "content_form" not in meta
     assert meta["request"] == {
-        "server_path": plan.items[0].archive.server_path,
+        "server_path": plan.items[rain_sra].archive.server_path,
         "year": None,
         "month": None,
         "station_code": RAIN,
@@ -725,7 +727,7 @@ def test_meteo_station_has_four_files_and_missing_elements_are_unpublished(
     assert meta["extra"]["period"]["year_type"] == "none"
 
     # Other bytes of a CSV file (no canonical form) are a new version.
-    sra = report.items[4].version
+    sra = report.items[6 + rain_sra].version
     serve(
         server,
         "precipitation_listing_corrected",
@@ -734,37 +736,39 @@ def test_meteo_station_has_four_files_and_missing_elements_are_unpublished(
     )
     changed = check_store(root, datasets=[METEO], stations=[FULL])
     assert [item.status for item in changed.items] == [
-        "newer",
-        "current",
-        "current",
-        "current",
+        "newer" if element == "SRA" else "current" for element in ordered
     ]
     corrected = sync_store(root, plan=changed)
-    assert [item.status for item in corrected.items] == ["new", *["unchanged"] * 3]
-    assert corrected.items[0].version != sra and sra.is_file()
-    assert corrected.items[0].version.read_bytes() == payload(
-        CASES["m90001_SRA_corrected_get"]
-    )
+    assert [item.status for item in corrected.items] == [
+        "new" if element == "SRA" else "unchanged" for element in ordered
+    ]
+    new = corrected.items[rain_sra].version
+    assert new != sra and sra.is_file()
+    assert new.read_bytes() == payload(CASES["m90001_SRA_corrected_get"])
 
 
 def test_unreadable_meteo_directory_fails_only_its_elements(root, server):
-    serve(server, "precipitation_listing", "temperature_listing_error")
+    serve(server, "precipitation_listing", "temperature_listing_error", "snow_listing")
 
     plan = check_store(root, datasets=[METEO], stations=[FULL, RAIN])
 
     assert [
         (item.station_code, item.archive.param, item.status) for item in plan.items
     ] == [
+        (RAIN, "SCE", "unverifiable"),
+        (RAIN, "SNO", "unverifiable"),
         (RAIN, "SRA", "missing"),
         (RAIN, "T", "check_failed"),
         (RAIN, "TMA", "check_failed"),
         (RAIN, "TMI", "check_failed"),
+        (FULL, "SCE", "missing"),
+        (FULL, "SNO", "missing"),
         (FULL, "SRA", "missing"),
         (FULL, "T", "check_failed"),
         (FULL, "TMA", "check_failed"),
         (FULL, "TMI", "check_failed"),
     ]
-    assert plan.items[1].error.startswith("HTTP error 503")
+    assert plan.items[3].error.startswith("HTTP error 503")
 
 
 def test_cancel_before_the_listing_and_between_files(root, server):

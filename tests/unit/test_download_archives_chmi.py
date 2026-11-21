@@ -94,32 +94,26 @@ def test_unpublished_year_is_a_successful_not_published_item(respx_mock, tmp_pat
     }
 
 
-def test_meteo_station_files_are_four_elements_with_missing_ones_unpublished(
+def test_meteo_station_files_are_six_elements_with_missing_ones_unpublished(
     respx_mock, tmp_path
 ):
+    elements = ("SRA", "T", "TMA", "TMI", "SCE", "SNO")
     serve(
         respx_mock,
-        "m90000000002_SRA_get",
-        "m90000000002_T_get",
-        "m90000000002_TMA_get",
-        "m90000000002_TMI_get",
-        *(f"m90001_{element}_get" for element in ("SRA", "T", "TMA", "TMI")),
+        *(f"m90000000002_{element}_get" for element in elements),
+        *(f"m90001_{element}_get" for element in elements),
     )
 
     report = download_archives(METEO, stations=[FULL, RAIN], output_dir=tmp_path)
 
     assert [(item.slot.rsplit("/", 1)[1], item.status) for item in report.items] == [
         (f"dly-{RAIN}-SRA.csv", "downloaded"),
-        (f"dly-{RAIN}-T.csv", "not_published"),
-        (f"dly-{RAIN}-TMA.csv", "not_published"),
-        (f"dly-{RAIN}-TMI.csv", "not_published"),
-        *(
-            (f"dly-{FULL}-{element}.csv", "downloaded")
-            for element in ("SRA", "T", "TMA", "TMI")
-        ),
+        *((f"dly-{RAIN}-{element}.csv", "not_published") for element in elements[1:]),
+        *((f"dly-{FULL}-{element}.csv", "downloaded") for element in elements),
     ]
     assert report.items[1].slot == f"archive:{METEO}:temperature/dly-{RAIN}-T.csv"
-    assert len(files(tmp_path)) == 5 + 1  # and ATTRIBUTION.txt (ADR-012 D5)
+    assert report.items[4].slot == f"archive:{METEO}:snow/dly-{RAIN}-SCE.csv"
+    assert len(files(tmp_path)) == 7 + 1  # and ATTRIBUTION.txt (ADR-012 D5)
 
 
 def test_only_404_is_unpublished_other_answers_fail_the_item(respx_mock, tmp_path):

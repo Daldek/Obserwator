@@ -44,7 +44,7 @@ Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i ali
 <!-- obserwator:datasets -->
 
 - `stations`: WIGOS (wymagane dla `cz.chmi.*`) albo 9 cyfr (`pl.imgw.meteo_synop_*`, opcjonalne w `store check|sync`); jeden rodzaj plików na wywołanie.
-- `years`: wymagane w `datasets files|download` (poza `cz.chmi.meteo_daily`) i, dla `pl.imgw.*`, w `store check|sync`; tam opcjonalne dla `cz.chmi.hydro_daily` (brak = lata opublikowane); nigdy dla `cz.chmi.meteo_daily`; nie wcześniej niż „Od roku”. `months` wyłącznie dla `pl.imgw.*`, `params` wyłącznie dla `pl.imgw.hydro_semiannual`.
+- `years`: wymagane w `datasets files|download` (poza `cz.chmi.meteo_daily`) i, dla `pl.imgw.*`, w `store check|sync`; tam opcjonalne dla `cz.chmi.hydro_daily` (brak = lata opublikowane); nigdy dla `cz.chmi.meteo_daily`; nie wcześniej niż „Od roku”. `months` tylko dla `pl.imgw.*`, `params` tylko dla `pl.imgw.hydro_semiannual`.
 
 ## Komendy
 
