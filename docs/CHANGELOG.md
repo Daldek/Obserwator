@@ -95,6 +95,16 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
   tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
 
+- **Accessibility of the GUI (axe-core 4.13).** The page had no level-one heading: it gets a
+  visually hidden `<h1>` („Obserwator: dane hydrologiczne i meteorologiczne IMGW-PIB i
+  ČHMÚ”). The region of the map's view and MapLibre's canvas were two landmarks named „Mapa
+  stacji”: the region is named by the view („Widok: Stacje”, „Widok: Pomiary bieżące”,
+  „Widok: PMAXTP”), the canvas by what it shows („Mapa stacji”, or „Mapa: wybór punktu
+  PMAXTP” in the view „PMAXTP”). The key figures' `<dl class="figures">` (a station's
+  „Pomiary bieżące” and the sections' tiles) held their notes as `<small>` beside `dt` and
+  `dd` (axe-core: serious): each note is now a `dd` of its tile. The browser tests run
+  axe-core (`tests/e2e/vendor/`, test files only) on the start page and a station's panel.
+
 ### Changed
 
 - **The GUI reads its data root again in the background.** `DataRoot.snapshot`
@@ -118,6 +128,30 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `nogat/marks/obserwator.svg`; `robots.txt` lets crawlers read the page but not `api/`,
   which computes on request, under the prefix the app is mounted at. None of them is logged
   below `400`.
+- **The GUI's page starts without a chain of requests and its files are cached for a year.**
+  The start was a chain: the HTML and 71 files (63 modules imported level by level), then
+  `api/texts`, then `api/session` and `api/stations`, every file `Cache-Control: no-cache`, so
+  each visit asked again for all of them and MapLibre's module crossed the tunnel every time.
+  `index.html` is now served rendered (`gui/_page.py`): its own files (`theme-init.js`,
+  `src/`, `css/`, `nogat/`, `vendor/`) at `v/<build>/`, `<build>` a digest of those files,
+  MapLibre's module, worker, stylesheet and the glyphs at `vendor/…?v=<version>` of
+  `vendor/vendor.json` (named to `map.js` by `<meta name="obserwator-vendor">`), both with
+  `Cache-Control: public, max-age=31536000, immutable`, while the page, the API and any other
+  address (an older build's too) stay `no-cache`; a `modulepreload` of every module
+  `src/main.js` imports statically lets the browser ask for all of them at once; and
+  `theme-init.js` asks for `api/texts?lang=…`, `api/session` and `api/stations` before the
+  modules load, with the headers of `src/api.js`, whose answers `i18n.js` and `api.js` take
+  once (`src/start.js`; a `<link rel="preload">` cannot send the page's `Accept-Language`).
+  The packaged borders are asked for relative to the page. Measured on a local copy of the
+  deployment's root with an emulated iPhone 13 on Fast 3G with a 4× slower CPU, without a
+  basemap (median of 3 visits, a loaded machine): the three API answers at 8.4–8.5 s against
+  8.8–9.7 s on a first visit and at 1.8–2.2 s against 8.2–9.0 s on the next one, the station
+  list drawn at 12.0 s against 16.9 s and at 5.6 s against 10.2 s, the map at 14.3 s against
+  19.6 s and at 7.6 s against 10.4 s; the next visit takes 75 of its 83 files from the cache.
+- **On a phone the station's button of the map's bar ends inside the screen.** Its name
+  overflowed the bar by 5 px and was cut by the screen's edge (ANNOPOL on an iPhone 13); the
+  button now shrinks to what the bar leaves, cuts the name with an ellipsis and names it
+  whole in its `title`.
 
 ## [3.0.1] - 2026-11-18
 

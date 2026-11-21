@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import mimetypes
+import re
 import shlex
 import shutil
 from pathlib import Path
@@ -1049,6 +1050,54 @@ def test_the_page_and_its_files_are_revalidated_on_every_load(client):
     assert client.get("/src/no-such-module.js").status_code == 404
     again = client.get("/", headers={"If-None-Match": page.headers["etag"]})
     assert again.status_code == 304
+
+
+def test_the_page_names_its_files_at_addresses_kept_for_a_year(client):
+    page = client.get("/")
+    loaded = re.findall(r'(?:src|href)="([^"]+)"', page.text)
+    (build,) = {m[1] for m in (re.match(r"v/([0-9a-f]{16})/", a) for a in loaded) if m}
+    preloaded = re.findall(r'<link rel="modulepreload" href="([^"]+)"', page.text)
+    answers = {address: client.get(f"/{address}") for address in loaded}
+
+    for address, answer in answers.items():
+        assert answer.status_code == 200, address
+        long = address.startswith(f"v/{build}/") or "?v=" in address
+        expected = "public, max-age=31536000, immutable" if long else "no-cache"
+        assert answer.headers["cache-control"] == expected, address
+    assert f"v/{build}/src/main.js" in loaded
+    assert "vendor/maplibre-gl/maplibre-gl.css?v=6.14.0" in loaded
+    # Every module of the start is asked for at once: the main module's imports, theirs, …
+    assert f"v/{build}/src/lib.js" in preloaded
+    assert f"v/{build}/vendor/preact/hooks.mjs" in preloaded
+    assert f"v/{build}/src/charts/draw.js" in preloaded
+    assert not any("maplibre" in address for address in preloaded)
+    assert page.headers["cache-control"] == "no-cache"
+    assert client.get("/index.html").content == page.content
+
+
+def test_an_address_of_another_build_or_version_is_revalidated(client):
+    build = re.search(r'src="v/([0-9a-f]{16})/src/main.js"', client.get("/").text)[1]
+    current = client.get(f"/v/{build}/src/main.js")
+    older = client.get("/v/0123456789abcdef/src/main.js")
+    module = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.14.0")
+    other = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.13.0")
+    plain = client.get("/src/main.js")
+    again = client.get(
+        f"/v/{build}/src/main.js", headers={"If-None-Match": current.headers["etag"]}
+    )
+
+    assert current.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert module.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert again.status_code == 304
+    # An older build's address (a page cached across a release) gets this build's file
+    assert older.content == current.content == plain.content
+    for answer in (older, other, plain):
+        assert answer.status_code == 200
+        assert answer.headers["cache-control"] == "no-cache"
+    # Only the page's files are under a build's address
+    for path in ("admin/index.html", "instrukcja/index.html", "index.html", "x/y.js"):
+        assert client.get(f"/v/{build}/{path}").status_code == 404, path
+    assert client.get(f"/v/{build}").status_code == 404
 
 
 def test_the_icons_and_robots_txt_are_served(client):

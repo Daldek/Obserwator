@@ -38,7 +38,6 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, Response
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
@@ -90,6 +89,7 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
+from obserwator.gui._page import Site, WebFiles
 from obserwator.gui._root import (
     ANALYSES_SLOTS,
     DataRoot,
@@ -132,7 +132,7 @@ SEXT = {
     "geojson": "application/geo+json",
 }
 QUIET = (
-    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/(admin/)?theme-init\.js$"
+    r"^/(css|src|vendor|nogat|data|instrukcja|v)/|^/(admin/)?theme-init\.js$"
     r"|^/regulamin\.html$"
     r"|^/(favicon\.ico|robots\.txt|apple-touch-icon(-precomposed)?\.png)$"
 )
@@ -1551,6 +1551,7 @@ def build_app(
 
     for suffix in (".js", ".mjs"):
         mimetypes.add_type("text/javascript", suffix)
+    site = Site.load(WEB)
 
     routes = [
         Route("/api/session", session),
@@ -1585,7 +1586,9 @@ def build_app(
         Route("/data/{name}", border),
         Route("/apple-touch-icon-precomposed.png", touch_icon),
         Route("/robots.txt", robots),
-        Mount("/", StaticFiles(directory=WEB, html=True)),
+        Route("/", site.index),
+        Route("/index.html", site.index),
+        Mount("/", WebFiles(site=site, directory=WEB, html=True)),
     ]
     middleware = [
         Middleware(Traffic, state=state.traffic),
