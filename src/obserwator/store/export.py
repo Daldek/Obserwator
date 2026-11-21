@@ -12,10 +12,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal, cast, overload
 
@@ -1164,28 +1166,46 @@ def _export_joined(
     columns = _series_columns(
         replace(first, variables=units), list(units), indexes[0].year_type
     )
-    formulas = (
-        first.license.attribution,
-        get_provider(first.provider).processed_attribution,
+    return _station_csv(
+        [column.header for column in columns],
+        ([column.cell(record) for column in columns] for record in records),
+        first,
+        station=station,
+        output=output,
     )
-    rows = (
-        [
-            *(column.cell(record) for column in columns),
-            *(formulas if number == 0 else ("", "")),
-        ]
-        for number, record in enumerate(records)
+
+
+def _station_csv(
+    header: Sequence[str],
+    rows: Iterable[list[str]],
+    descriptor: DatasetDescriptor,
+    /,
+    *,
+    station: str,
+    output: PathArg,
+) -> OutputReport:
+    """
+    Write a station's CSV for Hydrolog with the attribution columns of `export_series`.
+
+    ``header`` and ``rows`` are the data columns; the source and processed-data
+    attribution of the dataset's provider go to the first row (ADR-001 Q10), its
+    lines to ``attribution`` and ``terms_notice`` (ADR-012).
+    """
+    formulas = (
+        descriptor.license.attribution,
+        get_provider(descriptor.provider).processed_attribution,
+    )
+    cells = (
+        [*row, *(formulas if number == 0 else ("", ""))]
+        for number, row in enumerate(rows)
     )
     target = _target(output, force=False)
     assert target is not None
     report = _deliver(
         _Lines(
-            (
-                _csv_line(
-                    [*(column.header for column in columns), *_ATTRIBUTION_COLUMNS]
-                ),
-            ),
-            _csv_lines(_with_lines(rows, _lines(first))),
-            total=len(records),
+            (_csv_line([*header, *_ATTRIBUTION_COLUMNS]),),
+            _csv_lines(_with_lines(cells, _lines(descriptor))),
+            total=None,
             label=message("export.station_progress", station=station),
             on_progress=None,
             cancel=None,
@@ -1196,6 +1216,162 @@ def _export_joined(
     )
     assert isinstance(report, OutputReport)
     return report
+
+
+# The statistics of a variable in IMGW-PIB's half-year file, in its column order.
+_HALF_YEAR_STATISTICS = ("min", "mean", "max")
+# Value, flag, start, end and occurrences of a statistic without a value.
+_NO_VALUE = ("", "missing", "", "", "")
+
+
+def _complete(
+    days: Mapping[date, Mapping[str, Measurement]], name: str, first: date, last: date
+) -> list[tuple[date, float]] | None:
+    """The daily values of ``name`` from ``first`` to ``last``; None when a day has none."""
+    found: list[tuple[date, float]] = []
+    day = first
+    while day <= last:
+        values = days.get(day)
+        measurement = None if values is None else values.get(name)
+        if measurement is None or measurement.value is None:
+            return None
+        found.append((day, measurement.value))
+        day += timedelta(days=1)
+    return found
+
+
+def _extreme_cells(values: Sequence[tuple[date, float]], extreme: float) -> list[str]:
+    """
+    The cells of an extreme of a half-year: value, flag, start, end, occurrences.
+
+    ``values`` hold every day of the half-year, so the days at the extreme form
+    runs of consecutive days: the start is the first day of the first run, the
+    end the last day of the last run and the occurrences the number of runs, as
+    IMGW-PIB merges its rows of one extreme.
+    """
+    at = [day for day, value in values if value == extreme]
+    runs = 1 + sum((later - earlier).days > 1 for earlier, later in pairwise(at))
+    return [_number(extreme), "value", at[0].isoformat(), at[-1].isoformat(), str(runs)]
+
+
+def _mean_cells(values: Sequence[tuple[date, float]]) -> list[str]:
+    """The cells of a mean: no dates and one occurrence, as in IMGW-PIB's file."""
+    mean = math.fsum(value for _, value in values) / len(values)
+    return [_number(mean), "value", "", "", "1"]
+
+
+def _half_year_cells(values: Sequence[tuple[date, float]] | None) -> list[str]:
+    """The minimum, mean and maximum cells of a half-year; ``missing`` without every day."""
+    if values is None:
+        return list(_NO_VALUE * len(_HALF_YEAR_STATISTICS))
+    numbers = [value for _, value in values]
+    return [
+        *_extreme_cells(values, min(numbers)),
+        *_mean_cells(values),
+        *_extreme_cells(values, max(numbers)),
+    ]
+
+
+def _annual_cells(
+    winter: Sequence[tuple[date, float]] | None,
+    summer: Sequence[tuple[date, float]] | None,
+) -> list[str]:
+    """The cells of a year: its mean with both half-years; no extremes, as IMGW-PIB's file."""
+    mean = (
+        _NO_VALUE
+        if winter is None or summer is None
+        else _mean_cells([*winter, *summer])
+    )
+    return [*_NO_VALUE, *mean, *_NO_VALUE]
+
+
+def _half_year_table(
+    days: Mapping[date, Mapping[str, Measurement]], units: Mapping[str, str]
+) -> tuple[list[str], list[list[str]]]:
+    """
+    The header and rows of the half-year characteristics of daily values (IMGW-PIB's file).
+
+    The columns are those `export_series` gives of ``pl.imgw.hydro_semiannual``
+    without the attribution: ``date,year,period`` and, per variable of ``units``
+    and statistic ``min``, ``mean``, ``max``, ``<V>_<statistic> [<unit>]`` with
+    ``_flag``, ``_start``, ``_end`` and ``_occurrences``. Each hydrological year
+    ``Y`` of ``days`` (November of ``Y`` − 1 to October of ``Y``) has three rows:
+    ``winter`` (XI–IV, dated November 1 of ``Y`` − 1) and ``summer`` (V–X, dated
+    May 1 of ``Y``) with the lowest, mean and highest daily value, and ``annual``
+    (dated November 1 of ``Y`` − 1) with the mean of the year only, as IMGW-PIB
+    publishes it. An extreme has the first and the last day (ISO dates) of its
+    runs of days and the number of runs; a mean has no dates and one occurrence.
+    IMGW-PIB publishes nothing for a period with a break in observations, so a
+    half-year with a day without a value has no values (``missing``, empty
+    cells), nor has the mean of a year without both half-years.
+    """
+    header = ["date", "year", "period"]
+    for name, unit in units.items():
+        for statistic in _HALF_YEAR_STATISTICS:
+            column = f"{name}_{statistic}"
+            header += [
+                f"{column} [{unit}]",
+                f"{column}_flag",
+                f"{column}_start",
+                f"{column}_end",
+                f"{column}_occurrences",
+            ]
+    first, last = min(days), max(days)
+    rows: list[list[str]] = []
+    # Hydrological year Y runs from November 1 of Y - 1 to October 31 of Y.
+    for year in range(
+        first.year + (first.month >= 11), last.year + (last.month >= 11) + 1
+    ):
+        winter_start, summer_start = date(year - 1, 11, 1), date(year, 5, 1)
+        winter: list[str] = []
+        summer: list[str] = []
+        annual: list[str] = []
+        for name in units:
+            winter_days = _complete(days, name, winter_start, date(year, 4, 30))
+            summer_days = _complete(days, name, summer_start, date(year, 10, 31))
+            winter += _half_year_cells(winter_days)
+            summer += _half_year_cells(summer_days)
+            annual += _annual_cells(winter_days, summer_days)
+        rows += [
+            [winter_start.isoformat(), str(year), "winter", *winter],
+            [summer_start.isoformat(), str(year), "summer", *summer],
+            [winter_start.isoformat(), str(year), "annual", *annual],
+        ]
+    return header, rows
+
+
+def _export_half_years(
+    series: Path, /, *, station: str, output: PathArg
+) -> OutputReport:
+    """
+    Write the half-year characteristics Obserwator computes of a station's daily series.
+
+    ČHMÚ publishes none, so they are computed from its daily series with the
+    definitions of IMGW-PIB's ``pl.imgw.hydro_semiannual`` (`_half_year_table`)
+    and written as the CSV `export_series` gives of that file, with the
+    attribution columns of the daily series (the author's decision of
+    2026-11-18, ADR-016).
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the series holds no record of the station.
+    """
+    descriptor = get_dataset(read_series_index(series).dataset)
+    days = {
+        record.date: record.measurements
+        for record in read_series(series, station=station)
+    }
+    if not days:
+        raise ObserwatorDataError(
+            message(
+                "export.series_station_empty_chosen_range",
+                station=station,
+                dataset=descriptor.key,
+            )
+        )
+    header, rows = _half_year_table(days, descriptor.variables)
+    return _station_csv(header, rows, descriptor, station=station, output=output)
 
 
 # --------------------------------------------------------------------------
