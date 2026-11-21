@@ -120,6 +120,10 @@ MESSAGES = {
         "Analyses of the station {station} carried forward",
         "Przeniesiono analizy stacji {station}",
     ),
+    "station_resumed": Text(
+        "Analyses of the station {station} taken from an interrupted build",
+        "Przejęto analizy stacji {station} z przerwanej budowy",
+    ),
     "version_unchanged": Text(
         "The analyses of {provider} are unchanged",
         "Analizy {provider} bez zmian",
@@ -133,8 +137,8 @@ MESSAGES = {
         "Analizy {provider} są aktualne ({stations} stacji)",
     ),
     "plan_build": Text(
-        "A new analyses version of {provider}: {computed} stations computed by Hydrolog {version}, {carried} carried forward",
-        "Nowa wersja analiz {provider}: {computed} stacji do obliczenia Hydrologiem {version}, {carried} do przeniesienia",
+        "A new analyses version of {provider}: {computed} stations computed by Hydrolog {version}, {carried} carried forward, {resumed} taken from an interrupted build",
+        "Nowa wersja analiz {provider}: {computed} stacji do obliczenia Hydrologiem {version}, {carried} do przeniesienia, {resumed} do przejęcia z przerwanej budowy",
     ),
     # --- reading -----------------------------------------------------------------------
     "no_version": Text(
