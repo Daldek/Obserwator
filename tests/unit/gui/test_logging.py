@@ -57,6 +57,10 @@ def test_each_answered_request_is_one_access_record_without_the_client(
             "/admin/theme-init.js",
             "/instrukcja/",
             f"/data/{next(iter(BORDERS))}",
+            "/favicon.ico",
+            "/robots.txt",
+            "/apple-touch-icon.png",
+            "/apple-touch-icon-precomposed.png",
         )
     ]
     static_missing = client.get("/css/nothing.css")

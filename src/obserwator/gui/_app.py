@@ -36,7 +36,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -134,6 +134,7 @@ SEXT = {
 QUIET = (
     r"^/(css|src|vendor|nogat|data|instrukcja)/|^/(admin/)?theme-init\.js$"
     r"|^/regulamin\.html$"
+    r"|^/(favicon\.ico|robots\.txt|apple-touch-icon(-precomposed)?\.png)$"
 )
 """The static content of the access log (Nogat DEV-12.5), paths at the origin's root: the
 page's files, the admin page's script, the packaged borders, the guide and the regulamin,
@@ -1307,6 +1308,24 @@ async def border(request: Request) -> Response:
     )
 
 
+async def touch_icon(request: Request) -> Response:
+    """``apple-touch-icon-precomposed.png``: the same icon as ``apple-touch-icon.png``."""
+    return FileResponse(WEB / "apple-touch-icon.png", media_type="image/png")
+
+
+async def robots(request: Request) -> Response:
+    """
+    ``robots.txt``: crawlers may read the page but not the API, which computes on request.
+
+    Made here rather than kept as a file of ``web/``: the API's path follows the prefix
+    the app is mounted under.
+    """
+    prefix = request.scope.get("root_path", "").rstrip("/")
+    return Response(
+        f"User-agent: *\nDisallow: {prefix}/api/\n", media_type="text/plain"
+    )
+
+
 @_route
 async def api_not_found(request: Request) -> Response:
     """Any other address under ``api/``: 404 as the error document."""
@@ -1564,6 +1583,8 @@ def build_app(
         Route("/admin", admin_page),
         Route("/regulamin.html", regulamin),
         Route("/data/{name}", border),
+        Route("/apple-touch-icon-precomposed.png", touch_icon),
+        Route("/robots.txt", robots),
         Mount("/", StaticFiles(directory=WEB, html=True)),
     ]
     middleware = [

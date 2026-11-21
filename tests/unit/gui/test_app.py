@@ -1051,6 +1051,22 @@ def test_the_page_and_its_files_are_revalidated_on_every_load(client):
     assert again.status_code == 304
 
 
+def test_the_icons_and_robots_txt_are_served(client):
+    favicon = client.get("/favicon.ico")
+    touch = client.get("/apple-touch-icon.png")
+    precomposed = client.get("/apple-touch-icon-precomposed.png")
+    robots = client.get("/robots.txt")
+
+    assert favicon.status_code == touch.status_code == precomposed.status_code == 200
+    assert favicon.content[:4] == b"\x00\x00\x01\x00"  # an ICO directory
+    assert touch.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert precomposed.headers["content-type"] == "image/png"
+    assert precomposed.content == touch.content
+    assert robots.headers["content-type"].startswith("text/plain")
+    # Crawlers keep to the page: the API computes on request
+    assert robots.text.splitlines() == ["User-agent: *", "Disallow: /api/"]
+
+
 def test_the_scripts_are_javascript_whatever_types_the_system_registers(
     make_client, monkeypatch
 ):
@@ -1287,6 +1303,7 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
         downloads = client.get(f"/m/obserwator/api/downloads/{HYDRO}").json()
         url = downloads["series"][0]["formats"]["csv"]["url"]
         file = client.get(f"/m/obserwator/{url}")
+        robots = client.get("/m/obserwator/robots.txt")
 
     assert page.status_code == 200
     assert 'id="app"' in page.text
@@ -1298,5 +1315,6 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
     problem(refused, 405, "method_not_allowed")
     problem(report, 403, "forbidden")  # POST reaches the route: only the site is wrong
     assert file.status_code == 200
+    assert "Disallow: /m/obserwator/api/" in robots.text.splitlines()
     for answer in (page, station, missing, refused, file):
         assert csp(answer) == OWN_ORIGIN_ONLY

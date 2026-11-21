@@ -111,6 +111,13 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `gui/_http.py` `Prebuilt`) until the snapshot changes: on a local copy of the deployment's
   root a `200` takes about 3 ms and a `304` about 2 ms, against 0.9 s and 0.3–0.6 s before on
   the same, loaded machine.
+- **The GUI serves `favicon.ico`, `robots.txt` and `apple-touch-icon.png`.** Browsers and
+  crawlers asked for them and got `404` (43 answers in the logs of 2026-11-14 to 2026-11-20).
+  `favicon.ico` (16, 32 and 48 px) and `apple-touch-icon.png` (180 px, also answered at
+  `apple-touch-icon-precomposed.png`) are rendered from Nogat's mark
+  `nogat/marks/obserwator.svg`; `robots.txt` lets crawlers read the page but not `api/`,
+  which computes on request, under the prefix the app is mounted at. None of them is logged
+  below `400`.
 
 ## [3.0.1] - 2026-11-18
 
