@@ -701,9 +701,10 @@ def test_scanned_versions_work_as_obserwator_version_with_the_root_of_their_kind
             assert not Path(entry["version"]).is_absolute()
             assert_alike(command, python, printed, answered, root)
             read.append(kind)
-    # The record archives, the PMAXTP cell, the series and the analyses versions of
+    # The record archives (ČHMÚ's snow files SCE and SNO of station 0-203-0-90001
+    # among them), the PMAXTP cell, the series and the analyses versions of
     # IMGW-PIB and ČHMÚ in the served roots.
-    assert Counter(read) == {"archive": 17, "pmaxtp": 1, "series": 6, "analyses": 2}
+    assert Counter(read) == {"archive": 19, "pmaxtp": 1, "series": 6, "analyses": 2}
 
 
 # --------------------------------------------------------------------------
