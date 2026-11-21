@@ -705,12 +705,15 @@ class Instance:
             if not self.serves(get_dataset(key).provider):
                 continue
             if self.clips:
-                index = cast(Any, entry).index
-                stations = {c: s for c, s in index.stations.items() if c in kept}
-                entry = cast(
-                    _S,
-                    replace(cast(Any, entry), index=replace(index, stations=stations)),
-                )
+                plain: Any = entry
+                if hasattr(plain, "index"):  # a series with its whole index
+                    index = plain.index
+                    held = {c: s for c, s in index.stations.items() if c in kept}
+                    plain = replace(plain, index=replace(index, stations=held))
+                else:  # a series keeping only its stations' summary
+                    held = {c: s for c, s in plain.stations.items() if c in kept}
+                    plain = replace(plain, stations=held)
+                entry = cast(_S, plain)
             reduced[key] = entry
         return (
             {
