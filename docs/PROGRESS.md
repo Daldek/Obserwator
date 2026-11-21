@@ -316,7 +316,6 @@ Decisions waiting for the author (remove once resolved):
 - SVH (ADR-003 erratum of 2026-11-21): ČHMÚ's daily snow water equivalent `SVH` is in mm, IMGW-PIB's `snow_water_equivalent` in mm/cm; read it as a variable of its own, or leave it out as now?
 - GEO-03 Q1: keep the hydro.imgw.pl coordinates in the raw root (`pl.imgw.hydro_details` keeps `coordinates`, revising ADR-021 D2), so the IMGW-PIB catalog needs no reference file?
 - GEO-03 Q2: a new dataset `pl.imgw.meteo_details` from hydro.imgw.pl's meteo map and station pages (877 stations, 878 requests per sync), giving `established_year` for 854 meteo stations, a location for 143 and the elevation for 856?
-- E3-01 (ADR-026): confirm D5 (a data root holding the full series refuses a subset, rather than a change of the current-version rule); and should a new subset add to the stations of the current subset or replace it (today it replaces it, as any newer build)?
 - E7-11 (ADR-027): the 50 MB `series.json` of `pl.imgw.meteo_precip_daily` (1.8 million gap ranges of the snow variables, absent every summer) is parsed whole on every `read_series` (3–5 s, about 600 MB at peak): drop the gaps of a seasonal absence, change the schema of the gap ranges (`obserwator-series/1`), or cache the parsed index?
 - An instance's featured provider in the strip (ADR-025 D7): `api/session` lists its lines first, but the kit's `<nogat-sources>` keeps its own order of the lines; showing them first needs a change of Nogat's kit — ask Nogat for it, or keep the kit's order?
 
