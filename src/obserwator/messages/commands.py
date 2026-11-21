@@ -611,9 +611,31 @@ MESSAGES = {
     ),
     "series_build_description": Text(
         "Build the Parquet series of a dataset from the current archives of the raw "
-        "root. The series go into the data root.",
+        "root. The series go into the data root; stations or years build a subset.",
         "Zbuduj szereg Parquet zbioru z bieżących archiwów katalogu surowego. Szeregi "
-        "trafiają do katalogu danych.",
+        "trafiają do katalogu danych; stations albo years budują podzbiór.",
+    ),
+    "series_build_stations_help": Text(
+        "Build only these stations: comma-separated codes of the dataset's provider "
+        "(default: every station); a subset",
+        "Zbuduj tylko te stacje: kody dostawcy zbioru rozdzielone przecinkami "
+        "(domyślnie wszystkie stacje); podzbiór",
+    ),
+    "series_build_years_help": Text(
+        "Build only these years: numbers or ranges, e.g. 2020-2025, hydrological "
+        "years of the pl.imgw.hydro_* datasets, else calendar years (default: every "
+        "year); a subset",
+        "Zbuduj tylko te lata: liczby lub zakresy, np. 2020-2025, lata hydrologiczne "
+        "zbiorów pl.imgw.hydro_*, inaczej kalendarzowe (domyślnie wszystkie lata); "
+        "podzbiór",
+    ),
+    "series_build_rule_subset": Text(
+        "stations or years build a subset, recorded as subset in series.json and as "
+        "the request of its sidecar; a data root holding the full series of the "
+        "dataset refuses a subset (conflict, full_series): build it into another root",
+        "stations albo years budują podzbiór, zapisany jako subset w series.json i "
+        "jako request jego sidecara; katalog danych z pełnym szeregiem zbioru odrzuca "
+        "podzbiór (conflict, full_series): zbuduj go w innym katalogu",
     ),
     "series_select_description": Text(
         "Select stations, variables and years of the current series. Nothing is written.",

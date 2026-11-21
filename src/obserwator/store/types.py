@@ -292,11 +292,13 @@ class PlanAction:
         a target that cannot be written; None outside plain writes.
     path : Path or None, optional
         Absolute path of the plain target, or None.
-    reason : {"duplicate_output_name", "output_exists", "output_in_store", "nested_store", "not_empty"} or None, optional
+    reason : {"duplicate_output_name", "output_exists", "output_in_store", "nested_store", "not_empty", "full_series"} or None, optional
         Why the target is a ``"conflict"``, or None. ``"nested_store"`` is the
-        root of a store write that would nest a store in another store and
+        root of a store write that would nest a store in another store,
         ``"not_empty"`` a root that holds other files and is no store
-        (``path`` is that root).
+        (``path`` is that root) and ``"full_series"`` a subset of a series
+        (``series build`` with ``stations`` or ``years``) refused beside the
+        full series of its dataset (``path`` is that version, ADR-026).
     """
 
     command: str
@@ -311,6 +313,7 @@ class PlanAction:
             "output_in_store",
             "nested_store",
             "not_empty",
+            "full_series",
         ]
         | None
     ) = None
@@ -1063,6 +1066,32 @@ class StationSeriesIndex:
 
 
 @dataclass(frozen=True)
+class SeriesSubset:
+    """
+    The stations and years a series version was built for (ADR-026).
+
+    ``series build`` with ``stations`` or ``years`` builds a subset of the
+    dataset's series; ``series.json`` records the request as ``subset`` and the
+    sidecar as ``request.stations`` and ``request.years``. A subset is never
+    taken for the full series of its dataset.
+
+    Attributes
+    ----------
+    stations : tuple of str or None, optional
+        The station codes asked for, sorted, also those the archives did not
+        hold (``SeriesIndex.stations`` has the stations built); None when
+        every station was built.
+    years : tuple of int or None, optional
+        The years asked for, sorted, in the numbering of the series
+        (``SeriesIndex.year_type``: hydrological years from November to
+        October, or calendar years); None when every year was built.
+    """
+
+    stations: tuple[str, ...] | None = None
+    years: tuple[int, ...] | None = None
+
+
+@dataclass(frozen=True)
 class SeriesIndex:
     """
     Parsed ``series.json`` index of an ``obserwator-series/1`` version.
@@ -1076,9 +1105,13 @@ class SeriesIndex:
     year_type : {"hydrological", "calendar"}
         Year numbering of the source archives.
     periods : tuple of tuple of (date, date)
-        Union of the input archives' periods, adjacent ranges merged.
+        Union of the input archives' periods, adjacent ranges merged; for a
+        subset of years cut to those years.
     stations : Mapping of str to StationSeriesIndex
         Per-station index, keyed by station code.
+    subset : SeriesSubset or None, optional
+        The stations and years of a subset version (ADR-026); None for the
+        series of every station and year of the archives.
     """
 
     schema: Literal["obserwator-series/1"]
@@ -1086,6 +1119,7 @@ class SeriesIndex:
     year_type: Literal["hydrological", "calendar"]
     periods: tuple[tuple[date, date], ...]
     stations: Mapping[str, StationSeriesIndex]
+    subset: SeriesSubset | None = None
 
 
 @dataclass(frozen=True)

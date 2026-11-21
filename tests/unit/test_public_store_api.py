@@ -131,6 +131,7 @@ SPEC_TYPES = (
     "StationFeature",
     "StationSeriesIndex",
     "SeriesIndex",
+    "SeriesSubset",
     "PMaXTPStoreResult",
     "PMaXTPUrl",
     "CommandOption",

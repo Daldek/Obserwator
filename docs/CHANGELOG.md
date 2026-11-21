@@ -23,6 +23,26 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   catalog accept number items (`float`, order and repeats kept). The `hydrographic_code` of
   a live IMGW-PIB row stays the number the list publishes (`"14"` for the Barycz)
   (ADR-024).
+- **`series build` builds a subset of chosen stations and years (E3-01 of the scenario test
+  of 2026-11-15/16, ADR-026).** A data root for a dozen stations needed the national series
+  (`pl.imgw.hydro_daily` 763 s for 1,372 stations; 479 MB of series for the 12 key
+  stations). `series build`, `build_series` and `check_series` take `stations` (`-s`, codes
+  of the dataset's provider) and `years` (`-y`, hydrological years for `pl.imgw.hydro_*`,
+  calendar years otherwise). Only the archives that hold them are read. For
+  `pl.imgw.meteo_precip_daily` the archive before a chosen one is read too, for the missing
+  days it leaves to the next. The daily and monthly country archives skip the rows of other
+  stations before their values are read. A station holds the rows and gaps it has in the
+  full series of the same inputs, within the chosen years; a chosen station the archives
+  lack is named in a `stations_missing` warning. The version records its subset: `subset`
+  in `series.json`, `request.stations` and `request.years` in the sidecar,
+  `SeriesIndex.subset` (new type `SeriesSubset`); `command_for_version` gives the same
+  call. These fields are optional and additive within `obserwator-series/1` and
+  `obserwator-meta/1`, and a full build writes the bytes of before. A version is reused
+  only for the same subset, so a full build never takes a subset for the series or the
+  other way round. A data root that holds a full version of the dataset refuses a subset
+  (`conflict`, `details.reason="full_series"`), so a subset never becomes the current
+  version beside the full series; build it into another data root. Measured for 10 key
+  stations under load: `pl.imgw.hydro_daily` 118 s instead of 763 s, 1.2 MB.
 
 ### Fixed
 

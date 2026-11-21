@@ -89,6 +89,20 @@ class _KnownUnits:
             self._months.add(month)
             self._ordered = []
 
+    def add_months(self, months: Iterable[date]) -> None:
+        """
+        Mark calendar months published by records the caller did not parse.
+
+        ``months`` are the first days of the months of the rows a station
+        selection skipped (`normalize_in_sequence`'s ``skipped_months``), so a
+        series of chosen stations knows the months the archives publish, as the
+        series of every station does.
+        """
+        added = set(months) - self._months
+        if added:
+            self._months |= added
+            self._ordered = []
+
     def missing(
         self,
         period: str | None,

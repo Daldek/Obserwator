@@ -189,7 +189,10 @@ VALID: dict[str, list[dict[str, object]]] = {
             "force": True,
         }
     ],
-    "series build": [{"root": ROOT, "dataset": DAILY}],
+    "series build": [
+        {"root": ROOT, "dataset": DAILY},
+        {"root": ROOT, "dataset": DAILY, "stations": [RABA], "years": ["2020-2024"]},
+    ],
     "series select": [
         {
             "root": ROOT,
@@ -328,7 +331,11 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
         ({"root": ROOT}, "version"),
         ({"version": "/v", "force": True}, "output"),
     ],
-    "series build": [({"root": ROOT, "dataset": "pl.imgw.hydro_stations"}, "dataset")],
+    "series build": [
+        ({"root": ROOT, "dataset": "pl.imgw.hydro_stations"}, "dataset"),
+        ({"root": ROOT, "dataset": DAILY, "stations": ["1491"]}, "stations"),
+        ({"root": ROOT, "dataset": DAILY, "years": "2024-2020"}, "years"),
+    ],
     "series select": [
         ({"root": ROOT, "dataset": DAILY, "stations": ["1491"]}, "stations"),
         ({"root": ROOT, "dataset": DAILY}, "stations"),

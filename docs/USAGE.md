@@ -144,6 +144,9 @@ plan = check_store(raw, datasets=["pl.imgw.hydro_monthly"], years="2022-2023", p
 #    build the Parquet series of the dataset in the data root from the current archive versions of the raw root
 report = sync_store(raw, plan="plan.json")
 build_series(data, raw_root=raw, dataset="pl.imgw.hydro_monthly")  # raw_root is only read
+# A subset of chosen stations and years (ADR-026), in a data root without the full series of the dataset
+build_series("/dane/zlewnia", raw_root=raw, dataset="pl.imgw.hydro_daily",
+             stations=["151170040", "251170140"], years="2001-2025")
 
 # 3. Coverage and reading the current series version (offline; dataset = key, slug or alias)
 for coverage in summarize_series(root=data, dataset="hydro/miesieczne", stations=["152210170"]):
@@ -331,7 +334,7 @@ call = command_for_version("series/versions/hydro_daily/2026-10-19_b85f50c3/seri
 | ČHMÚ hydro / meteo archive | `store sync --datasets <key> --stations <code>` (hydro also `--years <year>`) |
 | station list or station metadata (`*_stations`, `*_now`, `pl.imgw.hydro_details`) | `store sync --datasets <key>` |
 | station catalog | `store catalog --raw-root <raw> --provider <provider>` |
-| series version (or its station file) | `series build --raw-root <raw> --dataset <key>` |
+| series version (or its station file) | `series build --raw-root <raw> --dataset <key>` (with `--stations` and `--years` of a subset, ADR-026) |
 | PMAXTP cell | `pmaxtp sync --latitude --longitude --method --ind-x --ind-y` |
 | analyses version (or one of its station files) | `analyses build` |
 
@@ -422,6 +425,7 @@ obserwator store init --kind data                     # the data root (obserwato
 obserwator store check -d pl.imgw.hydro_monthly -y 2022-2023 --plan plan.json
 obserwator store sync --plan plan.json               # raw archives only, into the raw root
 obserwator series build -d pl.imgw.hydro_monthly      # reads the raw root (--raw-root), writes the data root
+obserwator series build -d pl.imgw.hydro_daily -s 151170040,251170140 -y 2001-2025 --root /dane/zlewnia  # a subset (ADR-026)
 obserwator store sync -d pl.imgw.hydro_stations,pl.imgw.meteo_stations,pl.imgw.hydro_now,pl.imgw.meteo_now
 obserwator store sync -d pl.imgw.hydro_details        # optional: hydro.imgw.pl's station details, one request per station (a few minutes)
 python -m obserwator.reference_data                   # optional: hydro.imgw.pl's coordinates of the gauges the API does not locate (reference directory)
@@ -997,6 +1001,16 @@ Versions are immutable and append-only: no overwriting, no permanent links and n
 
 A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement in [README "Install"](../README.md#install)). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
 
+### Series of chosen stations and years
+
+`series build --stations <codes> --years <years>` (`build_series(..., stations=, years=)`, the same in REST and MCP) builds a **subset** of a dataset's series instead of the series of every station and year of the raw root (ADR-026): for a data root that serves a few stations, e.g. an institution's catchment.
+
+- `--stations` takes codes in the grammar of the dataset's provider (9 digits for IMGW-PIB, WIGOS identifiers for ČHMÚ; another code is `validation_error`, `details.option="stations"`); `--years` numbers or ranges in the numbering of the dataset: hydrological years (November to October) for `pl.imgw.hydro_*`, calendar years otherwise — the `year_type` of `series.json` and the archive years of `store sync`.
+- Only the archives that hold them are read: those whose period meets a chosen year and, of the files of one station (ČHMÚ, IMGW-PIB synop), those of the chosen stations; for `pl.imgw.meteo_precip_daily` also the archive before a chosen one, whose missing last days make a total on the next day `accumulated`. In the daily and monthly archives of the whole country the rows of other stations are skipped before their values are read. `source_files` names the archives read.
+- A station holds in a subset exactly the rows and coverage (first, last, gaps) it holds in the full series of the same inputs, within the chosen years; the known periods and the dataset's `periods` are cut to the chosen years. A chosen station that the archives read do not hold is named in a `stations_missing` warning; a subset without any record fails and publishes nothing.
+- The version records its request: `subset` in `series.json` (`{"stations": [...], "years": [...]}`, only the given keys; `read_series_index(...).subset`, a `SeriesSubset`) and `request.stations` and `request.years` in its sidecar, from which `command_for_version` gives the same call. A version is kept (`unchanged`) only for the same inputs and the same subset, so a full build never takes a subset for the series, nor the other way round.
+- A data root that holds a full version of the dataset refuses a subset before anything is read: `conflict` with `details.reason="full_series"` and `details.version` (the plan of `--check`: one `conflict` action). Build the subset into another data root. A full build in a root of subsets is a newer version and becomes current as any build; another subset becomes current too, so a subset names every station the root should serve.
+
 ### Splitting a store
 
 A store written before ADR-017 holds the trees of both kinds under the marker `obserwator-store.json`. Obserwator refuses it as a data root (`store_unavailable`, `details.reason="wrong_root"`) and scans it as a raw root whose `series/`, `stations/` and `analyses/` are `unknown_entry` problems. It is split once into a raw root and a data root by a copy with hard links; no command converts it and no alias reads it as both kinds. A store at the default `<data_dir>/obserwator` (e.g. `~/.local/share/nogat/obserwator`) is moved aside first, because that path is now the default data root (`mv ~/.local/share/nogat/obserwator ~/.local/share/nogat/obserwator-old`); with the defaults RAW is then `<data_dir>/obserwator-raw` and DATA `<data_dir>/obserwator`. With a `cp` that makes hard links (`cp -al`, GNU coreutils), for an old store `OLD`:
@@ -1060,7 +1074,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 
 ### Schemas
 
-`obserwator-store/1` (the marker of a raw root), `obserwator-data/1` (the marker of a data root, ADR-017), `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. The analyses (ADR-016) add `obserwator-analyses/1` (main file of a version), `obserwator-station-analyses/1` (a station's record), `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1` and `obserwator-analysis-definition/1`; the stored answers keep Hydrolog's `hydrolog-result/1` and `hydrolog-error/1`. Within `/1` only optional fields are added; an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
+`obserwator-store/1` (the marker of a raw root), `obserwator-data/1` (the marker of a data root, ADR-017), `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. The analyses (ADR-016) add `obserwator-analyses/1` (main file of a version), `obserwator-station-analyses/1` (a station's record), `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1` and `obserwator-analysis-definition/1`; the stored answers keep Hydrolog's `hydrolog-result/1` and `hydrolog-error/1`. Within `/1` only optional fields are added (e.g. `subset` of `series.json` and `request.stations` and `request.years` of a series sidecar, ADR-026); an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
 
 ### Integrations
 
