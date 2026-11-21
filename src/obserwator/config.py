@@ -14,6 +14,7 @@ or token and `check_root_layout` a root of an unknown layout as a server starts
 (ADR-025).
 """
 
+import codecs
 import logging
 import os
 import stat
@@ -56,6 +57,7 @@ __all__ = [
     "credential_problems",
     "environment_report",
     "human_language",
+    "read_secret_file",
     "settings",
     "store_root",
 ]
@@ -425,13 +427,47 @@ def _variable(key: str) -> str:
     return f"{environment.PREFIX}{key.upper()}"
 
 
-def _secret_file(path: Path) -> str | None:
-    """The text of a secret file without surrounding white space; None if unusable."""
+_UTF16_BOMS = {codecs.BOM_UTF16_LE: "UTF-16LE", codecs.BOM_UTF16_BE: "UTF-16BE"}
+"""The encodings a Windows tool writes a text file in by its BOM (PowerShell 5.1's ``>``)."""
+
+
+def _read_secret(path: Path) -> tuple[str | None, str | None]:
+    """
+    A secret file's text, and the encoding it holds instead of UTF-8.
+
+    The text drops a UTF-8 BOM (Windows editors write one) and surrounding white
+    space; it is None when the file is missing, unreadable, blank or not UTF-8. The
+    encoding is None for UTF-8 text (or no file), ``UTF-16LE`` or ``UTF-16BE`` by
+    the BOM, else ``""``: bytes that are no UTF-8.
+    """
     try:
-        text = path.expanduser().read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    return text.strip() or None
+        data = path.expanduser().read_bytes()
+    except OSError:
+        return None, None
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return None, _UTF16_BOMS.get(data[:2], "")
+    return text.strip() or None, None
+
+
+def read_secret_file(path: Path) -> str | None:
+    """
+    The key or token a secret file holds, read now (ADR-025, I10).
+
+    Parameters
+    ----------
+    path : Path
+        The file a ``*_FILE`` variable names; ``~`` expanded.
+
+    Returns
+    -------
+    str or None
+        Its UTF-8 text without a BOM and surrounding white space; None when the file
+        is missing, unreadable, blank or not UTF-8 (`credential_problems` names the
+        last).
+    """
+    return _read_secret(path)[0]
 
 
 def configured_token(current: "Settings | None" = None) -> str | None:
@@ -439,8 +475,9 @@ def configured_token(current: "Settings | None" = None) -> str | None:
     The REST server's store write token, read now.
 
     ``OBSERWATOR_STORE_WRITE_TOKEN`` as given, else the text of the file
-    ``OBSERWATOR_STORE_WRITE_TOKEN_FILE`` names without surrounding white space
-    (ADR-025, I10), so a rotated file counts without a restart.
+    ``OBSERWATOR_STORE_WRITE_TOKEN_FILE`` names (`read_secret_file`: UTF-8, a BOM and
+    surrounding white space dropped; ADR-025, I10), so a rotated file counts without
+    a restart.
 
     Parameters
     ----------
@@ -450,7 +487,8 @@ def configured_token(current: "Settings | None" = None) -> str | None:
     Returns
     -------
     str or None
-        The token; None when neither gives one (blank, a missing or unreadable file).
+        The token; None when neither gives one (blank, a missing or unreadable file,
+        or one that is not UTF-8).
     """
     chosen = settings if current is None else current
     if chosen.store_write_token is not None:
@@ -459,19 +497,21 @@ def configured_token(current: "Settings | None" = None) -> str | None:
             return token
     if chosen.store_write_token_file is None:
         return None
-    return _secret_file(chosen.store_write_token_file)
+    return read_secret_file(chosen.store_write_token_file)
 
 
 def credential_problems(
     use: Literal["token", "admin"] | None = None,
 ) -> list[dict[str, str]]:
     """
-    The weak credentials in force (ADR-025, I10).
+    The weak or unusable credentials in force (ADR-025, I10).
 
-    A key or token shorter than `SECRET_MIN_BYTES` bytes, and a key file that group
-    or others may access (any permission bit but the owner's; not checked on
-    Windows). Only the credential in force counts: the variable when it is set, else
-    the file. A missing or unreadable file is no problem here: no key is set.
+    A key or token shorter than `SECRET_MIN_BYTES` bytes, a key file that group or
+    others may access (any permission bit but the owner's; not checked on Windows)
+    and a key file that is not UTF-8 text (UTF-16 from Windows PowerShell 5.1, say),
+    of which no key is read. Only the credential in force counts: the variable when
+    it is set, else the file. A missing or unreadable file is no problem here: no key
+    is set.
 
     Parameters
     ----------
@@ -481,8 +521,8 @@ def credential_problems(
     Returns
     -------
     list of dict
-        ``code`` (``short_secret`` or ``secret_file_mode``), ``option`` (the
-        variable) and ``message``; the secret itself is never named.
+        ``code`` (``short_secret``, ``secret_file_mode`` or ``secret_file_encoding``),
+        ``option`` (the variable) and ``message``; the secret itself is never named.
     """
     current = Settings()
     problems: list[dict[str, str]] = []
@@ -494,8 +534,23 @@ def credential_problems(
         text = value.get_secret_value().strip() if value is not None else ""
         option = _variable(value_key)
         if not text and path is not None:
-            text = _secret_file(path) or ""
+            found, encoding = _read_secret(path)
+            text = found or ""
             option = _variable(file_key)
+            if encoding is not None:
+                problems.append(
+                    {
+                        "code": "secret_file_encoding",
+                        "option": option,
+                        "message": message(
+                            "config.secret_file_encoding",
+                            name=option,
+                            encoding=encoding,
+                        )
+                        if encoding
+                        else message("config.secret_file_not_utf8", name=option),
+                    }
+                )
             try:
                 mode = stat.S_IMODE(path.expanduser().stat().st_mode)
             except OSError:

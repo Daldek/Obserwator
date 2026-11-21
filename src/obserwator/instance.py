@@ -408,7 +408,8 @@ def read_area(path: Path, mode: AreaMode = "focus") -> Area:
         the geometry itself, a Feature or a FeatureCollection of one Feature; longitude
         and latitude in WGS84 (RFC 7946; a ``crs`` member may only name WGS84), at most
         `AREA_MAX_VERTICES` positions, every ring closed with 4 positions or more. No
-        buffer is added: the polygon is the area.
+        buffer is added: the polygon is the area. UTF-8, a BOM ignored (RFC 8259 §8.1;
+        Windows editors write one).
     mode : {"focus", "clip"}, optional
         What the area does.
 
@@ -424,7 +425,7 @@ def read_area(path: Path, mode: AreaMode = "focus") -> Area:
     """
     data = _read_bytes("area", path, AREA_MAX_BYTES)
     try:
-        document = json.loads(data.decode("utf-8"))
+        document = json.loads(data.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as exc:
         raise _invalid(
             "area",
@@ -544,9 +545,9 @@ class Terms:
     path : Path
         Its file.
     text : str
-        The Markdown, starting with its ``# `` title.
+        The Markdown, starting with its ``# `` title, with LF line ends.
     sha256 : str
-        SHA-256 of the file.
+        SHA-256 of `text` in UTF-8: the same for the file with CRLF line ends or a BOM.
     """
 
     path: Path
@@ -559,7 +560,9 @@ def read_terms(path: Path) -> Terms:
     Read the operator's regulamin: UTF-8 Markdown opening with ``# ``, safe links only.
 
     A link goes to an ``https://``, ``http://``, ``mailto:`` or ``#`` address or to a
-    ``{{field}}`` the GUI fills; raw HTML is never passed on (the GUI escapes it).
+    ``{{field}}`` the GUI fills; raw HTML is never passed on (the GUI escapes it). A
+    file written on Windows reads as the same text: a UTF-8 BOM is dropped and CRLF
+    (or CR) line ends become LF.
 
     Raises
     ------
@@ -568,11 +571,12 @@ def read_terms(path: Path) -> Terms:
     """
     data = _read_bytes("terms", path, TERMS_MAX_BYTES)
     try:
-        text = data.decode("utf-8")
+        text = data.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise _invalid(
             "terms", message("instance.terms_not_text", path=path), path=str(path)
         ) from None
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text.startswith("# "):
         raise _invalid(
             "terms", message("instance.terms_no_title", path=path), path=str(path)
@@ -584,7 +588,7 @@ def read_terms(path: Path) -> Terms:
                 message("instance.terms_bad_link", path=path, href=link["href"][:200]),
                 path=str(path),
             )
-    return Terms(path, text, hashlib.sha256(data).hexdigest())
+    return Terms(path, text, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
 
 # --- the instance ---------------------------------------------------------------------

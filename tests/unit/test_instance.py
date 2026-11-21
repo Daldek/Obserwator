@@ -252,6 +252,21 @@ def test_an_area_is_one_polygon_with_its_holes(tmp_path, monkeypatch, document):
     assert instance.keeps_point(20.2, 52.1) is (multi == "MultiPolygon")
 
 
+def test_an_area_saved_on_windows_is_read(tmp_path, monkeypatch):
+    text = json.dumps({"type": "Polygon", "coordinates": [SQUARE]}, indent=2)
+    deployment(
+        tmp_path,
+        monkeypatch,
+        '[obserwator.instance]\narea = "area.geojson"\n',
+        area__geojson=b"\xef\xbb\xbf" + text.replace("\n", "\r\n").encode("utf-8"),
+    )
+
+    instance = load_instance()
+
+    assert instance is not None and instance.area is not None
+    assert instance.area.box == (14.0, 49.5, 16.0, 50.6)
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -324,7 +339,12 @@ def test_an_area_has_at_most_its_bytes_and_vertices(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     ("content", "media_type"),
-    [(PNG, "image/png"), (WEBP, "image/webp"), (SVG, "image/svg+xml")],
+    [
+        (PNG, "image/png"),
+        (WEBP, "image/webp"),
+        (SVG, "image/svg+xml"),
+        (b"\xef\xbb\xbf" + SVG + b"\r\n", "image/svg+xml"),  # saved by Notepad
+    ],
 )
 def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_type):
     deployment(
@@ -340,6 +360,8 @@ def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_ty
     assert (instance.logo.media_type, instance.logo.data) == (media_type, content)
 
 
+# Short ids: pytest puts the id into PYTEST_CURRENT_TEST, which Windows caps at 32767
+# characters, and the bytes of the large logo would be its id.
 @pytest.mark.parametrize(
     "content",
     [
@@ -349,6 +371,7 @@ def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_ty
         b"<svg>no namespace</svg>",
         PNG + b"\x00" * LOGO_MAX_BYTES,
     ],
+    ids=["gif", "html", "svg-entity", "svg-no-namespace", "png-too-large"],
 )
 def test_a_logo_that_is_no_small_png_webp_or_svg_is_refused(
     tmp_path, monkeypatch, content
@@ -401,6 +424,28 @@ def test_a_regulamin_may_link_to_web_mail_anchors_and_fields(tmp_path, monkeypat
     instance = load_instance()
 
     assert instance is not None and instance.terms is not None
+
+
+def test_a_regulamin_written_on_windows_reads_as_the_same_text(tmp_path, monkeypatch):
+    lf = TERMS.encode("utf-8")
+    read = []
+    for data in (
+        lf,
+        lf.replace(b"\n", b"\r\n"),
+        b"\xef\xbb\xbf" + lf.replace(b"\n", b"\r\n"),
+    ):
+        deployment(
+            tmp_path,
+            monkeypatch,
+            '[obserwator.instance]\nterms = "terms.md"\n',
+            terms__md=data,
+        )
+        instance = load_instance()
+        assert instance is not None and instance.terms is not None
+        read.append((instance.terms.text, instance.terms.sha256, instance.key))
+
+    assert read[0][0] == TERMS
+    assert read[1] == read[0] and read[2] == read[0]
 
 
 # --- the filter --------------------------------------------------------------------------
@@ -466,16 +511,18 @@ def test_a_short_key_or_a_shared_key_file_is_a_problem(tmp_path, monkeypatch, ca
 
     problems = credential_problems()
 
+    # Windows has no permission bits: the mode is checked on POSIX systems only.
+    shared = os.name != "nt"
     assert [(p["code"], p["option"]) for p in problems] == [
         ("short_secret", "OBSERWATOR_STORE_WRITE_TOKEN"),
-        ("secret_file_mode", "OBSERWATOR_ADMIN_API_KEY_FILE"),
+        *([("secret_file_mode", "OBSERWATOR_ADMIN_API_KEY_FILE")] if shared else []),
     ]
     text = json.dumps(environment_report())
     assert "tiny-secret-7" not in text and "k" * 40 not in text
     assert str(key) not in text
     with caplog.at_level(logging.WARNING):
         check_credentials("admin", strict=False)
-    assert "OBSERWATOR_ADMIN_API_KEY_FILE" in caplog.text
+    assert ("OBSERWATOR_ADMIN_API_KEY_FILE" in caplog.text) is shared
     with pytest.raises(ObserwatorValidationError) as caught:
         check_credentials("token", strict=True)
     assert caught.value.details == {
@@ -502,6 +549,40 @@ def test_the_write_token_may_come_from_a_file(tmp_path, monkeypatch):
     report = environment_report()
     assert report["credentials"]["OBSERWATOR_STORE_WRITE_TOKEN_FILE"] == "present"
     assert "x" * 48 not in json.dumps(report)
+
+
+def test_a_key_file_saved_on_windows_is_read_or_named(tmp_path, monkeypatch, caplog):
+    from obserwator.config import Settings
+
+    token = tmp_path / "token"
+    token.write_bytes(b"\xef\xbb\xbf" + b"x" * 48 + b"\r\n")  # Notepad: a BOM, CRLF
+    token.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    monkeypatch.setenv("OBSERWATOR_STORE_WRITE_TOKEN_FILE", str(token))
+
+    assert configured_token(Settings()) == "x" * 48
+    assert credential_problems("token") == []
+
+    utf16 = b"\xff\xfe" + ("x" * 48 + "\r\n").encode("utf-16-le")  # PowerShell 5.1
+    for data, named in ((utf16, True), (b"x" * 40 + b"\xff\n", False)):
+        token.write_bytes(data)
+        assert configured_token(Settings()) is None  # no key: every write refused
+        (problem,) = credential_problems("token")
+        assert (problem["code"], problem["option"]) == (
+            "secret_file_encoding",
+            "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
+        )
+        assert ("UTF-16LE" in problem["message"]) is named
+        assert problem in environment_report()["problems"]
+        with pytest.raises(ObserwatorValidationError) as caught:
+            check_credentials("token", strict=True)
+        assert caught.value.details == {
+            "option": "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
+            "reason": "secret_file_encoding",
+        }
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        check_credentials("token", strict=False)
+    assert "OBSERWATOR_STORE_WRITE_TOKEN_FILE" in caplog.text
 
 
 def test_the_deprecated_api_keys_say_so(tmp_path, monkeypatch):

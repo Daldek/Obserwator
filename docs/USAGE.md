@@ -848,10 +848,10 @@ title = "Wody Przykładowe"             # the operator's name: page title and to
 logo = "logo.svg"                      # PNG, WebP or SVG, at most 200 kB, own origin
 featured_provider = "CHMI"             # drawn on top; the others faded
 start_view = "featured"                # all | featured | area
-area = "area.geojson"                  # one Polygon/MultiPolygon, WGS84, ≤ 1 MB, ≤ 100,000 vertices
+area = "area.geojson"                  # one Polygon/MultiPolygon, WGS84, UTF-8, ≤ 1 MB, ≤ 100,000 vertices
 area_mode = "clip"                     # focus (outline, start) | clip (stations outside not served)
 pmaxtp = "off"                         # on | off: PMAXTP served and fetched or not
-terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md
+terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md (UTF-8; LF or CRLF)
 
 [obserwator.instance.providers]        # visible (default) | hidden | off
 IMGW-PIB = "hidden"
@@ -878,7 +878,7 @@ A provider `off` is absent from every route of both servers (the GUI and `obserw
 | `analyses build`, `list`, `read`, `export` | a station or version not served → 404; `build` → 403 while the root holds data of an `off` provider |
 | `commands list`, `schema`, `guide` | unchanged |
 
-**Secrets as files**, mode `0600`, owned by the service's user, at least 32 random bytes (`openssl rand -hex 32 > /config/admin.key`): `OBSERWATOR_ADMIN_API_KEY_FILE` (the GUI's admin panel) and `OBSERWATOR_STORE_WRITE_TOKEN_FILE` (REST writes, only with `OBSERWATOR_STORE_WRITES_ENABLED=true`). A shorter secret or a file others may read refuses the start of an instance. The keys of `obserwator admin` are deprecated and checked by nothing.
+**Secrets as files**, mode `0600`, owned by the service's user, at least 32 random bytes (`openssl rand -hex 32 > /config/admin.key`): `OBSERWATOR_ADMIN_API_KEY_FILE` (the GUI's admin panel) and `OBSERWATOR_STORE_WRITE_TOKEN_FILE` (REST writes, only with `OBSERWATOR_STORE_WRITES_ENABLED=true`). A shorter secret or a file others may read refuses the start of an instance. The mode is checked on POSIX systems only: Windows has no permission bits, so there only the length is checked and the file's ACL (readable by the service's account alone) is the operator's to set. A secret file is UTF-8 text: a BOM and the line end (CRLF too) are dropped, as Notepad writes them. A file in another encoding gives no key, so the admin panel answers `401` and REST writes `403`. The server names the file in a problem `secret_file_encoding` (`config show`, a warning at start), and with an instance it refuses to start. Windows PowerShell 5.1's `>` and `Out-File` write UTF-16; write the file with `Set-Content -Encoding utf8` instead (PowerShell 7 writes UTF-8 by default). The keys of `obserwator admin` are deprecated and checked by nothing.
 
 **The edge.** Both servers listen on `127.0.0.1` (`obserwator gui serve --port 8060`, `obserwator server --host 127.0.0.1 --port 8000`) behind the operator's reverse proxy with TLS; set `FORWARDED_ALLOW_IPS` to the proxy's address. A rule of the edge (SSO, Cloudflare Access or an IP list) guards `/admin`, `/admin/*` and `/api/admin/*` on every instance, and everything when the data are private: Obserwator has no accounts (SECURITY.md, threat model).
 
@@ -1043,7 +1043,7 @@ api_max_limit = 500
 | `OBSERWATOR_HYDROLOG_COMMAND` | `hydrolog_command` | none (`hydrolog` on `PATH`) | Hydrolog's program for `analyses build`, `compute_analysis` (ADR-016) and the GUI's choices computed on request (looked for once when it starts): a command line split as a shell splits it, e.g. `/opt/hydrolog/.venv/bin/hydrolog`; no command option replaces it |
 | `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW` | `request_limit`, `request_window` | `300`, `60` | the GUI's rate limit: requests of one client address in seconds |
 | `OBSERWATOR_ADMIN_API_KEY` | — (environment only) | none | the key of the GUI's admin panel in the `X-Admin-Key` header (section [Admin panel](#admin-panel)) |
-| `OBSERWATOR_ADMIN_API_KEY_FILE` | — (environment only) | none | a file holding that key, used without `OBSERWATOR_ADMIN_API_KEY`; both read on every admin request |
+| `OBSERWATOR_ADMIN_API_KEY_FILE` | — (environment only) | none | a file holding that key (UTF-8, a BOM and surrounding white space dropped), used without `OBSERWATOR_ADMIN_API_KEY`; both read on every admin request |
 
 `[nogat.gui]` (GUI addresses, Nogat DEV-15.4) and `[nogat.operator]` (the operator of a public deployment, DEV-15.7) are tables of `[nogat]` in `nogat.toml` only, with no variable and no default; section [GUI](#gui).
 
