@@ -5,7 +5,8 @@ The GUI never writes under the root (GUI plan D7). It reads it only through the 
 readers of `obserwator.store` (`read_catalog`, `read_series_index`, `read_series`,
 `current_version`, `export_stations`) and asks again at most once a minute whether a
 current version changed, so a new ``series build``, catalog or ``analyses build`` shows
-without a restart. In memory: the station layer of the current versions, the 32 most
+without a restart; that read runs in the background, the requests taking the last
+snapshot meanwhile. In memory: the station layer of the current versions, the 32 most
 recent series documents and the 4 most recent files of the stations.
 """
 
@@ -51,6 +52,11 @@ ANALYSES_SLOTS: Mapping[str, str] = {
     "CHMI": "analyses:cz.chmi.analyses",
 }
 """The stored analyses of each provider (ADR-016), as `current_version` names them."""
+
+
+def in_thread(job: Callable[[], None]) -> None:
+    """Run ``job`` in a daemon thread: the re-read of the root behind the requests."""
+    threading.Thread(target=job, name="obserwator-gui-root", daemon=True).start()
 
 
 def series_datasets() -> tuple[str, ...]:
@@ -254,6 +260,9 @@ class DataRoot:
     """
     The data root, read only, its current versions asked again at most once a minute.
 
+    The first read is made on the first request, which waits for it; every later one
+    runs in the background (`snapshot`), so no request waits for the root.
+
     Parameters
     ----------
     path : Path
@@ -262,6 +271,8 @@ class DataRoot:
         How long a read of the current versions is trusted [s].
     clock : callable, optional
         Monotonic time in seconds.
+    background : callable, optional
+        Runs a re-read of the root; a daemon thread by default (`in_thread`).
     """
 
     def __init__(
@@ -270,13 +281,16 @@ class DataRoot:
         *,
         reload_after_s: float = RELOAD_AFTER_S,
         clock: Callable[[], float] = time.monotonic,
+        background: Callable[[Callable[[], None]], None] = in_thread,
     ) -> None:
         self.path = path
         self._reload_after_s = reload_after_s
         self._clock = clock
+        self._background = background
         self._lock = threading.Lock()
         self._snapshot: Snapshot | None = None
         self._checked_at = -1e18
+        self._refreshing = False
         self._versions: tuple[tuple[str, str], ...] | None = None
         self._series_docs: OrderedDict[tuple[str, ...], dict[str, Any]] = OrderedDict()
         self._stations_files: OrderedDict[tuple[str, ...], bytes] = OrderedDict()
@@ -305,7 +319,11 @@ class DataRoot:
 
     def snapshot(self) -> Snapshot:
         """
-        The current versions, read again when the last read is older than a minute.
+        The current versions, read again in the background after a minute.
+
+        Only the first call reads the root itself (the others wait for it); later, the
+        call that finds the read older than a minute starts one re-read (`background`)
+        and every call takes the last snapshot until that re-read replaces it.
 
         Returns
         -------
@@ -316,25 +334,50 @@ class DataRoot:
             was read of the catalogs and series.
         """
         with self._lock:
-            now = self._clock()
+            if self._snapshot is None:
+                self._checked_at = self._clock()
+                self._reread()
+                assert self._snapshot is not None
+                return self._snapshot
             if (
-                self._snapshot is not None
-                and now - self._checked_at < self._reload_after_s
+                self._refreshing
+                or self._clock() - self._checked_at < self._reload_after_s
             ):
                 return self._snapshot
-            self._checked_at = now
-            try:
-                versions = self._current()
-                analyses = self._analyses()
-            except ObserwatorError as exc:
-                self._snapshot, self._versions = Snapshot(error=exc), None
-                return self._snapshot
-            if self._snapshot is None or versions != self._versions:
-                self._snapshot = self._read()
-                self._versions = versions if self._snapshot.error is None else None
-            if self._snapshot.error is None and self._snapshot.analyses != analyses:
-                self._snapshot = replace(self._snapshot, analyses=analyses)
-            return self._snapshot
+            self._checked_at = self._clock()
+            self._refreshing = True
+            last = self._snapshot
+        try:
+            self._background(self._refresh)
+        except BaseException:
+            with self._lock:
+                self._refreshing = False
+            raise
+        return self._snapshot or last
+
+    def _refresh(self) -> None:
+        """One re-read of the root behind the requests (`snapshot`)."""
+        try:
+            self._reread()
+        finally:
+            with self._lock:
+                self._refreshing = False
+
+    def _reread(self) -> None:
+        """Read the current versions; the catalogs and series again when they changed."""
+        try:
+            versions = self._current()
+            analyses = self._analyses()
+        except ObserwatorError as exc:
+            self._snapshot, self._versions = Snapshot(error=exc), None
+            return
+        snapshot, known = self._snapshot, self._versions
+        if snapshot is None or versions != known:
+            snapshot = self._read()
+            known = versions if snapshot.error is None else None
+        if snapshot.error is None and snapshot.analyses != analyses:
+            snapshot = replace(snapshot, analyses=analyses)
+        self._snapshot, self._versions = snapshot, known
 
     def _read(self) -> Snapshot:
         try:

@@ -95,6 +95,15 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
   tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
 
+### Changed
+
+- **The GUI reads its data root again in the background.** `DataRoot.snapshot`
+  (`gui/_root.py`) read the current versions on the request that found the last read older
+  than a minute, so at low traffic nearly every visit paid for it (`api/session` cold about
+  190 ms against 1 ms warm). Only the first read is now a request's own; later, the request
+  that finds the read older than a minute starts one re-read in a thread and every request
+  takes the last snapshot until it is replaced.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
