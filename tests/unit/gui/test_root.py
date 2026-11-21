@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 
 import pytest
 
@@ -38,7 +39,7 @@ class Held:
     """Re-reads the test starts itself: what runs in the background meanwhile."""
 
     def __init__(self) -> None:
-        self.jobs: list = []
+        self.jobs: list[Callable[[], None]] = []
 
     def __call__(self, job) -> None:
         self.jobs.append(job)
