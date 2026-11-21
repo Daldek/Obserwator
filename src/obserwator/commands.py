@@ -79,6 +79,7 @@ from obserwator.output import DATA_MARKER, STORE_MARKER
 from obserwator.store import analyses as _analyses
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
+from obserwator.store import series as _series
 from obserwator.store import sync as _sync
 from obserwator.store import writer as _writer
 from obserwator.store.analysis_registry import analysis_definitions, get_definition
@@ -1096,13 +1097,20 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
     _command(
         "series build",
         message("commands.series_build_description"),
-        (_ROOT, _RAW_ROOT, replace(_SERIES_DATASET, required=True)),
+        (
+            _ROOT,
+            _RAW_ROOT,
+            replace(_SERIES_DATASET, required=True),
+            replace(_STATIONS, help=message("commands.series_build_stations_help")),
+            replace(_YEARS, help=message("commands.series_build_years_help")),
+        ),
         function="build_series",
         result_type="SeriesReport",
         root="data",
         store_only=True,
         check="check_series",
         method="POST",
+        rules=(message("commands.series_build_rule_subset"),),
         writes="add",
     ),
     _command(
@@ -1832,6 +1840,16 @@ def _rules_series_select(options: Options) -> None:
         )
 
 
+def _rules_series_build(options: Options) -> None:
+    # A subset (ADR-026): codes in the grammar of the dataset's provider, as the
+    # library refuses them.
+    _series._subset(
+        get_dataset(options["dataset"]),
+        cast("tuple[str, ...] | None", options.get("stations")),
+        cast("tuple[int, ...] | None", options.get("years")),
+    )
+
+
 def _rules_series(options: Options) -> None:
     if "dataset" in options:
         descriptor = get_dataset(options["dataset"])
@@ -1870,6 +1888,7 @@ _RULES: dict[str, Rule] = {
     "store check": _rules_store_check,
     "store sync": _rules_store_sync,
     "store export": _rules_result_file,
+    "series build": _rules_series_build,
     "series select": _rules_series_select,
     "series read": _rules_series,
     "series summary": _rules_series,
@@ -2735,7 +2754,8 @@ def command_for_version(
     station catalog                         ``store catalog --raw-root <raw>
                                             --provider <provider>``
     series version (or its station file)    ``series build --raw-root <raw>
-                                            --dataset <key>``
+                                            --dataset <key>`` (``--stations``
+                                            and ``--years`` of a subset)
     analyses version (or a station file)    ``analyses build``
     ======================================  ========================================
 
@@ -2809,7 +2829,13 @@ def command_for_version(
     elif kind == "series":
         if meta.request.get("dataset", key) != key:
             _mismatch(relative, "request.dataset", meta.request["dataset"], key)
-        command, options = "series build", {"dataset": key}
+        # A subset (ADR-026) is built again with its stations and years.
+        subset = {
+            name: meta.request[name]
+            for name in ("stations", "years")
+            if name in meta.request
+        }
+        command, options = "series build", {"dataset": key, **subset}
     elif kind == "catalog":
         command, options = _catalog_call(relative, meta, key)
     elif kind == "analyses":

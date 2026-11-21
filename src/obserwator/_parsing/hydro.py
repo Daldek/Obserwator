@@ -2,7 +2,7 @@
 
 import calendar
 import re
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal, overload
@@ -222,6 +222,8 @@ def _parse(
     *,
     filename: str | None = ...,
     strict: bool = ...,
+    stations: Collection[str] | None = ...,
+    skipped_months: set[date] | None = ...,
 ) -> Iterator[tuple[HydroArchiveStation, HydroDailyRecord]]: ...
 
 
@@ -233,6 +235,8 @@ def _parse(
     *,
     filename: str | None = ...,
     strict: bool = ...,
+    stations: Collection[str] | None = ...,
+    skipped_months: set[date] | None = ...,
 ) -> Iterator[tuple[HydroArchiveStation, HydroMonthlyRecord]]: ...
 
 
@@ -244,6 +248,8 @@ def _parse(
     *,
     filename: str | None = ...,
     strict: bool = ...,
+    stations: Collection[str] | None = ...,
+    skipped_months: set[date] | None = ...,
 ) -> Iterator[tuple[HydroArchiveStation, HydroSemiAnnualRecord]]: ...
 
 
@@ -255,6 +261,8 @@ def _parse(
     *,
     filename: str | None = ...,
     strict: bool = ...,
+    stations: Collection[str] | None = ...,
+    skipped_months: set[date] | None = ...,
 ) -> Iterator[
     tuple[
         HydroArchiveStation,
@@ -270,17 +278,28 @@ def _parse(
     *,
     filename: str | None = None,
     strict: bool = False,
+    stations: Collection[str] | None = None,
+    skipped_months: set[date] | None = None,
 ) -> Iterator[
     tuple[
         HydroArchiveStation,
         HydroDailyRecord | HydroMonthlyRecord | HydroSemiAnnualRecord,
     ]
 ]:
+    """
+    Rows of a daily, monthly or semi-annual CSV as station and record pairs.
+
+    ``stations`` (daily and monthly files) skips the rows of other stations
+    before their values are read; the first day of the calendar month of each
+    skipped row goes to ``skipped_months`` (`normalize_in_sequence`).
+    """
     if interval == "polroczne_i_roczne":
         yield from _parse_semi_annual(
             content, encoding, filename=filename, strict=strict
         )
         return
+    # (hydrological year, month) texts whose calendar month is in skipped_months.
+    seen: set[tuple[str, str]] = set()
     for number, row in _rows(content, encoding):
         if not any(field.strip() for field in row):
             continue
@@ -293,6 +312,14 @@ def _parse(
                 )
             continue  # existing hydro API ignores header and malformed legacy rows
         try:
+            if stations is not None and _text(row[0]) not in stations:
+                # Another station: only the month of its record is read.
+                if skipped_months is not None and (row[3], row[4]) not in seen:
+                    skipped_months.add(
+                        hydro_to_calendar_date(int(row[3]), int(row[4]), 1)
+                    )
+                    seen.add((row[3], row[4]))
+                continue
             station, year = _base(row)
             code = station.station_code
             if strict and not re.fullmatch(r"\d{9}", code):
@@ -544,7 +571,12 @@ class _SemiAnnualValue:
 
 
 def normalize_hydro_archive(
-    dataset: str, archive_name: str, data: bytes
+    dataset: str,
+    archive_name: str,
+    data: bytes,
+    *,
+    stations: Collection[str] | None = None,
+    skipped_months: set[date] | None = None,
 ) -> Iterator[NormalizedRecord]:
     """
     Normalize a hydrological IMGW archive into common measurement records.
@@ -580,6 +612,13 @@ def normalize_hydro_archive(
         Archive name used in error messages.
     data : bytes
         ZIP archive content.
+    stations : collection of str or None, optional
+        Daily and monthly data: parse only the rows of these stations; the
+        rows of other stations are not checked beyond their station code,
+        year and month. Semi-annual data ignore it. None parses every row.
+    skipped_months : set of datetime.date or None, optional
+        Receives the first day of the calendar month of every row that
+        ``stations`` skipped.
 
     Yields
     ------
@@ -603,7 +642,12 @@ def normalize_hydro_archive(
     semi_annual: dict[tuple[str, int, str, str], _SemiAnnualValue] = {}
     for member, content in archive_csv_members(data, filename=archive_name):
         for station, record in _parse(
-            content, interval, filename=f"{archive_name}/{member}", strict=True
+            content,
+            interval,
+            filename=f"{archive_name}/{member}",
+            strict=True,
+            stations=stations,
+            skipped_months=skipped_months,
         ):
             if isinstance(record, HydroDailyRecord):
                 measured = hydro_to_calendar_date(
