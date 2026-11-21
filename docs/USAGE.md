@@ -840,6 +840,23 @@ A provider `off` is absent from every route of both servers (the GUI and `obserw
 
 **Outbound requests** and the setting that stops each: IMGW-PIB's current data (hydro-back.imgw.pl, danepubliczne.imgw.pl) — `IMGW-PIB = "off"`; PMAXTP (powietrze.imgw.pl, klimat.imgw.pl) — `pmaxtp = "off"`; the basemap, fetched by the browser — `OBSERWATOR_GUI_BASEMAP_URL` (a self-hosted TileJSON or `none`). Nothing else leaves the servers.
 
+**The REST server** (`obserwator server`, `/api/v1`) applies the same section, route by route (ADR-025 D3). A station not served and a code that does not exist answer identically; a refusal is `not_found` with `details.reason` `not_served`, `pmaxtp_off` or `outside_area`, or `forbidden` `instance_clip` where the answer cannot be made without stations outside a clipped area:
+
+| Command (REST route) | Rule with an instance |
+|---|---|
+| `datasets list`, `datasets providers` | an `off` provider → 404; items of the served providers only (`pl.imgw.pmaxtp` only with `pmaxtp = "on"`), filtered before paging |
+| `datasets files` | a dataset of an `off` provider → 404; a station not served → 404 |
+| `stations find`, `stations export` | an `off` provider → 404; without `provider` the one served provider is chosen; items, the export and its lines of served stations only (`keep`) |
+| `current hydro`, `meteo`, `hydro-states` | IMGW-PIB `off` → 404 before any request; a station not served → 404; with `clip` the items outside the area dropped |
+| `current synop`, `current warnings` | IMGW-PIB `off` → 404; synop with `clip` → 403 (no locations); warnings are regional, served unfiltered |
+| `pmaxtp fetch`, `url`, `check`, `sync`, `read` | `pmaxtp = "off"` → 404 before any request; with `clip` a point (or a read cell) outside the area → 404 |
+| `store info`, `store scan` | providers and entries of the served providers only |
+| `store check`, `store sync`, `store catalog` | a dataset, provider or station not served → 404 before any request; with `clip` a per-station dataset without stations → 403 |
+| `store export` | a version of an `off` provider → 404; with `clip` → 403 for every archive |
+| `series build`, `select`, `read`, `summary`, `export` | a dataset or version of an `off` provider → 404; a station not served → 404; summaries without stations drop the stations not served |
+| `analyses build`, `list`, `read`, `export` | a station or version not served → 404; `build` → 403 while the root holds data of an `off` provider |
+| `commands list`, `schema`, `guide` | unchanged |
+
 **Secrets as files**, mode `0600`, owned by the service's user, at least 32 random bytes (`openssl rand -hex 32 > /config/admin.key`): `OBSERWATOR_ADMIN_API_KEY_FILE` (the GUI's admin panel) and `OBSERWATOR_STORE_WRITE_TOKEN_FILE` (REST writes, only with `OBSERWATOR_STORE_WRITES_ENABLED=true`). A shorter secret or a file others may read refuses the start of an instance. The keys of `obserwator admin` are deprecated and checked by nothing.
 
 **The edge.** Both servers listen on `127.0.0.1` (`obserwator gui serve --port 8060`, `obserwator server --host 127.0.0.1 --port 8000`) behind the operator's reverse proxy with TLS; set `FORWARDED_ALLOW_IPS` to the proxy's address. A rule of the edge (SSO, Cloudflare Access or an IP list) guards `/admin`, `/admin/*` and `/api/admin/*` on every instance, and everything when the data are private: Obserwator has no accounts (SECURITY.md, threat model).
