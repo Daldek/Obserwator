@@ -195,20 +195,20 @@ MESSAGES: dict[str, Text] = {
     "sections.notice.outside_applicability.range": Text(
         "{method}: {parameter} = {value} lies outside the applicability range of the "
         "method, {minimum} to {maximum}: the result may be unreliable.",
-        "{method}: {parameter} = {value} poza zakresem stosowalności metody, od "
-        "{minimum} do {maximum}: wynik może być niepewny.",
+        "{method}: {parameter} = {value} poza zakresem stosowania od {minimum} do "
+        "{maximum}: wynik może być niepewny.",
     ),
     "sections.notice.outside_applicability.below": Text(
         "{method}: {parameter} = {value} lies below the applicability range of the "
         "method, from {minimum}: the result may be unreliable.",
-        "{method}: {parameter} = {value} poniżej zakresu stosowalności metody, od "
-        "{minimum}: wynik może być niepewny.",
+        "{method}: {parameter} = {value} poniżej zakresu stosowania, od {minimum}: "
+        "wynik może być niepewny.",
     ),
     "sections.notice.outside_applicability.above": Text(
         "{method}: {parameter} = {value} lies above the applicability range of the "
         "method, up to {maximum}: the result may be unreliable.",
-        "{method}: {parameter} = {value} powyżej zakresu stosowalności metody, do "
-        "{maximum}: wynik może być niepewny.",
+        "{method}: {parameter} = {value} powyżej zakresu stosowania, do {maximum}: "
+        "wynik może być niepewny.",
     ),
     "sections.notice.outside_applicability.condition": Text(
         "{method}: {parameter} = {value} breaks a condition of the method's "
