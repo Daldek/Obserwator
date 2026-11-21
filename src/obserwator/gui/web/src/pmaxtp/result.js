@@ -1,18 +1,31 @@
 // The results of the view „PMAXTP” (plan D12): the tables of the old page
 // (partials/pmaxtp_result.html, removed with the GUI's S8) for every duration and
 // probability IMGW-PIB gives: the quantiles (ks), the upper bounds of their confidence
-// interval (sg) and the estimation errors (rb). Under the table the monograph, then the
+// interval (sg) and the estimation errors (rb). Under the table the rainfall intensity
+// curves drawn by the shared chart module (charts/): PMAXTP's maximum intensity q = 166.7·J
+// [dm³/(s·ha)], J = h/t [mm/min] of the quantile h [mm] of duration t [min], one curve per
+// probability p, as klimat.imgw.pl/opady-maksymalne draws them. Then the monograph, the
 // files, packed by the server from the API's answer for the point (api/files/pmaxtp: CSV and
 // JSON with PMAXTP's lines and terms), the link to that answer at IMGW-PIB, which is the
 // only address IMGW-PIB has for a point (klimat.imgw.pl/opady-maksymalne builds its own
 // files in the browser), and the command line that gives the same numbers. PMAXTP's lines
-// (PS, PP, the monograph M, N, RK; Nogat DEV-20.2) are in the view's strip (main.js).
+// (PS, PP, the monograph M, N, RK; Nogat DEV-20.2) are in the view's strip (main.js): the
+// answer of api/pmaxtp carries them as processed data, PP included, which the curves are.
 
 import { api } from "../api.js";
-import { fmt, fmtDateTime, html, t, useState } from "../lib.js";
+import { Chart, fmt, fmtDateTime, html, lang, t, useMemo, useState } from "../lib.js";
 import { Seg } from "../sections/common.js";
 import { Command } from "../sections/pobierz.js";
 import { MONOGRAPH_URL, methodName, outside, pmaxtpQuery, pointLabel } from "./state.js";
+
+/** PMAXTP's factor of the intensity: q [dm³/(s·ha)] = 166.7 · J [mm/min]. */
+const Q_PER_J = 166.7;
+
+/** The durations labelled on the chart's log axis [min]; the curves span 5 to 4320. */
+const DURATION_TICKS = [5, 10, 15, 30, 60, 120, 360, 720, 1440, 4320];
+
+/** The steps of the curves' colour ramp (pmaxtp.css `.pm-p0` … `.pm-p26`). */
+const RAMP_STEPS = 26;
 
 /** IMGW-PIB's page of PMAXTP, which builds its files in the browser. */
 const PAGE_URL = "https://klimat.imgw.pl/opady-maksymalne";
@@ -38,6 +51,51 @@ function file(doc, format) {
     url: api.pmaxtpFileUrl({ ...query, format }),
     name: `pmaxtp_${query.method}_${query.latitude}_${query.longitude}.${format}`,
   };
+}
+
+/**
+ * The rainfall intensity curves of an answer: q = 166.7 · h / t [dm³/(s·ha)] of the
+ * quantiles h (ks) against the duration t, one curve per probability p, from the rarest
+ * (the highest, dark red) to the most frequent (blue); both axes logarithmic.
+ *
+ * @param {{doc: object}} props the answer of api/pmaxtp
+ * @returns {object}
+ */
+function IntensityChart({ doc }) {
+  const spec = useMemo(() => {
+    const quantiles = doc.data.ks || {};
+    const last = Math.max(1, doc.probabilities.length - 1);
+    const series = doc.probabilities.map((key, at) => ({
+      id: `p${key}`,
+      kind: "line",
+      cls: `pm-p pm-p${Math.round((at * RAMP_STEPS) / last)}`,
+      label: `p = ${probability(key)} %`,
+      data: doc.durations
+        .map((duration) => {
+          const minutes = Number(duration);
+          const h = quantiles[duration] ? quantiles[duration][key] : null;
+          return [minutes, Number.isFinite(h) ? (Q_PER_J * h) / minutes : null];
+        })
+        .filter(([, q]) => Number.isFinite(q) && q > 0),
+    }));
+    return {
+      x: {
+        scale: "log",
+        min: 5,
+        max: 4320,
+        label: t("pmaxtp.chart.axis_x"),
+        tickList: DURATION_TICKS.map((value) => ({ value, label: fmt(value) })),
+      },
+      y: { scale: "log", label: t("pmaxtp.chart.axis_y"), unit: "dm³/(s·ha)", digits: 1 },
+      series,
+      legend: true,
+      readout: { x: (x) => `t = ${fmt(x)} min` },
+      // tall enough for the readout of every curve (27 rows of a full answer) in the plot
+      fit: { ratio: 0.75, minHeight: 500 },
+      title: t("pmaxtp.chart.title", { method: doc.method, point: pointLabel({ lat: doc.latitude, lon: doc.longitude }) }),
+    };
+  }, [doc, lang()]);
+  return html`<${Chart} class="pm-chart" spec=${spec} />`;
 }
 
 /**
@@ -95,6 +153,9 @@ export function PmaxtpResult({ point, method, state }) {
         </tbody>
       </table>
     </div>
+    <h3 class="group-title">${t("pmaxtp.chart.heading")}</h3>
+    <${IntensityChart} doc=${doc} />
+    <p class="note">${t("pmaxtp.chart.note")}</p>
     <p class="note">
       ${t("pmaxtp.result.monograph")}${" "}
       <a href=${MONOGRAPH_URL} target="_blank" rel="noopener noreferrer">${t("pmaxtp.result.monograph_link")}</a>
