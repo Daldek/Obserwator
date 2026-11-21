@@ -61,6 +61,12 @@ _CHARACTERISTIC: dict[str, Text] = {
         "From IMGW-PIB's half-year characteristics",
         "Z charakterystyk półrocznych IMGW-PIB",
     ),
+    "hydro.characteristic.alt_title_computed": Text(
+        "From the half-year characteristics Obserwator computed from ČHMÚ's daily "
+        "series",
+        "Z charakterystyk półrocznych obliczonych przez Obserwatora z szeregu "
+        "dobowego ČHMÚ",
+    ),
     "hydro.characteristic.caption_daily": Text(
         "Bold: Hydrolog from the daily series, hydrological years {from}–{to}, "
         "years with values: {years} [{unit}].",
@@ -82,11 +88,31 @@ _CHARACTERISTIC: dict[str, Text] = {
         "{years}; maksimum roczne to większe z półrocznych, które może być chwilowe, "
         "więc bywa wyższe od dobowego.",
     ),
+    "hydro.characteristic.caption_half_computed": Text(
+        "Small type: Hydrolog from half-year characteristics that Obserwator computed "
+        "from ČHMÚ's daily series, as ČHMÚ publishes none, {from}–{to}, years: "
+        "{years}; their extremes are daily values, and a half-year with a day "
+        "without a value has none.",
+        "Mniejsze: Hydrolog z charakterystyk półrocznych, które Obserwator obliczył z "
+        "szeregu dobowego ČHMÚ, bo ČHMÚ ich nie publikuje, {from}–{to}, lat: "
+        "{years}; ich ekstrema to wartości dobowe, a półrocze z dniem bez wartości "
+        "nie ma charakterystyk.",
+    ),
     "hydro.characteristic.caption_half_only": Text(
         "Hydrolog from IMGW-PIB's half-year characteristics, hydrological years "
         "{from}–{to}, years: {years} [{unit}].",
         "Hydrolog z charakterystyk półrocznych IMGW-PIB, lata hydrologiczne "
         "{from}–{to}, lat: {years} [{unit}].",
+    ),
+    "hydro.characteristic.caption_half_only_computed": Text(
+        "Hydrolog from half-year characteristics that Obserwator computed from ČHMÚ's "
+        "daily series, as ČHMÚ publishes none, hydrological years {from}–{to}, "
+        "years: {years} [{unit}]; their extremes are daily values, and a half-year "
+        "with a day without a value has none.",
+        "Hydrolog z charakterystyk półrocznych, które Obserwator obliczył z szeregu "
+        "dobowego ČHMÚ, bo ČHMÚ ich nie publikuje, lata hydrologiczne {from}–{to}, "
+        "lat: {years} [{unit}]; ich ekstrema to wartości dobowe, a półrocze z dniem "
+        "bez wartości nie ma charakterystyk.",
     ),
     "hydro.characteristic.source": Text("Source", "Źródło"),
     "hydro.characteristic.source_auto": Text(
@@ -94,6 +120,13 @@ _CHARACTERISTIC: dict[str, Text] = {
     ),
     "hydro.characteristic.source_half": Text(
         "IMGW-PIB half-years", "półrocza IMGW-PIB"
+    ),
+    "hydro.characteristic.source_auto_computed": Text(
+        "computed half-years, other years daily",
+        "półrocza obliczone, pozostałe lata dobowe",
+    ),
+    "hydro.characteristic.source_half_computed": Text(
+        "computed half-years", "półrocza obliczone"
     ),
     "hydro.characteristic.source_daily": Text("daily series", "szereg dobowy"),
     "hydro.characteristic.chart_title": Text(

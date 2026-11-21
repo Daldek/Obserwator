@@ -203,16 +203,20 @@ MESSAGES = {
         "Charakterystyczne temperatury wody (I i II stopnia)",
     ),
     "title_half_years_h": Text(
-        "Characteristic water levels from IMGW-PIB's half-years",
-        "Stany charakterystyczne z półroczy IMGW-PIB",
+        "Characteristic water levels from IMGW-PIB's half-years or those computed "
+        "for ČHMÚ",
+        "Stany charakterystyczne z półroczy IMGW-PIB albo obliczonych dla ČHMÚ",
     ),
     "title_half_years_q": Text(
-        "Characteristic discharges from IMGW-PIB's half-years",
-        "Przepływy charakterystyczne z półroczy IMGW-PIB",
+        "Characteristic discharges from IMGW-PIB's half-years or those computed for "
+        "ČHMÚ",
+        "Przepływy charakterystyczne z półroczy IMGW-PIB albo obliczonych dla ČHMÚ",
     ),
     "title_half_years_t": Text(
-        "Characteristic water temperatures from IMGW-PIB's half-years",
-        "Charakterystyczne temperatury wody z półroczy IMGW-PIB",
+        "Characteristic water temperatures from IMGW-PIB's half-years or those "
+        "computed for ČHMÚ",
+        "Charakterystyczne temperatury wody z półroczy IMGW-PIB albo obliczonych dla "
+        "ČHMÚ",
     ),
     "title_events_h_swx": Text(
         "Days and events at or above SWW", "Dni i epizody od SWW wzwyż"

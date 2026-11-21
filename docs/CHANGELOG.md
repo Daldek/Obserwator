@@ -8,6 +8,24 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
 
+### Added
+
+- **ČHMÚ stations get half-year characteristics, computed by Obserwator from their daily
+  series** (the author's decision of 2026-11-18, ADR-016 erratum 2026-11-21). ČHMÚ publishes
+  none, so `characteristic.{H,Q,T}.half_years` of a ČHMÚ station read the file Obserwator
+  computes of `cz.chmi.hydro_daily` with the definitions and columns of IMGW-PIB's
+  `pl.imgw.hydro_semiannual`: per hydrological year the winter (XI–IV) and summer (V–X)
+  lowest, mean and highest daily value with the first and last day and the runs of each
+  extreme, and the annual mean; a half-year with a day without a value has none. IMGW-PIB
+  stations keep IMGW-PIB's published file; ČHMÚ's flood frequency, homogeneity and
+  seasonality keep the daily series. `AnalysisInput` gains the last field `derived`
+  (`"half_years"` for such a file; part of the registry digest, so the next `analyses build`
+  computes every station again); each result entry of `stations/<code>.json`,
+  `AnalysisSummary`, `AnalysisResult` and the JSON of `export_analyses` gain `derived`, and
+  its CSV the column `derived` after `value`. The GUI's „Stany charakterystyczne” says that
+  such half-years are computed from ČHMÚ's daily series, not published, and the titles of
+  `characteristic.{H,Q,T}.half_years` name both sources.
+
 ### Fixed
 
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read

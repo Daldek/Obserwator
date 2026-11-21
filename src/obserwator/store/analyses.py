@@ -2,7 +2,9 @@
 Stored analyses of the stations: Hydrolog's results kept in the data root (ADR-016).
 
 `build_analyses` exports the current series of every station (``series
-export``), runs the calls of the registry (`analysis_definitions`) through
+export``; for the half-year characteristics of a ČHMÚ station, which ČHMÚ does
+not publish, the file Obserwator computes of its daily series, `AnalysisInput`
+``derived``), runs the calls of the registry (`analysis_definitions`) through
 Hydrolog's program in batches (`obserwator._hydrolog`) and stores each answer
 line verbatim, one slot per provider::
 
@@ -82,6 +84,7 @@ from obserwator.store.export import (
     _csv_line,
     _csv_lines,
     _deliver,
+    _export_half_years,
     _export_joined,
     _format,
     _Lines,
@@ -148,6 +151,7 @@ _CSV_HEADER = (
     "hydrolog_version",
     "path",
     "value",
+    "derived",
     "attribution_source",
     "attribution_processed",
     "attribution",
@@ -177,7 +181,9 @@ class AnalysisSource:
     station_sha256 : str
         SHA-256 of the station's Parquet file in that version.
     export_sha256 : str
-        SHA-256 of the ``series export`` CSV file Hydrolog read.
+        SHA-256 of the file of the series Hydrolog read: its ``series export``
+        CSV, or the half-year characteristics Obserwator computed of it
+        (``derived``) when the station's analyses read only these.
     """
 
     dataset: str
@@ -228,6 +234,11 @@ class AnalysisSummary:
     analyses_version : str or None
         The name of the stored version, ``<label>_<sha8>`` (the label is its
         build date); None for a result computed on the fly.
+    derived : str or None, optional
+        ``"half_years"`` when the analysis read the half-year characteristics
+        Obserwator computed of the daily series (ČHMÚ publishes none), not
+        characteristics the provider published; None when it read the files
+        of its series (``series export``).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-analysis-summary/1"
@@ -247,6 +258,7 @@ class AnalysisSummary:
     attribution: tuple[str, ...]
     terms_notice: tuple[str, ...]
     analyses_version: str | None
+    derived: str | None = None
 
 
 @dataclass(frozen=True)
@@ -258,7 +270,9 @@ class AnalysisResult:
     ``hydrolog-result/1``, with ``result``, ``notices`` and ``inputs``) of an
     ``ok`` analysis, or ``error`` (its ``hydrolog-error/1``) of a ``failed``
     one. A stored ``envelope`` echoes the absolute paths of the series files
-    Hydrolog read, in a scratch directory that no longer exists.
+    Hydrolog read, in a scratch directory that no longer exists. ``derived``
+    ``"half_years"`` says that the analysis read the half-year characteristics
+    Obserwator computed of the daily series, not ones the provider published.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-analysis/1"
@@ -280,6 +294,7 @@ class AnalysisResult:
     attribution: tuple[str, ...]
     terms_notice: tuple[str, ...]
     analyses_version: str | None
+    derived: str | None = None
 
 
 @dataclass(frozen=True)
@@ -430,18 +445,28 @@ def _current_catalog(root: Path, provider: ProviderDescriptor) -> _Catalog | Non
 # --------------------------------------------------------------------------
 
 
+# A series file of a station: the datasets it is made of and its ``derived`` kind.
+_Export = tuple[tuple[str, ...], str | None]
+
+
 @dataclass(frozen=True)
 class _Planned:
     """
     An analysis of the registry that applies to a station: its variant and files.
 
-    Each file is a Hydrolog option and the datasets its series file is made
-    of: one, or the joined daily record of the station (ADR-022).
+    Each file is a Hydrolog option, the datasets its series file is made of
+    (one, or the joined daily record of the station, ADR-022) and its
+    ``derived`` kind (`AnalysisInput.derived`: None for the series itself).
     """
 
     definition: AnalysisDefinition
     variant: AnalysisVariant
-    files: tuple[tuple[str, tuple[str, ...]], ...]
+    files: tuple[tuple[str, tuple[str, ...], str | None], ...]
+
+    @property
+    def derived(self) -> str | None:
+        """The ``derived`` kind of the files it reads (``half_years``), or None."""
+        return next((kind for _, _, kind in self.files if kind is not None), None)
 
 
 @dataclass(frozen=True)
@@ -461,16 +486,24 @@ class _Station:
             dict.fromkeys(
                 key
                 for planned in self.planned
-                for _, keys in planned.files
+                for _, keys, _ in planned.files
                 for key in keys
             )
         )
 
-    def exports(self) -> tuple[tuple[str, ...], ...]:
-        """The series files of the planned analyses (their datasets), once each."""
-        return tuple(
-            dict.fromkeys(keys for planned in self.planned for _, keys in planned.files)
+    def exports(self) -> tuple[_Export, ...]:
+        """
+        The series files of the planned analyses, once each: the series exports first.
+
+        A dataset's ``export_sha256`` is that of its first file here, so of its
+        ``series export`` whenever an analysis reads one.
+        """
+        found = dict.fromkeys(
+            (keys, derived)
+            for planned in self.planned
+            for _, keys, derived in planned.files
         )
+        return tuple(sorted(found, key=lambda item: item[1] is not None))
 
     def thresholds(self) -> object:
         """The catalog thresholds an analysis takes, or None."""
@@ -579,7 +612,7 @@ def _plan(
         ):
             continue
         for variant in definition.variants:
-            files: list[tuple[str, tuple[str, ...]]] = []
+            files: list[tuple[str, tuple[str, ...], str | None]] = []
             for item in variant.inputs:
                 held = [
                     key
@@ -594,7 +627,7 @@ def _plan(
                 if held[0] in item.joined:
                     later = item.joined[item.joined.index(held[0]) + 1 :]
                     keys += tuple(key for key in later if key in held)
-                files.append((item.option, keys))
+                files.append((item.option, keys, item.derived))
             else:
                 planned[definition.id] = _Planned(definition, variant, tuple(files))
                 break
@@ -761,15 +794,28 @@ def _datasets_of(station: _Station, planned: _Planned) -> tuple[str, ...]:
     pending = [planned]
     while pending:
         current = pending.pop()
-        for _, keys in current.files:
+        for _, keys, _ in current.files:
             found.update(dict.fromkeys(keys))
         pending += [by_id[name] for name in current.definition.depends_on]
     return tuple(key for key in station.datasets() if key in found)
 
 
-def _export_name(code: str, keys: tuple[str, ...]) -> str:
-    """The series file of a station: one dataset or its joined record (ADR-022)."""
-    return f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}.csv"
+def _export_name(code: str, keys: tuple[str, ...], derived: str | None) -> str:
+    """
+    The series file of a station: one dataset, its joined record (ADR-022) or derived.
+
+    A derived file is named after its dataset and kind
+    (``<code>_chmi_hydro_daily_half_years.csv``), so it never meets the
+    series export of the same dataset.
+    """
+    name = f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}"
+    return f"{name}.csv" if derived is None else f"{name}_{derived}.csv"
+
+
+# The writers of the derived series files (`AnalysisInput.derived`), by kind.
+_DERIVED: Final[Mapping[str, Callable[..., OutputReport]]] = {
+    "half_years": _export_half_years
+}
 
 
 def _compute(
@@ -785,9 +831,10 @@ def _compute(
     """
     Every planned analysis of ``stations``: one Hydrolog process per round of calls.
 
-    The series files go to ``scratch`` (``<code>_<dataset slug>.csv``) and are
-    removed after the last round; an analysis whose option an earlier answer
-    or the catalog does not give is left out.
+    The series files go to ``scratch`` (``<code>_<dataset slug>.csv``, a derived
+    file ``<code>_<dataset slug>_<derived>.csv``) and are removed after the last
+    round; an analysis whose option an earlier answer or the catalog does not
+    give is left out.
 
     Returns
     -------
@@ -797,21 +844,21 @@ def _compute(
     exports: dict[str, dict[str, str]] = {}
     for station in stations:
         hashes: dict[str, str] = {}
-        for keys in station.exports():
+        for keys, derived in station.exports():
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("common.cancelled"))
-            target = scratch / _export_name(station.code, keys)
-            report = (
-                export_series(
-                    station.series[keys[0]].path, station=station.code, output=target
-                )
-                if len(keys) == 1
-                else _export_joined(
+            target = scratch / _export_name(station.code, keys, derived)
+            series = station.series[keys[0]].path
+            if derived is not None:
+                report = _DERIVED[derived](series, station=station.code, output=target)
+            elif len(keys) == 1:
+                report = export_series(series, station=station.code, output=target)
+            else:
+                report = _export_joined(
                     [station.series[key].path for key in keys],
                     station=station.code,
                     output=target,
                 )
-            )
             for key in keys:
                 hashes.setdefault(key, report.files[0].sha256)
         exports[station.code] = hashes
@@ -833,8 +880,8 @@ def _compute(
                     **definition.options,
                     **planned.variant.options,
                     **{
-                        option: _export_name(station.code, keys)
-                        for option, keys in planned.files
+                        option: _export_name(station.code, keys, derived)
+                        for option, keys, derived in planned.files
                     },
                     **picked,
                     **((overrides or {}).get(definition.id) or {}),
@@ -855,8 +902,10 @@ def _compute(
                 _datasets_of(station, planned),
             )
     for station in stations:
-        for keys in station.exports():
-            (scratch / _export_name(station.code, keys)).unlink(missing_ok=True)
+        for keys, derived in station.exports():
+            (scratch / _export_name(station.code, keys, derived)).unlink(
+                missing_ok=True
+            )
     now = datetime.now(UTC)
     return version, [
         _Computed(
@@ -1112,6 +1161,7 @@ def _summary(
         lines.attribution,
         lines.terms_notice,
         version.directory.name,
+        entry.get("derived"),
     )
 
 
@@ -1260,6 +1310,7 @@ def _stage(
                 "command": definition.command,
                 "options": dict(outcome.options),
                 "datasets": list(outcome.datasets),
+                "derived": outcome.planned.derived,
                 "status": "ok" if outcome.ok else "failed",
                 "error_code": outcome.error_code,
                 "file": relative,
@@ -1805,6 +1856,7 @@ def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisRe
         summary.attribution,
         summary.terms_notice,
         summary.analyses_version,
+        summary.derived,
     )
 
 
@@ -1960,15 +2012,19 @@ def export_analyses(
     ``series_versions`` (dataset, version directory, SHA-256),
     ``hydrolog_version`` and ``results``, each with ``analysis``,
     ``command``, ``options``, ``status``, ``computed_at``, ``series_versions``,
-    Hydrolog's ``result`` and ``notices`` (or its ``error`` document),
-    ``attribution`` and ``terms_notice``; then the station's ``attribution``
-    and ``terms_notice``. ``csv`` (UTF-8, comma, CRLF) is long: one row per
-    scalar leaf of Hydrolog's ``result`` of every ``ok`` analysis,
-    ``station,analysis,command,series_version,hydrolog_version,path,value``
-    with ``path`` a JSON Pointer (RFC 6901) into ``result``, followed by the
-    attribution columns of ``series export`` (``attribution_source`` and
-    ``attribution_processed`` in the first row, ``attribution`` and
-    ``terms_notice`` one line per row from the first).
+    ``derived`` (``half_years`` when the analysis read the half-year
+    characteristics Obserwator computed of the daily series, not ones the
+    provider published; else null), Hydrolog's ``result`` and ``notices`` (or
+    its ``error`` document), ``attribution`` and ``terms_notice``; then the
+    station's ``attribution`` and ``terms_notice``. ``csv`` (UTF-8, comma,
+    CRLF) is long: one row per scalar leaf of Hydrolog's ``result`` of every
+    ``ok`` analysis,
+    ``station,analysis,command,series_version,hydrolog_version,path,value,derived``
+    with ``path`` a JSON Pointer (RFC 6901) into ``result`` and ``derived``
+    as in ``json`` (empty for null), followed by the attribution columns of
+    ``series export`` (``attribution_source`` and ``attribution_processed`` in
+    the first row, ``attribution`` and ``terms_notice`` one line per row from
+    the first).
 
     Parameters
     ----------
@@ -2043,6 +2099,7 @@ def export_analyses(
                     "status": entry["status"],
                     "computed_at": record["computed_at"],
                     "series_versions": _series_versions(record, entry),
+                    "derived": entry.get("derived"),
                     "result": document.get("result") if ok else None,
                     "notices": document.get("notices", []) if ok else [],
                     "error": None if ok else document,
@@ -2094,6 +2151,7 @@ def export_analyses(
                         hydrolog_version,
                         path,
                         _cell(value),
+                        _cell(entry.get("derived")),
                         *(formulas if number == 0 else ("", "")),
                     ]
                     number += 1
@@ -2214,9 +2272,11 @@ def compute_analysis(
     Compute one analysis of a station on the fly with a person's options; keep nothing.
 
     The station's current series go to a fresh scratch directory outside the
-    data root (removed afterwards) and Hydrolog computes the analysis and the
-    analyses it takes numbers from, one process per round, as a build does;
-    nothing is written to the data root or to any other lasting file.
+    data root (removed afterwards), with the half-year characteristics
+    Obserwator computes of a ČHMÚ daily series where the analysis reads them,
+    and Hydrolog computes the analysis and the analyses it takes numbers from,
+    one process per round, as a build does; nothing is written to the data
+    root or to any other lasting file.
 
     Parameters
     ----------
@@ -2241,7 +2301,8 @@ def compute_analysis(
     -------
     AnalysisResult
         ``stored`` False and ``analyses_version`` None; ``inputs`` name the
-        current series versions and the files Hydrolog read.
+        current series versions and the files Hydrolog read; ``derived`` is
+        ``half_years`` for computed half-year characteristics.
 
     Raises
     ------
@@ -2338,5 +2399,6 @@ def compute_analysis(
         lines.attribution,
         lines.terms_notice,
         None,
+        outcome.planned.derived,
     )
     return _result(summary, outcome.document)
