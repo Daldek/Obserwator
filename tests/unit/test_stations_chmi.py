@@ -36,6 +36,7 @@ METEO_LISTING = BASE_URL + "meteorology/climate/now/metadata/"
 IMGW_HYDRO, IMGW_METEO = (file.url for file in station_source_files())
 IMGW_HYDRO_CSV = '"149190310","RABA GÓRNA","Raba (2138)","2"\n'
 IMGW_METEO_CSV = '"249190310","RABA GÓRNA","GR"\n'
+IMGW_API = "https://danepubliczne.imgw.pl/api/data/"
 
 
 @pytest.fixture
@@ -129,6 +130,8 @@ def test_without_provider_both_providers_are_searched_in_registry_order(router):
     serve(router, *NOW)
     router.get(IMGW_HYDRO).respond(content=IMGW_HYDRO_CSV.encode("cp1250"))
     router.get(IMGW_METEO).respond(content=IMGW_METEO_CSV.encode("cp1250"))
+    router.get(IMGW_API + "hydro").respond(json=[])
+    router.get(IMGW_API + "meteo").respond(json=[])
 
     found = find_stations(query="ra")
 

@@ -106,7 +106,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 **Network — connects to a source, writes nothing**
 
-- `stations find` — Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.
+- `stations find` — Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.
 - `current hydro` — Fetch current hydrological data from the IMGW API.
 - `current meteo` — Fetch current meteorological data from the IMGW API.
 - `current synop` — Fetch current synoptic data from the IMGW API.
@@ -127,7 +127,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 ## Flags and values
 
-- Lists (`--analyses`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
+- Lists (`--analyses`, `--bbox`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
 - CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
 - Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else `<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default `--raw-root` and `--root` of `datasets download`, `pmaxtp check|sync|read`, `store init|check|sync|export`, else `<data_dir>/obserwator-raw` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).

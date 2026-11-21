@@ -128,7 +128,7 @@ Options = dict[str, Any]
 Hooks = dict[str, Any]
 Status = Literal["ok", "partial", "failed", "cancelled"]
 OptionType = Literal["str", "int", "float", "bool", "date", "path", "list", "choice"]
-ItemType = Literal["str", "int", "year", "choice"]
+ItemType = Literal["str", "int", "float", "year", "choice"]
 Checker = Callable[[Options, Hooks], StorePlan]
 Rule = Callable[[Options], None]
 
@@ -697,6 +697,14 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
                 _PROVIDER,
                 help=message("commands.stations_find_provider_help"),
             ),
+            _option(
+                "bbox",
+                "list",
+                message("commands.stations_find_bbox_help"),
+                items="float",
+                minimum=-180.0,
+                maximum=180.0,
+            ),
         ),
         function="find_stations",
         result_type="StationListEntry",
@@ -707,6 +715,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         rules=(
             message("commands.stations_find_rule_1"),
             message("commands.stations_find_rule_2"),
+            message("commands.stations_find_rule_3"),
         ),
         network=True,
         # A live search rejects root (spec 2026-10-17 §13.10).
@@ -1672,11 +1681,38 @@ def _texts(option: CommandOption, value: object) -> list[str]:
     return texts
 
 
+def _numbers(option: CommandOption, value: object) -> tuple[float, ...]:
+    """
+    Number items of a list, in the order given and with repeats kept.
+
+    Numbers, or texts of comma-separated numbers (the corners of a ``bbox``).
+    """
+    if isinstance(value, Iterable) and not isinstance(value, str | bytes | Mapping):
+        raw = list(value)
+    else:
+        raw = [value]
+    numbers: list[float] = []
+    for item in raw:
+        if isinstance(item, str):
+            numbers.extend(_number(option, text) for text in _texts(option, item))
+        else:
+            numbers.append(_number(option, item))
+    if not numbers:
+        _fail(
+            message("commands.option_needs_non_empty_list", name=option.name),
+            option=option.name,
+            value=value,
+        )
+    return tuple(numbers)
+
+
 def _list(option: CommandOption, value: object) -> tuple[object, ...]:
     if option.items == "year":
         return parse_years(cast(YearsArg, value), option=option.name)
     if option.name == "months":
         return parse_months(cast(MonthsArg, value), option=option.name)
+    if option.items == "float":
+        return _numbers(option, value)
     texts = _texts(option, value)
     if option.items == "choice":
         texts = [_choice_text(option, text) for text in texts]
@@ -1793,11 +1829,12 @@ def _rules_store_sync(options: Options) -> None:
 
 
 def _rules_stations(options: Options) -> None:
-    _stations._search_kinds(
+    _stations._search_options(
         options.get("kind"),
         options.get("query"),
         options.get("source", "live"),
         options.get("root"),
+        options.get("bbox"),
     )
 
 
@@ -3347,11 +3384,12 @@ def _check_download(options: Options, hooks: Hooks) -> StorePlan:
 
 
 def _check_stations(options: Options, hooks: Hooks) -> StorePlan:
-    kinds, _ = _stations._search_kinds(
+    kinds, _, _ = _stations._search_options(
         options.get("kind"),
         options.get("query"),
         options.get("source", "live"),
         options.get("root"),
+        options.get("bbox"),
     )
     root = options.get("root")
     if not isinstance(root, Path):

@@ -72,6 +72,12 @@ from obserwator import fetch_hydro_states, find_stations
 for station in find_stations(kind="hydro", query="wisla", provider="IMGW-PIB")[:5]:
     print(station.station_code, station.name, station.river)
 
+# Live coordinates: ČHMÚ from its metadata, IMGW-PIB from its current-data API
+# (api/data/hydro|meteo); None for a listed station the API does not report (closed ones)
+# Area: bbox=(west, south, east, north) in WGS84 degrees, bounds included; stations
+# without coordinates are left out of an area search
+barycz = find_stations(kind="hydro", bbox=(16.5, 51.3, 17.9, 51.7))
+
 # Offline, from the current station catalogs of a data root (built by store catalog; short_code is None)
 stored = find_stations(kind="hydro", query="wisla", source="store", root="/dane/obserwator")
 
@@ -401,6 +407,7 @@ obserwator datasets download -d meteo/miesieczne/synop -y 2020-2023 -o dane
 
 # Stations, current data and PMAXTP
 obserwator stations find -k hydro -q wisla --limit 5
+obserwator stations find -k hydro --bbox 16.5,51.3,17.9,51.7   # area: west,south,east,north (WGS84)
 obserwator current hydro -s 150160180
 obserwator current hydro -s 150160180 --json     # the obserwator-result/1 envelope, one JSON line
 obserwator current warnings -k meteo

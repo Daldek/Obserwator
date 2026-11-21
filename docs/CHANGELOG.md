@@ -6,7 +6,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
+Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18 and the findings of the release round of 2026-11-21.
+
+### Added
+
+- **`stations find` gives IMGW-PIB coordinates live and filters by area (GEO-04).** A live
+  IMGW-PIB search now reads the current-data API (`api/data/hydro`, `api/data/meteo`) after
+  each station list and gives every listed station the `latitude`/`longitude` the API
+  publishes for it (as published, like the live ČHMÚ coordinates); a station the API does
+  not report (closed or not reporting now) keeps null, and a live IMGW-PIB search makes two
+  requests per family (on 2026-11-21: 807 of 1,301 hydro and 570 of 2,185 meteo stations
+  located). The new option `bbox` (`--bbox west,south,east,north`, WGS84 degrees, bounds
+  included; `find_stations(bbox=…)`) selects stations by area for both `--source live` and
+  `--source store`; stations without coordinates are left out of an area search, and an
+  invalid box is a `validation_error` with `details.option` `bbox`. List options of the
+  catalog accept number items (`float`, order and repeats kept). The `hydrographic_code` of
+  a live IMGW-PIB row stays the number the list publishes (`"14"` for the Barycz)
+  (ADR-024).
 
 ### Fixed
 

@@ -1144,8 +1144,9 @@ class CommandOption:
         Default value published in the schema, or None.
     aliases : tuple of str, optional
         Short CLI aliases, e.g. ``("-y",)``.
-    items : {"str", "int", "year", "choice"} or None, optional
-        Item type of a ``"list"`` option, or None.
+    items : {"str", "int", "float", "year", "choice"} or None, optional
+        Item type of a ``"list"`` option, or None; ``"float"`` items keep
+        their order and repeats (the four numbers of a ``bbox``).
     minimum, maximum : float or None, optional
         Inclusive bounds published in the schema, or None.
     pattern : str or None, optional
@@ -1176,7 +1177,7 @@ class CommandOption:
     help: str
     default: object = None
     aliases: tuple[str, ...] = ()
-    items: Literal["str", "int", "year", "choice"] | None = None
+    items: Literal["str", "int", "float", "year", "choice"] | None = None
     minimum: float | None = None
     maximum: float | None = None
     pattern: str | None = None

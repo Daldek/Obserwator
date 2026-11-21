@@ -569,6 +569,13 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
     assert validate_command(
         "pmaxtp fetch", options={"latitude": " 52.23", "longitude": 21}
     ) == {"latitude": 52.23, "longitude": 21.0}
+    # A bbox keeps its order and repeated corners, from texts or numbers.
+    for bbox in ("16.5,51.3,17.9,51.7", ["16.5", 51.3, "17.9,51.7"]):
+        assert validate_command("stations find", options={"bbox": bbox}) == {
+            "bbox": (16.5, 51.3, 17.9, 51.7)
+        }
+    corner = validate_command("stations find", options={"bbox": "0,0,0,0"})
+    assert corner["bbox"] == (0.0, 0.0, 0.0, 0.0)
     assert validate_command(
         "series read",
         options={
@@ -628,6 +635,10 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
         ("store sync", {"root": "/s", "plan": "p.json", "series": False}, "series"),
         ("stations find", {"root": "/s"}, "root"),
         ("stations find", {"query": "   "}, "query"),
+        ("stations find", {"bbox": "16.5,51.3,17.9"}, "bbox"),
+        ("stations find", {"bbox": "17.9,51.3,16.5,51.7"}, "bbox"),
+        ("stations find", {"bbox": "16.5,-91,17.9,51.7"}, "bbox"),
+        ("stations find", {"bbox": "16.5,51.3,17.9,abc"}, "bbox"),
         ("pmaxtp fetch", {"latitude": "abc", "longitude": 21.0}, "latitude"),
         (
             "pmaxtp sync",
