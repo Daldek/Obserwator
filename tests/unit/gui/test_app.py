@@ -47,8 +47,27 @@ SECURITY = {
     "referrer-policy": "no-referrer",
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
 }
+UNUSED_FEATURES = {
+    "camera",
+    "microphone",
+    "geolocation",
+    "payment",
+    "usb",
+    "serial",
+    "browsing-topics",
+    "midi",
+    "display-capture",
+    "fullscreen",
+}
+
+
+def denied(header: str) -> set[str]:
+    """The features a ``Permissions-Policy`` denies to every origin (``name=()``)."""
+    entries = [entry.strip().split("=", 1) for entry in header.split(",")]
+    return {name for name, allow in entries if allow == "()"}
+
+
 OWN_ORIGIN_ONLY = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
@@ -1188,6 +1207,9 @@ def test_every_answer_carries_the_security_headers(client):
     for answer in answers:
         for name, value in SECURITY.items():
             assert answer.headers[name] == value, (answer.url, name)
+        policy = denied(answer.headers["permissions-policy"])
+        assert policy >= UNUSED_FEATURES, answer.url
+        assert not {"clipboard-write", "clipboard-read"} & policy, answer.url
         assert csp(answer) == OWN_ORIGIN_ONLY, answer.url
         assert answer.headers["cache-control"] in ("no-cache", "no-store")
         assert "x-request-id" not in answer.headers  # the request id stays in the log

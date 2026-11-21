@@ -42,6 +42,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
 from obserwator._borders import CZECHIA, POLAND
+from obserwator._http_headers import security_headers
 from obserwator.attribution import (
     ORIGINS,
     Attribution,
@@ -376,7 +377,7 @@ def _dataset(request: Request, snapshot: Snapshot) -> str:
 def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
     """The station of the address, held by the dataset's series; else ``not_found``."""
     code = _station(request, snapshot)
-    if code not in snapshot.series[dataset].index.stations:
+    if code not in snapshot.series[dataset].stations:
         raise GuiError(
             "not_found",
             message("gui.errors.no_series", station=code, dataset=dataset),
@@ -458,8 +459,8 @@ async def session(request: Request) -> Response:
             "series": {
                 key: {
                     **series.version.to_dict(),
-                    "year_type": series.index.year_type,
-                    "stations": len(series.index.stations),
+                    "year_type": series.year_type,
+                    "stations": len(series.stations),
                 }
                 for key, series in snapshot.series.items()
             },
@@ -1333,8 +1334,7 @@ async def handoff(request: Request) -> Response:
             (
                 key
                 for key in HYDRO_DAILY
-                if key in snapshot.series
-                and code in snapshot.series[key].index.stations
+                if key in snapshot.series and code in snapshot.series[key].stations
             ),
             None,
         )
@@ -1635,15 +1635,13 @@ def methods(path: str) -> tuple[str, ...]:
 
 
 def _security(policy: str) -> list[tuple[bytes, bytes]]:
-    """The headers of D16 with a Content-Security-Policy."""
+    """The headers of D16 with a Content-Security-Policy and those of both servers."""
     return [
         (b"content-security-policy", policy.encode()),
         (b"x-frame-options", b"DENY"),
-        (b"x-content-type-options", b"nosniff"),
-        (b"referrer-policy", b"no-referrer"),
+        *security_headers(),
         (b"cross-origin-opener-policy", b"same-origin"),
         (b"cross-origin-resource-policy", b"same-origin"),
-        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
     ]
 
 

@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import gc
 import shutil
 from collections.abc import Callable
+from datetime import date
 
 import pytest
 
 import obserwator
 from obserwator.gui import _root
-from obserwator.gui._root import RELOAD_AFTER_S, DataRoot
+from obserwator.gui._root import RELOAD_AFTER_S, DataRoot, series_cells
+from obserwator.store import (
+    SeriesIndex,
+    StationCoverage,
+    StationSeriesIndex,
+    read_series_index,
+)
 from obserwator.testing import build_fixture_store
 from tests.contract.support import build_served_analyses
-from tests.unit.gui.conftest import HYDRO_CHMI
+from tests.unit.gui.conftest import HYDRO, HYDRO_CHMI
 
 
 class Clock:
@@ -219,3 +227,88 @@ def test_the_stations_file_is_exported_once_per_versions(
         ("csv", "CHMI", "hydro"),
         ("geojson", None, None),
     ]
+
+
+def _reachable(root):
+    """Every object reachable from ``root``, types, modules and functions aside."""
+    seen, stack, found = set(), [root], []
+    while stack:
+        item = stack.pop()
+        if id(item) in seen or isinstance(item, type) or callable(item):
+            continue
+        seen.add(id(item))
+        found.append(item)
+        stack.extend(gc.get_referents(item))
+    return found
+
+
+def test_the_snapshot_counts_the_ranges_without_a_value_and_keeps_no_index(
+    fixture_root,
+):
+    snapshot = DataRoot(fixture_root).snapshot()
+    series = snapshot.series["pl.imgw.hydro_daily"]
+    index = read_series_index(series.version.path)
+
+    (held,) = snapshot.datasets_of(HYDRO)
+    gaps = {name: c.gaps for name, c in index.stations[HYDRO].variables.items()}
+    assert {name: v["gaps"] for name, v in held["variables"].items()} == {
+        name: len(found) for name, found in gaps.items()
+    }
+    assert held["variables"]["H"]["gaps"] == 2
+    # A full root's index lists millions of such ranges (230 MB in memory): the
+    # snapshot keeps their number, no range, no date and nothing of the index.
+    kept = _reachable(snapshot.series)
+    assert not [
+        item
+        for item in kept
+        if isinstance(item, (date, SeriesIndex, StationSeriesIndex, StationCoverage))
+    ]
+
+
+def test_series_documents_in_memory_hold_at_most_the_cells_allowed(
+    fixture_root, monkeypatch
+):
+    sizes = DataRoot(fixture_root)
+    chmi, _ = sizes.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    imgw, _ = sizes.series_document("pl.imgw.hydro_daily", HYDRO)
+    reads = []
+
+    def read(*args, **kwargs):
+        reads.append(kwargs["station"])
+        return obserwator.read_series(*args, **kwargs)
+
+    monkeypatch.setattr(_root, "read_series", read)
+    # Room for either document, not for both: the older goes when the newer comes.
+    allowed = series_cells(chmi) + series_cells(imgw) - 1
+    monkeypatch.setattr(_root, "SERIES_CELLS", allowed)
+    data = DataRoot(fixture_root)
+
+    data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    data.series_document("pl.imgw.hydro_daily", HYDRO)
+    data.series_document("pl.imgw.hydro_daily", HYDRO)
+    again, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+
+    assert reads == [HYDRO_CHMI, HYDRO, HYDRO_CHMI]
+    assert again == chmi
+
+
+def test_a_series_document_larger_than_the_cells_allowed_stays_until_the_next(
+    fixture_root, monkeypatch
+):
+    reads = []
+
+    def read(*args, **kwargs):
+        reads.append(kwargs["station"])
+        return obserwator.read_series(*args, **kwargs)
+
+    monkeypatch.setattr(_root, "read_series", read)
+    monkeypatch.setattr(_root, "SERIES_CELLS", 1)
+    data = DataRoot(fixture_root)
+
+    first, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    again, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    data.series_document("pl.imgw.hydro_daily", HYDRO)
+    data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+
+    assert again == first
+    assert reads == [HYDRO_CHMI, HYDRO, HYDRO_CHMI]

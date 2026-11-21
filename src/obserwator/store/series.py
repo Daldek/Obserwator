@@ -14,25 +14,28 @@ import tempfile
 import uuid
 import zlib
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal
 
-from obserwator._parsing import normalize_in_sequence
+from obserwator._parsing import CARRY_DATASETS, normalize_in_sequence
 from obserwator._version import __version__
 from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import (
     _IMGW_STATION_FILE,
+    STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
+    YearsArg,
     _archive_from_path,
     _license_document,
     datasets,
     get_dataset,
     get_provider,
+    parse_years,
 )
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -54,6 +57,7 @@ from obserwator.store.types import (
     Progress,
     ProgressHook,
     SeriesReport,
+    SeriesSubset,
     StationCoverage,
     StoreHandle,
     StorePlan,
@@ -85,6 +89,9 @@ _SHA = re.compile(r"^[0-9a-f]{64}$")
 _INT8 = range(-128, 128)
 _CANCELLED = message("common.cancelled")
 _CHUNK = 1024 * 1024
+_STATION_CODE = re.compile(STATION_CODE_PATTERN)
+# Closed range of days, both ends included.
+_Span = tuple[date, date]
 
 
 @dataclass(frozen=True)
@@ -337,12 +344,114 @@ def _manifest(inputs: Iterable[_Input]) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((item.version.slot, item.version.sha256) for item in inputs))
 
 
+def _subset(
+    descriptor: DatasetDescriptor,
+    stations: Iterable[str] | None,
+    years: YearsArg | None,
+) -> SeriesSubset | None:
+    """
+    The validated subset of a build (ADR-026): sorted codes and years, or None.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``stations`` is a text, no collection or empty, or holds a code
+        outside the grammar of the dataset's provider (``details.option``
+        ``stations``), or if ``years`` is invalid (``years``).
+    """
+    if stations is None and years is None:
+        return None
+    codes: tuple[str, ...] | None = None
+    if stations is not None:
+        if isinstance(stations, str) or not isinstance(stations, Iterable):
+            raise ObserwatorValidationError(
+                message("series.stations_not_list"),
+                details={"option": "stations", "value": str(stations)},
+            )
+        given = list(stations)
+        if not given:
+            raise ObserwatorValidationError(
+                message("series.stations_not_list"),
+                details={"option": "stations", "value": given},
+            )
+        provider = get_provider(descriptor.provider)
+        pattern = re.compile(provider.station_code_pattern)
+        foreign = [
+            str(code)
+            for code in given
+            if not (isinstance(code, str) and pattern.fullmatch(code))
+        ]
+        if foreign:
+            raise ObserwatorValidationError(
+                message(
+                    "series.stations_outside_grammar",
+                    provider=provider.short_name,
+                    key=descriptor.key,
+                    codes=", ".join(foreign),
+                    pattern=provider.station_code_pattern,
+                ),
+                details={"option": "stations", "value": foreign},
+            )
+        codes = tuple(sorted(set(given)))
+    return SeriesSubset(codes, None if years is None else parse_years(years))
+
+
+def _subset_document(subset: SeriesSubset | None) -> dict[str, Any]:
+    """``subset`` of ``series.json`` and the request of the sidecar: the given keys."""
+    if subset is None:
+        return {}
+    document: dict[str, Any] = {}
+    if subset.stations is not None:
+        document["stations"] = list(subset.stations)
+    if subset.years is not None:
+        document["years"] = list(subset.years)
+    return document
+
+
+def _document_subset(value: object) -> SeriesSubset | None:
+    """
+    The ``subset`` of a ``series.json`` document, or None for a full series.
+
+    Raises
+    ------
+    ValueError
+        If it is no object with ``stations`` (sorted, distinct station codes)
+        and/or ``years`` (sorted, distinct years 1-9999), each non-empty.
+    """
+    if value is None:
+        return None
+    if not (isinstance(value, dict) and value and set(value) <= {"stations", "years"}):
+        raise ValueError(message("series.invalid_subset"))
+    stations, years = value.get("stations"), value.get("years")
+    if stations is not None and not (
+        isinstance(stations, list)
+        and stations
+        and all(
+            isinstance(code, str) and _STATION_CODE.fullmatch(code) for code in stations
+        )
+        and stations == sorted(set(stations))
+    ):
+        raise ValueError(message("series.invalid_subset"))
+    if years is not None and not (
+        isinstance(years, list)
+        and years
+        and all(type(year) is int and 1 <= year <= 9999 for year in years)
+        and years == sorted(set(years))
+    ):
+        raise ValueError(message("series.invalid_subset"))
+    return SeriesSubset(
+        None if stations is None else tuple(stations),
+        None if years is None else tuple(years),
+    )
+
+
 @dataclass(frozen=True)
 class _SeriesVersion:
     path: Path
     meta: Mapping[str, Any]
     manifest: tuple[tuple[str, str], ...]
     lines: Attribution = Attribution()
+    subset: SeriesSubset | None = None
 
 
 def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesVersion]:
@@ -382,9 +491,10 @@ def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesV
                 tuple(document.get("attribution", ())),
                 tuple(document.get("terms_notice", ())),
             )
+            subset = _document_subset(document.get("subset"))
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
-        result.append(_SeriesVersion(main, meta, manifest, lines))
+        result.append(_SeriesVersion(main, meta, manifest, lines, subset))
     return result
 
 
@@ -392,15 +502,21 @@ def _reusable(
     version: _SeriesVersion,
     manifest: tuple[tuple[str, str], ...],
     descriptor: DatasetDescriptor,
+    subset: SeriesSubset | None,
 ) -> bool:
     """
-    Whether a series version stays current: the same inputs and the current lines.
+    Whether a series version stays current: the same inputs, lines and subset.
 
     A version written before the series carried the provider's attribution
     lines (ADR-012) is rebuilt once, so the store's products carry them; one whose
-    CP names the processing (before ECO-071) stays current, as it holds CP.
+    CP names the processing (before ECO-071) stays current, as it holds CP. A
+    subset is never the full series, nor another subset (ADR-026).
     """
-    return version.manifest == manifest and version.lines == _lines(descriptor)
+    return (
+        version.manifest == manifest
+        and version.lines == _lines(descriptor)
+        and version.subset == subset
+    )
 
 
 def _current_series(versions: Iterable[_SeriesVersion]) -> _SeriesVersion | None:
@@ -412,10 +528,29 @@ def _current_series(versions: Iterable[_SeriesVersion]) -> _SeriesVersion | None
     )
 
 
+def _full_series(versions: Iterable[_SeriesVersion]) -> _SeriesVersion | None:
+    """The newest version of every station and year, which a subset never joins."""
+    return _current_series(version for version in versions if version.subset is None)
+
+
+def _beside_full(
+    root: Path, descriptor: DatasetDescriptor, full: _SeriesVersion
+) -> ObserwatorStoreConflictError:
+    """The refusal of a subset in a data root that holds the full series (ADR-026)."""
+    version = full.path.parent.relative_to(root).as_posix()
+    return ObserwatorStoreConflictError(
+        message(
+            "series.subset_beside_full_series", key=descriptor.key, version=version
+        ),
+        details={"reason": "full_series", "version": version},
+    )
+
+
 def _series_state(
     root: Path,
     descriptor: DatasetDescriptor,
     inputs: list[_Input],
+    subset: SeriesSubset | None,
     *,
     reliable: bool = True,
 ) -> SeriesState:
@@ -424,9 +559,81 @@ def _series_state(
         return "missing"
     return (
         "current"
-        if reliable and _reusable(current, _manifest(inputs), descriptor)
+        if reliable and _reusable(current, _manifest(inputs), descriptor, subset)
         else "outdated"
     )
+
+
+def _year_span(year: int, descriptor: DatasetDescriptor) -> _Span:
+    """The days of a year in the numbering of the dataset (``year_type``)."""
+    if descriptor.year_type == "hydrological":
+        return date(year - 1, 11, 1) if year > 1 else date.min, date(year, 10, 31)
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+def _windows(
+    descriptor: DatasetDescriptor, subset: SeriesSubset | None
+) -> tuple[_Span, ...] | None:
+    """The days of the chosen years, or None without a choice of years."""
+    if subset is None or subset.years is None:
+        return None
+    return tuple(_year_span(year, descriptor) for year in subset.years)
+
+
+def _cut(spans: Iterable[_Span], windows: Sequence[_Span] | None) -> list[_Span]:
+    """The parts of ``spans`` within ``windows``; every span without windows."""
+    if windows is None:
+        return list(spans)
+    return [
+        (max(start, low), min(end, high))
+        for start, end in spans
+        for low, high in windows
+        if start <= high and low <= end
+    ]
+
+
+def _read_inputs(
+    inputs: list[_Input], descriptor: DatasetDescriptor, subset: SeriesSubset | None
+) -> list[_Input]:
+    """
+    The inputs a build of ``subset`` reads, in slot order (ADR-026).
+
+    Without a subset every input. Otherwise the archives whose period meets a
+    chosen year (a file without a period, a ČHMÚ station's whole record,
+    always) and, of the files of one station, those of the chosen stations:
+    a ČHMÚ file by its station code, an IMGW-PIB synop file by the station
+    number (the last three digits of a code); a file of the whole country
+    holds every station. Of a dataset whose archives leave something to the
+    next (`CARRY_DATASETS`: the missing days of IMGW-PIB's precipitation,
+    `normalize_in_sequence`'s ``carry``) the archive before a chosen one is
+    read too; its own records lie outside the chosen years.
+    """
+    if subset is None:
+        return inputs
+    windows = _windows(descriptor, subset)
+    codes = frozenset(subset.stations or ())
+    numbers = frozenset(code[-3:] for code in codes)
+
+    def chosen(archive: ArchiveFile) -> bool:
+        start, end = archive.period_start, archive.period_end
+        if (
+            windows is not None
+            and start is not None
+            and end is not None
+            and not any(start <= high and low <= end for low, high in windows)
+        ):
+            return False
+        if subset.stations is None or descriptor.archive_scope == "country":
+            return True
+        if archive.station_code is not None:
+            return archive.station_code in codes
+        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
+        return station is None or station[3] in numbers
+
+    picked = {index for index, item in enumerate(inputs) if chosen(item.archive)}
+    if descriptor.key in CARRY_DATASETS and windows is not None:
+        picked |= {index - 1 for index in picked if index > 0}
+    return [inputs[index] for index in sorted(picked)]
 
 
 def check_series(
@@ -435,6 +642,8 @@ def check_series(
     *,
     raw_root: PathArg | StoreHandle,
     dataset: str,
+    stations: Iterable[str] | None = None,
+    years: YearsArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -453,6 +662,10 @@ def check_series(
     dataset : str
         Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
         dataset.
+    stations : iterable of str or None, optional
+        The stations of a subset, as in :func:`build_series`.
+    years : YearsArg or None, optional
+        The years of a subset, as in :func:`build_series`.
     on_progress : ProgressHook or None, optional
         Called for each current input archive.
     on_notice : NoticeHook or None, optional
@@ -465,14 +678,17 @@ def check_series(
     -------
     StorePlan
         Plan of the data root whose items are the current input archive
-        versions (status ``current``, ``local_path`` relative to the raw root,
-        HTTP signals copied from their sidecars, the station of a per-station
-        file in ``station_code``), whose ``series_state`` maps the dataset slug
-        to ``current``, ``outdated`` or ``missing``, and whose ``series build``
-        actions carry the series status (``current``, ``newer`` for an
-        outdated series, or ``missing``), one ``check_failed`` action per
-        unreadable slot and a ``missing`` action when the raw root holds no
-        archive of the dataset.
+        versions the build reads (status ``current``, ``local_path`` relative
+        to the raw root, HTTP signals copied from their sidecars, the station
+        of a per-station file in ``station_code``), whose ``series_state`` maps
+        the dataset slug to ``current``, ``outdated`` or ``missing``, and whose
+        ``series build`` actions carry the series status (``current``,
+        ``newer`` for an outdated series, or ``missing``), one
+        ``check_failed`` action per unreadable slot and a ``missing`` action
+        when the raw root holds no archive of the dataset (or of the subset).
+        A subset that the data root refuses beside the full series of the
+        dataset gives a plan of one ``conflict`` action (``reason``
+        ``full_series``, ``path`` that version) and nothing else.
 
     Raises
     ------
@@ -481,17 +697,35 @@ def check_series(
         written or ``raw_root`` is missing or no raw root (``details.reason``
         ``wrong_root`` for a root of the other kind).
     ObserwatorValidationError
-        If ``dataset`` is unknown or does not produce measurement series.
+        If ``dataset`` is unknown or does not produce measurement series, or
+        ``stations`` or ``years`` is invalid.
     """
     descriptor = _series_descriptor(dataset)
+    subset = _subset(descriptor, stations, years)
     refused = root_conflict_plan("series build", root, kind="data")
     if refused is not None:
         return refused
     path = lenient_store(root, kind="data").root
-    inputs, problems = _scan_inputs(_raw(raw_root), descriptor)
+    raw = _raw(raw_root)
+    if subset is not None:
+        full = _full_series(_series_versions(path, descriptor))
+        if full is not None:
+            action = PlanAction(
+                "series build",
+                "unverifiable",
+                _beside_full(path, descriptor, full).detail,
+                action="conflict",
+                path=full.path.parent,
+                reason="full_series",
+            )
+            return StorePlan(
+                "obserwator-plan/1", path, datetime.now(UTC), (), {}, (action,)
+            )
+    inputs, problems = _scan_inputs(raw, descriptor)
+    read = _read_inputs(inputs, descriptor, subset)
     items: list[PlanItem] = []
     cancelled = False
-    for index, item in enumerate(inputs, start=1):
+    for index, item in enumerate(read, start=1):
         if not cancelled and cancel is not None and cancel():
             cancelled = True
         http = item.version.http
@@ -512,13 +746,13 @@ def check_series(
             on_progress(
                 Progress(
                     index,
-                    len(inputs),
+                    len(read),
                     "archive",
                     "current",
                     message("series.input_progress", relative=item.version.relative),
                 )
             )
-    state = _series_state(path, descriptor, inputs, reliable=not problems)
+    state = _series_state(path, descriptor, read, subset, reliable=not problems)
     detail = {
         "current": message("series.series_current", slug=descriptor.slug),
         "outdated": message("series.series_needs_rebuild", slug=descriptor.slug),
@@ -534,12 +768,14 @@ def check_series(
         actions.append(PlanAction("series build", "check_failed", problem))
         if on_notice is not None:
             on_notice(Notice("warning", "archive_failed", problem))
-    if not inputs:
+    if not read:
         actions.append(
             PlanAction(
                 "series build",
                 "missing",
-                message("series.no_archives_of_dataset", dataset=dataset),
+                message("series.no_archives_of_dataset", dataset=dataset)
+                if not inputs
+                else message("series.no_archives_of_subset", key=descriptor.key),
             )
         )
     return StorePlan(
@@ -901,6 +1137,10 @@ def _spill_station_file(
     records: Iterable[NormalizedRecord],
     spans: dict[str, list[tuple[date, date]]],
     superseded: Collection[tuple[str, int]] = (),
+    *,
+    kept: Callable[[NormalizedRecord], bool] | None = None,
+    subset: SeriesSubset | None = None,
+    windows: Sequence[_Span] | None = None,
 ) -> None:
     """
     Spill the records of one per-station file and add its known period.
@@ -912,7 +1152,9 @@ def _spill_station_file(
     archives of IMGW-PIB, named by the station's number, and the running
     year's monthly files of the whole country) covers its period for every
     station it holds; a record whose station number and year are in
-    ``superseded`` is left out.
+    ``superseded`` is left out. A subset (ADR-026) spills only the records
+    ``kept`` takes, and gives its stations the known periods cut to the
+    ``windows`` of its years.
     """
     code = archive.station_code
     bounds: dict[str, list[date]] = {}
@@ -928,17 +1170,24 @@ def _spill_station_file(
             )
         if (record.station_code[-3:], record.date.year) in superseded:
             continue
-        spill.add(record)
+        if kept is None or kept(record):
+            spill.add(record)
         span = bounds.setdefault(record.station_code, [record.date, record.date])
         span[0], span[1] = min(span[0], record.date), max(span[1], record.date)
     stations: dict[str, list[date] | None] = (
         dict(bounds) if code is None else {code: bounds.get(code)}
     )
     for station, days in stations.items():
+        if (
+            subset is not None
+            and subset.stations is not None
+            and station not in subset.stations
+        ):
+            continue
         if archive.period_start is not None and archive.period_end is not None:
-            spans[station].append(_archive_span(archive))
+            spans[station].extend(_cut([_archive_span(archive)], windows))
         elif days is not None:
-            spans[station].append((days[0], days[1]))
+            spans[station].extend(_cut([(days[0], days[1])], windows))
 
 
 def _superseded(inputs: Iterable[_Input]) -> set[tuple[str, int]]:
@@ -1029,6 +1278,8 @@ def build_series(
     *,
     raw_root: PathArg | StoreHandle,
     dataset: str,
+    stations: Iterable[str] | None = None,
+    years: YearsArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -1064,6 +1315,22 @@ def build_series(
     the raw root), and the sidecar names the provider of the dataset with its
     processed-data attribution.
 
+    ``stations`` or ``years`` build a subset (ADR-026): only the archives that
+    hold them are read (``source_files``; of IMGW-PIB's daily precipitation
+    also the archive before a chosen one, for the missing days it leaves to
+    the next), only their records are kept, the known periods are cut to the
+    chosen years, and the rows of other stations in the daily and monthly
+    archives of the whole country are skipped before their values are read.
+    A station holds in a subset exactly the rows and coverage it has in the
+    full series of the same inputs, within the chosen years. ``series.json``
+    records the request as ``subset`` and the sidecar as ``request.stations``
+    and ``request.years``; a version is reused only for the same subset, so a
+    subset never stands for the full series nor the full series for a subset.
+    A data root that holds a full version of the dataset refuses a subset
+    (``conflict``, ``full_series``), so the current version of a dataset is
+    never a subset beside its full series; a full build after a subset
+    becomes current as any newer build.
+
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
@@ -1074,14 +1341,24 @@ def build_series(
     dataset : str
         Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
         dataset.
+    stations : iterable of str or None, optional
+        Build only these stations (codes of the dataset's provider; duplicates
+        are merged). A station the archives read do not hold is named in a
+        ``stations_missing`` warning. None builds every station.
+    years : YearsArg or None, optional
+        Build only these years: numbers or ranges in the numbering of the
+        dataset (hydrological years, November to October, for the
+        hydrological datasets of IMGW-PIB; calendar years otherwise). None
+        builds every year.
     on_progress : ProgressHook or None, optional
         Called after each parsed archive and each written station file, or once
         for an unchanged version.
     on_notice : NoticeHook or None, optional
         Receives ``archive_failed`` errors for unreadable inputs, a
         ``leftover_incoming`` warning for every removed staging directory older
-        than 24 hours and the ``license_terms`` notice when a new version is
-        created.
+        than 24 hours, a ``stations_missing`` warning for chosen stations the
+        archives read do not hold and the ``license_terms`` notice when a new
+        version is created.
     cancel : Cancel or None, optional
         Polled between steps; once it returns ``True`` the build stops with a
         ``cancelled`` report and nothing is published.
@@ -1093,7 +1370,8 @@ def build_series(
         the path of ``series.json``, ``source_files`` the absolute paths of the input
         archive versions in the raw root (for ``unchanged``, the inputs recorded
         in the existing current version's sidecar) and ``problems`` the reasons
-        of a failure.
+        of a failure, also of a subset whose archives hold none of its
+        stations and years.
 
     Raises
     ------
@@ -1103,19 +1381,24 @@ def build_series(
         ``wrong_root`` for a root of the other kind, e.g. a store not yet
         split used as the data root).
     ObserwatorValidationError
-        If ``dataset`` is unknown or does not produce measurement series.
+        If ``dataset`` is unknown or does not produce measurement series, or
+        ``stations`` (``details.option`` ``stations``: no list, empty, or a
+        code outside the grammar of the dataset's provider) or ``years`` is
+        invalid.
     ObserwatorStoreDependencyError
         If ``pyarrow>=15`` is not installed.
     ObserwatorStoreConflictError
         If ``root`` nests a store (``details.reason`` ``nested_store``) or holds
         other files and is no store (``not_empty``), the version cannot be
         published atomically or its directory collides with a different
-        version.
+        version, or a subset is asked of a root that holds a full version of
+        the dataset (``full_series``, ``details.version`` that version).
     """
     refuse_root(root, kind="data")
     path = lenient_store(root, kind="data").root
     raw = _raw(raw_root)
     descriptor = _series_descriptor(dataset)
+    subset = _subset(descriptor, stations, years)
     pa, pq = _pyarrow()
 
     def cancelled() -> bool:
@@ -1123,21 +1406,33 @@ def build_series(
 
     if cancelled():
         return _report("cancelled")
+    if subset is not None:
+        full = _full_series(_series_versions(path, descriptor))
+        if full is not None:
+            raise _beside_full(path, descriptor, full)
     inputs, problems = _scan_inputs(raw, descriptor)
-    sources = [item.version.file for item in inputs]
     if problems:
         for problem in problems:
             if on_notice is not None:
                 on_notice(Notice("warning", "archive_failed", problem))
-        return _report("failed", sources=sources, problems=problems)
+        return _report(
+            "failed", sources=[item.version.file for item in inputs], problems=problems
+        )
     if not inputs:
         return _report(
             "failed",
             problems=[message("series.no_archives_of_dataset", dataset=dataset)],
         )
-    manifest = _manifest(inputs)
+    read = _read_inputs(inputs, descriptor, subset)
+    if not read:
+        return _report(
+            "failed",
+            problems=[message("series.no_archives_of_subset", key=descriptor.key)],
+        )
+    sources = [item.version.file for item in read]
+    manifest = _manifest(read)
     current = _current_series(_series_versions(path, descriptor))
-    if current is not None and _reusable(current, manifest, descriptor):
+    if current is not None and _reusable(current, manifest, descriptor, subset):
         series = json.loads(current.path.read_text(encoding="utf-8"))
         recorded = [
             raw / PurePosixPath(source["file"])
@@ -1178,10 +1473,31 @@ def build_series(
     # precipitation before a multi-day total): the inputs are in slot order, which is
     # date order for every IMGW-PIB folder (`1991_1995/1995_o`, `2024/2024_07_o`).
     carry: dict[str, date] = {}
+    # A subset (ADR-026): the records it keeps, the days of its years, the rows the
+    # parsers may skip and the months of the rows they skipped.
+    windows = _windows(descriptor, subset)
+    chosen = (
+        None
+        if subset is None or subset.stations is None
+        else frozenset(subset.stations)
+    )
+    chosen_years = (
+        None if subset is None or subset.years is None else frozenset(subset.years)
+    )
+    hydrological = descriptor.year_type == "hydrological"
+
+    def wanted(record: NormalizedRecord) -> bool:
+        year = record.hydro_year if hydrological else record.date.year
+        return (chosen is None or record.station_code in chosen) and (
+            chosen_years is None or year in chosen_years
+        )
+
+    kept = None if subset is None else wanted
+    skipped: set[date] = set()
     with tempfile.TemporaryDirectory(prefix="obserwator-series-") as local:
         spill = _Spill(Path(local), descriptor)
         try:
-            for index, item in enumerate(inputs, start=1):
+            for index, item in enumerate(read, start=1):
                 if cancelled():
                     return _report("cancelled", sources=sources)
                 data = item.version.file.read_bytes()
@@ -1194,7 +1510,13 @@ def build_series(
                     )
                 # Records go to their station files and are dropped: neither the
                 # parsed records nor the values of all stations stay in memory.
-                records = normalize_in_sequence(item.archive, data=data, carry=carry)
+                records = normalize_in_sequence(
+                    item.archive,
+                    data=data,
+                    carry=carry,
+                    stations=chosen,
+                    skipped_months=skipped,
+                )
                 if per_station:
                     monthly = item.archive.month is not None
                     _spill_station_file(
@@ -1203,16 +1525,20 @@ def build_series(
                         records,
                         spans,
                         superseded if monthly else (),
+                        kept=kept,
+                        subset=subset,
+                        windows=windows,
                     )
                 else:
                     for record in records:
-                        spill.add(record)
                         known.add(record)
+                        if kept is None or kept(record):
+                            spill.add(record)
                 if on_progress is not None:
                     on_progress(
                         Progress(
                             index,
-                            len(inputs),
+                            len(read),
                             "archive",
                             "parsed",
                             message(
@@ -1225,6 +1551,30 @@ def build_series(
             if on_notice is not None:
                 on_notice(Notice("warning", "archive_failed", reason(exc)))
             return _report("failed", sources=sources, problems=[reason(exc)])
+        # The months the rows of other stations publish (a subset of stations).
+        known.add_months(skipped)
+        if subset is not None:
+            if not spill.stations:
+                return _report(
+                    "failed",
+                    sources=sources,
+                    problems=[
+                        message("series.subset_holds_nothing", key=descriptor.key)
+                    ],
+                )
+            missing = sorted((chosen or frozenset()) - spill.stations)
+            if missing and on_notice is not None:
+                on_notice(
+                    Notice(
+                        "warning",
+                        "stations_missing",
+                        message(
+                            "series.stations_missing",
+                            key=descriptor.key,
+                            codes=", ".join(missing),
+                        ),
+                    )
+                )
         station_periods = {code: _merge_spans(items) for code, items in spans.items()}
 
         # The first write of a new data root creates its marker (DEV-19.13).
@@ -1290,17 +1640,21 @@ def build_series(
                         for span in station_periods[code]
                     )
                     if per_station
-                    else _merge_spans(_archive_span(item.archive) for item in inputs)
+                    else _merge_spans(
+                        _cut((_archive_span(item.archive) for item in read), windows)
+                    )
                 ),
                 "stations": index_stations,
                 **lines.fields(),
             }
+            if subset is not None:
+                series["subset"] = _subset_document(subset)
             content = _canonical(series)
             sha = hashlib.sha256(content).hexdigest()
             _write_json(staging / "series.json", series)
             published = [
                 moment
-                for item in inputs
+                for item in read
                 if (moment := _parse_time(item.version.http.get("last_modified")))
             ]
             now = datetime.now(UTC)
@@ -1322,7 +1676,7 @@ def build_series(
                     "label": item.version.label,
                     **_content_fields(item.version.meta),
                 }
-                for item in sorted(inputs, key=lambda entry: entry.version.relative)
+                for item in sorted(read, key=lambda entry: entry.version.relative)
             ]
 
             def sidecar(version_label: str) -> dict[str, Any]:
@@ -1333,7 +1687,9 @@ def build_series(
                     "dataset": descriptor.key,
                     "country": provider.country,
                     "provider": provider.id,
-                    "request": {"dataset": descriptor.key},
+                    # The call of the version (command_for_version): a subset
+                    # adds its stations and years.
+                    "request": {"dataset": descriptor.key, **_subset_document(subset)},
                     "license": license_info,
                     "downloaded_at": _utc(now),
                     "sha256": sha,
@@ -1348,6 +1704,11 @@ def build_series(
 
             if cancelled():
                 return _report("cancelled", sources=sources)
+            if subset is not None:
+                # A full build may have published since the check above.
+                full = _full_series(_series_versions(path, descriptor))
+                if full is not None:
+                    raise _beside_full(path, descriptor, full)
             parent = _validate_slot(path, f"series/versions/{descriptor.slug}")
             parent.mkdir(parents=True, exist_ok=True)
             # Identical series.json from a different input manifest (e.g. re-zipped
@@ -1372,6 +1733,7 @@ def build_series(
                         winner is not None
                         and winner.path.parent == target
                         and winner.manifest == manifest
+                        and winner.subset == subset
                     ):
                         # A concurrent build of the same inputs published first.
                         return _report(

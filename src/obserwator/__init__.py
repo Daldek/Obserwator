@@ -190,6 +190,7 @@ from obserwator.store import (
     RootKind,
     SeriesIndex,
     SeriesReport,
+    SeriesSubset,
     StationCoverage,
     StationFeature,
     StationSeriesIndex,
@@ -376,6 +377,7 @@ __all__ = [
     "StationFeature",
     "StationSeriesIndex",
     "SeriesIndex",
+    "SeriesSubset",
     "PMaXTPStoreResult",
     # Stored analyses computed by Hydrolog (ADR-016)
     "AnalysesReport",

@@ -176,6 +176,8 @@ async def test_live_read_async_twin_returns_identical_result(
     respx_mock, sync, asynchronous, kwargs, url, body
 ):
     respx_mock.get(url).mock(side_effect=lambda _: _respond(body))
+    # A live IMGW-PIB station search also reads the current-data API (coordinates).
+    respx_mock.get(f"{API}/hydro").respond(json=HYDRO_ITEMS)
     result = sync(**kwargs)
     assert result
     assert await asynchronous(**kwargs) == result

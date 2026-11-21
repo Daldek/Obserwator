@@ -468,8 +468,8 @@ MESSAGES = {
         "i zbiory.",
     ),
     "stations_find_description": Text(
-        "Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.",
-        "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece albo prefiksie kodu.",
+        "Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.",
+        "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece, prefiksie kodu albo obszarze.",
     ),
     "stations_export_description": Text(
         "Export the stations of the current catalogs as GeoJSON or CSV. Each "
@@ -494,6 +494,15 @@ MESSAGES = {
         "catalog; with an explicit provider a missing catalog is a not_found error",
         "source=store bez provider pomija dostawców bez katalogu stacji; przy jawnym "
         "provider brak katalogu to błąd not_found",
+    ),
+    "stations_find_rule_3": Text(
+        "bbox is west,south,east,north in WGS84 degrees, bounds included; a station "
+        "without coordinates (live: an IMGW-PIB station absent from the current-data "
+        "API; store: a catalog station with geometry null) is left out of an area search",
+        "bbox to zachód,południe,wschód,północ w stopniach WGS84, granice włącznie; "
+        "stacja bez współrzędnych (live: stacja IMGW-PIB nieobecna w API danych "
+        "bieżących; store: stacja katalogu z geometry null) jest pomijana w "
+        "wyszukiwaniu po obszarze",
     ),
     "current_hydro_description": Text(
         "Fetch current hydrological data from the IMGW API.",
@@ -602,9 +611,31 @@ MESSAGES = {
     ),
     "series_build_description": Text(
         "Build the Parquet series of a dataset from the current archives of the raw "
-        "root. The series go into the data root.",
+        "root. The series go into the data root; stations or years build a subset.",
         "Zbuduj szereg Parquet zbioru z bieżących archiwów katalogu surowego. Szeregi "
-        "trafiają do katalogu danych.",
+        "trafiają do katalogu danych; stations albo years budują podzbiór.",
+    ),
+    "series_build_stations_help": Text(
+        "Build only these stations: comma-separated codes of the dataset's provider "
+        "(default: every station); a subset",
+        "Zbuduj tylko te stacje: kody dostawcy zbioru rozdzielone przecinkami "
+        "(domyślnie wszystkie stacje); podzbiór",
+    ),
+    "series_build_years_help": Text(
+        "Build only these years: numbers or ranges, e.g. 2020-2025, hydrological "
+        "years of the pl.imgw.hydro_* datasets, else calendar years (default: every "
+        "year); a subset",
+        "Zbuduj tylko te lata: liczby lub zakresy, np. 2020-2025, lata hydrologiczne "
+        "zbiorów pl.imgw.hydro_*, inaczej kalendarzowe (domyślnie wszystkie lata); "
+        "podzbiór",
+    ),
+    "series_build_rule_subset": Text(
+        "stations or years build a subset, recorded as subset in series.json and as "
+        "the request of its sidecar; a data root holding the full series of the "
+        "dataset refuses a subset (conflict, full_series): build it into another root",
+        "stations albo years budują podzbiór, zapisany jako subset w series.json i "
+        "jako request jego sidecara; katalog danych z pełnym szeregiem zbioru odrzuca "
+        "podzbiór (conflict, full_series): zbuduj go w innym katalogu",
     ),
     "series_select_description": Text(
         "Select stations, variables and years of the current series. Nothing is written.",
@@ -707,10 +738,10 @@ MESSAGES = {
         "Fragment nazwy lub rzeki albo prefiks kodu",
     ),
     "stations_find_source_help": Text(
-        "live: the providers' station lists, live; store: the current station "
-        "catalogs of the data root",
-        "live: listy stacji dostawców na żywo; store: bieżące katalogi stacji "
-        "katalogu danych",
+        "live: the providers' station lists, live (IMGW-PIB coordinates from its "
+        "current-data API); store: the current station catalogs of the data root",
+        "live: listy stacji dostawców na żywo (współrzędne IMGW-PIB z jego API "
+        "danych bieżących); store: bieżące katalogi stacji katalogu danych",
     ),
     "stations_find_root_help": Text(
         "Data root whose current catalogs are read (with source=store)",
@@ -720,6 +751,12 @@ MESSAGES = {
     "stations_find_provider_help": Text(
         "Station provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",
         "Dostawca stacji: IMGW-PIB albo CHMI (ČHMÚ); brak = wszyscy dostawcy",
+    ),
+    "stations_find_bbox_help": Text(
+        "Area: west,south,east,north in WGS84 degrees (e.g. 16.5,51.3,17.9,51.7); "
+        "stations without coordinates are left out",
+        "Obszar: zachód,południe,wschód,północ w stopniach WGS84 (np. "
+        "16.5,51.3,17.9,51.7); stacje bez współrzędnych są pomijane",
     ),
     "current_hydro_station_option_help": Text(
         "Station code (9 digits); none = all stations",

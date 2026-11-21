@@ -95,6 +95,12 @@ MESSAGES = {
         "Wybierz jako --root nowy albo pusty katalog lub korzeń istniejącego "
         "magazynu Obserwatora",
     ),
+    "hint_full_series": Text(
+        "Build the chosen stations or years into another data root (--root), or the "
+        "whole dataset here without --stations and --years",
+        "Zbuduj wybrane stacje lub lata w innym katalogu danych (--root) albo tutaj "
+        "cały zbiór, bez --stations i --years",
+    ),
     "hint_no_marker": Text(
         "Run obserwator store init --root {path}: it verifies the layout and writes "
         "the marker",

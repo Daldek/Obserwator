@@ -29,7 +29,10 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-021](#adr-021-station-details-of-hydroimgwpl) | Station details of hydro.imgw.pl | 2026-11-14 | Accepted |
 | [ADR-022](#adr-022-daily-synoptic-data-and-the-stations-joined-daily-record) | Daily synoptic data and the station's joined daily record | 2026-11-15 | Accepted |
 | [ADR-023](#adr-023-download-only-datasets-of-the-rest-of-imgw-pibs-public-data) | Download-only datasets of the rest of IMGW-PIB's public data | 2026-11-15 | Accepted |
+| [ADR-024](#adr-024-coordinates-and-an-area-filter-in-the-live-station-search) | Coordinates and an area filter in the live station search | 2026-11-21 | Accepted |
 | [ADR-025](#adr-025-an-operators-instance-obserwatorinstance) | An operator's instance: `[obserwator.instance]` | 2026-11-21 | Accepted |
+| [ADR-026](#adr-026-series-of-chosen-stations-and-years) | Series of chosen stations and years | 2026-11-21 | Accepted |
+| [ADR-027](#adr-027-the-guis-memory-what-it-keeps-of-the-data-root) | The GUI's memory: what it keeps of the data root | 2026-11-21 | Accepted |
 
 ---
 
@@ -118,6 +121,8 @@ Consequences: source archives keep their bytes and provenance; stations without 
 **2026-11-14 — D2, D3, D4 (changed by ADR-015, ADR-017 and ADR-021).** Since ADR-017 (2026-11-13) the one store of D2 and D3 is two roots: the raw root (`obserwator-store.json`) keeps `archives/`, with the observation registers of their slots, and `pmaxtp/`; the data root (`obserwator-data.json`, `obserwator-data/1`) keeps `series/`, `stations/` and the analyses of ADR-016 in `analyses/` (`output.DATA_MARKER`, `_LAYOUT_TREES` in `store/writer.py`), and `series build` and `store catalog` read a raw root and write only the data root. `store sync` writes archive versions and builds no series (ADR-015 D1, 2026-11-13). Beside the station lists of D3 the store keeps the station metadata of the current-data answers (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`, `cz.chmi.hydro_now`, `cz.chmi.meteo_now`; ADR-015 D2) and the station details of hydro.imgw.pl (`pl.imgw.hydro_details`; ADR-021, 2026-11-14), so the registry of D4 has 22 descriptors, 16 of them IMGW-PIB (`obserwator.datasets`).
 
 **2026-11-15 — D4 and the erratum of 2026-10-19 (ADR-022).** The store holds a sixth IMGW-PIB measurement dataset, `pl.imgw.meteo_synop_daily`, whose archives are per station and found in the folder index (ADR-022 D2). `meteo_kind` has a third value: a meteorological station in the current synop series is `synop`, before `climate` and `precipitation`.
+
+**2026-11-21 — D1 (ADR-026).** A series version may hold a subset of the stations and years of its dataset (`subset` of `series.json`, `request.stations` and `request.years` of its sidecar). It is reused only for the same subset and never built in a data root that holds a full version of the dataset, so the current version (the newest build) is a subset only in a root of subsets. The text of D1 is unchanged.
 
 ---
 
@@ -998,6 +1003,30 @@ Additive: four registry entries (the IMGW-PIB download-only datasets are nine), 
 
 ---
 
+## ADR-024: Coordinates and an area filter in the live station search
+
+**Date:** 2026-11-21  
+**Status:** Accepted (end-to-end finding GEO-04 of 2026-11-15; branch `fix/3.1.0-geo04`)  
+**Standard:** Nogat AGI-2.3 (one option name per parameter), DEV-19.1; extends ADR-002 (the catalog) and ADR-017 (the two sources of `stations find`)
+
+### Context and options
+
+`stations find --source live` gave IMGW-PIB stations without coordinates, since the station list CSVs have none, and no command could select stations by area: an area search needed `store catalog` and a GIS. Coordinate sources for the live IMGW-PIB lists: (a) the current-data API `api/data/hydro` and `api/data/meteo` (`lat`, `lon` of every reporting station; the first location source of `store catalog` too); (b) the map of hydro.imgw.pl (`fetch_hydro_states`, a backend that needs a `Referer`); (c) the reference file `hydro_stations_locations.csv` of `reference_dir`, a snapshot of (b) present only after `python -m obserwator.reference_data`; (d) the newest catalog of a configured data root. Measured on 2026-11-21: of the 1,301 hydrological stations of the list (a) locates 807, (b) 807 of the same and 6 more; of the 2,185 meteorological ones (a) locates 570; the rest are closed stations no live source locates. Area filters: (e) a bounding box; (f) voivodeship or river basin, which no source gives for every station (the province is in the hydro.imgw.pl details of hydrological stations only); (g) a point and a radius. No command of the catalog had an area filter before (the `latitude`/`longitude` of `pmaxtp` name one point in Poland).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **IMGW-PIB live coordinates come from the current-data API**: a live IMGW-PIB search reads the family's API answer after its list (two GETs per family) and gives each listed station the `lat`/`lon` published for its code, as published, without the border check of `store catalog` (as the live ČHMÚ coordinates); a listed station the API does not report keeps None. `stations find --check` names both URLs. An API answer that is no JSON list is `data_error`. | (b): 6 more stations for a third request to a backend that is no public API; (c): local state that changes a live answer and is missing on most machines; (d): a live search refuses a root (ADR-017), and `--source store` already gives the catalog's coordinates. |
+| D2 | **One option `bbox`** of `stations find` (`find_stations(bbox=…)`), for both sources: a list of four numbers `west,south,east,north` in WGS84 degrees, bounds included (list item type `float`, which keeps order and repeats). Four finite numbers, longitudes within ±180, latitudes within ±90, west ≤ east and south ≤ north, else `validation_error` with `details.option` `bbox`. No box crossing the antimeridian. | (f): not available for every station of either provider; (g): a second geometry for the same need, and a box is what map clients and GIS tools pass. |
+| D3 | **A station without coordinates is outside every area**: an area search leaves it out (live: an IMGW-PIB station the API does not report; store: a catalog station with `geometry` null); the command's help and rules say so. | Keeping them (an area search would return every closed station of the country). |
+
+### Consequences
+
+Additive: `StationListEntry` of a live IMGW-PIB search has coordinates for the reporting stations, `stations find` has `--bbox` in every interface (`commands schema`: an array of numbers within ±180), and a live IMGW-PIB search makes two requests per family instead of one, so an outage of the current-data API fails it (`source_unavailable`). The `hydrographic_code` of a live IMGW-PIB row stays the number the list publishes in parentheses (`"14"` for the Barycz).
+
+---
+
 ## ADR-025: An operator's instance: `[obserwator.instance]`
 
 **Date:** 2026-11-21  
@@ -1028,3 +1057,54 @@ A client runs Obserwator on his own infrastructure for his own network; one prov
 ### Consequences
 
 Additive for every deployment without the section; `config show` gains `instance`, `problems` and one credential; `export_stations` and `run_command` gain the keyword `keep`. An operator's deployment is described by files only (`docs/USAGE.md` „Deploying an instance for an operator”, `SECURITY.md` threat model). Step 6 of the plan, the operator's own network as data, follows in `v3.2.0`.
+
+---
+
+## ADR-026: Series of chosen stations and years
+
+**Date:** 2026-11-21  
+**Status:** Accepted (finding E3-01 of the scenario test of 2026-11-15/16, fixed for 3.1.0 on the release coordinator's order; branch `fix/3.1.0-e301`)  
+**Standard:** Nogat DEV-19.1, AGI-4.1 (additive `/1` fields); extends ADR-001 D1 (erratum there) and ADR-017
+
+### Context and options
+
+`series build` built the series of every station and year of the raw root: a data root for the 12 key stations of the scenario test needed the national series (`pl.imgw.hydro_daily` 763 s for 1,372 stations, `pl.imgw.meteo_precip_daily` 763 s for 1,653; 479 MB of series). Under ADR-001 D1 the current series version of a dataset is the newest build and a build is `unchanged` when the current version has the same input manifest. A version of chosen stations published beside a full one would therefore (1) become the current version of every reader (`current_version`, the GUI, `store catalog`, `analyses build`, Archiwista, which asks `current_version`), and (2) be taken for the full series, or the full series for it, by a build of the same inputs (a station choice reads every archive of a country-wide dataset). Options: (a) plain files only (`--output-dir`): no version and no reader; (b) a slot of its own (`series/versions/<slug>@…`): a new layout every reader and Archiwista must learn, an `unknown_entry` for older ones; (c) a current-version rule that prefers full versions: changes ADR-001 D1 for every reader; (d) subsets as ordinary versions of the dataset's slot that record their choice, are reused only for the same choice and never lie beside a full version.
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **Options** (d). `series build`, `build_series` and `check_series` take `stations` (the list option of `analyses build`, `store sync` and `series select`; `-s`) and `years` (the list option of `store sync` and `series select`; `-y`). Codes follow the grammar of the dataset's provider (`validation_error`, option `stations`, in Python and in the catalog rule); years are in the dataset's numbering: hydrological years (November to October) for `pl.imgw.hydro_*`, calendar years otherwise (`year_type` of `series.json`, the archive years of `store sync`). | `--station` repeated or `--from-year`/`--to-year`: second names for the same meaning (ADR-002, one name per parameter). |
+| D2 | **What a subset reads and holds.** The archives whose period meets a chosen year (a file without a period, a ČHMÚ meteorological record, always) and, of the files of one station, those of the chosen stations (ČHMÚ by code, IMGW-PIB synop by the station number); of `pl.imgw.meteo_precip_daily` (`CARRY_DATASETS`) also the archive before a chosen one, whose missing last days make a total on the next day `accumulated`. Only records of the chosen stations and years are kept; known periods and the dataset's `periods` are cut to the chosen years. The parsers of IMGW-PIB's daily and monthly archives of the whole country skip the rows of other stations before their values are read and report the months those rows cover, so a station's gaps equal those of the full series (a month only another station publishes stays a gap). A station holds in a subset exactly the rows and coverage it holds in the full series of the same inputs, within the chosen years. Rows of other stations are checked only for their code and date. | Parsing every row and dropping records afterwards (exact, but a choice of stations saved only about half of a national build); gaps from the chosen stations' records only (a month published only by others would no longer be a gap). |
+| D3 | **Recorded in the version.** `series.json` gets `subset` (`{"stations": [...], "years": [...]}`, sorted, distinct, only the given keys: the request, so a station the archives lack is listed, named in a `stations_missing` warning; none at all fails and publishes nothing), the sidecar `request.stations` and `request.years` (`command_for_version` gives the subset's call), `read_series_index` `SeriesIndex.subset` (`SeriesSubset`, None for a full series). Optional fields of `obserwator-series/1` and `obserwator-meta/1`: a full build writes the bytes of before, so existing versions stay `unchanged`. | A `/2` schema (no field changes its meaning). |
+| D4 | **Reuse.** A version is kept only for the same inputs, lines and subset: a subset never stands for the full series, the full series never for a subset, one subset never for another; a subset of every station is still a subset. | — |
+| D5 | **No subset beside a full series.** A data root that holds a full version of the dataset refuses a subset before anything is read (`conflict`, `details.reason="full_series"`, `details.version`; `--check`: one `conflict` action) and checks again before publishing; a full build in a root of subsets becomes current as any newer build, and so does another subset. The current-version rule of ADR-001 D1 is unchanged. | (c); a lock (the store has none: two builds of one root at the same moment can still interleave between the last check and the publication). |
+
+### Consequences
+
+Additive: two options of `series build` (Python, CLI, REST, MCP), the type `SeriesSubset`, the plan reason `full_series` and its hint, the notice `stations_missing`, the optional `subset` and `request` fields; readers need no change. A root of subsets serves only its stations: the GUI, `store catalog`, `analyses build` and Archiwista see the current version as before, and a subset tells itself by `subset` and `request`. A choice of stations still reads every archive of a country-wide dataset (unzipping and splitting rows); a choice of years reads only its archives.
+
+---
+
+## ADR-027: The GUI's memory: what it keeps of the data root
+
+**Date:** 2026-11-21  
+**Status:** Accepted (finding E7-11 of the 3.1.0 review: an idle `obserwator gui serve` held about 1 GB in swap)  
+**Standard:** amends ADR-013 D5 (what the GUI holds in memory)
+
+### Context and options
+
+On the deployed data root an idle GUI held 1.5 GB (RSS) after a typical set of requests, 2.4 GB plus 0.8 GB of swap after two days. Measured (`/proc/<pid>/smaps_rollup`, `sys._debugmallocstats`, `mallinfo2`): the snapshot kept every series index whole, 234 MB of it the 1.8 million ranges without a value of the precipitation series' snow variables, of which the GUI shows only the number; up to 32 series documents of any size (a synoptic station's is 50 to 70 MB); and Python's small-object allocator held 440 MB of free memory it could not return, as an arena (1 MiB) goes back to the system only when every object in it is gone: what a large read keeps, and the modules pyarrow imports on its first read (pandas with it), was made among the read's objects and the free lists kept some of them. pyarrow's pool (mimalloc) and glibc's arenas held little (0 and 47 MB free).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **The snapshot keeps a summary of each index**: per station its rows and per variable the unit, period, first and last day, units with a value, accumulated units and the number of ranges without a value. | Keeping the index (234 MB, its ranges never shown); a store change of `series.json` (a contract change, left to the author). |
+| D2 | **What a large read keeps is copied once the read is over** (`compact`): kept as bytes (`pickle`) while the read's objects go and the free lists are emptied (`gc.collect`), then made again; for the summary of an index and a station's series document. A cache miss costs a full collection (tenths of a second, beside seconds of reading). | `PYTHONMALLOC=malloc` with `malloc_trim` or `PYTHONMALLOC=mimalloc` (a setting of each deployment; measured: mimalloc kept 592 MB, glibc 800 MB until trimmed); reading in a subprocess (spawn cost, state of tests and hosts). |
+| D3 | **Series documents in memory: at most 32 and 2 million cells** (rows times columns, and flags; 30 to 60 bytes each), the most recent kept even when larger alone. | A count alone (a synoptic station's document is 600 times a half-year one). |
+| D4 | **The modules of a Parquet read are imported when the data root is made** (`pyarrow.parquet`, `pyarrow.dataset`; pandas with them when installed), not during the first request of a series. | Leaving them to the first read (190 MB kept for the life of the server). |
+
+### Consequences
+
+Measured on the deployed data root (method and numbers in the item's report): the snapshot of the root takes 113 MB instead of 724 MB in one process, a cached precipitation document grows the process by its own size instead of 100–200 MB. The GUI's answers are unchanged.

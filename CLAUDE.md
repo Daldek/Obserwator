@@ -4,7 +4,7 @@ Instructions for Claude Code (claude.ai/code) working in this repository. Refere
 
 ## 1. Project
 
-Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.0.1, unreleased: `3.1.0.dev0`, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog` and `_borders` for settings, JSON, Hydrolog's program and the packaged borders). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.0.1, unreleased: `3.1.0.dev0`, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog`, `_borders` and `_http_headers` for settings, JSON, Hydrolog's program, the packaged borders and the security headers shared with the REST server). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 2. Critical rules
 
@@ -71,7 +71,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..023) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..027) | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |

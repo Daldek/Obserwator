@@ -183,6 +183,12 @@ class Settings(BaseSettings):
 
     # Default and maximum page size of REST list commands (OBSERWATOR_API_MAX_LIMIT).
     api_max_limit: int = Field(default=1000, ge=1)
+    # Browser origins allowed to call the REST server cross-origin (CORS;
+    # OBSERWATOR_CORS_ORIGINS, [obserwator] cors_origins): comma-separated origins
+    # (`https://example.org`, scheme and host with an optional port, no path) or `*`
+    # for every origin. Empty (the default): no cross-origin access. Never with
+    # credentials: the API authenticates with the X-API-Key header, not cookies.
+    cors_origins: Annotated[list[str], NoDecode] = []
 
     # Language of the human-readable output of the CLI (OBSERWATOR_LANG): the help and the
     # progress and notice lines; "pl" or "en", checked where it is used (`human_language`),
@@ -257,13 +263,19 @@ class Settings(BaseSettings):
         """
         return (self.state_dir / environment.TOOL / "logs").expanduser().absolute()
 
-    @field_validator("mcp_allowed_hosts", mode="before")
+    @field_validator("mcp_allowed_hosts", "cors_origins", mode="before")
     @classmethod
-    def _split_hosts(cls, value: object) -> object:
-        """Split the comma-separated text of ``OBSERWATOR_MCP_ALLOWED_HOSTS``."""
+    def _split_list(cls, value: object) -> object:
+        """Split the comma-separated text of a list setting given as one text."""
         if isinstance(value, str):
-            return [host.strip() for host in value.split(",") if host.strip()]
+            return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def _bare_origins(cls, value: list[str]) -> list[str]:
+        """Origins as a browser sends them: no trailing slash (``https://a.example/``)."""
+        return [bare for origin in value if (bare := origin.strip().rstrip("/"))]
 
 
 # Global settings instance

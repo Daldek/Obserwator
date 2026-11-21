@@ -72,6 +72,12 @@ from obserwator import fetch_hydro_states, find_stations
 for station in find_stations(kind="hydro", query="wisla", provider="IMGW-PIB")[:5]:
     print(station.station_code, station.name, station.river)
 
+# Live coordinates: ČHMÚ from its metadata, IMGW-PIB from its current-data API
+# (api/data/hydro|meteo); None for a listed station the API does not report (closed ones)
+# Area: bbox=(west, south, east, north) in WGS84 degrees, bounds included; stations
+# without coordinates are left out of an area search
+barycz = find_stations(kind="hydro", bbox=(16.5, 51.3, 17.9, 51.7))
+
 # Offline, from the current station catalogs of a data root (built by store catalog; short_code is None)
 stored = find_stations(kind="hydro", query="wisla", source="store", root="/dane/obserwator")
 
@@ -138,6 +144,9 @@ plan = check_store(raw, datasets=["pl.imgw.hydro_monthly"], years="2022-2023", p
 #    build the Parquet series of the dataset in the data root from the current archive versions of the raw root
 report = sync_store(raw, plan="plan.json")
 build_series(data, raw_root=raw, dataset="pl.imgw.hydro_monthly")  # raw_root is only read
+# A subset of chosen stations and years (ADR-026), in a data root without the full series of the dataset
+build_series("/dane/zlewnia", raw_root=raw, dataset="pl.imgw.hydro_daily",
+             stations=["151170040", "251170140"], years="2001-2025")
 
 # 3. Coverage and reading the current series version (offline; dataset = key, slug or alias)
 for coverage in summarize_series(root=data, dataset="hydro/miesieczne", stations=["152210170"]):
@@ -330,7 +339,7 @@ call = command_for_version("series/versions/hydro_daily/2026-10-19_b85f50c3/seri
 | ČHMÚ hydro / meteo archive | `store sync --datasets <key> --stations <code>` (hydro also `--years <year>`) |
 | station list or station metadata (`*_stations`, `*_now`, `pl.imgw.hydro_details`) | `store sync --datasets <key>` |
 | station catalog | `store catalog --raw-root <raw> --provider <provider>` |
-| series version (or its station file) | `series build --raw-root <raw> --dataset <key>` |
+| series version (or its station file) | `series build --raw-root <raw> --dataset <key>` (with `--stations` and `--years` of a subset, ADR-026) |
 | PMAXTP cell | `pmaxtp sync --latitude --longitude --method --ind-x --ind-y` |
 | analyses version (or one of its station files) | `analyses build` |
 
@@ -406,6 +415,7 @@ obserwator datasets download -d meteo/miesieczne/synop -y 2020-2023 -o dane
 
 # Stations, current data and PMAXTP
 obserwator stations find -k hydro -q wisla --limit 5
+obserwator stations find -k hydro --bbox 16.5,51.3,17.9,51.7   # area: west,south,east,north (WGS84)
 obserwator current hydro -s 150160180
 obserwator current hydro -s 150160180 --json     # the obserwator-result/1 envelope, one JSON line
 obserwator current warnings -k meteo
@@ -420,9 +430,11 @@ obserwator store init --kind data                     # the data root (obserwato
 obserwator store check -d pl.imgw.hydro_monthly -y 2022-2023 --plan plan.json
 obserwator store sync --plan plan.json               # raw archives only, into the raw root
 obserwator series build -d pl.imgw.hydro_monthly      # reads the raw root (--raw-root), writes the data root
+obserwator series build -d pl.imgw.hydro_daily -s 151170040,251170140 -y 2001-2025 --root /dane/zlewnia  # a subset (ADR-026)
 obserwator store sync -d pl.imgw.hydro_stations,pl.imgw.meteo_stations,pl.imgw.hydro_now,pl.imgw.meteo_now
 obserwator store sync -d pl.imgw.hydro_details        # optional: hydro.imgw.pl's station details, one request per station (a few minutes)
-obserwator store catalog                              # stations.geojson in the data root, offline
+python -m obserwator.reference_data                   # optional: hydro.imgw.pl's coordinates of the gauges the API does not locate (reference directory)
+obserwator store catalog                              # stations.geojson in the data root, offline; meteo_kind from the meteo series built before it
 obserwator store scan -k series                       # store info|scan: the data root unless --root names another
 obserwator store export --version archives/versions/<path>/<version> --format jsonl | head   # relative to the raw root
 obserwator series summary -d hydro/miesieczne -s 152210170
@@ -590,6 +602,8 @@ After starting the server (`obserwator server`; it needs the extra `api`, and wi
 
 Routes are generated from the catalog: `/api/v1/<group>/<command>` (table above; local commands — `datasets download`, `store init` — have no routes). GET takes options in the query (comma-separated lists or a repeated parameter), POST — in a JSON body; `?check=true` on POST returns the plan without writing. The response is the same `obserwator-result/1` envelope as in the CLI; list commands have `limit` (default and maximum `OBSERWATOR_API_MAX_LIMIT`, 1000) and `cursor` (`page.next_cursor` of the previous answer). Errors: `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `code`, `hint` when one fits, `details`). Language: notices, item and plan texts and the problem+json `title`, `detail` and `hint` are in English, and in Polish with `Accept-Language: pl` (`q` weights per RFC 9110); commands with a `lang` option (`commands list`, `commands schema`, `commands guide`) take it from the query, and without it from the header. Every command response has `Content-Language`, and `Vary: Accept-Language` when the header decided. The OpenAPI document (`/openapi.json`) is in English.
 
+Every answer carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a `Permissions-Policy` that denies the browser features no page of the server uses (the same headers as the GUI's, section [GUI](#gui)). A browser page of another origin may call the API only from an origin of `OBSERWATOR_CORS_ORIGINS` (none by default, `*` for every origin), never with credentials: the `X-API-Key` header of a write is no credential of CORS.
+
 ```bash
 # Current data and archive URLs
 curl "http://localhost:8000/api/v1/current/hydro?station=150160180"
@@ -700,7 +714,7 @@ The GUI has no sign-in but its admin panel's key (section [Admin panel](#admin-p
 Every answer carries:
 
 - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; img-src 'self' data: blob: <basemap origin>; connect-src 'self' <basemap origin>; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'` (the basemap's origin only when a basemap is set); the admin panel's answers (`admin`, `admin/…`, `api/admin/…`) `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, without the basemap;
-- `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (the tile server learns no page), `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`;
+- `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` (the tile server learns no page), `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy` denying every browser feature the page does not use (`accelerometer`, `autoplay`, `browsing-topics`, `camera`, `display-capture`, `encrypted-media`, `fullscreen`, `geolocation`, `gyroscope`, `hid`, `idle-detection`, `local-fonts`, `magnetometer`, `microphone`, `midi`, `payment`, `picture-in-picture`, `publickey-credentials-get`, `screen-wake-lock`, `serial`, `usb`, `xr-spatial-tracking`; the clipboard stays allowed for the hand-off; `_http_headers.py`, shared with `obserwator server`);
 - `Cache-Control: no-cache` unless the answer sets another: `public, max-age=31536000, immutable` on the page's files at a versioned address, those of `theme-init.js`, `src/`, `css/`, `nogat/` and `vendor/` under `v/<build>/` (`<build>` a digest of these files, so a new release has new addresses) and those of `vendor/` asked with their library's version (`?v=6.14.0` for MapLibre), while the page itself, the API and every other file are asked again with their ETag; `no-store` on every answer of the admin panel and on a `429` of the rate limit. No answer names its request id: the id stays in the server's logs (Nogat DEV-12.4).
 
 There are no cookies, sessions or CORS headers; answers of 1 KiB or more are compressed with gzip for a client that accepts it. `curl -sI http://127.0.0.1:8060/` shows the headers.
@@ -947,6 +961,8 @@ OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator OBSERWATOR_RAW_ROOT=
 
 **Properties of an IMGW-PIB catalog feature from the station details** (`stations.geojson`, ADR-021; in this order after `active`, with `elevation_m`, which keeps its source, between `catchment_area_km2` and `province`): `established_year` (integer), `gauge_zero_m` (m in its datum; 0 → null), `gauge_zero_datum` (only with a gauge zero: `EVRF2007`, once `Kronsztad86`), `river_km`, `catchment_area_km2` (0 → null: gauges on the sea and its lagoons), `province`, `district`, `warning_level_cm`, `alarm_level_cm`, `absolute_min_level_cm`, `absolute_min_level_dates`, `absolute_max_level_cm`, `absolute_max_level_dates` and `details_source` (`"hydro_details"` or null). Levels are in cm above the gauge zero; the dates are free text as published (one or more days, ranges, months, sometimes a word), white space collapsed. Example, Kłodzko `150160180`: gauge zero 281.617 `EVRF2007`, river km 130.04, catchment 1082.27 km², established 1884, `dolnośląskie` / `kłodzki`, warning 160, alarm 240, absolute minimum 28 (`1950-08-31`), maximum 890 (`1997-07-08`). Meteorological stations and hydrological stations without details have every one of them null (`gauge_zero_m`, `river_km` and `established_year` too: the current-data API fields were never kept, ADR-015 D5); ČHMÚ features are unchanged and have none of the new keys. The details add no station and no location. They are optional: without them the catalog is built anyway, its sidecar lists `{"source": "hydro_details", "url": null, "file": null, "fetched_at": null, "count": 0, "sha256": null, "available": false}` among its `sources` and an `info` notice `source_missing` names the `store sync --datasets pl.imgw.hydro_details` that stores them; with them the entry is the stored version's record with `count` (stations with details) and `available: true`. The IMGW-PIB build reports 7 progress steps (step 5 the details, `done` or `missing`); `store catalog --check` has one more action for them: `current` (also when neither the raw root nor the catalog has them), `newer` (they appeared, changed or are gone) or `missing` (no catalog yet). The catalog, `stations export` and the envelope of `store catalog` add the line RH (the hydro.imgw.pl terms) only when a feature has details.
 
+**What the IMGW-PIB catalog can fill and the notices of what is missing.** A location comes from the current-data API (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`), then the static file `hydro_stations_locations.csv` of the reference directory (the coordinates of the hydro.imgw.pl map; IMGW-PIB data are not shipped with Obserwator, `python -m obserwator.reference_data` downloads it), then the user file. IMGW-PIB publishes no coordinates of its other stations (closed gauges, meteorological stations outside the current-data API), so they stay without a location. Without the static file `store catalog` gives a `warning` notice `source_missing` (also in `problems`) that names the command and, with the station details stored, counts the hydrological stations of the map left without a location: the 2026-11-21 roots had 34 (2,143 stations without a location instead of 2,109). `meteo_kind` comes only from the current series `pl.imgw.meteo_synop_daily`, `pl.imgw.meteo_climate_daily` and `pl.imgw.meteo_precip_daily` of the data root, since the station lists publish no kind; build them before the catalog: a data root that lacks some of them gets a notice `series_missing` naming them and their `series build` (a `warning` when it holds none, so every meteorological station has a null kind). `established_year` and the other properties above exist for the hydrological stations of the hydro.imgw.pl map only: no stored source gives them for a meteorological station.
+
 ## Docker
 
 ```bash
@@ -1014,6 +1030,7 @@ api_max_limit = 500
 | `OBSERWATOR_STORE_WRITE_TOKEN` | — (environment only) | none | write token in the `X-API-Key` header |
 | `OBSERWATOR_USER_LOCATIONS_DIR` | `user_locations_dir` | none | directory of user location files for REST routes |
 | `OBSERWATOR_API_MAX_LIMIT` | `api_max_limit` | `1000` | default and maximum `limit` of REST and MCP list commands |
+| `OBSERWATOR_CORS_ORIGINS` | `cors_origins` | none | browser origins that may call `obserwator server` cross-origin (CORS): comma-separated `https://example.org` (scheme and host, optional port) or `*` for every origin; never with credentials; none: no cross-origin access |
 | `OBSERWATOR_API_KEYS_FILE` | `api_keys_file` | `<data_dir>/obserwator/api_keys.json` | the file of the REST API keys of `obserwator admin` |
 | `OBSERWATOR_RATE_LIMIT` | `rate_limit` | `100` | requests per hour (0 = no limit); read by no component: `obserwator server` limits no rate, and the GUI's limit is `OBSERWATOR_REQUEST_LIMIT` |
 | `OBSERWATOR_ENV` | `env` | `development` | `development` or `production` |
@@ -1058,6 +1075,16 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
 Versions are immutable and append-only: no overwriting, no permanent links and no `latest` path. The current version is computed by `current_version(root, slot=...)`, and the slot decides the kind of root it needs; slots of the raw root: `archive:<key>:<file>` (e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `archive:cz.chmi.hydro_daily:H_0-203-1-001000_DQ_2025.json`), `pmaxtp:pl.imgw.pmaxtp:<METHOD>/<indX>_<indY>`; slots of the data root: `series:<key>`, `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`, `analyses:pl.imgw.analyses`, `analyses:cz.chmi.analyses`. Every main file has a `*.meta.json` sidecar (`obserwator-meta/1`) with SHA-256, size, request, HTTP headers and the provider license; sidecars of ČHMÚ archives with a canonical form also have `content_sha256`. A path in a sidecar is relative to its own root, as its first directory tells: a series or catalog names its sources under `archives/` of the raw root and the series a catalog read under `series/` of the data root. The `observations/` directory (`obserwator-observation/1`) records a new source signal when the downloaded bytes have the same content as the current version — it is not a version; `store scan --root <raw root> --kind observation` shows it as publication history.
 
 A write moves version files from the `.incoming/` staging area with hard links that never replace an existing file; the main file's sidecar is linked last and only it commits the version (Kartograf's model, hence the hard-link requirement in [README "Install"](../README.md#install)). A version directory without a sidecar is an interrupted publication (e.g. after a write error, Ctrl+C or a killed process): reads and writes skip it, `store scan` shows it as a `missing_sidecar` problem, and the next write of the same content under the same label completes it. The station catalog label is the build date, and for PMAXTP and an archive without `Last-Modified` — the download date (UTC): an interrupted publication that a retry with the same content and label will not complete (e.g. a catalog rebuilt the next day) must be removed manually — the whole `<label>_<sha8>/` directory without a sidecar — while no write to the root is in progress.
+
+### Series of chosen stations and years
+
+`series build --stations <codes> --years <years>` (`build_series(..., stations=, years=)`, the same in REST and MCP) builds a **subset** of a dataset's series instead of the series of every station and year of the raw root (ADR-026): for a data root that serves a few stations, e.g. an institution's catchment.
+
+- `--stations` takes codes in the grammar of the dataset's provider (9 digits for IMGW-PIB, WIGOS identifiers for ČHMÚ; another code is `validation_error`, `details.option="stations"`); `--years` numbers or ranges in the numbering of the dataset: hydrological years (November to October) for `pl.imgw.hydro_*`, calendar years otherwise — the `year_type` of `series.json` and the archive years of `store sync`.
+- Only the archives that hold them are read: those whose period meets a chosen year and, of the files of one station (ČHMÚ, IMGW-PIB synop), those of the chosen stations; for `pl.imgw.meteo_precip_daily` also the archive before a chosen one, whose missing last days make a total on the next day `accumulated`. In the daily and monthly archives of the whole country the rows of other stations are skipped before their values are read. `source_files` names the archives read.
+- A station holds in a subset exactly the rows and coverage (first, last, gaps) it holds in the full series of the same inputs, within the chosen years; the known periods and the dataset's `periods` are cut to the chosen years. A chosen station that the archives read do not hold is named in a `stations_missing` warning; a subset without any record fails and publishes nothing.
+- The version records its request: `subset` in `series.json` (`{"stations": [...], "years": [...]}`, only the given keys; `read_series_index(...).subset`, a `SeriesSubset`) and `request.stations` and `request.years` in its sidecar, from which `command_for_version` gives the same call. A version is kept (`unchanged`) only for the same inputs and the same subset, so a full build never takes a subset for the series, nor the other way round.
+- A data root that holds a full version of the dataset refuses a subset before anything is read: `conflict` with `details.reason="full_series"` and `details.version` (the plan of `--check`: one `conflict` action). Build the subset into another data root. A full build in a root of subsets is a newer version and becomes current as any build; another subset becomes current too, so a subset names every station the root should serve.
 
 ### Splitting a store
 
@@ -1122,7 +1149,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 
 ### Schemas
 
-`obserwator-store/1` (the marker of a raw root), `obserwator-data/1` (the marker of a data root, ADR-017), `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. The analyses (ADR-016) add `obserwator-analyses/1` (main file of a version), `obserwator-station-analyses/1` (a station's record), `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1` and `obserwator-analysis-definition/1`; the stored answers keep Hydrolog's `hydrolog-result/1` and `hydrolog-error/1`. Within `/1` only optional fields are added; an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
+`obserwator-store/1` (the marker of a raw root), `obserwator-data/1` (the marker of a data root, ADR-017), `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-observation/1` (and the `obserwator-pmaxtp/1` extension) have their own version counters, independent of the package version; the command result envelope is `obserwator-result/1`. The analyses (ADR-016) add `obserwator-analyses/1` (main file of a version), `obserwator-station-analyses/1` (a station's record), `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1` and `obserwator-analysis-definition/1`; the stored answers keep Hydrolog's `hydrolog-result/1` and `hydrolog-error/1`. Within `/1` only optional fields are added (e.g. `subset` of `series.json` and `request.stations` and `request.years` of a series sidecar, ADR-026); an incompatible change means `/2`. An unknown version is reported (`store_info(...).supported is False`), not guessed. The `/1` domains are open to further providers (key `<country>.<provider>.<slug>`, IMGW or WIGOS station code; ADR-003).
 
 ### Integrations
 

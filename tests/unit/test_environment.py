@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import platformdirs
@@ -138,6 +140,60 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
     text = json.dumps(present)
     assert "from-env" not in text and "from-file" not in text
     assert "admin.key" not in text
+
+
+def test_the_cors_origins_are_a_list_from_any_layer(tmp_path, monkeypatch):
+    assert Settings().cors_origins == []
+    monkeypatch.setenv(
+        "OBSERWATOR_CORS_ORIGINS", " https://a.example/, http://b.example:8080 ,"
+    )
+    assert Settings().cors_origins == ["https://a.example", "http://b.example:8080"]
+    monkeypatch.delenv("OBSERWATOR_CORS_ORIGINS")
+    write_config(tmp_path, monkeypatch, '[obserwator]\ncors_origins = "*"\n')
+    assert Settings().cors_origins == ["*"]
+    assert environment_report()["keys"]["cors_origins"] == {
+        "value": ["*"],
+        "source": "file",
+        "name": "[obserwator]",
+    }
+
+
+REPOSITORY = Path(__file__).resolve().parents[2]
+IN_A_CHECKOUT = pytest.mark.skipif(
+    shutil.which("git") is None or not (REPOSITORY / ".git").exists(),
+    reason="needs git and a checkout of the repository",
+)
+
+
+def is_ignored(path: str) -> bool:
+    answer = subprocess.run(
+        ["git", "-C", str(REPOSITORY), "check-ignore", "--no-index", "-q", path],
+        check=False,
+    )
+    return answer.returncode == 0
+
+
+@IN_A_CHECKOUT
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        ".env.local",
+        "docker/.env",
+        "api_keys.json",
+        "state/obserwator/api_keys.json",
+        "admin.key",
+        "secrets/admin.key",
+        "tls/server.pem",
+    ],
+)
+def test_a_credential_file_in_the_repository_is_never_committed(path):
+    assert is_ignored(path)
+
+
+@IN_A_CHECKOUT
+def test_the_template_of_the_settings_stays_tracked():
+    assert not is_ignored(".env.example")
 
 
 def test_directories_stay_out_of_the_working_directory(user_environment, monkeypatch):

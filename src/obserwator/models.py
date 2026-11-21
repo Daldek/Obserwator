@@ -721,7 +721,8 @@ class StationListEntry:
         ČHMÚ ``STREAM_NAME``.
     hydrographic_code : str or None
         Hydro only: IMGW hydrographic code from the parentheses of the river
-        column or ČHMÚ ``HLGP4`` (e.g. ``"1-05-02-0720"``), kept as text
+        column, as the list publishes it (a short number, ``"14"`` for the
+        Barycz), or ČHMÚ ``HLGP4`` (e.g. ``"1-05-02-0720"``), kept as text
         (leading zeros preserved).
     river_order : int or None
         Hydro only: fourth column of the IMGW list, without assigned
@@ -732,9 +733,11 @@ class StationListEntry:
         station of a catalog.
     latitude : float or None
         Latitude (WGS84): of a station of a catalog its location (None for a
-        station without one); of a live list, None for IMGW-PIB and for
-        ČHMÚ as published in the station metadata, without validation
-        against the country border.
+        station without one); of a live list as published, without
+        validation against the country border: for IMGW-PIB the ``lat`` of
+        the current-data API (``api/data/hydro``, ``api/data/meteo``), None
+        for a listed station the API does not report (closed or not
+        reporting now), for ČHMÚ that of the station metadata.
     longitude : float or None
         Longitude (WGS84), as ``latitude``.
     provider : str, optional

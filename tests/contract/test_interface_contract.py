@@ -174,6 +174,9 @@ CASES: dict[str, list[Case]] = {
     "stations find": [
         Case({"kind": "hydro", "query": "raba", "provider": "IMGW-PIB", "limit": 2}),
         Case({"source": "store", "query": "1491", "cursor": page_cursor(1)}, "served"),
+        # Live and stored coordinates in one area (the recorded Raba Górna).
+        Case({"kind": "hydro", "provider": "IMGW-PIB", "bbox": [19, 49, 21, 50]}),
+        Case({"source": "store", "bbox": "19,49,21,50"}, "served"),
     ],
     "current hydro": [Case({"station": RABA})],
     "current meteo": [Case({"limit": 1, "cursor": page_cursor(1)})],

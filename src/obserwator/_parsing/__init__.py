@@ -1,6 +1,6 @@
 """Archive parsing for IMGW-PIB ZIP/CSV files and ČHMÚ JSON/CSV files."""
 
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from datetime import date
 
 from obserwator._parsing.chmi import parse_chmi_hydro_daily, parse_chmi_meteo_daily
@@ -10,6 +10,9 @@ from obserwator.datasets import ArchiveFile
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.models import NormalizedRecord
+
+CARRY_DATASETS = frozenset({"pl.imgw.meteo_precip_daily"})
+"""Datasets whose archives leave something to the next one (``carry``)."""
 
 
 def normalize_archive(
@@ -59,25 +62,47 @@ def normalize_archive(
 
 
 def normalize_in_sequence(
-    archive: ArchiveFile, /, *, data: bytes, carry: dict[str, date] | None
+    archive: ArchiveFile,
+    /,
+    *,
+    data: bytes,
+    carry: dict[str, date] | None,
+    stations: Collection[str] | None = None,
+    skipped_months: set[date] | None = None,
 ) -> Iterator[NormalizedRecord]:
     """
     `normalize_archive` of one of a dataset's archives parsed in date order.
 
-    ``carry`` takes what one archive leaves to the next: for IMGW-PIB's daily
-    precipitation (``pl.imgw.meteo_precip_daily``), per station, the last day
-    whose ``P`` was listed missing, so a total on the first day of a monthly
-    archive after missing days at the end of the previous one is
-    ``"accumulated"`` as one within an archive is. Pass one dictionary,
-    empty at first, to every archive of the sequence; ``None`` parses the
-    archive alone, as ``normalize_archive``. Other datasets ignore it.
+    ``carry`` takes what one archive leaves to the next (the datasets of
+    `CARRY_DATASETS`): for IMGW-PIB's daily precipitation
+    (``pl.imgw.meteo_precip_daily``), per station, the last day whose ``P``
+    was listed missing, so a total on the first day of a monthly archive
+    after missing days at the end of the previous one is ``"accumulated"`` as
+    one within an archive is. Pass one dictionary, empty at first, to every
+    archive of the sequence; ``None`` parses the archive alone, as
+    ``normalize_archive``. Other datasets ignore it.
+
+    ``stations`` lets the parsers of IMGW-PIB's daily and monthly archives of
+    the whole country skip the rows of other stations before they read their
+    values (a series of chosen stations, ADR-026); such rows are not checked
+    beyond their station code and date. Other parsers ignore it, so the
+    caller still keeps only the records of the stations it wants.
+    ``skipped_months`` then receives the first day of every calendar month the
+    records of the skipped rows would have covered: the months the archive
+    publishes, which the records of the chosen stations alone may not show.
     """
     if archive.dataset in {
         "pl.imgw.hydro_daily",
         "pl.imgw.hydro_monthly",
         "pl.imgw.hydro_semiannual",
     }:
-        yield from normalize_hydro_archive(archive.dataset, archive.server_path, data)
+        yield from normalize_hydro_archive(
+            archive.dataset,
+            archive.server_path,
+            data,
+            stations=stations,
+            skipped_months=skipped_months,
+        )
     elif archive.dataset in {
         "pl.imgw.meteo_climate_daily",
         "pl.imgw.meteo_precip_daily",
@@ -88,7 +113,9 @@ def normalize_in_sequence(
             data,
             year=archive.year,
             month=archive.month,
-            carry=carry,
+            carry=carry if archive.dataset in CARRY_DATASETS else None,
+            stations=stations,
+            skipped_months=skipped_months,
         )
     elif archive.dataset == "pl.imgw.meteo_synop_daily":
         yield from normalize_synop_archive(

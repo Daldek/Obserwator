@@ -55,6 +55,7 @@ from obserwator.store.pmaxtp import CELL_FILE, CELL_SCHEMA, RESPONSE_FILE
 from obserwator.store.series import (
     _FLAGS,
     SERIES_SCHEMA,
+    _document_subset,
     _pyarrow,
     _series_descriptor,
 )
@@ -2323,7 +2324,9 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     Parquet file must exist as a regular file, but its contents are not read.
     The known periods of a station (``stations[<code>].periods``, written for
     datasets of per-station files, ADR-003 D10) must be ascending,
-    non-overlapping date ranges when present.
+    non-overlapping date ranges when present, and the ``subset`` of a version
+    built for chosen stations or years (ADR-026) sorted, distinct and not
+    empty.
 
     Parameters
     ----------
@@ -2334,7 +2337,8 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     -------
     SeriesIndex
         Dataset, year type, periods and per-station Parquet index (with the
-        station periods, or None when the index has none).
+        station periods, or None when the index has none), and the subset of
+        a version built for chosen stations or years (None for a full series).
 
     Raises
     ------
@@ -2399,11 +2403,12 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
                 {key: _coverage(code, key, value) for key, value in variables.items()},
                 _station_periods(code, entry.get("periods")),
             )
+        subset = _document_subset(document.get("subset"))
     except (ObserwatorValidationError, KeyError, TypeError, ValueError) as exc:
         raise ObserwatorDataError(
             message("reader.invalid_series_index", path=path, exc=reason(exc))
         ) from exc
-    return SeriesIndex(SERIES_SCHEMA, dataset, year_type, periods, stations)
+    return SeriesIndex(SERIES_SCHEMA, dataset, year_type, periods, stations, subset)
 
 
 def _series_path(
