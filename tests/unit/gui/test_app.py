@@ -23,6 +23,7 @@ import obserwator
 from obserwator.attribution import attribution
 from obserwator.exceptions import ERROR_CODES
 from obserwator.gui._config import Basemap
+from obserwator.gui._live import CURRENT_TTL_S, CurrentData
 from obserwator.messages import message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.testing import _recorded_http
@@ -665,6 +666,32 @@ def test_the_current_values_of_one_station(client):
     assert "synop" not in meteo  # the code is no synoptic station's
     body = problem(chmi, 404, "not_found", "en")
     assert body["message"] == message("gui.errors.no_current_chmi")
+
+
+@pytest.mark.parametrize("path", ["/api/current", f"/api/current/{HYDRO}"])
+def test_current_data_answer_304_until_a_snapshot_changes(make_client, live, path):
+    now = [1000.0]
+    client = make_client()
+    client.app.state.gui.current = CurrentData(
+        live.sources(), clock=lambda: now[0], start=lambda run: run()
+    )
+    first = client.get(path)
+    etag = first.headers["etag"]
+
+    same = client.get(path, headers={"If-None-Match": etag})
+    other_lang = client.get(path, headers={"If-None-Match": etag, **EN})
+    now[0] += CURRENT_TTL_S  # a refresh: the same records, a new snapshot
+    refreshed = client.get(path, headers={"If-None-Match": etag})
+
+    assert first.status_code == 200
+    assert first.headers["cache-control"] == "no-cache"
+    assert (same.status_code, same.content) == (304, b"")
+    assert same.headers["etag"] == etag
+    assert other_lang.status_code == 200
+    assert other_lang.headers["etag"] != etag
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != etag
+    assert refreshed.json()["source"] == "IMGW-PIB"
 
 
 def test_pmaxtp_of_a_point_with_its_tables_its_source_and_command(client):

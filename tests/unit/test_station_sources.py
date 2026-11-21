@@ -791,15 +791,17 @@ def test_details_sync_keeps_the_reference_data_of_each_station(root, server):
     assert sidecar["license"]["url"] == "https://hydro.imgw.pl/#/regulamin"
     assert sidecar["extra"]["kept_fields"] == list(DETAILS_KEPT)
 
-    # The map, then one page per station in map order, each with the headers
-    # hydro-back.imgw.pl requires.
+    # The map, then one page per station in map order, each naming Obserwator and
+    # its project, never passing for hydro.imgw.pl's own page.
     assert urls(server) == [
         DETAILS_MAP_URL,
         *(f"{DETAILS_URL}?id={code}" for code in DETAILS_CODES),
     ]
     for call in server.calls:
-        assert call.request.headers["Referer"] == "https://hydro.imgw.pl/"
-        assert call.request.headers["User-Agent"] == f"Obserwator/{__version__}"
+        assert "Referer" not in call.request.headers
+        assert call.request.headers["User-Agent"] == (
+            f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)"
+        )
 
     # The terms of hydro.imgw.pl (RH), with the processed mark: the store keeps
     # some fields of each answer.
