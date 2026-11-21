@@ -252,11 +252,11 @@ The command catalog is the single source of options, validation, help texts and 
 
 ### Map Stations API
 - **Hydro stations with coordinates**: `https://hydro-back.imgw.pl/map/stations/hydrologic?onlyMainStations=false`
-  - Requires headers: `User-Agent`, `Referer: https://hydro.imgw.pl/`
+  - Header: `User-Agent: Obserwator/<version> (+https://github.com/Daldek/Obserwator)`, no `Referer` (3.1.0); the backend answers 403 to the default user agents of curl and httpx
   - Returns: 900+ stations with lat/lon and water state (alarm, warning, high, medium, low, etc.)
   - Public access: `fetch_hydro_states()`, `obserwator current hydro-states`, `GET /api/v1/current/hydro-states`
 - **Hydro station details** (`pl.imgw.hydro_details`, ADR-021): `https://hydro-back.imgw.pl/station/hydro/status?id=<code>`, the data of a station page of hydro.imgw.pl
-  - Same headers (`User-Agent: Obserwator/<version>`, `Referer: https://hydro.imgw.pl/`; without the Referer the backend answers 403); an unknown code answers `200` with `null`
+  - Same header (`User-Agent: Obserwator/<version> (+https://github.com/Daldek/Obserwator)`, no `Referer`); an unknown code answers `200` with `null`
   - `store sync` asks the map above for the codes, then each station once, in map order and one request at a time (about 910 requests, a few minutes); a `null` answer is skipped, any HTTP error fails the item (`source_unavailable`, nothing written, no retries); `cancel` is polled before each station
   - Kept (dotted `kept_fields`, a derived JSON list sorted by `id`): `id`, `properties.{maximumStateValue, maximumStateDate, minimumStateValue, minimumStateDate, district, waterGaugeZeroOrdinate, waterGaugeZeroOrdinateReferrenceSystem, yearOfEstablishment}`, `status.{riverCourseKm, catchmentArea, province, alarmValue, warningValue}`; never the water states and trends (operational, DEV-20.8), `status.notes`, `properties.dataClause`, the internal `status.id` or the coordinates
   - No freshness signal (`update_signal="none"`): `store check` → `unverifiable`, `store sync` always downloads; license = the hydro.imgw.pl terms (`https://hydro.imgw.pl/#/regulamin`), lines S, P, RH

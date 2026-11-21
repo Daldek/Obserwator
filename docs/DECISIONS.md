@@ -929,6 +929,10 @@ The IMGW-PIB catalog described a hydrological station by its code, name, river, 
 
 Additive: one dataset, eleven optional catalog properties and three filled ones, one optional source with its sidecar entry, notice and check action; `AGENTS.md` and `llms.txt` follow the registry. A catalog built before keeps its nulls until `store sync --datasets pl.imgw.hydro_details` and `store catalog` run; the deployment does it once after the merge (`docs/PROGRESS.md`). A sync costs about 910 requests (234 s on 2026-11-14), and the levels are as current as the last sync; a change of a gauge zero, as on 2026-11-01, gives a new version. The tests replay real answers recorded on 2026-11-14 (`tests/fixtures/store/hydro_details_recordings.json`: the map of three stations, their pages and an unknown code), with no network.
 
+### Errata
+
+**2026-11-21 — D4 (the author's decision of 2026-11-14, release 3.1.0).** The requests to hydro-back.imgw.pl, the map of `fetch_hydro_states` and the station pages of `store sync`, carry `User-Agent: Obserwator/<version> (+https://github.com/Daldek/Obserwator)` and no `Referer`: `Referer: https://hydro.imgw.pl/` passed this program off as IMGW-PIB's own page, and the backend does not need it. Checked on 2026-11-14 and again on 2026-11-21 (one request per endpoint): the map and a station page answer `200` to Obserwator's user agent without a `Referer`; the backend answers `403` only to the default user agents of curl and httpx, so D4's "without the Referer the backend answers `403`" was wrong. The user agent names the program and its project, never the person running it. Rejected: keeping the `Referer` (a false origin), asking IMGW-PIB for permission to use the backend (not taken by the author on 2026-11-14).
+
 ## ADR-022: Daily synoptic data and the station's joined daily record
 
 **Date:** 2026-11-15  

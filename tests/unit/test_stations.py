@@ -3,6 +3,7 @@
 import pytest
 import respx
 
+from obserwator._version import __version__
 from obserwator.datasets import station_source_files
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -244,8 +245,10 @@ async def test_fetch_hydro_states_sends_headers_and_main_only(
     for call in route.calls:
         request = call.request
         assert request.url.params["onlyMainStations"] == only_main
-        assert request.headers["Referer"] == "https://hydro.imgw.pl/"
-        assert request.headers["User-Agent"].startswith("Obserwator/")
+        assert "Referer" not in request.headers
+        assert request.headers["User-Agent"] == (
+            f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)"
+        )
 
 
 def test_fetch_hydro_states_reads_river_and_skips_invalid_stations(respx_mock):

@@ -54,9 +54,10 @@ if TYPE_CHECKING:
     from obserwator.store.types import StationFeature
 
 HYDRO_MAP_API_URL = "https://hydro-back.imgw.pl/map/stations/hydrologic"
+# hydro-back.imgw.pl answers 403 to the default user agents of curl and httpx; the
+# requests name the program and its project, nothing about the person running it.
 _MAP_HEADERS = {
-    "User-Agent": f"Obserwator/{__version__}",
-    "Referer": "https://hydro.imgw.pl/",
+    "User-Agent": f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)",
 }
 _KINDS: tuple[Literal["hydro", "meteo"], ...] = ("hydro", "meteo")
 _SOURCES = ("live", "store")
@@ -495,8 +496,9 @@ def fetch_hydro_states(
     """
     Fetch locations and current water states of hydrological stations.
 
-    Reads the map API of https://hydro.imgw.pl (``hydro-back.imgw.pl``),
-    which requires the ``Referer`` and ``User-Agent`` headers sent here.
+    Reads the map API of https://hydro.imgw.pl (``hydro-back.imgw.pl``), which
+    refuses the default user agents of HTTP libraries; the ``User-Agent`` sent
+    here names Obserwator, its version and its project address.
 
     Parameters
     ----------
@@ -552,7 +554,7 @@ def _hydro_details(
     The map (``onlyMainStations=false``) names the stations; then ``url``, the
     endpoint of a station page (``station/hydro/status``), is asked once per
     station (``?id=<code>``), in map order, one request at a time and with the
-    headers hydro-back.imgw.pl requires. An answer that is no object (``null``
+    headers of `fetch_hydro_states`. An answer that is no object (``null``
     for a code the backend does not know) is left out. The list holds the
     whole answers: `write_archive` keeps only the fields of
     ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021).

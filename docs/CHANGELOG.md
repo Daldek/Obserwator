@@ -95,6 +95,17 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
   tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
 
+### Changed
+
+- **Honest request headers to hydro-back.imgw.pl (ADR-021 erratum of 2026-11-21).** The map of
+  `fetch_hydro_states` (`current hydro-states`, the GUI's water states) and the station pages
+  of `store sync --datasets pl.imgw.hydro_details` no longer send `Referer:
+  https://hydro.imgw.pl/`, which passed Obserwator off as IMGW-PIB's own page, and their
+  `User-Agent` names the program and its project, `Obserwator/<version>
+  (+https://github.com/Daldek/Obserwator)`, never the person running it. The backend answers
+  both without the `Referer` (checked on 2026-11-14 and 2026-11-21); the docstrings and docs that
+  said it requires one are corrected.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
