@@ -19,11 +19,24 @@ MESSAGES = {
         "{name} wskazuje plik, do którego mają dostęp grupa lub inni (tryb {mode}); "
         "ustaw tryb 0600 i właściciela: użytkownika usługi",
     ),
+    "secret_file_encoding": Text(
+        "{name} names a file in {encoding}, not UTF-8, so no key is read from it; "
+        "save it as UTF-8 (in Windows PowerShell 5.1: Set-Content -Encoding utf8)",
+        "{name} wskazuje plik w kodowaniu {encoding}, nie UTF-8, więc nie odczytano z "
+        "niego klucza; zapisz go w UTF-8 (w Windows PowerShell 5.1: Set-Content "
+        "-Encoding utf8)",
+    ),
+    "secret_file_not_utf8": Text(
+        "{name} names a file that is not UTF-8 text, so no key is read from it; save "
+        "it as UTF-8",
+        "{name} wskazuje plik, który nie jest tekstem UTF-8, więc nie odczytano z niego "
+        "klucza; zapisz go w UTF-8",
+    ),
     "secret_refused": Text(
         "{problem}. With [obserwator.instance] the server does not start with a "
-        "weak key or token (ADR-025).",
+        "weak or unreadable key or token (ADR-025).",
         "{problem}. Z sekcją [obserwator.instance] serwer nie uruchamia się ze "
-        "słabym kluczem ani tokenem (ADR-025).",
+        "słabym ani nieczytelnym kluczem lub tokenem (ADR-025).",
     ),
     "api_keys_deprecated": Text(
         "{path} holds the REST API keys of obserwator admin, which nothing checks; "

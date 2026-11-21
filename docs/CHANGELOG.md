@@ -118,7 +118,8 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   read on each write, used without `OBSERWATOR_STORE_WRITE_TOKEN`.
 - **`obserwator config show`** reports `instance` (the resolved section) and `problems`: an
   invalid section, a key or token shorter than 32 bytes, a key file group or others may
-  access (POSIX only: Windows has no permission bits), a leftover `api_keys.json`.
+  access (POSIX only: Windows has no permission bits), a key file that is not UTF-8
+  (`secret_file_encoding`), a leftover `api_keys.json`.
 - **`export_stations(keep=…)`** and **`run_command(keep=…)`**: a predicate of the stations
   exported, a server's instance filter (no catalog option).
 - Both servers refuse at start a root whose marker names a layout this version does not
@@ -269,6 +270,15 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **A secret file saved on Windows is read, or named when it cannot be (ADR-025).**
+  `OBSERWATOR_STORE_WRITE_TOKEN_FILE` and `OBSERWATOR_ADMIN_API_KEY_FILE` kept a UTF-8 BOM
+  (Notepad) in the key, so no client could match it. A file in another encoding, such as
+  UTF-16 from Windows PowerShell 5.1's `>`, counted silently as no key. Both are read by
+  one function now (`obserwator.config.read_secret_file`), which drops the BOM. A file
+  that is not UTF-8 still gives no key, so writes are refused with 403 and the admin
+  panel with 401. It is now also the problem `secret_file_encoding`: `config show`
+  reports it naming the variable and the encoding found, a server warns of it at start,
+  and an instance refuses to start (`details.reason` `secret_file_encoding`).
 - **A regulamin saved on Windows reads as the same text (ADR-025).** The `terms` of
   `[obserwator.instance]` kept the CRLF line ends of a file written on Windows in its text
   and its SHA-256, and a UTF-8 BOM (older Notepad) refused it as having no `# ` title. The

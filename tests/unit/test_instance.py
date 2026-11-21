@@ -531,6 +531,40 @@ def test_the_write_token_may_come_from_a_file(tmp_path, monkeypatch):
     assert "x" * 48 not in json.dumps(report)
 
 
+def test_a_key_file_saved_on_windows_is_read_or_named(tmp_path, monkeypatch, caplog):
+    from obserwator.config import Settings
+
+    token = tmp_path / "token"
+    token.write_bytes(b"\xef\xbb\xbf" + b"x" * 48 + b"\r\n")  # Notepad: a BOM, CRLF
+    token.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    monkeypatch.setenv("OBSERWATOR_STORE_WRITE_TOKEN_FILE", str(token))
+
+    assert configured_token(Settings()) == "x" * 48
+    assert credential_problems("token") == []
+
+    utf16 = b"\xff\xfe" + ("x" * 48 + "\r\n").encode("utf-16-le")  # PowerShell 5.1
+    for data, named in ((utf16, True), (b"x" * 40 + b"\xff\n", False)):
+        token.write_bytes(data)
+        assert configured_token(Settings()) is None  # no key: every write refused
+        (problem,) = credential_problems("token")
+        assert (problem["code"], problem["option"]) == (
+            "secret_file_encoding",
+            "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
+        )
+        assert ("UTF-16LE" in problem["message"]) is named
+        assert problem in environment_report()["problems"]
+        with pytest.raises(ObserwatorValidationError) as caught:
+            check_credentials("token", strict=True)
+        assert caught.value.details == {
+            "option": "OBSERWATOR_STORE_WRITE_TOKEN_FILE",
+            "reason": "secret_file_encoding",
+        }
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        check_credentials("token", strict=False)
+    assert "OBSERWATOR_STORE_WRITE_TOKEN_FILE" in caplog.text
+
+
 def test_the_deprecated_api_keys_say_so(tmp_path, monkeypatch):
     keys = tmp_path / "home" / "data" / "obserwator" / "api_keys.json"
     keys.parent.mkdir(parents=True)

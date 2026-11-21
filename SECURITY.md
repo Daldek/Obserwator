@@ -74,10 +74,10 @@ browser.
   exist; an `off` provider and `pmaxtp = "off"` make no outbound request.
 - *A misconfiguration starts silently*: every field of `[obserwator.instance]` is checked
   at start (`validation_error`, exit 2, `details.option`), as are a data root of an
-  unknown layout and, on an instance, weak secrets (shorter than 32 bytes, or a key file
-  group or others may access, checked on POSIX systems only: Windows has no permission
-  bits, its ACLs are the operator's to set); `obserwator config show --json` lists what
-  remains as `problems`.
+  unknown layout and, on an instance, weak or unreadable secrets (shorter than 32 bytes,
+  a key file that is not UTF-8, or a key file group or others may access, checked on
+  POSIX systems only: Windows has no permission bits, its ACLs are the operator's to
+  set); `obserwator config show --json` lists what remains as `problems`.
 - *A stolen or guessed secret*: one token and one key, compared in constant time, read
   from the environment or from `*_FILE` files of mode 0600, never from `nogat.toml`,
   never logged or printed; the REST API keys of `obserwator admin` are checked by nothing,

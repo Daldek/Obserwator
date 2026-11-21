@@ -44,7 +44,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from obserwator._hydrolog import open_hydrolog
-from obserwator.config import Settings
+from obserwator.config import Settings, read_secret_file
 from obserwator.datasets import get_provider
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
@@ -101,7 +101,7 @@ def configured_key() -> str | None:
     str or None
         The key without surrounding white space; None when neither variable gives
         one: both unset or blank, or the file missing, unreadable, not UTF-8 or
-        blank.
+        blank (`obserwator.config.read_secret_file`, which drops a UTF-8 BOM).
     """
     current = Settings()
     if current.admin_api_key is not None:
@@ -110,11 +110,7 @@ def configured_key() -> str | None:
             return key
     if current.admin_api_key_file is None:
         return None
-    try:
-        text = current.admin_api_key_file.expanduser().read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    return text.strip() or None
+    return read_secret_file(current.admin_api_key_file)
 
 
 def refusal(supplied: str | None, expected: str | None) -> GuiError | None:
