@@ -27,8 +27,8 @@ uvicorn in a thread, on a free port of 127.0.0.1:
   ``nogat.toml``: `OPERATOR_INSTANCE` (public, its title, logo and regulamin, ČHMÚ
   featured, IMGW-PIB off, the area `INSTANCE_AREA` clipped, PMAXTP off),
   `HIDDEN_INSTANCE` (ČHMÚ featured, IMGW-PIB hidden, the same area in focus, the map
-  starting on it), `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB, nothing
-  else) and `NO_PMAXTP_INSTANCE` (every provider served, PMAXTP off).
+  starting on it), `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB drawn at
+  `FEATURED_OTHERS_OPACITY`, nothing else) and `NO_PMAXTP_INSTANCE` (every provider served, PMAXTP off).
 
 A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
 it computes nothing for its whole life.
@@ -100,8 +100,11 @@ area_mode = "focus"
 [obserwator.instance.providers]
 IMGW-PIB = "hidden"
 """
-FEATURED_INSTANCE = """[obserwator.instance]
+FEATURED_OTHERS_OPACITY = 0.25
+"""The opacity of the other providers' stations in `FEATURED_INSTANCE`."""
+FEATURED_INSTANCE = f"""[obserwator.instance]
 featured_provider = "CHMI"
+others_opacity = {FEATURED_OTHERS_OPACITY}
 """
 NO_PMAXTP_INSTANCE = """[obserwator.instance]
 pmaxtp = "off"

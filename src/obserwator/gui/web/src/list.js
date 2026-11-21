@@ -181,7 +181,7 @@ function DatasetChips({ entries, filters, scope, onToggle }) {
               title=${title}
               onClick=${() => onToggle(entry.key)}
             >
-              <${StationSymbol} kind=${entry.kind} provider=${entry.provider} data=${true} size=${11} />${datasetShort(entry.key)}
+              <${StationSymbol} kind=${entry.kind} data=${true} size=${11} />${datasetShort(entry.key)}
             </button>`;
           })}
         </span>
@@ -305,7 +305,7 @@ export function StationList({ stations, filters, scope, onFilters, selected, onS
                 aria-current=${station.code === selected ? "true" : undefined}
                 onClick=${() => onSelect(station.code, { fly: true })}
               >
-                <${StationSymbol} kind=${station.kind} provider=${station.provider} data=${station.datasets.length > 0} active=${station.active} />
+                <${StationSymbol} kind=${station.kind} data=${station.datasets.length > 0} active=${station.active} />
                 <span class="st-name">${station.name || station.code}</span>
                 <code class="st-code">${station.code}</code>
                 <${StationSub} station=${station} />

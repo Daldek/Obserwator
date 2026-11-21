@@ -21,6 +21,7 @@ from urllib.request import urlopen
 import pytest
 
 from tests.e2e.conftest import (
+    FEATURED_OTHERS_OPACITY,
     FIXTURE_STATIONS,
     INSTANCE_AREA,
     INSTANCE_TITLE,
@@ -197,7 +198,21 @@ def test_without_an_instance_the_page_shows_everything_as_before(open_page, gui_
     expect(page).to_have_title("Obserwator")
     camera = settled_camera(page)
     assert camera["max"] is None and camera["area"] == 0
-    expect(page.locator(".map-legend")).not_to_contain_text("obszar serwisu")
+    legend = page.locator(".map-legend")
+    expect(legend).not_to_contain_text("obszar serwisu")
+    # one symbol per kind, whoever provides it: no provider in the legend
+    expect(legend.locator(".legend-title")).to_have_count(0)
+    for words in ("ČHMÚ", "Stacje:", "Pozostałe źródła"):
+        expect(legend).not_to_contain_text(words)
+    expect(legend.locator("li")).to_have_text(
+        [
+            "hydrologiczna",
+            "meteorologiczna",
+            "tylko w katalogu",
+            "nieczynna (blado)",
+            "wybrana",
+        ]
+    )
 
 
 # --- the start, the area and its bounds -----------------------------------------------------
@@ -343,12 +358,31 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     full = {faded[code]["size"] for code in chmi}
     assert len(full) == 1 and {faded[code]["opacity"] for code in chmi} == {1}
     for code in imgw:
-        assert faded[code]["opacity"] < 0.5
+        assert faded[code]["opacity"] == pytest.approx(FEATURED_OTHERS_OPACITY)
         assert faded[code]["size"] < 0.8 * min(full)
     assert min(faded[code]["order"] for code in chmi) > max(
         faded[code]["order"] for code in imgw
     )
-    expect(legend).to_contain_text("inne źródła (mniejsze, blado)")
+    # the legend: ČHMÚ's stations, then the other sources drawn as the map draws them
+    expect(legend.locator(".legend-title")).to_have_text(
+        ["Stacje: ČHMÚ", "Pozostałe źródła"]
+    )
+    groups = legend.locator(".legend-title + .legend-list")
+    expect(groups).to_have_count(2)
+    for group in (groups.nth(0), groups.nth(1)):
+        expect(group.locator("svg.sym")).to_have_count(2)
+    strengths = [
+        groups.nth(n)
+        .locator("svg.sym")
+        .evaluate_all("(all) => all.map((s) => Number(getComputedStyle(s).opacity))")
+        for n in (0, 1)
+    ]
+    assert strengths[0] == [1, 1]
+    assert strengths[1] == [pytest.approx(FEATURED_OTHERS_OPACITY)] * 2
+    heights = [
+        groups.nth(n).locator("svg.sym").first.bounding_box()["height"] for n in (0, 1)
+    ]
+    assert heights[1] < 0.8 * heights[0]
     # „Pokaż inne źródła”: every station at full strength, ČHMÚ's still on top
     others.check()
     page.wait_for_function(
@@ -361,7 +395,8 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     assert min(strong[code]["order"] for code in chmi) > max(
         strong[code]["order"] for code in imgw
     )
-    expect(legend).not_to_contain_text("inne źródła")
+    expect(legend.locator(".legend-title")).to_have_count(0)
+    expect(legend).not_to_contain_text("Pozostałe źródła")
     # IMGW-PIB chosen in the switch: its stations alone, at full strength
     others.uncheck()
     page.get_by_role("radiogroup", name="Dostawca").get_by_role(

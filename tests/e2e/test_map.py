@@ -383,7 +383,6 @@ def test_the_legend_explains_the_symbols_of_the_stations(open_page):
     expect(symbol("hydrologiczna")).to_have_class(re.compile(r"\bhydro\b"))
     expect(symbol("meteorologiczna")).to_have_class(re.compile(r"\bmeteo\b"))
     expect(symbol("tylko w katalogu")).to_have_class(re.compile(r"\bhollow\b"))
-    expect(symbol("ČHMÚ (obrys przerywany)")).to_have_class(re.compile(r"\bdashed\b"))
     expect(symbol("nieczynna (blado)")).to_have_class(re.compile(r"\bfaded\b"))
     selected = symbol("wybrana").bounding_box()
     usual = symbol("hydrologiczna").bounding_box()
