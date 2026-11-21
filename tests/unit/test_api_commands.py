@@ -705,7 +705,7 @@ def test_api_exports_stream_the_cli_lines_with_status_and_notice_headers(
         filename = f"codz_2024.{fmt}"
     else:
         query = {"dataset": DAILY, "station": RABA}
-        filename = f"{RABA}.csv"
+        filename = f"obserwator_series_{DAILY}_{RABA}.csv"
     query["format"] = fmt
     expected = run_command(command, options={**query, "root": root})
     lines = "".join(expected.result)

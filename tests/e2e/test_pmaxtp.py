@@ -144,8 +144,13 @@ def test_bad_coordinates_give_the_form_message_and_ask_nothing(open_page, latitu
 
 
 def _download(page: Any, fmt: str) -> bytes:
+    link = page.locator(".pmaxtp-result .files a", has_text=fmt.upper())
     with page.expect_download() as event:
-        page.locator(".pmaxtp-result .files a", has_text=fmt.upper()).click()
+        link.click()
+    # The page's name and the server's are one (Nogat DEV-19.21).
+    name = f"obserwator_pmaxtp_POT_{LAT:.4f}_{LON:.4f}.{fmt}"
+    assert link.get_attribute("download") == name
+    assert event.value.suggested_filename == name
     path = event.value.path()
     with open(path, "rb") as handle:
         return handle.read()

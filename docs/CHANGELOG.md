@@ -175,6 +175,28 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Changed
 
+- **Every file Obserwator names for a user is `obserwator_<content>_<qualifiers>.<extension>`
+  (Nogat DEV-19.21, ECO-083; plan `2026-11-21-download-file-names.md` step 2).** One module,
+  `obserwator._file_names`, names the GUI's downloads and the REST attachments alike:
+
+  | File | Before | Now |
+  |---|---|---|
+  | stations (GUI, `GET /api/v1/stations/export`) | `stations_imgw-pib_meteo.csv`, REST `stations.<format>` whatever the filters | `obserwator_stations_imgw_meteo.csv`, `obserwator_stations.geojson` (the provider by its national acronym, `imgw`, `chmu`) |
+  | a series (GUI, `GET /api/v1/series/export`) | `252170380_meteo_precip_daily.csv`, REST `<station>.<format>` | `obserwator_series_pl.imgw.meteo_precip_daily_252170380.csv` (the dataset's key, also of a `version`) |
+  | a station's analyses (GUI, `GET /api/v1/analyses/export`) | `252170380_analyses.csv` | `obserwator_analyses_252170380.csv` |
+  | one analysis (GUI) | `149190310_flood_frequency.Q.json` | `obserwator_analyses_149190310_flood_frequency.Q.json`; the page takes the name from `api/downloads/{code}` (`analyses.each`) |
+  | PMAXTP (GUI) | `pmaxtp_POT_52.4142_17.4586.csv` | `obserwator_pmaxtp_POT_52.4142_17.4586.csv` |
+  | climate stripes (GUI) | `climate-stripes-<code>-<first>-<last>[-axis]`, in Polish `paski-klimatyczne-…[-os]` | `obserwator_climate-stripes_<code>_<first>_<last>[_axis]`, one name in both languages |
+  | hand-off (GUI) | `Stróża (Raba) — Q, wartości dobowe.handoff.json` | `obserwator_handoff_stroza-raba-q-wartosci-dobowe.json` |
+  | admin statistics (GUI) | `obserwator-stats-<first>-<last>.csv` | `obserwator_stats_<first>_<last>.csv` |
+
+  The last two come from Nogat's kit 1.1.0, copied byte for byte from Nogat `998d05e`
+  (`nogat-handoff.js`, `nogat-admin.js`, `nogat-kit.json`). Unchanged: a unit of `store
+  export` keeps its name in the raw root (DEV-19.5), the guides stay `AGENTS.md` and
+  `llms.txt`, and `--output` is the caller's name. The OpenAPI document names each stream's
+  `Content-Disposition`. **Migration:** a script that relied on REST's `<station>.csv` or
+  `stations.csv` names its own file with `curl -o`, or reads the new name with `curl -OJ`.
+
 - **ČHMÚ is `CHMU` in every identifier, a location's source is named by its dataset, and the
   CSV's attribution columns are `attribution` and `terms_notice` (ADR-028; the author's
   decisions of 2026-11-21, Nogat ECO-082).** The provider `CHMI` is `CHMU`, the keys

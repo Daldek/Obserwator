@@ -743,9 +743,9 @@
     <li><strong>„Widok”</strong>: „paski” bez osi, jak oryginał, albo „z osią lat i odczytem”: najedź na pasek albo przejdź do pasków klawiszem <kbd>Tab</kbd> i wybierz rok strzałkami, jak na innych <a href="#wykresy">wykresach</a>; odczyt podaje średnią i anomalię roku.</li>
     <li><strong>Kafelki</strong>: środek skali z liczbą lat ze średnią, σ z liczbą lat, zakres skali w °C oraz najcieplejszy i najchłodniejszy rok ze średnią i anomalią.</li>
   </ul>
-  <p>Pod paskami stoi „Metoda: Ed Hawkins (University of Reading), #ShowYourStripes” z odnośnikiem do showyourstripes.info: grafiki tej strony są na licencji CC BY 4.0 z obowiązkiem podania autora, prof. Eda Hawkinsa (University of Reading), i odnośnika, a te paski są rysowane od nowa jego metodą z danych stacji. Przyciski na końcu części zapisują pliki nazwane kodem stacji i latami pasków, <code>paski-klimatyczne-&lt;kod&gt;-&lt;od&gt;-&lt;do&gt;</code>:</p>
+  <p>Pod paskami stoi „Metoda: Ed Hawkins (University of Reading), #ShowYourStripes” z odnośnikiem do showyourstripes.info: grafiki tej strony są na licencji CC BY 4.0 z obowiązkiem podania autora, prof. Eda Hawkinsa (University of Reading), i odnośnika, a te paski są rysowane od nowa jego metodą z danych stacji. Przyciski na końcu części zapisują pliki nazwane kodem stacji i latami pasków, w obu językach tak samo: <code>obserwator_climate-stripes_&lt;kod&gt;_&lt;od&gt;_&lt;do&gt;</code>, np. <code>obserwator_climate-stripes_250190390_1961_2025.png</code>:</p>
   <ul>
-    <li><strong>PNG i SVG</strong> (w widoku z osią nazwa kończy się na <code>-os</code>): nazwa i kod stacji, lata, paski (z osią lat w widoku z osią), skala kolorów z opisem w słowach i latami szarymi, wiersz metody z odnośnikiem oraz wiersze dostawcy danych i jego warunki;</li>
+    <li><strong>PNG i SVG</strong> (w widoku z osią nazwa kończy się na <code>_axis</code>): nazwa i kod stacji, lata, paski (z osią lat w widoku z osią), skala kolorów z opisem w słowach i latami szarymi, wiersz metody z odnośnikiem oraz wiersze dostawcy danych i jego warunki;</li>
     <li><strong>CSV</strong> (UTF-8, przecinek, kropka dziesiętna): wiersz na rok z kolumnami <code>year</code>, <code>tmean_C</code>, <code>anomaly_C</code>, <code>colour_index</code> (0 to najciemniejszy niebieski, 15 najciemniejszy czerwony, pusta komórka to brak średniej rocznej), <code>colour_hex</code> i <code>months_missing</code>; kolumna <code>method</code> ma wiersz metody z odnośnikiem, stację ze zbiorem i wersją szeregu, skalę w słowach, lata szare i objaśnienie <code>colour_index</code>, a <code>attribution</code> i <code>terms_notice</code> wiersze i warunki dostawcy, po jednym w wierszu tabeli.</li>
   </ul>
   <p>Kolory: palety ColorBrewer, © 2002 Cynthia Brewer, Mark Harrower i The Pennsylvania State University, licencja Apache 2.0. This product includes color specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/).</p>
@@ -856,7 +856,7 @@
   </figure>
 
   <h3 id="szeregi">Szeregi stacji: karta „Pobierz”</h3>
-  <p>Dla każdego zbioru danych stacji są trzy przyciski, CSV, JSON i Parquet, z nazwą pliku <code>&lt;kod&gt;_&lt;zbiór&gt;.&lt;format&gt;</code>, np. <code>149190310_hydro_daily.csv</code>. Plik ma bieżącą wersję szeregu z katalogu danych serwera, z całego okresu. Pod przyciskami „Format polecenia” wybiera, które polecenie pokazać, a „Kopiuj” kopiuje je do schowka. Niżej odnośnik do warunków dostawcy: „Regulamin IMGW-PIB” albo „Licencja CC BY 4.0” z „wyłączeniem odpowiedzialności” ČHMÚ.</p>
+  <p>Dla każdego zbioru danych stacji są trzy przyciski, CSV, JSON i Parquet, z nazwą pliku <code>obserwator_series_&lt;zbiór&gt;_&lt;kod&gt;.&lt;format&gt;</code>, np. <code>obserwator_series_pl.imgw.hydro_daily_149190310.csv</code>. Plik ma bieżącą wersję szeregu z katalogu danych serwera, z całego okresu. Pod przyciskami „Format polecenia” wybiera, które polecenie pokazać, a „Kopiuj” kopiuje je do schowka. Niżej odnośnik do warunków dostawcy: „Regulamin IMGW-PIB” albo „Licencja CC BY 4.0” z „wyłączeniem odpowiedzialności” ČHMÚ.</p>
   <dl class="defs">
     <div><dt>CSV</dt><dd>Tekst do arkusza kalkulacyjnego: UTF-8, przecinek jako separator, kropka dziesiętna. Kolumny: <code>date</code>, <code>year</code> (rok hydrologiczny albo kalendarzowy, jak w szeregu) i każda zmienna z jednostką i flagą (<code>H [cm]</code>, <code>H_flag</code>, <code>Q [m3/s]</code>, <code>Q_flag</code>…). Pusta komórka to dzień bez wartości; flagi to <code>value</code>, <code>missing</code> (brak), <code>no_phenomenon</code> (brak zjawiska) i <code>accumulated</code> (suma z kilku dni). Kolumny <code>attribution</code> i <code>terms_notice</code> niosą w pierwszych wierszach wiersze dostawcy i jego warunki.</dd></div>
     <div><dt>JSON</dt><dd>Jeden dokument <code>obserwator-series-export/1</code>: kolumny (<code>columns</code>), jednostki i opisy zmiennych (<code>variables</code>), wersja szeregu (<code>series_version</code>), rodzaj roku, licencja (<code>license</code>) oraz <code>attribution</code> i <code>terms_notice</code>.</dd></div>
@@ -864,22 +864,22 @@
   </dl>
 
   <h3 id="lista-stacji">Lista stacji: „Pobierz listę stacji”</h3>
-  <p>Gdy żadna stacja nie jest wybrana, panel „Stacja” (na telefonie jego arkusz) ma kartę „Pobierz listę stacji”: stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez współrzędnych. Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i „tylko czynne” go nie zawężają. Karta podaje, ile stacji ma plik, a pod przyciskami są „GeoJSON z wiersza poleceń”, „CSV z wiersza poleceń”, licencje i wiersze dostawców. Nazwy plików: <code>stations.geojson</code>, a z filtrami np. <code>stations_imgw-pib_hydro.csv</code>.</p>
+  <p>Gdy żadna stacja nie jest wybrana, panel „Stacja” (na telefonie jego arkusz) ma kartę „Pobierz listę stacji”: stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez współrzędnych. Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i „tylko czynne” go nie zawężają. Karta podaje, ile stacji ma plik, a pod przyciskami są „GeoJSON z wiersza poleceń”, „CSV z wiersza poleceń”, licencje i wiersze dostawców. Nazwy plików: <code>obserwator_stations.geojson</code>, a z filtrami np. <code>obserwator_stations_imgw_hydro.csv</code> (dostawca skrótem z kluczy jego zbiorów: <code>imgw</code>, <code>chmu</code>).</p>
   <dl class="defs">
     <div><dt>GeoJSON</dt><dd>Dokument <code>obserwator-stations-export/1</code>: FeatureCollection z odczytanymi katalogami, szeregami, w których jest każda stacja, i wierszami dostawców. Właściwości stacji: kod (<code>station_code</code>), nazwa, rodzaj, dostawca, rzeka, wysokość, źródło położenia i inne pola katalogu.</dd></div>
     <div><dt>CSV</dt><dd>UTF-8, przecinek jako separator, kropka dziesiętna; wiersz na stację z jej właściwościami z katalogu, współrzędnymi (<code>latitude</code>, <code>longitude</code>), zbiorami (<code>datasets</code>, rozdzielone średnikiem) i wierszami dostawców.</dd></div>
   </dl>
 
   <h3 id="wyniki-analiz">Wyniki analiz</h3>
-  <p>„Wyniki analiz (JSON, CSV)” w karcie „Pobierz”: wszystkie zapisane analizy stacji w jednym pliku <code>&lt;kod&gt;_analyses.json</code> albo <code>&lt;kod&gt;_analyses.csv</code>, np. <code>149190310_analyses.csv</code>, z poleceniem <code>obserwator analyses export</code>, które robi ten sam plik. JSON to jeden dokument <code>obserwator-analyses-export/1</code>: wersja analiz, wersje szeregów, wersja Hydrologa i wynik albo błąd każdej analizy z wersjami wzorów Hydrologa, które go dały (<code>formula_versions</code>), a w polu <code>derived</code> wartość <code>half_years</code>, gdy analiza czytała charakterystyki półroczne obliczone przez Obserwatora z szeregu dobowego (stacje ČHMÚ), a nie opublikowane przez dostawcę. CSV to długa tabela, wiersz na jedną wartość wyniku z jej ścieżką JSON Pointer (<code>path</code>, <code>value</code>), polem <code>derived</code>, obliczeniem, wersją szeregu i Hydrologa, wersjami wzorów (<code>formula_versions</code>, np. <code>mann_kendall=1;sen_slope=1</code>) oraz wierszami dostawcy w kolumnach <code>attribution</code> i <code>terms_notice</code>. Notka pod przyciskami podaje wersję analiz, wersję Hydrologa i datę obliczenia. Tabela niżej daje każdą analizę osobno: jako dokument <code>obserwator-analysis/1</code> w pliku <code>&lt;kod&gt;_&lt;analiza&gt;.json</code>, np. <code>149190310_flood_frequency.Q.json</code> (obliczenie Hydrologa, jego opcje i wersja, wersje wzorów, szereg, który Hydrolog przeczytał, z wersją i sumą SHA-256, wynik albo błąd oraz wiersze dostawców), i jako jej wiersze CSV. Pliki mają wyniki zapisane, z domyślnymi opcjami.</p>
+  <p>„Wyniki analiz (JSON, CSV)” w karcie „Pobierz”: wszystkie zapisane analizy stacji w jednym pliku <code>obserwator_analyses_&lt;kod&gt;.json</code> albo <code>obserwator_analyses_&lt;kod&gt;.csv</code>, np. <code>obserwator_analyses_149190310.csv</code>, z poleceniem <code>obserwator analyses export</code>, które robi ten sam plik. JSON to jeden dokument <code>obserwator-analyses-export/1</code>: wersja analiz, wersje szeregów, wersja Hydrologa i wynik albo błąd każdej analizy z wersjami wzorów Hydrologa, które go dały (<code>formula_versions</code>), a w polu <code>derived</code> wartość <code>half_years</code>, gdy analiza czytała charakterystyki półroczne obliczone przez Obserwatora z szeregu dobowego (stacje ČHMÚ), a nie opublikowane przez dostawcę. CSV to długa tabela, wiersz na jedną wartość wyniku z jej ścieżką JSON Pointer (<code>path</code>, <code>value</code>), polem <code>derived</code>, obliczeniem, wersją szeregu i Hydrologa, wersjami wzorów (<code>formula_versions</code>, np. <code>mann_kendall=1;sen_slope=1</code>) oraz wierszami dostawcy w kolumnach <code>attribution</code> i <code>terms_notice</code>. Notka pod przyciskami podaje wersję analiz, wersję Hydrologa i datę obliczenia. Tabela niżej daje każdą analizę osobno: jako dokument <code>obserwator-analysis/1</code> w pliku <code>obserwator_analyses_&lt;kod&gt;_&lt;analiza&gt;.json</code>, np. <code>obserwator_analyses_149190310_flood_frequency.Q.json</code> (obliczenie Hydrologa, jego opcje i wersja, wersje wzorów, szereg, który Hydrolog przeczytał, z wersją i sumą SHA-256, wynik albo błąd oraz wiersze dostawców), i jako jej wiersze CSV w pliku <code>obserwator_analyses_&lt;kod&gt;_&lt;analiza&gt;.csv</code>. Pliki mają wyniki zapisane, z domyślnymi opcjami.</p>
 
   <h3 id="pmaxtp-pliki">PMAXTP</h3>
-  <p>Pod tabelami PMAXTP przyciski CSV i JSON, np. <code>pmaxtp_POT_52.2300_21.0100.csv</code>. Pliki składa serwer z odpowiedzi API IMGW-PIB dla tego punktu: trzy tabele (ks, sg, rb), wszystkie czasy trwania i prawdopodobieństwa. CSV: UTF-8, przecinek, kropka dziesiętna, wiersz na tabelę i czas trwania, kolumna na prawdopodobieństwo, a w kolumnach <code>attribution</code> i <code>terms_notice</code> wiersze źródła PMAXTP i regulamin, po jednym w wierszu. JSON: dokument <code>obserwator-pmaxtp-export/1</code> z jednostkami i polami <code>attribution</code> i <code>terms_notice</code>.</p>
+  <p>Pod tabelami PMAXTP przyciski CSV i JSON, np. <code>obserwator_pmaxtp_POT_52.2300_21.0100.csv</code> (metoda i punkt z czterema miejscami po przecinku). Pliki składa serwer z odpowiedzi API IMGW-PIB dla tego punktu: trzy tabele (ks, sg, rb), wszystkie czasy trwania i prawdopodobieństwa. CSV: UTF-8, przecinek, kropka dziesiętna, wiersz na tabelę i czas trwania, kolumna na prawdopodobieństwo, a w kolumnach <code>attribution</code> i <code>terms_notice</code> wiersze źródła PMAXTP i regulamin, po jednym w wierszu. JSON: dokument <code>obserwator-pmaxtp-export/1</code> z jednostkami i polami <code>attribution</code> i <code>terms_notice</code>.</p>
 
   <h3 id="przekazanie">Przekazanie do Hydrologa</h3>
   <p>Hydrolog, aplikacja ekosystemu Nogat do obliczeń hydrologicznych, policzy z szeregu stacji to samo co Obserwator i więcej, np. przepływ maksymalny o innym prawdopodobieństwie. Szereg przekazujesz mu bez zapisywania plików:</p>
   <ul>
-    <li><strong>„Kopiuj do Hydrologa”</strong> kopiuje przekazanie do schowka, <strong>„Plik przekazania”</strong> zapisuje je jako plik <code>….handoff.json</code>, a <strong>„Otwórz Hydrologa”</strong> otwiera Hydrologa w nowej karcie, gdy serwer zna jego adres. Gdy przeglądarka nie pozwala skopiować, tekst przekazania pojawia się zaznaczony w polu pod przyciskami: naciśnij <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+    <li><strong>„Kopiuj do Hydrologa”</strong> kopiuje przekazanie do schowka, <strong>„Plik przekazania”</strong> zapisuje je jako plik <code>obserwator_handoff_&lt;temat&gt;.json</code>, np. <code>obserwator_handoff_stroza-raba-q-wartosci-dobowe.json</code> (temat przekazania małymi literami bez polskich znaków), a <strong>„Otwórz Hydrologa”</strong> otwiera Hydrologa w nowej karcie, gdy serwer zna jego adres. Gdy przeglądarka nie pozwala skopiować, tekst przekazania pojawia się zaznaczony w polu pod przyciskami: naciśnij <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
     <li><strong>Gdzie</strong>: w karcie „Pobierz” stacji hydrologicznej („Przekazanie do Hydrologa”: przepływ Q i stan wody H, wartości dobowe z całego okresu; gdy katalog danych ma tylko charakterystyki półroczne IMGW-PIB, maksima roczne z analizy częstości przepływów) oraz przy wynikach „Stanów charakterystycznych”, „Krzywej natężenia przepływu”, „Przepływów maksymalnych i minimalnych” i „Niżówek”. Przekazanie przy wyniku ma lata wybrane w analizie i wynik Obserwatora do porównania.</li>
     <li><strong>W Hydrologu</strong>: „Statystyka przepływów” → „Wczytaj…” → „Wklej ze schowka” albo „Plik przekazania…”. Hydrolog pokazuje liczby Obserwatora obok własnych.</li>
     <li><strong>Format</strong>: dokument <code>nogat-handoff/1</code> ekosystemu Nogat z szeregiem <code>hydrolog-series/1</code> (dzień bez wartości jako <code>null</code>), z pochodzeniem (stacja, zbiór, wersja szeregu, obliczenie i jego opcje) oraz wierszami i warunkami dostawcy.</li>
@@ -887,16 +887,16 @@
 
   <h3 id="wiersz-polecen">Wiersz poleceń</h3>
   <p>Polecenie obok pliku robi ten sam plik programem Obserwator. Program instalujesz z PyPI, np. <code>pip install "obserwator[cli,store]"</code> (szczegóły w <a href="https://github.com/Daldek/Obserwator" target="_blank" rel="noopener noreferrer">README projektu</a>). Polecenia czytają katalog danych Obserwatora: na serwerze to ten sam katalog, z którego czyta strona, a u siebie wskaż własny opcją <code>--root &lt;katalog&gt;</code> albo zmienną <code>OBSERWATOR_ROOT</code>; bez nich polecenie czyta domyślny katalog danych. Plik powstaje w bieżącym katalogu. Przykłady dla Stróży na Rabie:</p>
-  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --output 149190310_hydro_daily.csv</code></pre>
-  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format json --output 149190310_hydro_daily.json</code></pre>
-  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format parquet --output 149190310_hydro_daily.parquet</code></pre>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --output obserwator_series_pl.imgw.hydro_daily_149190310.csv</code></pre>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format json --output obserwator_series_pl.imgw.hydro_daily_149190310.json</code></pre>
+  <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --format parquet --output obserwator_series_pl.imgw.hydro_daily_149190310.parquet</code></pre>
   <p>Polecenie ma też opcje, których strona nie ma, np. tylko przepływ ze stycznia 2024 roku:</p>
   <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --variables Q --start 2024-01-01 --end 2024-01-31 --output 149190310_Q_2024-01.csv</code></pre>
   <p>Lista stacji wszystkich katalogów jako GeoJSON i stacje hydrologiczne IMGW-PIB jako CSV:</p>
-  <pre class="cmd cli-line"><code>obserwator stations export --output stations.geojson</code></pre>
-  <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW-PIB --kind hydro --format csv --output stations_imgw-pib_hydro.csv</code></pre>
+  <pre class="cmd cli-line"><code>obserwator stations export --output obserwator_stations.geojson</code></pre>
+  <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW-PIB --kind hydro --format csv --output obserwator_stations_imgw_hydro.csv</code></pre>
   <p>Zapisane analizy stacji jako CSV:</p>
-  <pre class="cmd cli-line"><code>obserwator analyses export --station 149190310 --format csv --output 149190310_analyses.csv</code></pre>
+  <pre class="cmd cli-line"><code>obserwator analyses export --station 149190310 --format csv --output obserwator_analyses_149190310.csv</code></pre>
   <p>Każde polecenie wypisuje też wiersze dostawcy i jego warunki, a <code>--help</code> opisuje wszystkie opcje.</p>
 
   <h3 id="czytanie">Czytanie plików: pandas, R, DuckDB</h3>
@@ -906,22 +906,22 @@
 import pandas as pd
 import pyarrow.parquet as pq
 
-szereg = pd.read_csv("149190310_hydro_daily.csv", parse_dates=["date"])
+szereg = pd.read_csv("obserwator_series_pl.imgw.hydro_daily_149190310.csv", parse_dates=["date"])
 print(szereg.groupby("year")["Q [m3/s]"].mean())   # średni przepływ roku
 
-tabela = pq.read_table("149190310_hydro_daily.parquet")
+tabela = pq.read_table("obserwator_series_pl.imgw.hydro_daily_149190310.parquet")
 print(json.loads(tabela.schema.metadata[b"attribution"]))   # wiersze dostawcy
 szereg = tabela.to_pandas()
 
-stacje = pd.read_csv("stations_imgw-pib_hydro.csv", dtype={"station_code": str})</code></pre>
+stacje = pd.read_csv("obserwator_stations_imgw_hydro.csv", dtype={"station_code": str})</code></pre>
   <p>R (bez dodatkowych pakietów dla CSV; Parquet czyta pakiet arrow):</p>
-  <pre class="cmd"><code>szereg &lt;- read.csv("149190310_hydro_daily.csv", check.names = FALSE, fileEncoding = "UTF-8")
+  <pre class="cmd"><code>szereg &lt;- read.csv("obserwator_series_pl.imgw.hydro_daily_149190310.csv", check.names = FALSE, fileEncoding = "UTF-8")
 szereg$date &lt;- as.Date(szereg$date)
 summary(szereg[["Q [m3/s]"]])
-tabela &lt;- arrow::read_parquet("149190310_hydro_daily.parquet")</code></pre>
+tabela &lt;- arrow::read_parquet("obserwator_series_pl.imgw.hydro_daily_149190310.parquet")</code></pre>
   <p>DuckDB czyta plik Parquet wprost w zapytaniu SQL; nazwy kolumn z jednostkami ujmij w cudzysłów:</p>
   <pre class="cmd"><code>SELECT year, avg("Q [m3/s]") AS q_sredni
-FROM '149190310_hydro_daily.parquet'
+FROM 'obserwator_series_pl.imgw.hydro_daily_149190310.parquet'
 GROUP BY year
 ORDER BY year;</code></pre>
   <p class="back"><a href="#toc-title">↑ Spis treści</a></p>

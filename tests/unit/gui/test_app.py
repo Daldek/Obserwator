@@ -590,20 +590,27 @@ def test_the_stored_results_download_as_analyses_export_makes_them(
         ).encode("utf-8")
 
     assert files["formats"][fmt] == {
-        "file": f"{HYDRO}_analyses.{fmt}",
+        "file": f"obserwator_analyses_{HYDRO}.{fmt}",
         "url": f"api/files/analyses/{HYDRO}?format={fmt}",
         "command": (
             f"obserwator analyses export --station {HYDRO} --format {fmt} "
-            f"--output {HYDRO}_analyses.{fmt}"
+            f"--output obserwator_analyses_{HYDRO}.{fmt}"
         ),
     }
     (version,) = (stored_root / "analyses" / "versions" / "pl.imgw").iterdir()
     assert files["version"] == version.name
     assert whole.content == exported()
     assert whole.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO}_analyses.{fmt}"'
+        f'attachment; filename="obserwator_analyses_{HYDRO}.{fmt}"'
     )
     assert one.content == exported(analyses=["characteristic.Q"])
+    # The page offers one analysis's file under the name the server sends it with.
+    assert files["each"]["characteristic.Q"][fmt] == (
+        f"obserwator_analyses_{HYDRO}_characteristic.Q.{fmt}"
+    )
+    assert one.headers["content-disposition"].startswith(
+        f'attachment; filename="{files["each"]["characteristic.Q"][fmt]}"'
+    )
     problem(unknown, 404, "not_found")
 
 
@@ -629,7 +636,7 @@ def test_an_analysis_is_computed_by_hydrolog_once_and_served_again(
     assert document["inputs"][0]["dataset"] == "pl.imgw.hydro_daily"
     assert again.status_code == 304
     assert file.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO}_flood_frequency.Q.json"'
+        f'attachment; filename="obserwator_analyses_{HYDRO}_flood_frequency.Q.json"'
     )
     assert json.loads(file.content) == document
     assert session["compute"]["available"] is True
@@ -825,7 +832,7 @@ def test_pmaxtp_files_hold_the_tables_and_pmaxtp_lines(client):
 
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert (
-        'filename="pmaxtp_POT_52.2300_21.0100.csv"'
+        'filename="obserwator_pmaxtp_POT_52.2300_21.0100.csv"'
         in (table.headers["content-disposition"])
     )
     rows = parsed_csv(table.content)
@@ -870,7 +877,7 @@ def test_the_files_of_a_station_come_with_the_readers_command_line(
     assert series["attribution"] == list(attribution("imgw").attribution)
     assert set(series["formats"]) == {"csv", "json", "parquet"}
     for fmt, entry in series["formats"].items():
-        assert entry["file"] == f"{HYDRO}_hydro_daily.{fmt}"
+        assert entry["file"] == f"obserwator_series_pl.imgw.hydro_daily_{HYDRO}.{fmt}"
         line = shlex.split(entry["command"])
         assert "--root" not in line
         assert line[line.index("--output") + 1] == entry["file"]
@@ -893,7 +900,7 @@ def test_series_files_are_made_by_export_series_on_the_read_only_root(client):
 
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert table.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO_CHMU}_chmu_hydro_daily.csv"'
+        f'attachment; filename="obserwator_series_cz.chmu.hydro_daily_{HYDRO_CHMU}.csv"'
     )
     assert parsed_csv(table.content)[1][0] == "2023-01-01"
     assert document.headers["content-type"] == "application/json"
@@ -916,19 +923,19 @@ def test_the_stations_files_come_from_export_stations(client, read_only_root):
     assert listed["stations"] == 13
     assert [item["provider"] for item in listed["licences"]] == ["IMGW-PIB", "ČHMÚ"]
     assert listed["formats"]["geojson"] == {
-        "file": "stations.geojson",
+        "file": "obserwator_stations.geojson",
         "url": "api/files/stations?format=geojson",
-        "command": "obserwator stations export --output stations.geojson",
+        "command": "obserwator stations export --output obserwator_stations.geojson",
     }
     assert chosen["stations"] == 3
     assert chosen["formats"]["csv"]["command"] == (
         "obserwator stations export --provider CHMU --kind meteo --format csv "
-        "--output stations_chmu_meteo.csv"
+        "--output obserwator_stations_chmu_meteo.csv"
     )
     assert whole.headers["content-type"] == "application/geo+json"
     assert whole.content == "".join(obserwator.export_stations(read_only_root)).encode()
     assert table.headers["content-disposition"].startswith(
-        'attachment; filename="stations_chmu_meteo.csv"'
+        'attachment; filename="obserwator_stations_chmu_meteo.csv"'
     )
     assert (
         table.content

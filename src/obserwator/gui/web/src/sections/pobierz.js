@@ -124,7 +124,11 @@ function ResultFiles({ code, analyses, stored }) {
               {
                 key: "file",
                 label: t("station.files.file"),
-                format: (_, row) => html`<a href=${api.analysisFileUrl(code, row.id)} download=${`${code}_${row.id}.json`}>JSON</a>${" · "}<a href=${api.analysesFileUrl(code, { format: "csv", analysis: row.id })} download=${`${code}_${row.id}.csv`}>CSV</a>`,
+                format: (_, row) => {
+                  const names = stored && stored.each ? stored.each[row.id] : null;
+                  if (!names) return "–";
+                  return html`<a href=${api.analysisFileUrl(code, row.id)} download=${names.json}>JSON</a>${" · "}<a href=${api.analysesFileUrl(code, { format: "csv", analysis: row.id })} download=${names.csv}>CSV</a>`;
+                },
               },
             ]}
             rows=${rows}
