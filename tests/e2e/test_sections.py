@@ -101,7 +101,7 @@ def test_low_flow_quantiles_below_zero_flow_show_as_missing(
         {"status": "ok", "envelope": LOW_FLOW["ok"], "error": None},
     )
     ten = part.locator(".figures div", has_text="NQ 10-letni")
-    expect(ten.locator("dd")).to_have_text("–", timeout=WAIT)
+    expect(ten.locator("dd").first).to_have_text("–", timeout=WAIT)
     expect(ten.locator("small")).to_have_text("F = 10 %: poniżej 0 m³/s")
     rows = part.locator("table tbody tr")
     expect(rows.nth(0)).to_contain_text("0,076")  # T = 2

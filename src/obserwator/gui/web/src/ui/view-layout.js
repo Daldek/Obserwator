@@ -221,6 +221,7 @@ export function ViewLayout({ left, center, right, foot }) {
     type="button"
     aria-expanded=${String(panels.phone ? sheet === side : open[side])}
     aria-controls=${`panel-${side}`}
+    title=${typeof label === "string" ? label : undefined}
     onClick=${() => toggle(side)}
   >
     ${side === "left" ? html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h8" /></svg>` : null}
@@ -229,7 +230,7 @@ export function ViewLayout({ left, center, right, foot }) {
   return html`<div class="view-layout" ref=${box} style=${style}>
     <${Panel} side="left" panel=${left} open=${open.left} sheet=${sheet === "left"} onClose=${close("left")} />
     ${open.left && !panels.phone ? html`<${Resizer} side="left" title=${titleOf("left", left)} ...${sizes.left} onWidth=${onWidth("left")} />` : null}
-    <section class="view-center" aria-label=${center.label || t("shell.map")}>
+    <section class="view-center" aria-label=${center.label}>
       <div class="view-bar map-bar">
         ${button("left", titleOf("left", left))}
         ${center.bar || null}

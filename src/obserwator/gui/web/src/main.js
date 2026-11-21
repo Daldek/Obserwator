@@ -179,7 +179,7 @@ function App({ lang: language }) {
     pmaxtp: t("shell.hint.pmaxtp"),
   };
   const center = {
-    label: pmaxtpView ? t("shell.map_pmaxtp") : t("shell.map"),
+    label: t("shell.view_region", { view: viewName }),
     bar: html`<${Seg} items=${viewItems} value=${view} onChange=${setView} label=${t("shell.views")} />
       <span class="hint">${hints[view]}</span>`,
     body: html`<${StationMap}
@@ -228,6 +228,7 @@ function App({ lang: language }) {
       context=${pmaxtpView && pick ? `${method} · ${pointLabel(pick)}` : null}
     />
     <main class="main">
+      <h1 class="visually-hidden">${t("shell.heading")}</h1>
       <${ViewLayout} left=${left} center=${center} right=${right} foot=${foot} />
     </main>
     <${FeedbackDialog} capture=${captureFeedback} session=${session} />
