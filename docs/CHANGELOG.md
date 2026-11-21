@@ -124,7 +124,10 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 - Both servers refuse at start a root whose marker names a layout this version does not
   read (`store_unavailable`, `details.reason` `unsupported_layout`, with a hint).
 - `SECURITY.md`: a threat model of an instance on someone else's infrastructure; USAGE
-  „Deploying an instance for an operator”.
+  „Deploying an instance for an operator”; CODEBASE's configuration (`[obserwator.instance]`,
+  `OBSERWATOR_STORE_WRITE_TOKEN_FILE`); the guide's part 02 „Serwis prowadzony przez
+  operatora” (the operator's logo and title, the featured provider, „Pokaż inne źródła”,
+  the area's outline, the views and sources served, the operator's regulamin).
 - Nogat's kit: `nogat-kit.json` and the operator's draft regulamin `nogat-terms-operator.md`
   copied byte for byte from Nogat `eba117f` (kit 1.0.0, ECO-079).
 - **`stations find` gives IMGW-PIB coordinates live and filters by area (GEO-04).** A live
@@ -299,7 +302,8 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   them and their `series build` (a warning when it holds none, information otherwise). The
   catalogs themselves do not change. The other 2,109 stations without a location (495 hydro,
   1,614 meteo) and the missing `established_year` of meteorological stations are not published
-  by any source the store keeps.
+  by any source the store keeps. The guide's part 07, which said the file ships in the package,
+  now names the command that downloads it.
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
   „Trend liczby dni przymrozkowych”, but the series counts the days with Tmin < 0 °C (FD of
   the ETCCDI), while IMGW-PIB's „dzień przymrozkowy” has Tmin < 0 °C and Tmax > 0 °C

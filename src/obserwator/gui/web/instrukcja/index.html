@@ -228,6 +228,17 @@
 
   <h3 id="podklad">Podkład mapy</h3>
   <p>Mapa ma szary podkład z nazwami miejscowości po polsku; domyślnie to OpenFreeMap z danymi OpenStreetMap, a serwer może mieć inny. Jego źródło podaje pasek źródeł danych u dołu widoku, np. „Podkład mapy: OpenFreeMap © OpenMapTiles Data from OpenStreetMap”. Kafelki podkładu Twoja przeglądarka pobiera wprost z serwera jego dostawcy. Gdy serwer nie ma podkładu albo jego kafelki się nie wczytają, tłem są granice państwowe Polski i Czech z pakietu Obserwatora, z państwowych rejestrów granic (<a href="#granice">PRG i RÚIAN</a>), o czym mówi legenda; pasek źródeł danych podaje wtedy „Źródło: GUGiK (PRG)” i „Źródło: ČÚZK, CC BY 4.0”.</p>
+
+  <h3 id="serwis-operatora">Serwis prowadzony przez operatora</h3>
+  <p>Obserwatora może uruchomić u siebie także inny operator, np. zarząd zlewni albo gmina, dla swojego obszaru i wybranych dostawców danych. Taki serwis działa tak samo, z kilkoma różnicami:</p>
+  <ul>
+    <li><strong>Górny pasek</strong> ma obok znaku Obserwatora logo operatora, a na szerszym ekranie także jego nazwę. Nazwa operatora jest też w tytule karty przeglądarki: „Obserwator · <i>operator</i>”.</li>
+    <li><strong>Wyróżnione źródło</strong>: operator może wyróżnić jednego dostawcę, np. ČHMÚ. Jego stacje są pierwsze na liście, w przełączniku „Dostawca” i w chipach zbiorów, a na mapie leżą na wierzchu; znaki pozostałych dostawców są mniejsze i blade, o czym mówi legenda („inne źródła (mniejsze, blado)”). Dostawcę może też ukryć: jego stacji nie ma wtedy na liście, na mapie ani w chipach, a przełącznik „Dostawca” nadal go wymienia.</li>
+    <li><strong>„Pokaż inne źródła”</strong> w filtrach panelu „Stacje” przywraca stacje pozostałych dostawców w pełnym rozmiarze, także ukrytych, nadal za stacjami wyróżnionego dostawcy. Wybór dostawcy w przełączniku „Dostawca” pokazuje tylko jego stacje. Przeglądarka nie zapamiętuje tego pola, więc kolejna wizyta zaczyna bez niego; odnośnik do stacji ukrytego dostawcy zaznacza je sam.</li>
+    <li><strong>Obszar serwisu</strong>: mapa może zaczynać od obszaru operatora albo od stacji wyróżnionego dostawcy i rysuje obrys obszaru (w legendzie „obszar serwisu”). Gdy serwis obejmuje tylko ten obszar, mapy nie da się odsunąć daleko poza niego, a stacji spoza obszaru nie ma na liście, na mapie ani w plikach.</li>
+    <li><strong>Widoki i źródła</strong>: serwis może nie podawać danych części dostawców, pomiarów bieżących albo PMAXTP. Pasek nad mapą ma wtedy tylko podawane widoki, a karta „Opady” nie pokazuje PMAXTP obok kwantyli. Pasek źródeł danych i okno „Źródła i warunki” wymieniają tylko podawanych dostawców.</li>
+    <li><strong>Regulamin</strong>: w serwisie publicznym odnośnik „Regulamin” otwiera regulamin operatora, który mówi, kto prowadzi serwis i jak się z nim skontaktować (<a href="#serwis-publiczny">rozdział 08</a>).</li>
+  </ul>
   <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
 </section>
 
@@ -932,7 +943,7 @@ ORDER BY year;</code></pre>
   <p class="legal">Regulamin danych IMGW-PIB: <a href="https://danepubliczne.imgw.pl/regulations" target="_blank" rel="noopener noreferrer">https://danepubliczne.imgw.pl/regulations</a></p>
 
   <h3 id="hydro-imgw">IMGW-PIB: serwis hydrologiczny hydro.imgw.pl</h3>
-  <p>Stany wody w „Pomiarach bieżących” pochodzą z mapy hydro.imgw.pl, a położenia części stacji z pliku położeń tej mapy w pakiecie Obserwatora (źródło położenia podaje karta „Informacje o stacji”). Ze strony każdej stacji hydrologicznej w tym serwisie pochodzą jej dane katalogowe w karcie „Informacje o stacji”: zero wodowskazu z układem wysokości, kilometr rzeki, powierzchnia zlewni, rok założenia, województwo i powiat, a także „Progi i stany ekstremalne IMGW-PIB”, czyli stany ostrzegawczy i alarmowy, według strony stacji z dnia ich pobrania, oraz absolutne minimum i maksimum z datami. Magazyn Obserwatora przechowuje je jako zbiór <code>pl.imgw.hydro_details</code>, bez stanów wody, trendów i komunikatów stacji. Wtedy obok źródła i oznaczenia przetworzenia IMGW-PIB stoi odnośnik do regulaminu tego serwisu:</p>
+  <p>Stany wody w „Pomiarach bieżących” pochodzą z mapy hydro.imgw.pl, a położenia części stacji z pliku położeń tej mapy (źródło położenia podaje karta „Informacje o stacji”). Pliku nie ma w pakiecie Obserwatora: przed zbudowaniem katalogu stacji pobiera go polecenie <code>python -m obserwator.reference_data</code>. Ze strony każdej stacji hydrologicznej w tym serwisie pochodzą jej dane katalogowe w karcie „Informacje o stacji”: zero wodowskazu z układem wysokości, kilometr rzeki, powierzchnia zlewni, rok założenia, województwo i powiat, a także „Progi i stany ekstremalne IMGW-PIB”, czyli stany ostrzegawczy i alarmowy, według strony stacji z dnia ich pobrania, oraz absolutne minimum i maksimum z datami. Magazyn Obserwatora przechowuje je jako zbiór <code>pl.imgw.hydro_details</code>, bez stanów wody, trendów i komunikatów stacji. Wtedy obok źródła i oznaczenia przetworzenia IMGW-PIB stoi odnośnik do regulaminu tego serwisu:</p>
   <p class="legal">Regulamin serwisu hydrologicznego IMGW-PIB: <a href="https://hydro.imgw.pl/#/regulamin" target="_blank" rel="noopener noreferrer">https://hydro.imgw.pl/#/regulamin</a></p>
 
   <h3 id="pmaxtp-warunki">IMGW-PIB: PMAXTP</h3>
