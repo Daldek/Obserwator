@@ -672,17 +672,26 @@ def test_imgw_17_k2_codes_stay_text_and_coordinates_equal_the_published_decimals
 ):
     catalog = version_of(pl_cz.data, "catalog:cz.chmu.stations")
     document = json.loads(catalog.read_text("utf-8"), parse_float=Decimal)
+    # Files of each location source in precedence order: both files of the hydro now
+    # metadata, meta1 before meta3, locate a station as cz.chmu.hydro_now.
     sources = {
-        "chmu_hydro_now": (_rows("hydro_now_get", "objID"), "GEOGR1", "GEOGR2"),
-        "chmu_hydro_meta3": (_rows("hydro_meta3_get", "objID"), "GEOGR1", "GEOGR2"),
-        "chmu_hydro_stations": (
-            _rows("hydro_stations_get", "objID"),
+        "cz.chmu.hydro_now": (
+            (_rows("hydro_now_get", "objID"), _rows("hydro_meta3_get", "objID")),
+            "GEOGR1",
+            "GEOGR2",
+        ),
+        "cz.chmu.hydro_stations": (
+            (_rows("hydro_stations_get", "objID"),),
             "GEOGR1",
             "GEOGR2",
         ),
         # Meteo GEOGR1 is the longitude (spec §7.2).
-        "chmu_meteo_now": (_rows("meteo_now_get", "WSI"), "GEOGR2", "GEOGR1"),
-        "chmu_meteo_stations": (_rows("meteo_stations_get", "WSI"), "GEOGR2", "GEOGR1"),
+        "cz.chmu.meteo_now": ((_rows("meteo_now_get", "WSI"),), "GEOGR2", "GEOGR1"),
+        "cz.chmu.meteo_stations": (
+            (_rows("meteo_stations_get", "WSI"),),
+            "GEOGR2",
+            "GEOGR1",
+        ),
     }
     located = 0
     for feature in document["features"]:
@@ -693,7 +702,8 @@ def test_imgw_17_k2_codes_stay_text_and_coordinates_equal_the_published_decimals
         assert code is None or isinstance(code, str)
         if feature["geometry"] is None:
             continue
-        rows, latitude, longitude = sources[properties["location_source"]]
+        files, latitude, longitude = sources[properties["location_source"]]
+        rows = next(rows for rows in files if properties["station_code"] in rows)
         row = max(
             rows[properties["station_code"]], key=lambda row: str(row.get("BEGIN_DATE"))
         )

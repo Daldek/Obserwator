@@ -145,11 +145,13 @@ MESSAGES: dict[str, Text] = {
         "{source}, uncertainty ±{metres} m", "{source}, niepewność ±{metres} m"
     ),
     "station.info.source_unknown": Text("source unknown", "źródło nieznane"),
-    "station.info.source.api_hydro": Text(
+    # Where the catalog took a location from (``location_source``, ADR-028): the key
+    # of the dataset whose file gave it, or the static or the user's file.
+    "station.info.source.pl.imgw.hydro_now": Text(
         "IMGW-PIB's current API (danepubliczne.imgw.pl), hydrological stations",
         "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje hydrologiczne",
     ),
-    "station.info.source.api_meteo": Text(
+    "station.info.source.pl.imgw.meteo_now": Text(
         "IMGW-PIB's current API (danepubliczne.imgw.pl), meteorological stations",
         "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje meteorologiczne",
     ),
@@ -163,17 +165,25 @@ MESSAGES: dict[str, Text] = {
         "a file of locations given when the catalog was built",
         "plik położeń podany przy budowie katalogu",
     ),
+    "station.info.source.cz.chmu.hydro_now": Text(
+        "ČHMÚ's current metadata, hydrology", "bieżące metadane ČHMÚ, hydrologia"
+    ),
+    "station.info.source.cz.chmu.hydro_stations": Text(
+        "ČHMÚ's list of stations, hydrology", "wykaz stacji ČHMÚ, hydrologia"
+    ),
+    "station.info.source.cz.chmu.meteo_now": Text(
+        "ČHMÚ's current metadata, meteorology", "bieżące metadane ČHMÚ, meteorologia"
+    ),
+    "station.info.source.cz.chmu.meteo_stations": Text(
+        "ČHMÚ's list of stations, meteorology", "wykaz stacji ČHMÚ, meteorologia"
+    ),
+    # The file of a ČHMÚ station's thresholds (``thresholds.source``), named as in
+    # the catalog's ``sources``.
     "station.info.source.chmu_hydro_now": Text(
         "ČHMÚ's current metadata, hydrology", "bieżące metadane ČHMÚ, hydrologia"
     ),
-    "station.info.source.chmu_hydro_meta3": Text(
-        "ČHMÚ's metadata (meta3), hydrology", "metadane ČHMÚ (meta3), hydrologia"
-    ),
     "station.info.source.chmu_hydro_stations": Text(
         "ČHMÚ's list of stations, hydrology", "wykaz stacji ČHMÚ, hydrologia"
-    ),
-    "station.info.source.chmu_meteo_now": Text(
-        "ČHMÚ's current metadata, meteorology", "bieżące metadane ČHMÚ, meteorologia"
     ),
     "station.info.missing.outside_country": Text(
         "the station lies outside its provider's country", "stacja poza krajem dostawcy"

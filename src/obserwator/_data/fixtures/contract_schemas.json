@@ -518,15 +518,14 @@
                   },
                   "location_source": {
                     "enum": [
-                      "api_hydro",
-                      "api_meteo",
+                      "pl.imgw.hydro_now",
+                      "pl.imgw.meteo_now",
                       "static",
                       "user",
-                      "chmu_hydro_now",
-                      "chmu_hydro_meta3",
-                      "chmu_hydro_stations",
-                      "chmu_meteo_now",
-                      "chmu_meteo_stations",
+                      "cz.chmu.hydro_now",
+                      "cz.chmu.hydro_stations",
+                      "cz.chmu.meteo_now",
+                      "cz.chmu.meteo_stations",
                       null
                     ]
                   },

@@ -698,7 +698,7 @@ def test_location_precedence_rejections_and_reasons(
     def props(code):
         return found[code]["properties"]
 
-    assert props("150000020")["location_source"] == "api_hydro"
+    assert props("150000020")["location_source"] == "pl.imgw.hydro_now"
     assert found["150000020"]["geometry"]["coordinates"] == [18.3275, 49.9213]
     assert props("150000021")["location_source"] == "static"
     assert found["150000021"]["geometry"]["coordinates"] == [18.32665589, 49.95453369]
@@ -933,7 +933,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert warsaw["geometry"]["coordinates"] == [21.01, 52.23]  # [lon, lat]
     assert (
         warsaw["properties"]["kind"] == "meteo"
-        and warsaw["properties"]["location_source"] == "api_meteo"
+        and warsaw["properties"]["location_source"] == "pl.imgw.meteo_now"
     )
     # A location from the static file of the hydro.imgw.pl map adds H and RH.
     static_station = next(f for f in document["features"] if f["id"] == "149190312")

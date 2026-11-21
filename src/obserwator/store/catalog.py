@@ -195,8 +195,15 @@ _METEO_KINDS: Mapping[str, MeteoKind] = MappingProxyType(
 _KIND_RANKS: Mapping[MeteoKind, int] = MappingProxyType(
     {kind: rank for rank, kind in enumerate(_METEO_KINDS.values())}
 )
-# Location candidate ``(source, longitude, latitude)`` as published.
+# Location candidate ``(location source, longitude, latitude)`` as published: the
+# location source is the key of the dataset whose file gave the point, or ``static``
+# and ``user`` for the two location files outside any dataset (ADR-028).
 _Candidate = tuple[str, object, object]
+# Location source of a point of IMGW-PIB's current-data answer of each station
+# family: the dataset of the answer.
+_API_LOCATION_SOURCES: Mapping[str, str] = MappingProxyType(
+    {"hydro": _CATALOG_SOURCES["IMGW-PIB"][2], "meteo": _CATALOG_SOURCES["IMGW-PIB"][3]}
+)
 
 # --------------------------------------------------------------------------
 # Shared version publication (also used by store.pmaxtp)
@@ -1051,7 +1058,9 @@ def _catalog_bytes(
         api = apis[kind].get(code)
         candidates: list[tuple[str, object, object]] = []
         if api is not None:
-            candidates.append((f"api_{kind}", api.get("lon"), api.get("lat")))
+            candidates.append(
+                (_API_LOCATION_SOURCES[kind], api.get("lon"), api.get("lat"))
+            )
         if code in static:
             candidates.append(("static", static[code][0], static[code][1]))
         if code in user:
@@ -1092,8 +1101,11 @@ class _Metadata:
     Attributes
     ----------
     source : str
-        Source name of the sidecar and of ``location_source``, e.g.
-        ``"chmu_hydro_now"``.
+        Source name of the file in the sidecar's ``sources`` and in a threshold's
+        ``source``, e.g. ``"chmu_hydro_now"``.
+    dataset : str
+        Key of the file's dataset, the ``location_source`` of a station it
+        locates (ADR-028), e.g. ``"cz.chmu.hydro_now"``.
     kind : {"hydro", "meteo"}
         Station family of the file.
     table : MetadataTable
@@ -1105,6 +1117,7 @@ class _Metadata:
     """
 
     source: str
+    dataset: str
     kind: Literal["hydro", "meteo"]
     table: MetadataTable
     rows: Mapping[str, int]
@@ -1171,6 +1184,7 @@ def _metadata(
     data: bytes,
     *,
     source: str,
+    dataset: str,
     kind: Literal["hydro", "meteo"],
     filename: str,
     problems: list[str],
@@ -1197,7 +1211,7 @@ def _metadata(
             problems.append(
                 message("catalog.source_repeated_code", source=source, code=code)
             )
-    return _Metadata(source, kind, table, rows, thresholds)
+    return _Metadata(source, dataset, kind, table, rows, thresholds)
 
 
 def _thresholds(source: _Metadata, code: str) -> dict[str, Any] | None:
@@ -1283,7 +1297,7 @@ def _chmu_feature(
         index = source.rows.get(code)
         if index is not None:
             lat, lon = station_coordinates(source.table, index, kind=kind)
-            candidates.append((source.source, lon, lat))
+            candidates.append((source.dataset, lon, lat))
             owners.append(source)
     if code in user:
         candidates.append(("user", user[code][0], user[code][1]))
@@ -2447,9 +2461,8 @@ def _build_chmu(build: _Build) -> CatalogReport:
                 server_path=archive.server_path if archive else source,
             ),
         )
-    hydro_list, meteo_list = (
-        get_dataset(key).slug for key in _CATALOG_SOURCES[owner.id][:2]
-    )
+    hydro_key, meteo_key, hydro_now, meteo_now = _CATALOG_SOURCES[owner.id]
+    hydro_list, meteo_list = (get_dataset(key).slug for key in (hydro_key, meteo_key))
     if (report := build.stopped()) is not None:
         return report
     problems: list[str] = []
@@ -2460,12 +2473,14 @@ def _build_chmu(build: _Build) -> CatalogReport:
         data: bytes,
         record: dict[str, Any],
         *,
+        dataset: str,
         kind: Literal["hydro", "meteo"],
         thresholds: bool = True,
     ) -> _Metadata:
         metadata = _metadata(
             data,
             source=record["source"],
+            dataset=dataset,
             kind=kind,
             filename=record["file"],
             problems=problems,
@@ -2475,15 +2490,22 @@ def _build_chmu(build: _Build) -> CatalogReport:
         records.append(record)
         return metadata
 
+    # Both files of the hydro ``now`` metadata, meta1 and meta3, are of
+    # cz.chmu.hydro_now: a station located from either has that location source.
     families = {
         "hydro": (
-            parse(*stored["chmu_hydro_now"], kind="hydro"),
-            parse(*stored["chmu_hydro_meta3"], kind="hydro", thresholds=False),
-            parse(*stored[hydro_list], kind="hydro"),
+            parse(*stored["chmu_hydro_now"], dataset=hydro_now, kind="hydro"),
+            parse(
+                *stored["chmu_hydro_meta3"],
+                dataset=hydro_now,
+                kind="hydro",
+                thresholds=False,
+            ),
+            parse(*stored[hydro_list], dataset=hydro_key, kind="hydro"),
         ),
         "meteo": (
-            parse(*stored["chmu_meteo_now"], kind="meteo"),
-            parse(*stored[meteo_list], kind="meteo"),
+            parse(*stored["chmu_meteo_now"], dataset=meteo_now, kind="meteo"),
+            parse(*stored[meteo_list], dataset=meteo_key, kind="meteo"),
         ),
     }
     if user is not None:

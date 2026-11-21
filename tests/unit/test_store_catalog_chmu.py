@@ -273,7 +273,7 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
     }
     properties = spindleruv["properties"]
     assert (properties["name"], properties["river"]) == ("Špindlerův Mlýn", "Labe")
-    assert properties["location_source"] == "chmu_hydro_now"
+    assert properties["location_source"] == "cz.chmu.hydro_now"
     assert properties["thresholds"] == {
         "source": "chmu_hydro_now",
         "type": "H",
@@ -307,7 +307,7 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
     )
     closed = found["0-203-1-900002"]
     assert closed["geometry"]["coordinates"] == [17.2512345, 49.8512345]
-    assert closed["properties"]["location_source"] == "chmu_hydro_stations"
+    assert closed["properties"]["location_source"] == "cz.chmu.hydro_stations"
     assert closed["properties"]["thresholds"] == {
         "source": "chmu_hydro_stations",
         "type": "Q",
@@ -331,7 +331,7 @@ def test_rejected_points_never_block_a_lower_source_and_reasons_are_kept(store):
 
     lower = found["0-203-1-900004"]
     assert lower["geometry"]["coordinates"] == [16.6012345, 49.2012345]
-    assert lower["properties"]["location_source"] == "chmu_hydro_stations"
+    assert lower["properties"]["location_source"] == "cz.chmu.hydro_stations"
     assert lower["properties"]["location_missing_reason"] is None
     foreign = found["0-20000-0-99903"]["properties"]
     assert foreign["location_missing_reason"] == "outside_country"
@@ -345,9 +345,9 @@ def test_rejected_points_never_block_a_lower_source_and_reasons_are_kept(store):
     )
     assert (report.from_series, report.without_location) == (1, 2)
     assert report.problems == (
-        "0-20000-0-99903: the source point chmu_meteo_now (-21.9405, 64.1311) was rejected — outside_country",
-        "0-20000-0-99903: the source point chmu_meteo_stations (-21.9405, 64.1311) was rejected — outside_country",
-        "0-203-1-900004: the source point chmu_hydro_now (0, 0) was rejected — zero",
+        "0-20000-0-99903: the source point cz.chmu.meteo_now (-21.9405, 64.1311) was rejected — outside_country",
+        "0-20000-0-99903: the source point cz.chmu.meteo_stations (-21.9405, 64.1311) was rejected — outside_country",
+        "0-203-1-900004: the source point cz.chmu.hydro_now (0, 0) was rejected — zero",
     )
     assert [n.message for n in notices if n.code == "location_rejected"] == list(
         report.problems
@@ -387,7 +387,7 @@ def test_location_conflict_names_stations_whose_valid_points_disagree(store):
     assert conflict.message.endswith(": 0-203-1-900001")
     assert not any("0-203-1-900001" in problem for problem in report.problems)
     assert features(report)["0-203-1-900001"]["properties"]["location_source"] == (
-        "chmu_hydro_now"
+        "cz.chmu.hydro_now"
     )
 
 
@@ -432,7 +432,7 @@ def test_meteo_fields_come_from_now_and_the_latest_historical_period(store):
         properties["name"],
         properties["active"],
         properties["elevation_m"],
-    ) == ("chmu_meteo_stations", "Fiktivní Ves-Horní", False, 318.5)
+    ) == ("cz.chmu.meteo_stations", "Fiktivní Ves-Horní", False, 318.5)
 
 
 def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(store):

@@ -286,7 +286,7 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
         "kind": "hydro",
         "meteo_kind": None,
         "active": True,
-        "location_source": "api_hydro",
+        "location_source": "pl.imgw.hydro_now",
         "lon": 20.1,
         "lat": 49.7,
         "datasets": ["pl.imgw.hydro_daily"],
