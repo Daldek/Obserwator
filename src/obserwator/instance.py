@@ -690,14 +690,14 @@ class Instance:
         features : Mapping of str to StationFeature
             Their stations by code.
         series : Mapping of str to object
-            The current series of each dataset (a dataclass with ``index``, a
-            `SeriesIndex`), by dataset key.
+            The current series of each dataset (a dataclass whose ``stations`` maps
+            each station code of its index to what is kept of it), by dataset key.
 
         Returns
         -------
         tuple of dict
             The catalogs and series of the providers served and the stations `keeps`;
-            with ``clip``, each series index keeps only those stations.
+            with ``clip``, each series keeps only those stations.
         """
         kept = {code: item for code, item in features.items() if self.keeps(item)}
         reduced: dict[str, _S] = {}
@@ -706,14 +706,8 @@ class Instance:
                 continue
             if self.clips:
                 plain: Any = entry
-                if hasattr(plain, "index"):  # a series with its whole index
-                    index = plain.index
-                    held = {c: s for c, s in index.stations.items() if c in kept}
-                    plain = replace(plain, index=replace(index, stations=held))
-                else:  # a series keeping only its stations' summary
-                    held = {c: s for c, s in plain.stations.items() if c in kept}
-                    plain = replace(plain, stations=held)
-                entry = cast(_S, plain)
+                held = {c: s for c, s in plain.stations.items() if c in kept}
+                entry = cast(_S, replace(plain, stations=held))
             reduced[key] = entry
         return (
             {
