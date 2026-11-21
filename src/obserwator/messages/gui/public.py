@@ -27,6 +27,10 @@ MESSAGES: dict[str, Text] = {
         "the filled terms still hold {{{{",
         "wypełniony regulamin wciąż zawiera {{{{",
     ),
+    "public.terms_no_title": Text(
+        'the terms must start with a "# " title',
+        "regulamin musi zaczynać się tytułem „# ”",
+    ),
     "public.feedback_forbidden": Text(
         "Reports are accepted only from this site's own page.",
         "Zgłoszenia przyjmuje tylko strona tego serwisu.",

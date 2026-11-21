@@ -1225,7 +1225,12 @@ class _Catalog:
     lines: Attribution
 
 
-def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catalog]:
+def _catalogs(
+    base: Path,
+    provider: str | None,
+    kind: str | None,
+    keep: Callable[[StationFeature], bool] | None = None,
+) -> list[_Catalog]:
     """
     The current catalogs of the chosen providers with their stations of ``kind``.
 
@@ -1233,6 +1238,8 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
     a catalog are those its builder gives it (ADR-012): the provider's processed
     lines, and the lines of hydro.imgw.pl when a station is located by the
     static file of its map or has the station details of its pages (ADR-021).
+    With ``keep`` only the stations it keeps count (the feature's provider set
+    to the catalog's), and a catalog without one is left out with its lines.
 
     Raises
     ------
@@ -1259,6 +1266,18 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
                 )
             continue
         features = read_catalog(entry.version)
+        if keep is not None:
+            features = tuple(
+                feature
+                for feature in features
+                if keep(
+                    feature
+                    if feature.provider == owner.id
+                    else replace(feature, provider=owner.id)
+                )
+            )
+            if not features:
+                continue
         static = sum(
             feature.properties.get("location_source") == "static"
             for feature in features
@@ -1515,6 +1534,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> Iterator[str]: ...
 
 
@@ -1532,6 +1552,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> OutputReport: ...
 
 
@@ -1548,6 +1569,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> OutputReport | Iterator[str]:
     """
     Export the stations of the current catalogs as GeoJSON or CSV, with their series.
@@ -1613,6 +1635,11 @@ def export_stations(
     cancel : Cancel or None, optional
         Polled before the first line, every 256 stations and before replacing
         the target; returning ``True`` aborts the export.
+    keep : callable or None, optional
+        Exports only the stations for which it returns True, given a catalog's
+        feature with the catalog's provider: a server's instance filter (ADR-025);
+        a catalog without a kept station is left out with its lines and series.
+        No option of the command catalog: the CLI and MCP export every station.
 
     Returns
     -------
@@ -1651,7 +1678,7 @@ def export_stations(
     chosen = None if provider is None else get_provider(provider).id
     base = _data_root(root)
     target = _target(output, force=force)
-    catalogs = _catalogs(base, chosen, kind)
+    catalogs = _catalogs(base, chosen, kind, keep)
     count = sum(len(catalog.stations) for catalog in catalogs)
     if not count:
         raise ObserwatorDataError(

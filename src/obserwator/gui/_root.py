@@ -23,6 +23,7 @@ from typing import Any, Literal
 from obserwator.datasets import datasets, get_dataset
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
+from obserwator.instance import Instance
 from obserwator.store import (
     SeriesIndex,
     StationFeature,
@@ -262,6 +263,10 @@ class DataRoot:
         How long a read of the current versions is trusted [s].
     clock : callable, optional
         Monotonic time in seconds.
+    scope : Instance or None, optional
+        The deployment's ``[obserwator.instance]`` (ADR-025): every read is reduced to
+        what it serves (`Instance.reduce`), so the station layer, its ETag and every
+        route agree; None serves the whole root.
     """
 
     def __init__(
@@ -270,10 +275,12 @@ class DataRoot:
         *,
         reload_after_s: float = RELOAD_AFTER_S,
         clock: Callable[[], float] = time.monotonic,
+        scope: Instance | None = None,
     ) -> None:
         self.path = path
         self._reload_after_s = reload_after_s
         self._clock = clock
+        self._scope = scope
         self._lock = threading.Lock()
         self._snapshot: Snapshot | None = None
         self._checked_at = -1e18
@@ -363,15 +370,18 @@ class DataRoot:
                     series[key] = Series(key, version, read_series_index(version.path))
         except ObserwatorError as exc:
             return Snapshot(error=exc)
+        if self._scope is not None:
+            catalogs, features, series = self._scope.reduce(catalogs, features, series)
         snapshot = Snapshot(catalogs, features, series)
         layer = [_layer_entry(feature, snapshot) for feature in features.values()]
+        scope = () if self._scope is None else (self._scope.key,)
         return Snapshot(
             catalogs,
             features,
             series,
             None,
             {"count": len(layer), "stations": layer},
-            etag_of("stations", snapshot.key),
+            etag_of("stations", snapshot.key, *scope),
         )
 
     def series_document(self, dataset: str, code: str) -> tuple[dict[str, Any], str]:
@@ -501,7 +511,11 @@ class DataRoot:
                 hit = self._stations_files.get(key)
             if hit is None:
                 lines = export_stations(
-                    self.path, provider=provider, kind=kind, format=fmt
+                    self.path,
+                    provider=provider,
+                    kind=kind,
+                    format=fmt,
+                    keep=None if self._scope is None else self._scope.keeps,
                 )
                 hit = "".join(lines).encode("utf-8")
                 with self._docs_lock:
