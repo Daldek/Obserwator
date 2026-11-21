@@ -106,7 +106,7 @@ def test_without_an_instance_the_session_names_none(client):
 
 
 def test_the_session_tells_the_page_the_instance_but_no_path(make_client, tmp_path):
-    client = make_client(instance=clipped(tmp_path))
+    client = make_client(instance=clipped(tmp_path, others_opacity=0.25))
 
     response = client.get("/api/session")
     session = response.json()
@@ -122,6 +122,7 @@ def test_the_session_tells_the_page_the_instance_but_no_path(make_client, tmp_pa
     assert found["title"] == "Wody Testowe"
     assert found["logo"] == "api/logo"
     assert found["featured"] == "CHMI"
+    assert found["others_opacity"] == 0.25
     assert found["providers"] == {"CHMI": "visible"}
     assert (found["pmaxtp"], found["current"]) == (False, False)
     assert found["start"]["view"] == "featured"

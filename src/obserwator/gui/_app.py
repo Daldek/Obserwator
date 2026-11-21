@@ -288,7 +288,8 @@ def _instance_document(
     What the page needs of the instance (ADR-025, I7): never a path of the server.
 
     ``title``, ``logo`` (the address of `logo` or null), ``featured`` (a provider or
-    null), ``providers`` (the state of each provider served, the featured one first),
+    null), ``others_opacity`` (the opacity of the other providers' stations while they
+    are faded), ``providers`` (the state of each provider served, the featured one first),
     ``start`` (``view`` and ``box`` [west, south, east, north] or null for the whole
     data set), ``area`` (``mode``, ``box``, ``bounds`` of the map in ``clip`` and the
     address of its ``outline``, `area_outline`) and whether ``pmaxtp`` and the
@@ -302,6 +303,7 @@ def _instance_document(
         "title": instance.title,
         "logo": None if instance.logo is None else "api/logo",
         "featured": instance.featured,
+        "others_opacity": instance.others_opacity,
         "providers": {
             provider: instance.providers[provider] for provider in instance.served
         },
