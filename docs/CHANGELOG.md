@@ -118,7 +118,7 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   read on each write, used without `OBSERWATOR_STORE_WRITE_TOKEN`.
 - **`obserwator config show`** reports `instance` (the resolved section) and `problems`: an
   invalid section, a key or token shorter than 32 bytes, a key file group or others may
-  access, a leftover `api_keys.json`.
+  access (POSIX only: Windows has no permission bits), a leftover `api_keys.json`.
 - **`export_stations(keep=…)`** and **`run_command(keep=…)`**: a predicate of the stations
   exported, a server's instance filter (no catalog option).
 - Both servers refuse at start a root whose marker names a layout this version does not

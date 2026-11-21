@@ -491,16 +491,18 @@ def test_a_short_key_or_a_shared_key_file_is_a_problem(tmp_path, monkeypatch, ca
 
     problems = credential_problems()
 
+    # Windows has no permission bits: the mode is checked on POSIX systems only.
+    shared = os.name != "nt"
     assert [(p["code"], p["option"]) for p in problems] == [
         ("short_secret", "OBSERWATOR_STORE_WRITE_TOKEN"),
-        ("secret_file_mode", "OBSERWATOR_ADMIN_API_KEY_FILE"),
+        *([("secret_file_mode", "OBSERWATOR_ADMIN_API_KEY_FILE")] if shared else []),
     ]
     text = json.dumps(environment_report())
     assert "tiny-secret-7" not in text and "k" * 40 not in text
     assert str(key) not in text
     with caplog.at_level(logging.WARNING):
         check_credentials("admin", strict=False)
-    assert "OBSERWATOR_ADMIN_API_KEY_FILE" in caplog.text
+    assert ("OBSERWATOR_ADMIN_API_KEY_FILE" in caplog.text) is shared
     with pytest.raises(ObserwatorValidationError) as caught:
         check_credentials("token", strict=True)
     assert caught.value.details == {
