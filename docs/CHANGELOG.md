@@ -8,6 +8,23 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
 
+### Added
+
+- **`analyses build` resumes an interrupted build (Nogat ECO-073; ADR-016 erratum of
+  2026-11-21).** A build that ends before it publishes a provider's version (cancelled, an
+  error, Ctrl+C, a killed process) keeps the stations it computed in its staging directory
+  `.incoming/<host>_<pid>_<token>/` of the data root, where the next build's cleanup used to
+  remove them (on 2026-11-15 the deployment lost 2,332 of 3,240 stations, about 2 hours). The
+  next build takes them by hard links, without a Hydrolog call, before the 24-hour cleanup:
+  each station whose record is whole, whose result files match their SHA-256 and whose series
+  versions, station Parquet files, catalog thresholds, Hydrolog version and registry digest are
+  those of now; it computes the rest and publishes the version an uninterrupted build would.
+  Another build's staging directory is only read and linked from, never changed (the store has
+  no locks). `ProviderAnalyses.resumed` (new last field, default 0), progress status `resumed`
+  (`analyses.station_resumed`), the plan of `analyses build --check` counts the stations to
+  resume, and the CLI's summary of the providers shows `computed`, `carried` and `resumed`;
+  `results_ok` and `results_failed` count the analyses of the computed and resumed stations.
+
 ### Fixed
 
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read

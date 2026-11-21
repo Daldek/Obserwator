@@ -266,7 +266,7 @@ for definition in analysis_definitions("meteo")[:2]:
 
 # 1. Compute and store every station in the data root (stations=[...] computes only these; workers = Hydrolog processes)
 report = build_analyses(data, workers=2)
-print(report.status, report.hydrolog_version, [(p.provider, p.status, p.computed, p.carried) for p in report.providers])
+print(report.status, report.hydrolog_version, [(p.provider, p.status, p.computed, p.carried, p.resumed) for p in report.providers])
 
 # 2. Read: the analyses of a station (the code names the provider) and one of them
 for summary in list_analyses(root=data, station="149190310"):
@@ -283,6 +283,7 @@ subset = compute_analysis(data, station="149190310", analysis="characteristic.Q"
 ```
 
 - **Carry-forward:** a station whose station Parquet files (SHA-256 per dataset), catalog thresholds, Hydrolog version and registry are unchanged is carried into the new version by hard links without a Hydrolog call; a provider with nothing to compute is `unchanged` and gets no new version. Hydrolog's development builds all report `1.0.0.dev0`, so a change of Hydrolog within one development version does not trigger a recomputation.
+- **Resume (Nogat ECO-073):** a build that ends before it publishes a provider's version (cancelled, an error, Ctrl+C, a killed process) keeps the stations it computed in its staging directory `.incoming/<host>_<pid>_<token>/` of the data root. The next `analyses build` takes them from there by hard links, without a Hydrolog call (progress status `resumed`, `ProviderAnalyses.resumed`; `--check` counts them), when a station's record is whole, its result files match their SHA-256 and its series versions, station Parquet files, catalog thresholds, Hydrolog version and registry are those of now; it computes the rest and publishes the version an uninterrupted build would. It never changes another build's staging directory (that build may still run); the cleanup removes those older than 24 hours once their stations are taken. Run a long build outside an agent's or a terminal's session, as a user systemd unit on an account with `loginctl enable-linger` (Nogat DEV-17.6), and if it stops anyway, start it again: `systemd-run --user --unit=obserwator-analyses --collect -p StandardOutput=file:"$HOME/analyses.out" -p StandardError=file:"$HOME/analyses.err" "$(command -v obserwator)" analyses build --root "$DATA" --workers 2`.
 - **Failures:** an analysis Hydrolog answers with an error is stored with `status="failed"` and Hydrolog's `hydrolog-error/1` document; one whose input number (a pick from another analysis) is missing is not stored.
 - **Options on the fly:** `compute_analysis` takes only the overridable options of the analysis or of an analysis it depends on (`analysis_definitions()` lists them with types and bounds), never a file or a column, minus `locked` (e.g. `durations_days` for `precipitation_quantiles.2d`, whose pick reads a position of that list); anything else is `validation_error`. `timeout` (30 s) bounds the whole computation (`source_unavailable`, `details.reason="timeout"`). It is a Python function only, not a catalog command, so REST and MCP never start Hydrolog on request.
 - **Spells:** the stored `spells.dry`/`spells.wet` list only spells of 10 days or more; their summaries count every spell.
@@ -425,7 +426,7 @@ obserwator series export -d hydro/miesieczne -s 152210170 --variables Q_mean --o
 obserwator pmaxtp sync --lat 52.23 --lon 21.01        # PMAXTP cell in the raw root
 
 # Stored analyses computed by Hydrolog (OBSERWATOR_HYDROLOG_COMMAND or hydrolog on PATH)
-obserwator analyses build --check                     # stations to compute and to carry forward
+obserwator analyses build --check                     # stations to compute, to carry forward and to resume
 obserwator analyses build --workers 2                 # analyses/versions/<pl.imgw|cz.chmi>/…
 obserwator analyses list -s 149190310
 obserwator analyses read -s 149190310 --analysis characteristic.Q --json
