@@ -8,6 +8,24 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
 
+### Added
+
+- **ČHMÚ's daily snow in `cz.chmi.meteo_daily` (the author's decision of 2026-11-18; ADR-003
+  erratum of 2026-11-21).** The dataset reads two more element files of ČHMÚ's
+  `historical_csv/data/daily/snow/` folder: `SCE`, the total snow depth at the morning term
+  (06:00Z) of day D, as `snow_cover` [cm], and `SNO`, the new snow from the morning of D to the
+  morning of D+1, as `fresh_snow` [cm] — the quantities of IMGW-PIB's `snow_cover` and
+  `fresh_snow` under their names, with their terms in `variable_notes`. A `0.0` without a ČHMÚ
+  `FLAG` is `no_phenomenon` (no cover, no new snow), a flagged one (`P` dusting, `N`
+  discontinuous cover, `R` melted) a `value`; `QUALITY` and `FLAG` stay in `<V>_quality` and
+  `<V>_source_flag`. A station has six files instead of four (`archive_files`, `datasets
+  files|download`, `store check|sync`, whose check reads a third listing), and the series and
+  its exports gain the eight columns of both variables. So Hydrolog's `snow` analysis and the
+  GUI's card „Śnieg” cover ČHMÚ stations as IMGW-PIB's once a deployment syncs the files
+  (`obserwator store sync --datasets cz.chmi.meteo_daily --stations …`) and rebuilds the series
+  and the analyses. ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's
+  `snow_water_equivalent` [mm/cm] (water per centimetre of snow) and is not read.
+
 ### Fixed
 
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read

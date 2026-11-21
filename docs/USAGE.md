@@ -192,7 +192,7 @@ print(station.station_code, station.name, station.river)  # 0-203-1-001000 Špin
 for file in archive_files("cz.chmi.hydro_daily", stations=[station.station_code], years="2024-2025"):
     print(file.year, file.url)  # …/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2024.json
 for file in archive_files("cz.chmi.meteo_daily", stations=["0-203-0-11799"]):
-    print(file.param, file.server_path)  # SRA, T, TMA, TMI
+    print(file.param, file.server_path)  # SRA, T, TMA, TMI, SCE, SNO
 
 # Store (the roots raw and data of the example above): one GET of the server directory listing instead of a HEAD per file
 plan = check_store(raw, datasets=["cz.chmi.hydro_daily"], stations=[station.station_code],
@@ -855,7 +855,7 @@ OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator OBSERWATOR_RAW_ROOT=
 
 ### ČHMÚ data (opendata.chmi.cz)
 - **daily hydro** (`cz.chmi.hydro_daily`): `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and calendar year (the oldest from 1887); series `HD`, `QD`, `TD` → H [cm], Q [m3/s], T [°C] (suspended sediment `PD` skipped); no measurement = no row
-- **daily meteo** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/precipitation/dly-<WIGOS>-SRA.csv` and `…/temperature/dly-<WIGOS>-{T,TMA,TMI}.csv` — the whole station history in the element file; P = total from the morning observation (06:00Z) of day D to the morning of D+1, Tmean = (T06 + T13 + 2·T20)/4, Tmax and Tmin — extremes of the period (D−1 20:00, D 20:00] UTC; older records use the station's terms of the time (e.g. P at 05:00Z or 07:00Z, Tmax and Tmin at 19:00 or 21:00), and the date stays the date of the row (descriptions in the dataset's `variable_notes`, ADR-003 erratum of 2026-11-17); `QUALITY` (0–5) and `FLAG` (e.g. `T` — trace of precipitation) kept
+- **daily meteo** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/precipitation/dly-<WIGOS>-SRA.csv`, `…/temperature/dly-<WIGOS>-{T,TMA,TMI}.csv` and `…/snow/dly-<WIGOS>-{SCE,SNO}.csv` (since 3.1.0) — the whole station history in the element file; P = total from the morning observation (06:00Z) of day D to the morning of D+1, Tmean = (T06 + T13 + 2·T20)/4, Tmax and Tmin — extremes of the period (D−1 20:00, D 20:00] UTC, `snow_cover` [cm] = total snow depth (SCE) at the morning observation of day D, `fresh_snow` [cm] = new snow (SNO) from the morning of D to the morning of D+1, the quantities of IMGW-PIB's `snow_cover` and `fresh_snow` (ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's `snow_water_equivalent` [mm/cm] and is not read); older records use the station's terms of the time (e.g. P at 05:00Z or 07:00Z, Tmax and Tmin at 19:00 or 21:00), and the date stays the date of the row (descriptions in the dataset's `variable_notes`, ADR-003 erratum of 2026-11-17); `QUALITY` (0–5) and `FLAG` (e.g. `T` — trace of precipitation) kept
 - **station lists**: `hydrology/historical/metadata/meta1.json` and `meteorology/climate/historical/metadata/meta1.json` (JSON with a `zaznamID`/`datumVytvoreni` envelope that changes with every generation)
 - **station metadata** (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`): `hydrology/now/metadata/meta1.json` and `meta3.json`, the newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` — station metadata only (names, rivers, coordinates, SPA thresholds), stored verbatim for the catalog; the measurements of `now/data/` are never read
 - **inventory**: server directory listings (name, time to the minute, size) — one GET of the hydro listing (about 5.3 MB) replaces a HEAD of each of about 39 thousand files; the server keeps only the latest version of a file, and a year enters `historical` only with the annual publication (hydro 2025: 2026-05-21)
@@ -1039,7 +1039,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 | `pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive` | — | Monthly archives of hydrological and meteorological warnings (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`, from September 2017) (download only) |
 | `pl.imgw.actinometric` | — | Actinometric data (solar radiation) of 28 stations, 1990–2017, files as published, found in the server's folder index; years select every station and folder kind, plus the summary xlsx (download only; `datasets files` refuses it, ADR-023) |
 | `cz.chmi.hydro_daily` | — | ČHMÚ daily hydro: H [cm], Q [m3/s], T [°C]; one file per station and year |
-| `cz.chmi.meteo_daily` | — | ČHMÚ daily meteo: P [mm], Tmean, Tmax, Tmin [°C] with quality (`QUALITY`) and the ČHMÚ flag; 4 files per station |
+| `cz.chmi.meteo_daily` | — | ČHMÚ daily meteo: P [mm], Tmean, Tmax, Tmin [°C], snow_cover, fresh_snow [cm] with quality (`QUALITY`) and the ČHMÚ flag; 6 files per station |
 | `cz.chmi.hydro_stations`, `cz.chmi.meteo_stations` | — | ČHMÚ station lists (JSON) — input of the ČHMÚ catalog |
 | `cz.chmi.hydro_now`, `cz.chmi.meteo_now` | — | ČHMÚ `now` station metadata (JSON) — input of the ČHMÚ catalog |
 

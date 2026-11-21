@@ -1,7 +1,7 @@
 """ČHMÚ parsers (spec 2026-10-18 §4.1, §5): hydro JSON, meteo CSV, metadata, listings."""
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -321,6 +321,72 @@ def test_meteo_precipitation_fixture_flags_quality_and_source_flags():
         2023,
         2024,
     )
+
+
+@pytest.mark.parametrize(
+    ("element", "variable", "expected"),
+    [
+        (
+            "SCE",
+            "snow_cover",
+            {
+                date(2023, 10, 28): Measurement(0.0, "no_phenomenon", 0, None),
+                date(2023, 10, 31): Measurement(3.0, "value", 0, None),
+                # discontinuous cover and a dusting keep the measured value
+                date(2023, 11, 1): Measurement(2.0, "value", 0, "N"),
+                date(2023, 11, 2): Measurement(0.0, "value", 0, "P"),
+                date(2023, 11, 4): Measurement(5.0, "value", 3, None),
+                date(2023, 11, 5): Measurement(None, "missing", 4, None),
+                date(2023, 11, 7): Measurement(0.0, "no_phenomenon", 0, None),
+            },
+        ),
+        (
+            "SNO",
+            "fresh_snow",
+            {
+                date(2023, 10, 29): Measurement(0.0, "no_phenomenon", 0, None),
+                date(2023, 10, 30): Measurement(3.0, "value", 0, None),
+                date(2023, 10, 31): Measurement(0.0, "value", 0, "P"),
+                date(2023, 11, 4): Measurement(None, "missing", 4, None),
+                # new snow that fell and melted before the morning term
+                date(2023, 11, 5): Measurement(0.0, "value", 0, "R"),
+            },
+        ),
+    ],
+)
+def test_meteo_snow_fixture_flags_zero_without_flag_as_no_snow(
+    element, variable, expected
+):
+    name = f"dly-0-203-0-90001-{element}.csv"
+    days = by_date(
+        parse_chmi_meteo_daily(fixture(f"{CSV_DAILY}/snow/{name}"), filename=name)
+    )
+
+    assert list(days) == [date(2023, 10, 28) + timedelta(n) for n in range(11)]
+    assert {tuple(record.measurements) for record in days.values()} == {(variable,)}
+    for day, measurement in expected.items():
+        assert days[day].measurements[variable] == measurement, day
+
+
+def test_meteo_snow_takes_the_term_of_dt_and_refuses_another_function():
+    rows = (
+        "0-203-0-90001,SCE,06:00,1947-12-19T06:00Z,3.0,,0.0,",
+        "0-203-0-90001,SCE,07:00,1925-01-05T07:00Z,12.0,,0.0,",
+    )
+    name = "dly-0-203-0-90001-SCE.csv"
+    records = list(parse_chmi_meteo_daily(meteo_file(*rows), filename=name))
+
+    assert [(r.date, r.measurements["snow_cover"].value) for r in records] == [
+        (date(1925, 1, 5), 12.0),
+        (date(1947, 12, 19), 3.0),
+    ]
+    with pytest.raises(ObserwatorDataError, match="TIMEFUNC"):
+        list(
+            parse_chmi_meteo_daily(
+                meteo_file("0-203-0-90001,SNO,AVG,2023-10-20T00:00Z,1.0,,0.0,"),
+                filename="dly-0-203-0-90001-SNO.csv",
+            )
+        )
 
 
 def test_meteo_temperature_fixture_uses_daily_mean_and_skips_terms():
@@ -909,7 +975,7 @@ def test_normalize_archive_parses_chmi_archives_by_server_path():
     )
     meteo = archive_files("cz.chmi.meteo_daily", stations=["0-203-0-90001"])
     stored = [a for a in (*hydro, *meteo) if (ARCHIVES / a.server_path).is_file()]
-    assert len(stored) == 8
+    assert len(stored) == 10
 
     for archive in stored:
         data = (ARCHIVES / archive.server_path).read_bytes()

@@ -101,7 +101,11 @@ def chmi():
     with respx.mock(assert_all_called=False) as router:
         serve_catalog(router, *SOURCES)
         serve_files(
-            router, "hydro_listing", "precipitation_listing", "temperature_listing"
+            router,
+            "hydro_listing",
+            "precipitation_listing",
+            "temperature_listing",
+            "snow_listing",
         )
         yield router
 

@@ -309,7 +309,7 @@
       </tbody>
     </table>
   </div>
-  <p>Posterunek opadowy IMGW-PIB nie mierzy temperatury, więc nie ma karty „Temperatura”, a stacja ČHMÚ nie ma karty „Śnieg”. Karty opadów i temperatury mają „Okres odniesienia” normalnej (domyślnie cały zapis stacji; WMO zaleca co najmniej 30 lat), a karta opadów także „Rodzaj roku”: kalendarzowy albo hydrologiczny XI–X.</p>
+  <p>Posterunek opadowy IMGW-PIB nie mierzy temperatury, więc nie ma karty „Temperatura”, a kartę „Śnieg” ma każda stacja, która mierzy pokrywę śnieżną, IMGW-PIB i ČHMÚ. Karty opadów i temperatury mają „Okres odniesienia” normalnej (domyślnie cały zapis stacji; WMO zaleca co najmniej 30 lat), a karta opadów także „Rodzaj roku”: kalendarzowy albo hydrologiczny XI–X.</p>
   <p><strong>Cały zapis stacji IMGW-PIB.</strong> Analizy meteorologiczne liczą się z dobowego zapisu stacji złożonego z jej szeregów: synoptycznego, potem klimatycznego, potem opadowego (opad i śnieg). Każdego dnia każda zmienna pochodzi z pierwszego z nich, który ma jej wartość, więc żaden dzień nie jest liczony dwa razy. Podpis pod wynikiem wymienia każdy użyty zbiór z jego okresem, np. dane synoptyczne od 1966 i klimatyczne 1961–1965 Świnoujścia.</p>
 
   <h3 id="wykresy">Wykresy</h3>
@@ -786,13 +786,13 @@
   </ul>
 
   <h3 id="metody-snieg">„Śnieg”</h3>
-  <p>Karta liczy pokrywę śnieżną każdego sezonu zimowego z dobowych pomiarów IMGW-PIB; stacja ČHMÚ jej nie ma. Sezon trwa od 1 sierpnia do 31 lipca, żeby śnieg z końca października, a w górach i z września, należał do zimy, którą zaczyna. Sezon nosi rok swojego końca: na osi wykresu sezon 1990/91 to 1991, a tabele i odczyt piszą „1990/91”. Pola „Sezony” od–do nad kartą zawężają okres.</p>
+  <p>Karta liczy pokrywę śnieżną każdego sezonu zimowego z dobowych pomiarów IMGW-PIB i ČHMÚ (u ČHMÚ całkowita wysokość pokrywy SCE i wysokość śniegu nowego SNO z terminu porannego 06 UTC). Sezon trwa od 1 sierpnia do 31 lipca, żeby śnieg z końca października, a w górach i z września, należał do zimy, którą zaczyna. Sezon nosi rok swojego końca: na osi wykresu sezon 1990/91 to 1991, a tabele i odczyt piszą „1990/91”. Pola „Sezony” od–do nad kartą zawężają okres.</p>
   <ul>
     <li><strong>Dzień z pokrywą</strong>: pokrywa o grubości co najmniej 1&nbsp;cm w porannym pomiarze.</li>
     <li><strong>Dni z pokrywą w miesiącu</strong>: udział dni z pokrywą wśród dni z pomiarem razy liczba dni miesiąca, gdy brakuje mniej niż 11 dni i mniej niż 5 kolejnych (WMO-No. 1203, 4.3 i 4.4.1 d); przy większych brakach liczą się tylko dni zaobserwowane.</li>
     <li><strong>Sezon pełny</strong> ma dość dni z pomiarem w każdym miesiącu od października do maja. Tylko sezony pełne mają liczbę dni z pokrywą i wchodzą do kafelków; pozostałe wymienia notka „Pominięte sezony bez dość pomiarów pokrywy w miesiącach X–V”.</li>
     <li><strong>Największa grubość</strong> z datą, <strong>pierwszy i ostatni dzień z pokrywą</strong> oraz <strong>suma śniegu świeżego</strong> sezonu biorą wszystkie dni, które sezon ma; tabela „Sezony” podaje je także dla sezonu niepełnego.</li>
-    <li><strong>Śnieg świeży</strong>: suma wysokości świeżo spadłego śniegu w sezonie z liczbą dni ze śniegiem świeżym; mierzą go posterunki opadowe IMGW-PIB, więc kafelek i kolumnę ma tylko ich karta.</li>
+    <li><strong>Śnieg świeży</strong>: suma wysokości świeżo spadłego śniegu w sezonie z liczbą dni ze śniegiem świeżym; mierzą go posterunki opadowe IMGW-PIB i stacje ČHMÚ, więc kafelek i kolumnę ma tylko karta stacji, która go mierzy.</li>
     <li><strong>Kafelki</strong> (sezony pełne): dni z pokrywą średnio w sezonie z liczbą sezonów, maksimum sezonu średnio, największa grubość z datą, mediany pierwszego i ostatniego dnia z pokrywą z najwcześniejszym i najpóźniejszym terminem („skrajnie”) oraz śnieg świeży średnio w sezonie.</li>
     <li><strong>„Wykres”</strong>: „dni z pokrywą” sezonów pełnych albo „maksimum” każdego sezonu, z linią średniej. Tabele: dni z pokrywą średnio w miesiącach X–V, z miesięcy z dość dniami z pomiarem, i sezony od najnowszych. Notka „Sezonów bez pokrywy” podaje, ile sezonów pełnych nie miało dnia z pokrywą.</li>
   </ul>

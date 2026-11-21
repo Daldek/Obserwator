@@ -118,9 +118,9 @@ _CHMI_STEPS: tuple[tuple[str, Mapping[str, Any], tuple[str, ...], str], ...] = (
     (
         "ČHMÚ meteo",
         {"datasets": (_CHMI_METEO,), "stations": (_CHMI_ELEMENTS, _CHMI_RAIN)},
-        # The three temperature elements of the precipitation-only station are
+        # The temperature and snow elements of the precipitation-only station are
         # not published: unchanged without a version.
-        ("new",) * 5 + ("unchanged",) * 3,
+        ("new",) * 7 + ("unchanged",) * 5,
         "new",
     ),
 )
@@ -375,7 +375,7 @@ def build_fixture_store(
       with an observation in ``observations/`` (re-serialized bytes with the
       same canonical content, ``content_unchanged``);
     * ``cz.chmi.meteo_daily`` CSV files of ``0-203-0-90001`` (SRA, T, TMA,
-      TMI) and ``0-203-0-90000000002`` (SRA only);
+      TMI, SCE, SNO) and ``0-203-0-90000000002`` (SRA only);
     * the ``chmi_hydro_daily`` series in two versions (before and after the
       correction), the ``chmi_meteo_daily`` series, both ČHMÚ station lists
       and the ČHMÚ catalog ``stations/versions/chmi_stations/``.

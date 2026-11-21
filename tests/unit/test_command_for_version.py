@@ -169,7 +169,7 @@ def test_archive_version_gives_the_store_sync_of_its_file(case, raw, offline):
     files = planned(call)
     if dataset == CZ_METEO:
         # Every element of the station: the call has no option for one element.
-        assert server_path in files and len(files) == 4
+        assert server_path in files and len(files) == 6
     else:
         assert files == {server_path}
 

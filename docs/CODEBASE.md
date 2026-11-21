@@ -268,7 +268,7 @@ The command catalog is the single source of options, validation, help texts and 
 
 ### ČHMÚ (opendata.chmi.cz, ADR-003)
 - **Hydro daily** (`cz.chmi.hydro_daily`): `https://opendata.chmi.cz/hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON per station and calendar year (from 1887); `HD`/`QD`/`TD` → H [cm], Q [m3/s], T [°C]
-- **Meteo daily** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — four CSV files per station with the whole station history; `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
+- **Meteo daily** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature,snow}/dly-<WIGOS>-{SRA,T,TMA,TMI,SCE,SNO}.csv` — six CSV files per station with the whole station history (`SCE` → `snow_cover`, `SNO` → `fresh_snow` [cm], since 3.1.0); `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
 - **Station lists** (`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`): `hydrology/historical/metadata/meta1.json`, `meteorology/climate/historical/metadata/meta1.json` (JSON envelope `zaznamID`/`datumVytvoreni` changes with every regeneration → canonical form `chmi-json/1`)
 - **Catalog sources** (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, stored by `store sync --datasets`; ADR-015): `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
 - **Inventory and freshness**: nginx directory listings (name, mtime to the minute, size): one GET instead of a HEAD per file; requests are sequential with `User-Agent: obserwator/<version>`; license CC BY 4.0 (attribution from the registry)
@@ -391,7 +391,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive`|—|download only (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`)|
 |`pl.imgw.actinometric`|—|download only (files of the folder index, ADR-023)|
 |`cz.chmi.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
-|`cz.chmi.meteo_daily`|—|yes (4 files per station: SRA, T, TMA, TMI; no `years`)|
+|`cz.chmi.meteo_daily`|—|yes (6 files per station: SRA, T, TMA, TMI, SCE, SNO; no `years`)|
 |`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|
 |`cz.chmi.hydro_now`, `cz.chmi.meteo_now`|—|yes (`now` station metadata, canonical form `chmi-json/1`)|
 

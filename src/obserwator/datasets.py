@@ -55,7 +55,7 @@ _WIGOS_CODE = r"0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}"
 # File names of the per-station ČHMÚ archives (spec 2026-10-18 §2.3); other
 # names in a server listing are not files of the datasets.
 _CHMI_HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
-_CHMI_METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI)\.csv$")
+_CHMI_METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
 # Daily ČHMÚ elements in file order and the server directory of each.
 _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
     {
@@ -63,6 +63,8 @@ _CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
         "T": "temperature",
         "TMA": "temperature",
         "TMI": "temperature",
+        "SCE": "snow",
+        "SNO": "snow",
     }
 )
 # Folder of a country archive: a year or a five-year range (IMGW-PIB layout).
@@ -318,7 +320,7 @@ class ArchiveFile:
     param : str or None
         Parameter of a semi-annual archive (``"H"``, ``"Q"`` or ``"T"``) or
         the element of a ČHMÚ meteorological file (``"SRA"``, ``"T"``,
-        ``"TMA"``, ``"TMI"``), None otherwise.
+        ``"TMA"``, ``"TMI"``, ``"SCE"``, ``"SNO"``), None otherwise.
     year_type : {"hydrological", "calendar", "none"}
         Year numbering of ``year``.
     period_start : date or None
@@ -930,7 +932,14 @@ _DATASETS = (
         title=message("datasets.title_chmi_meteo_daily"),
         server_dir="meteorology/climate/historical_csv/data/daily",
         parser="parse_chmi_meteo_daily",
-        variables={"P": "mm", "Tmean": "degC", "Tmax": "degC", "Tmin": "degC"},
+        variables={
+            "P": "mm",
+            "Tmean": "degC",
+            "Tmax": "degC",
+            "Tmin": "degC",
+            "snow_cover": "cm",
+            "fresh_snow": "cm",
+        },
         time_unit="day",
         year_type="calendar",
         first_year=None,
@@ -945,6 +954,8 @@ _DATASETS = (
             "Tmean": message("datasets.note_chmi_meteo_daily_tmean"),
             "Tmax": message("datasets.note_chmi_meteo_daily_tmax"),
             "Tmin": message("datasets.note_chmi_meteo_daily_tmin"),
+            "snow_cover": message("datasets.note_chmi_meteo_daily_snow_cover"),
+            "fresh_snow": message("datasets.note_chmi_meteo_daily_fresh_snow"),
         },
         measurement_fields=("quality", "source_flag"),
     ),
@@ -1523,9 +1534,9 @@ def archive_files(
     until 2000), named by the station number (the last three digits of its
     code); the running year is published as monthly files of the whole
     country, selected by months. ČHMÚ files cover one station: one file per
-    station and calendar year (``cz.chmi.hydro_daily``) or four files per
-    station with its whole history, one per element SRA, T, TMA, TMI
-    (``cz.chmi.meteo_daily``). Years are not limited by the current year;
+    station and calendar year (``cz.chmi.hydro_daily``) or six files per
+    station with its whole history, one per element SRA, T, TMA, TMI, SCE,
+    SNO (``cz.chmi.meteo_daily``). Years are not limited by the current year;
     the result lists candidates, and whether a file is published is decided
     by the server (its listing or a 404 answer).
 

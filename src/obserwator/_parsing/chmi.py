@@ -44,18 +44,25 @@ ELEMENT_VARIABLES: Mapping[str, str] = {
     "T": "Tmean",
     "TMA": "Tmax",
     "TMI": "Tmin",
+    "SCE": "snow_cover",
+    "SNO": "fresh_snow",
 }
 """Variable of the series built from each daily ČHMÚ element file."""
+
+# Variables whose 0.0 without FLAG means the phenomenon did not occur (no
+# precipitation, no snow cover, no new snow), as IMGW-PIB's status 9.
+_ZERO_IS_NO_PHENOMENON = frozenset({"P", "snow_cover", "fresh_snow"})
 
 # tsConID → (variable, unit required by ČHMÚ); PD (suspended solids) is checked
 # structurally and skipped.
 _HYDRO_SERIES = {"HD": ("H", "CM"), "QD": ("Q", "M3_S"), "TD": ("T", "0C")}
 _HYDRO_CODES = ("HD", "QD", "TD", "PD")
 _HYDRO_VARIABLES = ("H", "Q", "T")
-# A daily value of SRA, TMA and TMI carries the term of its observation: TIMEFUNC
-# is that clock time and equals the time of DT. Today's terms are 06:00 (SRA) and
-# 20:00 (TMA, TMI); older records carry the station's term of the time (ČHMÚ's
-# historical meta2 SCHEDULE, e.g. SRA 05:00 or 07:00, TMA and TMI 19:00 or 21:00).
+# A daily value of SRA, TMA, TMI, SCE and SNO carries the term of its observation:
+# TIMEFUNC is that clock time and equals the time of DT. Today's terms are 06:00
+# (SRA, SCE, SNO) and 20:00 (TMA, TMI); older records carry the station's term of
+# the time (ČHMÚ's historical meta2 SCHEDULE, e.g. SRA 05:00 or 07:00, TMA and TMI
+# 19:00 or 21:00).
 # T: AVG at 00:00 is the daily mean, and a row at a term is a reading of that
 # term, skipped (ADR-003, erratum of 2026-11-17).
 _TERM = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
@@ -405,7 +412,7 @@ def _meteo_measurement(
     value = float(raw_value) if _NUMBER.fullmatch(raw_value) else math.nan
     if not math.isfinite(value):
         raise ValueError(message("chmi.value_not_number_2", raw_value=raw_value))
-    if variable == "P" and value == 0 and source_flag is None:
+    if variable in _ZERO_IS_NO_PHENOMENON and value == 0 and source_flag is None:
         return Measurement(0.0, "no_phenomenon", quality, None)
     return Measurement(value, "value", quality, source_flag)
 
@@ -418,19 +425,23 @@ def parse_chmi_meteo_daily(
 
     The file ``dly-<WIGOS>-<ELEMENT>.csv`` (``historical_csv``) holds the
     whole history of one element of one station. Elements map to variables
-    ``SRA`` → ``P`` [mm], ``T`` → ``Tmean`` [degC], ``TMA`` → ``Tmax`` and
-    ``TMI`` → ``Tmin`` [degC]. A daily value of ``SRA``, ``TMA`` or ``TMI``
-    carries the term of its observation: ``TIMEFUNC`` is a clock time equal
-    to the time of ``DT``, today ``06:00`` (``SRA``, ``D T06:00Z``) and
-    ``20:00`` (``TMA``, ``TMI``, ``D T20:00Z``), in older records the term of
-    the time (e.g. ``05:00``, ``07:00``, ``19:00``, ``21:00``). ``T`` gives the
-    daily mean ``AVG`` (``D T00:00Z``); its rows at a term (today ``06:00``,
-    ``13:00`` and ``20:00``) are readings of that term and are skipped. The
-    date is the date of ``DT`` (``HH:MMZ`` or ``HH:MM:SSZ``), never shifted.
+    ``SRA`` → ``P`` [mm], ``T`` → ``Tmean`` [degC], ``TMA`` → ``Tmax``,
+    ``TMI`` → ``Tmin`` [degC], ``SCE`` → ``snow_cover`` and ``SNO`` →
+    ``fresh_snow`` [cm]. A daily value of ``SRA``, ``TMA``, ``TMI``, ``SCE``
+    or ``SNO`` carries the term of its observation: ``TIMEFUNC`` is a clock
+    time equal to the time of ``DT``, today ``06:00`` (``SRA``, ``SCE``,
+    ``SNO``, ``D T06:00Z``) and ``20:00`` (``TMA``, ``TMI``, ``D T20:00Z``),
+    in older records the term of the time (e.g. ``05:00``, ``07:00``,
+    ``19:00``, ``21:00``). ``T`` gives the daily mean ``AVG`` (``D T00:00Z``);
+    its rows at a term (today ``06:00``, ``13:00`` and ``20:00``) are readings
+    of that term and are skipped. The date is the date of ``DT`` (``HH:MMZ``
+    or ``HH:MM:SSZ``), never shifted.
 
-    Flags: an empty ``VALUE`` is ``"missing"``; precipitation ``0.0``
-    without ``FLAG`` is ``"no_phenomenon"`` (value ``0.0``); every other
-    value, also the trace ``FLAG`` ``T`` (``0.0``), is ``"value"``.
+    Flags: an empty ``VALUE`` is ``"missing"``; ``0.0`` without ``FLAG`` of
+    precipitation, snow depth or new snow is ``"no_phenomenon"`` (value
+    ``0.0``); every other value, also the trace ``FLAG`` ``T`` (``0.0``) of
+    precipitation and a ``0.0`` of snow with ``FLAG`` ``N`` (discontinuous
+    cover), ``P`` (dusting) or ``R`` (new snow that melted), is ``"value"``.
     ``QUALITY`` (an integer written ``0.0`` ... ``5.0``) is kept in
     ``Measurement.quality`` and ``FLAG`` verbatim in
     ``Measurement.source_flag``, also codes unknown to ČHMÚ ``meta3``;
@@ -445,8 +456,8 @@ def parse_chmi_meteo_daily(
         CSV content; bytes are decoded as UTF-8 (a leading BOM is allowed).
     filename : str
         File name or server path ending with ``dly-<WIGOS>-<ELEMENT>.csv``
-        (element ``SRA``, ``T``, ``TMA`` or ``TMI``); it gives the station
-        code and the element, and names the file in errors.
+        (element ``SRA``, ``T``, ``TMA``, ``TMI``, ``SCE`` or ``SNO``); it
+        gives the station code and the element, and names the file in errors.
 
     Yields
     ------
