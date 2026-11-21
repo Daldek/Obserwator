@@ -37,6 +37,7 @@ from obserwator import _environment as environment
 from obserwator._version import __version__
 from obserwator.agent_guide import agent_guide
 from obserwator.api.errors import EXCEPTION_HANDLERS, accept_language
+from obserwator.api.instance import check_start
 from obserwator.api.routes import commands
 from obserwator.api.schemas import HealthCheck
 from obserwator.commands import command_schema
@@ -126,6 +127,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Start the logs, check ``nogat.toml``, run the session manager of ``/mcp`` with the app.
 
+    ``[obserwator.instance]``, the layout of the roots and the write token are checked
+    once (`obserwator.api.instance.check_start`): a problem stops the start.
+
     The lifecycle record ``start`` sums up the settings (`SERVER_LOG`); ``stop`` follows
     the end of serving, also when the start fails.
     """
@@ -147,6 +151,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "install obserwator[mcp]; the route /mcp does not exist"
             )
         check_config()  # an unusable settings file stops the server instead of being ignored
+        check_start()  # the instance, the roots' layouts, the write token (ADR-025)
         # A route of another application never runs its lifespan by itself.
         async with (
             nullcontext() if _MCP is None else _MCP.router.lifespan_context(_MCP)

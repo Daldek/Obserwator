@@ -104,6 +104,7 @@ from obserwator.store.types import (
     ProgressHook,
     RootKind,
     SeriesReport,
+    StationFeature,
     StorePlan,
     SyncReport,
     Writes,
@@ -3125,6 +3126,7 @@ def run_command(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> CommandResult[object]:
     """
     Run a catalog command through exactly one public function.
@@ -3156,6 +3158,11 @@ def run_command(
         each distinct notice once.
     cancel : Cancel or None, optional
         Cancellation callback forwarded to the public function.
+    keep : callable or None, optional
+        Station filter forwarded to a function with a ``keep`` parameter
+        (``stations export``: `export_stations` exports only the stations of
+        the catalogs it returns True for); a server's instance (ADR-025). The
+        CLI and MCP never give it.
 
     Returns
     -------
@@ -3180,7 +3187,12 @@ def run_command(
     spec = _BY_NAME[command]
     limit, start = _page(normalized)
     notices = _Notices(on_notice)
-    hooks = {"on_progress": on_progress, "on_notice": notices, "cancel": cancel}
+    hooks = {
+        "on_progress": on_progress,
+        "on_notice": notices,
+        "cancel": cancel,
+        "keep": keep,
+    }
     page = None
     try:
         result = _call(spec.function, normalized, hooks)

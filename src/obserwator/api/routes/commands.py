@@ -24,10 +24,14 @@ for an unsupported root); ``version`` is a path relative to the root under the
 ``OBSERWATOR_USER_LOCATIONS_DIR``; the ``store sync`` plan is an ``obserwator-plan/1``
 object. Server and local options in a request are refused. Writes (POST
 without ``?check=true``) need ``OBSERWATOR_STORE_WRITES_ENABLED``, a configured
-``OBSERWATOR_STORE_WRITE_TOKEN`` and a matching ``X-API-Key`` (constant-time
-comparison) and are checked before the root; list commands page by ``limit``
-(default and maximum ``OBSERWATOR_API_MAX_LIMIT``) and ``cursor`` (``page.next_cursor``
-of the previous answer). The catalog
+``OBSERWATOR_STORE_WRITE_TOKEN`` (or ``OBSERWATOR_STORE_WRITE_TOKEN_FILE``, read on
+each write) and a matching ``X-API-Key`` (constant-time comparison) and are checked
+before the root; list commands page by ``limit`` (default and maximum
+``OBSERWATOR_API_MAX_LIMIT``) and ``cursor`` (``page.next_cursor`` of the previous
+answer). With ``[obserwator.instance]`` every route serves only what the instance
+serves (ADR-025, `obserwator.api.instance`): a provider, dataset, version or station
+not served is ``not_found`` before any request, a list keeps only the items served
+before it is paged. The catalog
 messages of an answer (notices, texts of failed items) and the texts of a command
 with a ``lang`` option are in the language of ``?lang=``, else of
 ``Accept-Language`` (English by default, AGI-6.4); every answer names it in
@@ -66,6 +70,7 @@ from pydantic import (
 import obserwator
 from obserwator._jsonable import jsonable
 from obserwator.api.errors import PROBLEM_RESPONSES, accept_language, hide_server_paths
+from obserwator.api.instance import Scope, scope_of
 from obserwator.commands import (
     _input_schemas,
     _root_kind,
@@ -74,7 +79,7 @@ from obserwator.commands import (
     run_command,
     validate_command,
 )
-from obserwator.config import settings
+from obserwator.config import configured_token, settings
 from obserwator.datasets import ArchiveFile, License, ProviderDescriptor
 from obserwator.exceptions import (
     ErrorCode,
@@ -368,8 +373,8 @@ def _write_access(request: Request, api_key: str | None = Security(_API_KEY)) ->
             message("api.writing_store_over_rest_disabled"),
             "writes_disabled",
         )
-    token = settings.store_write_token
-    secret = token.get_secret_value() if token is not None else ""
+    # The variable, else the file it names, read now: a rotated file needs no restart.
+    secret = configured_token() or ""
     if not secret:
         raise _forbidden(
             message("api.writing_store_needs_configured_obserwator"),
@@ -452,8 +457,15 @@ def _server_raw_root(route: _Route) -> Path | None:
     return _configured("raw")
 
 
-def _confine_version(route: _Route, root: Path, value: object) -> None:
-    """``version`` relative to the root under the command's ``*/versions/``."""
+def _confine_version(
+    route: _Route, root: Path, value: object, scope: Scope | None
+) -> None:
+    """
+    ``version`` relative to the root under the command's ``*/versions/``.
+
+    An instance refuses a version of a provider it does not serve by the path alone,
+    before the path is looked up (`Scope.version`).
+    """
     text = value if isinstance(value, str) else ""
     details = {"option": "version", "value": text}
     parts = text.split("/")
@@ -478,6 +490,8 @@ def _confine_version(route: _Route, root: Path, value: object) -> None:
             ),
             details=details,
         )
+    if scope is not None:
+        scope.version(parts)
     path = root
     for part in parts:
         path = path / part
@@ -671,11 +685,13 @@ def _ascii_json(value: object) -> str:
 def _respond(
     route: _Route, options: dict[str, object], *, check: bool, lang: Lang
 ) -> Response:
+    # An instance refuses a route it does not serve before anything else (ADR-025).
+    scope = scope_of(route.spec)
     root = _server_root(route, options)
     if root is not None:
         options["root"] = root
         if "version" in options:
-            _confine_version(route, root, options["version"])
+            _confine_version(route, root, options["version"], scope)
     raw_root = _server_raw_root(route)
     if raw_root is not None:
         options["raw_root"] = raw_root
@@ -693,6 +709,9 @@ def _respond(
             # A binary export has no lines: it writes its file, which is sent.
             options["output"] = stack.enter_context(_binary_file())
         normalized = validate_command(route.spec.name, options=options)
+        if scope is not None:
+            # After the catalog's normalization, before any request or write.
+            scope.guard(normalized)
         if check:
             envelope: CommandResult[Any] = check_command(
                 route.spec.name, options=normalized
@@ -700,7 +719,11 @@ def _respond(
         else:
             if route.spec.result == "list":
                 _paged(normalized)
-            envelope = run_command(route.spec.name, options=normalized)
+            envelope = (
+                run_command(route.spec.name, options=normalized)
+                if scope is None
+                else scope.run(normalized)
+            )
             if binary and envelope.status != "cancelled":
                 data = cast(Path, normalized["output"]).read_bytes()
     if envelope.status == "cancelled":
