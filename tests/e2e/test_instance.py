@@ -460,8 +460,9 @@ def test_the_top_bar_shows_the_operators_logo_and_title(open_page, operator_url,
         expect(title).to_be_hidden()
     assert page.evaluate("() => document.documentElement.scrollWidth") <= width
     expect(page).to_have_title(f"Obserwator · {INSTANCE_TITLE}")
-    assert page.locator("link[rel=icon]").get_attribute("href") == (
-        "nogat/marks/obserwator.svg"
+    assert re.fullmatch(
+        r"v/[0-9a-f]{16}/nogat/marks/obserwator\.svg",
+        page.locator("link[rel=icon]").get_attribute("href") or "",
     )
     if width >= 860:
         code = "0-203-1-900001"
