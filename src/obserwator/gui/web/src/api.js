@@ -3,6 +3,7 @@
 // language (Accept-Language), so the server's error texts come in it.
 
 import { lang } from "./i18n.js";
+import { takeStart } from "./start.js";
 
 /** An error of the API: its document `obserwator-error/1` and the HTTP status. */
 export class ApiError extends Error {
@@ -38,7 +39,10 @@ export function get(path, params = {}, { memo = true, signal } = {}) {
   const url = `${path}${query(params)}`;
   const key = `${lang()} ${url}`;
   if (memo && cache.has(key)) return cache.get(key);
-  const promise = fetch(url, { headers: { Accept: "application/json", "Accept-Language": lang() }, signal }).then(
+  const ask = () => fetch(url, { headers: { Accept: "application/json", "Accept-Language": lang() }, signal });
+  // The session and the station layer were asked for at the start (start.js)
+  const started = takeStart(lang(), url);
+  const promise = (started ? started.catch(ask) : ask()).then(
     async (response) => {
       const doc = await response.json().catch(() => null);
       if (!response.ok) throw new ApiError(response.status, doc);

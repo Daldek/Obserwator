@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from obserwator._version import __version__
 from obserwator.gui._config import GuiConfig
+from obserwator.gui._http import Prebuilt
 
 if TYPE_CHECKING:
     from obserwator.gui._analyses import Analyses
@@ -56,6 +57,8 @@ class GuiState:
         When the app was made, in UTC: the start of the admin panel's „Stan”.
     started : float
         The same moment in monotonic seconds, from which the uptime counts.
+    layer : Prebuilt
+        The answer of ``api/stations``, built and gzipped once per station layer.
     """
 
     config: GuiConfig
@@ -71,6 +74,7 @@ class GuiState:
     boot: str = field(default_factory=lambda: secrets.token_hex(8))
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started: float = field(default_factory=time.monotonic)
+    layer: Prebuilt = field(default_factory=Prebuilt)
 
     def directories(self) -> tuple[Path, ...]:
         """The server's directories hidden in answers (D6): root, own, temporary, working."""

@@ -36,9 +36,8 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
@@ -77,6 +76,7 @@ from obserwator.gui._http import (
     json_response,
     not_modified,
     page_lang,
+    prebuilt_response,
 )
 from obserwator.gui._live import (
     PMAXTP_METHODS,
@@ -89,6 +89,7 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
+from obserwator.gui._page import Site, WebFiles
 from obserwator.gui._root import (
     ANALYSES_SLOTS,
     DataRoot,
@@ -131,8 +132,9 @@ SEXT = {
     "geojson": "application/geo+json",
 }
 QUIET = (
-    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/(admin/)?theme-init\.js$"
+    r"^/(css|src|vendor|nogat|data|instrukcja|v)/|^/(admin/)?theme-init\.js$"
     r"|^/regulamin\.html$"
+    r"|^/(favicon\.ico|robots\.txt|apple-touch-icon(-precomposed)?\.png)$"
 )
 """The static content of the access log (Nogat DEV-12.5), paths at the origin's root: the
 page's files, the admin page's script, the packaged borders, the guide and the regulamin,
@@ -351,16 +353,29 @@ async def texts(request: Request) -> Response:
 
 @_route
 async def stations(request: Request) -> Response:
-    """The station layer: every station of the current catalogs and the series holding it."""
+    """
+    The station layer: every station of the current catalogs and the series holding it.
+
+    A request holding the layer's ETag gets ``304`` before anything is built; else the
+    answer built and gzipped once per layer (`GuiState.layer`).
+    """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
-    lines = Attribution()
-    for feature in snapshot.features.values():
-        lines = lines | _station_origins(
-            feature.provider, feature.properties, location=True
-        )
-    document = {**snapshot.layer, **lines.fields()}
-    return json_response(request, document, etag=_etag(request, snapshot.layer_etag))
+    etag = _etag(request, snapshot.layer_etag)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+
+    def build() -> dict[str, Any]:
+        lines = Attribution()
+        for feature in snapshot.features.values():
+            lines = lines | _station_origins(
+                feature.provider, feature.properties, location=True
+            )
+        return {**snapshot.layer, **lines.fields()}
+
+    bodies = await _thread(lambda: _gui(request).layer.bodies(etag, build))
+    return prebuilt_response(request, bodies, etag)
 
 
 @_route
@@ -1307,6 +1322,24 @@ async def border(request: Request) -> Response:
     )
 
 
+async def touch_icon(request: Request) -> Response:
+    """``apple-touch-icon-precomposed.png``: the same icon as ``apple-touch-icon.png``."""
+    return FileResponse(WEB / "apple-touch-icon.png", media_type="image/png")
+
+
+async def robots(request: Request) -> Response:
+    """
+    ``robots.txt``: crawlers may read the page but not the API, which computes on request.
+
+    Made here rather than kept as a file of ``web/``: the API's path follows the prefix
+    the app is mounted under.
+    """
+    prefix = request.scope.get("root_path", "").rstrip("/")
+    return Response(
+        f"User-agent: *\nDisallow: {prefix}/api/\n", media_type="text/plain"
+    )
+
+
 @_route
 async def api_not_found(request: Request) -> Response:
     """Any other address under ``api/``: 404 as the error document."""
@@ -1532,6 +1565,7 @@ def build_app(
 
     for suffix in (".js", ".mjs"):
         mimetypes.add_type("text/javascript", suffix)
+    site = Site.load(WEB)
 
     routes = [
         Route("/api/session", session),
@@ -1564,7 +1598,11 @@ def build_app(
         Route("/admin", admin_page),
         Route("/regulamin.html", regulamin),
         Route("/data/{name}", border),
-        Mount("/", StaticFiles(directory=WEB, html=True)),
+        Route("/apple-touch-icon-precomposed.png", touch_icon),
+        Route("/robots.txt", robots),
+        Route("/", site.index),
+        Route("/index.html", site.index),
+        Mount("/", WebFiles(site=site, directory=WEB, html=True)),
     ]
     middleware = [
         Middleware(Traffic, state=state.traffic),

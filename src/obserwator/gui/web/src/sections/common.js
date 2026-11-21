@@ -307,12 +307,13 @@ export function Table({ columns, rows, className, max = 0 }) {
 
 /**
  * Key figures in a row of tiles; a tile with `stale` strikes its value through and adds
- * that text below it.
+ * that text below it. Each tile is a `dt` and its `dd`s (the value, then the notes), so
+ * the list stays a valid `<dl>` for assistive technology.
  *
  * @param {{items: {label: string, value: string, note?: string, stale?: string | null}[]}} props
  */
 export function Figures({ items }) {
-  return html`<dl class="figures">${items.map((i) => html`<div class=${i.stale ? "stale" : null}><dt>${i.label}</dt><dd>${i.value}</dd>${i.note && html`<small>${i.note}</small>`}${i.stale && html`<small class="stale-note">${i.stale}</small>`}</div>`)}</dl>`;
+  return html`<dl class="figures">${items.map((i) => html`<div class=${i.stale ? "stale" : null}><dt>${i.label}</dt><dd>${i.value}</dd>${i.note && html`<dd class="figure-note"><small>${i.note}</small></dd>`}${i.stale && html`<dd class="figure-note"><small class="stale-note">${i.stale}</small></dd>`}</div>`)}</dl>`;
 }
 
 /**

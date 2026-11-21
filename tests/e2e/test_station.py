@@ -278,7 +278,7 @@ def test_current_values_of_an_imgw_station_come_with_their_times(
 
     shown = {
         tile.locator("dt").inner_text(): (
-            tile.locator("dd").inner_text(),
+            tile.locator("dd").first.inner_text(),
             tile.locator("small").inner_text() if tile.locator("small").count() else "",
         )
         for tile in tiles.all()

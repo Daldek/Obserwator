@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import mimetypes
+import re
 import shlex
 import shutil
 from pathlib import Path
@@ -284,6 +285,35 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
     )
     assert again.status_code == 304
     assert again.headers["etag"] == answer.headers["etag"]
+
+
+def test_the_station_layer_is_built_once_and_a_304_builds_nothing(client, monkeypatch):
+    from obserwator.gui import _app
+
+    built = []
+    origins = _app._station_origins
+
+    def counted(*args, **kwargs):
+        built.append(args[0])
+        return origins(*args, **kwargs)
+
+    monkeypatch.setattr(_app, "_station_origins", counted)
+    packed = client.get("/api/stations", headers={"Accept-Encoding": "gzip"})
+    after_first = len(built)
+    plain = client.get("/api/stations", headers={"Accept-Encoding": "identity"})
+    unchanged = client.get(
+        "/api/stations", headers={"If-None-Match": packed.headers["etag"]}
+    )
+
+    assert after_first == 13
+    assert len(built) == 13
+    assert packed.headers["content-encoding"] == "gzip"
+    assert "content-encoding" not in plain.headers
+    assert packed.headers["vary"] == plain.headers["vary"] == "Accept-Encoding"
+    assert packed.headers["cache-control"] == "no-cache"
+    assert packed.json() == plain.json()
+    assert packed.headers["etag"] == plain.headers["etag"]
+    assert unchanged.status_code == 304
 
 
 def test_a_station_answers_its_properties_series_and_lines(client):
@@ -1049,6 +1079,70 @@ def test_the_page_and_its_files_are_revalidated_on_every_load(client):
     assert again.status_code == 304
 
 
+def test_the_page_names_its_files_at_addresses_kept_for_a_year(client):
+    page = client.get("/")
+    loaded = re.findall(r'(?:src|href)="([^"]+)"', page.text)
+    (build,) = {m[1] for m in (re.match(r"v/([0-9a-f]{16})/", a) for a in loaded) if m}
+    preloaded = re.findall(r'<link rel="modulepreload" href="([^"]+)"', page.text)
+    answers = {address: client.get(f"/{address}") for address in loaded}
+
+    for address, answer in answers.items():
+        assert answer.status_code == 200, address
+        long = address.startswith(f"v/{build}/") or "?v=" in address
+        expected = "public, max-age=31536000, immutable" if long else "no-cache"
+        assert answer.headers["cache-control"] == expected, address
+    assert f"v/{build}/src/main.js" in loaded
+    assert "vendor/maplibre-gl/maplibre-gl.css?v=6.14.0" in loaded
+    # Every module of the start is asked for at once: the main module's imports, theirs, …
+    assert f"v/{build}/src/lib.js" in preloaded
+    assert f"v/{build}/vendor/preact/hooks.mjs" in preloaded
+    assert f"v/{build}/src/charts/draw.js" in preloaded
+    assert not any("maplibre" in address for address in preloaded)
+    assert page.headers["cache-control"] == "no-cache"
+    assert client.get("/index.html").content == page.content
+
+
+def test_an_address_of_another_build_or_version_is_revalidated(client):
+    build = re.search(r'src="v/([0-9a-f]{16})/src/main.js"', client.get("/").text)[1]
+    current = client.get(f"/v/{build}/src/main.js")
+    older = client.get("/v/0123456789abcdef/src/main.js")
+    module = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.14.0")
+    other = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.13.0")
+    plain = client.get("/src/main.js")
+    again = client.get(
+        f"/v/{build}/src/main.js", headers={"If-None-Match": current.headers["etag"]}
+    )
+
+    assert current.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert module.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert again.status_code == 304
+    # An older build's address (a page cached across a release) gets this build's file
+    assert older.content == current.content == plain.content
+    for answer in (older, other, plain):
+        assert answer.status_code == 200
+        assert answer.headers["cache-control"] == "no-cache"
+    # Only the page's files are under a build's address
+    for path in ("admin/index.html", "instrukcja/index.html", "index.html", "x/y.js"):
+        assert client.get(f"/v/{build}/{path}").status_code == 404, path
+    assert client.get(f"/v/{build}").status_code == 404
+
+
+def test_the_icons_and_robots_txt_are_served(client):
+    favicon = client.get("/favicon.ico")
+    touch = client.get("/apple-touch-icon.png")
+    precomposed = client.get("/apple-touch-icon-precomposed.png")
+    robots = client.get("/robots.txt")
+
+    assert favicon.status_code == touch.status_code == precomposed.status_code == 200
+    assert favicon.content[:4] == b"\x00\x00\x01\x00"  # an ICO directory
+    assert touch.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert precomposed.headers["content-type"] == "image/png"
+    assert precomposed.content == touch.content
+    assert robots.headers["content-type"].startswith("text/plain")
+    # Crawlers keep to the page: the API computes on request
+    assert robots.text.splitlines() == ["User-agent: *", "Disallow: /api/"]
+
+
 def test_the_scripts_are_javascript_whatever_types_the_system_registers(
     make_client, monkeypatch
 ):
@@ -1285,6 +1379,7 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
         downloads = client.get(f"/m/obserwator/api/downloads/{HYDRO}").json()
         url = downloads["series"][0]["formats"]["csv"]["url"]
         file = client.get(f"/m/obserwator/{url}")
+        robots = client.get("/m/obserwator/robots.txt")
 
     assert page.status_code == 200
     assert 'id="app"' in page.text
@@ -1296,5 +1391,6 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
     problem(refused, 405, "method_not_allowed")
     problem(report, 403, "forbidden")  # POST reaches the route: only the site is wrong
     assert file.status_code == 200
+    assert "Disallow: /m/obserwator/api/" in robots.text.splitlines()
     for answer in (page, station, missing, refused, file):
         assert csp(answer) == OWN_ORIGIN_ONLY

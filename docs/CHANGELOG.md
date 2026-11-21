@@ -37,6 +37,16 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 - **„metoda p” in the Mann–Kendall tables** of „Trendy i bilans” and „Trendy”: Hydrolog
   0.9.0's `p_value_method`, „rozkład dokładny” below 10 values and „przybliżenie normalne”
   from 10 (Hydrolog ADR-0049), also beside p over each chart of „Trendy”.
+- **Rainfall intensity curves in the GUI's view „PMAXTP”.** Under the tables of a point, the
+  shared chart module draws the maximum rainfall intensity q [dm³/(s·ha)] against the
+  duration t [min] (5 min to 72 h), one curve per exceedance probability p of the answer, as
+  klimat.imgw.pl/opady-maksymalne does: PMAXTP's q = 166.7·J, J = h/t [mm/min] of the
+  quantile h (ks) of the point and method shown. Both axes are logarithmic; the curves run
+  from the rarest p (the highest, red) to the most frequent (blue), the legend names p in %,
+  and the readout gives q of every curve at a duration. The curves are processed data, so
+  the view's strip keeps PMAXTP's line PP („…zostały przetworzone”) beside PS, which
+  `api/pmaxtp` already carried; no image export (the module's other charts have none). The
+  guide's part 05 describes the chart.
 
 ### Changed
 
@@ -59,6 +69,79 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 - **The recorded answers of the tests are Hydrolog 0.9.0.dev4's** (`tests/fixtures/hydrolog/
   answers.json`, with `formula_versions`), but for `stats harmonics`, which 0.9.0 refuses
   on the fixture's short series.
+- **Honest request headers to hydro-back.imgw.pl (ADR-021 erratum of 2026-11-21).** The map of
+  `fetch_hydro_states` (`current hydro-states`, the GUI's water states) and the station pages
+  of `store sync --datasets pl.imgw.hydro_details` no longer send `Referer:
+  https://hydro.imgw.pl/`, which passed Obserwator off as IMGW-PIB's own page, and their
+  `User-Agent` names the program and its project, `Obserwator/<version>
+  (+https://github.com/Daldek/Obserwator)`, never the person running it. The backend answers
+  both without the `Referer` (checked on 2026-11-14 and 2026-11-21); the docstrings and docs that
+  said it requires one are corrected.
+- **The GUI's current data refresh in the background and in parallel (ADR-013 erratum of
+  2026-11-21).** When a snapshot of IMGW-PIB's current data expires (10 minutes), the requests
+  get the last good one while one refresh runs in a background thread, instead of all waiting
+  on the lock for IMGW-PIB (up to 30 s per source); only a source that never answered is waited
+  for. The sources of one answer are fetched at the same time, so the first `api/current`
+  after a start waits for the slowest of `states`, `hydro` and `meteo`, not for their sum
+  (measured on a local instance, see `docs/PROGRESS.md`). Still at most one request per source
+  at a time and one per 10 minutes, a failure kept beside the last snapshot and retried after a
+  minute.
+- **`api/current` and `api/current/{code}` answer `304 Not Modified`.** They carry a strong
+  `ETag` of their snapshots, the station and the language, with `Cache-Control: no-cache`, and
+  a request with that `If-None-Match` gets `304` before the answer is built, so the poll every
+  10 minutes of an open tab no longer downloads the whole answer (about 300 KB) while no
+  snapshot changed. The page needs no change: the browser revalidates by itself.
+- **The GUI logs every request to IMGW-PIB.** Each fetch of current data (`states`, `hydro`,
+  `meteo`, `synop`) and of a PMAXTP point is one `nogat-log/1` app record `upstream_fetch`:
+  `info` „IMGW-PIB <source>: answered in <ms> ms, <n> records”, `warning` „… failed after <ms>
+  ms, <code>: <reason>” with the error registry's code, `error` with the trace when the program
+  fails on an answer. No client address and never PMAXTP's point. So the failures of IMGW-PIB
+  and the number of requests to it can be read from the app log.
+- **The GUI reads its data root again in the background.** `DataRoot.snapshot`
+  (`gui/_root.py`) read the current versions on the request that found the last read older
+  than a minute, so at low traffic nearly every visit paid for it (`api/session` cold about
+  190 ms against 1 ms warm). Only the first read is now a request's own; later, the request
+  that finds the read older than a minute starts one re-read in a thread and every request
+  takes the last snapshot until it is replaced.
+- **The GUI's `api/stations` answers `304` without building its answer and keeps the built
+  one.** The station layer (1.63 MB of JSON, 141 KB gzipped on the deployment's root) was
+  assembled and compressed on every request, about 220 ms, and a `304` still took about
+  100 ms. The request's `If-None-Match` is now checked against the layer's ETag first, and
+  the answer is built and gzipped once per layer and kept in memory (`GuiState.layer`,
+  `gui/_http.py` `Prebuilt`) until the snapshot changes: on a local copy of the deployment's
+  root a `200` takes about 3 ms and a `304` about 2 ms, against 0.9 s and 0.3–0.6 s before on
+  the same, loaded machine.
+- **The GUI serves `favicon.ico`, `robots.txt` and `apple-touch-icon.png`.** Browsers and
+  crawlers asked for them and got `404` (43 answers in the logs of 2026-11-14 to 2026-11-20).
+  `favicon.ico` (16, 32 and 48 px) and `apple-touch-icon.png` (180 px, also answered at
+  `apple-touch-icon-precomposed.png`) are rendered from Nogat's mark
+  `nogat/marks/obserwator.svg`; `robots.txt` lets crawlers read the page but not `api/`,
+  which computes on request, under the prefix the app is mounted at. None of them is logged
+  below `400`.
+- **The GUI's page starts without a chain of requests and its files are cached for a year.**
+  The start was a chain: the HTML and 71 files (63 modules imported level by level), then
+  `api/texts`, then `api/session` and `api/stations`, every file `Cache-Control: no-cache`, so
+  each visit asked again for all of them and MapLibre's module crossed the tunnel every time.
+  `index.html` is now served rendered (`gui/_page.py`): its own files (`theme-init.js`,
+  `src/`, `css/`, `nogat/`, `vendor/`) at `v/<build>/`, `<build>` a digest of those files,
+  MapLibre's module, worker, stylesheet and the glyphs at `vendor/…?v=<version>` of
+  `vendor/vendor.json` (named to `map.js` by `<meta name="obserwator-vendor">`), both with
+  `Cache-Control: public, max-age=31536000, immutable`, while the page, the API and any other
+  address (an older build's too) stay `no-cache`; a `modulepreload` of every module
+  `src/main.js` imports statically lets the browser ask for all of them at once; and
+  `theme-init.js` asks for `api/texts?lang=…`, `api/session` and `api/stations` before the
+  modules load, with the headers of `src/api.js`, whose answers `i18n.js` and `api.js` take
+  once (`src/start.js`; a `<link rel="preload">` cannot send the page's `Accept-Language`).
+  The packaged borders are asked for relative to the page. Measured on a local copy of the
+  deployment's root with an emulated iPhone 13 on Fast 3G with a 4× slower CPU, without a
+  basemap (median of 3 visits, a loaded machine): the three API answers at 8.4–8.5 s against
+  8.8–9.7 s on a first visit and at 1.8–2.2 s against 8.2–9.0 s on the next one, the station
+  list drawn at 12.0 s against 16.9 s and at 5.6 s against 10.2 s, the map at 14.3 s against
+  19.6 s and at 7.6 s against 10.4 s; the next visit takes 75 of its 83 files from the cache.
+- **On a phone the station's button of the map's bar ends inside the screen.** Its name
+  overflowed the bar by 5 px and was cut by the screen's edge (ANNOPOL on an iPhone 13); the
+  button now shrinks to what the bar leaves, cuts the name with an ellipsis and names it
+  whole in its `title`.
 
 ### Fixed
 
@@ -150,37 +233,15 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   because a flood rises within hours: on that day 570 of the 696 flows had the time of their
   level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
   tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
-
-### Changed
-
-- **Honest request headers to hydro-back.imgw.pl (ADR-021 erratum of 2026-11-21).** The map of
-  `fetch_hydro_states` (`current hydro-states`, the GUI's water states) and the station pages
-  of `store sync --datasets pl.imgw.hydro_details` no longer send `Referer:
-  https://hydro.imgw.pl/`, which passed Obserwator off as IMGW-PIB's own page, and their
-  `User-Agent` names the program and its project, `Obserwator/<version>
-  (+https://github.com/Daldek/Obserwator)`, never the person running it. The backend answers
-  both without the `Referer` (checked on 2026-11-14 and 2026-11-21); the docstrings and docs that
-  said it requires one are corrected.
-- **The GUI's current data refresh in the background and in parallel (ADR-013 erratum of
-  2026-11-21).** When a snapshot of IMGW-PIB's current data expires (10 minutes), the requests
-  get the last good one while one refresh runs in a background thread, instead of all waiting
-  on the lock for IMGW-PIB (up to 30 s per source); only a source that never answered is waited
-  for. The sources of one answer are fetched at the same time, so the first `api/current`
-  after a start waits for the slowest of `states`, `hydro` and `meteo`, not for their sum
-  (measured on a local instance, see `docs/PROGRESS.md`). Still at most one request per source
-  at a time and one per 10 minutes, a failure kept beside the last snapshot and retried after a
-  minute.
-- **`api/current` and `api/current/{code}` answer `304 Not Modified`.** They carry a strong
-  `ETag` of their snapshots, the station and the language, with `Cache-Control: no-cache`, and
-  a request with that `If-None-Match` gets `304` before the answer is built, so the poll every
-  10 minutes of an open tab no longer downloads the whole answer (about 300 KB) while no
-  snapshot changed. The page needs no change: the browser revalidates by itself.
-- **The GUI logs every request to IMGW-PIB.** Each fetch of current data (`states`, `hydro`,
-  `meteo`, `synop`) and of a PMAXTP point is one `nogat-log/1` app record `upstream_fetch`:
-  `info` „IMGW-PIB <source>: answered in <ms> ms, <n> records”, `warning` „… failed after <ms>
-  ms, <code>: <reason>” with the error registry's code, `error` with the trace when the program
-  fails on an answer. No client address and never PMAXTP's point. So the failures of IMGW-PIB
-  and the number of requests to it can be read from the app log.
+- **Accessibility of the GUI (axe-core 4.13).** The page had no level-one heading: it gets a
+  visually hidden `<h1>` („Obserwator: dane hydrologiczne i meteorologiczne IMGW-PIB i
+  ČHMÚ”). The region of the map's view and MapLibre's canvas were two landmarks named „Mapa
+  stacji”: the region is named by the view („Widok: Stacje”, „Widok: Pomiary bieżące”,
+  „Widok: PMAXTP”), the canvas by what it shows („Mapa stacji”, or „Mapa: wybór punktu
+  PMAXTP” in the view „PMAXTP”). The key figures' `<dl class="figures">` (a station's
+  „Pomiary bieżące” and the sections' tiles) held their notes as `<small>` beside `dt` and
+  `dd` (axe-core: serious): each note is now a `dd` of its tile. The browser tests run
+  axe-core (`tests/e2e/vendor/`, test files only) on the start page and a station's panel.
 
 ## [3.0.1] - 2026-11-18
 

@@ -254,8 +254,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .view-bar .hint { color: var(--text-3); font-size: var(--text-sm); }
 .view-bar .end { margin-left: auto; display: flex; gap: var(--space-2); }
 .view-body { position: relative; flex: 1; min-height: 0; }
-.panel-toggle { display: none; max-width: 220px; }
-.panel-toggle .label { overflow: hidden; text-overflow: ellipsis; }
+.panel-toggle { display: none; max-width: 220px; min-width: 0; }
+.panel-toggle .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 861px) {
   .view-panel.collapsed { display: none; }
   .panel-toggle:not(.is-open) { display: inline-flex; }
@@ -372,13 +372,20 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl tbody tr:hover td { background: var(--surface-2); }
 
+/* Read by assistive technology, not drawn (the page's <h1>) */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
 .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; margin: 0 0 var(--space-3); background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 .figures > div { padding: var(--space-2) 10px; background: var(--surface); min-width: 0; }
 .figures dt { font-size: var(--text-xs); color: var(--text-3); }
 .figures dd { margin: 2px 0 0; font-size: var(--text-md); font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+.figures dd.figure-note { margin: 0; font-size: inherit; font-weight: inherit; }
 .figures small { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--text-2); line-height: 1.25; }
 /* A stale value (`current hydro`'s `flow_stale`): struck through, with a warning note */
-.figures .stale dd { color: var(--text-3); text-decoration: line-through; }
+.figures .stale dd:not(.figure-note) { color: var(--text-3); text-decoration: line-through; }
 .stale-note { color: var(--warn-ink); }
 
 .params { width: 100%; border-collapse: collapse; font-size: var(--text-sm); margin: 0 0 var(--space-2); }
@@ -541,7 +548,9 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
   }
   .view-bar { flex-wrap: nowrap; overflow-x: auto; padding: 6px 8px; gap: 6px; scrollbar-width: none; }
   .view-bar .hint { display: none; }
-  .view-bar .end { margin-left: 0; }
+  /* The station's button shrinks to what the bar leaves, its name cut with an ellipsis */
+  .view-bar .end { margin-left: 0; flex: 0 1 auto; min-width: 0; }
+  .view-bar .panel-toggle.left { flex: none; }
   .view-bar .seg { flex: none; }
   .view-bar .seg button { padding: 0 8px; }
   .panel-toggle { max-width: 140px; }

@@ -72,7 +72,7 @@ def tile(card: Any, label: str) -> Any:
 
 def figure(card: Any, label: str) -> str:
     """The value of a key figure of a section."""
-    text: str = tile(card, label).locator("dd").inner_text(timeout=WAIT)
+    text: str = tile(card, label).locator("dd").first.inner_text(timeout=WAIT)
     return text
 
 
@@ -114,7 +114,7 @@ def test_a_threshold_chosen_by_the_person_recomputes_the_periods(
 ) -> None:
     card = section(open_page, analysis_url, KLODZKO, "lowflow")
     stored = analysis(analysis_url, KLODZKO, "low_flow_sequences.Q")
-    threshold = tile(card, "Próg").locator("dd")
+    threshold = tile(card, "Próg").locator("dd").first
     expect(threshold).to_have_text(re.compile(r"\d"), timeout=WAIT)
 
     card.get_by_role("radio", name="Q90").click()
@@ -146,7 +146,7 @@ def test_a_threshold_chosen_by_the_person_recomputes_the_periods(
         min_duration_days=10,
     )
     expect(threshold).to_have_text(re.compile("2,50"), timeout=WAIT)
-    expect(tile(card, "Niżówek").locator("dd")).to_have_text(
+    expect(tile(card, "Niżówek").locator("dd").first).to_have_text(
         str(given["n_events"]), timeout=WAIT
     )
     assert all(item["duration_days"] >= 10 for item in given["sequences"])
@@ -156,13 +156,15 @@ def test_low_water_periods_of_the_water_level_are_hydrologs(
     open_page: Any, analysis_url: str
 ) -> None:
     card = section(open_page, analysis_url, KLODZKO, "lowflow")
-    expect(tile(card, "Próg").locator("dd")).to_have_text(
+    expect(tile(card, "Próg").locator("dd").first).to_have_text(
         re.compile(r"m³/s"), timeout=WAIT
     )
     card.get_by_role("radio", name="H · stan wody", exact=True).click()
     periods = analysis(analysis_url, KLODZKO, "low_flow_sequences.H")
     threshold = tile(card, "Próg")
-    expect(threshold.locator("dd")).to_have_text(re.compile(r"\scm$"), timeout=WAIT)
+    expect(threshold.locator("dd").first).to_have_text(
+        re.compile(r"\scm$"), timeout=WAIT
+    )
     assert number(figure(card, "Próg")) == pytest.approx(periods["threshold"], abs=0.5)
     expect(threshold).to_contain_text("SNW", timeout=WAIT)
     assert number(figure(card, "Niżówek")) == periods["n_events"]
@@ -236,7 +238,7 @@ def test_regime_and_seasonality_are_hydrologs(
     card.get_by_role("radio", name="minima").click()
     minima = analysis(analysis_url, KLODZKO, "seasonality.Q.min")
     month, day = (int(part) for part in minima["mean_date"].split("-"))
-    expect(tile(card, "Średni termin NQ").locator("dd")).to_have_text(
+    expect(tile(card, "Średni termin NQ").locator("dd").first).to_have_text(
         f"{day} {roman[month - 1]}", timeout=WAIT
     )
 
@@ -245,7 +247,7 @@ def test_the_seasonality_of_the_water_levels_extremes_is_hydrologs(
     open_page: Any, analysis_url: str
 ) -> None:
     card = section(open_page, analysis_url, KLODZKO, "regime")
-    expect(tile(card, "Średni termin WQ").locator("dd")).to_have_text(
+    expect(tile(card, "Średni termin WQ").locator("dd").first).to_have_text(
         re.compile(r"\d"), timeout=WAIT
     )
     seasonality = (
@@ -260,7 +262,7 @@ def test_the_seasonality_of_the_water_levels_extremes_is_hydrologs(
             seasonality.get_by_role("radio", name="minima").click()
         found = analysis(analysis_url, KLODZKO, f"seasonality.H.{extreme}")
         month, day = (int(part) for part in found["mean_date"].split("-"))
-        expect(tile(card, f"Średni termin {name}").locator("dd")).to_have_text(
+        expect(tile(card, f"Średni termin {name}").locator("dd").first).to_have_text(
             f"{day} {roman[month - 1]}", timeout=WAIT
         )
         assert number(figure(card, "Koncentracja r")) == pytest.approx(
@@ -337,7 +339,7 @@ def test_each_section_reads_in_english_on_a_phone_in_the_dark(
     card = section(
         open_page, analysis_url, code, name, theme=THEMES[1], width=WIDTHS[1], lang="en"
     )
-    expect(tile(card, label).locator("dd")).to_have_text(
+    expect(tile(card, label).locator("dd").first).to_have_text(
         re.compile(r"\d"), timeout=WAIT
     )
 
@@ -354,19 +356,19 @@ def test_low_water_periods_of_the_water_level_read_in_english_on_a_phone_in_the_
         width=WIDTHS[1],
         lang="en",
     )
-    expect(tile(card, "Threshold").locator("dd")).to_have_text(
+    expect(tile(card, "Threshold").locator("dd").first).to_have_text(
         re.compile(r"m³/s"), timeout=WAIT
     )
     card.get_by_role("radio", name="H · water level", exact=True).click()
     periods = analysis(analysis_url, KLODZKO, "low_flow_sequences.H")
     threshold = tile(card, "Threshold")
-    expect(threshold.locator("dd")).to_have_text(
+    expect(threshold.locator("dd").first).to_have_text(
         re.compile(rf"^{periods['threshold']:.0f}\s+cm$"), timeout=WAIT
     )
     expect(threshold).to_contain_text("SNW, the mean of the annual minima")
-    expect(tile(card, "Low-flow periods").locator("dd")).to_have_text(
+    expect(tile(card, "Low-flow periods").locator("dd").first).to_have_text(
         str(periods["n_events"])
     )
-    expect(tile(card, "Longest").locator("dd")).to_have_text(
+    expect(tile(card, "Longest").locator("dd").first).to_have_text(
         f"{periods['max_duration_days']} days"
     )

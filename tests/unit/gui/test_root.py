@@ -1,8 +1,9 @@
-"""The data root as the GUI reads it (GUI plan D7): current versions, asked again a minute later."""
+"""The data root as the GUI reads it (GUI plan D7): versions asked again in the background."""
 
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 
 import pytest
 
@@ -29,12 +30,32 @@ def clock() -> Clock:
     return Clock()
 
 
+def inline(job):
+    """A re-read run at once, in the request that starts it."""
+    job()
+
+
+class Held:
+    """Re-reads the test starts itself: what runs in the background meanwhile."""
+
+    def __init__(self) -> None:
+        self.jobs: list[Callable[[], None]] = []
+
+    def __call__(self, job) -> None:
+        self.jobs.append(job)
+
+    def run(self) -> None:
+        jobs, self.jobs = self.jobs, []
+        for job in jobs:
+            job()
+
+
 def test_a_new_version_shows_a_minute_later_without_a_restart(
     imgw_root, fixture_root, tmp_path, clock
 ):
     root = tmp_path / "root"
     shutil.copytree(imgw_root, root)
-    data = DataRoot(root, clock=clock)
+    data = DataRoot(root, clock=clock, background=inline)
     before = data.snapshot()
 
     shutil.rmtree(root)
@@ -59,7 +80,7 @@ def test_new_stored_analyses_show_a_minute_later_and_keep_the_station_layer(
 ):
     root = tmp_path / "root"
     shutil.copytree(fixture_root, root)
-    data = DataRoot(root, clock=clock)
+    data = DataRoot(root, clock=clock, background=inline)
     before = data.snapshot()
 
     build_served_analyses(root)
@@ -94,7 +115,7 @@ def test_a_root_that_cannot_be_read_is_an_error_until_it_can(
     fixture_root, tmp_path, clock
 ):
     root = tmp_path / "root"
-    data = DataRoot(root, clock=clock)
+    data = DataRoot(root, clock=clock, background=inline)
     missing = data.snapshot()
 
     shutil.copytree(fixture_root, root)
@@ -106,6 +127,56 @@ def test_a_root_that_cannot_be_read_is_an_error_until_it_can(
     assert missing.features == {}
     assert found.error is None
     assert len(found.features) == 13
+
+
+def test_requests_take_the_last_snapshot_while_one_re_read_runs(
+    imgw_root, fixture_root, tmp_path, clock
+):
+    root = tmp_path / "root"
+    shutil.copytree(imgw_root, root)
+    held = Held()
+    data = DataRoot(root, clock=clock, background=held)
+    before = data.snapshot()
+
+    shutil.rmtree(root)
+    shutil.copytree(fixture_root, root)
+    clock.now += RELOAD_AFTER_S + 1
+    during = [data.snapshot() for _ in range(3)]
+    started = len(held.jobs)
+    held.run()
+    after = data.snapshot()
+
+    # The first read was the request's own; the later one ran behind the requests, once
+    assert started == 1
+    assert all(snapshot is before for snapshot in during)
+    assert set(after.catalogs) == {"IMGW-PIB", "CHMI"}
+    assert held.jobs == []
+
+
+def test_a_re_read_that_fails_is_tried_again_a_minute_later(
+    fixture_root, tmp_path, clock, monkeypatch
+):
+    held = Held()
+    data = DataRoot(fixture_root, clock=clock, background=held)
+    first = data.snapshot()
+    clock.now += RELOAD_AFTER_S + 1
+    data.snapshot()
+    monkeypatch.setattr(
+        _root, "current_version", lambda *a, **k: (_ for _ in ()).throw(OSError("x"))
+    )
+
+    with pytest.raises(OSError):
+        held.run()
+    monkeypatch.undo()
+    within = data.snapshot()
+    clock.now += RELOAD_AFTER_S + 1
+    data.snapshot()
+    again = len(held.jobs)
+    held.run()
+
+    assert within is first
+    assert again == 1
+    assert data.snapshot() is first
 
 
 def test_a_series_version_of_an_unknown_schema_is_an_error(tmp_path):

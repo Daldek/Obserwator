@@ -99,6 +99,33 @@ MESSAGES: dict[str, Text] = {
         "Estimation errors of the quantiles [{unit}].",
         "Błędy estymacji kwantyli [{unit}].",
     ),
+    # The rainfall intensity curves under the tables
+    "pmaxtp.chart.heading": Text(
+        "Rainfall intensity curves", "Krzywe natężenia deszczu"
+    ),
+    "pmaxtp.chart.title": Text(
+        "Maximum rainfall intensity q against duration t, one curve per exceedance "
+        "probability p, PMAXTP {method}, {point}",
+        "Maksymalne natężenie deszczu q w zależności od czasu trwania t, krzywa dla "
+        "każdego prawdopodobieństwa przewyższenia p, PMAXTP {method}, {point}",
+    ),
+    "pmaxtp.chart.axis_x": Text(
+        "Rainfall duration t [min]", "Czas trwania opadu t [min]"
+    ),
+    "pmaxtp.chart.axis_y": Text(
+        "Rainfall intensity q [dm³/(s·ha)]", "Natężenie deszczu q [dm³/(s·ha)]"
+    ),
+    "pmaxtp.chart.note": Text(
+        "Maximum rainfall intensity q = 166.7·J [dm³/(s·ha)], where J = h/t [mm/min] "
+        "is the intensity of the quantile h [mm] of duration t [min] (the table "
+        "„Quantiles”), one curve per exceedance probability p; both axes logarithmic. "
+        "Computed here from IMGW-PIB's quantiles, so processed PMAXTP data.",
+        "Maksymalne natężenie deszczu q = 166,7·J [dm³/(s·ha)], gdzie J = h/t "
+        "[mm/min] to natężenie kwantyla h [mm] o czasie trwania t [min] (tabela "
+        "„Kwantyle”), krzywa dla każdego prawdopodobieństwa przewyższenia p; obie osie "
+        "logarytmiczne. Liczone tutaj z kwantyli IMGW-PIB, więc to przetworzone dane "
+        "PMAXTP.",
+    ),
     # The results panel
     "pmaxtp.result.empty": Text(
         "Click a point on the map or type coordinates on the left: PMAXTP tables of "

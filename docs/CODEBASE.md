@@ -72,6 +72,7 @@ src/obserwator/
     ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app
+    ├── _page.py          # Site (index.html rendered: v/<build>/ addresses, modulepreload of the start's modules, vendor versions) and WebFiles (a year's cache of versioned addresses)
     ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute
     ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only
     ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
@@ -80,7 +81,7 @@ src/obserwator/
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl, next id in feedback.next_id (DEV-15.12), rewritten atomically under flock
     ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
     ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.0.0, regulamin 1.0) filled for the deployment (DEV-15.7)
-    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.0.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
+    └── web/              # The page (package data): index.html, theme-init.js, favicon.ico and apple-touch-icon.png (rendered from nogat/marks/obserwator.svg), src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.0.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```

@@ -50,8 +50,25 @@ import { isPhone } from "./ui/sheet.js";
 import { useDark } from "./ui/theme.js";
 import { kindName, providerName } from "./words.js";
 
-const VENDOR = new URL("../vendor/", import.meta.url);
-const GLYPHS = `${new URL("glyphs/", VENDOR).href}{fontstack}/{range}.pbf`;
+// The vendored libraries' versions the page names (<meta name="obserwator-vendor">, from
+// vendor/vendor.json, gui/_page.py): MapLibre's module and the glyphs are asked for at the
+// page's own vendor/ with their version (?v=), an address the server lets the browser keep
+// for a year; without the element (index.html served as a plain file) without one.
+const VERSIONS = (() => {
+  try {
+    return JSON.parse(document.querySelector('meta[name="obserwator-vendor"]')?.content || "{}");
+  } catch {
+    return {};
+  }
+})();
+
+/** The address of a vendored file, relative to the page, with its library's version. */
+function vendored(path) {
+  const version = VERSIONS[path.split("/")[0]];
+  return `${new URL(`vendor/${path}`, document.baseURI).href}${version ? `?v=${encodeURIComponent(version)}` : ""}`;
+}
+
+const GLYPHS = vendored(`glyphs/{fontstack}/{range}.pbf`).replace(/%7B/gi, "{").replace(/%7D/gi, "}");
 const GLYPH_FONT = "noto-sans-regular";
 const BORDERS = ["poland_border_wgs84.geojson", "czechia_border_wgs84.geojson"];
 /** Poland and Czechia, the first view. */
@@ -227,7 +244,7 @@ function removeBasemap(map) {
 /** The borders of Poland and Czechia from Obserwator's package, on the colour of the sea. */
 async function addBorders(map, colors) {
   if (map.getSource("borders")) return;
-  const parts = await Promise.all(BORDERS.map((name) => fetch(new URL(`../data/${name}`, import.meta.url)).then((r) => r.json())));
+  const parts = await Promise.all(BORDERS.map((name) => fetch(new URL(`data/${name}`, document.baseURI)).then((r) => r.json())));
   if (map.getSource("borders")) return;
   const data = { type: "FeatureCollection", features: parts.flatMap((part) => part.features || []) };
   map.addSource("borders", { type: "geojson", data });
@@ -425,7 +442,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
     let live = true;
     let map = null;
     const element = box.current;
-    import("../vendor/maplibre-gl/maplibre-gl.mjs")
+    import(vendored("maplibre-gl/maplibre-gl.mjs"))
       .then((maplibre) => {
         if (!live) return;
         const colors = palette();
@@ -553,8 +570,10 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
       for (const id of ids) map.setLayoutProperty(id, "visibility", name === view ? "visible" : "none");
     }
     map.getCanvas().style.cursor = view === "pmaxtp" ? "crosshair" : "";
+    // The canvas is a landmark of its own (MapLibre's role="region"): named by what it shows
+    map.getCanvas().setAttribute("aria-label", view === "pmaxtp" ? t("shell.map_pmaxtp") : t("stations.map.label"));
     setTip(null);
-  }, [ready, view]);
+  }, [ready, view, lang()]);
 
   // The stations of „Stacje”
   useEffect(() => {
