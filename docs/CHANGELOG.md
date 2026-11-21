@@ -167,6 +167,12 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Changed
 
+- **GUI: on a phone the sources strip is one line (Nogat ECO-080, DEV-20.5).** The kit's
+  `<nogat-sources>` (copied from Nogat `5f8cce0`) folds its lines to one line cut with an
+  ellipsis up to 860 px, followed by „więcej”, which unfolds them in place, and „Źródła i
+  warunki”; the basemap's credit runs on after the strip above 860 px only and takes the
+  line below it on a phone. The foot of „Stacje” on an iPhone 13 is 76 px instead of
+  127 px. The kit's draft `nogat-terms-operator.md` is unchanged.
 - **The analyses need Hydrolog 0.9.0 or later (ADR-016 erratum of 2026-11-21).** The GUI's
   explanations and the guide describe what Hydrolog 0.9.0 computes: a dry or wet spell over
   1 January counts in the year it ends, and a year inside a longer spell has no longest

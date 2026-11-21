@@ -452,15 +452,18 @@ pre.code .arg { display: inline-block; max-width: 100%; vertical-align: top; }
 /* ---------- The foot of the view across its width, under the map and both panels (after
    Hydrograf's #view-foot): the view's one strip of provider lines, the kit's <nogat-sources>
    (its own 12 px muted text, Nogat DEV-20.5) with the basemap's credit run on after it. On a
-   phone the sheets stop above it (--view-foot-h) ---------- */
+   phone the kit folds the strip to one line (Nogat ECO-080), the credit on the line below,
+   and the sheets stop above the foot (--view-foot-h) ---------- */
 .view-foot { grid-row: 2; grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--line); background: var(--surface); }
 .view-sources {
   padding: 4px 12px 5px;
   font-size: var(--text-sm); line-height: var(--line-height); color: var(--text-3);
 }
-.view-sources nogat-sources:not([hidden]),
-.view-sources .nogat-sources-strip { display: inline; }
-.view-sources nogat-sources:not([hidden]) + .map-basemap::before { content: " · "; }
+@media (min-width: 861px) {
+  .view-sources nogat-sources:not([hidden]),
+  .view-sources .nogat-sources-strip { display: inline; }
+  .view-sources nogat-sources:not([hidden]) + .map-basemap::before { content: " · "; }
+}
 /* The welcome window of a first visit (src/ui/welcome.js): a .modal with the kit's sources */
 .welcome .intro { margin: 0 0 var(--space-3); color: var(--text-2); }
 
