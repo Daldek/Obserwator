@@ -989,14 +989,14 @@ def _catalog_bytes(
     user: Mapping[str, tuple[str, str, str | None]],
     problems: list[str],
     rejections: list[str],
-) -> tuple[bytes, int, int, dict[str, int], list[str], int]:
+) -> tuple[bytes, int, list[str], dict[str, int], list[str], int]:
     """
     The canonical IMGW-PIB catalog and its counts.
 
-    Returns the bytes, the number of stations, of those without a location, the
-    stations located by each source, the codes known only from series indexes
-    and the number of hydrological stations with details of hydro.imgw.pl
-    (``details`` by code; it adds no station).
+    Returns the bytes, the number of stations, the codes of those without a
+    location (in code order), the stations located by each source, the codes
+    known only from series indexes and the number of hydrological stations with
+    details of hydro.imgw.pl (``details`` by code; it adds no station).
     """
     for api_kind, api_rows in apis.items():
         for code in api_rows:
@@ -1044,7 +1044,7 @@ def _catalog_bytes(
         )
     features = []
     used: dict[str, int] = {}
-    without = 0
+    unlocated: list[str] = []
     detailed = 0
     for code in sorted(known):
         kind: Literal["hydro", "meteo"] = "hydro" if code in codes["hydro"] else "meteo"
@@ -1068,7 +1068,7 @@ def _catalog_bytes(
             rejections=rejections,
         )
         if source is None:
-            without += 1
+            unlocated.append(code)
         else:
             used[source] = used.get(source, 0) + 1
         if page is not None:
@@ -1076,7 +1076,7 @@ def _catalog_bytes(
         features.append(feature)
     lines = _catalog_lines(get_provider("IMGW-PIB"), {**used, DETAILS_SOURCE: detailed})
     document = {"type": "FeatureCollection", "features": features, **lines.fields()}
-    return _canonical(document), len(features), without, used, series_only, detailed
+    return _canonical(document), len(features), unlocated, used, series_only, detailed
 
 
 # --------------------------------------------------------------------------
@@ -1890,6 +1890,72 @@ def _catalog_notices(
         )
 
 
+def _static_missing(
+    path: Path, unlocated: Sequence[str], details: Mapping[str, Any]
+) -> Message:
+    """
+    The problem of a missing static file, with what it costs when the raw root tells.
+
+    The file holds the coordinates of the stations of hydro.imgw.pl's map, whose
+    pages are the station details (``pl.imgw.hydro_details``, ADR-021): with the
+    details stored, the stations the file would locate are those with details and
+    without a location, so they are counted; without the details the cost is
+    unknown. IMGW-PIB's data are not shipped with Obserwator, so the message names
+    the command that downloads the file.
+    """
+    gap = [code for code in unlocated if code in details]
+    if not gap:
+        return message("catalog.static_missing", static_path=path.as_posix())
+    return message(
+        "catalog.static_missing_stations",
+        static_path=path.as_posix(),
+        count=len(gap),
+        example=gap[0],
+    )
+
+
+def _meteo_kind_gap(
+    root: Path, raw: Path, series_sources: Sequence[Mapping[str, Any]]
+) -> Notice | None:
+    """
+    The ``series_missing`` notice of the meteo series a data root lacks, or None.
+
+    ``meteo_kind`` of an IMGW-PIB station comes only from the current series of
+    `_METEO_KINDS` in the data root (the station lists publish no kind): without
+    any of them every meteorological station has none (a warning); without some, a
+    station measured only in a missing one has a lower kind or none (information).
+    Both name the ``series build`` of the first missing dataset.
+    """
+    held = {entry["dataset"] for entry in series_sources}
+    absent = [key for key in _METEO_KINDS if key not in held]
+    if not absent:
+        return None
+    if len(absent) == len(_METEO_KINDS):
+        return Notice(
+            "warning",
+            "series_missing",
+            message(
+                "catalog.meteo_kind_without_series",
+                datasets=", ".join(absent),
+                root=root,
+                raw=raw,
+                dataset=absent[0],
+            ),
+        )
+    return Notice(
+        "info",
+        "series_missing",
+        message(
+            "catalog.meteo_kind_partial_series",
+            sources=", ".join(_METEO_KINDS),
+            root=root,
+            datasets=", ".join(absent),
+            raw=raw,
+            dataset=absent[0],
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class _Build:
     """Common state of one catalog build: roots, provider, user file and hooks."""
@@ -2075,23 +2141,33 @@ def build_catalog(
     ``geometry`` null unless the user file locates it, counted in
     ``from_series``); codes only in the user file are reported in ``problems``.
     Location precedence: API, then the local static file
-    ``station_code,latitude,longitude`` (``settings.reference_dir``), then the user
-    CSV. A missing static file is not an error: it is reported in ``problems``
-    and recorded in the sidecar as ``available: false``. ``meteo_kind`` of a
+    ``station_code,latitude,longitude`` (``settings.reference_dir``; the
+    coordinates of hydro.imgw.pl's map, which ``python -m
+    obserwator.reference_data`` downloads, since IMGW-PIB data are not shipped with
+    the package), then the user CSV. A missing static file is not an error: it is
+    reported in ``problems``, recorded in the sidecar as ``available: false`` and
+    given as a ``warning`` notice ``source_missing`` that names that command and,
+    when the raw root holds the station details, how many hydrological stations
+    of hydro.imgw.pl's map are left without a location. ``meteo_kind`` of a
     meteorological station is ``"synop"`` when the current
     ``pl.imgw.meteo_synop_daily`` series holds it, otherwise ``"climate"``
     when the current ``pl.imgw.meteo_climate_daily`` series does, otherwise
     ``"precipitation"`` when the current ``pl.imgw.meteo_precip_daily``
     series does, and null without such a series (also for every ČHMÚ
-    station). The station details of hydro.imgw.pl (``pl.imgw.hydro_details``,
-    ADR-021) are optional: when the raw root holds them, each hydrological
-    station on that service's map gets its warning and alarm levels, absolute
-    minimum and maximum with their dates, gauge zero with its datum, river
-    kilometre, catchment area, year of establishment, province and district
-    (``details_source`` ``"hydro_details"``; they add no station); without
-    them these properties are null, the sidecar records the source as
+    station); the station lists publish no kind. When the data root lacks some
+    of these series, a notice ``series_missing`` names them and their ``series
+    build`` (a ``warning`` when it holds none, so every meteorological station
+    has a null kind; ``info`` otherwise). The station details of hydro.imgw.pl
+    (``pl.imgw.hydro_details``, ADR-021) are optional: when the raw root holds
+    them, each hydrological station on that service's map gets its warning and
+    alarm levels, absolute minimum and maximum with their dates, gauge zero with
+    its datum, river kilometre, catchment area, year of establishment, province
+    and district (``details_source`` ``"hydro_details"``; they add no station);
+    without them these properties are null, the sidecar records the source as
     ``available: false`` and an ``info`` notice ``source_missing`` names the
-    ``store sync`` that stores them.
+    ``store sync`` that stores them. No stored source gives the year of
+    establishment of a meteorological station: ``established_year`` is null
+    for every one.
 
     ČHMÚ (``stations/versions/chmi_stations/<label>_<sha8>/``, spec
     2026-10-18 §7): sources in precedence order of location, name, river and
@@ -2133,10 +2209,12 @@ def build_catalog(
         Receives catalog problems, rejected locations, location source summaries,
         a ``location_conflict`` summary of stations whose sources disagree (ČHMÚ),
         a ``series_station`` summary of stations known only from series indexes,
-        stations without location, the ``source_missing`` notice of absent
-        station details of hydro.imgw.pl (IMGW-PIB), a ``leftover_incoming``
-        warning for every removed staging directory older than 24 hours and
-        the provider's ``license_terms`` notice when a new version is created.
+        stations without location, the ``source_missing`` notices of absent
+        station details of hydro.imgw.pl and of an absent static file
+        (IMGW-PIB), the ``series_missing`` notice of absent meteo series
+        (IMGW-PIB), a ``leftover_incoming`` warning for every removed staging
+        directory older than 24 hours and the provider's ``license_terms``
+        notice when a new version is created.
     cancel : Cancel or None, optional
         Polled between steps; once it returns ``True`` the build stops with a
         ``cancelled`` report and no catalog version is published.
@@ -2258,9 +2336,6 @@ def _build_imgw(build: _Build) -> CatalogReport:
     sources[0]["count"] = len(parsed_lists["hydro"])
     sources[1]["count"] = len(parsed_lists["meteo"])
     if static_bytes is None:
-        problems.append(
-            message("catalog.no_static_locations", static_path=static_path.as_posix())
-        )
         sources.append(
             {
                 "source": "static",
@@ -2291,7 +2366,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
         build.root, problems, provider=owner
     )
     sources.extend(series_sources)
-    data, count, without, used, series_only, detailed = _catalog_bytes(
+    data, count, unlocated, used, series_only, detailed = _catalog_bytes(
         lists=parsed_lists,
         apis={"hydro": apis[0], "meteo": apis[1]},
         details=details,
@@ -2320,8 +2395,21 @@ def _build_imgw(build: _Build) -> CatalogReport:
         used=used,
         user_rows=user_rows if user is not None else None,
         series_only=series_only,
-        without=without,
+        without=len(unlocated),
     )
+    # What the person can fill, after the summary of the locations: the static file
+    # (also a problem of the report, though no catalog_problem notice) and the meteo
+    # series of meteo_kind.
+    gaps: list[Notice] = []
+    if static_bytes is None:
+        missing = _static_missing(static_path, unlocated, details)
+        problems.append(missing)
+        gaps.append(Notice("warning", "source_missing", missing))
+    if (meteo := _meteo_kind_gap(build.root, build.raw, series_sources)) is not None:
+        gaps.append(meteo)
+    if build.on_notice is not None:
+        for notice in gaps:
+            build.on_notice(notice)
     if (report := build.stopped()) is not None:
         return report
     problems.extend(rejections)
@@ -2329,7 +2417,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
         data,
         sources=sources,
         count=count,
-        without=without,
+        without=len(unlocated),
         from_series=len(series_only),
         problems=problems,
         lines=_catalog_lines(owner, {**used, DETAILS_SOURCE: detailed}),

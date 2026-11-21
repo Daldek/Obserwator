@@ -26,6 +26,22 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Fixed
 
+- **`store catalog` says which inputs left IMGW-PIB stations without a location or a `meteo_kind`
+  (GEO-03 of the 2026-11-15 end-to-end test).** Without the reference file
+  `hydro_stations_locations.csv` (the coordinates of the hydro.imgw.pl map; IMGW-PIB data are
+  not shipped with Obserwator, `python -m obserwator.reference_data` downloads it) the build said
+  so only as one `catalog_problem` line among the rejected points. It is now a `source_missing`
+  warning after the summary of the stations without a location, naming that command, and with
+  the station details of hydro.imgw.pl in the raw root it counts the stations of the map left
+  without a location, the ones the file would locate (34 of the 2,143 of the 2026-11 roots); the
+  line stays in `problems`. `meteo_kind` comes only from the current series
+  `pl.imgw.meteo_synop_daily`, `pl.imgw.meteo_climate_daily` and `pl.imgw.meteo_precip_daily` of
+  the data root, and a catalog built before them had a null kind for every meteorological station
+  without a word: a data root that lacks some of them now gets a `series_missing` notice naming
+  them and their `series build` (a warning when it holds none, information otherwise). The
+  catalogs themselves do not change. The other 2,109 stations without a location (495 hydro,
+  1,614 meteo) and the missing `established_year` of meteorological stations are not published
+  by any source the store keeps.
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
   „Trend liczby dni przymrozkowych”, but the series counts the days with Tmin < 0 °C (FD of
   the ETCCDI), while IMGW-PIB's „dzień przymrozkowy” has Tmin < 0 °C and Tmax > 0 °C
