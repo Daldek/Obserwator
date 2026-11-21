@@ -143,7 +143,7 @@ Deeper changes (each needs a plan approved by the author, DEV-17.4):
 
 Small fixes after 3.1.0.
 
-- [ ] `.env` in `.gitignore`: `git check-ignore .env` exits 1, while `.env` may hold credentials (the store write token, the GUI's admin key and, from 3.2.0, provider API keys). Step 0 of Nogat's plan `docs/plans/2026-11-20-hydromet-providers.md` (branch `plan/hydromet-providers`).
+- [x] `.env` in `.gitignore` (taken into 3.1.0 on 2026-11-21): `.env`, `.env.*` (but `.env.example`), `api_keys.json`, `*.key`, `*.pem` and `*.secret` are ignored; `tests/unit/test_environment.py` checks it with `git check-ignore`. Step 0 of Nogat's plan `docs/plans/2026-11-20-hydromet-providers.md` (branch `plan/hydromet-providers`).
 
 ### Release 3.2.0 (the author's decisions of 2026-11-20)
 

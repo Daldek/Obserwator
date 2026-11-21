@@ -95,6 +95,15 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
   tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
 
+### Security
+
+- **A credential file of a checkout is no longer committed by accident.** `.gitignore`
+  left `.env` tracked (`git check-ignore .env` exited 1), while `.env` may hold the store
+  write token and the GUI's admin key (DEV-18.4), and so were the REST API keys of
+  `obserwator admin` (`api_keys.json`) and key files. `.env` and `.env.*` (but the template
+  `.env.example`), `api_keys.json`, `*.key`, `*.pem` and `*.secret` are now ignored in every
+  directory. Planned for 3.1.1, taken into 3.1.0.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.
