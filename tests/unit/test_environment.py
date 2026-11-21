@@ -114,6 +114,7 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
     assert Settings().admin_api_key is None
     assert missing["credentials"] == {
         "OBSERWATOR_STORE_WRITE_TOKEN": "missing",
+        "OBSERWATOR_STORE_WRITE_TOKEN_FILE": "missing",
         "OBSERWATOR_ADMIN_API_KEY": "missing",
         "OBSERWATOR_ADMIN_API_KEY_FILE": "missing",
     }
@@ -130,6 +131,7 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
     present = environment_report()
     assert present["credentials"] == {
         "OBSERWATOR_STORE_WRITE_TOKEN": "present",
+        "OBSERWATOR_STORE_WRITE_TOKEN_FILE": "missing",
         "OBSERWATOR_ADMIN_API_KEY": "missing",
         "OBSERWATOR_ADMIN_API_KEY_FILE": "present",
     }

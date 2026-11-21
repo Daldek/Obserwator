@@ -1,4 +1,4 @@
-"""Messages of ``api/errors.py``, ``api/main.py``, ``api/routes/commands.py``, ``api/schemas.py``."""
+"""Messages of ``api/errors.py``, ``api/instance.py``, ``api/main.py``, ``api/routes/commands.py``, ``api/schemas.py``."""
 
 from obserwator.messages import Text
 
@@ -132,5 +132,15 @@ MESSAGES = {
     "method_not_allowed": Text(
         "The method {method} is not allowed for {path}",
         "Metoda {method} jest niedozwolona dla {path}",
+    ),
+    "no_provider_served": Text(
+        "This instance serves the stations of no provider",
+        "Ta instancja nie udostępnia stacji żadnego dostawcy",
+    ),
+    "command_touches_off_provider": Text(
+        "{command} would also process the data of {provider} in the data root, which "
+        "this instance does not serve; run it with the command line",
+        "{command} przetworzyłoby także dane {provider} z katalogu danych, których ta "
+        "instancja nie udostępnia; uruchom je z wiersza poleceń",
     ),
 }

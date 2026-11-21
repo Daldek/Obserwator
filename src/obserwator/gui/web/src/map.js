@@ -28,7 +28,15 @@
 // The zoom buttons are the page's own, so their names follow the page's language. The
 // map's element keeps the MapLibre map as `maplibre`, for a test or a console asking what
 // is drawn.
+//
+// On an operator's instance (ADR-025, instance.js) the map starts on the instance's box
+// (`startBox`: its featured provider's stations or its area) unless the address names a
+// station or a PMAXTP point or the map has moved first; it draws the outline of the area
+// (api/area) over the background and under the stations, and in `clip` stays within the
+// area's bounds; the featured provider's stations lie on top and, while „Pokaż inne
+// źródła” is off, the other providers' are drawn smaller and faded (`fade`).
 
+import { get } from "./api.js";
 import { REFRESH_MS, clock, measuredAt } from "./current.js";
 import { has } from "./i18n.js";
 import { fmt, html, lang, t, tn, useEffect, useRef, useState } from "./lib.js";
@@ -77,13 +85,23 @@ const HOME = [
   [24.3, 55.0],
 ];
 const EMPTY = { type: "FeatureCollection", features: [] };
-/** The lowest layer of the stations: the background (basemap or borders) goes under it. */
-const OVERLAY = "stations";
+/** The lowest layer above the background (basemap or borders), which goes under it: the
+ * instance's area, then the stations. */
+const OVERLAY = "area";
+/** Room around a box the map fits [px]. */
+const FIT_PADDING = 16;
 /** The symbols are drawn at four times their size, so the selected one (2×) stays sharp. */
 const ICON_RATIO = 4;
 /** hydro.imgw.pl's 16 px from zoom 7 (where it opens), smaller over the whole of Poland and Czechia. */
 const ICON_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 0.6, 6, 0.8, 7, 1];
 const SELECTED_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 1.5, 7, 2];
+/** A station of a provider beside the featured one while „Pokaż inne źródła” is off (I6):
+ * ICON_SIZE times FADED_SIZE, its opacity times FADED_OPACITY. */
+const FADED = ["==", ["get", "dim"], 1];
+const FADED_SIZE = 0.7;
+const FADED_OPACITY = 0.4;
+const SHRINK = ["case", FADED, FADED_SIZE, 1];
+const STATION_SIZE = ["interpolate", ["linear"], ["zoom"], 4, ["*", 0.6, SHRINK], 6, ["*", 0.8, SHRINK], 7, SHRINK];
 /** Room the tooltip needs right of and around the pointer [px], else it opens on the other side. */
 const TIP_WIDTH = 300;
 const TIP_HALF_HEIGHT = 90;
@@ -97,7 +115,7 @@ function cssColor(name) {
 function palette() {
   const names = [
     "bg", "land", "landuse", "water", "road", "road-far", "casing", "state", "country", "water-text",
-    "halo", "place-1", "place-2", "place-3", "place-4", "border",
+    "halo", "place-1", "place-2", "place-3", "place-4", "border", "area",
   ];
   const out = {};
   for (const name of names) out[name] = cssColor(`--map-${name}`);
@@ -314,17 +332,35 @@ function point(lon, lat, properties) {
   return { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties };
 }
 
-function stationFeatures(stations) {
+/** A box [west, south, east, north] as MapLibre's bounds: its south-west and north-east corners. */
+function corners([west, south, east, north]) {
+  return [
+    [west, south],
+    [east, north],
+  ];
+}
+
+/**
+ * The features of „Stacje”: the featured provider's stations on top and, while `fade`, the
+ * other providers' marked to be drawn smaller and faded (I6).
+ *
+ * @param {object[]} stations
+ * @param {string|null} featured the instance's featured provider
+ * @param {boolean} fade whether the other providers' stations are faded
+ */
+function stationFeatures(stations, featured, fade) {
   const features = [];
   for (const station of stations) {
     if (station.lon === null || station.lat === null) continue;
     const data = station.datasets.length > 0;
+    const first = featured !== null && station.provider === featured;
     features.push(
       point(station.lon, station.lat, {
         code: station.code,
         icon: stationIcon(station.kind, station.provider, data),
         active: station.active ? 1 : 0,
-        rank: (data ? 2 : 0) + (station.active ? 1 : 0),
+        rank: (first ? 4 : 0) + (data ? 2 : 0) + (station.active ? 1 : 0),
+        dim: fade && featured !== null && !first ? 1 : 0,
       }),
     );
   }
@@ -359,9 +395,13 @@ const VIEW_LAYERS = {
 
 function addLayers(map, colors) {
   drawImages(map);
+  map.addSource("area", { type: "geojson", data: EMPTY });
   map.addSource("stations", { type: "geojson", data: EMPTY });
   map.addSource("current", { type: "geojson", data: EMPTY });
   map.addSource("pmaxtp", { type: "geojson", data: EMPTY });
+  // The instance's area (I4) in every view: a faint fill and its outline
+  map.addLayer({ id: "area", type: "fill", source: "area", paint: { "fill-color": colors.area, "fill-opacity": 0.06 }, metadata: { fill: "area" } });
+  map.addLayer({ id: "area-line", type: "line", source: "area", paint: { "line-color": colors.area, "line-width": 2 }, metadata: { line: "area" } });
   const symbols = (id, source, { size = ICON_SIZE, filter = null, paint = {} } = {}) => ({
     id,
     type: "symbol",
@@ -377,7 +417,8 @@ function addLayers(map, colors) {
     },
     paint,
   });
-  map.addLayer(symbols("stations", "stations", { paint: { "icon-opacity": ["case", ["==", ["get", "active"], 1], 1, 0.5] } }));
+  const faded = ["case", FADED, FADED_OPACITY, 1];
+  map.addLayer(symbols("stations", "stations", { size: STATION_SIZE, paint: { "icon-opacity": ["*", ["case", ["==", ["get", "active"], 1], 1, 0.5], faded] } }));
   map.addLayer(symbols("stations-selected", "stations", { size: SELECTED_SIZE, filter: NONE }));
   map.addLayer(symbols("current", "current"));
   map.addLayer(symbols("current-selected", "current", { size: SELECTED_SIZE, filter: NONE }));
@@ -412,21 +453,28 @@ function repaintLayers(map, colors) {
  *   current: {doc: object|null, error: Error|null, loading: boolean},
  *   pick: {lat: number, lon: number}|null, pickFly: {n: number}|null,
  *   onBorders: (drawn: boolean) => void, onCredit: (credit: string|null) => void,
- *   session: object|null, onSelect: (code: string) => void,
+ *   session: object|null, scope: object|null, fade: boolean,
+ *   startBox: number[]|null, onSelect: (code: string) => void,
  *   onPick: (point: {lat: number, lon: number}) => void}} props
  *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
  *   the selected one, a request to fly to a station, the view, the current measurements
  *   (current.js), the point picked for PMAXTP and a request to fly to it, whether the
  *   packaged borders are the background, where the basemap's credit goes while the basemap
- *   is drawn, api/session (null until it answers: its `basemap`), the selection's and the
- *   pick's handlers
+ *   is drawn, api/session (null until it answers: its `basemap`), what the deployment shows
+ *   (instance.js `scopeOf`, null until the session answers: the instance's featured
+ *   provider and area), whether the other providers' stations are faded, the instance's
+ *   start box [west, south, east, north] (null: none, or the address names a place), the
+ *   selection's and the pick's handlers
  * @returns {object} the map with its legend and its zoom buttons
  */
-export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onBorders, onCredit, session, onSelect, onPick }) {
+export function StationMap({ stations, byCode, selected, fly, view, current, pick, pickFly, onBorders, onCredit, session, scope, fade, startBox, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
   handlers.current = { onSelect, onPick, view };
+  // Whether the map has moved since it started (the person, a fly): an instance's start
+  // box no longer applies
+  const settled = useRef(false);
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState(null);
   // "pending" until the session names the basemap; then "basemap", "borders" (none set) or
@@ -437,6 +485,10 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   const rows = current.doc;
   const basemap = session ? session.basemap || null : undefined;
   const basemapUrl = basemap ? basemap.url : basemap;
+  const featured = scope ? scope.featured : null;
+  const area = scope && scope.instance ? scope.instance.area : null;
+  const outline = area ? area.outline : null;
+  const bounds = area ? area.bounds : null;
 
   useEffect(() => {
     let live = true;
@@ -450,7 +502,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
           container: element,
           style: { version: 8, glyphs: GLYPHS, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": colors.bg } }] },
           bounds: HOME,
-          fitBoundsOptions: { padding: 16 },
+          fitBoundsOptions: { padding: FIT_PADDING },
           attributionControl: false,
           dragRotate: false,
           pitchWithRotate: false,
@@ -462,6 +514,13 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
         map.touchZoomRotate.disableRotation();
         map.keyboard.disableRotation();
         Object.defineProperty(element, "maplibre", { value: map, configurable: true });
+        // The person's own move (a drag, the wheel, a key, a pinch, the zoom buttons) settles
+        // the map, as a fly does (below); a resize of the page does not
+        const settle = (event) => {
+          if (event.type === "zoomstart" || event.originalEvent) settled.current = true;
+        };
+        map.on("movestart", settle);
+        map.on("zoomstart", settle);
         // With a listener MapLibre logs nothing itself: a tile or a glyph range that does
         // not load leaves the map as it is (a basemap that never loads gives way to the
         // borders, below); anything else is a fault of this page
@@ -562,6 +621,36 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
     };
   }, [ready, basemapUrl]);
 
+  // The instance (I4, I5): in `clip` the map stays within the area's bounds; it starts on
+  // the instance's box unless it has moved before the session answered
+  const startKey = startBox ? startBox.join(",") : "";
+  const boundsKey = bounds ? bounds.join(",") : "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    if (bounds) map.setMaxBounds(corners(bounds));
+    if (startBox && !settled.current) {
+      settled.current = true;
+      map.fitBounds(corners(startBox), { padding: FIT_PADDING, animate: false });
+    }
+  }, [ready, startKey, boundsKey]);
+
+  // The outline of the instance's area, asked for once
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || !outline) return undefined;
+    let live = true;
+    get(outline).then(
+      (feature) => {
+        if (live) map.getSource("area").setData(feature);
+      },
+      (error) => console.warn(error),
+    );
+    return () => {
+      live = false;
+    };
+  }, [ready, outline]);
+
   // The view: only its own layers are shown
   useEffect(() => {
     const map = mapRef.current;
@@ -579,8 +668,8 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    map.getSource("stations").setData(stationFeatures(stations));
-  }, [ready, stations]);
+    map.getSource("stations").setData(stationFeatures(stations, featured, fade));
+  }, [ready, stations, featured, fade]);
 
   // The points of „Pomiary bieżące”
   useEffect(() => {
@@ -611,6 +700,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
     if (!ready || !map || !fly) return;
     const station = byCode.get(fly.code);
     if (!station || station.lon === null) return;
+    settled.current = true;
     map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 9), duration: 900 });
   }, [ready, fly, byCode]);
 
@@ -618,6 +708,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map || !pickFly || !pick) return;
+    settled.current = true;
     map.flyTo({ center: [pick.lon, pick.lat], zoom: Math.max(map.getZoom(), 8), duration: 900 });
   }, [ready, pickFly]);
 
@@ -661,7 +752,7 @@ export function StationMap({ stations, byCode, selected, fly, view, current, pic
           </div>`
         : null}
       ${tipBody ? html`<${Tip} x=${tip.x} y=${tip.y} stage=${box.current}>${tipBody}</${Tip}>` : null}
-      <${Legend} view=${view} background=${background} current=${current} />
+      <${Legend} view=${view} background=${background} current=${current} scope=${scope} fade=${fade} area=${area !== null} />
       ${ready ? html`<${ZoomButtons} map=${mapRef.current} />` : null}
     </div>
   </div>`;
@@ -737,16 +828,30 @@ function MeteoTip({ row, station }) {
   `;
 }
 
-function StationsLegend() {
+/**
+ * The symbols of „Stacje”; on an instance ČHMÚ's outline only while it is served, the faded
+ * stations of a provider beside the featured one while they are, and no word of a view the
+ * instance does not serve.
+ *
+ * @param {{scope: object|null, fade: boolean}} props what the deployment shows (null until
+ *   the session answers) and whether the other providers' stations are faded
+ */
+function StationsLegend({ scope, fade }) {
+  const other = scope && scope.featured ? scope.providers.find((id) => id !== scope.featured && !scope.hidden.includes(id)) : null;
   return html`<ul class="legend-list two">
       <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} />${kindName("hydro")}</li>
       <li><${StationSymbol} kind="meteo" provider="IMGW-PIB" data=${true} />${kindName("meteo")}</li>
       <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${false} />${t("stations.catalog_only")}</li>
-      <li><${StationSymbol} kind="hydro" provider="CHMI" data=${true} />${t("stations.legend.chmi", { provider: providerName("CHMI") })}</li>
+      ${!scope || scope.providers.includes("CHMI")
+        ? html`<li><${StationSymbol} kind="hydro" provider="CHMI" data=${true} />${t("stations.legend.chmi", { provider: providerName("CHMI") })}</li>`
+        : null}
       <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} active=${false} />${t("stations.legend.inactive")}</li>
       <li><${StationSymbol} kind="hydro" provider="IMGW-PIB" data=${true} size=${24} />${t("stations.legend.selected")}</li>
+      ${fade && other
+        ? html`<li><${SymbolIcon} shape="hydro" color=${KIND_COLORS.hydro} dashed=${other === "CHMI"} faded=${true} size=${10} />${t("stations.legend.others")}</li>`
+        : null}
     </ul>
-    <p class="legend-note">${t("stations.legend.stations_note")}</p>`;
+    <p class="legend-note">${t(!scope || scope.views.includes("current") ? "stations.legend.stations_note" : "stations.legend.symbols_note")}</p>`;
 }
 
 /** The words of a snapshot of api/current ("states", "hydro", "meteo"), its name when unknown. */
@@ -805,14 +910,15 @@ function PmaxtpLegend() {
     <p class="legend-note">${t("stations.legend.pmaxtp_note", { bounds: boundsLabel() })}</p>`;
 }
 
-function Legend({ view, background, current }) {
+function Legend({ view, background, current, scope, fade, area }) {
   // On a phone the legend starts folded: the map is small
   const [open, setOpen] = useState(() => !isPhone());
   return html`<div class=${`map-legend${open ? "" : " closed"}`}>
     <button type="button" class="legend-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${t("stations.legend.title")}</button>
     ${open
       ? html`<div class="legend-body">
-          ${view === "current" ? html`<${CurrentLegend} current=${current} />` : view === "pmaxtp" ? html`<${PmaxtpLegend} />` : html`<${StationsLegend} />`}
+          ${view === "current" ? html`<${CurrentLegend} current=${current} />` : view === "pmaxtp" ? html`<${PmaxtpLegend} />` : html`<${StationsLegend} scope=${scope} fade=${fade} />`}
+          ${area ? html`<ul class="legend-list legend-more"><li><i class="legend-area"></i>${t("stations.legend.area")}</li></ul>` : null}
           ${background === "borders" ? html`<p class="legend-note">${t("stations.legend.borders")}</p>` : null}
           ${background === "failed" ? html`<p class="legend-note">${t("stations.legend.basemap_failed")}</p>` : null}
         </div>`

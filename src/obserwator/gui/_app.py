@@ -45,11 +45,13 @@ from obserwator._borders import CZECHIA, POLAND
 from obserwator.attribution import (
     ORIGINS,
     Attribution,
+    Origin,
     attribution,
     border_origin,
     dataset_origin,
     provider_origin,
 )
+from obserwator.config import check_credentials
 from obserwator.datasets import get_dataset, get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
@@ -101,6 +103,7 @@ from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
 from obserwator.gui._traffic import Traffic, TrafficState, is_admin
+from obserwator.instance import Instance
 from obserwator.messages import LANGS, Lang, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
@@ -125,6 +128,16 @@ ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
+CURRENT_PROVIDER = "IMGW-PIB"
+"""The provider of the current measurements view: the only live data the GUI serves."""
+PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
+    "IMGW-PIB": ("imgw", "imgw_hydro"),
+    "CHMI": ("chmi",),
+}
+"""The origins of each provider's data (``obserwator.attribution``), dropped when an
+instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
+LOGO_CSP = "sandbox; default-src 'none'"
+"""The operator's logo's own policy (I14): an SVG opened by itself runs nothing."""
 SEXT = {
     "csv": "text/csv; charset=utf-8",
     "json": "application/json",
@@ -161,6 +174,148 @@ def _route(handler: Handler) -> Handler:
     wrapped.__name__ = handler.__name__
     wrapped.__doc__ = handler.__doc__
     return wrapped
+
+
+# --- the instance (ADR-025) ------------------------------------------------------------
+
+
+def _instance(request: Request) -> Instance | None:
+    return _gui(request).config.instance
+
+
+def served_origins(instance: Instance | None) -> tuple[Origin, ...]:
+    """The origins of the data a deployment serves: every one without an instance."""
+    if instance is None:
+        return ORIGINS
+    dropped: set[str] = {
+        origin
+        for provider, origins in PROVIDER_ORIGINS.items()
+        if not instance.serves(provider)
+        for origin in origins
+    }
+    if not instance.pmaxtp:
+        dropped.add("pmaxtp")
+    return tuple(origin for origin in ORIGINS if origin not in dropped)
+
+
+def _needs_current(handler: Handler) -> Handler:
+    """A route of IMGW-PIB's current data: ``not_found`` before any request when it is off (I8)."""
+
+    async def wrapped(request: Request) -> Response:
+        instance = _instance(request)
+        if instance is not None and not instance.serves(CURRENT_PROVIDER):
+            raise GuiError(
+                "not_found",
+                message("instance.not_served", provider=CURRENT_PROVIDER),
+                details={"reason": "not_served"},
+            )
+        return await handler(request)
+
+    functools.update_wrapper(wrapped, handler)
+    return wrapped
+
+
+def _needs_pmaxtp(handler: Handler) -> Handler:
+    """
+    A route of PMAXTP: ``not_found`` before any request with ``pmaxtp = "off"`` (I8).
+
+    With ``area_mode = "clip"`` a point outside the area is ``not_found`` too.
+    """
+
+    async def wrapped(request: Request) -> Response:
+        instance = _instance(request)
+        if instance is not None and not instance.pmaxtp:
+            raise GuiError(
+                "not_found",
+                message("instance.pmaxtp_off"),
+                details={"reason": "pmaxtp_off"},
+            )
+        if instance is not None and instance.clips:
+            _, latitude, longitude = _pmaxtp_query(request.query_params)
+            if not instance.keeps_point(longitude, latitude):
+                raise GuiError(
+                    "not_found",
+                    message(
+                        "instance.outside_area", latitude=latitude, longitude=longitude
+                    ),
+                    details={"option": "latitude", "reason": "outside_area"},
+                )
+        return await handler(request)
+
+    functools.update_wrapper(wrapped, handler)
+    return wrapped
+
+
+def _inside(request: Request, points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The current points an instance serves: with ``clip``, those inside its area."""
+    instance = _instance(request)
+    if instance is None or not instance.clips:
+        return points
+    return [p for p in points if instance.keeps_point(p.get("lon"), p.get("lat"))]
+
+
+_STARTS: dict[
+    tuple[str, str], tuple[str, tuple[float, float, float, float] | None]
+] = {}
+"""The start view of each instance and station layer, worked out once (I5)."""
+
+
+def _start(
+    instance: Instance, snapshot: Snapshot
+) -> tuple[str, tuple[float, float, float, float] | None]:
+    """
+    Where the map starts: `Instance.start` of the snapshot's stations, once per layer.
+
+    A start view that holds no station falls back to ``all`` with one warning.
+    """
+    key = (instance.key, snapshot.layer_etag)
+    found = _STARTS.get(key)
+    if found is None:
+        found = instance.start(snapshot.features)
+        if found[0] != instance.start_view:
+            LOG.warning("%s", message("instance.empty_start", view=instance.start_view))
+        if len(_STARTS) > 16:
+            _STARTS.clear()
+        _STARTS[key] = found
+    return found
+
+
+def _instance_document(
+    instance: Instance | None, snapshot: Snapshot
+) -> dict[str, Any] | None:
+    """
+    What the page needs of the instance (ADR-025, I7): never a path of the server.
+
+    ``title``, ``logo`` (the address of `logo` or null), ``featured`` (a provider or
+    null), ``providers`` (the state of each provider served, the featured one first),
+    ``start`` (``view`` and ``box`` [west, south, east, north] or null for the whole
+    data set), ``area`` (``mode``, ``box``, ``bounds`` of the map in ``clip`` and the
+    address of its ``outline``, `area_outline`) and whether ``pmaxtp`` and the
+    ``current`` data are served; null without ``[obserwator.instance]``.
+    """
+    if instance is None:
+        return None
+    view, box = _start(instance, snapshot) if snapshot.error is None else ("all", None)
+    area = instance.area
+    return {
+        "title": instance.title,
+        "logo": None if instance.logo is None else "api/logo",
+        "featured": instance.featured,
+        "providers": {
+            provider: instance.providers[provider] for provider in instance.served
+        },
+        "start": {"view": view, "box": None if box is None else list(box)},
+        "area": None
+        if area is None
+        else {
+            "mode": area.mode,
+            "box": list(area.box),
+            "bounds": list(area.bounds) if area.clips else None,
+            "outline": "api/area",
+        },
+        "pmaxtp": instance.pmaxtp,
+        "current": instance.serves(CURRENT_PROVIDER),
+    }
 
 
 _LIMITERS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, CapacityLimiter] = (
@@ -265,7 +420,13 @@ def _station_origins(
 
 @_route
 async def session(request: Request) -> Response:
-    """``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus."""
+    """
+    ``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus.
+
+    On an instance (ADR-025) only what it serves: its providers (the featured one
+    first), the origins of their lines (the featured provider's lines first in
+    ``order``) and ``instance`` (`_instance_document`); null without one.
+    """
     params.only(request.query_params, ())
     state = _gui(request)
     snapshot = await _thread(state.root.snapshot)
@@ -276,6 +437,19 @@ async def session(request: Request) -> Response:
         else None
     )
     config = state.config
+    instance = config.instance
+    origins = served_origins(instance)
+    every = attribution(*origins)
+    first = (
+        Attribution()
+        if instance is None or instance.featured is None
+        else attribution(provider_origin(instance.featured))
+    )
+    shown = (
+        providers()
+        if instance is None
+        else [get_provider(provider) for provider in instance.served]
+    )
     document = {
         "schema": SESSION_SCHEMA,
         "version": {"obserwator": state.version, "hydrolog": hydrolog},
@@ -294,6 +468,7 @@ async def session(request: Request) -> Response:
                 if (version := snapshot.analyses.get(provider)) is None
                 else {**version.to_dict(), "hydrolog": version.hydrolog}
                 for provider in ANALYSES_SLOTS
+                if instance is None or instance.serves(provider)
             },
             "error": None
             if snapshot.error is None
@@ -305,12 +480,14 @@ async def session(request: Request) -> Response:
                 "name": provider.name,
                 **attribution(provider_origin(provider.id)).fields(),
             }
-            for provider in providers()
+            for provider in shown
         },
         "attribution": {
-            "origins": {origin: attribution(origin).fields() for origin in ORIGINS},
-            "order": list(attribution(*ORIGINS).attribution),
-            "terms_order": list(attribution(*ORIGINS).terms_notice),
+            "origins": {origin: attribution(origin).fields() for origin in origins},
+            "order": list(dict.fromkeys([*first.attribution, *every.attribution])),
+            "terms_order": list(
+                dict.fromkeys([*first.terms_notice, *every.terms_notice])
+            ),
         },
         "basemap": None
         if config.basemap is None
@@ -326,6 +503,7 @@ async def session(request: Request) -> Response:
             "processes": PROCESSES,
             "timeout_s": TIMEOUT_S,
         },
+        "instance": _instance_document(instance, snapshot),
     }
     return json_response(request, document)
 
@@ -630,6 +808,7 @@ def _snapshot_times(snaps: Mapping[str, Any], lang: str) -> dict[str, Any]:
 
 
 @_route
+@_needs_current
 async def current(request: Request) -> Response:
     """The points of „Pomiary bieżące”: IMGW-PIB's hydrological and meteorological stations."""
     params.only(request.query_params, ())
@@ -648,14 +827,15 @@ async def current(request: Request) -> Response:
     document = {
         "source": "IMGW-PIB",
         "snapshots": _snapshot_times(snaps, lang),
-        "hydro": hydro_points(snaps["states"], snaps["hydro"]),
-        "meteo": meteo_points(snaps["meteo"]),
+        "hydro": _inside(request, hydro_points(snaps["states"], snaps["hydro"])),
+        "meteo": _inside(request, meteo_points(snaps["meteo"])),
         **attribution("imgw", "imgw_hydro").fields(),
     }
     return json_response(request, document, etag=etag)
 
 
 @_route
+@_needs_current
 async def current_station(request: Request) -> Response:
     """One station's current values (IMGW-PIB only), with its synoptic report where paired."""
     params.only(request.query_params, ())
@@ -729,6 +909,7 @@ def _pmaxtp_query(query: Mapping[str, str]) -> tuple[PmaxtpMethod, float, float]
 
 
 @_route
+@_needs_pmaxtp
 async def pmaxtp(request: Request) -> Response:
     """PMAXTP of a point: the three tables, IMGW-PIB's address of the answer, the lines."""
     params.only(request.query_params, ("latitude", "longitude", "method"))
@@ -797,6 +978,7 @@ def pmaxtp_csv(document: Mapping[str, Any]) -> str:
 
 
 @_route
+@_needs_pmaxtp
 async def pmaxtp_file(request: Request) -> Response:
     """PMAXTP of a point as a file packed by the server: CSV or JSON with PMAXTP's lines."""
     query = request.query_params
@@ -1292,7 +1474,7 @@ def _page_address(request: Request, code: str) -> str:
 
 @_route
 async def regulamin(request: Request) -> Response:
-    """``regulamin.html`` (DEV-15.7): the kit's terms filled for the deployment."""
+    """``regulamin.html`` (DEV-15.7): the kit's terms, or the operator's, filled."""
     terms = _gui(request).terms
     if terms is None:
         raise GuiError(
@@ -1337,6 +1519,49 @@ async def robots(request: Request) -> Response:
     prefix = request.scope.get("root_path", "").rstrip("/")
     return Response(
         f"User-agent: *\nDisallow: {prefix}/api/\n", media_type="text/plain"
+    )
+
+
+@_route
+async def logo(request: Request) -> Response:
+    """
+    The operator's logo of ``[obserwator.instance]`` (I14), from the GUI's own origin.
+
+    Its type was read from its content at the start (PNG, WebP or SVG); it carries
+    `LOGO_CSP` and ``nosniff``, so an SVG opened by itself runs no script.
+    """
+    params.only(request.query_params, ())
+    instance = _instance(request)
+    found = None if instance is None else instance.logo
+    if found is None:
+        raise GuiError("not_found", message("gui.errors.not_found", path="api/logo"))
+    etag = _etag(request, "logo", found.sha256)
+    headers = {
+        "Cache-Control": "no-cache",
+        "ETag": f'"{etag}"',
+        "Content-Security-Policy": LOGO_CSP,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if not_modified(request, etag) is not None:
+        return Response(status_code=304, headers=headers)
+    return Response(found.data, media_type=found.media_type, headers=headers)
+
+
+@_route
+async def area_outline(request: Request) -> Response:
+    """The area of ``[obserwator.instance]`` (I4) as a GeoJSON Feature, for its outline."""
+    params.only(request.query_params, ())
+    instance = _instance(request)
+    found = None if instance is None else instance.area
+    if found is None:
+        raise GuiError("not_found", message("gui.errors.not_found", path="api/area"))
+    document = {
+        "type": "Feature",
+        "properties": {"mode": found.mode},
+        "geometry": found.geometry,
+    }
+    return json_response(
+        request, document, etag=_etag(request, "area", found.mode, found.sha256)
     )
 
 
@@ -1529,6 +1754,9 @@ def build_app(
         The app.
     """
     if state is None:
+        # A weak admin key: a warning here, an error at the start of an instance
+        # (`GuiConfig.resolve`, ADR-025)
+        check_credentials("admin", strict=config.instance is not None)
         writes = config.writes_own_files
         if not writes:
             LOG.warning(
@@ -1541,7 +1769,7 @@ def build_app(
             )
         state = GuiState(
             config=config,
-            root=DataRoot(config.root),
+            root=DataRoot(config.root, scope=config.instance),
             analyses=Analyses(config.root),
             current=CurrentData(log=log),
             pmaxtp=Pmaxtp(log=log),
@@ -1594,6 +1822,8 @@ def build_app(
         Route("/api/admin/status", admin_status),
         Route("/api/admin", admin_not_found),
         Route("/api/admin/{rest:path}", admin_not_found),
+        Route("/api/logo", logo),
+        Route("/api/area", area_outline),
         Route("/api/{rest:path}", api_not_found),
         Route("/admin", admin_page),
         Route("/regulamin.html", regulamin),

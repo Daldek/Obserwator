@@ -803,6 +803,73 @@ The checks of „Stan”, each `ok`, `warning` or `failed` with a detail in the 
 | `stored_analyses` | every provider with a current catalog has stored analyses (ADR-016); the detail names each version and its Hydrolog | none stored, or none of a provider with a catalog: its stations show no analysis | the root cannot be read |
 | `hydrolog_command` | Hydrolog's program answers `config show` now; the detail names its version | the server started without the program (`OBSERWATOR_HYDROLOG_COMMAND`, else `hydrolog` on `PATH`): only stored results are shown | the program does not answer: computations on request fail |
 
+### Deploying an instance for an operator
+
+An operator other than the author runs Obserwator on his own infrastructure from the same code; everything that is his lives in his files, never in the checkout (ADR-025, Nogat `install-contract`).
+
+**Install from a tag**, never a branch: `uv tool install "obserwator[cli,gui,api] @ git+https://github.com/Daldek/Obserwator@vX.Y.Z"` (or the image of the tag). An update is the same command with the next tag, in a maintenance window; read the CHANGELOG first.
+
+**Files under one configuration directory** (`/config` in a container, `NOGAT_CONFIG=/config/nogat.toml`): `nogat.toml`, the area, the logo, the regulamin and the secret files. Relative paths of `[obserwator.instance]` start at `nogat.toml`'s directory.
+
+```toml
+[nogat]
+data_dir = "/srv/obserwator-state"     # the GUI's statistics and reports
+
+[nogat.gui]
+obserwator = "https://dane.example.org/"   # the instance's own address (regulamin, links)
+
+[nogat.operator]                       # who runs the instance (the regulamin's fields)
+name = "Wody Przykładowe sp. z o.o."
+email = "kontakt@example.org"
+terms_effective = 2026-12-01
+processor = "Example Hosting"
+mail_provider = "Example Mail"
+
+[obserwator]
+root = "/srv/obserwator"               # data root (read only for the servers)
+raw_root = "/srv/obserwator-raw"
+
+[obserwator.instance]
+title = "Wody Przykładowe"             # the operator's name: page title and top bar
+logo = "logo.svg"                      # PNG, WebP or SVG, at most 200 kB, own origin
+featured_provider = "CHMI"             # drawn on top; the others faded
+start_view = "featured"                # all | featured | area
+area = "area.geojson"                  # one Polygon/MultiPolygon, WGS84, ≤ 1 MB, ≤ 100,000 vertices
+area_mode = "clip"                     # focus (outline, start) | clip (stations outside not served)
+pmaxtp = "off"                         # on | off: PMAXTP served and fetched or not
+terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md
+
+[obserwator.instance.providers]        # visible (default) | hidden | off
+IMGW-PIB = "hidden"
+```
+
+A provider `off` is absent from every route of both servers (the GUI and `obserwator server`) and gets no request; `hidden` is served but out of the map until a person turns „Pokaż inne źródła” on. The servers refuse to start on any wrong field (`validation_error`, exit 2, `details.option` names it); `obserwator config show --json` shows the resolved `instance` and the `problems`.
+
+**Outbound requests** and the setting that stops each: IMGW-PIB's current data (hydro-back.imgw.pl, danepubliczne.imgw.pl) — `IMGW-PIB = "off"`; PMAXTP (powietrze.imgw.pl, klimat.imgw.pl) — `pmaxtp = "off"`; the basemap, fetched by the browser — `OBSERWATOR_GUI_BASEMAP_URL` (a self-hosted TileJSON or `none`). Nothing else leaves the servers.
+
+**The REST server** (`obserwator server`, `/api/v1`) applies the same section, route by route (ADR-025 D3). A station not served and a code that does not exist answer identically; a refusal is `not_found` with `details.reason` `not_served`, `pmaxtp_off` or `outside_area`, or `forbidden` `instance_clip` where the answer cannot be made without stations outside a clipped area:
+
+| Command (REST route) | Rule with an instance |
+|---|---|
+| `datasets list`, `datasets providers` | an `off` provider → 404; items of the served providers only (`pl.imgw.pmaxtp` only with `pmaxtp = "on"`), filtered before paging |
+| `datasets files` | a dataset of an `off` provider → 404; a station not served → 404 |
+| `stations find`, `stations export` | an `off` provider → 404; without `provider` the one served provider is chosen; items, the export and its lines of served stations only (`keep`) |
+| `current hydro`, `meteo`, `hydro-states` | IMGW-PIB `off` → 404 before any request; a station not served → 404; with `clip` the items outside the area dropped |
+| `current synop`, `current warnings` | IMGW-PIB `off` → 404; synop with `clip` → 403 (no locations); warnings are regional, served unfiltered |
+| `pmaxtp fetch`, `url`, `check`, `sync`, `read` | `pmaxtp = "off"` → 404 before any request; with `clip` a point (or a read cell) outside the area → 404 |
+| `store info`, `store scan` | providers and entries of the served providers only |
+| `store check`, `store sync`, `store catalog` | a dataset, provider or station not served → 404 before any request; with `clip` a per-station dataset without stations → 403 |
+| `store export` | a version of an `off` provider → 404; with `clip` → 403 for every archive |
+| `series build`, `select`, `read`, `summary`, `export` | a dataset or version of an `off` provider → 404; a station not served → 404; summaries without stations drop the stations not served |
+| `analyses build`, `list`, `read`, `export` | a station or version not served → 404; `build` → 403 while the root holds data of an `off` provider |
+| `commands list`, `schema`, `guide` | unchanged |
+
+**Secrets as files**, mode `0600`, owned by the service's user, at least 32 random bytes (`openssl rand -hex 32 > /config/admin.key`): `OBSERWATOR_ADMIN_API_KEY_FILE` (the GUI's admin panel) and `OBSERWATOR_STORE_WRITE_TOKEN_FILE` (REST writes, only with `OBSERWATOR_STORE_WRITES_ENABLED=true`). A shorter secret or a file others may read refuses the start of an instance. The keys of `obserwator admin` are deprecated and checked by nothing.
+
+**The edge.** Both servers listen on `127.0.0.1` (`obserwator gui serve --port 8060`, `obserwator server --host 127.0.0.1 --port 8000`) behind the operator's reverse proxy with TLS; set `FORWARDED_ALLOW_IPS` to the proxy's address. A rule of the edge (SSO, Cloudflare Access or an IP list) guards `/admin`, `/admin/*` and `/api/admin/*` on every instance, and everything when the data are private: Obserwator has no accounts (SECURITY.md, threat model).
+
+**Backup and move.** Copy the two roots (`rsync -aH`, hard links kept), `state_dir` (logs) and the configuration directory; on the new host install the same tag and point `NOGAT_CONFIG` at the copy. A server refuses a data root of a layout its version does not read, with a hint, so an older release never serves a newer root.
+
 ## AI agents: language, command effects and the MCP server
 
 **Language.** Machine output is in English (AGI-9.2): the envelope, the error `message` and `hint`, notices, plan lines, `commands list|schema|guide` descriptions (`command_schema()`, `list_commands()`, `agent_guide()`), `AGENTS.md`, `llms.txt`, the OpenAPI document, REST responses without an `Accept-Language` header and the MCP server. Polish catalog texts (command descriptions, option help, rules, groups, error and dataset titles) are available on explicit request: `lang="pl"`, `--lang pl`, `Accept-Language: pl`. `OBSERWATOR_LANG` (default `pl`) applies only to human-facing CLI text: help, progress lines, the summary printed without `--json` and the readable error line, all of which `--lang` overrides per call; the last error line and the envelope of `--json` are always in English, and with `--json` the `--lang` of `commands list|schema` defaults to English, not to `OBSERWATOR_LANG`. An agent decides by `code`, `status` and JSON fields; the language does not change the contract.

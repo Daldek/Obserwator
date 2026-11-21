@@ -190,6 +190,46 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   such half-years are computed from ČHMÚ's daily series, not published, and the titles of
   `characteristic.{H,Q,T}.half_years` name both sources.
 
+### Added
+
+- **An operator's instance: `[obserwator.instance]` of `nogat.toml` (ADR-025, Nogat plan
+  `2026-11-21-obserwator-instance.md` steps 2 to 5).** One section describes what a
+  deployment serves: the state of each provider (`visible`, `hidden`, `off`), a featured
+  provider, an area (one WGS84 Polygon or MultiPolygon, `focus` or `clip`), the start view
+  (`all`, `featured`, `area`), PMAXTP (`on`, `off`), the operator's title, logo and
+  regulamin. Both servers check it at start (`validation_error`, exit 2, `details.option`
+  `instance.<field>`) and filter on the server: an `off` provider and the stations outside
+  a clipped area are absent from every route of the GUI and of `/api/v1` (a station not
+  served is `not_found` like an unknown code) and no request leaves for an `off` IMGW-PIB
+  or with `pmaxtp = "off"`. The GUI starts on the featured provider's or the area's box,
+  draws the area's outline (and keeps to it in `clip`), draws the featured provider on top
+  with the others faded while „Pokaż inne źródła” is off, hides `hidden` providers until
+  then, shows the operator's title and logo (`api/logo`, sandboxed) beside Obserwator's
+  mark and serves the operator's regulamin (`terms`, Markdown built as the kit's) with the
+  source blocks of the served providers only. `api/session` gains `instance`; `api/area`
+  serves the area. Without the section nothing changes.
+- **`OBSERWATOR_STORE_WRITE_TOKEN_FILE`**: the REST write token from a file (mode 0600),
+  read on each write, used without `OBSERWATOR_STORE_WRITE_TOKEN`.
+- **`obserwator config show`** reports `instance` (the resolved section) and `problems`: an
+  invalid section, a key or token shorter than 32 bytes, a key file group or others may
+  access, a leftover `api_keys.json`.
+- **`export_stations(keep=…)`** and **`run_command(keep=…)`**: a predicate of the stations
+  exported, a server's instance filter (no catalog option).
+- Both servers refuse at start a root whose marker names a layout this version does not
+  read (`store_unavailable`, `details.reason` `unsupported_layout`, with a hint).
+- `SECURITY.md`: a threat model of an instance on someone else's infrastructure; USAGE
+  „Deploying an instance for an operator”.
+- Nogat's kit: `nogat-kit.json` and the operator's draft regulamin `nogat-terms-operator.md`
+  copied byte for byte from Nogat `eba117f` (kit 1.0.0, ECO-079).
+
+### Deprecated
+
+- **`obserwator admin` and its `api_keys.json`**: nothing checks these keys. Every call
+  says so on standard error; `config show` reports a leftover file; both are removed in
+  v4.0.0. A weak key or token (shorter than 32 bytes, or a key file others may access) is a
+  warning now and refuses the start from v4.0.0; with `[obserwator.instance]` it refuses
+  the start already.
+
 ### Fixed
 
 - **A null interval of Hydrolog 0.9.0 no longer shows as numbers.** Sen's interval of a

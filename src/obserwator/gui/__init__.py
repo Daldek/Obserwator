@@ -162,6 +162,17 @@ def serve(
         "basemap": None if config.basemap is None else config.basemap.origin,
         "request_limit": config.request_limit,
         "request_window": config.request_window,
+        "instance": None
+        if config.instance is None
+        else {
+            "key": config.instance.key,
+            "providers": dict(config.instance.providers),
+            "featured": config.instance.featured,
+            "area_mode": None
+            if config.instance.area is None
+            else config.instance.area.mode,
+            "pmaxtp": config.instance.pmaxtp,
+        },
     }
     return run(
         lambda: build_app(config, log=log),

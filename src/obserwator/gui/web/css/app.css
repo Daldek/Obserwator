@@ -178,6 +178,15 @@ html[data-host="nogat"] .topbar { display: none !important; }
 .brand { display: flex; align-items: center; gap: var(--space-2); text-decoration: none; flex: none; }
 .brand img { width: 24px; height: 24px; display: block; }
 .brand .name { color: var(--tool-obserwator); font-weight: var(--weight-bold); font-size: var(--text-md); letter-spacing: -0.01em; }
+/* The operator's mark on an instance (ADR-025; Nogat design/README.md „Operator's mark”):
+   logo and title after a divider, the title shortened and, on a phone, left out */
+.operator { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 24px; padding-left: var(--space-3); border-left: 1px solid var(--line); }
+.operator img { display: block; flex: none; height: 24px; width: auto; max-width: 120px; object-fit: contain; }
+.operator-name { min-width: 0; color: var(--text-2); font-weight: var(--weight-medium); font-size: var(--text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 860px) {
+  .operator { padding-left: var(--space-2); }
+  .operator-name, .operator.no-logo { display: none; }
+}
 .crumbs { display: flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-3); font-size: var(--text-sm); }
 .crumbs .sep { color: var(--line-2); }
 .crumbs strong { color: var(--text); font-weight: var(--weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

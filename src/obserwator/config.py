@@ -6,12 +6,17 @@ same key in a ``.env`` file of the working directory, the shared variable
 ``NOGAT_<KEY>`` (keys ``data_dir``, ``cache_dir``, ``state_dir``, ``lang``), the section
 ``[obserwator]`` of ``nogat.toml``, the section ``[nogat]`` of it (shared keys), the
 default; a command-line option goes before all of them. The store write token and the
-GUI's admin key are credentials: only the environment (and ``.env``) may give them,
-never the file (DEV-18.4). `environment_report` is the document of ``obserwator config
-show --json`` (DEV-18.6); `check_config` rejects an unusable ``nogat.toml``.
+GUI's admin key are credentials: only the environment (and ``.env``) may give them, or
+a file the environment names, never ``nogat.toml`` (DEV-18.4). `environment_report` is
+the document of ``obserwator config show --json`` (DEV-18.6); `check_config` rejects an
+unusable ``nogat.toml``; `credential_problems` and `check_credentials` find a weak key
+or token and `check_root_layout` a root of an unknown layout as a server starts
+(ADR-025).
 """
 
+import logging
 import os
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,7 +34,11 @@ from pydantic_settings import (
 
 from obserwator import _environment as environment
 from obserwator._version import __version__
-from obserwator.exceptions import ObserwatorValidationError
+from obserwator.exceptions import (
+    ObserwatorError,
+    ObserwatorStoreError,
+    ObserwatorValidationError,
+)
 from obserwator.messages import LANGS, Lang, message
 from obserwator.output import DATA_MARKER, STORE_MARKER
 
@@ -37,14 +46,21 @@ if TYPE_CHECKING:
     from obserwator.store.types import RootKind
 
 __all__ = [
+    "SECRET_MIN_BYTES",
     "Settings",
     "StoreRoot",
     "check_config",
+    "check_credentials",
+    "check_root_layout",
+    "configured_token",
+    "credential_problems",
     "environment_report",
     "human_language",
     "settings",
     "store_root",
 ]
+
+_LOG = logging.getLogger(__name__)
 
 
 class _NogatEnvSource(PydanticBaseSettingsSource):
@@ -151,7 +167,8 @@ class Settings(BaseSettings):
     # of their kind. The CLI, the library and the MCP server use `store_root`.
     # Writes (POST without ?check=true) need both flags below and the X-API-Key
     # header; the token is compared in constant time and is a credential:
-    # environment only.
+    # environment only, the variable or, without it, the text of the file
+    # OBSERWATOR_STORE_WRITE_TOKEN_FILE names (a secret file of mode 0600, ADR-025).
     root: Path | None = None
     # The raw root (OBSERWATOR_RAW_ROOT, [obserwator] raw_root; ADR-017): the
     # downloaded archives, station sources and PMAXTP cells; the default of the CLI,
@@ -159,6 +176,7 @@ class Settings(BaseSettings):
     raw_root: Path | None = None
     store_writes_enabled: bool = False
     store_write_token: SecretStr | None = None
+    store_write_token_file: Path | None = None
     # Server directory with user station-location CSVs offered to the catalog
     # route by file name only; unset disables the option (503).
     user_locations_dir: Path | None = None
@@ -382,6 +400,200 @@ def check_config() -> None:
         )
 
 
+SECRET_MIN_BYTES = 32
+"""The shortest key or token in bytes (I10 of ADR-025): ``openssl rand -hex 32`` gives 64."""
+_SECRETS: dict[str, tuple[str, str]] = {
+    "token": ("store_write_token", "store_write_token_file"),
+    "admin": ("admin_api_key", "admin_api_key_file"),
+}
+"""The credentials by their use: the REST server's write token, the GUI's admin key."""
+
+
+def _variable(key: str) -> str:
+    return f"{environment.PREFIX}{key.upper()}"
+
+
+def _secret_file(path: Path) -> str | None:
+    """The text of a secret file without surrounding white space; None if unusable."""
+    try:
+        text = path.expanduser().read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return text.strip() or None
+
+
+def configured_token(current: "Settings | None" = None) -> str | None:
+    """
+    The REST server's store write token, read now.
+
+    ``OBSERWATOR_STORE_WRITE_TOKEN`` as given, else the text of the file
+    ``OBSERWATOR_STORE_WRITE_TOKEN_FILE`` names without surrounding white space
+    (ADR-025, I10), so a rotated file counts without a restart.
+
+    Parameters
+    ----------
+    current : Settings or None, optional
+        The settings; the module's `settings` by default.
+
+    Returns
+    -------
+    str or None
+        The token; None when neither gives one (blank, a missing or unreadable file).
+    """
+    chosen = settings if current is None else current
+    if chosen.store_write_token is not None:
+        token = chosen.store_write_token.get_secret_value()
+        if token:
+            return token
+    if chosen.store_write_token_file is None:
+        return None
+    return _secret_file(chosen.store_write_token_file)
+
+
+def credential_problems(
+    use: Literal["token", "admin"] | None = None,
+) -> list[dict[str, str]]:
+    """
+    The weak credentials in force (ADR-025, I10).
+
+    A key or token shorter than `SECRET_MIN_BYTES` bytes, and a key file that group
+    or others may access (any permission bit but the owner's; not checked on
+    Windows). Only the credential in force counts: the variable when it is set, else
+    the file. A missing or unreadable file is no problem here: no key is set.
+
+    Parameters
+    ----------
+    use : {"token", "admin"} or None, optional
+        The REST server's write token, the GUI's admin key, or both (None).
+
+    Returns
+    -------
+    list of dict
+        ``code`` (``short_secret`` or ``secret_file_mode``), ``option`` (the
+        variable) and ``message``; the secret itself is never named.
+    """
+    current = Settings()
+    problems: list[dict[str, str]] = []
+    for name, (value_key, file_key) in _SECRETS.items():
+        if use is not None and name != use:
+            continue
+        value: SecretStr | None = getattr(current, value_key)
+        path: Path | None = getattr(current, file_key)
+        text = value.get_secret_value().strip() if value is not None else ""
+        option = _variable(value_key)
+        if not text and path is not None:
+            text = _secret_file(path) or ""
+            option = _variable(file_key)
+            try:
+                mode = stat.S_IMODE(path.expanduser().stat().st_mode)
+            except OSError:
+                mode = 0
+            if text and os.name != "nt" and mode & 0o077:
+                problems.append(
+                    {
+                        "code": "secret_file_mode",
+                        "option": option,
+                        "message": message(
+                            "config.secret_file_mode",
+                            name=option,
+                            mode=f"{mode:04o}",
+                        ),
+                    }
+                )
+        if text and len(text.encode("utf-8")) < SECRET_MIN_BYTES:
+            problems.append(
+                {
+                    "code": "short_secret",
+                    "option": option,
+                    "message": message(
+                        "config.short_secret", name=option, minimum=SECRET_MIN_BYTES
+                    ),
+                }
+            )
+    return problems
+
+
+def check_credentials(use: Literal["token", "admin"], *, strict: bool) -> None:
+    """
+    Warn of a weak key or token, or refuse it, as a server starts (ADR-025, I10).
+
+    Parameters
+    ----------
+    use : {"token", "admin"}
+        The REST server's write token or the GUI's admin key.
+    strict : bool
+        Refuse instead of warning: a deployment with ``[obserwator.instance]``.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        With ``strict``, for the first problem of `credential_problems`;
+        ``details.option`` names the variable, ``details.reason`` the problem.
+    """
+    for problem in credential_problems(use):
+        if strict:
+            raise ObserwatorValidationError(
+                message("config.secret_refused", problem=problem["message"]),
+                details={"option": problem["option"], "reason": problem["code"]},
+            )
+        _LOG.warning("%s", problem["message"])
+
+
+_UNKNOWN_LAYOUT = frozenset(
+    {"unsupported_store", "invalid_marker", "conflicting_markers"}
+)
+"""The problems of `store_info` that mean a root this version cannot read."""
+
+
+def check_root_layout(root: Path, kind: "RootKind" = "data") -> None:
+    """
+    Refuse a root whose layout this version does not read, as a server starts (I12).
+
+    The marker's schema (``obserwator-data/1`` of a data root, ``obserwator-store/1``
+    of a raw root) names the layout; an unknown schema, an unreadable marker or both
+    markers stop the start with a hint. A missing root or marker does not: the GUI
+    then shows its error, as before, and a later ``store init`` makes it.
+
+    Parameters
+    ----------
+    root : Path
+        The root a server serves.
+    kind : {"data", "raw"}, optional
+        Its kind, for the hint's schema.
+
+    Raises
+    ------
+    ObserwatorStoreError
+        Code ``store_unavailable``, ``details.reason`` ``unsupported_layout``.
+    """
+    from obserwator.store import store_info
+
+    try:
+        info = store_info(root)
+    except ObserwatorError:
+        return  # an unsafe path: every read refuses it, as before
+    found = _UNKNOWN_LAYOUT.intersection(info.problem_codes)
+    if info.supported or not found:
+        return
+    schema = "obserwator-data/1" if kind == "data" else "obserwator-store/1"
+    raise ObserwatorStoreError(
+        message(
+            "config.unknown_layout",
+            root=root,
+            version=__version__,
+            problems="; ".join(info.problems),
+        ),
+        code="store_unavailable",
+        details={
+            "reason": "unsupported_layout",
+            "problem_codes": sorted(found),
+            "schema": info.store_schema,
+            "supported": dict(info.contracts),
+        },
+        hint=message("config.unknown_layout_hint", schema=schema),
+    )
+
+
 def _plain(value: object) -> object:
     """A setting value as JSON (paths as text)."""
     if isinstance(value, Path):
@@ -460,9 +672,15 @@ def environment_report() -> dict[str, object]:
         or ``file`` and ``name``, the variable or the table), ``credentials``
         (each credential variable ``present`` or ``missing``; the value is never
         given), ``store`` (the data root, its source, whether it exists and
-        its size in bytes; hard-linked files counted once) and ``raw_store``
-        (the same of the raw root, ADR-017).
+        its size in bytes; hard-linked files counted once), ``raw_store``
+        (the same of the raw root, ADR-017), ``instance`` (the resolved
+        ``[obserwator.instance]``, ADR-025, or null) and ``problems`` (each
+        ``code``, ``option`` and ``message``: an invalid instance section, which
+        keeps the servers from starting, a weak key or token, a leftover
+        ``api_keys.json`` of the deprecated ``obserwator admin``).
     """
+    from obserwator.instance import SECTION, instance_report
+
     current = Settings()
     file = environment.config_file()
     layers = _layers()
@@ -481,8 +699,22 @@ def environment_report() -> dict[str, object]:
             "reason": "credential" if key in environment.CREDENTIAL_KEYS else "unknown",
         }
         for key in file.sections.get(environment.TOOL, {})
-        if key not in Settings.model_fields or key in environment.CREDENTIAL_KEYS
+        if key != SECTION
+        and (key not in Settings.model_fields or key in environment.CREDENTIAL_KEYS)
     ]
+    instance, invalid = instance_report()
+    problems: list[dict[str, object]] = [] if invalid is None else [invalid]
+    problems.extend(dict(problem) for problem in credential_problems())
+    if current.api_keys_file.expanduser().is_file():
+        problems.append(
+            {
+                "code": "deprecated_api_keys",
+                "option": "api_keys_file",
+                "message": message(
+                    "config.api_keys_deprecated", path=current.api_keys_file
+                ),
+            }
+        )
 
     def described(kind: "RootKind") -> dict[str, object]:
         root = _root_of(current, kind)
@@ -508,4 +740,6 @@ def environment_report() -> dict[str, object]:
         "credentials": credentials,
         "store": described("data"),
         "raw_store": described("raw"),
+        "instance": instance,
+        "problems": problems,
     }

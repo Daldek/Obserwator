@@ -2,8 +2,10 @@
 // session has answered, a native modal <dialog> says in one sentence what the page shows and
 // holds the full content of the strips' dialog: every provider line the page may show, the
 // terms and „Regulamin” where the deployment serves one, written by the kit's
-// `fillSources`. Closing it (the button, ×, Escape or a click beside it) keeps it closed for
-// the next visits (localStorage); the strips' „Źródła i warunki” open the same lines later.
+// `fillSources`. On an operator's instance (ADR-025) the sentence names no provider: the
+// session's lines are those of the providers it serves. Closing it (the button, ×, Escape or
+// a click beside it) keeps it closed for the next visits (localStorage); the strips'
+// „Źródła i warunki” open the same lines later.
 
 import { fillSources } from "../../nogat/nogat-sources.js";
 import { allLines, useTexts } from "../attribution.js";
@@ -80,7 +82,7 @@ export function WelcomeDialog({ session }) {
       </button>
     </div>
     <div class="modal-body">
-      <p class="intro">${t("shell.welcome.intro")}</p>
+      <p class="intro">${t(session && session.instance ? "shell.welcome.intro_instance" : "shell.welcome.intro")}</p>
       <div class="welcome-sources" ref=${sources}></div>
     </div>
     <div class="modal-foot">
