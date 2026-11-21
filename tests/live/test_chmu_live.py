@@ -3,7 +3,7 @@ Live regression of the ČHMÚ provider on opendata.chmi.cz (spec 2026-10-18 §13
 
 Marked ``live``; the gate leaves them out and ``-m live`` runs them::
 
-    uv run pytest tests/live/test_chmi_live.py -m live
+    uv run pytest tests/live/test_chmu_live.py -m live
 
 A small selection only: one hydrological station (``0-203-1-001000``,
 Špindlerův Mlýn) with the years 2024-2026 (2026 is not published yet) and one
@@ -78,7 +78,7 @@ from tests.live.test_interfaces_live import CATALOG as COMMANDS
 pytestmark = pytest.mark.live
 
 BASE_URL = "https://opendata.chmi.cz/"
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 STATION = "0-203-1-001000"  # Špindlerův Mlýn, Labe (spec §7.4)
 METEO_STATION = "0-203-0-11799"  # SRA, T, TMA, TMI ≈ 55 kB together, 2006 only
 PUBLISHED, UNPUBLISHED = (2024, 2025), 2026  # 2026 is not published before 2027
@@ -102,7 +102,7 @@ INTERFACES = ("python", "cli", "rest", "mcp")
 
 # List commands name their page: REST pages by OBSERWATOR_API_MAX_LIMIT without a limit.
 CASES: dict[str, list[Case]] = {
-    "datasets list": [Case({"provider": "CHMI", "limit": 10})],
+    "datasets list": [Case({"provider": "CHMU", "limit": 10})],
     "datasets files": [
         Case({"dataset": HYDRO, "stations": [STATION], "years": YEARS, "limit": 10}),
         Case({"dataset": METEO, "stations": [METEO_STATION], "limit": 10}),
@@ -120,14 +120,14 @@ CASES: dict[str, list[Case]] = {
     ],
     "datasets providers": [Case({"limit": 5})],
     "stations find": [
-        Case({"provider": "CHMI", "kind": "hydro", "query": "Špindlerův", "limit": 3}),
+        Case({"provider": "CHMU", "kind": "hydro", "query": "Špindlerův", "limit": 3}),
         Case(
-            {"provider": "CHMI", "source": "store", "query": STATION, "limit": 5},
+            {"provider": "CHMU", "source": "store", "query": STATION, "limit": 5},
             "full",
         ),
     ],
     "store info": [Case({}, "full")],
-    "store scan": [Case({"provider": "CHMI", "limit": 30}, "full")],
+    "store scan": [Case({"provider": "CHMU", "limit": 30}, "full")],
     "store check": [
         Case({"datasets": [HYDRO], "stations": [STATION], "years": YEARS}, "full"),
         Case({"datasets": [METEO], "stations": [METEO_STATION]}, "full"),
@@ -136,7 +136,7 @@ CASES: dict[str, list[Case]] = {
         Case({"plan": WORK + HYDRO_PLAN}, "empty"),
         Case({"datasets": [METEO], "stations": [METEO_STATION]}, "empty"),
     ],
-    "store catalog": [Case({"provider": "CHMI"}, "full")],
+    "store catalog": [Case({"provider": "CHMU"}, "full")],
     "store export": [
         Case({"version": ARCHIVE}, "full"),
         Case({"version": METEO_ARCHIVE, "format": "jsonl"}, "full"),
@@ -188,10 +188,10 @@ EXPECTED: dict[tuple[str, int], Callable[[Mapping[str, Any]], bool]] = {
     ("datasets list", 0): lambda d: (
         [item["key"] for item in d["result"]]
         == [
-            "cz.chmi.hydro_daily",
-            "cz.chmi.meteo_daily",
-            "cz.chmi.hydro_stations",
-            "cz.chmi.meteo_stations",
+            "cz.chmu.hydro_daily",
+            "cz.chmu.meteo_daily",
+            "cz.chmu.hydro_stations",
+            "cz.chmu.meteo_stations",
         ]
     ),
     ("datasets files", 0): lambda d: (
@@ -206,12 +206,12 @@ EXPECTED: dict[tuple[str, int], Callable[[Mapping[str, Any]], bool]] = {
     ),
     ("stations find", 1): lambda d: (
         [(item["station_code"], item["provider"]) for item in d["result"]]
-        == [(STATION, "CHMI")]
+        == [(STATION, "CHMU")]
         and d["result"][0]["latitude"] is not None
     ),
     ("store info", 0): lambda d: (
         [provider["id"] for provider in d["result"]["providers"]]
-        == ["IMGW-PIB", "CHMI"]
+        == ["IMGW-PIB", "CHMU"]
     ),
     ("store check", 0): lambda d: (
         _statuses(d) == ["current", "current", "unverifiable"]
@@ -231,7 +231,7 @@ EXPECTED: dict[tuple[str, int], Callable[[Mapping[str, Any]], bool]] = {
         _statuses(d) == ["new"] * 4 and "series" not in d["result"]
     ),
     ("store catalog", 0): lambda d: (
-        d["result"]["provider"] == "CHMI"
+        d["result"]["provider"] == "CHMU"
         and d["result"]["status"] in ("unchanged", "new")
     ),
     ("series build", 0): lambda d: d["result"]["status"] == "unchanged",
@@ -378,7 +378,7 @@ def _asked(entries: list[dict[str, Any]]) -> list[tuple[str, str]]:
 class CountedMcp:
     """``obserwator mcp`` whose calls keep the requests they made in the log."""
 
-    def __init__(self, server: McpServer, session: "ChmiLive") -> None:
+    def __init__(self, server: McpServer, session: "ChmuLive") -> None:
         self.server = server
         self.session = session
 
@@ -389,7 +389,7 @@ class CountedMcp:
         return answer
 
 
-class ChmiLive(Live):
+class ChmuLive(Live):
     """The live session of ``test_interfaces_live`` seeded from ČHMÚ."""
 
     def __init__(
@@ -454,16 +454,16 @@ class ChmiLive(Live):
                 lambda: sync_store(
                     raw,
                     datasets=[
-                        "cz.chmi.hydro_stations",
-                        "cz.chmi.meteo_stations",
-                        "cz.chmi.hydro_now",
-                        "cz.chmi.meteo_now",
+                        "cz.chmu.hydro_stations",
+                        "cz.chmu.meteo_stations",
+                        "cz.chmu.hydro_now",
+                        "cz.chmu.meteo_now",
                     ],
                 )
             )
             assert {item.status for item in sources.items} == {"new"}, sources
-            catalog = build_catalog(data, raw_root=raw, provider="CHMI")
-            assert (catalog.status, catalog.provider) == ("new", "CHMI"), catalog
+            catalog = build_catalog(data, raw_root=raw, provider="CHMU")
+            assert (catalog.status, catalog.provider) == ("new", "CHMU"), catalog
             self.save("full")
             self.values = {
                 ARCHIVE: self.version(ARCHIVE_SLOT),
@@ -556,10 +556,10 @@ class ChmiLive(Live):
 
 
 @pytest.fixture(scope="module")
-def chmi(tmp_path_factory) -> Iterator[ChmiLive]:
+def chmu(tmp_path_factory) -> Iterator[ChmuLive]:
     """Fresh temporary roots seeded from ČHMÚ, ``obserwator server`` and the request log."""
     started = datetime.now(UTC)
-    base = tmp_path_factory.mktemp("chmi-live")
+    base = tmp_path_factory.mktemp("chmu-live")
     work = base / "praca"
     work.mkdir()
     journal = Journal(base / "requests.jsonl")
@@ -589,7 +589,7 @@ def chmi(tmp_path_factory) -> Iterator[ChmiLive]:
             _server(base, work, served) as url,
             httpx.Client(base_url=url, timeout=CALL_TIMEOUT, trust_env=False) as client,
         ):
-            session = ChmiLive(base, work, env, client, journal)
+            session = ChmuLive(base, work, env, client, journal)
             session.seed()
             yield session
     finally:
@@ -606,7 +606,7 @@ def chmi(tmp_path_factory) -> Iterator[ChmiLive]:
 
 
 @pytest.fixture(scope="module")
-def chmi_mcp(chmi: ChmiLive) -> Iterator[CountedMcp]:
+def chmu_mcp(chmu: ChmuLive) -> Iterator[CountedMcp]:
     """``obserwator mcp`` started once, as an MCP client starts it, in the CLI's directory."""
     pytest.importorskip("mcp")
     from anyio.from_thread import start_blocking_portal
@@ -615,16 +615,16 @@ def chmi_mcp(chmi: ChmiLive) -> Iterator[CountedMcp]:
 
     command, *prefix = obserwator_executable()
     server = StdioServerParameters(
-        command=command, args=[*prefix, "mcp"], env=chmi.env, cwd=chmi.work
+        command=command, args=[*prefix, "mcp"], env=chmu.env, cwd=chmu.work
     )
     with (
-        (chmi.base / "obserwator-mcp.log").open("w", encoding="utf-8") as log,
+        (chmu.base / "obserwator-mcp.log").open("w", encoding="utf-8") as log,
         start_blocking_portal() as portal,
         portal.wrap_async_context_manager(
             Client(stdio_client(server, errlog=log), read_timeout_seconds=CALL_TIMEOUT)
         ) as client,
     ):
-        yield CountedMcp(McpServer(portal, client), chmi)
+        yield CountedMcp(McpServer(portal, client), chmu)
 
 
 # --------------------------------------------------------------------------
@@ -632,7 +632,7 @@ def chmi_mcp(chmi: ChmiLive) -> Iterator[CountedMcp]:
 # --------------------------------------------------------------------------
 
 
-def test_the_chmi_run_takes_only_catalog_commands():
+def test_the_chmu_run_takes_only_catalog_commands():
     names = [entry["name"] for entry in COMMANDS["commands"]]
     assert set(CASES) <= set(names)
     indices = {
@@ -642,20 +642,20 @@ def test_the_chmi_run_takes_only_catalog_commands():
 
 
 @pytest.mark.parametrize("command", list(CASES))
-def test_every_chmi_case_answers_alike_live_in_python_obserwator_and_rest(
-    command, chmi
+def test_every_chmu_case_answers_alike_live_in_python_obserwator_and_rest(
+    command, chmu
 ):
     found: dict[str, list[str]] = {}
     for index, case in enumerate(CASES[command]):
-        for interface, lines in chmi.run_case(command, index, case).items():
+        for interface, lines in chmu.run_case(command, index, case).items():
             found[f"{index}:{interface}"] = lines
-        answer = chmi.answers.get("python")
+        answer = chmu.answers.get("python")
         expected = EXPECTED.get((command, index))
         if expected is None or not isinstance(answer, PythonAnswer):
             continue
         if answer.envelope is not None:
             rooted = case.store is not None and command in ROOTED
-            root = chmi.root_of(command, case.options) if rooted else None
+            root = chmu.root_of(command, case.options) if rooted else None
             document = answer.envelope.to_json(root=root)
             if not expected(document):
                 found[f"{index}:oczekiwane"] = [json.dumps(document)[:3000]]
@@ -663,19 +663,19 @@ def test_every_chmi_case_answers_alike_live_in_python_obserwator_and_rest(
 
 
 @pytest.mark.parametrize(("command", "index"), MCP_CASES)
-def test_chmi_reads_answer_alike_in_python_and_obserwator_mcp(
-    command, index, chmi, chmi_mcp
+def test_chmu_reads_answer_alike_in_python_and_obserwator_mcp(
+    command, index, chmu, chmu_mcp
 ):
-    assert chmi.run_mcp_case(command, index, CASES[command][index], chmi_mcp) == {}
+    assert chmu.run_mcp_case(command, index, CASES[command][index], chmu_mcp) == {}
 
 
-def test_listing_rows_match_the_http_headers_of_the_files(chmi):
+def test_listing_rows_match_the_http_headers_of_the_files(chmu):
     """Listing minute and size = Last-Modified and Content-Length; ETag of both."""
     listed = [
-        item for plan in chmi.plans for item in plan.items if item.status == "missing"
+        item for plan in chmu.plans for item in plan.items if item.status == "missing"
     ]
     assert len(listed) == 6
-    full = chmi.seeds / "full" / chmi.roots.raw.name  # the archives: the raw root
+    full = chmu.seeds / "full" / chmu.roots.raw.name  # the archives: the raw root
     with httpx.Client(headers=_IDENTIFY, timeout=60, trust_env=False) as client:
         directory = client.head(f"{BASE_URL}{PRECIPITATION}")
         assert directory.status_code == 200
@@ -700,18 +700,18 @@ def test_listing_rows_match_the_http_headers_of_the_files(chmi):
             )
 
 
-def test_seeded_roots_scan_clean_with_the_chmi_license_everywhere(chmi):
-    full = chmi.seeds / "full"
-    roots = [full / chmi.roots.raw.name, full / chmi.roots.data.name]
+def test_seeded_roots_scan_clean_with_the_chmu_license_everywhere(chmu):
+    full = chmu.seeds / "full"
+    roots = [full / chmu.roots.raw.name, full / chmu.roots.data.name]
     entries = [entry for root in roots for entry in iter_store(root)]
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
-    assert {entry.provider for entry in entries} == {"CHMI"}
+    assert {entry.provider for entry in entries} == {"CHMU"}
     sidecars = sorted(full.rglob("*.meta.json"))
     # Raw: files, station lists, station metadata (meta1, meta3, meteo meta1);
     # data: the series and the catalog.
     assert len(sidecars) == 6 + 2 + 3 + 2 + 1
     for sidecar in sidecars:
         meta = json.loads(sidecar.read_text(encoding="utf-8"))
-        assert (meta["country"], meta["provider"]) == ("CZ", "CHMI"), sidecar
+        assert (meta["country"], meta["provider"]) == ("CZ", "CHMU"), sidecar
         assert meta["license"]["id"] == "CC-BY-4.0", sidecar
         assert meta["license"]["attribution"].startswith(ATTRIBUTION), sidecar

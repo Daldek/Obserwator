@@ -246,7 +246,7 @@ def test_on_a_phone_the_panels_are_bottom_sheets(open_page):
 def test_on_a_phone_a_long_station_name_is_cut_inside_the_bar(open_page):
     name = "Fiktivní Ves-Horní"
     page = open_page(
-        f"?station={FIXTURE_STATIONS['meteo_chmi']}", width=390, height=844
+        f"?station={FIXTURE_STATIONS['meteo_chmu']}", width=390, height=844
     )
     page.keyboard.press("Escape")  # the link opened the station's sheet
     button = page.locator(".map-bar .panel-toggle.right")

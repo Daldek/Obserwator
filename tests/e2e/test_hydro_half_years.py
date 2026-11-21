@@ -19,7 +19,7 @@ from tests.e2e.conftest import FIXTURE_STATIONS
 
 expect = pytest.importorskip("playwright.sync_api").expect
 
-CHMI = FIXTURE_STATIONS["hydro_chmi"]
+CHMU = FIXTURE_STATIONS["hydro_chmu"]
 WAIT = 20_000
 """How long a section may take to load [ms]."""
 TEXTS: dict[str, dict[str, Any]] = {
@@ -64,16 +64,16 @@ TEXTS: dict[str, dict[str, Any]] = {
 
 
 @pytest.mark.parametrize("lang", ["pl", "en"])
-def test_a_chmi_station_calls_its_half_years_computed_not_imgw_pibs(
+def test_a_chmu_station_calls_its_half_years_computed_not_imgw_pibs(
     open_page: Any, stored_url: str, lang: str
 ) -> None:
     texts = TEXTS[lang]
     page = open_page(
-        f"?station={CHMI}&section=characteristic", base=stored_url, lang=lang
+        f"?station={CHMU}&section=characteristic", base=stored_url, lang=lang
     )
     card = page.locator('[data-section="characteristic"]')
     stored = page.request.get(
-        f"{stored_url}api/analysis/{CHMI}/characteristic.Q.half_years"
+        f"{stored_url}api/analysis/{CHMU}/characteristic.Q.half_years"
     ).json()
     assert (stored["status"], stored["derived"]) == ("ok", "half_years")
 

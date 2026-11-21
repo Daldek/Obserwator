@@ -106,14 +106,14 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             ),
         ),
         Example(
-            "obserwator datasets list --provider CHMI --json",
+            "obserwator datasets list --provider CHMU --json",
             _page(
                 {
-                    "key": "cz.chmi.hydro_daily",
+                    "key": "cz.chmu.hydro_daily",
                     "kind": "hydro",
                     "year_type": "calendar",
                     "first_year": 1887,
-                    "provider": "CHMI",
+                    "provider": "CHMU",
                 },
                 "obserwator-dataset/1",
             ),
@@ -135,11 +135,11 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             ),
         ),
         Example(
-            "obserwator datasets files --dataset cz.chmi.hydro_daily --years 2024 "
+            "obserwator datasets files --dataset cz.chmu.hydro_daily --years 2024 "
             "--stations 0-203-1-900001 --json",
             _page(
                 {
-                    "dataset": "cz.chmi.hydro_daily",
+                    "dataset": "cz.chmu.hydro_daily",
                     "server_path": "hydrology/historical/data/daily/"
                     "H_0-203-1-900001_DQ_2024.json",
                     "year": 2024,
@@ -207,14 +207,14 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             _page(_RABA_ITEM, "obserwator-station/1"),
         ),
         Example(
-            "obserwator stations find --kind hydro --query spindleruv --provider CHMI --json",
+            "obserwator stations find --kind hydro --query spindleruv --provider CHMU --json",
             _page(
                 {
                     "kind": "hydro",
                     "station_code": "0-203-1-001000",
                     "name": "Špindlerův Mlýn",
                     "river": "Labe",
-                    "provider": "CHMI",
+                    "provider": "CHMU",
                 },
                 "obserwator-station/1",
             ),
@@ -222,7 +222,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
     ),
     "stations export": (
         Example(
-            "obserwator stations export --root /data/obserwator --provider CHMI --kind hydro",
+            "obserwator stations export --root /data/obserwator --provider CHMU --kind hydro",
             '{"type":"FeatureCollection","schema":"obserwator-stations-export/1",',
         ),
         Example(

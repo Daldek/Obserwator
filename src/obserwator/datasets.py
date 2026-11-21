@@ -32,7 +32,7 @@ CATALOG_DATASET = "pl.imgw.stations"
 
 # Derived dataset key of each provider's station catalog, by provider id (ADR-003 D5).
 _CATALOG_DATASETS: Mapping[str, str] = MappingProxyType(
-    {"IMGW-PIB": CATALOG_DATASET, "CHMI": "cz.chmi.stations"}
+    {"IMGW-PIB": CATALOG_DATASET, "CHMU": "cz.chmu.stations"}
 )
 
 DATASET_KEY_ALIASES: Mapping[str, str] = MappingProxyType({})
@@ -54,10 +54,10 @@ _PARAMS = ("H", "Q", "T")
 _WIGOS_CODE = r"0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}"
 # File names of the per-station ČHMÚ archives (spec 2026-10-18 §2.3); other
 # names in a server listing are not files of the datasets.
-_CHMI_HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
-_CHMI_METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
+_CHMU_HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
+_CHMU_METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
 # Daily ČHMÚ elements in file order and the server directory of each.
-_CHMI_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
+_CHMU_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
     {
         "SRA": "precipitation",
         "T": "temperature",
@@ -125,7 +125,7 @@ class ProviderDescriptor:
     Attributes
     ----------
     id : str
-        Value of the ``provider`` fields, ``"IMGW-PIB"`` or ``"CHMI"``.
+        Value of the ``provider`` fields, ``"IMGW-PIB"`` or ``"CHMU"``.
     short_name : str
         Name shown in texts, ``"IMGW-PIB"`` or ``"ČHMÚ"``.
     name : str
@@ -133,7 +133,7 @@ class ProviderDescriptor:
     country : str
         ISO 3166-1 alpha-2 country code, ``"PL"`` or ``"CZ"``.
     key_prefix : str
-        Prefix of the provider's dataset keys, ``"pl.imgw"`` or ``"cz.chmi"``.
+        Prefix of the provider's dataset keys, ``"pl.imgw"`` or ``"cz.chmu"``.
     base_url : str
         Base URL of the ``server_path`` of the provider's files (with the
         trailing slash).
@@ -365,16 +365,16 @@ _PMAXTP_LICENSE = License(
     message("legal.pmaxtp_attribution"),
     "https://klimat.imgw.pl/opady-maksymalne",
 )
-_CHMI_LICENSE = License(
+_CHMU_LICENSE = License(
     "CC-BY-4.0",
-    message("legal.chmi_attribution"),
+    message("legal.chmu_attribution"),
     "https://creativecommons.org/licenses/by/4.0/",
     "https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti",
 )
 # Canonical form of the ČHMÚ JSON files (envelope fields regenerated on every
-# publication); equal to obserwator.store.content.CONTENT_FORMS["chmi-json/1"].
-_CHMI_JSON = "chmi-json/1"
-_CHMI_VOLATILE = ("zaznamID", "datumVytvoreni")
+# publication); equal to obserwator.store.content.CONTENT_FORMS["chmu-json/1"].
+_CHMU_JSON = "chmu-json/1"
+_CHMU_VOLATILE = ("zaznamID", "datumVytvoreni")
 
 _HYDRO_STATS = {
     f"{v}_{stat}": unit
@@ -901,37 +901,37 @@ _DATASETS = (
         in_store=False,
     ),
     DatasetDescriptor(
-        key="cz.chmi.hydro_daily",
-        slug="chmi_hydro_daily",
+        key="cz.chmu.hydro_daily",
+        slug="chmu_hydro_daily",
         kind="hydro",
-        title=message("datasets.title_chmi_hydro_daily"),
+        title=message("datasets.title_chmu_hydro_daily"),
         server_dir="hydrology/historical/data/daily",
-        parser="parse_chmi_hydro_daily",
+        parser="parse_chmu_hydro_daily",
         variables={"H": "cm", "Q": "m3/s", "T": "degC"},
         time_unit="day",
         year_type="calendar",
         first_year=1887,
         update_signal="listing",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
+        provider="CHMU",
         archive_scope="station_year",
         variable_notes={
-            "H": message("datasets.note_chmi_hydro_daily_h"),
-            "Q": message("datasets.note_chmi_hydro_daily_q"),
-            "T": message("datasets.note_chmi_hydro_daily_t"),
+            "H": message("datasets.note_chmu_hydro_daily_h"),
+            "Q": message("datasets.note_chmu_hydro_daily_q"),
+            "T": message("datasets.note_chmu_hydro_daily_t"),
         },
-        content_form=_CHMI_JSON,
-        volatile_fields=_CHMI_VOLATILE,
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
     ),
     DatasetDescriptor(
-        key="cz.chmi.meteo_daily",
-        slug="chmi_meteo_daily",
+        key="cz.chmu.meteo_daily",
+        slug="chmu_meteo_daily",
         kind="meteo",
-        title=message("datasets.title_chmi_meteo_daily"),
+        title=message("datasets.title_chmu_meteo_daily"),
         server_dir="meteorology/climate/historical_csv/data/daily",
-        parser="parse_chmi_meteo_daily",
+        parser="parse_chmu_meteo_daily",
         variables={
             "P": "mm",
             "Tmean": "degC",
@@ -944,67 +944,67 @@ _DATASETS = (
         year_type="calendar",
         first_year=None,
         update_signal="listing",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
+        provider="CHMU",
         archive_scope="station_element",
         variable_notes={
-            "P": message("datasets.note_chmi_meteo_daily_p"),
-            "Tmean": message("datasets.note_chmi_meteo_daily_tmean"),
-            "Tmax": message("datasets.note_chmi_meteo_daily_tmax"),
-            "Tmin": message("datasets.note_chmi_meteo_daily_tmin"),
-            "snow_cover": message("datasets.note_chmi_meteo_daily_snow_cover"),
-            "fresh_snow": message("datasets.note_chmi_meteo_daily_fresh_snow"),
+            "P": message("datasets.note_chmu_meteo_daily_p"),
+            "Tmean": message("datasets.note_chmu_meteo_daily_tmean"),
+            "Tmax": message("datasets.note_chmu_meteo_daily_tmax"),
+            "Tmin": message("datasets.note_chmu_meteo_daily_tmin"),
+            "snow_cover": message("datasets.note_chmu_meteo_daily_snow_cover"),
+            "fresh_snow": message("datasets.note_chmu_meteo_daily_fresh_snow"),
         },
         measurement_fields=("quality", "source_flag"),
     ),
     DatasetDescriptor(
-        key="cz.chmi.hydro_stations",
-        slug="chmi_hydro_stations",
+        key="cz.chmu.hydro_stations",
+        slug="chmu_hydro_stations",
         kind="hydro",
-        title=message("datasets.title_chmi_hydro_stations"),
+        title=message("datasets.title_chmu_hydro_stations"),
         server_dir="hydrology/historical/metadata",
-        parser="parse_chmi_stations",
+        parser="parse_chmu_stations",
         variables={},
         time_unit="station_list",
         year_type="none",
         first_year=None,
         update_signal="http",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
-        content_form=_CHMI_JSON,
-        volatile_fields=_CHMI_VOLATILE,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
     ),
     DatasetDescriptor(
-        key="cz.chmi.meteo_stations",
-        slug="chmi_meteo_stations",
+        key="cz.chmu.meteo_stations",
+        slug="chmu_meteo_stations",
         kind="meteo",
-        title=message("datasets.title_chmi_meteo_stations"),
+        title=message("datasets.title_chmu_meteo_stations"),
         server_dir="meteorology/climate/historical/metadata",
-        parser="parse_chmi_stations",
+        parser="parse_chmu_stations",
         variables={},
         time_unit="station_list",
         year_type="none",
         first_year=None,
         update_signal="http",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
-        content_form=_CHMI_JSON,
-        volatile_fields=_CHMI_VOLATILE,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
     ),
     # The ``now`` metadata of the stations (spec 2026-10-18 §7.2), archived for the
     # ČHMÚ catalog (ADR-015 D2): their envelopes are regenerated hourly or daily, so
     # they have no stable HTTP signal; the daily meteo file is found in its listing.
     DatasetDescriptor(
-        key="cz.chmi.hydro_now",
-        slug="chmi_hydro_now",
+        key="cz.chmu.hydro_now",
+        slug="chmu_hydro_now",
         kind="hydro",
-        title=message("datasets.title_chmi_hydro_now"),
+        title=message("datasets.title_chmu_hydro_now"),
         server_dir="hydrology/now/metadata",
         parser=None,
         variables={},
@@ -1012,18 +1012,18 @@ _DATASETS = (
         year_type="none",
         first_year=None,
         update_signal="none",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
-        content_form=_CHMI_JSON,
-        volatile_fields=_CHMI_VOLATILE,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
     ),
     DatasetDescriptor(
-        key="cz.chmi.meteo_now",
-        slug="chmi_meteo_now",
+        key="cz.chmu.meteo_now",
+        slug="chmu_meteo_now",
         kind="meteo",
-        title=message("datasets.title_chmi_meteo_now"),
+        title=message("datasets.title_chmu_meteo_now"),
         server_dir="meteorology/climate/now/metadata",
         parser=None,
         variables={},
@@ -1031,12 +1031,12 @@ _DATASETS = (
         year_type="none",
         first_year=None,
         update_signal="listing",
-        license=_CHMI_LICENSE,
+        license=_CHMU_LICENSE,
         legacy_alias=None,
         in_store=True,
-        provider="CHMI",
-        content_form=_CHMI_JSON,
-        volatile_fields=_CHMI_VOLATILE,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
     ),
 )
 _PROVIDERS = (
@@ -1057,17 +1057,17 @@ _PROVIDERS = (
         datasets=tuple(item.key for item in _DATASETS if item.provider == "IMGW-PIB"),
     ),
     ProviderDescriptor(
-        id="CHMI",
+        id="CHMU",
         short_name="ČHMÚ",
         name="Český hydrometeorologický ústav",
         country="CZ",
-        key_prefix="cz.chmi",
+        key_prefix="cz.chmu",
         base_url="https://opendata.chmi.cz/",
-        license=_CHMI_LICENSE,
-        processed_attribution=message("legal.chmi_processed_attribution"),
-        notice=message("datasets.provider_notice_chmi"),
+        license=_CHMU_LICENSE,
+        processed_attribution=message("legal.chmu_processed_attribution"),
+        notice=message("datasets.provider_notice_chmu"),
         station_code_pattern=rf"^{_WIGOS_CODE}$",
-        datasets=tuple(item.key for item in _DATASETS if item.provider == "CHMI"),
+        datasets=tuple(item.key for item in _DATASETS if item.provider == "CHMU"),
     ),
 )
 # Lookup by id and by key prefix.
@@ -1113,7 +1113,7 @@ def providers() -> tuple[ProviderDescriptor, ...]:
     Returns
     -------
     tuple of ProviderDescriptor
-        ``IMGW-PIB``, then ``CHMI`` (a fixed order).
+        ``IMGW-PIB``, then ``CHMU`` (a fixed order).
     """
     return _PROVIDERS
 
@@ -1125,8 +1125,8 @@ def get_provider(provider: str, /) -> ProviderDescriptor:
     Parameters
     ----------
     provider : str
-        Identifier (``"IMGW-PIB"``, ``"CHMI"``) or key prefix
-        (``"pl.imgw"``, ``"cz.chmi"``).
+        Identifier (``"IMGW-PIB"``, ``"CHMU"``) or key prefix
+        (``"pl.imgw"``, ``"cz.chmu"``).
 
     Returns
     -------
@@ -1270,7 +1270,7 @@ def resolve_dataset_key(dataset: str, /) -> str | None:
     str or None
         The key itself if it is current (a registry key or the station
         catalog key of a provider, e.g. ``CATALOG_DATASET`` or
-        ``"cz.chmi.stations"``), the current key of a renamed key from
+        ``"cz.chmu.stations"``), the current key of a renamed key from
         ``DATASET_KEY_ALIASES``, None for a key Obserwator does not know
         (slugs and legacy aliases are not keys and give None too).
     """
@@ -1534,9 +1534,9 @@ def archive_files(
     until 2000), named by the station number (the last three digits of its
     code); the running year is published as monthly files of the whole
     country, selected by months. ČHMÚ files cover one station: one file per
-    station and calendar year (``cz.chmi.hydro_daily``) or six files per
+    station and calendar year (``cz.chmu.hydro_daily``) or six files per
     station with its whole history, one per element SRA, T, TMA, TMI, SCE,
-    SNO (``cz.chmi.meteo_daily``). Years are not limited by the current year;
+    SNO (``cz.chmu.meteo_daily``). Years are not limited by the current year;
     the result lists candidates, and whether a file is published is decided
     by the server (its listing or a 404 answer).
 
@@ -1554,7 +1554,7 @@ def archive_files(
     years : YearsArg or None, optional
         Archive years (hydrological or calendar per the dataset), also as
         ranges ``"a-b"``; at least ``first_year`` of the dataset. Required
-        except for ``cz.chmi.meteo_daily``, which rejects it.
+        except for ``cz.chmu.meteo_daily``, which rejects it.
     months : MonthsArg or None, optional
         Months 1-12 (for hydrological data 1 = November of the previous
         year); None selects all months. Rejected for ČHMÚ datasets. For the
@@ -1824,7 +1824,7 @@ def _station_archives(
                 station_code=code,
             )
             for code in codes
-            for element, group in _CHMI_ELEMENT_GROUPS.items()
+            for element, group in _CHMU_ELEMENT_GROUPS.items()
         )
     if years is None:
         raise ObserwatorValidationError(
@@ -2020,7 +2020,7 @@ def _indexed_file(descriptor: DatasetDescriptor, relative: str) -> ArchiveFile:
 
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
-# daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmi.meteo_now`` is the newest of its listing.
+# daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmu.meteo_now`` is the newest of its listing.
 # The file of hydro.imgw.pl's station details gathers one answer per station (ADR-021).
 _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
@@ -2029,13 +2029,13 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "pl.imgw.hydro_now": ("hydro",),
         "pl.imgw.meteo_now": ("meteo",),
         HYDRO_DETAILS: ("status",),
-        "cz.chmi.hydro_stations": ("meta1.json",),
-        "cz.chmi.meteo_stations": ("meta1.json",),
-        "cz.chmi.hydro_now": ("meta1.json", "meta3.json"),
-        "cz.chmi.meteo_now": (),
+        "cz.chmu.hydro_stations": ("meta1.json",),
+        "cz.chmu.meteo_stations": ("meta1.json",),
+        "cz.chmu.hydro_now": ("meta1.json", "meta3.json"),
+        "cz.chmu.meteo_now": (),
     }
 )
-_CHMI_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
+_CHMU_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
 # Station-source datasets of each provider's catalog: the hydro and meteo lists,
 # then the hydro and meteo station metadata.
 _CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
@@ -2046,11 +2046,11 @@ _CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
             "pl.imgw.hydro_now",
             "pl.imgw.meteo_now",
         ),
-        "CHMI": (
-            "cz.chmi.hydro_stations",
-            "cz.chmi.meteo_stations",
-            "cz.chmi.hydro_now",
-            "cz.chmi.meteo_now",
+        "CHMU": (
+            "cz.chmu.hydro_stations",
+            "cz.chmu.meteo_stations",
+            "cz.chmu.hydro_now",
+            "cz.chmu.meteo_now",
         ),
     }
 )
@@ -2059,14 +2059,14 @@ _CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
 def _station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | None:
     """A file of a station-source dataset by its name; None when it is no file of it."""
     if name in _STATION_FILES.get(descriptor.key, ()) or (
-        descriptor.key == "cz.chmi.meteo_now" and _CHMI_METEO_NOW_FILE.fullmatch(name)
+        descriptor.key == "cz.chmu.meteo_now" and _CHMU_METEO_NOW_FILE.fullmatch(name)
     ):
         return _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
     return None
 
 
 def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
-    """The files with a fixed name of a station-source dataset (none for ``cz.chmi.meteo_now``)."""
+    """The files with a fixed name of a station-source dataset (none for ``cz.chmu.meteo_now``)."""
     descriptor = get_dataset(dataset)
     return tuple(
         _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
@@ -2143,7 +2143,7 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
     if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW-PIB":
         return _imgw_station_path(descriptor, directory, name)
     if descriptor.archive_scope == "station_year":
-        hydro = _CHMI_HYDRO_FILE.fullmatch(name)
+        hydro = _CHMU_HYDRO_FILE.fullmatch(name)
         if hydro is None or directory != descriptor.server_dir:
             return None
         year = int(hydro[2])
@@ -2151,9 +2151,9 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
             return None
         return archive_files(descriptor.key, stations=[hydro[1]], years=[year])[0]
     if descriptor.archive_scope == "station_element":
-        meteo = _CHMI_METEO_FILE.fullmatch(name)
+        meteo = _CHMU_METEO_FILE.fullmatch(name)
         if meteo is None or directory != (
-            f"{descriptor.server_dir}/{_CHMI_ELEMENT_GROUPS[meteo[2]]}"
+            f"{descriptor.server_dir}/{_CHMU_ELEMENT_GROUPS[meteo[2]]}"
         ):
             return None
         return next(

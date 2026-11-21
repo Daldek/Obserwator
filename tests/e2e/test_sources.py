@@ -25,7 +25,7 @@ def _session(page: Any, base: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("width", WIDTHS)
-@pytest.mark.parametrize("kind", ["hydro", "hydro_chmi"])
+@pytest.mark.parametrize("kind", ["hydro", "hydro_chmu"])
 def test_a_view_has_one_strip_with_the_lines_of_the_map_and_the_panel(
     open_page: Any, stored_url: str, width: int, kind: str
 ) -> None:

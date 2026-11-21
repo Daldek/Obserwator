@@ -15,9 +15,9 @@ from obserwator.gui._terms import terms_page
 from obserwator.instance import Instance, parse_instance
 from tests.unit.gui.conftest import (
     HYDRO,
-    HYDRO_CHMI,
+    HYDRO_CHMU,
     METEO,
-    METEO_CHMI,
+    METEO_CHMU,
     PMAXTP_POINT,
     gui_config,
 )
@@ -25,7 +25,7 @@ from tests.unit.gui.conftest import (
 WEB = Path(obserwator.__file__).parent / "gui" / "web"
 SQUARE = [[14.0, 49.5], [16.0, 49.5], [16.0, 50.6], [14.0, 50.6], [14.0, 49.5]]
 """Bohemia's west of the fixture root: four of its located ČHMÚ stations."""
-INSIDE = {"0-203-0-90000000002", METEO_CHMI, HYDRO_CHMI, "0-203-1-CB900003"}
+INSIDE = {"0-203-0-90000000002", METEO_CHMU, HYDRO_CHMU, "0-203-1-CB900003"}
 OUTSIDE = "0-203-1-900002"
 """A located ČHMÚ station of the fixture root east of the area."""
 NOWHERE = "0-203-1-999999"
@@ -69,7 +69,7 @@ def clipped(tmp_path: Path, **more: object) -> Instance:
         tmp_path,
         title="Wody Testowe",
         logo="logo.svg",
-        featured_provider="CHMI",
+        featured_provider="CHMU",
         start_view="featured",
         area="area.geojson",
         area_mode="clip",
@@ -94,12 +94,12 @@ def test_without_an_instance_the_session_names_none(client):
     session = client.get("/api/session").json()
 
     assert session["instance"] is None
-    assert list(session["providers"]) == ["IMGW-PIB", "CHMI"]
+    assert list(session["providers"]) == ["IMGW-PIB", "CHMU"]
     assert set(session["attribution"]["origins"]) == {
         "imgw",
         "imgw_hydro",
         "pmaxtp",
-        "chmi",
+        "chmu",
         "gugik",
         "cuzk",
     }
@@ -111,19 +111,19 @@ def test_the_session_tells_the_page_the_instance_but_no_path(make_client, tmp_pa
     response = client.get("/api/session")
     session = response.json()
 
-    assert list(session["providers"]) == ["CHMI"]
-    assert set(session["attribution"]["origins"]) == {"chmi", "gugik", "cuzk"}
-    chmi = session["attribution"]["origins"]["chmi"]["attribution"]
-    assert session["attribution"]["order"][: len(chmi)] == chmi
-    assert set(session["root"]["catalogs"]) == {"CHMI"}
-    assert set(session["root"]["analyses"]) == {"CHMI"}
-    assert all(key.startswith("cz.chmi.") for key in session["root"]["series"])
+    assert list(session["providers"]) == ["CHMU"]
+    assert set(session["attribution"]["origins"]) == {"chmu", "gugik", "cuzk"}
+    chmu = session["attribution"]["origins"]["chmu"]["attribution"]
+    assert session["attribution"]["order"][: len(chmu)] == chmu
+    assert set(session["root"]["catalogs"]) == {"CHMU"}
+    assert set(session["root"]["analyses"]) == {"CHMU"}
+    assert all(key.startswith("cz.chmu.") for key in session["root"]["series"])
     found = session["instance"]
     assert found["title"] == "Wody Testowe"
     assert found["logo"] == "api/logo"
-    assert found["featured"] == "CHMI"
+    assert found["featured"] == "CHMU"
     assert found["others_opacity"] == 0.25
-    assert found["providers"] == {"CHMI": "visible"}
+    assert found["providers"] == {"CHMU": "visible"}
     assert (found["pmaxtp"], found["current"]) == (False, False)
     assert found["start"]["view"] == "featured"
     west, south, east, north = found["start"]["box"]
@@ -160,7 +160,7 @@ def test_the_station_layer_holds_only_what_the_instance_serves(
 ):
     clipping = make_client(instance=clipped(tmp_path))
     hiding = make_client(
-        instance=instance(tmp_path, providers={"IMGW-PIB": "hidden", "CHMI": "off"})
+        instance=instance(tmp_path, providers={"IMGW-PIB": "hidden", "CHMU": "off"})
     )
 
     assert codes(clipping) == INSIDE
@@ -182,8 +182,8 @@ def test_the_station_layer_holds_only_what_the_instance_serves(
         "/api/files/analyses/{code}",
         "/api/files/analysis/{code}/flood_frequency.Q",
         "/api/prototype/stripes/{code}",
-        "/api/series/cz.chmi.hydro_daily/{code}",
-        "/api/files/series/cz.chmi.hydro_daily/{code}",
+        "/api/series/cz.chmu.hydro_daily/{code}",
+        "/api/files/series/cz.chmu.hydro_daily/{code}",
     ],
 )
 def test_a_station_outside_answers_as_one_that_does_not_exist(
@@ -228,7 +228,7 @@ def test_the_stations_files_hold_only_the_stations_inside(make_client, tmp_path)
 
     document = geojson.json()
     assert {item["id"] for item in document["features"]} == INSIDE
-    assert [item["provider"] for item in document["catalogs"]] == ["CHMI"]
+    assert [item["provider"] for item in document["catalogs"]] == ["CHMU"]
     assert [item["provider"] for item in listed["licences"]] == ["ČHMÚ"]
     assert listed["stations"] == len(INSIDE)
     rows = csv.text.splitlines()
@@ -246,7 +246,7 @@ def test_no_request_leaves_for_an_off_imgw_pib(make_client, tmp_path, live):
 
     assert client.get("/api/current").status_code == 404
     assert client.get(f"/api/current/{HYDRO}").status_code == 404
-    assert client.get(f"/api/current/{HYDRO_CHMI}").status_code == 404
+    assert client.get(f"/api/current/{HYDRO_CHMU}").status_code == 404
     assert client.get("/api/current").json()["details"]["reason"] == "not_served"
 
 
@@ -401,8 +401,8 @@ def test_an_operator_regulamin_the_deployment_cannot_fill_is_refused(tmp_path):
 def test_the_gui_does_not_start_from_a_wrong_section(tmp_path, monkeypatch):
     toml = tmp_path / "nogat.toml"
     toml.write_text(
-        '[obserwator.instance]\nfeatured_provider = "CHMI"\n'
-        '[obserwator.instance.providers]\nCHMI = "off"\n',
+        '[obserwator.instance]\nfeatured_provider = "CHMU"\n'
+        '[obserwator.instance.providers]\nCHMU = "off"\n',
         encoding="utf-8",
     )
     monkeypatch.setenv("NOGAT_CONFIG", str(toml))

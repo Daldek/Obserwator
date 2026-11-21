@@ -118,7 +118,7 @@ BORDERS = {name: DATA / name for name in (POLAND, CZECHIA)}
 SESSION_SCHEMA = "obserwator-gui-session/1"
 HANDOFF_SCHEMA = "nogat-handoff/1"
 SERIES_SCHEMA = "hydrolog-series/1"
-HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
+HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmu.hydro_daily")
 PMAXTP_TABLES = ("ks", "sg", "rb")
 SERIES_FORMATS: tuple[str, ...] = ("csv", "json", "parquet")
 """The formats of a station's series file (`export_series`, ADR-014)."""
@@ -133,7 +133,7 @@ CURRENT_PROVIDER = "IMGW-PIB"
 """The provider of the current measurements view: the only live data the GUI serves."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
     "IMGW-PIB": ("imgw", "imgw_hydro"),
-    "CHMI": ("chmi",),
+    "CHMU": ("chmu",),
 }
 """The origins of each provider's data (``obserwator.attribution``), dropped when an
 instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
@@ -848,7 +848,7 @@ async def current_station(request: Request) -> Response:
     if feature.provider != "IMGW-PIB":
         raise GuiError(
             "not_found",
-            message("gui.errors.no_current_chmi"),
+            message("gui.errors.no_current_chmu"),
             details={"reason": "provider"},
         )
     live = _gui(request).current

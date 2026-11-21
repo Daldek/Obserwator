@@ -89,7 +89,7 @@ MESSAGES: dict[str, Text] = {
         "IMGW-PIB's current data are not available now.",
         "Dane bieżące IMGW-PIB są teraz niedostępne.",
     ),
-    "errors.no_current_chmi": Text(
+    "errors.no_current_chmu": Text(
         "ČHMÚ's current data are not provided.",
         "Dane bieżące ČHMÚ nie są udostępniane.",
     ),

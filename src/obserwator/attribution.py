@@ -14,7 +14,7 @@ imgw        IMGW-PIB archives and current data of danepubliczne.imgw.pl
 imgw_hydro  operational data, station locations and station details of
             hydro.imgw.pl (and of its backend hydro-back.imgw.pl)
 pmaxtp      PMAXTP of powietrze.imgw.pl and klimat.imgw.pl (own terms)
-chmi        ČHMÚ open data (CC BY 4.0)
+chmu        ČHMÚ open data (CC BY 4.0)
 gugik       the state border of Poland from PRG of GUGiK (ADR-018)
 cuzk        the state border of Czechia from RÚIAN of ČÚZK (CC BY 4.0, ADR-018)
 ==========  ==================================================================
@@ -59,9 +59,9 @@ __all__ = [
     "provider_origin",
 ]
 
-Origin = Literal["imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"]
+Origin = Literal["imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"]
 """Origin of provider data with its own attribution and terms."""
-ORIGINS: tuple[Origin, ...] = ("imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk")
+ORIGINS: tuple[Origin, ...] = ("imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk")
 """Every origin, in the order of their lines."""
 
 # Plain text: the legal wordings are one text in every language.
@@ -70,8 +70,8 @@ _P = str(message("legal.imgw_processed_attribution"))
 _PS = str(message("legal.pmaxtp_attribution"))
 _PP = str(message("legal.pmaxtp_processed_attribution"))
 _M = str(message("legal.pmaxtp_monograph"))
-_C = str(message("legal.chmi_attribution"))
-_CP = str(message("legal.chmi_processed_attribution"))
+_C = str(message("legal.chmu_attribution"))
+_CP = str(message("legal.chmu_processed_attribution"))
 _RD = str(message("legal.imgw_terms_danepubliczne"))
 _RH = str(message("legal.imgw_terms_hydro"))
 _RK = str(message("legal.imgw_terms_pmaxtp"))
@@ -89,10 +89,10 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
     "imgw": ((_S,), (_P,), (_RD,)),
     "imgw_hydro": ((_S,), (_P,), (_RH,)),
     "pmaxtp": ((_PS, _M), (_PP,), (_RK,)),
-    "chmi": ((_C,), (_CP,), ()),
+    "chmu": ((_C,), (_CP,), ()),
 }
-_PROVIDERS: dict[str, Origin] = {"IMGW-PIB": "imgw", "CHMI": "chmi"}
-_PREFIXES: dict[str, Origin] = {"pl.imgw": "imgw", "cz.chmi": "chmi"}
+_PROVIDERS: dict[str, Origin] = {"IMGW-PIB": "imgw", "CHMU": "chmu"}
+_PREFIXES: dict[str, Origin] = {"pl.imgw": "imgw", "cz.chmu": "chmu"}
 # Datasets of an IMGW-PIB origin other than danepubliczne.imgw.pl: PMAXTP's own
 # pages and hydro.imgw.pl's station details (ADR-021).
 _DATASET_ORIGINS: dict[str, Origin] = {
@@ -261,7 +261,7 @@ def attribution(*origins: Origin, processed: bool = True) -> Attribution:
 
     Parameters
     ----------
-    *origins : {"imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"}
+    *origins : {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
         Origins of the data in the product; none gives an empty `Attribution`.
     processed : bool, optional
         Whether the data were processed in any way (parsed, harmonised,
@@ -277,7 +277,7 @@ def attribution(*origins: Origin, processed: bool = True) -> Attribution:
     --------
     >>> attribution("imgw").attribution[-1]
     'Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone'
-    >>> attribution("chmi", processed=False).terms_notice
+    >>> attribution("chmu", processed=False).terms_notice
     ()
     """
     lines: list[str] = []
@@ -309,7 +309,7 @@ def carried(
     ----------
     stored : Attribution
         The lines the stored product holds.
-    *origins : {"imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"}
+    *origins : {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
         Origins of the data in the product.
     processed : bool, optional
         Whether the data were processed (see `attribution`).
@@ -348,10 +348,10 @@ def dataset_origin(key: str, /) -> Origin:
 
     Returns
     -------
-    {"imgw", "imgw_hydro", "pmaxtp", "chmi"}
+    {"imgw", "imgw_hydro", "pmaxtp", "chmu"}
         ``"pmaxtp"`` for ``pl.imgw.pmaxtp``, ``"imgw_hydro"`` for the station
         details of hydro.imgw.pl (``pl.imgw.hydro_details``), ``"imgw"`` for the
-        other ``pl.imgw.*`` keys and ``"chmi"`` for ``cz.chmi.*``.
+        other ``pl.imgw.*`` keys and ``"chmu"`` for ``cz.chmu.*``.
 
     Raises
     ------
@@ -374,11 +374,11 @@ def provider_origin(provider: str, /) -> Origin:
     Parameters
     ----------
     provider : str
-        Provider identifier, ``"IMGW-PIB"`` or ``"CHMI"``.
+        Provider identifier, ``"IMGW-PIB"`` or ``"CHMU"``.
 
     Returns
     -------
-    {"imgw", "chmi"}
+    {"imgw", "chmu"}
         The origin of the provider's archives and station lists.
 
     Raises
@@ -403,7 +403,7 @@ def border_origin(provider: str, /) -> Origin:
     Parameters
     ----------
     provider : str
-        Provider identifier, ``"IMGW-PIB"`` or ``"CHMI"``.
+        Provider identifier, ``"IMGW-PIB"`` or ``"CHMU"``.
 
     Returns
     -------

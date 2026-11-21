@@ -708,7 +708,7 @@ def test_cli_without_json_prints_the_main_fields_of_a_document(
     assert lines[6:8] == ["providers: 2", "  id        country  name"]
     assert [line.split()[:2] for line in lines[8:]] == [
         ["IMGW-PIB", "PL"],
-        ["CHMI", "CZ"],
+        ["CHMU", "CZ"],
     ]
 
 

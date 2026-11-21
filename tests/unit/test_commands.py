@@ -128,7 +128,7 @@ VALID: dict[str, list[dict[str, object]]] = {
         {"root": ROOT},
         {
             "root": ROOT,
-            "provider": "CHMI",
+            "provider": "CHMU",
             "kind": "hydro",
             "series": False,
             "format": "csv",
@@ -172,7 +172,7 @@ VALID: dict[str, list[dict[str, object]]] = {
             "months": [1],
             "plan": "/tmp/plan 1.json",
         },
-        {"root": ROOT, "datasets": ["pl.imgw.hydro_stations", "cz.chmi.meteo_now"]},
+        {"root": ROOT, "datasets": ["pl.imgw.hydro_stations", "cz.chmu.meteo_now"]},
     ],
     "store sync": [
         {"root": ROOT, "plan": "/tmp/plan.json", "force": True},

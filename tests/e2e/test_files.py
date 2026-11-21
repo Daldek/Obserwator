@@ -28,13 +28,13 @@ expect = pytest.importorskip("playwright.sync_api").expect
 
 STATIONS = [
     FIXTURE_STATIONS["hydro"],
-    FIXTURE_STATIONS["hydro_chmi"],
+    FIXTURE_STATIONS["hydro_chmu"],
     FIXTURE_STATIONS["meteo"],
-    FIXTURE_STATIONS["meteo_chmi"],
+    FIXTURE_STATIONS["meteo_chmu"],
 ]
 HYDRO_DAILY = {
     FIXTURE_STATIONS["hydro"]: "pl.imgw.hydro_daily",
-    FIXTURE_STATIONS["hydro_chmi"]: "cz.chmi.hydro_daily",
+    FIXTURE_STATIONS["hydro_chmu"]: "cz.chmu.hydro_daily",
 }
 WAIT = 20_000
 """How long the list of files may take to load [ms]."""
@@ -42,8 +42,8 @@ HANDOFF_SCHEMA = (
     Path(__file__).resolve().parents[2] / "schemas" / "nogat" / "handoff-1.schema.json"
 )
 RADIOS = {
-    "pl": {"CHMI": "ČHMÚ", "meteo": "Meteorologiczne"},
-    "en": {"CHMI": "ČHMÚ", "meteo": "Meteorological"},
+    "pl": {"CHMU": "ČHMÚ", "meteo": "Meteorologiczne"},
+    "en": {"CHMU": "ČHMÚ", "meteo": "Meteorological"},
 }
 """The labels of the list's provider and kind filters chosen in a test."""
 
@@ -190,7 +190,7 @@ def test_the_hand_off_is_a_valid_nogat_hand_off_of_the_daily_series(
 
 @pytest.mark.parametrize(
     ("lang", "theme", "width", "provider", "kind"),
-    [("pl", "light", 1440, None, None), ("en", "dark", 390, "CHMI", "meteo")],
+    [("pl", "light", 1440, None, None), ("en", "dark", 390, "CHMU", "meteo")],
 )
 def test_the_station_list_files_are_the_export_of_the_list_selection(
     open_page: Any,

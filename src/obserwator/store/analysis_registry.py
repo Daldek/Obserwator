@@ -364,16 +364,16 @@ class AnalysisDefinition:
 
 # --- definitions -------------------------------------------------------------------------
 
-_HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
+_HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmu.hydro_daily")
 _HALF_YEARS = ("pl.imgw.hydro_semiannual",)
 # The daily series whose half-year characteristics Obserwator computes: ČHMÚ
 # publishes none (the author's decision of 2026-11-18).
-_COMPUTED_HALF_YEARS = ("cz.chmi.hydro_daily",)
+_COMPUTED_HALF_YEARS = ("cz.chmu.hydro_daily",)
 _METEO_DAILY = (
     "pl.imgw.meteo_synop_daily",
     "pl.imgw.meteo_climate_daily",
     "pl.imgw.meteo_precip_daily",
-    "cz.chmi.meteo_daily",
+    "cz.chmu.meteo_daily",
 )
 # The daily meteo record of an IMGW-PIB station (ADR-022): its synoptic series,
 # then its climate series, then its precipitation series (P and snow only) for
@@ -549,7 +549,7 @@ _LEVEL_TITLES = {
     ("Q", "ssx"): "analyses.title_events_q_ssx",
     ("Q", "snx"): "analyses.title_events_q_snx",
 }
-_CHMI_TITLES = {
+_CHMU_TITLES = {
     ("H", "spa1"): "analyses.title_events_h_spa1",
     ("H", "spa2"): "analyses.title_events_h_spa2",
     ("H", "spa3"): "analyses.title_events_h_spa3",
@@ -659,7 +659,7 @@ def _hydro() -> list[AnalysisDefinition]:
                 overridable=_EVENT_OPTIONS,
             )
         )
-    for (variable, key), title in _CHMI_TITLES.items():
+    for (variable, key), title in _CHMU_TITLES.items():
         found.append(
             _define(
                 f"threshold_events.{variable}.{key}",

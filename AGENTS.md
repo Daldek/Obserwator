@@ -9,7 +9,7 @@ Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP serv
 Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
 - `IMGW-PIB` — Poland: keys `pl.imgw.*`, station code `^[0-9]{9}$`, license [IMGW-PIB](https://danepubliczne.imgw.pl/regulations)
-- `CHMI` (ČHMÚ) — Czechia: keys `cz.chmi.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- `CHMU` (ČHMÚ) — Czechia: keys `cz.chmu.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Rules: check → run → read
 
@@ -65,17 +65,17 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 | `pl.imgw.meteo_now` | — | — |
 | `pl.imgw.hydro_details` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
-| `cz.chmi.hydro_daily` | `H`, `Q`, `T` | 1887 |
-| `cz.chmi.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
-| `cz.chmi.hydro_stations` | — | — |
-| `cz.chmi.meteo_stations` | — | — |
-| `cz.chmi.hydro_now` | — | — |
-| `cz.chmi.meteo_now` | — | — |
+| `cz.chmu.hydro_daily` | `H`, `Q`, `T` | 1887 |
+| `cz.chmu.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
+| `cz.chmu.hydro_stations` | — | — |
+| `cz.chmu.meteo_stations` | — | — |
+| `cz.chmu.hydro_now` | — | — |
+| `cz.chmu.meteo_now` | — | — |
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 
-- `stations`: WIGOS (required for `cz.chmi.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
+- `years`: required in `datasets files|download` (except `cz.chmu.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.hydro_daily` (none = the published years); never for `cz.chmu.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
@@ -148,11 +148,11 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 
 ### 2. Daily discharge of a Czech station (ČHMÚ)
 
-1. `obserwator stations find --kind hydro --query spindleruv --provider CHMI --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
-2. `obserwator store check --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
-3. `obserwator store sync --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
-4. `obserwator series build --dataset cz.chmi.hydro_daily --json` — the station series in the data root.
-5. `obserwator series read --dataset cz.chmi.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
+1. `obserwator stations find --kind hydro --query spindleruv --provider CHMU --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
+2. `obserwator store check --datasets cz.chmu.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
+3. `obserwator store sync --datasets cz.chmu.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
+4. `obserwator series build --dataset cz.chmu.hydro_daily --json` — the station series in the data root.
+5. `obserwator series read --dataset cz.chmu.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
 ## What not to do
 

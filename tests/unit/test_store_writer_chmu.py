@@ -32,10 +32,10 @@ from obserwator.testing import build_fixture_store
 from tests.contract.support import schema_errors
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
-FORM = "chmi-json/1"
+FORM = "chmu-json/1"
 CODE = "0-203-1-900001"
-(HYDRO,) = archive_files("cz.chmi.hydro_daily", stations=[CODE], years=[2025])
-SLOT = f"archive:cz.chmi.hydro_daily:H_{CODE}_DQ_2025.json"
+(HYDRO,) = archive_files("cz.chmu.hydro_daily", stations=[CODE], years=[2025])
+SLOT = f"archive:cz.chmu.hydro_daily:H_{CODE}_DQ_2025.json"
 SLOT_DIR = f"archives/versions/hydrology/historical/data/daily/H_{CODE}_DQ_2025"
 SERIES = {
     "tsConID": "QD",
@@ -109,7 +109,7 @@ def frozen(monkeypatch):
     return FROZEN_AT
 
 
-def test_chmi_sidecar_takes_country_provider_and_license_from_the_registry(root):
+def test_chmu_sidecar_takes_country_provider_and_license_from_the_registry(root):
     notices = []
     written = write_archive(
         root,
@@ -123,15 +123,15 @@ def test_chmi_sidecar_takes_country_provider_and_license_from_the_registry(root)
     )
     meta = sidecar(written.path)
     assert schema_errors(meta, "obserwator-meta/1") == []
-    chmi = get_provider("CHMI")
+    chmu = get_provider("CHMU")
     etag = f'"{int(PUBLISHED.timestamp()):x}-{len(FIRST):x}"'
     assert meta == {
         "schema": "obserwator-meta/1",
         "producer": "obserwator",
         "producer_version": __version__,
-        "dataset": "cz.chmi.hydro_daily",
+        "dataset": "cz.chmu.hydro_daily",
         "country": "CZ",
-        "provider": "CHMI",
+        "provider": "CHMU",
         "request": {
             "server_path": HYDRO.server_path,
             "year": 2025,
@@ -141,9 +141,9 @@ def test_chmi_sidecar_takes_country_provider_and_license_from_the_registry(root)
         },
         "license": {
             "id": "CC-BY-4.0",
-            "attribution": chmi.license.attribution,
+            "attribution": chmu.license.attribution,
             "url": "https://creativecommons.org/licenses/by/4.0/",
-            "terms_url": chmi.license.terms_url,
+            "terms_url": chmu.license.terms_url,
         },
         "downloaded_at": meta["downloaded_at"],
         "sha256": hashlib.sha256(FIRST).hexdigest(),
@@ -170,20 +170,20 @@ def test_chmi_sidecar_takes_country_provider_and_license_from_the_registry(root)
         },
     }
     assert [(n.level, n.code, n.message) for n in notices] == [
-        ("info", "license_terms", f"{chmi.license.attribution}. {chmi.notice}")
+        ("info", "license_terms", f"{chmu.license.attribution}. {chmu.notice}")
     ]
     read = read_meta(written.path)
     assert (read.provider, read.country, read.license.terms_url) == (
-        "CHMI",
+        "CHMU",
         "CZ",
-        chmi.license.terms_url,
+        chmu.license.terms_url,
     )
     assert (read.content_sha256, read.content_form) == (meta["content_sha256"], FORM)
     entry = current_version(root, slot=SLOT)
     assert entry is not None and entry.version == written.path
 
 
-def test_chmi_sidecar_with_another_origin_is_invalid(root):
+def test_chmu_sidecar_with_another_origin_is_invalid(root):
     written = write_archive(
         root, archive=HYDRO, response=response(HYDRO, FIRST, PUBLISHED)
     )
@@ -235,7 +235,7 @@ def test_same_canonical_content_records_one_observation_per_signal(root, frozen)
         "schema": "obserwator-observation/1",
         "producer": "obserwator",
         "producer_version": __version__,
-        "dataset": "cz.chmi.hydro_daily",
+        "dataset": "cz.chmu.hydro_daily",
         "seen_at": "2026-10-20T09:00:00Z",
         "url": HYDRO.url,
         "last_modified": "Mon, 19 Oct 2026 03:12:44 GMT",
@@ -314,7 +314,7 @@ def test_same_bytes_under_a_new_signal_are_relabeled_with_their_content_fields(r
         root, archive=HYDRO, response=response(HYDRO, FIRST, PUBLISHED)
     )
     # The copy keeps the fields of the stored bytes unchanged, whatever they are.
-    stored = {"content_sha256": "3" * 64, "content_form": "chmi-json/0"}
+    stored = {"content_sha256": "3" * 64, "content_form": "chmu-json/0"}
     Path(f"{first.path}.meta.json").write_text(
         json.dumps({**sidecar(first.path), **stored}), encoding="utf-8"
     )
@@ -382,7 +382,7 @@ def test_current_version_without_comparable_content_gives_a_new_version(root, st
 
 def test_meteo_csv_has_no_content_fields_and_other_bytes_are_a_version(root):
     station = "0-203-0-90001"
-    sra = archive_files("cz.chmi.meteo_daily", stations=[station])[0]
+    sra = archive_files("cz.chmu.meteo_daily", stations=[station])[0]
     header = b"STATION,ELEMENT,TIMEFUNC,DT,VALUE,FLAG,QUALITY,\n"
     rows = f"{station},SRA,06:00,2025-01-01T06:00Z,0.2,,0.0,\n".encode()
     first = write_archive(
@@ -415,7 +415,7 @@ def test_meteo_csv_has_no_content_fields_and_other_bytes_are_a_version(root):
         "end": None,
         "station_code": station,
     }
-    slot = f"archive:cz.chmi.meteo_daily:precipitation/dly-{station}-SRA.csv"
+    slot = f"archive:cz.chmu.meteo_daily:precipitation/dly-{station}-SRA.csv"
     entry = current_version(root, slot=slot)
     assert entry is not None and entry.version == second.path
     assert not (second.path.parent.parent / "observations").exists()
@@ -436,7 +436,7 @@ def test_bytes_violating_the_form_are_a_data_error_without_traces(root, data):
     first = write_archive(
         root, archive=HYDRO, response=response(HYDRO, FIRST, PUBLISHED)
     )
-    (other,) = archive_files("cz.chmi.hydro_daily", stations=[CODE], years=[2024])
+    (other,) = archive_files("cz.chmu.hydro_daily", stations=[CODE], years=[2024])
     for archive in (HYDRO, other):
         with pytest.raises(ObserwatorDataError) as error:
             write_archive(
@@ -470,7 +470,7 @@ def test_cancel_before_the_observation_is_published_leaves_no_trace(root):
 
 
 def test_new_envelope_of_a_station_list_is_unchanged_with_an_observation(root):
-    hydro_list, _ = station_source_files(provider="CHMI")
+    hydro_list, _ = station_source_files(provider="CHMU")
 
     def meta1(record, created, version="1"):
         document = {
@@ -501,7 +501,7 @@ def test_new_envelope_of_a_station_list_is_unchanged_with_an_observation(root):
     )
     assert (second.status, second.path) == ("unchanged", first.path)
     assert second.observation is not None and second.observation.exists()
-    entry = current_version(root, slot="archive:cz.chmi.hydro_stations:meta1.json")
+    entry = current_version(root, slot="archive:cz.chmu.hydro_stations:meta1.json")
     assert entry is not None and entry.version == first.path
     third = write_archive(
         root,
@@ -511,7 +511,7 @@ def test_new_envelope_of_a_station_list_is_unchanged_with_an_observation(root):
     assert third.status == "new"
 
 
-def test_imgw_sidecars_carry_no_chmi_fields(tmp_path):
+def test_imgw_sidecars_carry_no_chmu_fields(tmp_path):
     roots = build_fixture_store(tmp_path / "store", data_root=tmp_path / "data")
     raw, data = roots.raw.root, roots.data.root
     recording = next(

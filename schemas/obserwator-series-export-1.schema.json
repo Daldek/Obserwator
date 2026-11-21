@@ -25,7 +25,7 @@
       "pattern": "^[a-z]{2}\\.[a-z][a-z0-9]*\\.[a-z][a-z0-9_]*$"
     },
     "provider": {
-      "description": "Identifier of the dataset's provider, e.g. IMGW-PIB or CHMI",
+      "description": "Identifier of the dataset's provider, e.g. IMGW-PIB or CHMU",
       "type": "string",
       "minLength": 1
     },

@@ -281,17 +281,17 @@ def test_find_stations_store_skips_a_provider_without_a_catalog_unless_named(
         "IMGW-PIB"
     }
     with pytest.raises(ObserwatorStoreError) as error:
-        find_stations(source="store", root=fixture_store, provider="CHMI")
+        find_stations(source="store", root=fixture_store, provider="CHMU")
     assert error.value.code == "not_found"
-    assert "store catalog --provider CHMI" in error.value.hint
+    assert "store catalog --provider CHMU" in error.value.hint
 
 
 def test_find_stations_store_reads_the_catalog_of_every_provider(fixture_root):
     stations = find_stations(source="store", root=fixture_root)
-    chmi = find_stations(source="store", root=fixture_root, provider="CHMI")
+    chmu = find_stations(source="store", root=fixture_root, provider="CHMU")
 
-    assert {s.provider for s in stations} == {"IMGW-PIB", "CHMI"}
-    assert chmi == tuple(s for s in stations if s.provider == "CHMI")
+    assert {s.provider for s in stations} == {"IMGW-PIB", "CHMU"}
+    assert chmu == tuple(s for s in stations if s.provider == "CHMU")
 
 
 def test_find_stations_store_without_catalogs_is_not_found(tmp_path):

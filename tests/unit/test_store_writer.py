@@ -42,7 +42,7 @@ OBSERVATION = {
     "schema": "obserwator-observation/1",
     "producer": "obserwator",
     "producer_version": "3.1.0",
-    "dataset": "cz.chmi.hydro_daily",
+    "dataset": "cz.chmu.hydro_daily",
     "seen_at": "2026-10-19T06:00:00Z",
     "url": "https://opendata.chmi.cz/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2025.json",
     "last_modified": "Mon, 19 Oct 2026 03:12:44 GMT",
@@ -50,10 +50,10 @@ OBSERVATION = {
     "size_bytes": 21702,
     "sha256": "2" * 64,
     "content_sha256": "1" * 64,
-    "content_form": "chmi-json/1",
+    "content_form": "chmu-json/1",
     "same_content_as": "2026-05-21_00000000",
 }
-CHMI_SLOT = "archives/versions/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2025"
+CHMU_SLOT = "archives/versions/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2025"
 
 
 def response(*, etag='"hydro-v1"', modified="Sat, 17 Oct 2026 12:00:00 GMT", data=DATA):
@@ -426,7 +426,7 @@ def test_marker_without_hard_links_is_store_error(tmp_path, monkeypatch):
 
 def test_publish_observation_writes_the_spec_example_once_without_traces(tmp_path):
     root = init_store(tmp_path / "store").root
-    (root / CHMI_SLOT).mkdir(parents=True)
+    (root / CHMU_SLOT).mkdir(parents=True)
     observation = Observation(
         **{
             key: value
@@ -435,8 +435,8 @@ def test_publish_observation_writes_the_spec_example_once_without_traces(tmp_pat
         }
     )
 
-    path = writer._publish_observation(root, slot=CHMI_SLOT, observation=observation)
-    assert path == root / CHMI_SLOT / "observations" / "2026-10-19_19106605.json"
+    path = writer._publish_observation(root, slot=CHMU_SLOT, observation=observation)
+    assert path == root / CHMU_SLOT / "observations" / "2026-10-19_19106605.json"
     assert json.loads(path.read_text(encoding="utf-8")) == {
         **OBSERVATION,
         "producer_version": __version__,
@@ -446,14 +446,14 @@ def test_publish_observation_writes_the_spec_example_once_without_traces(tmp_pat
     # The same signal on the same day: the existing file stays byte for byte.
     written = path.read_bytes()
     later = replace(observation, seen_at="2026-10-19T18:30:00Z", sha256="3" * 64)
-    assert writer._publish_observation(root, slot=CHMI_SLOT, observation=later) == path
+    assert writer._publish_observation(root, slot=CHMU_SLOT, observation=later) == path
     assert path.read_bytes() == written
 
     # Cancelled before the rename: no file, no new register, no staging left.
-    fresh = CHMI_SLOT.replace("001000", "900002")
+    fresh = CHMU_SLOT.replace("001000", "900002")
     (root / fresh).mkdir()
     for slot, item in (
-        (CHMI_SLOT, replace(observation, etag='"inny"')),
+        (CHMU_SLOT, replace(observation, etag='"inny"')),
         (fresh, observation),
     ):
         with pytest.raises(ObserwatorCancelledError):

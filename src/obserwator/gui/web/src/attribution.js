@@ -2,7 +2,7 @@
 // come byte for byte from the server's one place for them, obserwator.attribution: in the
 // `attribution` and `terms_notice` fields of every response with data or results, and for
 // each origin of data in the session's `attribution` (api/session: `origins.{imgw,
-// imgw_hydro, pmaxtp, chmi, gugik, cuzk}`, the standard's `order` and `terms_order`). This
+// imgw_hydro, pmaxtp, chmu, gugik, cuzk}`, the standard's `order` and `terms_order`). This
 // module merges the lines of what a view shows, in the standard's order, each once, as
 // `Attribution.__or__` does on the server, and hands them to the kit's <nogat-sources>
 // (`Sources`): a 12 px strip with S, P, PS, PP and the short forms of ČHMÚ's, GUGiK's and
@@ -59,7 +59,7 @@ function ordered(order, lines) {
  * The lines and terms of data of the given origins, merged and ordered, each once.
  *
  * @param {object|null} texts from useTexts
- * @param {string[]} sources origins of the data, e.g. ["imgw", "imgw_hydro", "chmi"]
+ * @param {string[]} sources origins of the data, e.g. ["imgw", "imgw_hydro", "chmu"]
  * @returns {{attribution: string[], terms_notice: string[]}|null} null without texts or
  *   origins
  */
@@ -110,10 +110,10 @@ export function merge(texts, sets) {
 }
 
 /** The origin of a provider's catalog and archives (obserwator.attribution.provider_origin). */
-const PROVIDER_ORIGINS = { "IMGW-PIB": "imgw", CHMI: "chmi" };
+const PROVIDER_ORIGINS = { "IMGW-PIB": "imgw", CHMU: "chmu" };
 /** The origin of the packaged border a provider's catalog was checked against
  * (obserwator.attribution.border_origin, ADR-018). */
-const BORDER_ORIGINS = { "IMGW-PIB": "gugik", CHMI: "cuzk" };
+const BORDER_ORIGINS = { "IMGW-PIB": "gugik", CHMU: "cuzk" };
 /** The origins of the packaged borders, PRG of GUGiK and RÚIAN of ČÚZK, while the map draws
  * them as its background. */
 export const BORDER_SOURCES = ["gugik", "cuzk"];
@@ -124,7 +124,7 @@ export const BORDER_SOURCES = ["gugik", "cuzk"];
  * IMGW-PIB station located from there (`location_source` "static").
  *
  * @param {object[]} stations entries of api/stations
- * @returns {string[]} e.g. ["imgw", "gugik", "imgw_hydro", "chmi", "cuzk"]
+ * @returns {string[]} e.g. ["imgw", "gugik", "imgw_hydro", "chmu", "cuzk"]
  */
 export function catalogSources(stations) {
   const out = new Set();

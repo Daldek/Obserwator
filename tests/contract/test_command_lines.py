@@ -7,7 +7,7 @@ every environment (its POSIX paths absolute there, on Windows with the drive of 
 working directory), and its result excerpt names only fields of the command's result.
 
 A sample is a valid call of a catalog command: the options of every command in
-``tests.unit.test_commands`` and of the ČHMÚ calls in ``tests.unit.test_commands_chmi``,
+``tests.unit.test_commands`` and of the ČHMÚ calls in ``tests.unit.test_commands_chmu``,
 each also with ``--check`` where the command has it. Its line is the one
 ``format_command`` writes. ``parse_command`` reads that line into the same command
 and run and into options that validate to the same call, and ``format_command`` of
@@ -35,14 +35,14 @@ from obserwator.output import OutputReport
 from obserwator.store.types import StorePlan
 from tests.contract.support import input_schemas
 from tests.unit.test_commands import SAMPLES
-from tests.unit.test_commands_chmi import VALID as CHMI_SAMPLES
+from tests.unit.test_commands_chmu import VALID as CHMU_SAMPLES
 
 CHECKED = {spec.name for spec in data_commands() if spec.check is not None}
 EXAMPLES = [
     pytest.param(
         command, options, run, id=f"{command}#{index}{' --check' if run else ''}"
     )
-    for index, (command, options) in enumerate([*SAMPLES, *CHMI_SAMPLES])
+    for index, (command, options) in enumerate([*SAMPLES, *CHMU_SAMPLES])
     for run in (({}, {"check": True}) if command in CHECKED else ({},))
 ]
 CATALOG = [schema["x-obserwator"] for schema in input_schemas()]

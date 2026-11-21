@@ -1,7 +1,7 @@
 """check_store and sync_store for ČHMÚ per-station files on recorded answers.
 
 Spec 2026-10-18 §4.1-§4.3 (listing, freshness, synchronization) and the §13.2
-scenarios (1)-(5) and (8), replayed from ``chmi_recordings.json`` with respx.
+scenarios (1)-(5) and (8), replayed from ``chmu_recordings.json`` with respx.
 Synthetic files only; codes 0-203-1-9… and 0-203-0-9… are not published by
 ČHMÚ.
 """
@@ -16,7 +16,7 @@ import httpx
 import pytest
 import respx
 
-from obserwator._parsing.chmi import parse_listing
+from obserwator._parsing.chmu import parse_listing
 from obserwator._version import __version__
 from obserwator.datasets import archive_files, get_provider
 from obserwator.exceptions import ObserwatorValidationError
@@ -29,10 +29,10 @@ from obserwator.urls import IMGW_PUBLIC_DATA_URL
 from tests.contract.support import schema_errors
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
-RECORDING = json.loads((FIXTURES / "chmi_recordings.json").read_text(encoding="utf-8"))
+RECORDING = json.loads((FIXTURES / "chmu_recordings.json").read_text(encoding="utf-8"))
 BASE = RECORDING["base_url"]
 CASES = {entry["case"]: entry for entry in RECORDING["interactions"]}
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 S1, S2 = "0-203-1-900001", "0-203-1-900002"
 NO_FILES = "0-203-1-CB900003"  # in the station metadata only
 FULL, RAIN = "0-203-0-90001", "0-203-0-90000000002"  # four elements / SRA only
@@ -203,7 +203,7 @@ def test_check_reads_one_listing_and_compares_it_with_the_store(root, server):
 
     plan = check_store(
         root,
-        datasets=["chmi_hydro_daily"],
+        datasets=["chmu_hydro_daily"],
         stations=[S2, NO_FILES, S1, FULL, S1],
         on_notice=notices.append,
         on_progress=progress.append,
@@ -356,7 +356,7 @@ def test_plan_of_listing_items_round_trips_and_meets_the_contract(
     ]
 
 
-def test_first_publication_heads_then_gets_and_writes_chmi_sidecars(root, server):
+def test_first_publication_heads_then_gets_and_writes_chmu_sidecars(root, server):
     serve(server, "hydro_listing", *FIRST)
     plan = check_store(root, datasets=[HYDRO], stations=[S1])
     assert [item.status for item in plan.items] == ["missing", "missing"]
@@ -382,14 +382,14 @@ def test_first_publication_heads_then_gets_and_writes_chmi_sidecars(root, server
     assert version.read_bytes() == data
     meta = json.loads(Path(f"{version}.meta.json").read_text(encoding="utf-8"))
     assert schema_errors(meta, "obserwator-meta/1") == []
-    license_ = get_provider("CHMI").license
+    license_ = get_provider("CHMU").license
     assert {key: value for key, value in meta.items() if key != "downloaded_at"} == {
         "schema": "obserwator-meta/1",
         "producer": "obserwator",
         "producer_version": __version__,
         "dataset": HYDRO,
         "country": "CZ",
-        "provider": "CHMI",
+        "provider": "CHMU",
         "request": {
             "server_path": H1_2023.server_path,
             "year": 2023,
@@ -405,8 +405,8 @@ def test_first_publication_heads_then_gets_and_writes_chmi_sidecars(root, server
         },
         "sha256": sha(data),
         "size_bytes": len(data),
-        "content_sha256": content_sha256(data, form="chmi-json/1"),
-        "content_form": "chmi-json/1",
+        "content_sha256": content_sha256(data, form="chmu-json/1"),
+        "content_form": "chmu-json/1",
         "extra": {
             "version": {"label": "2025-07-01", "label_source": "last_modified"},
             "period": {

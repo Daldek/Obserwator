@@ -26,7 +26,7 @@ export function doyLabel(day) {
 }
 
 /** The daily hydrological datasets, IMGW-PIB's first (a station has one of them). */
-export const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmi.hydro_daily"];
+export const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmu.hydro_daily"];
 /** IMGW-PIB's half-year and annual characteristics. */
 export const HALF_YEARS = "pl.imgw.hydro_semiannual";
 
@@ -80,7 +80,7 @@ export function hydroYear(iso) {
   return +iso.slice(5, 7) >= 11 ? year + 1 : year;
 }
 
-/** The station's daily hydrological dataset (`pl.imgw.hydro_daily` or `cz.chmi.hydro_daily`), or null. */
+/** The station's daily hydrological dataset (`pl.imgw.hydro_daily` or `cz.chmu.hydro_daily`), or null. */
 export function dailyDataset(station) {
   const found = (station.datasets || []).find((item) => HYDRO_DAILY.includes(item.dataset));
   return found ? found.dataset : null;

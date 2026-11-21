@@ -7,17 +7,17 @@ Examples
 >>> for station, record in parse_zip_file(response.data, "dobowe"):
 ...     print(f"{station.station_name}: {record.water_level_cm} cm")
 
->>> from obserwator.parsers import parse_chmi_hydro_daily
+>>> from obserwator.parsers import parse_chmu_hydro_daily
 >>> name = "H_0-203-1-001000_DQ_2025.json"
->>> for record in parse_chmi_hydro_daily(content, filename=name):
+>>> for record in parse_chmu_hydro_daily(content, filename=name):
 ...     print(record.date, record.measurements["Q"].value)
 """
 
 from obserwator._parsing import normalize_archive
-from obserwator._parsing.chmi import (
-    parse_chmi_hydro_daily,
-    parse_chmi_meteo_daily,
-    parse_chmi_stations,
+from obserwator._parsing.chmu import (
+    parse_chmu_hydro_daily,
+    parse_chmu_meteo_daily,
+    parse_chmu_stations,
 )
 from obserwator._parsing.common import IMGW_ENCODING
 from obserwator._parsing.hydro import (
@@ -43,8 +43,8 @@ __all__ = [
     "parse_meteo_climate_daily",
     "parse_meteo_precip_daily",
     "parse_meteo_synop_daily",
-    "parse_chmi_hydro_daily",
-    "parse_chmi_meteo_daily",
-    "parse_chmi_stations",
+    "parse_chmu_hydro_daily",
+    "parse_chmu_meteo_daily",
+    "parse_chmu_stations",
     "normalize_archive",
 ]

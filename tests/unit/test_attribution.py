@@ -44,13 +44,13 @@ from tests.contract.support import (
     trailing_lines,
 )
 
-CHMI_HYDRO = "cz.chmi.hydro_daily"
-CHMI_STATION = "0-203-1-900001"
+CHMU_HYDRO = "cz.chmu.hydro_daily"
+CHMU_STATION = "0-203-1-900001"
 SEMIANNUAL = "pl.imgw.hydro_semiannual"
 ARCHIVES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
 POINT = {"latitude": 52.23, "longitude": 21.01}
 IMGW = attribution("imgw")
-CHMI = attribution("chmi")
+CHMU = attribution("chmu")
 DATA = Path(__file__).parents[2] / "src" / "obserwator" / "_data"
 
 
@@ -150,7 +150,7 @@ def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
     reversed_merge = (
         attribution("cuzk")
         | attribution("gugik")
-        | attribution("chmi")
+        | attribution("chmu")
         | attribution("pmaxtp")
         | attribution("imgw_hydro")
         | attribution("imgw")
@@ -162,14 +162,14 @@ def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
     foreign = Attribution(("Dane przetworzone w programie X",))
     assert (foreign | IMGW).attribution == (*IMGW.attribution, *foreign.attribution)
     # JSON fields: no empty terms_notice (ČHMÚ data), nothing without lines.
-    assert CHMI.fields() == {"attribution": list(CHMI.attribution)}
+    assert CHMU.fields() == {"attribution": list(CHMU.attribution)}
     assert IMGW.fields() == {
         "attribution": list(IMGW.attribution),
         "terms_notice": list(IMGW.terms_notice),
     }
     assert Attribution().fields() == {}
     # The lines of a file read back, empty lines skipped.
-    for lines in (every, IMGW, CHMI, foreign | IMGW, Attribution()):
+    for lines in (every, IMGW, CHMU, foreign | IMGW, Attribution()):
         assert Attribution.from_lines([*lines.lines, ""]) == lines
         assert Attribution.from_lines(reversed(lines.lines)) == lines
     # Another tool's terms line, of the form of DEV §20, is read back as one
@@ -211,20 +211,20 @@ def test_a_stored_product_carries_the_derived_lines_and_its_producers_own_only()
     stored = Attribution((*OLD.attribution, own), OLD.terms_notice)
 
     assert carried(OLD, "imgw", "imgw_hydro") == attribution("imgw", "imgw_hydro")
-    assert carried(stored, "chmi") == attribution("chmi") | Attribution((own,))
+    assert carried(stored, "chmu") == attribution("chmu") | Attribution((own,))
     # An ATTRIBUTION.txt written before ECO-065 is read back without its retired lines
     assert Attribution.from_lines(OLD.lines) == Attribution(IMGW.attribution)
 
 
 def test_an_old_cp_naming_the_processing_is_read_as_cp_once():
-    (_, cp) = CHMI.attribution
-    old = Attribution((*CHMI.attribution[:1], *OLD_CP))
+    (_, cp) = CHMU.attribution
+    old = Attribution((*CHMU.attribution[:1], *OLD_CP))
 
-    assert old == CHMI
-    assert carried(old, "chmi") == CHMI
-    assert Attribution.from_lines([*OLD_CP, *CHMI.lines]) == CHMI
+    assert old == CHMU
+    assert carried(old, "chmu") == CHMU
+    assert Attribution.from_lines([*OLD_CP, *CHMU.lines]) == CHMU
     # Merged with other lines it takes CP's place in the order of the standard
-    assert Attribution((*OLD_CP, CHMI.attribution[0])) | IMGW == IMGW | CHMI
+    assert Attribution((*OLD_CP, CHMU.attribution[0])) | IMGW == IMGW | CHMU
     # Only CP with its processing in parentheses: other lines stay as they are
     other = (f"{cp}.", f"{cp} (bez nawiasu zamykającego", f"Uwaga: {OLD_CP[0]}")
     assert Attribution(other).attribution == other
@@ -239,8 +239,8 @@ def test_csv_of_series_export_has_one_line_per_cell_and_joins_the_rest_into_one_
     fixture_root,
 ):
     imgw_rows = table_of(export_series(root=fixture_root, dataset=DAILY, station=RABA))
-    chmi_rows = table_of(
-        export_series(root=fixture_root, dataset=CHMI_HYDRO, station=CHMI_STATION)
+    chmu_rows = table_of(
+        export_series(root=fixture_root, dataset=CHMU_HYDRO, station=CHMU_STATION)
     )
     day = next(iter(read_series(root=fixture_root, dataset=DAILY, station=RABA))).date
     (single,) = table_of(
@@ -256,8 +256,8 @@ def test_csv_of_series_export_has_one_line_per_cell_and_joins_the_rest_into_one_
         ("", ""),
     ]
     # CC BY 4.0 data: C and CP, no IMGW-PIB terms lines.
-    assert trailing_lines(chmi_rows) == CHMI
-    assert not any(row["terms_notice"] for row in chmi_rows)
+    assert trailing_lines(chmu_rows) == CHMU
+    assert not any(row["terms_notice"] for row in chmu_rows)
     # A table of one row holds every line of a column in its one cell.
     assert (single["attribution"], single["terms_notice"]) == (
         "\n".join(IMGW.attribution),
@@ -287,7 +287,7 @@ def test_store_export_carries_the_lines_in_csv_columns_and_the_first_jsonl_objec
 def test_parquet_files_of_a_series_hold_the_lines_as_json_arrays(fixture_root):
     for dataset, station, lines in (
         (DAILY, RABA, IMGW),
-        (CHMI_HYDRO, CHMI_STATION, CHMI),
+        (CHMU_HYDRO, CHMU_STATION, CHMU),
     ):
         version = series_of(fixture_root, dataset).parent
         metadata = pq.read_schema(version / "stations" / f"{station}.parquet").metadata
@@ -307,7 +307,7 @@ def test_json_documents_of_the_store_carry_the_lines_at_the_top(
 
     documents = {
         "series.json IMGW-PIB": (load(series_of(fixture_root, DAILY)), IMGW),
-        "series.json ČHMÚ": (load(series_of(fixture_root, CHMI_HYDRO)), CHMI),
+        "series.json ČHMÚ": (load(series_of(fixture_root, CHMU_HYDRO)), CHMU),
         # Built without the static locations: no hydro.imgw.pl lines; the locations
         # checked against the packaged borders (ADR-018).
         "stations.geojson IMGW-PIB": (
@@ -315,8 +315,8 @@ def test_json_documents_of_the_store_carry_the_lines_at_the_top(
             IMGW | attribution("gugik"),
         ),
         "stations.geojson ČHMÚ": (
-            load(next(catalogs.glob("chmi_stations/*/stations.geojson"))),
-            CHMI | attribution("cuzk"),
+            load(next(catalogs.glob("chmu_stations/*/stations.geojson"))),
+            CHMU | attribution("cuzk"),
         ),
         "cell.json": (load(cell), attribution("pmaxtp")),
     }

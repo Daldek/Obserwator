@@ -846,7 +846,7 @@ def _export_name(code: str, keys: tuple[str, ...], derived: str | None) -> str:
     The series file of a station: one dataset, its joined record (ADR-022) or derived.
 
     A derived file is named after its dataset and kind
-    (``<code>_chmi_hydro_daily_half_years.csv``), so it never meets the
+    (``<code>_chmu_hydro_daily_half_years.csv``), so it never meets the
     series export of the same dataset.
     """
     name = f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}"

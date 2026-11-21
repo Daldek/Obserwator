@@ -65,9 +65,9 @@ PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""
 FIXTURE_STATIONS = {
     "hydro": "149190310",
-    "hydro_chmi": "0-203-1-900001",
+    "hydro_chmu": "0-203-1-900001",
     "meteo": "123750000",
-    "meteo_chmi": "0-203-0-90001",
+    "meteo_chmu": "0-203-0-90001",
 }
 """Stations of the fixture root: IMGW-PIB and ČHMÚ, hydrological and meteorological."""
 ADMIN_KEY = "klucz-e2e-0123"
@@ -81,7 +81,7 @@ OPERATOR_ADDRESS = "ul. Testowa 1, 00-001 Gdańsk"
 OPERATOR_INSTANCE = f"""[obserwator.instance]
 title = {json.dumps(INSTANCE_TITLE)}
 logo = "logo.svg"
-featured_provider = "CHMI"
+featured_provider = "CHMU"
 start_view = "featured"
 area = "area.geojson"
 area_mode = "clip"
@@ -92,7 +92,7 @@ terms = "regulamin.md"
 IMGW-PIB = "off"
 """
 HIDDEN_INSTANCE = """[obserwator.instance]
-featured_provider = "CHMI"
+featured_provider = "CHMU"
 start_view = "area"
 area = "area.geojson"
 area_mode = "focus"
@@ -103,7 +103,7 @@ IMGW-PIB = "hidden"
 FEATURED_OTHERS_OPACITY = 0.25
 """The opacity of the other providers' stations in `FEATURED_INSTANCE`."""
 FEATURED_INSTANCE = f"""[obserwator.instance]
-featured_provider = "CHMI"
+featured_provider = "CHMU"
 others_opacity = {FEATURED_OTHERS_OPACITY}
 """
 NO_PMAXTP_INSTANCE = """[obserwator.instance]

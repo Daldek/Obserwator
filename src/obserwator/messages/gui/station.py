@@ -163,16 +163,16 @@ MESSAGES: dict[str, Text] = {
         "a file of locations given when the catalog was built",
         "plik położeń podany przy budowie katalogu",
     ),
-    "station.info.source.chmi_hydro_now": Text(
+    "station.info.source.chmu_hydro_now": Text(
         "ČHMÚ's current metadata, hydrology", "bieżące metadane ČHMÚ, hydrologia"
     ),
-    "station.info.source.chmi_hydro_meta3": Text(
+    "station.info.source.chmu_hydro_meta3": Text(
         "ČHMÚ's metadata (meta3), hydrology", "metadane ČHMÚ (meta3), hydrologia"
     ),
-    "station.info.source.chmi_hydro_stations": Text(
+    "station.info.source.chmu_hydro_stations": Text(
         "ČHMÚ's list of stations, hydrology", "wykaz stacji ČHMÚ, hydrologia"
     ),
-    "station.info.source.chmi_meteo_now": Text(
+    "station.info.source.chmu_meteo_now": Text(
         "ČHMÚ's current metadata, meteorology", "bieżące metadane ČHMÚ, meteorologia"
     ),
     "station.info.missing.outside_country": Text(
@@ -319,7 +319,7 @@ MESSAGES: dict[str, Text] = {
         "Źródła: IMGW-PIB, publiczne API (danepubliczne.imgw.pl); skala natężenia "
         "deszczu Chomicza",
     ),
-    "station.now.chmi_note": Text(
+    "station.now.chmu_note": Text(
         "Obserwator serves no current data of ČHMÚ (now, recent), only the daily series "
         "of the data root.",
         "Obserwator nie obsługuje bieżących danych ČHMÚ (now, recent), tylko szeregi "

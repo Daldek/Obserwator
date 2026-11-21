@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from obserwator._parsing.chmi import (
+from obserwator._parsing.chmu import (
     parse_listing,
     read_metadata,
     station_coordinates,
@@ -18,9 +18,9 @@ from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.models import Measurement
 from obserwator.parsers import (
     normalize_archive,
-    parse_chmi_hydro_daily,
-    parse_chmi_meteo_daily,
-    parse_chmi_stations,
+    parse_chmu_hydro_daily,
+    parse_chmu_meteo_daily,
+    parse_chmu_stations,
 )
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
@@ -91,14 +91,14 @@ def envelope(header: str, rows: str) -> bytes:
 
 
 def test_hydro_fixture_maps_series_to_variables_and_skips_suspended_solids():
-    records = list(parse_chmi_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023))
+    records = list(parse_chmu_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023))
     days = by_date(records)
 
     assert len(records) == 365 and list(days) == sorted(days)
     first = records[0]
     assert (first.station_code, first.dataset, first.period) == (
         "0-203-1-900001",
-        "cz.chmi.hydro_daily",
+        "cz.chmu.hydro_daily",
         None,
     )
     # HD (CM) → H, QD (M3_S) → Q; TD (0C) → T only where the file has TD rows.
@@ -112,8 +112,8 @@ def test_hydro_fixture_maps_series_to_variables_and_skips_suspended_solids():
 
 
 def test_hydro_fixture_leap_day_hydrological_year_and_day_without_rows():
-    leap = by_date(parse_chmi_hydro_daily(fixture(f"{DAILY}/{H2024}"), filename=H2024))
-    year = by_date(parse_chmi_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023))
+    leap = by_date(parse_chmu_hydro_daily(fixture(f"{DAILY}/{H2024}"), filename=H2024))
+    year = by_date(parse_chmu_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023))
 
     assert set(leap[date(2024, 2, 29)].measurements) == {"H", "Q"}
     assert date(2024, 6, 15) not in leap  # no row: no record, no invented value
@@ -129,7 +129,7 @@ def test_hydro_fixture_leap_day_hydrological_year_and_day_without_rows():
 
 def test_hydro_fixture_water_level_shorter_than_discharge():
     name = "H_0-203-1-900002_DQ_2004.json"
-    records = list(parse_chmi_hydro_daily(fixture(f"{DAILY}/{name}"), filename=name))
+    records = list(parse_chmu_hydro_daily(fixture(f"{DAILY}/{name}"), filename=name))
 
     assert len(records) == 366
     with_h = [record.date for record in records if "H" in record.measurements]
@@ -144,8 +144,8 @@ def test_hydro_fixture_water_level_shorter_than_discharge():
 def test_hydro_reserialized_variant_gives_identical_records():
     variant = FIXTURES / "variants/H_0-203-1-900001_DQ_2023_reserialized.json"
 
-    assert list(parse_chmi_hydro_daily(variant.read_bytes(), filename=H2023)) == list(
-        parse_chmi_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023)
+    assert list(parse_chmu_hydro_daily(variant.read_bytes(), filename=H2023)) == list(
+        parse_chmu_hydro_daily(fixture(f"{DAILY}/{H2023}"), filename=H2023)
     )
 
 
@@ -156,7 +156,7 @@ def test_hydro_null_is_missing_bom_allowed_and_time_of_day_ignored():
         ("PD", "G_M3", [["2024-03-02T18:00:00Z", 3.5]]),
     )
 
-    records = list(parse_chmi_hydro_daily(content, filename=H2024))
+    records = list(parse_chmu_hydro_daily(content, filename=H2024))
 
     assert [record.date for record in records] == [date(2024, 3, 1), date(2024, 3, 3)]
     assert records[0].measurements == {
@@ -170,7 +170,7 @@ def test_hydro_duplicate_date_keeps_equal_value_and_rejects_different_one():
     same = hydro_file(
         ("QD", "M3_S", [["2024-01-05T00:00:00Z", 2], ["2024-01-05T00:00:00Z", 2.0]])
     )
-    (record,) = parse_chmi_hydro_daily(same, filename=H2024)
+    (record,) = parse_chmu_hydro_daily(same, filename=H2024)
     assert record.measurements == {"Q": Measurement(2.0, "value")}
 
     other = hydro_file(
@@ -178,7 +178,7 @@ def test_hydro_duplicate_date_keeps_equal_value_and_rejects_different_one():
         ("HD", "CM", [["2024-01-05T00:00:00Z", 91]]),
     )
     with pytest.raises(ObserwatorDataError) as error:
-        list(parse_chmi_hydro_daily(other, filename=H2024))
+        list(parse_chmu_hydro_daily(other, filename=H2024))
     assert error.value.details["location"] == "tsList[1].tsData.data.values[0]"
 
 
@@ -255,7 +255,7 @@ def _with_rows(*rows):
 )
 def test_hydro_malformed_content_names_file_and_json_path(content, location):
     with pytest.raises(ObserwatorDataError) as error:
-        list(parse_chmi_hydro_daily(content, filename=f"{DAILY}/{H2024}"))
+        list(parse_chmu_hydro_daily(content, filename=f"{DAILY}/{H2024}"))
 
     assert error.value.code == "data_error"
     assert error.value.details == {"file": f"{DAILY}/{H2024}", "location": location}
@@ -277,13 +277,13 @@ def test_hydro_malformed_content_names_file_and_json_path(content, location):
 )
 def test_hydro_invalid_json_is_a_data_error_with_position(content, fragment):
     with pytest.raises(ObserwatorDataError, match=fragment) as error:
-        list(parse_chmi_hydro_daily(content, filename=H2024))
+        list(parse_chmu_hydro_daily(content, filename=H2024))
     assert error.value.details["file"] == H2024
 
 
 def test_hydro_rejects_a_name_that_is_not_a_daily_hydro_file():
     with pytest.raises(ObserwatorValidationError) as error:
-        list(parse_chmi_hydro_daily(b"{}", filename="H_0-203-1-900001_HQ_2024.json"))
+        list(parse_chmu_hydro_daily(b"{}", filename="H_0-203-1-900001_HQ_2024.json"))
     assert error.value.details["option"] == "filename"
 
 
@@ -295,7 +295,7 @@ def test_hydro_rejects_a_name_that_is_not_a_daily_hydro_file():
 def test_meteo_precipitation_fixture_flags_quality_and_source_flags():
     name = "dly-0-203-0-90001-SRA.csv"
     days = by_date(
-        parse_chmi_meteo_daily(
+        parse_chmu_meteo_daily(
             fixture(f"{CSV_DAILY}/precipitation/{name}"), filename=name
         )
     )
@@ -305,7 +305,7 @@ def test_meteo_precipitation_fixture_flags_quality_and_source_flags():
         return measurement
 
     assert len(days) == 31 and list(days) == sorted(days)
-    assert days[date(2023, 10, 20)].dataset == "cz.chmi.meteo_daily"
+    assert days[date(2023, 10, 20)].dataset == "cz.chmu.meteo_daily"
     assert p(date(2023, 10, 20)) == Measurement(0.0, "no_phenomenon", 0, None)
     assert p(date(2023, 10, 21)) == Measurement(2.4, "value", 0, None)
     assert p(date(2023, 10, 22)) == Measurement(0.0, "value", 0, "T")  # trace
@@ -359,7 +359,7 @@ def test_meteo_snow_fixture_flags_zero_without_flag_as_no_snow(
 ):
     name = f"dly-0-203-0-90001-{element}.csv"
     days = by_date(
-        parse_chmi_meteo_daily(fixture(f"{CSV_DAILY}/snow/{name}"), filename=name)
+        parse_chmu_meteo_daily(fixture(f"{CSV_DAILY}/snow/{name}"), filename=name)
     )
 
     assert list(days) == [date(2023, 10, 28) + timedelta(n) for n in range(11)]
@@ -374,7 +374,7 @@ def test_meteo_snow_takes_the_term_of_dt_and_refuses_another_function():
         "0-203-0-90001,SCE,07:00,1925-01-05T07:00Z,12.0,,0.0,",
     )
     name = "dly-0-203-0-90001-SCE.csv"
-    records = list(parse_chmi_meteo_daily(meteo_file(*rows), filename=name))
+    records = list(parse_chmu_meteo_daily(meteo_file(*rows), filename=name))
 
     assert [(r.date, r.measurements["snow_cover"].value) for r in records] == [
         (date(1925, 1, 5), 12.0),
@@ -382,7 +382,7 @@ def test_meteo_snow_takes_the_term_of_dt_and_refuses_another_function():
     ]
     with pytest.raises(ObserwatorDataError, match="TIMEFUNC"):
         list(
-            parse_chmi_meteo_daily(
+            parse_chmu_meteo_daily(
                 meteo_file("0-203-0-90001,SNO,AVG,2023-10-20T00:00Z,1.0,,0.0,"),
                 filename="dly-0-203-0-90001-SNO.csv",
             )
@@ -392,7 +392,7 @@ def test_meteo_snow_takes_the_term_of_dt_and_refuses_another_function():
 def test_meteo_temperature_fixture_uses_daily_mean_and_skips_terms():
     name = "dly-0-203-0-90001-T.csv"
     content = fixture(f"{CSV_DAILY}/temperature/{name}")
-    records = list(parse_chmi_meteo_daily(content, filename=name))
+    records = list(parse_chmu_meteo_daily(content, filename=name))
 
     # 124 rows (AVG block first, then the 06/13/20 term blocks) → 31 days.
     assert len(content.decode().splitlines()) == 1 + 4 * 31
@@ -406,7 +406,7 @@ def test_meteo_temperature_fixture_uses_daily_mean_and_skips_terms():
 def test_meteo_maximum_fixture_block_without_rows_gives_no_records():
     name = "dly-0-203-0-90001-TMA.csv"
     days = by_date(
-        parse_chmi_meteo_daily(
+        parse_chmu_meteo_daily(
             fixture(f"{CSV_DAILY}/temperature/{name}"), filename=name
         )
     )
@@ -425,7 +425,7 @@ def test_meteo_rows_in_any_order_seconds_bom_and_equal_duplicates():
         sra("2023-10-22", "1.0"),
     )
 
-    records = list(parse_chmi_meteo_daily(content, filename=SRA_NAME))
+    records = list(parse_chmu_meteo_daily(content, filename=SRA_NAME))
 
     assert [record.date for record in records] == [
         date(2023, 10, 20),
@@ -446,7 +446,7 @@ def test_meteo_temperatures_are_values_even_at_zero():
     )
 
     records = list(
-        parse_chmi_meteo_daily(content, filename="dly-0-203-0-90001-TMI.csv")
+        parse_chmu_meteo_daily(content, filename="dly-0-203-0-90001-TMI.csv")
     )
 
     assert [record.measurements["Tmin"] for record in records] == [
@@ -469,7 +469,7 @@ def test_meteo_precipitation_at_an_older_term_is_the_value_of_the_date_of_dt():
         "0-203-0-90001,SRA,07:00,1894-04-30T07:00Z,,,4.0,",
     )
 
-    records = list(parse_chmi_meteo_daily(content, filename=SRA_NAME))
+    records = list(parse_chmu_meteo_daily(content, filename=SRA_NAME))
 
     # The date of DT, never shifted; the term changes no value and no flag.
     assert [(record.date, record.measurements["P"]) for record in records] == [
@@ -492,7 +492,7 @@ def test_meteo_extremes_at_older_evening_terms_are_the_values_of_their_dates(
     )
 
     days = by_date(
-        parse_chmi_meteo_daily(content, filename=f"dly-0-203-0-90001-{element}.csv")
+        parse_chmu_meteo_daily(content, filename=f"dly-0-203-0-90001-{element}.csv")
     )
 
     assert {day: record.measurements[variable] for day, record in days.items()} == {
@@ -516,7 +516,7 @@ def test_meteo_temperature_skips_the_readings_at_older_terms():
         "0-203-0-90001,T,19:00,1876-01-01T19:00Z,-2.0,,0.0,",
     )
 
-    records = list(parse_chmi_meteo_daily(content, filename="dly-0-203-0-90001-T.csv"))
+    records = list(parse_chmu_meteo_daily(content, filename="dly-0-203-0-90001-T.csv"))
 
     assert [(record.date, record.measurements) for record in records] == [
         (date(1870, 1, 1), {"Tmean": Measurement(-5.4, "value", 0, None)})
@@ -531,10 +531,10 @@ def test_meteo_two_terms_of_one_date_are_one_record_only_when_their_rows_are_equ
     )
     path = f"{CSV_DAILY}/precipitation/{SRA_NAME}"
 
-    equal = list(parse_chmi_meteo_daily(meteo_file(old, new), filename=path))
+    equal = list(parse_chmu_meteo_daily(meteo_file(old, new), filename=path))
     with pytest.raises(ObserwatorDataError, match="1894-05-01") as error:
         list(
-            parse_chmi_meteo_daily(
+            parse_chmu_meteo_daily(
                 meteo_file(old, new.replace(",0.5,", ",0.7,")), filename=path
             )
         )
@@ -589,7 +589,7 @@ def test_meteo_two_terms_of_one_date_are_one_record_only_when_their_rows_are_equ
 def test_meteo_malformed_content_names_file_and_line(content, line):
     path = f"{CSV_DAILY}/precipitation/{SRA_NAME}"
     with pytest.raises(ObserwatorDataError) as error:
-        list(parse_chmi_meteo_daily(content, filename=path))
+        list(parse_chmu_meteo_daily(content, filename=path))
 
     assert error.value.code == "data_error"
     assert error.value.details == {"file": path, "line": line}
@@ -609,7 +609,7 @@ def test_meteo_malformed_content_names_file_and_line(content, line):
 def test_meteo_timefunc_must_fit_the_element(element, row):
     with pytest.raises(ObserwatorDataError, match="TIMEFUNC"):
         list(
-            parse_chmi_meteo_daily(
+            parse_chmu_meteo_daily(
                 meteo_file(row), filename=f"dly-0-203-0-90001-{element}.csv"
             )
         )
@@ -618,7 +618,7 @@ def test_meteo_timefunc_must_fit_the_element(element, row):
 def test_meteo_rejects_elements_outside_the_dataset():
     with pytest.raises(ObserwatorValidationError) as error:
         list(
-            parse_chmi_meteo_daily(METEO_HEADER, filename="dly-0-203-0-90001-API30.csv")
+            parse_chmu_meteo_daily(METEO_HEADER, filename="dly-0-203-0-90001-API30.csv")
         )
     assert error.value.details["option"] == "filename"
 
@@ -630,7 +630,7 @@ def test_meteo_rejects_elements_outside_the_dataset():
 
 def test_stations_hydro_fixture_latitude_first_and_hydrographic_code_as_text():
     entries = list(
-        parse_chmi_stations(
+        parse_chmu_stations(
             fixture("hydrology/historical/metadata/meta1.json"), kind="hydro"
         )
     )
@@ -643,7 +643,7 @@ def test_stations_hydro_fixture_latitude_first_and_hydrographic_code_as_text():
     first = entries[0]
     assert (first.kind, first.provider, first.name, first.river) == (
         "hydro",
-        "CHMI",
+        "CHMU",
         "Špindlerův Mlýn - most",
         "Labe",
     )
@@ -659,7 +659,7 @@ def test_stations_hydro_fixture_latitude_first_and_hydrographic_code_as_text():
 def test_stations_meteo_fixture_longitude_first_and_latest_period_per_station():
     entries = {
         entry.station_code: entry
-        for entry in parse_chmi_stations(
+        for entry in parse_chmu_stations(
             fixture("meteorology/climate/historical/metadata/meta1.json"), kind="meteo"
         )
     }
@@ -692,11 +692,11 @@ def test_stations_envelope_changes_do_not_change_entries():
     meteo_18 = fixture("meteorology/climate/now/metadata/meta1-20261018.json")
 
     assert now != regenerated and meteo_17 != meteo_18
-    assert list(parse_chmi_stations(now, kind="hydro")) == list(
-        parse_chmi_stations(regenerated, kind="hydro")
+    assert list(parse_chmu_stations(now, kind="hydro")) == list(
+        parse_chmu_stations(regenerated, kind="hydro")
     )
-    assert list(parse_chmi_stations(meteo_17, kind="meteo")) == list(
-        parse_chmi_stations(meteo_18, kind="meteo")
+    assert list(parse_chmu_stations(meteo_17, kind="meteo")) == list(
+        parse_chmu_stations(meteo_18, kind="meteo")
     )
 
 
@@ -710,8 +710,8 @@ def test_stations_columns_are_located_by_name():
         '["1-05-01-0001",15.2,"900001","R",50.1,"A","0-203-1-900001"]',
     )
 
-    assert list(parse_chmi_stations(permuted, kind="hydro")) == list(
-        parse_chmi_stations(canonical, kind="hydro")
+    assert list(parse_chmu_stations(permuted, kind="hydro")) == list(
+        parse_chmu_stations(canonical, kind="hydro")
     )
 
 
@@ -723,7 +723,7 @@ def test_stations_repeated_code_keeps_first_row_and_is_reported():
         '["0-203-0-90005","B1","Jina","",null,"","1990-01-01T00:00:00Z"]',
     )
 
-    entries = list(parse_chmi_stations(content, kind="meteo"))
+    entries = list(parse_chmu_stations(content, kind="meteo"))
 
     assert [(e.station_code, e.name) for e in entries] == [
         ("0-203-0-90001", "Prvni"),
@@ -816,14 +816,14 @@ def test_stations_malformed_metadata_is_a_data_error_with_place(
     content, kind, location
 ):
     with pytest.raises(ObserwatorDataError) as error:
-        list(parse_chmi_stations(content, kind=kind))
+        list(parse_chmu_stations(content, kind=kind))
     assert error.value.code == "data_error"
     assert error.value.details["location"] == location
 
 
 def test_stations_reject_an_unknown_kind():
     with pytest.raises(ObserwatorValidationError):
-        list(parse_chmi_stations(b"{}", kind="synop"))
+        list(parse_chmu_stations(b"{}", kind="synop"))
 
 
 # --------------------------------------------------------------------------
@@ -967,31 +967,31 @@ def test_listing_repeated_name_is_a_data_error():
 # --------------------------------------------------------------------------
 
 
-def test_normalize_archive_parses_chmi_archives_by_server_path():
+def test_normalize_archive_parses_chmu_archives_by_server_path():
     hydro = archive_files(
-        "cz.chmi.hydro_daily",
+        "cz.chmu.hydro_daily",
         stations=["0-203-1-900001", "0-203-1-900002"],
         years=[2004, 2006, 2023, 2024],
     )
-    meteo = archive_files("cz.chmi.meteo_daily", stations=["0-203-0-90001"])
+    meteo = archive_files("cz.chmu.meteo_daily", stations=["0-203-0-90001"])
     stored = [a for a in (*hydro, *meteo) if (ARCHIVES / a.server_path).is_file()]
     assert len(stored) == 10
 
     for archive in stored:
         data = (ARCHIVES / archive.server_path).read_bytes()
         parser = (
-            parse_chmi_hydro_daily
-            if archive.dataset == "cz.chmi.hydro_daily"
-            else parse_chmi_meteo_daily
+            parse_chmu_hydro_daily
+            if archive.dataset == "cz.chmu.hydro_daily"
+            else parse_chmu_meteo_daily
         )
         records = list(normalize_archive(archive, data=data))
         assert records == list(parser(data, filename=archive.server_path))
         assert {record.station_code for record in records} == {archive.station_code}
 
 
-def test_normalize_archive_names_the_server_path_in_chmi_errors():
+def test_normalize_archive_names_the_server_path_in_chmu_errors():
     (archive,) = archive_files(
-        "cz.chmi.hydro_daily", stations=["0-203-1-900001"], years=2024
+        "cz.chmu.hydro_daily", stations=["0-203-1-900001"], years=2024
     )
     with pytest.raises(ObserwatorDataError) as error:
         list(normalize_archive(archive, data=hydro_file(code="0-203-1-900002")))

@@ -30,8 +30,8 @@ PMAXTP = next(
 )
 HYDRO = "pl.imgw.hydro_daily"
 PRECIP = "pl.imgw.meteo_precip_daily"
-CZ_HYDRO = "cz.chmi.hydro_daily"
-CZ_METEO = "cz.chmi.meteo_daily"
+CZ_HYDRO = "cz.chmu.hydro_daily"
+CZ_METEO = "cz.chmu.meteo_daily"
 CZ_FULL, CZ_ELEMENTS = "0-203-1-900001", "0-203-0-90001"
 
 # (dataset, main file of the version) → the options of the rebuilt store sync.
@@ -46,12 +46,12 @@ ARCHIVES = {
         "2001_01_o.zip",
         {"datasets": [PRECIP], "years": ["2001"], "months": ["1"]},
     ),
-    "chmi_station_year": (
+    "chmu_station_year": (
         CZ_HYDRO,
         f"H_{CZ_FULL}_DQ_2023.json",
         {"datasets": [CZ_HYDRO], "years": ["2023"], "stations": [CZ_FULL]},
     ),
-    "chmi_station_element": (
+    "chmu_station_element": (
         CZ_METEO,
         f"dly-{CZ_ELEMENTS}-T.csv",
         {"datasets": [CZ_METEO], "stations": [CZ_ELEMENTS]},
@@ -60,14 +60,14 @@ ARCHIVES = {
 # Station lists and current-data sources: their own store sync (ADR-015).
 STATION_SOURCES = {
     "imgw_station_list": "pl.imgw.hydro_stations",
-    "chmi_station_list": "cz.chmi.meteo_stations",
+    "chmu_station_list": "cz.chmu.meteo_stations",
     "imgw_api_answer": "pl.imgw.hydro_now",
-    "chmi_meteo_now": "cz.chmi.meteo_now",
+    "chmu_meteo_now": "cz.chmu.meteo_now",
 }
 # Catalogs → the provider of their store catalog.
 CATALOGS = {
     "imgw_catalog": ("pl.imgw.stations", "IMGW-PIB"),
-    "chmi_catalog": ("cz.chmi.stations", "CHMI"),
+    "chmu_catalog": ("cz.chmu.stations", "CHMU"),
 }
 
 
@@ -189,7 +189,7 @@ def test_station_source_version_gives_the_store_sync_of_its_dataset(case, raw, o
     )
     round_trips(call)
     plan = check_command(call.command, options=call.options).result
-    if dataset == "cz.chmi.meteo_now":
+    if dataset == "cz.chmu.meteo_now":
         # Only the listing names the newest file: offline, the check fails.
         assert plan.items == ()
         assert [action.status for action in plan.actions] == ["check_failed"]

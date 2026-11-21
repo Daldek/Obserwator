@@ -332,35 +332,35 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     open_page, featured_url
 ):
     stations = catalog(featured_url)
-    chmi = located(stations, shown(stations, "CHMI"))
+    chmu = located(stations, shown(stations, "CHMU"))
     imgw = located(stations, shown(stations, "IMGW-PIB"))
-    assert chmi and imgw
+    assert chmu and imgw
     page = open_page(base=featured_url)
     ready(page)
     assert providers_switch(page) == ["Wszyscy", "ČHMÚ", "IMGW-PIB"]
     assert chip_groups(page) == ["ČHMÚ", "IMGW-PIB"]
     rows = wait_listed(page, shown(stations))
     assert {
-        stations[code]["provider"] for code in rows[: len(shown(stations, "CHMI"))]
-    } == {"CHMI"}
+        stations[code]["provider"] for code in rows[: len(shown(stations, "CHMU"))]
+    } == {"CHMU"}
     others = page.get_by_role("checkbox", name=OTHERS)
     expect(others).not_to_be_checked()
     legend = page.locator(".map-legend")
 
     def symbols() -> dict[str, dict[str, float]]:
-        wait_source(page, chmi | imgw)
+        wait_source(page, chmu | imgw)
         page.wait_for_timeout(300)  # the next frame draws the new source
         found: dict[str, dict[str, float]] = page.evaluate(_SYMBOLS)
-        assert set(found) == chmi | imgw
+        assert set(found) == chmu | imgw
         return found
 
     faded = symbols()
-    full = {faded[code]["size"] for code in chmi}
-    assert len(full) == 1 and {faded[code]["opacity"] for code in chmi} == {1}
+    full = {faded[code]["size"] for code in chmu}
+    assert len(full) == 1 and {faded[code]["opacity"] for code in chmu} == {1}
     for code in imgw:
         assert faded[code]["opacity"] == pytest.approx(FEATURED_OTHERS_OPACITY)
         assert faded[code]["size"] < 0.8 * min(full)
-    assert min(faded[code]["order"] for code in chmi) > max(
+    assert min(faded[code]["order"] for code in chmu) > max(
         faded[code]["order"] for code in imgw
     )
     # the legend: ČHMÚ's stations, then the other sources drawn as the map draws them
@@ -392,7 +392,7 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     )
     strong = symbols()
     assert {strong[code]["size"] for code in imgw} == full
-    assert min(strong[code]["order"] for code in chmi) > max(
+    assert min(strong[code]["order"] for code in chmu) > max(
         strong[code]["order"] for code in imgw
     )
     expect(legend.locator(".legend-title")).to_have_count(0)
@@ -416,14 +416,14 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
 
 def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden_url):
     stations = catalog(hidden_url)
-    chmi = shown(stations, "CHMI")
+    chmu = shown(stations, "CHMU")
     imgw = shown(stations, "IMGW-PIB")
     assert located(stations, imgw)
     page = open_page(base=hidden_url)
     ready(page)
     # left out of the list, the map and the chips; the switch names it after ČHMÚ
-    wait_listed(page, chmi)
-    wait_source(page, located(stations, chmi))
+    wait_listed(page, chmu)
+    wait_source(page, located(stations, chmu))
     assert providers_switch(page) == ["Wszyscy", "ČHMÚ", "IMGW-PIB"]
     assert chip_groups(page) == ["ČHMÚ"]
     expect(
@@ -431,10 +431,10 @@ def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden
     ).to_have_count(3)
     # „Pokaż inne źródła”: back in the list after ČHMÚ's and on the map at full strength
     page.get_by_role("checkbox", name=OTHERS).check()
-    rows = wait_listed(page, chmi | imgw)
-    assert set(rows[: len(chmi)]) == chmi
+    rows = wait_listed(page, chmu | imgw)
+    assert set(rows[: len(chmu)]) == chmu
     assert chip_groups(page) == ["ČHMÚ", "IMGW-PIB"]
-    found = wait_source(page, located(stations, chmi | imgw))
+    found = wait_source(page, located(stations, chmu | imgw))
     assert {found[code]["dim"] for code in found} == {0}
     page.evaluate(_WHOLE)
     page.wait_for_function(
@@ -445,7 +445,7 @@ def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden
     )
     # off again, then IMGW-PIB chosen in the switch: its stations alone
     page.get_by_role("checkbox", name=OTHERS).uncheck()
-    wait_listed(page, chmi)
+    wait_listed(page, chmu)
     page.get_by_role("radiogroup", name="Dostawca").get_by_role(
         "radio", name="IMGW-PIB"
     ).click()
@@ -576,7 +576,7 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
 ):
     every = api(gui_url, "api/session")["attribution"]["origins"]
     imgw = every["imgw"]["attribution"] + every["imgw_hydro"]["attribution"]
-    chmi = every["chmi"]["attribution"]
+    chmu = every["chmu"]["attribution"]
     page = open_page(base=operator_url, welcome=True)
     welcome = page.locator("dialog.welcome")
     expect(welcome).to_be_visible(timeout=15_000)
@@ -584,7 +584,7 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
         "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne: wybierz"
         " stację, aby zobaczyć jej pomiary, analizy i pliki."
     )
-    for line in chmi:
+    for line in chmu:
         expect(welcome).to_contain_text(line)
     expect(welcome).not_to_contain_text("IMGW")
     welcome.get_by_role("button", name="Rozumiem").click()
@@ -601,7 +601,7 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
     panel = page.locator("#panel-right")
     expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_count(1)
     expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_attribute(
-        "data-provider", "CHMI"
+        "data-provider", "CHMU"
     )
     expect(panel.locator(".no-station")).not_to_contain_text("IMGW")
 

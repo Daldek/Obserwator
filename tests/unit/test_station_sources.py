@@ -6,7 +6,7 @@ current-data station metadata and hydro.imgw.pl's station details downloaded
 and compared). Operational data are never archived (ADR-015 D5): of an IMGW-PIB
 current-data answer or station page only the station fields of the dataset are
 stored. Replayed with respx from ``recordings.json``,
-``builder_recordings.json``, ``chmi_catalog_recordings.json`` and
+``builder_recordings.json``, ``chmu_catalog_recordings.json`` and
 ``hydro_details_recordings.json``; the current-data answers are shaped like the
 live API, with fictional stations.
 """
@@ -42,22 +42,22 @@ def _cases(name):
 
 
 IMGW = {**_cases("recordings.json"), **_cases("builder_recordings.json")}
-CHMI = _cases("chmi_catalog_recordings.json")
+CHMU = _cases("chmu_catalog_recordings.json")
 IMGW_SOURCES = [
     "pl.imgw.hydro_stations",
     "pl.imgw.meteo_stations",
     "pl.imgw.hydro_now",
     "pl.imgw.meteo_now",
 ]
-CHMI_SOURCES = [
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+CHMU_SOURCES = [
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 ]
 HYDRO_NOW_URL = "https://danepubliczne.imgw.pl/api/data/hydro"
 METEO_NOW_URL = "https://danepubliczne.imgw.pl/api/data/meteo"
-METEO_NOW_LISTING = CHMI["meteo_now_listing"]["url"]
+METEO_NOW_LISTING = CHMU["meteo_now_listing"]["url"]
 
 # Fields of the IMGW-PIB current-data answers never stored: measurements, their
 # times and the warning and alarm levels of that answer. The levels the store
@@ -99,9 +99,9 @@ METEO_MEASUREMENTS = frozenset(
         "opad_10min_data",
     }
 )
-# Fields of ČHMÚ measurement files (_parsing/chmi.py): the JSON series of the
+# Fields of ČHMÚ measurement files (_parsing/chmu.py): the JSON series of the
 # hydrology files and the CSV columns of the climate files.
-CHMI_MEASUREMENTS = frozenset(
+CHMU_MEASUREMENTS = frozenset(
     {"tsList", "tsConID", "tsData", "DT", "VAL", "VALUE", "TIMEFUNC", "FLAG", "QUALITY"}
 )
 HYDRO_KEPT = ("id_stacji", "stacja", "rzeka", "lon", "lat")
@@ -223,9 +223,9 @@ def serve_imgw(server, *, hydro=None, meteo=None, list_headers=None):
     )
 
 
-def serve_chmi(server, *cases):
+def serve_chmu(server, *cases):
     for case in cases:
-        row = CHMI[case]
+        row = CHMU[case]
         relative = (
             f"archives/{row['archive']}"
             if "archive" in row
@@ -237,7 +237,7 @@ def serve_chmi(server, *cases):
         )
 
 
-CHMI_ALL = (
+CHMU_ALL = (
     "hydro_stations_head",
     "hydro_stations_get",
     "meteo_stations_head",
@@ -397,30 +397,30 @@ def test_imgw_sources_sync_into_four_versions_and_repeat_unchanged(root, server)
 # --------------------------------------------------------------------------
 
 
-def test_chmi_sources_check_lists_by_head_and_now_by_the_listing(root, server):
-    serve_chmi(server, *CHMI_ALL)
+def test_chmu_sources_check_lists_by_head_and_now_by_the_listing(root, server):
+    serve_chmu(server, *CHMU_ALL)
 
-    plan = check_store(root, datasets=CHMI_SOURCES)
+    plan = check_store(root, datasets=CHMU_SOURCES)
 
     assert [
         (item.archive.dataset, item.archive.server_path, item.status)
         for item in plan.items
     ] == [
         (
-            "cz.chmi.hydro_stations",
+            "cz.chmu.hydro_stations",
             "hydrology/historical/metadata/meta1.json",
             "missing",
         ),
         (
-            "cz.chmi.meteo_stations",
+            "cz.chmu.meteo_stations",
             "meteorology/climate/historical/metadata/meta1.json",
             "missing",
         ),
-        ("cz.chmi.hydro_now", "hydrology/now/metadata/meta1.json", "unverifiable"),
-        ("cz.chmi.hydro_now", "hydrology/now/metadata/meta3.json", "unverifiable"),
+        ("cz.chmu.hydro_now", "hydrology/now/metadata/meta1.json", "unverifiable"),
+        ("cz.chmu.hydro_now", "hydrology/now/metadata/meta3.json", "unverifiable"),
         # The newest meta1 file of the listing, not meta1-20261017 or meta2-….
         (
-            "cz.chmi.meteo_now",
+            "cz.chmu.meteo_now",
             "meteorology/climate/now/metadata/meta1-20261018.json",
             "missing",
         ),
@@ -428,16 +428,16 @@ def test_chmi_sources_check_lists_by_head_and_now_by_the_listing(root, server):
     assert sorted(urls(server)) == sorted(
         [
             METEO_NOW_LISTING,
-            CHMI["hydro_stations_head"]["url"],
-            CHMI["meteo_stations_head"]["url"],
+            CHMU["hydro_stations_head"]["url"],
+            CHMU["meteo_stations_head"]["url"],
         ]
     )
     assert urls(server, "HEAD") == [
-        CHMI["hydro_stations_head"]["url"],
-        CHMI["meteo_stations_head"]["url"],
+        CHMU["hydro_stations_head"]["url"],
+        CHMU["meteo_stations_head"]["url"],
     ]
 
-    report = sync_store(root, datasets=CHMI_SOURCES)
+    report = sync_store(root, datasets=CHMU_SOURCES)
 
     assert [item.status for item in report.items] == ["new"] * 5
     for item, case in zip(
@@ -451,20 +451,20 @@ def test_chmi_sources_check_lists_by_head_and_now_by_the_listing(root, server):
         ),
         strict=True,
     ):
-        expected = (FIXTURES / "archives" / CHMI[case]["archive"]).read_bytes()
+        expected = (FIXTURES / "archives" / CHMU[case]["archive"]).read_bytes()
         assert item.version.read_bytes() == expected  # stored verbatim
-    assert [item.status for item in check_store(root, datasets=CHMI_SOURCES).items] == [
+    assert [item.status for item in check_store(root, datasets=CHMU_SOURCES).items] == [
         "current",
         "current",
         "unverifiable",
         "unverifiable",
         "current",
     ]
-    again = sync_store(root, datasets=CHMI_SOURCES)
+    again = sync_store(root, datasets=CHMU_SOURCES)
     assert [item.status for item in again.items] == ["unchanged"] * 5
 
     # A newer daily file in the listing is missing although the older one is stored.
-    newer = CHMI["meteo_now_listing"]
+    newer = CHMU["meteo_now_listing"]
     body = (FIXTURES / newer["listing"]).read_text(encoding="utf-8")
     added = body.replace(
         "</pre>",
@@ -472,21 +472,21 @@ def test_chmi_sources_check_lists_by_head_and_now_by_the_listing(root, server):
         "                                19-Oct-2026 00:01                 582\n</pre>",
     )
     server.get(METEO_NOW_LISTING).respond(200, headers=newer["headers"], text=added)
-    (item,) = check_store(root, datasets=["cz.chmi.meteo_now"]).items
+    (item,) = check_store(root, datasets=["cz.chmu.meteo_now"]).items
     assert (item.archive.server_path, item.status) == (
         "meteorology/climate/now/metadata/meta1-20261019.json",
         "missing",
     )
 
 
-def test_an_unreadable_chmi_now_listing_fails_without_an_item(root, server):
+def test_an_unreadable_chmu_now_listing_fails_without_an_item(root, server):
     server.get(METEO_NOW_LISTING).respond(503)
 
-    plan = check_store(root, datasets=["cz.chmi.meteo_now"])
+    plan = check_store(root, datasets=["cz.chmu.meteo_now"])
 
     assert plan.items == ()
     assert [action.status for action in plan.actions] == ["check_failed"]
-    report = sync_store(root, datasets=["cz.chmi.meteo_now"])
+    report = sync_store(root, datasets=["cz.chmu.meteo_now"])
     assert [(item.slot, item.status, item.error_code) for item in report.items] == [
         (None, "failed", "source_unavailable")
     ]
@@ -502,8 +502,8 @@ def test_an_unreadable_chmi_now_listing_fails_without_an_item(root, server):
     "datasets",
     [
         ["pl.imgw.hydro_now", "pl.imgw.hydro_daily"],
-        ["cz.chmi.hydro_daily", "cz.chmi.meteo_now"],
-        ["pl.imgw.meteo_stations", "cz.chmi.meteo_daily"],
+        ["cz.chmu.hydro_daily", "cz.chmu.meteo_now"],
+        ["pl.imgw.meteo_stations", "cz.chmu.meteo_daily"],
     ],
 )
 def test_station_sources_are_not_mixed_with_measurement_datasets(
@@ -526,7 +526,7 @@ def test_station_sources_are_not_mixed_with_measurement_datasets(
     ("option", "value"),
     [("years", [2024]), ("months", [1]), ("stations", ["0-203-1-900001"])],
 )
-@pytest.mark.parametrize("source", ["pl.imgw.hydro_stations", "cz.chmi.hydro_now"])
+@pytest.mark.parametrize("source", ["pl.imgw.hydro_stations", "cz.chmu.hydro_now"])
 def test_selectors_of_files_are_refused_with_station_sources(
     root, server, option, value, source
 ):
@@ -538,7 +538,7 @@ def test_selectors_of_files_are_refused_with_station_sources(
     assert not server.calls
 
 
-@pytest.mark.parametrize("source", ["pl.imgw.meteo_now", "cz.chmi.hydro_stations"])
+@pytest.mark.parametrize("source", ["pl.imgw.meteo_now", "cz.chmu.hydro_stations"])
 def test_plain_mode_refuses_station_sources(tmp_path, server, source):
     with pytest.raises(ObserwatorValidationError) as error:
         sync_store(output_dir=tmp_path / "out", datasets=[source])
@@ -556,13 +556,13 @@ def test_plain_mode_refuses_station_sources(tmp_path, server, source):
 def test_an_archived_now_version_holds_no_measurement(root, server):
     hydro, meteo = hydro_answer(), meteo_answer()
     serve_imgw(server, hydro=hydro, meteo=meteo)
-    serve_chmi(server, "hydro_now_get", "hydro_meta3_get", "meteo_now_listing")
-    serve_chmi(server, "meteo_now_get")
+    serve_chmu(server, "hydro_now_get", "hydro_meta3_get", "meteo_now_listing")
+    serve_chmu(server, "meteo_now_get")
 
     imgw = sync_store(root, datasets=["pl.imgw.hydro_now", "pl.imgw.meteo_now"])
-    chmi = sync_store(root, datasets=["cz.chmi.hydro_now", "cz.chmi.meteo_now"])
+    chmu = sync_store(root, datasets=["cz.chmu.hydro_now", "cz.chmu.meteo_now"])
 
-    assert [item.status for item in (*imgw.items, *chmi.items)] == ["new"] * 5
+    assert [item.status for item in (*imgw.items, *chmu.items)] == ["new"] * 5
     answers = {
         "pl.imgw.hydro_now": (hydro, HYDRO_KEPT, HYDRO_MEASUREMENTS),
         "pl.imgw.meteo_now": (meteo, METEO_KEPT, METEO_MEASUREMENTS),
@@ -588,7 +588,7 @@ def test_an_archived_now_version_holds_no_measurement(root, server):
         ]
         assert entry.meta.extra["kept_fields"] == list(kept)
 
-    stored = now_versions(root, "cz.chmi.")
+    stored = now_versions(root, "cz.chmu.")
     assert sorted(entry.version.name for entry in stored) == [
         "meta1-20261018.json",
         "meta1.json",
@@ -596,9 +596,9 @@ def test_an_archived_now_version_holds_no_measurement(root, server):
     ]
     for entry in stored:
         document = json.loads(entry.version.read_bytes())
-        assert not set(document) & CHMI_MEASUREMENTS
+        assert not set(document) & CHMU_MEASUREMENTS
         columns = document["data"]["data"]["header"].split(",")
-        assert not set(columns) & CHMI_MEASUREMENTS
+        assert not set(columns) & CHMU_MEASUREMENTS
         assert "kept_fields" not in entry.meta.extra  # station metadata, verbatim
 
 

@@ -30,7 +30,7 @@ class ContentForm:
     Attributes
     ----------
     id : str
-        Identifier written as ``content_form``, e.g. ``"chmi-json/1"``.
+        Identifier written as ``content_form``, e.g. ``"chmu-json/1"``.
     method : {"json-jcs"}
         Canonicalization: a JSON document without the volatile fields,
         serialized by RFC 8785 (JCS).
@@ -46,8 +46,8 @@ class ContentForm:
 
 CONTENT_FORMS: Mapping[str, ContentForm] = MappingProxyType(
     {
-        "chmi-json/1": ContentForm(
-            "chmi-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
+        "chmu-json/1": ContentForm(
+            "chmu-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
         ),
     }
 )
@@ -72,7 +72,7 @@ def content_sha256(data: bytes, /, *, form: str) -> str:
     data : bytes
         Archive bytes exactly as downloaded.
     form : str
-        Identifier of a form in `CONTENT_FORMS`, e.g. ``"chmi-json/1"``.
+        Identifier of a form in `CONTENT_FORMS`, e.g. ``"chmu-json/1"``.
 
     Returns
     -------

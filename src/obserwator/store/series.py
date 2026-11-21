@@ -660,7 +660,7 @@ def check_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions the build reads; only read.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
+        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
         dataset.
     stations : iterable of str or None, optional
         The stations of a subset, as in :func:`build_series`.
@@ -1303,7 +1303,7 @@ def build_series(
     parsed records, not by the dataset. An unreadable input or conflicting
     values fail the whole build; an incomplete snapshot is never published.
 
-    Datasets of per-station files (``cz.chmi.*``, ADR-003 D10) also record the
+    Datasets of per-station files (``cz.chmu.*``, ADR-003 D10) also record the
     known periods of every station in ``stations[<code>].periods``: the
     calendar years of its station-year files, or the first to last row of
     each station-element file, merged. Gaps are counted only on those days, so
@@ -1339,7 +1339,7 @@ def build_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions are read; never written.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
+        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
         dataset.
     stations : iterable of str or None, optional
         Build only these stations (codes of the dataset's provider; duplicates

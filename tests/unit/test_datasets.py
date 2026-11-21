@@ -130,13 +130,13 @@ _REGISTRY = [
     ("pl.imgw.actinometric", "meteo", False, "term", "calendar", 1990, None),
 ]
 # ČHMÚ datasets after the IMGW-PIB ones (spec 2026-10-18 §2.2).
-_CHMI_KEYS = [
-    "cz.chmi.hydro_daily",
-    "cz.chmi.meteo_daily",
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+_CHMU_KEYS = [
+    "cz.chmu.hydro_daily",
+    "cz.chmu.meteo_daily",
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 ]
 
 
@@ -167,10 +167,10 @@ def test_datasets_kind_filter():
     meteo = datasets(kind="meteo")
     assert [d.key for d in meteo] == [
         row[0] for row in _REGISTRY if row[1] == "meteo"
-    ] + ["cz.chmi.meteo_daily", "cz.chmi.meteo_stations", "cz.chmi.meteo_now"]
+    ] + ["cz.chmu.meteo_daily", "cz.chmu.meteo_stations", "cz.chmu.meteo_now"]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
-    ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
+    ] + ["cz.chmu.hydro_daily", "cz.chmu.hydro_stations", "cz.chmu.hydro_now"]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
@@ -189,7 +189,7 @@ def test_get_dataset_unknown_lists_allowed_keys():
     with pytest.raises(ObserwatorValidationError) as exc:
         get_dataset("hydro/tygodniowe")
     assert exc.value.code == "validation_error"
-    assert exc.value.details["allowed"] == [row[0] for row in _REGISTRY] + _CHMI_KEYS
+    assert exc.value.details["allowed"] == [row[0] for row in _REGISTRY] + _CHMU_KEYS
 
 
 def test_every_dataset_key_follows_the_key_convention():

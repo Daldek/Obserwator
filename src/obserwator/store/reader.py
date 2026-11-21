@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
 from obserwator._parsing import normalize_archive
-from obserwator._parsing.chmi import iter_stations
+from obserwator._parsing.chmu import iter_stations
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -1601,10 +1601,10 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         dataset server directory>`` (e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``),
         ``series:<key>``, ``catalog:<catalog key>`` (``catalog:pl.imgw.stations``,
-        ``catalog:cz.chmi.stations``),
+        ``catalog:cz.chmu.stations``),
         ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>`` or
         ``analyses:<provider key prefix>.analyses``
-        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmi.analyses``). Station
+        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmu.analyses``). Station
         selectors of series slots (``series:<key>:<station_code>``) are
         rejected.
 
@@ -2039,11 +2039,11 @@ def read_station_list(
 
     Reads the current version of the provider's list dataset
     (``pl.imgw.hydro_stations``/``pl.imgw.meteo_stations`` for IMGW-PIB,
-    ``cz.chmi.hydro_stations``/``cz.chmi.meteo_stations`` — the historical
+    ``cz.chmu.hydro_stations``/``cz.chmu.meteo_stations`` — the historical
     ``meta1.json`` — for ČHMÚ), verifies its bytes against the SHA-256 and
     size of the sidecar and parses it with
     :func:`obserwator.parsers.parse_stations_csv` or
-    :func:`obserwator.parsers.parse_chmi_stations`. Lists are stored in the
+    :func:`obserwator.parsers.parse_chmu_stations`. Lists are stored in the
     raw root by ``obserwator store sync --datasets`` (ADR-015, ADR-017).
 
     Parameters
@@ -2110,7 +2110,7 @@ def read_station_list(
             )
         )
     data = _verified(entry.version)
-    if get_dataset(source.dataset).parser == "parse_chmi_stations":
+    if get_dataset(source.dataset).parser == "parse_chmu_stations":
         return tuple(iter_stations(data, kind=kind, filename=str(entry.version)))
     return tuple(parse_stations_csv(data, kind=kind))
 
