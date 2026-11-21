@@ -19,7 +19,6 @@ from obserwator import (
     export_series,
     export_stations,
     get_dataset,
-    get_provider,
     init_store,
     read_catalog,
     run_command,
@@ -37,15 +36,10 @@ from tests.unit.test_store_catalog import DETAILS_PROPERTIES, sync_details, sync
 SCHEMAS = Path(__file__).parents[2] / "schemas"
 GOLDEN = Path(__file__).parents[1] / "fixtures" / "export_golden"
 ARCHIVES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
-ATTRIBUTION_COLUMNS = (
-    "attribution_source",
-    "attribution_processed",
-    "attribution",
-    "terms_notice",
-)
+ATTRIBUTION_COLUMNS = ("attribution", "terms_notice")
 DAILY, RABA = "pl.imgw.hydro_daily", "149190310"
-# Golden CSV of each shape of a series, saved with the CSV export of develop 9aefb23:
-# (store, dataset, station, options).
+# Golden CSV of each shape of a series, saved with the CSV export of develop 9aefb23,
+# its formula columns removed by ADR-028: (store, dataset, station, options).
 SERIES = {
     "hydro_daily": ("pl_cz", DAILY, RABA, {}),
     "meteo_precip_daily": ("pl_cz", "pl.imgw.meteo_precip_daily", "123750000", {}),
@@ -370,7 +364,7 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
     rows = table(export_stations(fixture_root, format="csv"))
 
     assert list(rows[0])[:4] == ["station_code", "name", "kind", "provider"]
-    assert list(rows[0])[-7:] == [
+    assert list(rows[0])[-5:] == [
         "latitude",
         "longitude",
         "datasets",
@@ -397,13 +391,7 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
         ("CHMU", ("chmu", "cuzk")),
     ):
         block = [row for row in rows if row["provider"] == provider]
-        owner = get_provider(provider)
         assert trailing_lines(block) == attribution(*origins)
-        assert (block[0]["attribution_source"], block[0]["attribution_processed"]) == (
-            owner.license.attribution,
-            owner.processed_attribution,
-        )
-        assert not any(row["attribution_source"] for row in block[1:])
 
 
 def test_kind_provider_and_series_narrow_what_is_read(fixture_root):

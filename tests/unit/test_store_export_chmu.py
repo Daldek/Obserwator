@@ -77,8 +77,6 @@ def test_meteo_series_export_has_quality_columns_and_the_chmu_attribution(root, 
                 f"{name}_source_flag",
             )
         ),
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
@@ -86,8 +84,6 @@ def test_meteo_series_export_has_quality_columns_and_the_chmu_attribution(root, 
         ("license_terms", TERMS)
     ]
     by_day = {row[0]: row for row in rows}
-    assert rows[0][-4:-2] == [SOURCE, PROCESSED]
-    assert all(row[-4:-2] == ["", ""] for row in rows[1:])
     # CC BY 4.0 data: C and CP, no IMGW-PIB terms notice (ADR-012 D4).
     assert lines_of(header, rows) == attribution("chmu")
     assert rows[0][:6] == ["2023-10-20", "2023", "0.0", "no_phenomenon", "0", ""]
@@ -141,8 +137,6 @@ def test_hydro_series_export_has_no_quality_columns_in_both_year_types(root, dat
         "H_flag",
         "Q [m3/s]",
         "Q_flag",
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
@@ -154,7 +148,6 @@ def test_hydro_series_export_has_no_quality_columns_in_both_year_types(root, dat
         ["2023-10-31", "2023"],
         ["2023-11-01", "2024"],
     ]
-    assert calendar[0][-4:-2] == [SOURCE, PROCESSED]
     assert lines_of(header, calendar) == attribution("chmu")
     assert all(
         measurement.quality is None and measurement.source_flag is None

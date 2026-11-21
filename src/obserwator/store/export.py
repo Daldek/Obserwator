@@ -84,13 +84,10 @@ _YEAR_TYPES = ("hydrological", "calendar")
 _KINDS = ("hydro", "meteo")
 _PROGRESS_ROWS = 256
 _CANCELLED = message("export.cancelled")
-# The trailing columns of the CSV of a series or of the stations (ADR-001 Q10, ADR-012).
-_ATTRIBUTION_COLUMNS = (
-    "attribution_source",
-    "attribution_processed",
-    "attribution",
-    "terms_notice",
-)
+# The trailing columns of the CSV of a series or of the stations: the lines of
+# `obserwator.attribution` (ADR-012, Nogat DEV-20.5; ADR-028 dropped the formula
+# columns ``attribution_source`` and ``attribution_processed`` of ADR-001 Q10).
+_ATTRIBUTION_COLUMNS = ("attribution", "terms_notice")
 # Leading columns of the stations CSV; the other catalog properties follow sorted.
 _STATION_COLUMNS = ("station_code", "name", "kind")
 
@@ -888,17 +885,14 @@ def export_series(
     written. The three formats hold the same columns (ADR-014).
 
     The CSV (UTF-8 without BOM, comma, dot decimal, CRLF rows) has a single
-    header row ``date,year,<V> [<unit>],<V>_flag,…,attribution_source,
-    attribution_processed,attribution,terms_notice``; ČHMÚ meteo series add
-    ``<V>_quality`` and ``<V>_source_flag`` after the flag of every variable,
-    half-year series add ``period`` and ``<V>_start`` / ``<V>_end`` extremum
-    dates with ``<V>_occurrences`` (number of merged IMGW rows). The source
-    attribution and the processed-data attribution of the dataset's provider
-    appear only in the first data row (ADR-001 Q10); the columns
-    ``attribution`` and ``terms_notice`` hold the lines of `obserwator.attribution`
-    (ADR-012), one line per cell from the first data row down, the rest
-    joined with a line feed into the last row of a shorter series. Missing
-    values are empty cells flagged ``missing``.
+    header row ``date,year,<V> [<unit>],<V>_flag,…,attribution,terms_notice``;
+    ČHMÚ meteo series add ``<V>_quality`` and ``<V>_source_flag`` after the
+    flag of every variable, half-year series add ``period`` and ``<V>_start`` /
+    ``<V>_end`` extremum dates with ``<V>_occurrences`` (number of merged IMGW
+    rows). The columns ``attribution`` and ``terms_notice`` hold the lines of
+    `obserwator.attribution` (ADR-012, ADR-028), one line per cell from the
+    first data row down, the rest joined with a line feed into the last row
+    of a shorter series. Missing values are empty cells flagged ``missing``.
 
     JSON is one ``obserwator-series-export/1`` document (UTF-8, LF lines):
     ``schema``, ``dataset``, ``provider``, ``station``, ``series_version`` (the
@@ -1073,17 +1067,7 @@ def export_series(
             cancel=cancel,
             done=done,
         )
-    formulas = (
-        descriptor.license.attribution,
-        get_provider(descriptor.provider).processed_attribution,
-    )
-    rows = (
-        [
-            *(column.cell(record) for column in columns),
-            *(formulas if number == 0 else ("", "")),
-        ]
-        for number, record in enumerate(records)
-    )
+    rows = ([column.cell(record) for column in columns] for record in records)
     return _deliver(
         _Lines(
             (
@@ -1187,24 +1171,15 @@ def _station_csv(
     """
     Write a station's CSV for Hydrolog with the attribution columns of `export_series`.
 
-    ``header`` and ``rows`` are the data columns; the source and processed-data
-    attribution of the dataset's provider go to the first row (ADR-001 Q10), its
-    lines to ``attribution`` and ``terms_notice`` (ADR-012).
+    ``header`` and ``rows`` are the data columns; the lines of the dataset go to
+    ``attribution`` and ``terms_notice`` (ADR-012).
     """
-    formulas = (
-        descriptor.license.attribution,
-        get_provider(descriptor.provider).processed_attribution,
-    )
-    cells = (
-        [*row, *(formulas if number == 0 else ("", ""))]
-        for number, row in enumerate(rows)
-    )
     target = _target(output, force=False)
     assert target is not None
     report = _deliver(
         _Lines(
             (_csv_line([*header, *_ATTRIBUTION_COLUMNS]),),
-            _csv_lines(_with_lines(cells, _lines(descriptor))),
+            _csv_lines(_with_lines(rows, _lines(descriptor))),
             total=None,
             label=message("export.station_progress", station=station),
             on_progress=None,
@@ -1652,8 +1627,7 @@ def _stations_csv(
     properties sorted by name, ``latitude``, ``longitude``, with series
     ``datasets`` (the keys of the series holding the station, joined with
     ``;``) and the attribution columns of the series CSV. Each provider's rows
-    form a block that starts with its lines: the formulas in its first row and
-    the lines of DEV-20.5 from its first row down.
+    form a block that carries its lines from its first row down (DEV-20.5).
     """
     names = dict.fromkeys(
         key
@@ -1674,8 +1648,7 @@ def _stations_csv(
 
     def rows(catalog: _Catalog) -> Iterator[list[str]]:
         owner = catalog.owner
-        formulas = (owner.license.attribution, owner.processed_attribution)
-        for number, station in enumerate(catalog.stations):
+        for station in catalog.stations:
             longitude, latitude = station.geometry or (None, None)
             cells = [
                 *(_property(station.properties.get(key)) for key in _STATION_COLUMNS),
@@ -1686,7 +1659,7 @@ def _stations_csv(
             ]
             if held is not None:
                 cells.append(";".join(held.get(station.station_code, {})))
-            yield [*cells, *(formulas if number == 0 else ("", ""))]
+            yield cells
 
     lines = (
         line
@@ -1776,9 +1749,8 @@ def export_stations(
     by name (an object such as the ČHMÚ ``thresholds`` as JSON, booleans
     ``true``/``false``), ``latitude,longitude`` (empty without a location),
     with ``series`` ``datasets`` (keys joined with ``;``), then the columns
-    ``attribution_source,attribution_processed,attribution,terms_notice`` of
-    `export_series`. The rows of each provider form a block that starts
-    with the provider's formulas and lines.
+    ``attribution,terms_notice`` of `export_series`. The rows of each
+    provider form a block that starts with the provider's lines.
 
     Parameters
     ----------

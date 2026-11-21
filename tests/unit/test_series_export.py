@@ -39,13 +39,8 @@ MONTHLY = "pl.imgw.hydro_monthly"
 STATION = "149190310"
 METEO_STATION = "123750000"
 SOURCE, PROCESSED = attribution("imgw").attribution
-# The trailing columns of every series CSV (ADR-001 Q10, ADR-012 D4).
-ATTRIBUTION_COLUMNS = [
-    "attribution_source",
-    "attribution_processed",
-    "attribution",
-    "terms_notice",
-]
+# The trailing columns of every series CSV (ADR-012 D4, ADR-028).
+ATTRIBUTION_COLUMNS = ["attribution", "terms_notice"]
 
 
 def zipped(name, lines):
@@ -127,7 +122,7 @@ def meteo(root):
     return store(root, METEO, [2001], [1, 10, 11], content=content)
 
 
-def test_csv_has_units_header_formulas_once_and_every_day(hydro_year, tmp_path):
+def test_csv_has_units_header_the_lines_and_every_day(hydro_year, tmp_path):
     progress, notices = [], []
     report = export_series(
         hydro_year,
@@ -159,14 +154,6 @@ def test_csv_has_units_header_formulas_once_and_every_day(hydro_year, tmp_path):
         date.fromordinal(date(2023, 11, 1).toordinal() + offset).isoformat()
         for offset in range(366)
     ]
-    assert (data[0]["attribution_source"], data[0]["attribution_processed"]) == (
-        SOURCE,
-        PROCESSED,
-    )
-    assert all(
-        row["attribution_source"] == row["attribution_processed"] == ""
-        for row in data[1:]
-    )
     assert trailing_lines(data) == attribution("imgw")
     assert (
         data[0]["H [cm]"],
@@ -498,8 +485,8 @@ def test_start_and_end_are_inclusive_and_attribution_moves_to_the_first_row(
     )
     data = list(csv.DictReader(io.StringIO("".join(lines))))
     assert [row["date"] for row in data] == ["2023-11-02", "2023-11-03", "2023-11-04"]
-    assert (data[0]["H_flag"], data[0]["attribution_source"]) == ("missing", SOURCE)
-    assert data[1]["attribution_source"] == data[1]["attribution_processed"] == ""
+    assert (data[0]["H_flag"], data[0]["attribution"]) == ("missing", SOURCE)
+    assert data[1]["attribution"] == PROCESSED
 
 
 @pytest.mark.parametrize(

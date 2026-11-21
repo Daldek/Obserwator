@@ -54,9 +54,7 @@ from tests.contract.support import (
     DAILY,
     FAKE_HYDROLOG,
     PRECIP,
-    PROCESSED,
     RABA,
-    SOURCE,
     command_document,
     command_line,
     load,
@@ -712,8 +710,7 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     assert all(row.endswith("\r\n") for row in rows)
     assert rows[0] == (
         "station,analysis,command,series_version,hydrolog_version,formula_versions,"
-        "path,value,derived,attribution_source,attribution_processed,attribution,"
-        "terms_notice\r\n"
+        "path,value,derived,attribution,terms_notice\r\n"
     )
     table = list(csv.DictReader(io.StringIO(text, newline="")))
     keys = {name: answer_key(vars(summaries[name])) for name in chosen}
@@ -746,9 +743,6 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
         for name in chosen
         if keys[name] not in FAILING
     }
-    assert [
-        (row["attribution_source"], row["attribution_processed"]) for row in table
-    ] == [(SOURCE, PROCESSED), *[("", "")] * (len(table) - 1)]
     assert trailing_lines(table) == attribution("imgw")
 
 

@@ -937,10 +937,8 @@ def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
             else:
                 assert float(row[f"{name} [{unit}]"]) == value
                 assert row[f"{name}_flag"] == "value"
-    assert (rows[0]["attribution_source"], rows[0]["attribution_processed"]) == (
-        SOURCE,
-        PROCESSED,
-    )
+    # C and CP head the column attribution (ADR-028: no formula columns).
+    assert [row["attribution"] for row in rows[:2]] == [SOURCE, PROCESSED]
 
     meteo = meteo_by_hand(pl_cz.raw, FULL)
     exported = list(
@@ -1660,12 +1658,5 @@ def test_imgw_19_k3_every_chmu_sidecar_and_export_names_cc_by_and_chmu(pl_cz):
                     )
                 )
             )
-            assert (
-                rows[0]["attribution_source"],
-                rows[0]["attribution_processed"],
-            ) == (
-                SOURCE,
-                PROCESSED,
-            )
-            assert {row["attribution_source"] for row in rows[1:]} <= {""}
+            assert [row["attribution"] for row in rows[:2]] == [SOURCE, PROCESSED]
             assert [notice.code for notice in notices] == ["license_terms"]

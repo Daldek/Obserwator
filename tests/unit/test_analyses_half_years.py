@@ -309,12 +309,6 @@ def test_the_file_of_a_chmu_station_is_imgw_pibs_export_of_its_daily_values(
     exported = "".join(export_series(entry.version, station=CHMU_HYDRO))
     daily = list(csv.DictReader(io.StringIO(exported, newline="")))
     # ČHMÚ's lines, as the export of the daily series has them
-    assert [
-        (row["attribution_source"], row["attribution_processed"]) for row in table
-    ] == [
-        (daily[0]["attribution_source"], daily[0]["attribution_processed"]),
-        *[("", "")] * (len(table) - 1),
-    ]
     assert trailing_lines(table) == trailing_lines(daily) == attribution("chmu")
     # Each half-year from the daily values: only one with a value every day
     values = {
@@ -441,8 +435,6 @@ def test_reading_and_exporting_say_which_half_years_were_computed(built):
     head = text.splitlines()[0].split(",")
     assert head[head.index("value") + 1 :] == [
         "derived",
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
