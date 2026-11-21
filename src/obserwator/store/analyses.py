@@ -15,9 +15,12 @@ line verbatim, one slot per provider::
 A station whose inputs (the SHA-256 of its station Parquet in each dataset, the
 catalog thresholds used, Hydrolog's version and the digest of the registry)
 equal its record in the current version is carried forward by hard links,
-without a Hydrolog call. `list_analyses`, `read_analysis` and `export_analyses`
-read a version; `compute_analysis` computes one analysis with a person's options
-on the fly and keeps nothing.
+without a Hydrolog call; Hydrolog's version is compared as a string, so every
+development build Hydrolog numbers anew (``0.9.0.dev3`` → ``0.9.0.dev4``)
+computes every station again. Each stored result keeps the ``formula_versions``
+of Hydrolog's envelope (Nogat CMP-2.8). `list_analyses`, `read_analysis` and
+`export_analyses` read a version; `compute_analysis` computes one analysis with
+a person's options on the fly and keeps nothing.
 """
 
 from __future__ import annotations
@@ -146,6 +149,7 @@ _CSV_HEADER = (
     "command",
     "series_version",
     "hydrolog_version",
+    "formula_versions",
     "path",
     "value",
     "attribution_source",
@@ -212,6 +216,12 @@ class AnalysisSummary:
         results gave its options).
     hydrolog : Mapping of str to str
         ``{"version": …}`` of the Hydrolog that computed it.
+    formula_versions : Mapping of str to int
+        The ``formula_version`` of each formula with a spec that gave the
+        result, by the spec's name (Hydrolog's envelope, Nogat CMP-2.8); empty
+        for a failed analysis and a Hydrolog before 0.9.0. A record stored
+        before Obserwator 3.1.0 has none, so `list_analyses` gives none for it
+        while `read_analysis` reads them from Hydrolog's stored envelope.
     computed_at : datetime
         When Hydrolog computed it (UTC).
     stored : bool
@@ -240,6 +250,7 @@ class AnalysisSummary:
     options: Mapping[str, Any]
     inputs: tuple[AnalysisSource, ...]
     hydrolog: Mapping[str, str]
+    formula_versions: Mapping[str, int]
     computed_at: datetime
     stored: bool
     status: Literal["ok", "failed"]
@@ -271,6 +282,7 @@ class AnalysisResult:
     options: Mapping[str, Any]
     inputs: tuple[AnalysisSource, ...]
     hydrolog: Mapping[str, str]
+    formula_versions: Mapping[str, int]
     computed_at: datetime
     stored: bool
     status: Literal["ok", "failed"]
@@ -551,6 +563,19 @@ def _is_number(value: object) -> bool:
     )
 
 
+def _formula_versions(document: Mapping[str, Any]) -> dict[str, int]:
+    """
+    The ``formula_versions`` of Hydrolog's envelope by spec name, sorted (CMP-2.8).
+
+    Empty for an error document and for an envelope without them (a Hydrolog
+    before 0.9.0, or no formula with a spec gave the result).
+    """
+    found = (
+        document.get("formula_versions") if document.get("schema") == _RESULT else None
+    )
+    return dict(sorted(found.items())) if isinstance(found, Mapping) else {}
+
+
 def _holdings(index: SeriesIndex, code: str) -> frozenset[str]:
     """The variables of the station with a value in a series (half-years without ``@``)."""
     return frozenset(
@@ -676,6 +701,10 @@ class _Outcome:
     def error_code(self) -> str | None:
         code = self.document.get("code")
         return None if self.ok or not isinstance(code, str) else code
+
+    @property
+    def formula_versions(self) -> dict[str, int]:
+        return _formula_versions(self.document)
 
     def lines(self) -> Attribution:
         """
@@ -1105,6 +1134,7 @@ def _summary(
             if item["dataset"] in entry["datasets"]
         ),
         record["hydrolog"],
+        dict(entry.get("formula_versions") or {}),
         datetime.fromisoformat(str(record["computed_at"])),
         True,
         entry["status"],
@@ -1262,6 +1292,7 @@ def _stage(
                 "datasets": list(outcome.datasets),
                 "status": "ok" if outcome.ok else "failed",
                 "error_code": outcome.error_code,
+                "formula_versions": outcome.formula_versions,
                 "file": relative,
                 "sha256": _write(staging / relative, outcome.line),
             }
@@ -1796,6 +1827,7 @@ def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisRe
         summary.options,
         summary.inputs,
         summary.hydrolog,
+        summary.formula_versions or _formula_versions(document),
         summary.computed_at,
         summary.stored,
         summary.status,
@@ -1960,12 +1992,14 @@ def export_analyses(
     ``series_versions`` (dataset, version directory, SHA-256),
     ``hydrolog_version`` and ``results``, each with ``analysis``,
     ``command``, ``options``, ``status``, ``computed_at``, ``series_versions``,
-    Hydrolog's ``result`` and ``notices`` (or its ``error`` document),
-    ``attribution`` and ``terms_notice``; then the station's ``attribution``
-    and ``terms_notice``. ``csv`` (UTF-8, comma, CRLF) is long: one row per
+    ``formula_versions`` (`AnalysisSummary`), Hydrolog's ``result`` and
+    ``notices`` (or its ``error`` document), ``attribution`` and
+    ``terms_notice``; then the station's ``attribution`` and
+    ``terms_notice``. ``csv`` (UTF-8, comma, CRLF) is long: one row per
     scalar leaf of Hydrolog's ``result`` of every ``ok`` analysis,
-    ``station,analysis,command,series_version,hydrolog_version,path,value``
-    with ``path`` a JSON Pointer (RFC 6901) into ``result``, followed by the
+    ``station,analysis,command,series_version,hydrolog_version,formula_versions,path,value``
+    with ``formula_versions`` as ``name=version`` pairs joined by ``;`` and
+    ``path`` a JSON Pointer (RFC 6901) into ``result``, followed by the
     attribution columns of ``series export`` (``attribution_source`` and
     ``attribution_processed`` in the first row, ``attribution`` and
     ``terms_notice`` one line per row from the first).
@@ -2043,6 +2077,7 @@ def export_analyses(
                     "status": entry["status"],
                     "computed_at": record["computed_at"],
                     "series_versions": _series_versions(record, entry),
+                    "formula_versions": _formula_versions(document),
                     "result": document.get("result") if ok else None,
                     "notices": document.get("notices", []) if ok else [],
                     "error": None if ok else document,
@@ -2085,6 +2120,10 @@ def export_analyses(
                 if document.get("schema") != _RESULT:
                     continue
                 series = ";".join(_series_versions(record, entry))
+                formulas_of = ";".join(
+                    f"{name}={number}"
+                    for name, number in _formula_versions(document).items()
+                )
                 for path, value in _leaves(document.get("result")):
                     yield [
                         code,
@@ -2092,6 +2131,7 @@ def export_analyses(
                         str(entry["command"]),
                         series,
                         hydrolog_version,
+                        formulas_of,
                         path,
                         _cell(value),
                         *(formulas if number == 0 else ("", "")),
@@ -2331,6 +2371,7 @@ def compute_analysis(
         dict(outcome.options),
         tuple(AnalysisSource(**sources[key]) for key in outcome.datasets),
         {"version": version},
+        outcome.formula_versions,
         computed[0].computed_at,
         False,
         "ok" if outcome.ok else "failed",

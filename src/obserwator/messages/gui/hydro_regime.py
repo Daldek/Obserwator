@@ -482,11 +482,12 @@ MESSAGES: dict[str, Text] = {
         "where: xᵢ – annual value of year i, β – Sen's slope [unit per year; shown per "
         "10 years], V – runoff volume [m³], Q – daily discharge [m³/s], Qb – baseflow "
         "[m³/s]\n\n"
-        "A trend is increasing or decreasing when p < α = 0.05, otherwise “none”. A "
-        "BFI near 1 means that nearly all of the runoff is baseflow.\n\n"
+        "A trend is increasing or decreasing when p < α = 0.05, otherwise “none”; below "
+        "10 years p is exact and Sen's interval is not given. A BFI near 1 means that "
+        "nearly all of the runoff is baseflow.\n\n"
         "Sources: Kendall 1975; Sen 1968; Gilbert 1987; Conover 1980; Lyne and Hollick "
-        "1979; Nathan and McMahon 1990; Ladson et al. 2013; Tallaksen 1995; daily data "
-        "of IMGW-PIB or ČHMÚ",
+        "1979; Nathan and McMahon 1990; Ladson et al. 2013; WMO-No. 1029 2009; daily "
+        "data of IMGW-PIB or ČHMÚ",
         "Test Manna–Kendalla sprawdza, czy roczne maksima, średnie i minima rosną albo "
         "maleją; nachylenie Sena podaje zmianę na 10 lat. Objętość odpływu roku i "
         "miesiąca sumuje przepływy dobowe, a filtr Lyne’a i Hollicka wydziela z "
@@ -497,11 +498,12 @@ MESSAGES: dict[str, Text] = {
         "gdzie: xᵢ – wartość roczna roku i, β – nachylenie Sena [jednostka na rok; na "
         "stronie na 10 lat], V – objętość odpływu [m³], Q – przepływ dobowy [m³/s], Qb "
         "– przepływ podziemny [m³/s]\n\n"
-        "Trend jest rosnący albo malejący, gdy p < α = 0,05, inaczej „brak”. BFI "
-        "bliski 1 oznacza, że prawie cały odpływ to przepływ podziemny.\n\n"
+        "Trend jest rosnący albo malejący, gdy p < α = 0,05, inaczej „brak”; poniżej "
+        "10 lat p jest dokładne, a przedziału Sena nie ma. BFI bliski 1 oznacza, że "
+        "prawie cały odpływ to przepływ podziemny.\n\n"
         "Źródła: Kendall 1975; Sen 1968; Gilbert 1987; Conover 1980; Lyne i Hollick "
-        "1979; Nathan i McMahon 1990; Ladson i in. 2013; Tallaksen 1995; dane dobowe "
-        "IMGW-PIB albo ČHMÚ",
+        "1979; Nathan i McMahon 1990; Ladson i in. 2013; WMO-No. 1029 2009; dane "
+        "dobowe IMGW-PIB albo ČHMÚ",
     ),
     "hydro.trends.annual_trends_title": Text("Annual trends", "Trendy roczne"),
     "hydro.trends.variable": Text("Variable", "Zmienna"),
@@ -585,5 +587,12 @@ MESSAGES: dict[str, Text] = {
         "variation, skewness and confidence interval are undefined.",
         "Miesiące {months} mają jedną wartość: ich odchylenie standardowe, współczynnik "
         "zmienności, skośność i przedział ufności są nieokreślone.",
+    ),
+    "sections.notice.single_year_month": Text(
+        "Months {months} hold values of a single year: the confidence interval of "
+        "their mean, built on the means of the month in separate years, is undefined.",
+        "Miesiące {months} mają wartości tylko z jednego roku: przedział ufności ich "
+        "średniej, liczony ze średnich miesiąca w kolejnych latach, jest "
+        "nieokreślony.",
     ),
 }

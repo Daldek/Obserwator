@@ -7,7 +7,7 @@
 // its slope and intercept evaluated at the ends of the chart.
 
 import { Chart, dayNumber, fmt, html, t, tn, useMemo } from "../../lib.js";
-import { Figures, Notices, Section, Seg, Table, YearRange, useAnalysis } from "../common.js";
+import { Figures, Notices, Section, Seg, Table, YearRange, pValueMethod, useAnalysis } from "../common.js";
 import { recordOf } from "./duration.js";
 import { DOY_TICKS, HYDRO_MONTHS, Option, Select, UNITS, VariableSeg, dailyDataset, digitsOf, doyLabel, fmtV, useOptions, useSeries } from "./util.js";
 
@@ -77,6 +77,7 @@ function TrendTable({ variable, states }) {
       s: result.s_statistic,
       z: result.z_score,
       p: result.p_value,
+      method: pValueMethod(result),
       trend: t(`hydro.trends.direction.${result.trend_direction}`),
       alpha: result.significance_level,
       slope: result.sen_slope,
@@ -91,11 +92,18 @@ function TrendTable({ variable, states }) {
     { key: "s", label: "S", format: (v) => fmt(v, 0) },
     { key: "z", label: "Z", format: (v) => fmt(v, 2) },
     { key: "p", label: "p", format: (v) => fmt(v, 3) },
+    { key: "method", label: t("sections.p_value_method"), format: (v) => v },
     { key: "trend", label: t("hydro.trends.col.trend", { alpha: fmt(rows[0].alpha, 2) }), format: (v) => v },
     {
       key: "slope",
       label: t("hydro.trends.col.sen", { unit: UNITS[variable] }),
-      format: (v, row) => (v === null || v === undefined ? "–" : `${fmtV(v * 10, variable)} (${fmtV(row.low * 10, variable)} … ${fmtV(row.high * 10, variable)})`),
+      // Sen's interval is null below 10 values (Hydrolog 0.9.0, Gilbert 1987, p. 218)
+      format: (v, row) =>
+        v === null || v === undefined
+          ? "–"
+          : row.low === null || row.low === undefined
+            ? fmtV(v * 10, variable)
+            : `${fmtV(v * 10, variable)} (${fmtV(row.low * 10, variable)} … ${fmtV(row.high * 10, variable)})`,
     },
   ];
   return html`<${Table} columns=${columns} rows=${rows} />`;

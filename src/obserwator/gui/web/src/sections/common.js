@@ -71,10 +71,81 @@ export function useAnalysis(code, id, overrides = {}) {
 /** The message of a failed analysis: Hydrolog's error document, else the API's error. */
 export function failure(state) {
   if (state.error) return state.error.message;
-  if (state.data && state.data.status === "failed" && state.data.error) {
-    return state.data.error.message || state.data.error.title || t("sections.failed");
-  }
+  if (state.data && state.data.status === "failed" && state.data.error) return refusal(state.data.error);
   return null;
+}
+
+/**
+ * How Hydrolog got the p-value of a Mann–Kendall test (`p_value_method` of Hydrolog
+ * 0.9.0: exact below 10 values, else the normal approximation), in words; "–" for a
+ * result without it.
+ *
+ * @param {object|null|undefined} result `hydrolog-stats-mann-kendall/1`
+ * @returns {string}
+ */
+export function pValueMethod(result) {
+  const method = result && result.p_value_method;
+  return method && has(`sections.p_value_method.${method}`) ? t(`sections.p_value_method.${method}`) : "–";
+}
+
+/** A number of Hydrolog's details as the page writes it: up to four significant digits. */
+function detailNumber(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return value === null || value === undefined ? "–" : String(value);
+  if (Number.isInteger(value)) return fmt(value, 0);
+  const size = Math.abs(value);
+  return fmt(value, size >= 100 ? 1 : size >= 1 ? 3 : 4).replace(/0+$/, "").replace(/[.,]$/, "");
+}
+
+/** A physical range of Hydrolog's details (`low`, `high`, inclusive or not) in brackets. */
+function rangeText(range) {
+  if (!range || typeof range !== "object") return "–";
+  const low = range.low === null || range.low === undefined ? "−∞" : detailNumber(range.low);
+  const high = range.high === null || range.high === undefined ? "∞" : detailNumber(range.high);
+  return `${range.low_inclusive ? "[" : "("}${low}; ${high}${range.high_inclusive ? "]" : ")"}`;
+}
+
+/** The distribution of a fit as the page names it. */
+function distributionName(name) {
+  return name === "log_normal" ? t("meteo.dist.log_normal") : { gev: "GEV", pearson3: "Pearson III", weibull: "Weibull" }[name] || name;
+}
+
+/**
+ * The condition of a formula Hydrolog names in a refusal (`details.constraint`) in the
+ * page's language where the catalog words it (`sections.constraint.<name>`), else in the
+ * words of Hydrolog's spec (`details.text`).
+ */
+function conditionText(details) {
+  const name = details.constraint;
+  if (typeof name === "string" && has(`sections.constraint.${name}`)) return t(`sections.constraint.${name}`);
+  return String(details.text || name || "–");
+}
+
+/**
+ * Hydrolog's error document of a failed analysis in the page's language: a refusal of a
+ * formula of Hydrolog 0.9.0 by its `details.reason` (`precondition_failed`,
+ * `outside_physical_range`, `invalid_type`), else Hydrolog's English message.
+ *
+ * @param {{message?: string, title?: string, details?: object}} error `hydrolog-error/1`
+ * @returns {string}
+ */
+export function refusal(error) {
+  const details = (error && error.details) || {};
+  const name = details.option || details.variable || details.formula || "–";
+  let text = null;
+  if (details.reason === "precondition_failed") {
+    text = t("sections.refusal.precondition_failed", { condition: conditionText(details) });
+  } else if (details.reason === "outside_physical_range") {
+    text = details.constraint
+      ? t("sections.refusal.outside_physical_constraint", { condition: conditionText(details) })
+      : t("sections.refusal.outside_physical_range", { name, value: detailNumber(details.value), range: rangeText(details.range) });
+  } else if (details.reason === "invalid_type") {
+    text = t("sections.refusal.invalid_type", { name });
+  }
+  if (text && details.distribution && details.fit_method) {
+    const method = has(`meteo.fit.${details.fit_method}`) ? t(`meteo.fit.${details.fit_method}`) : details.fit_method;
+    text = t("sections.refusal.fit", { distribution: distributionName(details.distribution), method, text });
+  }
+  return text || (error && (error.message || error.title)) || t("sections.failed");
 }
 
 /**
@@ -121,10 +192,10 @@ export function Section({ title, info, guide, states = [], failures = true, chil
 }
 
 /**
- * Who computed it: Hydrolog's command and version, the series version, and whether the
- * result was stored or computed on request. A series version is named by its label, as
- * „Dane” names it; the input's identifier (the version's directory in the data root) is
- * its tooltip.
+ * Who computed it: Hydrolog's command and version with the versions of its formulas
+ * (`formula_versions`, Nogat CMP-2.8), the series version, and whether the result was
+ * stored or computed on request. A series version is named by its label, as „Dane” names
+ * it; the input's identifier (the version's directory in the data root) is its tooltip.
  *
  * @param {{results: object[]}} props `obserwator-analysis/1` documents
  */
@@ -138,9 +209,15 @@ export function Provenance({ results }) {
     seen.add(key);
     const version = doc.hydrolog && doc.hydrolog.version;
     const when = doc.stored ? t("sections.stored", { when: fmtDateTime(doc.computed_at) }) : t("sections.on_request");
+    const formulas = Object.entries(doc.formula_versions || {});
     items.push(
       html`<span class="prov prov-hydrolog" title=${JSON.stringify(doc.options || {})}>Hydrolog ${version || ""} · <code>${doc.command}</code> · ${when}</span>`,
     );
+    if (formulas.length) {
+      items.push(
+        html`<span class="prov prov-formulas" title=${t("sections.formulas_title")}>${t("sections.formulas", { list: formulas.map(([name, number]) => `${name} ${number}`).join(", ") })}</span>`,
+      );
+    }
   }
   const versions = new Set();
   for (const doc of results) for (const input of (doc && doc.inputs) || []) versions.add(input.series_version);
@@ -239,9 +316,42 @@ export function Figures({ items }) {
 }
 
 /**
- * The notices of Hydrolog's results (e.g. `short_reference_period`), each once, in the
- * page's language where the catalog words the code (`sections.notice.<code>`, its
- * placeholders the notice's `details`), else in Hydrolog's English.
+ * The codes of Hydrolog's notices of a value outside a range of a formula, and the
+ * catalog's wording of each: `outside_typical_range` is the name of
+ * `outside_applicability` before Hydrolog 0.9.0, kept by stored analyses.
+ */
+const RANGE_NOTICES = {
+  outside_applicability: "outside_applicability",
+  outside_typical_range: "outside_applicability",
+  outside_unverified_range: "outside_unverified_range",
+};
+
+/**
+ * A notice of a value outside a range (`RANGE_NOTICES`) in the page's language: the
+ * two-sided range, one end of it (the other `null`), or the condition between inputs it
+ * breaks (`details.constraint`).
+ */
+function rangeNotice(notice) {
+  const d = notice.details || {};
+  const values = {
+    method: d.method ?? "–",
+    parameter: d.parameter ?? d.field ?? "–",
+    value: detailNumber(d.value),
+    minimum: detailNumber(d.minimum),
+    maximum: detailNumber(d.maximum),
+    condition: has(`sections.constraint.${d.constraint}`) ? t(`sections.constraint.${d.constraint}`) : d.condition || d.constraint || "",
+  };
+  const low = d.minimum !== null && d.minimum !== undefined;
+  const high = d.maximum !== null && d.maximum !== undefined;
+  const form = d.constraint ? "condition" : low && high ? "range" : low ? "below" : "above";
+  return t(`sections.notice.${RANGE_NOTICES[notice.code]}.${form}`, values);
+}
+
+/**
+ * The notices of Hydrolog's results (e.g. `short_reference_period`), each once (a range
+ * notice once per parameter), in the page's language where the catalog words the code
+ * (`sections.notice.<code>`, its placeholders the notice's `details`), else in Hydrolog's
+ * English.
  *
  * @param {{states: object[]}} props
  */
@@ -251,11 +361,14 @@ export function Notices({ states }) {
   for (const state of states) {
     const notices = (state.data && state.data.envelope && state.data.envelope.notices) || [];
     for (const notice of notices) {
-      if (seen.has(notice.code)) continue;
-      seen.add(notice.code);
+      const key = Object.hasOwn(RANGE_NOTICES, notice.code) ? `${notice.code} ${(notice.details || {}).parameter}` : notice.code;
+      if (seen.has(key)) continue;
+      seen.add(key);
       items.push(notice);
     }
   }
   if (!items.length) return null;
-  return html`<ul class="ana-notices">${items.map((n) => html`<li class=${`notice notice-${n.level}`}>${has(`sections.notice.${n.code}`) ? t(`sections.notice.${n.code}`, n.details || {}) : n.message}</li>`)}</ul>`;
+  const text = (n) =>
+    Object.hasOwn(RANGE_NOTICES, n.code) ? rangeNotice(n) : has(`sections.notice.${n.code}`) ? t(`sections.notice.${n.code}`, n.details || {}) : n.message;
+  return html`<ul class="ana-notices">${items.map((n) => html`<li class=${`notice notice-${n.level}`}>${text(n)}</li>`)}</ul>`;
 }

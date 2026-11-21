@@ -404,10 +404,13 @@ _EXTREMES: dict[str, Text] = {
     "hydro.extremes.col_parameters": Text("parameters", "parametry"),
     "hydro.extremes.fit_caption": Text(
         "* The KS p-value is approximate: the parameters were estimated from the "
-        "same sample (Hydrolog ranks by AIC). A² is compared with its 5 % critical "
-        "value.",
+        "same sample (Hydrolog ranks by AIC). A² is compared with the 5 % critical "
+        "value of its fit, which Hydrolog gives for L-moments only (a parametric "
+        "bootstrap); A² of another method has none.",
         "* p-value KS orientacyjne: parametry oszacowano z tej samej próby (Hydrolog "
-        "porządkuje wg AIC). A² porównano z wartością krytyczną 5 %.",
+        "porządkuje wg AIC). A² porównano z wartością krytyczną 5 % jego "
+        "dopasowania, którą Hydrolog podaje tylko dla L-momentów (bootstrap "
+        "parametryczny); A² innej metody jej nie ma.",
     ),
     "hydro.extremes.incomplete": Text(
         "Hydrolog left out the incomplete years: {years}.",

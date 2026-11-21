@@ -6,10 +6,66 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18.
+Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18 and the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3).
+
+### Added
+
+- **The versions of Hydrolog's formulas with every stored analysis (Nogat CMP-2.8, plan
+  `2026-11-18-computation-standard.md` step 6; ADR-016 erratum of 2026-11-21).** Hydrolog
+  0.9.0 names in `formula_versions` of its envelope the `formula_version` of every formula
+  with a spec that gave a result. Each result of a station's record
+  (`obserwator-station-analyses/1`) keeps them (`{}` for a failed analysis or a result
+  without them), `AnalysisSummary` and `AnalysisResult` (`obserwator-analysis-summary/1`,
+  `obserwator-analysis/1`) gain the field `formula_versions`, `analyses export` gives them
+  per result in JSON and in the new CSV column `formula_versions` after `hydrolog_version`
+  (`mann_kendall=1;sen_slope=1`), and the GUI shows them beside Hydrolog's version („wzory:
+  mann_kendall 1, sen_slope 1”). A record stored before has none in `analyses list`;
+  `analyses read` and `analyses export` read them from Hydrolog's stored envelope.
+  **Migration:** a reader of the CSV by column position finds `path` and the following
+  columns one place further.
+- **„Dni przymrozkowe” in „Dni charakterystyczne i stopniodni”.** Hydrolog 0.9.0's
+  `freeze_thaw_days` (Tmin < 0 °C and Tmax > 0 °C, IMGW-PIB's „dni przymrozkowe”) is a tile,
+  a choice of the chart and a column of the months beside the frost days FD („z
+  przymrozkiem”, Tmin < 0 °C); a result of an older Hydrolog shows without it.
+- **Polish labels of Hydrolog 0.9.0's notices and refusals.** `outside_applicability` (and
+  `outside_typical_range`, its name before Hydrolog 0.9.0 that stored analyses keep) and
+  `outside_unverified_range` by their two-sided range, one end of it or the condition they
+  break; `single_year_month` and `unreferenced_formula`; a failed analysis whose
+  `details.reason` is `precondition_failed` (worded by `details.constraint`, e.g. a
+  likelihood without a maximum), `outside_physical_range` or `invalid_type`, with the
+  distribution and method of a fit, instead of Hydrolog's English message.
+- **„metoda p” in the Mann–Kendall tables** of „Trendy i bilans” and „Trendy”: Hydrolog
+  0.9.0's `p_value_method`, „rozkład dokładny” below 10 values and „przybliżenie normalne”
+  from 10 (Hydrolog ADR-0049), also beside p over each chart of „Trendy”.
+
+### Changed
+
+- **The analyses need Hydrolog 0.9.0 or later (ADR-016 erratum of 2026-11-21).** The GUI's
+  explanations and the guide describe what Hydrolog 0.9.0 computes: a dry or wet spell over
+  1 January counts in the year it ends, and a year inside a longer spell has no longest
+  spell („–”); the hydrothermal season is the days of April–September above 10 °C („k
+  okresu IV–IX z Tśr > 10 °C”); a normal of several months is made of the monthly normals
+  (the label of `normal_not_computed` follows its new details); the confidence interval of
+  a month's mean is built on the yearly means of the month and is „–” for a month of a
+  single year; the p of Mann–Kendall is exact below 10 values, where Sen's interval is „–”;
+  the critical values of A² come from a parametric bootstrap of each fit and only for
+  L-moments; the recession constant is WMO-No. 1029's daily k (no longer credited to
+  Tallaksen 1995). Nothing checks the version: an older Hydrolog still computes.
+- **The carry-forward of the analyses with Hydrolog's development builds.** The documents
+  said that Hydrolog's development builds all report `1.0.0.dev0`; Hydrolog now numbers
+  each one (`0.9.0.devN`, Nogat REL-1.1), and Obserwator compares the version as a string,
+  so every new build of Hydrolog computes every station again (unchanged code, tested with
+  a new `devN`).
+- **The recorded answers of the tests are Hydrolog 0.9.0.dev4's** (`tests/fixtures/hydrolog/
+  answers.json`, with `formula_versions`), but for `stats harmonics`, which 0.9.0 refuses
+  on the fixture's short series.
 
 ### Fixed
 
+- **A null interval of Hydrolog 0.9.0 no longer shows as numbers.** Sen's interval of a
+  trend of fewer than 10 years read „(0 … 0)” in „Trendy i bilans” (null times 10 is 0) and
+  „– … –” in „Trendy”, and a monthly confidence interval of one year „–––”; each is now
+  „–” (Sen's slope alone in „Trendy i bilans”).
 - **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
   „Trend liczby dni przymrozkowych”, but the series counts the days with Tmin < 0 °C (FD of
   the ETCCDI), while IMGW-PIB's „dzień przymrozkowy” has Tmin < 0 °C and Tmax > 0 °C
