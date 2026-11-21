@@ -32,7 +32,7 @@ import { TERAZ } from "./sections/teraz.js";
 import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerFullName, providerName } from "./words.js";
 
 /** The start of the keys of each provider's datasets (the registry's). */
-const DATASET_PREFIX = { "IMGW-PIB": "pl.imgw.", CHMI: "cz.chmi." };
+const DATASET_PREFIX = { "IMGW-PIB": "pl.imgw.", CHMU: "cz.chmu." };
 /** The names of the formats of a stations file. */
 const STATIONS_FORMATS = { geojson: "GeoJSON", csv: "CSV" };
 

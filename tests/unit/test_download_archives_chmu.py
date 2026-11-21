@@ -19,9 +19,9 @@ from obserwator.fetch import download_archives
 from obserwator.store.types import Notice, Progress
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
-RECORDING = json.loads((FIXTURES / "chmi_recordings.json").read_text(encoding="utf-8"))
+RECORDING = json.loads((FIXTURES / "chmu_recordings.json").read_text(encoding="utf-8"))
 CASES = {entry["case"]: entry for entry in RECORDING["interactions"]}
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 S2 = "0-203-1-900002"  # 2004 and 2006 published, 2005 not
 FULL, RAIN = "0-203-0-90001", "0-203-0-90000000002"  # four elements / SRA only
 
@@ -86,7 +86,7 @@ def test_unpublished_year_is_a_successful_not_published_item(respx_mock, tmp_pat
         for event in events
         if isinstance(event, Notice | Progress)
     ] == ["downloaded", "license_terms", "not_published", "downloaded"]
-    provider = get_provider("CHMI")
+    provider = get_provider("CHMU")
     (notice,) = [event for event in events if isinstance(event, Notice)]
     assert notice.message == f"{provider.license.attribution}. {provider.notice}"
     assert {call.request.headers["User-Agent"] for call in respx_mock.calls} == {

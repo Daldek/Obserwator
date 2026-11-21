@@ -318,8 +318,8 @@ def summarize_coverage(
     periods: ``station_periods`` when given (the series builder uses the
     periods of the possessed files), otherwise derived from the records —
     every calendar year with a record of the station for station-year files
-    (``cz.chmi.hydro_daily``), the range from the first to the last record of
-    each variable for station-element files (``cz.chmi.meteo_daily``). A year
+    (``cz.chmu.hydro_daily``), the range from the first to the last record of
+    each variable for station-element files (``cz.chmu.meteo_daily``). A year
     without a published file therefore stays unknown, not a gap.
 
     Parameters
@@ -328,7 +328,7 @@ def summarize_coverage(
         Normalized records of a single dataset.
     dataset : str
         Dataset key with a ``day``, ``month`` or ``half_year`` time unit, e.g.
-        ``"pl.imgw.hydro_daily"`` or ``"cz.chmi.hydro_daily"``.
+        ``"pl.imgw.hydro_daily"`` or ``"cz.chmu.hydro_daily"``.
     station_periods : Mapping of str to Sequence of tuple of (date, date), optional
         Known periods of the stations of a per-station dataset as closed date
         ranges keyed by station code, e.g. ``StationSeriesIndex.periods`` of

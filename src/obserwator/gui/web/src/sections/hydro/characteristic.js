@@ -37,7 +37,7 @@ const ROWS = [
   ["row_min", "nwx", "nsx", "nnx"],
 ];
 /** The levels of `threshold_events.{H,Q}.<key>`: ČHMÚ's from the catalog, then Hydrolog's characteristic ones. */
-const CHMI_LEVELS = ["spa1", "spa2", "spa3", "q50", "drought"];
+const CHMU_LEVELS = ["spa1", "spa2", "spa3", "q50", "drought"];
 const OWN_LEVELS = ["swx", "ssx", "snx"];
 const LEVEL_CLASS = { spa1: "hy-lv-1", spa2: "hy-lv-2", spa3: "hy-lv-3", q50: "hy-lv-4", drought: "hy-lv-dry", swx: "hy-lv-c", ssx: "hy-lv-c", snx: "hy-lv-c" };
 const SHORT = { spa1: "SPA 1", spa2: "SPA 2", spa3: "SPA 3", q50: "Q50" };
@@ -147,7 +147,7 @@ function FirstDegree({ rows, labels, computed, variable, period, unitText }) {
 
 /** The value of a level: ČHMÚ's from the station's catalog entry, a characteristic one from Hydrolog. */
 function levelValue(key, variable, station, characteristic) {
-  if (CHMI_LEVELS.includes(key)) {
+  if (CHMU_LEVELS.includes(key)) {
     const thresholds = (station.properties && station.properties.thresholds) || {};
     const value = thresholds[variable] && thresholds[variable][key];
     return typeof value === "number" ? value : null;
@@ -156,7 +156,7 @@ function levelValue(key, variable, station, characteristic) {
 }
 
 function levelName(key, characteristic) {
-  if (CHMI_LEVELS.includes(key)) return t(`hydro.levels.name.${key}`);
+  if (CHMU_LEVELS.includes(key)) return t(`hydro.levels.name.${key}`);
   return `${characteristic.labels[key]} (${characteristic.first_year}–${characteristic.last_year})`;
 }
 
@@ -180,16 +180,16 @@ function Events({ result, variable, unitText }) {
 }
 
 function Levels({ station, code, session, ids, years, choice, setChoice }) {
-  const usable = ["H", "Q"].filter((v) => [...CHMI_LEVELS, ...OWN_LEVELS].some((key) => ids.has(`threshold_events.${v}.${key}`)));
+  const usable = ["H", "Q"].filter((v) => [...CHMU_LEVELS, ...OWN_LEVELS].some((key) => ids.has(`threshold_events.${v}.${key}`)));
   const variable = usable.includes(choice.lv) ? choice.lv : usable[0];
-  const keys = [...CHMI_LEVELS, ...OWN_LEVELS].filter((key) => ids.has(`threshold_events.${variable}.${key}`));
+  const keys = [...CHMU_LEVELS, ...OWN_LEVELS].filter((key) => ids.has(`threshold_events.${variable}.${key}`));
   const characteristic = useAnalysis(code, ids.has(`characteristic.${variable}`) ? `characteristic.${variable}` : null, years);
   const level = keys.includes(choice.level) ? choice.level : keys.find((key) => key.startsWith("spa")) || keys[0];
   const events = useAnalysis(code, level ? `threshold_events.${variable}.${level}` : null, years);
   const own = characteristic.result;
   const levels = keys
     .map((key) => ({ key, value: levelValue(key, variable, station, own) }))
-    .filter((item) => item.value !== null && (CHMI_LEVELS.includes(item.key) || own));
+    .filter((item) => item.value !== null && (CHMU_LEVELS.includes(item.key) || own));
   const dataset = dailyDataset(station);
   const from = own ? own.first_year : years.first_year;
   const to = own ? own.last_year : years.last_year;
@@ -229,7 +229,7 @@ function Levels({ station, code, session, ids, years, choice, setChoice }) {
   return html`<${Section} title=${t("hydro.levels.title")} info=${t("hydro.levels.info")} guide="metody-characteristic-progi" states=${[events]}>
     ${usable.length > 1 && html`<${Option} label=${t("hydro.common.variable")}><${VariableSeg} value=${variable} variables=${usable} onChange=${(v) => setChoice({ lv: v, level: undefined })} /></${Option}>`}
     <ul class="hy-levels">${levels.map(
-      (item) => html`<li class=${LEVEL_CLASS[item.key]}><i aria-hidden="true"></i>${levelName(item.key, own)}: <strong>${withUnit(item.value, variable, unitText)}</strong> <small>${CHMI_LEVELS.includes(item.key) ? "ČHMÚ" : "Hydrolog"}</small></li>`,
+      (item) => html`<li class=${LEVEL_CLASS[item.key]}><i aria-hidden="true"></i>${levelName(item.key, own)}: <strong>${withUnit(item.value, variable, unitText)}</strong> <small>${CHMU_LEVELS.includes(item.key) ? "ČHMÚ" : "Hydrolog"}</small></li>`,
     )}</ul>
     ${series.error ? html`<p class="ana-error">${series.error.message}</p>` : daily && html`<${Chart} spec=${daily} />`}
     ${levels.length > 0 &&

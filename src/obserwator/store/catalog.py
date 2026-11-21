@@ -25,7 +25,7 @@ from typing import Any, Literal
 import httpx
 
 from obserwator._borders import CZECHIA, POLAND, PROVIDERS, border
-from obserwator._parsing.chmi import (
+from obserwator._parsing.chmu import (
     MetadataTable,
     read_metadata,
     station_coordinates,
@@ -42,7 +42,7 @@ from obserwator.attribution import (
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     _CATALOG_SOURCES,
-    _CHMI_METEO_NOW_FILE,
+    _CHMU_METEO_NOW_FILE,
     HYDRO_DETAILS,
     STATION_CODE_PATTERN,
     ArchiveFile,
@@ -66,6 +66,7 @@ from obserwator.exceptions import (
 from obserwator.fetch import DEFAULT_TIMEOUT
 from obserwator.messages import Message, message, reason
 from obserwator.models import StationListEntry
+from obserwator.store.content import stored_form
 from obserwator.store.series import _current_series, _raw, _series_versions
 from obserwator.store.types import (
     Cancel,
@@ -106,7 +107,7 @@ CATALOG_FILE = "stations.geojson"
 # directory named after its slug inside it (slugs start with a letter, labels with
 # a digit).
 _CATALOG_DIRS: Mapping[str, str] = MappingProxyType(
-    {"IMGW-PIB": CATALOG_SLOT, "CHMI": f"{CATALOG_SLOT}/chmi_stations"}
+    {"IMGW-PIB": CATALOG_SLOT, "CHMU": f"{CATALOG_SLOT}/chmu_stations"}
 )
 # Slug directory under ``stations/versions/`` → provider of the catalog inside it.
 _NESTED_CATALOGS: Mapping[str, str] = MappingProxyType(
@@ -195,8 +196,15 @@ _METEO_KINDS: Mapping[str, MeteoKind] = MappingProxyType(
 _KIND_RANKS: Mapping[MeteoKind, int] = MappingProxyType(
     {kind: rank for rank, kind in enumerate(_METEO_KINDS.values())}
 )
-# Location candidate ``(source, longitude, latitude)`` as published.
+# Location candidate ``(location source, longitude, latitude)`` as published: the
+# location source is the key of the dataset whose file gave the point, or ``static``
+# and ``user`` for the two location files outside any dataset (ADR-028).
 _Candidate = tuple[str, object, object]
+# Location source of a point of IMGW-PIB's current-data answer of each station
+# family: the dataset of the answer.
+_API_LOCATION_SOURCES: Mapping[str, str] = MappingProxyType(
+    {"hydro": _CATALOG_SOURCES["IMGW-PIB"][2], "meteo": _CATALOG_SOURCES["IMGW-PIB"][3]}
+)
 
 # --------------------------------------------------------------------------
 # Shared version publication (also used by store.pmaxtp)
@@ -542,8 +550,10 @@ def _stored_source(
         "sha256": meta["sha256"],
     }
     if "content_sha256" in meta:
+        # A form renamed since the version was written: its current id (ADR-028).
         record.update(
-            content_sha256=meta["content_sha256"], content_form=meta["content_form"]
+            content_sha256=meta["content_sha256"],
+            content_form=stored_form(meta["content_form"]),
         )
     return data, record
 
@@ -572,9 +582,9 @@ def _stored_details(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, An
     return rows, {**record, "count": len(rows), "available": True}
 
 
-def _chmi_meteo_now(root: Path) -> ArchiveFile | None:
+def _chmu_meteo_now(root: Path) -> ArchiveFile | None:
     """The newest stored ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``."""
-    descriptor = get_dataset("cz.chmi.meteo_now")
+    descriptor = get_dataset("cz.chmu.meteo_now")
     directory = _validate_slot(root, f"archives/versions/{descriptor.server_dir}")
     names = (
         sorted(
@@ -582,7 +592,7 @@ def _chmi_meteo_now(root: Path) -> ArchiveFile | None:
                 f"{child.name}.json"
                 for child in directory.iterdir()
                 if child.is_dir()
-                and _CHMI_METEO_NOW_FILE.fullmatch(f"{child.name}.json")
+                and _CHMU_METEO_NOW_FILE.fullmatch(f"{child.name}.json")
             ),
             reverse=True,
         )
@@ -621,9 +631,9 @@ def _catalog_sources(
     meta1, meta3 = _station_files(hydro_now)
     return [
         *lists,
-        ("chmi_hydro_now", meta1),
-        ("chmi_hydro_meta3", meta3),
-        ("chmi_meteo_now", _chmi_meteo_now(root)),
+        ("chmu_hydro_now", meta1),
+        ("chmu_hydro_meta3", meta3),
+        ("chmu_meteo_now", _chmu_meteo_now(root)),
     ]
 
 
@@ -1051,7 +1061,9 @@ def _catalog_bytes(
         api = apis[kind].get(code)
         candidates: list[tuple[str, object, object]] = []
         if api is not None:
-            candidates.append((f"api_{kind}", api.get("lon"), api.get("lat")))
+            candidates.append(
+                (_API_LOCATION_SOURCES[kind], api.get("lon"), api.get("lat"))
+            )
         if code in static:
             candidates.append(("static", static[code][0], static[code][1]))
         if code in user:
@@ -1092,8 +1104,11 @@ class _Metadata:
     Attributes
     ----------
     source : str
-        Source name of the sidecar and of ``location_source``, e.g.
-        ``"chmi_hydro_now"``.
+        Source name of the file in the sidecar's ``sources`` and in a threshold's
+        ``source``, e.g. ``"chmu_hydro_now"``.
+    dataset : str
+        Key of the file's dataset, the ``location_source`` of a station it
+        locates (ADR-028), e.g. ``"cz.chmu.hydro_now"``.
     kind : {"hydro", "meteo"}
         Station family of the file.
     table : MetadataTable
@@ -1105,6 +1120,7 @@ class _Metadata:
     """
 
     source: str
+    dataset: str
     kind: Literal["hydro", "meteo"]
     table: MetadataTable
     rows: Mapping[str, int]
@@ -1171,6 +1187,7 @@ def _metadata(
     data: bytes,
     *,
     source: str,
+    dataset: str,
     kind: Literal["hydro", "meteo"],
     filename: str,
     problems: list[str],
@@ -1183,7 +1200,7 @@ def _metadata(
     else:
         table.require("WSI", "FULL_NAME", "GEOGR1", "GEOGR2")
     chosen = station_rows(table, kind=kind)
-    pattern = re.compile(get_provider("CHMI").station_code_pattern)
+    pattern = re.compile(get_provider("CHMU").station_code_pattern)
     rows: dict[str, int] = {}
     for code, index in chosen.rows.items():
         if pattern.fullmatch(code):
@@ -1197,7 +1214,7 @@ def _metadata(
             problems.append(
                 message("catalog.source_repeated_code", source=source, code=code)
             )
-    return _Metadata(source, kind, table, rows, thresholds)
+    return _Metadata(source, dataset, kind, table, rows, thresholds)
 
 
 def _thresholds(source: _Metadata, code: str) -> dict[str, Any] | None:
@@ -1259,7 +1276,7 @@ def _established(source: _Metadata) -> dict[str, int]:
     return {code: moment.year for code, moment in first.items()}
 
 
-def _chmi_feature(
+def _chmu_feature(
     code: str,
     *,
     kind: Literal["hydro", "meteo"],
@@ -1283,7 +1300,7 @@ def _chmi_feature(
         index = source.rows.get(code)
         if index is not None:
             lat, lon = station_coordinates(source.table, index, kind=kind)
-            candidates.append((source.source, lon, lat))
+            candidates.append((source.dataset, lon, lat))
             owners.append(source)
     if code in user:
         candidates.append(("user", user[code][0], user[code][1]))
@@ -1346,7 +1363,7 @@ def _chmi_feature(
     return feature, location_source, conflict
 
 
-def _chmi_catalog_bytes(
+def _chmu_catalog_bytes(
     *,
     families: Mapping[str, Sequence[_Metadata]],
     series: Mapping[str, set[str]],
@@ -1388,7 +1405,7 @@ def _chmi_catalog_bytes(
     if unknown:
         problems.append(
             message(
-                "catalog.user_locations_unknown_codes_chmi",
+                "catalog.user_locations_unknown_codes_chmu",
                 count=len(unknown),
                 unknown=unknown[0],
             )
@@ -1400,7 +1417,7 @@ def _chmi_catalog_bytes(
     conflicts: list[str] = []
     for code in sorted(known):
         kind: Literal["hydro", "meteo"] = "hydro" if code in codes["hydro"] else "meteo"
-        feature, source, conflict = _chmi_feature(
+        feature, source, conflict = _chmu_feature(
             code,
             kind=kind,
             sources=families[kind],
@@ -1415,7 +1432,7 @@ def _chmi_catalog_bytes(
         if conflict:
             conflicts.append(code)
         features.append(feature)
-    lines = _catalog_lines(get_provider("CHMI"), used)
+    lines = _catalog_lines(get_provider("CHMU"), used)
     document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), without, used, series_only, conflicts
 
@@ -2169,13 +2186,13 @@ def build_catalog(
     establishment of a meteorological station: ``established_year`` is null
     for every one.
 
-    ČHMÚ (``stations/versions/chmi_stations/<label>_<sha8>/``, spec
+    ČHMÚ (``stations/versions/chmu_stations/<label>_<sha8>/``, spec
     2026-10-18 §7): sources in precedence order of location, name, river and
     thresholds — hydro ``hydrology/now/metadata/meta1.json``, ``meta3.json``
-    (names, rivers, ``HLGP4`` and locations only; ``cz.chmi.hydro_now``) and the
-    list ``cz.chmi.hydro_stations``; meteo the newest stored
+    (names, rivers, ``HLGP4`` and locations only; ``cz.chmu.hydro_now``) and the
+    list ``cz.chmu.hydro_stations``; meteo the newest stored
     ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
-    (``cz.chmi.meteo_now``) and the list ``cz.chmi.meteo_stations`` (the period
+    (``cz.chmu.meteo_now``) and the list ``cz.chmu.meteo_stations`` (the period
     with the latest ``BEGIN_DATE``); then the user CSV. Every code of these files and of the
     current ČHMÚ series indexes is a station, also closed and foreign ones;
     points are validated against the outline of Czechia. ``active`` means
@@ -2269,7 +2286,7 @@ def build_catalog(
         on_notice,
         cancel,
     )
-    return _build_imgw(build) if owner.id == "IMGW-PIB" else _build_chmi(build)
+    return _build_imgw(build) if owner.id == "IMGW-PIB" else _build_chmu(build)
 
 
 def _build_imgw(build: _Build) -> CatalogReport:
@@ -2424,7 +2441,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
     )
 
 
-def _build_chmi(build: _Build) -> CatalogReport:
+def _build_chmu(build: _Build) -> CatalogReport:
     """ČHMÚ catalog from the stored now and historical metadata files and the user file."""
     owner, user = build.provider, build.user
     # The user file is validated before the sources are read, so a bad header writes nothing.
@@ -2447,9 +2464,8 @@ def _build_chmi(build: _Build) -> CatalogReport:
                 server_path=archive.server_path if archive else source,
             ),
         )
-    hydro_list, meteo_list = (
-        get_dataset(key).slug for key in _CATALOG_SOURCES[owner.id][:2]
-    )
+    hydro_key, meteo_key, hydro_now, meteo_now = _CATALOG_SOURCES[owner.id]
+    hydro_list, meteo_list = (get_dataset(key).slug for key in (hydro_key, meteo_key))
     if (report := build.stopped()) is not None:
         return report
     problems: list[str] = []
@@ -2460,12 +2476,14 @@ def _build_chmi(build: _Build) -> CatalogReport:
         data: bytes,
         record: dict[str, Any],
         *,
+        dataset: str,
         kind: Literal["hydro", "meteo"],
         thresholds: bool = True,
     ) -> _Metadata:
         metadata = _metadata(
             data,
             source=record["source"],
+            dataset=dataset,
             kind=kind,
             filename=record["file"],
             problems=problems,
@@ -2475,15 +2493,22 @@ def _build_chmi(build: _Build) -> CatalogReport:
         records.append(record)
         return metadata
 
+    # Both files of the hydro ``now`` metadata, meta1 and meta3, are of
+    # cz.chmu.hydro_now: a station located from either has that location source.
     families = {
         "hydro": (
-            parse(*stored["chmi_hydro_now"], kind="hydro"),
-            parse(*stored["chmi_hydro_meta3"], kind="hydro", thresholds=False),
-            parse(*stored[hydro_list], kind="hydro"),
+            parse(*stored["chmu_hydro_now"], dataset=hydro_now, kind="hydro"),
+            parse(
+                *stored["chmu_hydro_meta3"],
+                dataset=hydro_now,
+                kind="hydro",
+                thresholds=False,
+            ),
+            parse(*stored[hydro_list], dataset=hydro_key, kind="hydro"),
         ),
         "meteo": (
-            parse(*stored["chmi_meteo_now"], kind="meteo"),
-            parse(*stored[meteo_list], kind="meteo"),
+            parse(*stored["chmu_meteo_now"], dataset=meteo_now, kind="meteo"),
+            parse(*stored[meteo_list], dataset=meteo_key, kind="meteo"),
         ),
     }
     if user is not None:
@@ -2497,7 +2522,7 @@ def _build_chmi(build: _Build) -> CatalogReport:
     # ČHMÚ publishes no station class: meteo_kind stays null (spec 2026-10-18 §7.3).
     series, series_sources, _ = _series_codes(build.root, problems, provider=owner)
     records.extend(series_sources)
-    data, count, without, used, series_only, conflicts = _chmi_catalog_bytes(
+    data, count, without, used, series_only, conflicts = _chmu_catalog_bytes(
         families=families,
         series=series,
         user=user_rows,

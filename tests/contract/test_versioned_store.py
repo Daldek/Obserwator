@@ -62,10 +62,8 @@ from tests.contract.support import (
     O2001,
     OLD,
     PRECIP,
-    PROCESSED,
     RABA,
     SCHEMAS,
-    SOURCE,
     V1,
     V2,
     V3,
@@ -327,7 +325,7 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
         assert re.fullmatch(r"[A-Z]{2}", document["country"]), where
         assert scope == document["country"].lower(), where
         assert key_provider and name, where
-        assert document["provider"] in ("IMGW-PIB", "CHMI"), where
+        assert document["provider"] in ("IMGW-PIB", "CHMU"), where
         # size_bytes and sha256 of the main file
         assert document["size_bytes"] == main.stat().st_size, where
         assert re.fullmatch(r"[0-9a-f]{64}", document["sha256"]), where
@@ -355,7 +353,7 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
     assert seen == {
         (kind, provider)
         for kind in ("archive", "series", "catalog")
-        for provider in ("IMGW-PIB", "CHMI")
+        for provider in ("IMGW-PIB", "CHMU")
     } | {("pmaxtp", "IMGW-PIB")}
 
 
@@ -695,8 +693,8 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert build_catalog(data, raw_root=root).status == "unchanged"
     assert len(imgw.router.calls) == requests  # build and check request nothing
 
-    # CSV: one header row with units, both formulas once, every day of the series,
-    # the lines of ADR-012 in the trailing columns.
+    # CSV: one header row with units, every day of the series, the lines of ADR-012
+    # in the trailing columns attribution and terms_notice (ADR-028).
     target = export_series(
         series.version, station=RABA, output=tmp_path / "raba.csv", variables=["H", "Q"]
     ).output
@@ -709,18 +707,9 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
         "H_flag",
         "Q [m3/s]",
         "Q_flag",
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
-    assert (table[0]["attribution_source"], table[0]["attribution_processed"]) == (
-        SOURCE,
-        PROCESSED,
-    )
-    assert not any(
-        row["attribution_source"] or row["attribution_processed"] for row in table[1:]
-    )
     assert trailing_lines(table) == attribution("imgw")
     assert [(row["date"], row["H_flag"], row["Q_flag"]) for row in table] == [
         (row.date.isoformat(), row.measurements["H"].flag, row.measurements["Q"].flag)

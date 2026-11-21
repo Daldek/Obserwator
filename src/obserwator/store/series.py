@@ -36,6 +36,7 @@ from obserwator.datasets import (
     get_dataset,
     get_provider,
     parse_years,
+    resolve_dataset_key,
 )
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -47,6 +48,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import message, reason
 from obserwator.models import Flag, Measurement, NormalizedRecord
+from obserwator.store.content import stored_form
 from obserwator.store.types import (
     Cancel,
     Notice,
@@ -253,7 +255,12 @@ def _current_version(root: Path, archive: ArchiveFile) -> _Version | None:
 
 
 def _content_fields(meta: Mapping[str, Any]) -> dict[str, str]:
-    """``content_sha256`` and ``content_form`` of a sidecar: both or none (ADR-003 D17)."""
+    """
+    ``content_sha256`` and ``content_form`` of a sidecar: both or none (ADR-003 D17).
+
+    A form renamed since the sidecar was written is given by its current
+    identifier (ADR-028).
+    """
     fields = {
         key: meta[key] for key in ("content_sha256", "content_form") if key in meta
     }
@@ -265,6 +272,8 @@ def _content_fields(meta: Mapping[str, Any]) -> dict[str, str]:
         and fields["content_form"]
     ):
         raise ValueError(message("series.invalid_pair_content_sha256_content"))
+    if fields:
+        fields["content_form"] = stored_form(fields["content_form"])
     return fields
 
 
@@ -316,7 +325,12 @@ def _scan_inputs(
             current = _pick_current(_read_versions(root, slot, slots[slot_dir]))
             if current is None:
                 continue
-            if current.meta.get("dataset") != descriptor.key:
+            # A raw root written before a dataset was renamed holds its old key
+            # (ADR-028).
+            stored = current.meta.get("dataset")
+            if not isinstance(stored, str) or resolve_dataset_key(stored) != (
+                descriptor.key
+            ):
                 raise ObserwatorDataError(
                     message(
                         "series.version_belongs_another_dataset",
@@ -660,7 +674,7 @@ def check_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions the build reads; only read.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
+        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
         dataset.
     stations : iterable of str or None, optional
         The stations of a subset, as in :func:`build_series`.
@@ -1303,7 +1317,7 @@ def build_series(
     parsed records, not by the dataset. An unreadable input or conflicting
     values fail the whole build; an incomplete snapshot is never published.
 
-    Datasets of per-station files (``cz.chmi.*``, ADR-003 D10) also record the
+    Datasets of per-station files (``cz.chmu.*``, ADR-003 D10) also record the
     known periods of every station in ``stations[<code>].periods``: the
     calendar years of its station-year files, or the first to last row of
     each station-element file, merged. Gaps are counted only on those days, so
@@ -1339,7 +1353,7 @@ def build_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions are read; never written.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmi.*``) of a measurement series
+        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
         dataset.
     stations : iterable of str or None, optional
         Build only these stations (codes of the dataset's provider; duplicates

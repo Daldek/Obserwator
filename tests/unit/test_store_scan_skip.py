@@ -92,7 +92,7 @@ def test_a_scan_gives_the_known_versions_back_without_listing_or_reading_them(
         "catalog",
         "pmaxtp",
     }
-    assert {entry.provider for entry in versions} == {"IMGW-PIB", "CHMI"}
+    assert {entry.provider for entry in versions} == {"IMGW-PIB", "CHMU"}
     for root, full in scans.items():
         known = known_versions(root, full)
         directories = {root / directory for directory in known}
@@ -122,7 +122,7 @@ def test_a_known_version_that_broke_since_is_not_seen_but_the_rest_is(tmp_path, 
     shutil.copytree(roots[1], data)
     known = {root: known_versions(root, iter_store(root)) for root in (raw, data)}
     broken = next(e for e in iter_store(raw, kind="archive") if e.slot == DAILY_2024)
-    gone = next(iter_store(data, kind="series", provider="CHMI"))
+    gone = next(iter_store(data, kind="series", provider="CHMU"))
     Path(f"{broken.version}.meta.json").write_text("{broken", encoding="utf-8")
     shutil.rmtree(gone.version.parent)
     unfinished = data / "stations" / "versions" / "2026-01-01_deadbeef"
@@ -186,10 +186,10 @@ def test_an_observation_is_checked_against_the_version_it_names_though_it_is_ski
     [
         (0, {"kind": "archive"}),
         (0, {"kind": "pmaxtp"}),
-        (0, {"provider": "CHMI"}),
+        (0, {"provider": "CHMU"}),
         (1, {"kind": "series"}),
         (1, {"kind": "catalog"}),
-        (1, {"provider": "CHMI"}),
+        (1, {"provider": "CHMU"}),
     ],
 )
 def test_the_filters_apply_to_the_versions_that_are_skipped(roots, which, filters):

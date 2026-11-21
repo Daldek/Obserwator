@@ -62,7 +62,7 @@ class NormalizedRecord:
         (e.g. ``"0-203-1-001000"``).
     dataset : str
         Full dataset key, e.g. ``"pl.imgw.hydro_daily"`` or
-        ``"cz.chmi.hydro_daily"``.
+        ``"cz.chmu.hydro_daily"``.
     date : date
         Calendar start of the time unit (day, first day of the month or
         start of the half-year period).
@@ -742,7 +742,7 @@ class StationListEntry:
         Longitude (WGS84), as ``latitude``.
     provider : str, optional
         Provider identifier of the list: ``"IMGW-PIB"`` (default) or
-        ``"CHMI"``.
+        ``"CHMU"``.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-station/1"

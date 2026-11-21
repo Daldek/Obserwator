@@ -29,11 +29,11 @@ from tests.contract.support import build_served_analyses, command_line
 
 HYDRO = "149190310"
 """IMGW-PIB's hydrological station of the fixture root (daily H, Q, T of 2024)."""
-HYDRO_CHMI = "0-203-1-900001"
+HYDRO_CHMU = "0-203-1-900001"
 """ČHMÚ's hydrological station of the fixture root."""
 METEO = "123750000"
 """IMGW-PIB's precipitation station of the fixture root (January 2001)."""
-METEO_CHMI = "0-203-0-90001"
+METEO_CHMU = "0-203-0-90001"
 """ČHMÚ's meteorological station of the fixture root."""
 PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""

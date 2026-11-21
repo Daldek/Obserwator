@@ -19,10 +19,10 @@ from obserwator.store import (
     read_series_index,
     summarize_series,
 )
-from tests.unit.test_store_series_chmi import store_hydro, store_meteo
-from tests.unit.test_store_sync_chmi import H1_2023, H1_2024, H2_2004, H2_2006
+from tests.unit.test_store_series_chmu import store_hydro, store_meteo
+from tests.unit.test_store_sync_chmu import H1_2023, H1_2024, H2_2004, H2_2006
 
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 GAUGE, NEIGHBOUR, CLIMATE = "0-203-1-900009", "0-203-1-900008", "0-203-0-90009"
 
 

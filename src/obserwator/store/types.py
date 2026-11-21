@@ -830,9 +830,9 @@ class Meta:
         the sidecar has no content fields (every IMGW-PIB dataset).
     content_form : str or None, optional
         Identifier of the canonical form behind ``content_sha256``, e.g.
-        ``"chmi-json/1"``; present exactly when ``content_sha256`` is.
+        ``"chmu-json/1"``; present exactly when ``content_sha256`` is.
     provider : str, optional
-        ``provider`` field of the sidecar, e.g. ``"IMGW-PIB"`` or ``"CHMI"``.
+        ``provider`` field of the sidecar, e.g. ``"IMGW-PIB"`` or ``"CHMU"``.
     country : str, optional
         ``country`` field of the sidecar, e.g. ``"PL"`` or ``"CZ"``.
     producer : str, optional
@@ -876,7 +876,7 @@ class Observation:
     Attributes
     ----------
     dataset : str
-        Full dataset key of the slot, e.g. ``"cz.chmi.hydro_daily"``.
+        Full dataset key of the slot, e.g. ``"cz.chmu.hydro_daily"``.
     seen_at : str
         UTC time of the observation, ``YYYY-MM-DDTHH:MM:SSZ``.
     url : str

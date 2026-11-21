@@ -54,9 +54,7 @@ from tests.contract.support import (
     DAILY,
     FAKE_HYDROLOG,
     PRECIP,
-    PROCESSED,
     RABA,
-    SOURCE,
     command_document,
     command_line,
     load,
@@ -76,9 +74,9 @@ ANSWERS: dict[str, Any] = json.loads(
 )
 FAILING = {key for key, answer in ANSWERS.items() if "error" in answer}
 VERSION = "1.0.0.dev0"  # the fake's version
-SLOTS = {"IMGW-PIB": "pl.imgw", "CHMI": "cz.chmi"}
+SLOTS = {"IMGW-PIB": "pl.imgw", "CHMU": "cz.chmu"}
 METEO = "123750000"  # an IMGW-PIB precipitation station of the fixture
-CHMI_METEO = "0-203-0-90001"  # a ČHMÚ climate station of the fixture
+CHMU_METEO = "0-203-0-90001"  # a ČHMÚ climate station of the fixture
 # The options of the series files Hydrolog reads (AnalysisInput.option).
 SERIES_FILES = {
     item.option
@@ -322,7 +320,7 @@ def test_build_stores_each_line_of_hydrolog_verbatim_with_its_record_and_sidecar
     report = build_analyses(root)
 
     assert (report.status, report.hydrolog_version) == ("new", VERSION)
-    assert [item.provider for item in report.providers] == ["IMGW-PIB", "CHMI"]
+    assert [item.provider for item in report.providers] == ["IMGW-PIB", "CHMU"]
     assert [(file.path, file.status) for file in report.files] == [
         (item.version, "new") for item in report.providers
     ]
@@ -479,13 +477,13 @@ def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_othe
 
     report = build_analyses(root)
 
-    imgw, chmi = report.providers
+    imgw, chmu = report.providers
     assert (imgw.status, imgw.computed, imgw.carried) == (
         "new",
         len(changed),
         len(stored) - len(changed),
     )
-    assert (chmi.status, chmi.computed) == ("unchanged", 0)
+    assert (chmu.status, chmu.computed) == ("unchanged", 0)
     assert called(batches()) == changed
     new = imgw.version.parent
     for code, record in records(new).items():
@@ -602,9 +600,9 @@ def test_without_hydrologs_program_nothing_runs(
     ("station", "kind", "dataset", "lines"),
     [
         (RABA, "hydro", DAILY, attribution("imgw")),
-        (CHMI_METEO, "meteo", "cz.chmi.meteo_daily", attribution("chmi")),
+        (CHMU_METEO, "meteo", "cz.chmu.meteo_daily", attribution("chmu")),
     ],
-    ids=["IMGW-PIB", "CHMI"],
+    ids=["IMGW-PIB", "CHMU"],
 )
 def test_list_and_read_give_hydrologs_answers_with_their_provenance(
     station, kind, dataset, lines, built
@@ -712,8 +710,7 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     assert all(row.endswith("\r\n") for row in rows)
     assert rows[0] == (
         "station,analysis,command,series_version,hydrolog_version,formula_versions,"
-        "path,value,derived,attribution_source,attribution_processed,attribution,"
-        "terms_notice\r\n"
+        "path,value,derived,attribution,terms_notice\r\n"
     )
     table = list(csv.DictReader(io.StringIO(text, newline="")))
     keys = {name: answer_key(vars(summaries[name])) for name in chosen}
@@ -746,9 +743,6 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
         for name in chosen
         if keys[name] not in FAILING
     }
-    assert [
-        (row["attribution_source"], row["attribution_processed"]) for row in table
-    ] == [(SOURCE, PROCESSED), *[("", "")] * (len(table) - 1)]
     assert trailing_lines(table) == attribution("imgw")
 
 

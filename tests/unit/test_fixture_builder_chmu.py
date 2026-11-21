@@ -3,7 +3,7 @@
 Spec 2026-10-18 §13.3: ČHMÚ archives in versions (first, ``relabeled``,
 corrected), a slot with the observation of scenario (8) in the raw root, the
 series of both ČHMÚ datasets and the ČHMÚ catalog in the data root (ADR-017),
-built offline from ``chmi_builder_recordings.json``. Synthetic files,
+built offline from ``chmu_builder_recordings.json``. Synthetic files,
 fictional station codes.
 """
 
@@ -28,7 +28,7 @@ from obserwator.store import (
 from obserwator.testing import build_fixture_store, fixture_files
 
 DAILY = "archives/versions/hydrology/historical/data/daily"
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 RESERIALIZED = "variants/H_0-203-1-900001_DQ_2023_reserialized.json"
 
 
@@ -81,7 +81,7 @@ def tree(roots):
     }
 
 
-def test_chmi_archives_keep_the_versions_of_each_scenario(store):
+def test_chmu_archives_keep_the_versions_of_each_scenario(store):
     republished = sidecars(
         store, f"{DAILY}/H_0-203-1-900002_DQ_2004", "H_0-203-1-900002_DQ_2004.json"
     )
@@ -98,7 +98,7 @@ def test_chmi_archives_keep_the_versions_of_each_scenario(store):
     assert old["content_sha256"] != new["content_sha256"]
     assert new["extra"]["http"]["etag"] == '"6a0eea27-554e"'
     assert {meta["content_form"] for meta in (*republished.values(), old, new)} == {
-        "chmi-json/1"
+        "chmu-json/1"
     }
     (rain,) = sidecars(
         store,
@@ -106,7 +106,7 @@ def test_chmi_archives_keep_the_versions_of_each_scenario(store):
         "dly-0-203-0-90000000002-SRA",
         "dly-0-203-0-90000000002-SRA.csv",
     ).values()
-    assert "content_sha256" not in rain and rain["provider"] == "CHMI"
+    assert "content_sha256" not in rain and rain["provider"] == "CHMU"
 
 
 def test_reserialized_file_is_one_observation_beside_its_only_version(store):
@@ -130,14 +130,14 @@ def test_reserialized_file_is_one_observation_beside_its_only_version(store):
     assert entry.version.parent.name == version
 
 
-def test_chmi_series_and_catalog_are_current_and_the_scan_is_clean(store, data):
+def test_chmu_series_and_catalog_are_current_and_the_scan_is_clean(store, data):
     assert check_series(data, raw_root=store, dataset=HYDRO).series_state == {
-        "chmi_hydro_daily": "current"
+        "chmu_hydro_daily": "current"
     }
     assert check_series(data, raw_root=store, dataset=METEO).series_state == {
-        "chmi_meteo_daily": "current"
+        "chmu_meteo_daily": "current"
     }
-    hydro_series = sidecars(data, "series/versions/chmi_hydro_daily", "series.json")
+    hydro_series = sidecars(data, "series/versions/chmu_hydro_daily", "series.json")
     assert len(hydro_series) == 2  # before and after the correction of 900001 2024
     current = max(hydro_series.values(), key=lambda meta: meta["downloaded_at"])
     inputs = {source["name"]: source for source in current["extra"]["source_files"]}
@@ -147,23 +147,23 @@ def test_chmi_series_and_catalog_are_current_and_the_scan_is_clean(store, data):
     assert all("content_sha256" in source for source in inputs.values())
 
     stations = {
-        feature.station_code for feature in read_catalog(root=data, provider="CHMI")
+        feature.station_code for feature in read_catalog(root=data, provider="CHMU")
     }
     assert {"0-203-1-900001", "0-203-1-900002", "0-203-0-90001"} <= stations
     assert {feature.provider for feature in read_catalog(root=data)} == {
         "IMGW-PIB",
-        "CHMI",
+        "CHMU",
     }
     entries = [*iter_store(store), *iter_store(data)]
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
     assert Counter(
-        (entry.kind, entry.provider) for entry in entries if entry.provider == "CHMI"
+        (entry.kind, entry.provider) for entry in entries if entry.provider == "CHMU"
     ) == {
         # 14 measurement files, 2 station lists, 3 station metadata (``now``).
-        ("archive", "CHMI"): 19,
-        ("observation", "CHMI"): 1,
-        ("series", "CHMI"): 3,
-        ("catalog", "CHMI"): 1,
+        ("archive", "CHMU"): 19,
+        ("observation", "CHMU"): 1,
+        ("series", "CHMU"): 3,
+        ("catalog", "CHMU"): 1,
     }
 
 
@@ -193,19 +193,19 @@ def test_imgw_part_equals_the_complete_fixture_and_builds_are_identical(
 
     assert first == second
     assert {name: first[name] for name in complete} == complete
-    chmi = (
+    chmu = (
         "raw/archives/versions/hydrology/",
         "raw/archives/versions/meteorology/",
-        "data/series/versions/chmi_",
-        "data/stations/versions/chmi_stations/",
+        "data/series/versions/chmu_",
+        "data/stations/versions/chmu_stations/",
     )
-    assert all(name.startswith(chmi) for name in set(first) - set(complete))
+    assert all(name.startswith(chmu) for name in set(first) - set(complete))
 
 
 def test_builder_recordings_follow_the_nginx_signals_of_the_source():
     """ETag = "<hex mtime>-<hex size>" of Last-Modified and Content-Length (§13.1)."""
     document = json.loads(
-        fixture_files().joinpath("chmi_builder_recordings.json").read_text("utf-8")
+        fixture_files().joinpath("chmu_builder_recordings.json").read_text("utf-8")
     )
     signals = [
         entry for entry in document["interactions"] if "ETag" in entry["headers"]

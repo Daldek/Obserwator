@@ -1,4 +1,4 @@
-"""Messages of ``_parsing/chmi.py``."""
+"""Messages of ``_parsing/chmu.py``."""
 
 from obserwator.messages import Text
 

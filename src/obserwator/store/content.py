@@ -5,7 +5,8 @@ version. ``content_sha256`` is the SHA-256 of a canonical form of the same bytes
 it decides whether other bytes carry new content (`write_archive`) and lets a
 consumer recognise equal content behind other bytes. The registry of forms is
 closed and append-only: a released form never changes, and another set of
-volatile fields or another method needs a new identifier.
+volatile fields or another method needs a new identifier; an identifier is
+renamed only through `CONTENT_FORM_ALIASES` (ADR-028).
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ class ContentForm:
     Attributes
     ----------
     id : str
-        Identifier written as ``content_form``, e.g. ``"chmi-json/1"``.
+        Identifier written as ``content_form``, e.g. ``"chmu-json/1"``.
     method : {"json-jcs"}
         Canonicalization: a JSON document without the volatile fields,
         serialized by RFC 8785 (JCS).
@@ -46,12 +47,28 @@ class ContentForm:
 
 CONTENT_FORMS: Mapping[str, ContentForm] = MappingProxyType(
     {
-        "chmi-json/1": ContentForm(
-            "chmi-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
+        "chmu-json/1": ContentForm(
+            "chmu-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
         ),
     }
 )
 """Released canonical forms keyed by identifier (closed, append-only)."""
+
+CONTENT_FORM_ALIASES: Mapping[str, str] = MappingProxyType(
+    {"chmi-json/1": "chmu-json/1"}
+)
+"""
+Renamed forms: published identifier → current identifier (ADR-028).
+
+The reading of stored history: a sidecar or an observation written before the
+rename keeps its raw ``content_form``, which the store reads as the current form
+(the same method and volatile fields); no input takes an old identifier.
+"""
+
+
+def stored_form(form: str) -> str:
+    """The current identifier of a ``content_form`` read from a store."""
+    return CONTENT_FORM_ALIASES.get(form, form)
 
 
 def content_sha256(data: bytes, /, *, form: str) -> str:
@@ -72,7 +89,7 @@ def content_sha256(data: bytes, /, *, form: str) -> str:
     data : bytes
         Archive bytes exactly as downloaded.
     form : str
-        Identifier of a form in `CONTENT_FORMS`, e.g. ``"chmi-json/1"``.
+        Identifier of a form in `CONTENT_FORMS`, e.g. ``"chmu-json/1"``.
 
     Returns
     -------

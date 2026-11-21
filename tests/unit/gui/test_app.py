@@ -31,10 +31,10 @@ from obserwator.testing import _recorded_http
 from tests.unit.gui.conftest import (
     ANNUAL_MAXIMA,
     HYDRO,
-    HYDRO_CHMI,
+    HYDRO_CHMU,
     HYDROLOG_VERSION,
     METEO,
-    METEO_CHMI,
+    METEO_CHMU,
     PMAXTP_POINT,
     write_program,
 )
@@ -184,12 +184,12 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
         "hydrolog": None,
     }
     root = session["root"]
-    assert set(root["catalogs"]) == {"IMGW-PIB", "CHMI"}
+    assert set(root["catalogs"]) == {"IMGW-PIB", "CHMU"}
     assert set(root["series"]) == {
         "pl.imgw.hydro_daily",
         "pl.imgw.meteo_precip_daily",
-        "cz.chmi.hydro_daily",
-        "cz.chmi.meteo_daily",
+        "cz.chmu.hydro_daily",
+        "cz.chmu.meteo_daily",
     }
     hydro = root["series"]["pl.imgw.hydro_daily"]
     assert hydro["year_type"] == "hydrological"
@@ -197,13 +197,13 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
     # The fixture root stores no analyses
-    assert root["analyses"] == {"IMGW-PIB": None, "CHMI": None}
-    assert set(session["providers"]) == {"IMGW-PIB", "CHMI"}
-    assert session["providers"]["CHMI"]["attribution"] == list(
-        attribution("chmi").attribution
+    assert root["analyses"] == {"IMGW-PIB": None, "CHMU": None}
+    assert set(session["providers"]) == {"IMGW-PIB", "CHMU"}
+    assert session["providers"]["CHMU"]["attribution"] == list(
+        attribution("chmu").attribution
     )
     origins = session["attribution"]["origins"]
-    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"}
+    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
     assert session["basemap"] is None
     assert session["terms"] is None
     assert session["operator_email"] is None
@@ -217,7 +217,7 @@ def test_the_session_names_the_stored_analyses_of_each_provider(
 
     for provider, folder, station in (
         ("IMGW-PIB", "pl.imgw", HYDRO),
-        ("CHMI", "cz.chmi", HYDRO_CHMI),
+        ("CHMU", "cz.chmu", HYDRO_CHMU),
     ):
         (version,) = (stored_root / "analyses" / "versions" / folder).iterdir()
         stored = obserwator.read_analysis(
@@ -286,17 +286,17 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
         "kind": "hydro",
         "meteo_kind": None,
         "active": True,
-        "location_source": "api_hydro",
+        "location_source": "pl.imgw.hydro_now",
         "lon": 20.1,
         "lat": 49.7,
         "datasets": ["pl.imgw.hydro_daily"],
         "first": "2023",
         "last": "2024",
     }
-    assert by_code[METEO_CHMI]["provider"] == "CHMI"
+    assert by_code[METEO_CHMU]["provider"] == "CHMU"
     assert by_code[METEO]["meteo_kind"] == "precipitation"
     # The catalogs' lines: the providers' and those of the packaged borders (ADR-018)
-    lines = attribution("imgw", "chmi", "gugik", "cuzk")
+    lines = attribution("imgw", "chmu", "gugik", "cuzk")
     assert layer["attribution"] == list(lines.attribution)
     assert layer["terms_notice"] == list(lines.terms_notice)
     again = client.get(
@@ -337,7 +337,7 @@ def test_the_station_layer_is_built_once_and_a_304_builds_nothing(client, monkey
 
 def test_a_station_answers_its_properties_series_and_lines(client):
     hydro = client.get(f"/api/stations/{HYDRO}").json()
-    chmi = client.get(f"/api/stations/{HYDRO_CHMI}").json()
+    chmu = client.get(f"/api/stations/{HYDRO_CHMU}").json()
     empty = client.get("/api/stations/149190312").json()
 
     assert (hydro["code"], hydro["provider"], hydro["lon"], hydro["lat"]) == (
@@ -360,11 +360,11 @@ def test_a_station_answers_its_properties_series_and_lines(client):
         "gaps": 0,
     }
     assert hydro["attribution"] == list(attribution("imgw", "gugik").attribution)
-    assert chmi["properties"]["thresholds"]["Q"]["q50"] == 96
-    assert chmi["attribution_parts"]["series"]["attribution"] == list(
-        attribution("chmi").attribution
+    assert chmu["properties"]["thresholds"]["Q"]["q50"] == 96
+    assert chmu["attribution_parts"]["series"]["attribution"] == list(
+        attribution("chmu").attribution
     )
-    assert "terms_notice" not in chmi["attribution_parts"]["series"]
+    assert "terms_notice" not in chmu["attribution_parts"]["series"]
     assert empty["datasets"] == []
     assert empty["attribution_parts"]["series"] is None
 
@@ -466,7 +466,7 @@ def test_a_series_answers_its_days_values_and_flags(client):
 
 
 def test_the_etag_of_a_series_follows_its_query(client):
-    path = f"/api/series/cz.chmi.hydro_daily/{HYDRO_CHMI}"
+    path = f"/api/series/cz.chmu.hydro_daily/{HYDRO_CHMU}"
     first = client.get(path, params={"variables": "Q"})
     tag = {"If-None-Match": first.headers["etag"]}
 
@@ -702,7 +702,7 @@ def test_no_current_data_at_all_is_an_error(make_client, live):
 def test_the_current_values_of_one_station(client):
     hydro = client.get(f"/api/current/{HYDRO}").json()
     meteo = client.get(f"/api/current/{METEO}").json()
-    chmi = client.get(f"/api/current/{HYDRO_CHMI}", headers=EN)
+    chmu = client.get(f"/api/current/{HYDRO_CHMU}", headers=EN)
 
     assert (hydro["station"], hydro["kind"], hydro["state"]) == (
         HYDRO,
@@ -713,8 +713,8 @@ def test_the_current_values_of_one_station(client):
     assert set(hydro["snapshots"]) == {"hydro", "states"}
     assert meteo["record"]["station_name"] == "Warszawa"
     assert "synop" not in meteo  # the code is no synoptic station's
-    body = problem(chmi, 404, "not_found", "en")
-    assert body["message"] == message("gui.errors.no_current_chmi")
+    body = problem(chmu, 404, "not_found", "en")
+    assert body["message"] == message("gui.errors.no_current_chmu")
 
 
 @pytest.mark.parametrize("path", ["/api/current", f"/api/current/{HYDRO}"])
@@ -886,14 +886,14 @@ def test_the_files_of_a_station_come_with_the_readers_command_line(
 
 
 def test_series_files_are_made_by_export_series_on_the_read_only_root(client):
-    path = f"/api/files/series/cz.chmi.hydro_daily/{HYDRO_CHMI}"
+    path = f"/api/files/series/cz.chmu.hydro_daily/{HYDRO_CHMU}"
     table = client.get(path)
     document = client.get(path, params={"format": "json"})
     parquet = client.get(path, params={"format": "parquet"})
 
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert table.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO_CHMI}_chmi_hydro_daily.csv"'
+        f'attachment; filename="{HYDRO_CHMU}_chmu_hydro_daily.csv"'
     )
     assert parsed_csv(table.content)[1][0] == "2023-01-01"
     assert document.headers["content-type"] == "application/json"
@@ -908,7 +908,7 @@ def test_series_files_are_made_by_export_series_on_the_read_only_root(client):
 def test_the_stations_files_come_from_export_stations(client, read_only_root):
     listed = client.get("/api/downloads/stations").json()
     chosen = client.get(
-        "/api/downloads/stations", params={"provider": "CHMI", "kind": "meteo"}
+        "/api/downloads/stations", params={"provider": "CHMU", "kind": "meteo"}
     ).json()
     whole = client.get("/api/files/stations")
     table = client.get(chosen["formats"]["csv"]["url"])
@@ -922,19 +922,19 @@ def test_the_stations_files_come_from_export_stations(client, read_only_root):
     }
     assert chosen["stations"] == 3
     assert chosen["formats"]["csv"]["command"] == (
-        "obserwator stations export --provider CHMI --kind meteo --format csv "
-        "--output stations_chmi_meteo.csv"
+        "obserwator stations export --provider CHMU --kind meteo --format csv "
+        "--output stations_chmu_meteo.csv"
     )
     assert whole.headers["content-type"] == "application/geo+json"
     assert whole.content == "".join(obserwator.export_stations(read_only_root)).encode()
     assert table.headers["content-disposition"].startswith(
-        'attachment; filename="stations_chmi_meteo.csv"'
+        'attachment; filename="stations_chmu_meteo.csv"'
     )
     assert (
         table.content
         == "".join(
             obserwator.export_stations(
-                read_only_root, provider="CHMI", kind="meteo", format="csv"
+                read_only_root, provider="CHMU", kind="meteo", format="csv"
             )
         ).encode()
     )
@@ -961,8 +961,8 @@ def test_stations_of_a_provider_without_a_catalog_are_404(make_client, imgw_root
     client = make_client(imgw_root, headers=EN)
 
     for path in (
-        "/api/downloads/stations?provider=CHMI",
-        "/api/files/stations?provider=CHMI&format=csv",
+        "/api/downloads/stations?provider=CHMU",
+        "/api/files/stations?provider=CHMU&format=csv",
     ):
         body = problem(client.get(path), 404, "not_found", "en")
         assert body["message"] == message("gui.errors.no_stations")
@@ -973,9 +973,9 @@ def test_stations_of_a_provider_without_a_catalog_are_404(make_client, imgw_root
 
 
 def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
-    series = client.get(f"/api/series/cz.chmi.hydro_daily/{HYDRO_CHMI}").json()
+    series = client.get(f"/api/series/cz.chmu.hydro_daily/{HYDRO_CHMU}").json()
     answer = client.get(
-        f"/api/handoff/{HYDRO_CHMI}",
+        f"/api/handoff/{HYDRO_CHMU}",
         params={"variable": "Q", "first_year": "2024", "last_year": "2024"},
         headers=EN,
     ).json()
@@ -1006,9 +1006,9 @@ def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
         station="Špindlerův Mlýn (Labe)",
         variable="Q",
     )
-    assert answer["producer"]["page"] == f"http://testserver/?station={HYDRO_CHMI}"
-    assert answer["provenance"]["series"]["dataset"] == "cz.chmi.hydro_daily"
-    assert answer["attribution"] == list(attribution("chmi").attribution)
+    assert answer["producer"]["page"] == f"http://testserver/?station={HYDRO_CHMU}"
+    assert answer["provenance"]["series"]["dataset"] == "cz.chmu.hydro_daily"
+    assert answer["attribution"] == list(attribution("chmu").attribution)
     assert "terms_notice" not in answer
 
 
@@ -1025,7 +1025,7 @@ def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
 def test_a_handoff_without_values_or_with_wrong_parameters_is_refused(
     client, query, status, code
 ):
-    problem(client.get(f"/api/handoff/{HYDRO_CHMI}", params=query), status, code)
+    problem(client.get(f"/api/handoff/{HYDRO_CHMU}", params=query), status, code)
 
 
 def test_a_meteorological_station_has_no_hydrological_handoff(client):
@@ -1035,7 +1035,7 @@ def test_a_meteorological_station_has_no_hydrological_handoff(client):
         "gui.errors.no_series",
         lang="pl",
         station=METEO,
-        dataset="pl.imgw.hydro_daily, cz.chmi.hydro_daily",
+        dataset="pl.imgw.hydro_daily, cz.chmu.hydro_daily",
     )
 
 
@@ -1320,7 +1320,7 @@ def exercise(client) -> None:
         f"/api/downloads/{HYDRO}",
         f"/api/files/series/pl.imgw.hydro_daily/{HYDRO}?format=parquet",
         "/api/files/stations?format=csv",
-        f"/api/handoff/{HYDRO_CHMI}",
+        f"/api/handoff/{HYDRO_CHMU}",
         f"/api/analysis/{HYDRO}/characteristic.Q",
     ):
         client.get(path)
@@ -1394,7 +1394,7 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
     with TestClient(host) as client:
         page = client.get("/m/obserwator/")
         station = client.get(f"/m/obserwator/api/stations/{HYDRO}")
-        handoff = client.get(f"/m/obserwator/api/handoff/{HYDRO_CHMI}").json()
+        handoff = client.get(f"/m/obserwator/api/handoff/{HYDRO_CHMU}").json()
         missing = client.get("/m/obserwator/api/nothing")
         refused = client.post("/m/obserwator/api/session")
         report = client.post("/m/obserwator/api/feedback", json=REPORT)
@@ -1407,7 +1407,7 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
     assert 'id="app"' in page.text
     assert station.json()["code"] == HYDRO
     assert handoff["producer"]["page"] == (
-        f"http://testserver/m/obserwator/?station={HYDRO_CHMI}"
+        f"http://testserver/m/obserwator/?station={HYDRO_CHMU}"
     )
     problem(missing, 404, "not_found")
     problem(refused, 405, "method_not_allowed")

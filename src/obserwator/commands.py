@@ -1417,7 +1417,7 @@ def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
         and ``datasets`` options keep only its datasets, the ``provider``
         option becomes required with that provider as its only choice, and
         commands without any data of the provider are left out (for
-        ``CHMI``: ``current …`` and ``pmaxtp …``). `validate_command` and
+        ``CHMU``: ``current …`` and ``pmaxtp …``). `validate_command` and
         the other functions always use the whole catalog.
 
     Returns
@@ -1625,7 +1625,7 @@ def _choice_text(option: CommandOption, text: str) -> str:
                 hint=exc.hint,
             ) from exc
     elif option.name == "provider":
-        # A key prefix (cz.chmi) names its provider, like dataset aliases.
+        # A key prefix (cz.chmu) names its provider, like dataset aliases.
         text = get_provider(text).id
     if text not in option.choices:
         _fail(
@@ -2075,7 +2075,7 @@ def validate_command(
     Normalize and validate command options without network access.
 
     Dataset aliases and slugs become keys, a provider key prefix
-    (``cz.chmi``) becomes its identifier, numeric text becomes ``int`` or
+    (``cz.chmu``) becomes its identifier, numeric text becomes ``int`` or
     ``float``, ISO text becomes ``date``, every form of ``years`` (``2024``,
     ``"2020-2023"``, ``"2020,2022"``, ``[2020, "2022-2023"]``) and ``months``
     becomes a sorted tuple of numbers, other lists become tuples without

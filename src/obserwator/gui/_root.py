@@ -56,12 +56,12 @@ StationsFormat = Literal["geojson", "csv"]
 """The formats of `export_stations`."""
 CATALOG_SLOTS: Mapping[str, str] = {
     "IMGW-PIB": "catalog:pl.imgw.stations",
-    "CHMI": "catalog:cz.chmi.stations",
+    "CHMU": "catalog:cz.chmu.stations",
 }
 """The catalog of each provider, as `current_version` names it."""
 ANALYSES_SLOTS: Mapping[str, str] = {
     "IMGW-PIB": "analyses:pl.imgw.analyses",
-    "CHMI": "analyses:cz.chmi.analyses",
+    "CHMU": "analyses:cz.chmu.analyses",
 }
 """The stored analyses of each provider (ADR-016), as `current_version` names them."""
 

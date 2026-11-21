@@ -115,7 +115,7 @@ def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
     located = codes(catalog, located=True)
     unlocated = codes(catalog, located=False)
     by_code = {station["code"]: station for station in catalog}
-    assert {by_code[code]["provider"] for code in located} == {"IMGW-PIB", "CHMI"}
+    assert {by_code[code]["provider"] for code in located} == {"IMGW-PIB", "CHMU"}
     assert unlocated
     page = open_page()
     show_inactive(page)
@@ -252,11 +252,11 @@ def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, c
     page.get_by_role("radiogroup", name="Dostawca").get_by_role(
         "radio", name="ČHMÚ"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMI"])
+    check([s for s in catalog if s["provider"] == "CHMU"])
     page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
         "radio", name="Meteorologiczne"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMI" and s["kind"] == "meteo"])
+    check([s for s in catalog if s["provider"] == "CHMU" and s["kind"] == "meteo"])
     # a dataset's chip under another provider is not offered; back to every provider
     expect(
         page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
@@ -444,7 +444,7 @@ def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):
 
 
 def test_an_address_with_a_station_opens_the_same_selection(open_page, gui_url):
-    code = FIXTURE_STATIONS["hydro_chmi"]
+    code = FIXTURE_STATIONS["hydro_chmu"]
     page = open_page()
     row(page, code).click()
     expect(row(page, code)).to_have_attribute("aria-current", "true")

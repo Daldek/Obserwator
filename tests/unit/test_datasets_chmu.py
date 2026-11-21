@@ -25,23 +25,23 @@ from obserwator.datasets import (
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.store.content import CONTENT_FORMS
 
-HYDRO = "cz.chmi.hydro_daily"
-METEO = "cz.chmi.meteo_daily"
+HYDRO = "cz.chmu.hydro_daily"
+METEO = "cz.chmu.meteo_daily"
 # Fictional codes: no published ČHMÚ code starts with 0-203-1-9 or 0-203-0-9.
 A, B = "0-203-1-900001", "0-203-1-CB900003"
 M = "0-203-0-90001"
-CHMI_KEYS = [
+CHMU_KEYS = [
     HYDRO,
     METEO,
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 ]
 
 
 def test_providers_follow_the_registry_table():
-    imgw, chmi = providers()
+    imgw, chmu = providers()
     assert (imgw.id, imgw.short_name, imgw.country, imgw.key_prefix) == (
         "IMGW-PIB",
         "IMGW-PIB",
@@ -57,47 +57,47 @@ def test_providers_follow_the_registry_table():
     assert imgw.license.id == "IMGW-PIB" and imgw.license.terms_url is None
     assert imgw.processed_attribution == attribution("imgw").attribution[1]
     assert imgw.station_code_pattern == "^[0-9]{9}$"
-    assert (chmi.id, chmi.short_name, chmi.country, chmi.key_prefix) == (
-        "CHMI",
+    assert (chmu.id, chmu.short_name, chmu.country, chmu.key_prefix) == (
+        "CHMU",
         "ČHMÚ",
         "CZ",
-        "cz.chmi",
+        "cz.chmu",
     )
-    assert chmi.name == "Český hydrometeorologický ústav"
-    assert chmi.base_url == "https://opendata.chmi.cz/"
-    chmi_source, chmi_processed = attribution("chmi").attribution
-    assert chmi.license == License(
+    assert chmu.name == "Český hydrometeorologický ústav"
+    assert chmu.base_url == "https://opendata.chmi.cz/"
+    chmu_source, chmu_processed = attribution("chmu").attribution
+    assert chmu.license == License(
         "CC-BY-4.0",
-        chmi_source,
+        chmu_source,
         "https://creativecommons.org/licenses/by/4.0/",
         "https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti",
     )
-    assert chmi.processed_attribution == chmi_processed
-    assert chmi.notice == (
+    assert chmu.processed_attribution == chmu_processed
+    assert chmu.notice == (
         "The CC BY 4.0 licence permits copying, changes and commercial use provided "
         "that the author ČHMÚ is credited, the licence is given and the changes are "
         "marked."
     )
-    assert chmi.notice.localized("pl") == (
+    assert chmu.notice.localized("pl") == (
         "Licencja CC BY 4.0 dopuszcza kopiowanie, zmiany i użycie komercyjne pod "
         "warunkiem uznania autorstwa ČHMÚ, podania licencji i oznaczenia zmian."
     )
-    assert chmi.station_code_pattern == "^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$"
-    assert chmi.datasets == tuple(CHMI_KEYS)
+    assert chmu.station_code_pattern == "^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$"
+    assert chmu.datasets == tuple(CHMU_KEYS)
     assert imgw.datasets == tuple(
         item.key for item in datasets() if item.key.startswith("pl.imgw.")
     )
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
-    chmi, imgw = get_provider("CHMI"), get_provider("IMGW-PIB")
-    source, processed_line = attribution("chmi").attribution
+    chmu, imgw = get_provider("CHMU"), get_provider("IMGW-PIB")
+    source, processed_line = attribution("chmu").attribution
 
-    notice = chmi.license_notice()
-    processed = chmi.license_notice(attribution("chmi"))
+    notice = chmu.license_notice()
+    processed = chmu.license_notice(attribution("chmu"))
 
-    assert notice == f"{source}. {chmi.notice}"
-    assert processed == f"{source}. {processed_line}. {chmi.notice}"
+    assert notice == f"{source}. {chmu.notice}"
+    assert processed == f"{source}. {processed_line}. {chmu.notice}"
     # The attribution keeps its wording; only the provider's notice is translated.
     assert notice.localized("pl") == (
         f"{source}. Licencja CC BY 4.0 dopuszcza kopiowanie, zmiany "
@@ -114,13 +114,13 @@ def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked
 
 
 def test_provider_lookup_by_id_or_key_prefix():
-    assert get_provider("cz.chmi") is get_provider("CHMI")
+    assert get_provider("cz.chmu") is get_provider("CHMU")
     assert get_provider("pl.imgw") is get_provider("IMGW-PIB")
-    for unknown in ("ČHMÚ", "chmi", "sk.shmu", None):
+    for unknown in ("ČHMÚ", "chmu", "sk.shmu", None):
         with pytest.raises(ObserwatorValidationError) as error:
             get_provider(unknown)
         assert error.value.details["option"] == "provider"
-        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMI"]
+        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
 
 
 def test_registry_invariants_across_providers():
@@ -176,19 +176,19 @@ def test_registry_invariants_across_providers():
             "station",
             "arch",
         },
-        "CHMI": {"hydrology", "meteorology"},
+        "CHMU": {"hydrology", "meteorology"},
     }
-    imgw, chmi = (re.compile(p.station_code_pattern) for p in providers())
+    imgw, chmu = (re.compile(p.station_code_pattern) for p in providers())
     union = re.compile(STATION_CODE_PATTERN)
     for code in ("149190310", A, B, M, "0-20000-0-11406", "0-203-0-42106052001"):
-        assert bool(imgw.fullmatch(code)) != bool(chmi.fullmatch(code)), code
+        assert bool(imgw.fullmatch(code)) != bool(chmu.fullmatch(code)), code
         assert union.fullmatch(code)
     for code in ("12345678", "0-203-1-cb900003", "0-203-1-", "149190310 "):
         assert not union.fullmatch(code)
-        assert not imgw.fullmatch(code) and not chmi.fullmatch(code)
+        assert not imgw.fullmatch(code) and not chmu.fullmatch(code)
 
 
-def test_content_forms_only_for_the_chmi_json_datasets():
+def test_content_forms_only_for_the_chmu_json_datasets():
     for item in datasets():
         assert item.content_form is None or item.content_form in CONTENT_FORMS
         expected = (
@@ -199,27 +199,27 @@ def test_content_forms_only_for_the_chmi_json_datasets():
         assert item.volatile_fields == expected
     assert [item.key for item in datasets() if item.content_form] == [
         HYDRO,
-        "cz.chmi.hydro_stations",
-        "cz.chmi.meteo_stations",
-        "cz.chmi.hydro_now",
-        "cz.chmi.meteo_now",
+        "cz.chmu.hydro_stations",
+        "cz.chmu.meteo_stations",
+        "cz.chmu.hydro_now",
+        "cz.chmu.meteo_now",
     ]
 
 
-def test_chmi_descriptors_follow_the_spec_table():
-    assert [item.key for item in datasets(provider="CHMI")] == CHMI_KEYS
-    assert [item.key for item in datasets(provider="cz.chmi", kind="meteo")] == [
+def test_chmu_descriptors_follow_the_spec_table():
+    assert [item.key for item in datasets(provider="CHMU")] == CHMU_KEYS
+    assert [item.key for item in datasets(provider="cz.chmu", kind="meteo")] == [
         METEO,
-        "cz.chmi.meteo_stations",
-        "cz.chmi.meteo_now",
+        "cz.chmu.meteo_stations",
+        "cz.chmu.meteo_now",
     ]
     hydro, meteo, hydro_list, meteo_list, hydro_now, meteo_now = datasets(
-        provider="CHMI"
+        provider="CHMU"
     )
     assert (hydro.slug, hydro.server_dir, hydro.parser) == (
-        "chmi_hydro_daily",
+        "chmu_hydro_daily",
         "hydrology/historical/data/daily",
-        "parse_chmi_hydro_daily",
+        "parse_chmu_hydro_daily",
     )
     assert hydro.variables == {"H": "cm", "Q": "m3/s", "T": "degC"}
     assert set(hydro.variable_notes) == set(hydro.variables)
@@ -234,9 +234,9 @@ def test_chmi_descriptors_follow_the_spec_table():
         (),
     )
     assert (meteo.slug, meteo.server_dir, meteo.parser) == (
-        "chmi_meteo_daily",
+        "chmu_meteo_daily",
         "meteorology/climate/historical_csv/data/daily",
-        "parse_chmi_meteo_daily",
+        "parse_chmu_meteo_daily",
     )
     assert meteo.variables == {
         "P": "mm",
@@ -259,7 +259,7 @@ def test_chmi_descriptors_follow_the_spec_table():
     ):
         assert (item.server_dir, item.parser, item.time_unit) == (
             directory,
-            "parse_chmi_stations",
+            "parse_chmu_stations",
             "station_list",
         )
         assert (item.archive_scope, item.update_signal, item.in_store) == (
@@ -309,7 +309,7 @@ def test_hydro_files_are_station_year_candidates_in_code_order():
         date(2023, 12, 31),
         A,
     )
-    assert archive_files("chmi_hydro_daily", stations=[A], years=1887)[0].year == 1887
+    assert archive_files("chmu_hydro_daily", stations=[A], years=1887)[0].year == 1887
 
 
 def test_meteo_files_are_six_elements_per_station():
@@ -358,7 +358,7 @@ def test_meteo_files_are_six_elements_per_station():
         (METEO, {"stations": [M], "months": 1}, "months"),
         ("pl.imgw.hydro_daily", {"years": 2024, "stations": [A]}, "stations"),
         ("pl.imgw.hydro_daily", {}, "years"),
-        ("cz.chmi.hydro_stations", {"stations": [A]}, "dataset"),
+        ("cz.chmu.hydro_stations", {"stations": [A]}, "dataset"),
     ],
 )
 def test_file_options_follow_the_provider_rules(dataset, options, option):
@@ -376,13 +376,13 @@ def test_station_code_errors_name_the_rejected_codes():
 
 
 def test_station_lists_of_each_provider():
-    hydro, meteo = station_source_files(provider="CHMI")
+    hydro, meteo = station_source_files(provider="CHMU")
     assert (hydro.dataset, hydro.server_path) == (
-        "cz.chmi.hydro_stations",
+        "cz.chmu.hydro_stations",
         "hydrology/historical/metadata/meta1.json",
     )
     assert (meteo.dataset, meteo.url) == (
-        "cz.chmi.meteo_stations",
+        "cz.chmu.meteo_stations",
         "https://opendata.chmi.cz/meteorology/climate/historical/metadata/meta1.json",
     )
     assert (hydro.year, hydro.year_type, hydro.station_code) == (None, "none", None)
@@ -396,7 +396,7 @@ def _every_file() -> list[ArchiveFile]:
     for item in datasets():
         if item.time_unit == "station_list":
             files += _station_files(item.key)
-            if item.key == "cz.chmi.meteo_now":
+            if item.key == "cz.chmu.meteo_now":
                 daily = _station_file(item, "meta1-20261018.json")
                 assert daily is not None
                 files.append(daily)
@@ -453,10 +453,10 @@ def test_reverse_mapping_recreates_every_file():
             METEO,
             f"meteorology/climate/historical_csv/data/daily/temperature/dly-{M}-SRA.csv",
         ),
-        ("cz.chmi.hydro_stations", "hydrology/historical/metadata/meta2.json"),
-        ("cz.chmi.hydro_now", "hydrology/now/metadata/meta2.json"),
-        ("cz.chmi.meteo_now", "meteorology/climate/now/metadata/meta2-20261018.json"),
-        ("cz.chmi.meteo_now", "meteorology/climate/now/metadata/meta1-2026101.json"),
+        ("cz.chmu.hydro_stations", "hydrology/historical/metadata/meta2.json"),
+        ("cz.chmu.hydro_now", "hydrology/now/metadata/meta2.json"),
+        ("cz.chmu.meteo_now", "meteorology/climate/now/metadata/meta2-20261018.json"),
+        ("cz.chmu.meteo_now", "meteorology/climate/now/metadata/meta1-2026101.json"),
         ("pl.imgw.hydro_now", "api/data/synop"),
         ("pl.imgw.meteo_now", "api/data/hydro"),
         ("pl.imgw.hydro_daily", "dane_hydrologiczne/dobowe/2023/zjaw_2023.zip"),
@@ -504,4 +504,4 @@ def test_new_fields_have_defaults_so_3_0_constructors_still_work():
     assert (descriptor.provider, descriptor.archive_scope) == ("IMGW-PIB", "country")
     assert (descriptor.variable_notes, descriptor.measurement_fields) == ({}, ())
     assert (descriptor.content_form, descriptor.volatile_fields) == (None, ())
-    assert get_dataset("chmi_meteo_daily").key == METEO
+    assert get_dataset("chmu_meteo_daily").key == METEO

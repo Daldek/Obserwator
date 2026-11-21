@@ -9,7 +9,7 @@
 //   direction, humidity, the precipitation total, pressure).
 // IMGW-PIB's API gives its times in UTC, shown as such (current.js `measuredAt`).
 // Obserwator serves no current data of ČHMÚ: the section says so in the words of the
-// server's answer (`errors.no_current_chmi`) without asking it. The response's lines and
+// server's answer (`errors.no_current_chmu`) without asking it. The response's lines and
 // terms (Nogat DEV §20: S, P of danepubliczne.imgw.pl, and H for the water state of
 // hydro.imgw.pl) go to the view's strip (`ResultLines`).
 
@@ -135,7 +135,7 @@ function Teraz({ station }) {
     if (report && state.doc) report(state.doc);
   }, [report, state.doc]);
   if (!imgw) {
-    return html`<p class="note-box">${t("errors.no_current_chmi")} ${t("station.now.chmi_note")}</p>`;
+    return html`<p class="note-box">${t("errors.no_current_chmu")} ${t("station.now.chmu_note")}</p>`;
   }
   const doc = state.doc;
   const hydro = station.properties.kind === "hydro";

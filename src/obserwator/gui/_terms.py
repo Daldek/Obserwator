@@ -29,12 +29,12 @@ from obserwator.messages import message
 
 _LOG = logging.getLogger(__name__)
 
-BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmi", "gugik", "cuzk")
+BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmu", "gugik", "cuzk")
 """The blocks of Obserwator's data sources, the packaged borders of PRG (GUGiK) and
 RÚIAN (ČÚZK) among them (ADR-018); ``osm`` joins them with a basemap."""
 PROVIDER_BLOCKS: Mapping[str, tuple[str, ...]] = {
     "IMGW-PIB": ("imgw", "imgw-hydro"),
-    "CHMI": ("chmi",),
+    "CHMU": ("chmu",),
 }
 """The blocks of each provider's data, dropped when an instance turns it ``off``."""
 KNOWN_BLOCKS: frozenset[str] = frozenset(
@@ -42,7 +42,7 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "imgw",
         "imgw-hydro",
         "pmaxtp",
-        "chmi",
+        "chmu",
         "gugik",
         "cuzk",
         "copernicus",
@@ -51,7 +51,7 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "osm",
     }
 )
-"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 1.0.0)."""
+"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 1.1.0)."""
 PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "service_name",
@@ -70,7 +70,7 @@ PLACEHOLDERS: frozenset[str] = frozenset(
         "kit_href",
     }
 )
-"""Every field of the template (Nogat's ``PLACEHOLDERS``, kit 1.0.0)."""
+"""Every field of the template (Nogat's ``PLACEHOLDERS``, kit 1.1.0)."""
 OPTIONAL: frozenset[str] = frozenset(
     {"processor_transfer", "processor_cookie", "mail_transfer"}
 )

@@ -6,9 +6,9 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 
 | ADR | Title | Date | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-versioned-imgw-store) | Versioned IMGW store | 2026-10-17 | Accepted; partly superseded by ADR-007 and ADR-008 |
+| [ADR-001](#adr-001-versioned-imgw-store) | Versioned IMGW store | 2026-10-17 | Accepted; partly superseded by ADR-007, ADR-008 and ADR-028 |
 | [ADR-002](#adr-002-one-command-catalog-and-consistent-interfaces) | One command catalog and consistent interfaces | 2026-10-18 | Accepted; partly superseded by ADR-007, ADR-008 and ADR-013 |
-| [ADR-003](#adr-003-čhmú-provider-in-the-imgw-store) | ČHMÚ provider in the IMGW store | 2026-10-18 | Accepted; partly superseded by ADR-008 |
+| [ADR-003](#adr-003-čhmú-provider-in-the-imgw-store) | ČHMÚ provider in the IMGW store | 2026-10-18 | Accepted; partly superseded by ADR-008 and ADR-028 |
 | [ADR-004](#adr-004-ai-agent-support-in-release-300) | AI agent support in release 3.0.0 | 2026-10-19 | Accepted; partly superseded by ADR-006, ADR-007 and ADR-008 |
 | [ADR-005](#adr-005-user-environment-dev-18) | User environment (DEV-18) | 2026-10-24 | Accepted |
 | [ADR-006](#adr-006-message-catalog-and-english-machine-output) | Message catalog and English machine output | 2026-10-24 | Accepted; partly superseded by ADR-013 |
@@ -17,7 +17,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-009](#adr-009-the-tool-is-called-obserwator) | The tool is called Obserwator | 2026-11-03 | Accepted |
 | [ADR-010](#adr-010-result-error-and-catalog-documents-follow-the-nogat-standard-10) | Result, error and catalog documents follow the Nogat standard 1.0 | 2026-11-04 | Accepted |
 | [ADR-011](#adr-011-nogats-app-menu-in-the-web-pages) | Nogat's app menu in the web pages | 2026-11-12 | Accepted; D1 and D3 removed by ADR-013 |
-| [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted; D7 superseded by ADR-013 |
+| [ADR-012](#adr-012-provider-attribution-in-every-product) | Provider attribution in every product | 2026-11-13 | Accepted; D7 superseded by ADR-013, the CSV's formula columns by ADR-028 |
 | [ADR-013](#adr-013-web-gui-obserwator-gui-serve) | Web GUI: `obserwator gui serve` | 2026-11-13 | Accepted |
 | [ADR-014](#adr-014-harmonized-exports) | Harmonized exports | 2026-11-13 | Accepted |
 | [ADR-015](#adr-015-raw-data-only-in-store-sync-station-sources-archived-catalogs-offline) | Raw data only in `store sync`, station sources archived, catalogs offline | 2026-11-13 | Accepted |
@@ -33,6 +33,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-025](#adr-025-an-operators-instance-obserwatorinstance) | An operator's instance: `[obserwator.instance]` | 2026-11-21 | Accepted |
 | [ADR-026](#adr-026-series-of-chosen-stations-and-years) | Series of chosen stations and years | 2026-11-21 | Accepted |
 | [ADR-027](#adr-027-the-guis-memory-what-it-keeps-of-the-data-root) | The GUI's memory: what it keeps of the data root | 2026-11-21 | Accepted |
+| [ADR-028](#adr-028-national-provider-names-locations-named-by-their-dataset-two-csv-attribution-columns) | National provider names, locations named by their dataset, two CSV attribution columns | 2026-11-21 | Accepted |
 
 ---
 
@@ -123,6 +124,8 @@ Consequences: source archives keep their bytes and provenance; stations without 
 **2026-11-15 — D4 and the erratum of 2026-10-19 (ADR-022).** The store holds a sixth IMGW-PIB measurement dataset, `pl.imgw.meteo_synop_daily`, whose archives are per station and found in the folder index (ADR-022 D2). `meteo_kind` has a third value: a meteorological station in the current synop series is `synop`, before `climate` and `precipitation`.
 
 **2026-11-21 — D1 (ADR-026).** A series version may hold a subset of the stations and years of its dataset (`subset` of `series.json`, `request.stations` and `request.years` of its sidecar). It is reused only for the same subset and never built in a data root that holds a full version of the dataset, so the current version (the newest build) is a subset only in a root of subsets. The text of D1 is unchanged.
+
+**2026-11-21 — Q10 and the dataset keys of IMGW-20 (ADR-028).** The CSV of a series, of the stations and of an analysis no longer has `attribution_source` and `attribution_processed`: their cells repeated the first two cells of `attribution`, so the trailing columns are `attribution` and `terms_notice` alone (Nogat DEV-20.5 as amended by ECO-082). The ČHMÚ keys published in 3.0.0 changed by the author's decision (`cz.chmi.*` → `cz.chmu.*`): `DATASET_KEY_ALIASES` holds the six old archive keys as the reading of stored history, resolved into `Meta.dataset_key`, while no input takes them — `get_dataset` and the store reads' options accept only the current keys, slugs and legacy aliases, against the erratum of 2026-10-18. The text of Q10 and of that erratum is unchanged.
 
 ---
 
@@ -297,6 +300,8 @@ Archiwista reads ČHMÚ with the same adapter and contracts, and IMGW behavior d
 **2026-11-17 — D9 and spec 2026-10-18 §5.2 step 3: older observation terms (3.0.1).** The parser took only today's terms (`SRA` at `06:00`, `TMA` and `TMI` at `20:00`, `T` as `AVG` at `00:00` with its term rows `06:00`, `13:00` and `20:00` skipped) and refused every other row, so `series build --dataset cz.chmi.meteo_daily` failed as a whole (exit 11) on the deployment's raw root: 85 of its 3,351 files (2026-11-17) hold 482,162 rows at a station's term of the time — `SRA` at `05:00` and `07:00`, `TMA` and `TMI` at `18:00`, `19:00` and `21:00`, `T` at terms from `05:00` to `21:00` — and ČHMÚ's historical `meta2` lists the term of every one of them in the element's `SCHEDULE` of the station's period. A row of `SRA`, `TMA` or `TMI` whose `TIMEFUNC` is a clock time equal to the time of its `DT` is the element's value of the date of `DT`, observed at that term, whatever the term: P is the sum from the morning term of D to the morning term of D+1, Tmax and Tmin the extremes of the 24 hours that end at the evening term of D, and the date is never shifted (D9). A `T` row at a term is a reading of that term and is skipped like `06:00`, `13:00` and `20:00`, and `AVG` at `00:00` stays Tmean: in the 43 `T` files with older terms it equals (morning + afternoon + 2·evening)/4 of the day's three terms on all 165,933 days at older terms, as on the 792,829 days at today's. Another function (e.g. `AVG` of `SRA`) or a term other than the time of `DT` stays an error. Two rows of one date, as where a station changed its term, are one record when they are equal and an error naming the date otherwise; none of the 3,351 files has two rows of one date. All 3,351 files now parse: 53,407,676 days, no row refused. The descriptor's `variable_notes` name the older terms; the text of D9 is unchanged. Rejected: a list of the terms seen so far (the next older term would fail a build again) and shifting a date to today's term (changes the source data, D9).
 
 **2026-11-21 — D4, D8 and D9: ČHMÚ's snow (3.1.0; the author's decision of 2026-11-18).** The data of every provider should be consistent, and IMGW-PIB's daily series have `snow_cover` and `fresh_snow` [cm], so `cz.chmi.meteo_daily` reads two more daily elements of the same `historical_csv/data/daily/` tree, from its folder `snow/`: `SCE` („Výška sněhu”, total snow depth [cm], the state at the morning term `06:00` of day D, the quantity of IMGW-PIB's PKSN) → `snow_cover`, and `SNO` („Nový sníh”, new snow [cm], fallen from the morning term of D to that of D+1 and assigned to D as `SRA`, the quantity of IMGW-PIB's HSS; ČHMÚ's own check `SCE(D+1) ≈ SCE(D) + SNO(D)`) → `fresh_snow`. A station has six element files (`archive_files`, `datasets files|download`, `store check|sync`, whose check reads a third listing). Checked on 2026-11-21 against the published files (one listing GET, nine files and `historical_csv/metadata/meta3.csv`): the folder holds `SCE` of 1,278 stations, `SNO` 1,268, `SVH` 1,149 and `SCEdif` 1,277 (all 2026-09-04; 638 of them stations with `SRA` only), and every row of the files read is at `TIMEFUNC` `06:00`, the time of its `DT` (also from 1947), so the term rule of the erratum of 2026-11-17 applies unchanged. D8: `0.0` without `FLAG` of `SCE` and `SNO` is `no_phenomenon` (no cover, no new snow), as for precipitation and IMGW-PIB's status 9; a `0.0` with a flag — `P` dusting, `N` discontinuous cover, `R` new snow that melted (`meta3`: `SCE` A, N, P, U, Z; `SNO` A, N, P, R; `R` also at `SCE`, outside `meta3`) — is a `value`; `QUALITY` and `FLAG` are kept as for every element. Not read: `SVH` („Vodní hodnota”, the water equivalent of the whole snow cover [mm], e.g. 26 mm under 20 cm at `0-203-0-41301035102` on 1948-01-23) is not the quantity of IMGW-PIB's `snow_water_equivalent` (RWSN, water per centimetre of snow [mm/cm]: 0.5 to 9.7 at depths of 5 to 35 cm in the deployed synop series), so by the author's rule (IMGW-PIB's names only where the quantity is the same) it does not take that name, and whether it joins under a name of its own is left to the author; `SCEdif`, the daily change of `SCE`, is derived. The analyses need no change: `snow` reads `snow_cover` and `fresh_snow` of the station's daily meteorological series, `cz.chmi.meteo_daily` among them, so it covers every ČHMÚ station with snow once the deployment syncs the new files, rebuilds the series and the analyses. The fixture station `0-203-0-90001` got fictional `SCE` and `SNO` files with the flags `N`, `P`, `R` and a missing row; `0-203-0-90000000002` publishes none.
+
+**2026-11-21 — the provider's identifiers (ADR-028).** ČHMÚ's identifiers use its national acronym without diacritics: the provider id `CHMU` (D1), the keys `cz.chmu.*` and slugs `chmu_*` (D4), the catalog directory `stations/versions/chmu_stations` (D5), the content form `chmu-json/1` (D17), and the catalog's `location_source` is the key of the dataset whose file gave the point (`cz.chmu.hydro_now` for both `now` files, `cz.chmu.hydro_stations`, `cz.chmu.meteo_now`, `cz.chmu.meteo_stations`). A raw root written before is read under the new names. The text of the decisions is unchanged.
 
 ---
 
@@ -842,6 +847,8 @@ Nogat's ECO-059 gives the raw data of IMGW-PIB and ČHMÚ to Archiwista, which o
 
 Breaking for every caller of a store that held both kinds (`docs/CHANGELOG.md`, `[Unreleased]`, with the migration); no released interface breaks, because 3.0.0 is untagged. Archiwista configures both roots, orders its downloads into the raw root and reads the series and catalogs from the data root (the Nogat plan's step R2); Retman's command list gives every command the root of its kind and `series build` and `store catalog` their `--raw-root` (R2); the new GUI (Obserwator's GUI plan) reads the data root only. A store written before this decision is split once (D8); the deployment's roots start afresh with one full download (the plan's answer 2). Kartograf (frozen) checks only the marker names of its own list (`kartograf-store.json`, `obserwator-store.json`), so it does not see `obserwator-data.json` and would not refuse a store of its own inside a data root or around one; Obserwator's own nesting check knows all three names. `AGENTS.md` and `llms.txt` are regenerated with the raw and data roots and `OBSERWATOR_RAW_ROOT`. ČHMÚ's rating curves and long-term characteristics (the plan's D10) are still not datasets of the registry.
 
+**2026-11-21 — the CSV's formula columns (ADR-028).** The CSV of a series, of the stations and of an analysis carries the lines in `attribution` and `terms_notice` only; the columns `attribution_source` and `attribution_processed` of ADR-001 Q10, which repeated the lines S and P (C and CP for ČHMÚ), are gone. The text of the decisions is unchanged.
+
 ---
 
 ## ADR-018: State borders from PRG and RÚIAN
@@ -1114,3 +1121,28 @@ On the deployed data root an idle GUI held 1.5 GB (RSS) after a typical set of r
 ### Consequences
 
 Measured on the deployed data root (method and numbers in the item's report): the snapshot of the root takes 113 MB instead of 724 MB in one process, a cached precipitation document grows the process by its own size instead of 100–200 MB. The GUI's answers are unchanged.
+
+---
+
+## ADR-028: National provider names, locations named by their dataset, two CSV attribution columns
+
+**Date:** 2026-11-21  
+**Status:** Accepted (the author's decisions of 2026-11-21, Nogat plan `2026-11-21-national-provider-names.md`, ECO-082)  
+**Standard:** amends ADR-001 Q10 and its IMGW-20 erratum, ADR-003 D1, D4, D5 and D17, ADR-012
+
+### Context and options
+
+The identifiers mixed IMGW-PIB's Polish acronym with the English one of the Czech institute (`CHMI`, `cz.chmi.*` beside `IMGW-PIB`, `pl.imgw.*`); the catalog named a location's source by a file of its own vocabulary (`api_hydro`, `chmi_hydro_meta3`); and the CSV repeated the lines S and P (C and CP) in two columns of their own before `attribution`. Found by the author's test of the station list on 2026-11-21. Every format stays at `/1` and the change is minor (Obserwator 3.1.0), since Obserwator is still a development version (Nogat REL-1.4).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **National acronyms without diacritics in every identifier**: the provider `CHMU`, the keys `cz.chmu.*`, the slugs `chmu_*` and the data-root directories named by them (`series/versions/chmu_*`, `stations/versions/chmu_stations`, `analyses/versions/cz.chmu`), the content form `chmu-json/1`, message keys, modules, tests and the regulamin's block `chmu` (Nogat's kit 1.1.0, copied from Nogat `c2507fa`). IMGW-PIB's identifiers are national already. Texts for people keep „ČHMÚ”, and the provider's addresses (`opendata.chmi.cz`) stay. | The English acronym for ČHMÚ beside the Polish one for IMGW-PIB; old names accepted beside the new (decision 4 of the plan: one name). |
+| D2 | **`location_source` is the key of the dataset whose file gave the point**: `pl.imgw.hydro_now`, `pl.imgw.meteo_now`, `cz.chmu.hydro_now` (both files meta1 and meta3), `cz.chmu.hydro_stations`, `cz.chmu.meteo_now`, `cz.chmu.meteo_stations`; `static` and `user` stay for the two files outside any dataset. The catalog's `sources` and a threshold's `source` keep naming the file (`api_hydro`, `chmu_hydro_now`, `chmu_hydro_meta3`, …). | One value per file (two names for one dataset). |
+| D3 | **The CSV of a series, of the stations and of an analysis ends with `attribution` and `terms_notice` alone**; `attribution_source` and `attribution_processed` are gone. | Keeping columns that repeat the first two cells of `attribution`. |
+| D4 | **A raw root written under the old names is read under the new ones, as stored history**: sidecars keep their raw `dataset` (ADR-001 D1), `DATASET_KEY_ALIASES` gives `Meta.dataset_key` `cz.chmu.*` for the six ČHMÚ archive keys, `PROVIDER_ID_ALIASES` gives `Meta.provider` `CHMU`, `CONTENT_FORM_ALIASES` gives `chmu-json/1`; everything written carries the new names and no input takes an old one (`get_dataset` no longer resolves a renamed key). The data root is rebuilt. | Downloading every ČHMÚ archive again into a new raw root; rewriting the sidecars of a raw root. |
+
+### Consequences
+
+A user of 3.0.x whose scripts say `--provider CHMI`, `cz.chmi.*`, read the old `location_source` values or the two CSV columns gets a refusal or a missing column from 3.1.0. A data root built by 3.0.x or a `3.1.0.dev` before this change is rebuilt from its unchanged raw root (`series build`, `store catalog`, `analyses build`; the CHANGELOG's migration). Files exported before keep the two columns (Hydrolog reads them as lines). `pl.imgw.meteo_details` (GEO-03 Q2, 3.2.0) will be a `location_source` value of its own.

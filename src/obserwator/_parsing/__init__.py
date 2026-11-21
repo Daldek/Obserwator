@@ -3,7 +3,7 @@
 from collections.abc import Collection, Iterator
 from datetime import date
 
-from obserwator._parsing.chmi import parse_chmi_hydro_daily, parse_chmi_meteo_daily
+from obserwator._parsing.chmu import parse_chmu_hydro_daily, parse_chmu_meteo_daily
 from obserwator._parsing.hydro import normalize_hydro_archive
 from obserwator._parsing.meteo import normalize_meteo_archive, normalize_synop_archive
 from obserwator.datasets import ArchiveFile
@@ -25,7 +25,7 @@ def normalize_archive(
     ``pl.imgw.hydro_monthly``, ``pl.imgw.hydro_semiannual``), IMGW-PIB daily
     meteorological datasets (``pl.imgw.meteo_climate_daily``,
     ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``) and the
-    ČHMÚ daily datasets (``cz.chmi.hydro_daily``, ``cz.chmi.meteo_daily``)
+    ČHMÚ daily datasets (``cz.chmu.hydro_daily``, ``cz.chmu.meteo_daily``)
     are supported. Parsing is strict: malformed rows raise instead of being
     skipped.
 
@@ -46,8 +46,8 @@ def normalize_archive(
     NormalizedRecord
         Normalized measurements with value/flag pairs; see
         ``normalize_hydro_archive``, ``normalize_meteo_archive``,
-        ``normalize_synop_archive``, ``parse_chmi_hydro_daily`` and
-        ``parse_chmi_meteo_daily`` for the per-dataset record layout.
+        ``normalize_synop_archive``, ``parse_chmu_hydro_daily`` and
+        ``parse_chmu_meteo_daily`` for the per-dataset record layout.
 
     Raises
     ------
@@ -124,10 +124,10 @@ def normalize_in_sequence(
             start=archive.period_start,
             end=archive.period_end,
         )
-    elif archive.dataset == "cz.chmi.hydro_daily":
-        yield from parse_chmi_hydro_daily(data, filename=archive.server_path)
-    elif archive.dataset == "cz.chmi.meteo_daily":
-        yield from parse_chmi_meteo_daily(data, filename=archive.server_path)
+    elif archive.dataset == "cz.chmu.hydro_daily":
+        yield from parse_chmu_hydro_daily(data, filename=archive.server_path)
+    elif archive.dataset == "cz.chmu.meteo_daily":
+        yield from parse_chmu_meteo_daily(data, filename=archive.server_path)
     else:
         raise ObserwatorValidationError(
             message("parsing.no_parser_archive", dataset=archive.dataset)

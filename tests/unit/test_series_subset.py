@@ -30,8 +30,8 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 HYDRO = "pl.imgw.hydro_daily"
 PRECIP = "pl.imgw.meteo_precip_daily"
 SYNOP = "pl.imgw.meteo_synop_daily"
-CZ_HYDRO = "cz.chmi.hydro_daily"
-CZ_METEO = "cz.chmi.meteo_daily"
+CZ_HYDRO = "cz.chmu.hydro_daily"
+CZ_METEO = "cz.chmu.meteo_daily"
 # The stations of the hydro fixtures: RABA in every archive, NO_Q in November 2021
 # and November 2023 only.
 RABA, NO_Q = "149190310", "149190311"

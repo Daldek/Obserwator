@@ -66,10 +66,10 @@ MESSAGES = {
     ),
     "archives_dataset_cover_whole_country": Text(
         "The archives of the dataset {key} cover the whole country; the option "
-        "stations applies only to datasets with station files (cz.chmi.* and the "
+        "stations applies only to datasets with station files (cz.chmu.* and the "
         "per-station synop archives of IMGW-PIB)",
         "Archiwa zbioru {key} obejmują cały kraj; opcja stations dotyczy wyłącznie "
-        "zbiorów z plikami stacji (cz.chmi.* i archiwów synop IMGW-PIB "
+        "zbiorów z plikami stacji (cz.chmu.* i archiwów synop IMGW-PIB "
         "publikowanych osobno dla każdej stacji)",
     ),
     "station_archives_need_stations_or_months": Text(
@@ -138,7 +138,7 @@ MESSAGES = {
     ),
     # The links to the IMGW-PIB terms only: no summary of them (Nogat DEV-20.7, ECO-065)
     "provider_notice_imgw": Text("{terms}", "{terms}"),
-    "provider_notice_chmi": Text(
+    "provider_notice_chmu": Text(
         "The CC BY 4.0 licence permits copying, changes and commercial use provided "
         "that the author ČHMÚ is credited, the licence is given and the changes are "
         "marked.",
@@ -422,15 +422,15 @@ MESSAGES = {
     "note_imgw_p_night": Text(
         "Precipitation sum of the night (WONO)", "Suma opadu noc (WONO)"
     ),
-    "title_chmi_hydro_daily": Text(
+    "title_chmu_hydro_daily": Text(
         "ČHMÚ — daily hydrological data (H, Q, T)",
         "ČHMÚ — dane hydrologiczne dobowe (H, Q, T)",
     ),
-    "note_chmi_hydro_daily_h": Text(
+    "note_chmu_hydro_daily_h": Text(
         "Daily mean water level (HD); date = the day of DT (…T00:00:00Z)",
         "Średni dobowy stan wody (HD); data = dzień z DT (…T00:00:00Z)",
     ),
-    "note_chmi_hydro_daily_q": Text(
+    "note_chmu_hydro_daily_q": Text(
         "Daily mean discharge (QD), equal to the mean of the 24 hourly discharges "
         "labelled 00–23Z of that date (day by the Z labels; UTC or fixed CET — not "
         "confirmed by ČHMÚ)",
@@ -438,15 +438,15 @@ MESSAGES = {
         "etykietach 00–23Z tej daty (doba według etykiet Z; UTC albo stały SEČ — "
         "niepotwierdzone przez ČHMÚ)",
     ),
-    "note_chmi_hydro_daily_t": Text(
+    "note_chmu_hydro_daily_t": Text(
         "Daily mean water temperature (TD)",
         "Średnia dobowa temperatura wody (TD)",
     ),
-    "title_chmi_meteo_daily": Text(
+    "title_chmu_meteo_daily": Text(
         "ČHMÚ — daily meteorological data (precipitation, air temperature, snow)",
         "ČHMÚ — dane meteorologiczne dobowe (opad, temperatura powietrza, śnieg)",
     ),
-    "note_chmi_meteo_daily_p": Text(
+    "note_chmu_meteo_daily_p": Text(
         "Precipitation sum (SRA) from the morning term (06:00Z) of day D to the "
         "morning term of day D+1, assigned to D; in older records the station's "
         "morning term of the time (e.g. 05:00Z or 07:00Z)",
@@ -454,7 +454,7 @@ MESSAGES = {
         "dnia D+1, przypisana do D; w starszych zapisach poranny termin stacji z "
         "tamtego czasu (np. 05:00Z albo 07:00Z)",
     ),
-    "note_chmi_meteo_daily_tmean": Text(
+    "note_chmu_meteo_daily_tmean": Text(
         "Daily mean air temperature (T, AVG) = (T06 + T13 + 2·T20)/4 of the UTC "
         "terms of day D; in older records from the station's terms of the time "
         "(e.g. 05:00, 13:00 and 21:00)",
@@ -462,7 +462,7 @@ MESSAGES = {
         "terminów UTC dnia D; w starszych zapisach z terminów stacji z tamtego "
         "czasu (np. 05:00, 13:00 i 21:00)",
     ),
-    "note_chmi_meteo_daily_tmax": Text(
+    "note_chmu_meteo_daily_tmax": Text(
         "Maximum air temperature (TMA) of the period (D−1 20:00, D 20:00] UTC, "
         "assigned to D; in older records the period ends at the station's evening "
         "term of the time (e.g. 19:00 or 21:00)",
@@ -470,7 +470,7 @@ MESSAGES = {
         "przypisana do D; w starszych zapisach okres kończy wieczorny termin stacji "
         "z tamtego czasu (np. 19:00 albo 21:00)",
     ),
-    "note_chmi_meteo_daily_tmin": Text(
+    "note_chmu_meteo_daily_tmin": Text(
         "Minimum air temperature (TMI) of the period (D−1 20:00, D 20:00] UTC, "
         "assigned to D; in older records the period ends at the station's evening "
         "term of the time (e.g. 19:00 or 21:00)",
@@ -478,29 +478,29 @@ MESSAGES = {
         "przypisana do D; w starszych zapisach okres kończy wieczorny termin stacji "
         "z tamtego czasu (np. 19:00 albo 21:00)",
     ),
-    "note_chmi_meteo_daily_snow_cover": Text(
+    "note_chmu_meteo_daily_snow_cover": Text(
         "Total snow depth (SCE) at the morning term (06:00Z) of day D",
         "Całkowita wysokość pokrywy śnieżnej (SCE) w terminie porannym (06:00Z) dnia D",
     ),
-    "note_chmi_meteo_daily_fresh_snow": Text(
+    "note_chmu_meteo_daily_fresh_snow": Text(
         "Depth of new snow (SNO) fallen from the morning term (06:00Z) of day D to "
         "the morning term of day D+1, assigned to D",
         "Wysokość śniegu świeżo spadłego (SNO) od terminu porannego (06:00Z) dnia D "
         "do terminu porannego dnia D+1, przypisana do D",
     ),
-    "title_chmi_hydro_stations": Text(
+    "title_chmu_hydro_stations": Text(
         "ČHMÚ — list of hydrological stations",
         "ČHMÚ — wykaz stacji hydrologicznych",
     ),
-    "title_chmi_meteo_stations": Text(
+    "title_chmu_meteo_stations": Text(
         "ČHMÚ — list of meteorological stations",
         "ČHMÚ — wykaz stacji meteorologicznych",
     ),
-    "title_chmi_hydro_now": Text(
+    "title_chmu_hydro_now": Text(
         "ČHMÚ — current metadata of hydrological stations",
         "ČHMÚ — bieżące metadane stacji hydrologicznych",
     ),
-    "title_chmi_meteo_now": Text(
+    "title_chmu_meteo_now": Text(
         "ČHMÚ — current metadata of meteorological stations",
         "ČHMÚ — bieżące metadane stacji meteorologicznych",
     ),

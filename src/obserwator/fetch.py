@@ -1453,7 +1453,7 @@ def download_archives(
         Key, slug or legacy alias of an archive dataset.
     years : YearsArg or None, optional
         Archive years: a number, a range ``"a-b"``, a list ``"a,b"`` or an
-        iterable of these. Required except for ``cz.chmi.meteo_daily``, which
+        iterable of these. Required except for ``cz.chmu.meteo_daily``, which
         rejects it.
     months : MonthsArg or None, optional
         Months 1-12 of physically monthly files; None selects all months.

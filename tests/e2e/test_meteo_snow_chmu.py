@@ -1,7 +1,7 @@
 """
 ČHMÚ's snow in the card „Śnieg” (3.1.0, ADR-003 erratum of 2026-11-21).
 
-`cz.chmi.meteo_daily` carries ČHMÚ's total snow depth (SCE) and new snow (SNO) as
+`cz.chmu.meteo_daily` carries ČHMÚ's total snow depth (SCE) and new snow (SNO) as
 ``snow_cover`` and ``fresh_snow``, so a ČHMÚ climate station of the fixture root gets
 Hydrolog's ``snow`` analysis (stored by the recorded Hydrolog of ``stored_url``) and the
 card IMGW-PIB's stations have, with ČHMÚ named among the data of its information.
@@ -20,7 +20,7 @@ from tests.e2e.conftest import FIXTURE_STATIONS
 
 expect = pytest.importorskip("playwright.sync_api").expect
 
-METEO_CHMI = FIXTURE_STATIONS["meteo_chmi"]
+METEO_CHMU = FIXTURE_STATIONS["meteo_chmu"]
 WAIT = 20_000
 """How long a section may take to load [ms]."""
 
@@ -33,12 +33,12 @@ def listed(base: str, code: str) -> set[str]:
     return {entry["analysis"] for entry in document["analyses"]}
 
 
-def test_a_chmi_station_with_snow_measurements_has_the_snow_card(
+def test_a_chmu_station_with_snow_measurements_has_the_snow_card(
     open_page: Any, stored_url: str
 ) -> None:
-    assert "snow" in listed(stored_url, METEO_CHMI)
+    assert "snow" in listed(stored_url, METEO_CHMU)
 
-    page = open_page(f"?station={METEO_CHMI}&section=snieg", base=stored_url)
+    page = open_page(f"?station={METEO_CHMU}&section=snieg", base=stored_url)
     snow = page.locator('.acc-item[data-section="snieg"]')
     cover = snow.locator("section.ana").filter(
         has=page.locator("h3", has_text="Pokrywa śnieżna")

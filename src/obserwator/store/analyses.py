@@ -162,8 +162,6 @@ _CSV_HEADER = (
     "path",
     "value",
     "derived",
-    "attribution_source",
-    "attribution_processed",
     "attribution",
     "terms_notice",
 )
@@ -846,7 +844,7 @@ def _export_name(code: str, keys: tuple[str, ...], derived: str | None) -> str:
     The series file of a station: one dataset, its joined record (ADR-022) or derived.
 
     A derived file is named after its dataset and kind
-    (``<code>_chmi_hydro_daily_half_years.csv``), so it never meets the
+    (``<code>_chmu_hydro_daily_half_years.csv``), so it never meets the
     series export of the same dataset.
     """
     name = f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}"
@@ -2299,9 +2297,8 @@ def export_analyses(
     with ``formula_versions`` as ``name=version`` pairs joined by ``;``,
     ``path`` a JSON Pointer (RFC 6901) into ``result`` and ``derived`` as in
     ``json`` (empty for null), followed by the attribution columns of
-    ``series export`` (``attribution_source`` and ``attribution_processed`` in
-    the first row, ``attribution`` and ``terms_notice`` one line per row from
-    the first).
+    ``series export``, ``attribution`` and ``terms_notice``, one line per row
+    from the first (ADR-028).
 
     Parameters
     ----------
@@ -2407,15 +2404,8 @@ def export_analyses(
         rows: Iterable[str] = [text]
         head: tuple[str, ...] = ()
     else:
-        first = record["inputs"][0]["dataset"] if record["inputs"] else None
-        formulas = (
-            (get_dataset(first).license.attribution, provider.processed_attribution)
-            if first is not None
-            else ("", "")
-        )
 
         def table() -> Iterator[list[str]]:
-            number = 0
             for entry, document in zip(chosen, documents, strict=True):
                 if document.get("schema") != _RESULT:
                     continue
@@ -2435,9 +2425,7 @@ def export_analyses(
                         path,
                         _cell(value),
                         _cell(entry.get("derived")),
-                        *(formulas if number == 0 else ("", "")),
                     ]
-                    number += 1
 
         head = (_csv_line(list(_CSV_HEADER)),)
         rows = _csv_lines(_with_lines(table(), lines))

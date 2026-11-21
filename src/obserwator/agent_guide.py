@@ -148,7 +148,7 @@ _STATION = _Symbol("agent_guide.symbol_station_code", "123456789")
 _WIGOS = _Symbol("agent_guide.symbol_wigos_id", "0-203-1-900001")
 _SYMBOLS = (_STATION, _WIGOS)
 _PRECIP = "pl.imgw.meteo_precip_daily"
-_CHMI_HYDRO = "cz.chmi.hydro_daily"
+_CHMU_HYDRO = "cz.chmu.hydro_daily"
 _PRECIP_STORE = {"datasets": [_PRECIP], "years": "2010-2020"}
 _PRECIP_DAYS = {
     "dataset": _PRECIP,
@@ -157,7 +157,7 @@ _PRECIP_DAYS = {
     "start": "2010-01-01",
     "end": "2020-12-31",
 }
-_CHMI_STORE = {"datasets": [_CHMI_HYDRO], "stations": [_WIGOS], "years": "2020-2025"}
+_CHMU_STORE = {"datasets": [_CHMU_HYDRO], "stations": [_WIGOS], "years": "2020-2025"}
 # The flags of the roots that `format_command` names; a flow line leaves them out.
 _ROOT_FLAGS = ("--root", "--raw-root")
 _FLOWS: tuple[_Flow, ...] = (
@@ -192,20 +192,20 @@ _FLOWS: tuple[_Flow, ...] = (
         (
             _Step(
                 "stations find",
-                {"provider": "CHMI", "kind": "hydro", "query": "spindleruv"},
+                {"provider": "CHMU", "kind": "hydro", "query": "spindleruv"},
                 "agent_guide.flow_czech_discharge_find_station",
             ),
-            _Step("store check", _CHMI_STORE, "agent_guide.flow_czech_discharge_plan"),
-            _Step("store sync", _CHMI_STORE, "agent_guide.flow_after_consent"),
+            _Step("store check", _CHMU_STORE, "agent_guide.flow_czech_discharge_plan"),
+            _Step("store sync", _CHMU_STORE, "agent_guide.flow_after_consent"),
             _Step(
                 "series build",
-                {"dataset": _CHMI_HYDRO},
+                {"dataset": _CHMU_HYDRO},
                 "agent_guide.flow_series_build",
             ),
             _Step(
                 "series read",
                 {
-                    "dataset": _CHMI_HYDRO,
+                    "dataset": _CHMU_HYDRO,
                     "station": _WIGOS,
                     "variables": ["Q"],
                     "limit": 500,

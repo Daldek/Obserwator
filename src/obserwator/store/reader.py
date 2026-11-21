@@ -13,11 +13,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
 from obserwator._parsing import normalize_archive
-from obserwator._parsing.chmi import iter_stations
+from obserwator._parsing.chmu import iter_stations
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     DATASET_KEY_PATTERN,
+    PROVIDER_ID_ALIASES,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -51,6 +52,7 @@ from obserwator.store.catalog import (
     _signal_time,
     _timestamp,
 )
+from obserwator.store.content import stored_form
 from obserwator.store.pmaxtp import CELL_FILE, CELL_SCHEMA, RESPONSE_FILE
 from obserwator.store.series import (
     _FLAGS,
@@ -363,7 +365,7 @@ def _content_fields(payload: Mapping[str, Any]) -> tuple[str | None, str | None]
     digest = payload["content_sha256"]
     if not isinstance(digest, str) or not _SHA.fullmatch(digest):
         raise _Invalid("invalid_meta", message("reader.field_content_sha256_must_have"))
-    return digest, _text(payload, "content_form")
+    return digest, stored_form(_text(payload, "content_form"))
 
 
 def _parse_meta(payload: object) -> Meta:
@@ -391,7 +393,9 @@ def _parse_meta(payload: object) -> Meta:
         raise _Invalid(
             "invalid_meta", message("reader.field_country_must_country_code")
         )
+    # A sidecar written before a provider was renamed holds its old id (ADR-028).
     provider = _text(payload, "provider")
+    provider = PROVIDER_ID_ALIASES.get(provider, provider)
     origin = _registry_origin(dataset)
     if origin is not None and (country, provider) != origin:
         raise _Invalid(
@@ -860,7 +864,7 @@ def _parse_observation(payload: object) -> Observation:
         raise _Invalid("invalid_meta", message("reader.field_size_bytes_must_non"))
     sha = _digest(payload, "sha256")
     content_sha256 = _digest(payload, "content_sha256")
-    content_form = _text(payload, "content_form")
+    content_form = stored_form(_text(payload, "content_form"))
     same = payload.get("same_content_as")
     if not isinstance(same, str) or not _SAME_CONTENT.fullmatch(same):
         raise _Invalid(
@@ -1601,10 +1605,10 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         dataset server directory>`` (e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``),
         ``series:<key>``, ``catalog:<catalog key>`` (``catalog:pl.imgw.stations``,
-        ``catalog:cz.chmi.stations``),
+        ``catalog:cz.chmu.stations``),
         ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>`` or
         ``analyses:<provider key prefix>.analyses``
-        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmi.analyses``). Station
+        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmu.analyses``). Station
         selectors of series slots (``series:<key>:<station_code>``) are
         rejected.
 
@@ -2039,11 +2043,11 @@ def read_station_list(
 
     Reads the current version of the provider's list dataset
     (``pl.imgw.hydro_stations``/``pl.imgw.meteo_stations`` for IMGW-PIB,
-    ``cz.chmi.hydro_stations``/``cz.chmi.meteo_stations`` — the historical
+    ``cz.chmu.hydro_stations``/``cz.chmu.meteo_stations`` — the historical
     ``meta1.json`` — for ČHMÚ), verifies its bytes against the SHA-256 and
     size of the sidecar and parses it with
     :func:`obserwator.parsers.parse_stations_csv` or
-    :func:`obserwator.parsers.parse_chmi_stations`. Lists are stored in the
+    :func:`obserwator.parsers.parse_chmu_stations`. Lists are stored in the
     raw root by ``obserwator store sync --datasets`` (ADR-015, ADR-017).
 
     Parameters
@@ -2110,7 +2114,7 @@ def read_station_list(
             )
         )
     data = _verified(entry.version)
-    if get_dataset(source.dataset).parser == "parse_chmi_stations":
+    if get_dataset(source.dataset).parser == "parse_chmu_stations":
         return tuple(iter_stations(data, kind=kind, filename=str(entry.version)))
     return tuple(parse_stations_csv(data, kind=kind))
 

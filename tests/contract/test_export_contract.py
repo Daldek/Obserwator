@@ -16,7 +16,7 @@ from obserwator import ObserwatorValidationError, run_command
 from tests.contract.support import ANYWHERE
 
 MCP = importlib.util.find_spec("mcp") is not None
-METEO, STATION = "cz.chmi.meteo_daily", "0-203-0-90001"
+METEO, STATION = "cz.chmu.meteo_daily", "0-203-0-90001"
 REFUSAL = {"option": "output", "reason": "output_required"}
 
 

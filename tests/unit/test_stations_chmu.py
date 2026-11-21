@@ -1,6 +1,6 @@
 """find_stations for ČHMÚ: live current metadata and stored catalogs (spec 2026-10-18 §9.1).
 
-Recorded answers of ``chmi_catalog_recordings.json`` only (respx refuses every
+Recorded answers of ``chmu_catalog_recordings.json`` only (respx refuses every
 other request); synthetic stations, e.g. ``0-203-1-900001`` Špindlerův Mlýn.
 ``source="store"`` reads the current catalogs of the data root (ADR-017).
 """
@@ -21,7 +21,7 @@ from obserwator.fetch import DownloadResult
 from obserwator.messages import message
 from obserwator.stations import find_stations, find_stations_async
 from obserwator.store import init_store, write_archive
-from tests.unit.test_store_catalog_chmi import (
+from tests.unit.test_store_catalog_chmu import (
     BASE_URL,
     CASES,
     body,
@@ -57,7 +57,7 @@ def traffic(router):
 async def test_live_search_reads_the_current_metadata_and_finds_czech_names(router):
     routes = serve(router, *NOW)
 
-    found = find_stations(provider="CHMI", query="spindleruv")
+    found = find_stations(provider="CHMU", query="spindleruv")
 
     (station,) = found
     assert (
@@ -66,7 +66,7 @@ async def test_live_search_reads_the_current_metadata_and_finds_czech_names(rout
         station.station_code,
         station.name,
         station.river,
-    ) == ("CHMI", "hydro", "0-203-1-900001", "Špindlerův Mlýn", "Labe")
+    ) == ("CHMU", "hydro", "0-203-1-900001", "Špindlerův Mlýn", "Labe")
     assert (station.latitude, station.longitude) == (50.4032345, 15.6012345)
     # One GET of hydro meta1, the meteo listing and only its newest dated file.
     assert traffic(router) == [
@@ -78,7 +78,7 @@ async def test_live_search_reads_the_current_metadata_and_finds_czech_names(rout
     assert {call.request.headers["User-Agent"] for call in router.calls} == {
         f"obserwator/{__version__}"
     }
-    assert await find_stations_async(provider="CHMI", query="spindleruv") == found
+    assert await find_stations_async(provider="CHMU", query="spindleruv") == found
 
 
 def test_live_coordinates_are_the_published_values_without_border_check(router):
@@ -86,7 +86,7 @@ def test_live_coordinates_are_the_published_values_without_border_check(router):
 
     located = {
         station.station_code: (station.latitude, station.longitude)
-        for station in find_stations(provider="CHMI")
+        for station in find_stations(provider="CHMU")
     }
 
     # Meteo GEOGR1 is the longitude; a station abroad and 0,0 stay as published.
@@ -98,7 +98,7 @@ def test_live_coordinates_are_the_published_values_without_border_check(router):
 def test_kind_reads_only_the_list_of_its_family(router):
     routes = serve(router, *NOW)
 
-    meteo = find_stations(provider="cz.chmi", kind="meteo")
+    meteo = find_stations(provider="cz.chmu", kind="meteo")
 
     assert [station.station_code for station in meteo] == [
         "0-203-0-90001",
@@ -121,7 +121,7 @@ def test_kind_reads_only_the_list_of_its_family(router):
 def test_live_query_matches_names_rivers_and_code_prefixes(router, query, codes):
     serve(router, *NOW)
 
-    found = find_stations(provider="CHMI", kind="hydro", query=query)
+    found = find_stations(provider="CHMU", kind="hydro", query=query)
 
     assert [station.station_code for station in found] == codes
 
@@ -139,17 +139,17 @@ def test_without_provider_both_providers_are_searched_in_registry_order(router):
     assert [(s.provider, s.kind, s.station_code) for s in found] == [
         ("IMGW-PIB", "hydro", "149190310"),
         ("IMGW-PIB", "meteo", "249190310"),
-        ("CHMI", "meteo", "0-203-0-90000000002"),
+        ("CHMU", "meteo", "0-203-0-90000000002"),
     ]
 
 
-async def test_unreachable_chmi_source_is_source_unavailable_naming_it(router):
+async def test_unreachable_chmu_source_is_source_unavailable_naming_it(router):
     serve(router, "hydro_now_outage")
 
     with pytest.raises(ObserwatorConnectionError) as error:
-        find_stations(provider="CHMI", kind="hydro")
+        find_stations(provider="CHMU", kind="hydro")
     with pytest.raises(ObserwatorConnectionError) as async_error:
-        await find_stations_async(provider="CHMI", kind="hydro")
+        await find_stations_async(provider="CHMU", kind="hydro")
 
     for raised in (error.value, async_error.value):
         assert raised.code == "source_unavailable"
@@ -165,7 +165,7 @@ def test_network_error_of_the_listing_is_source_unavailable(router):
     router.get(METEO_LISTING).mock(side_effect=httpx.ConnectError("brak sieci"))
 
     with pytest.raises(ObserwatorConnectionError) as error:
-        find_stations(provider="CHMI", kind="meteo")
+        find_stations(provider="CHMU", kind="meteo")
 
     assert error.value.details == {"url": METEO_LISTING, "reason": "network"}
 
@@ -175,7 +175,7 @@ def test_listing_without_dated_metadata_is_a_data_error(router):
     router.get(METEO_LISTING).respond(content=listing)
 
     with pytest.raises(ObserwatorDataError) as error:
-        find_stations(provider="CHMI", kind="meteo")
+        find_stations(provider="CHMU", kind="meteo")
 
     assert error.value.details == {"url": METEO_LISTING}
 
@@ -195,14 +195,14 @@ async def test_unknown_provider_is_a_validation_error_without_requests(router):
 # --------------------------------------------------------------------------
 
 
-async def test_store_search_reads_the_chmi_catalog_of_the_data_root(tmp_path):
+async def test_store_search_reads_the_chmu_catalog_of_the_data_root(tmp_path):
     store = init_store(tmp_path / "store")
     build(store)
     data = data_root(store)
 
     with respx.mock(assert_all_called=False) as offline:
         found = find_stations(
-            source="store", root=data, provider="CHMI", query="spindleruv"
+            source="store", root=data, provider="CHMU", query="spindleruv"
         )
         everything = find_stations(source="store", root=data)
         meteo = find_stations(source="store", root=data, kind="meteo")
@@ -211,14 +211,14 @@ async def test_store_search_reads_the_chmi_catalog_of_the_data_root(tmp_path):
     assert not offline.calls
     (station,) = found
     # Name and location of the catalog (now meta1), not of the stored list.
-    assert (station.provider, station.name) == ("CHMI", "Špindlerův Mlýn")
+    assert (station.provider, station.name) == ("CHMU", "Špindlerův Mlýn")
     assert (station.latitude, station.longitude) == (50.4032345, 15.6012345)
     assert (station.hydrographic_code, station.short_code) == ("1-05-03-0110", None)
     located = {s.station_code: (s.latitude, s.longitude) for s in everything}
     # The catalog rejected the station abroad: no location, unlike the list.
     assert located["0-20000-0-99903"] == (None, None)
     # IMGW-PIB has no catalog here, so the search skips it.
-    assert {s.provider for s in everything} == {"CHMI"}
+    assert {s.provider for s in everything} == {"CHMU"}
     assert {s.station_code for s in meteo} == {
         "0-20000-0-99903",
         "0-203-0-90000000002",
@@ -244,7 +244,7 @@ def test_data_root_without_a_catalog_of_a_named_provider_is_not_found(tmp_path):
 
 def test_stored_lists_without_a_catalog_are_not_searched(tmp_path):
     store = init_store(tmp_path / "store")
-    hydro, _ = station_source_files(provider="CHMI")
+    hydro, _ = station_source_files(provider="CHMU")
     data = body("hydro_stations_get")
     headers = CASES["hydro_stations_get"]["headers"]
     write_archive(
@@ -257,10 +257,10 @@ def test_stored_lists_without_a_catalog_are_not_searched(tmp_path):
     empty = init_store(tmp_path / "data", kind="data")
 
     with pytest.raises(ObserwatorStoreError) as missing:
-        find_stations(source="store", root=empty.root, provider="CHMI", kind="hydro")
+        find_stations(source="store", root=empty.root, provider="CHMU", kind="hydro")
     # The raw root holds the lists but is not a data root.
     with pytest.raises(ObserwatorStoreError) as raw:
-        find_stations(source="store", root=store.root, provider="CHMI")
+        find_stations(source="store", root=store.root, provider="CHMU")
 
     assert missing.value.code == "not_found"
     assert raw.value.code == "store_unavailable"

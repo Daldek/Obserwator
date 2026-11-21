@@ -6,7 +6,7 @@
 import { has, t } from "./i18n.js";
 
 /** Providers' short names by their catalog id: names, the same in every language. */
-const SHORT = { "IMGW-PIB": "IMGW-PIB", CHMI: "ČHMÚ" };
+const SHORT = { "IMGW-PIB": "IMGW-PIB", CHMU: "ČHMÚ" };
 
 /** The catalog's form of a store key: "pl.imgw.hydro_daily" → "pl_imgw_hydro_daily". */
 function slug(key) {
@@ -18,7 +18,7 @@ function word(key, fallback) {
   return has(key) ? t(key) : fallback;
 }
 
-/** The short name of a provider ("ČHMÚ" for "CHMI"), "–" for none. */
+/** The short name of a provider ("ČHMÚ" for "CHMU"), "–" for none. */
 export function providerName(id) {
   return SHORT[id] || id || "–";
 }
@@ -41,8 +41,8 @@ export const DATASET_STEPS = {
   "pl.imgw.meteo_climate_daily": "day",
   "pl.imgw.meteo_precip_daily": "day",
   "pl.imgw.meteo_synop_daily": "day",
-  "cz.chmi.hydro_daily": "day",
-  "cz.chmi.meteo_daily": "day",
+  "cz.chmu.hydro_daily": "day",
+  "cz.chmu.meteo_daily": "day",
 };
 
 /** The title of a dataset ("Daily hydrological data (IMGW-PIB)"), its key when unknown. */

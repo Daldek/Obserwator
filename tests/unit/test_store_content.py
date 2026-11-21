@@ -9,7 +9,7 @@ import pytest
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.store.content import CONTENT_FORMS, ContentForm, content_sha256
 
-FORM = "chmi-json/1"
+FORM = "chmu-json/1"
 # Envelope of a ČHMÚ metadata file (fictional values, spec §1.1 "Koperta").
 ENVELOPE = {
     "zaznamID": "11111111-1111-1111-1111-111111111111",
@@ -41,8 +41,8 @@ def jcs_sum(text: str) -> str:
 def test_released_form_is_frozen():
     # A released form never changes: other volatile fields need a new identifier.
     released = {
-        "chmi-json/1": ContentForm(
-            "chmi-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
+        "chmu-json/1": ContentForm(
+            "chmu-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
         )
     }
     assert released == CONTENT_FORMS
@@ -202,5 +202,5 @@ def test_bytes_violating_the_form_are_a_data_error(data):
 
 def test_unknown_form_is_a_validation_error():
     with pytest.raises(ObserwatorValidationError) as error:
-        content_sha256(b"{}", form="chmi-json/9")
-    assert error.value.details["allowed"] == ["chmi-json/1"]
+        content_sha256(b"{}", form="chmu-json/9")
+    assert error.value.details["allowed"] == ["chmu-json/1"]

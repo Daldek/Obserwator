@@ -19,7 +19,6 @@ from obserwator import (
     export_series,
     export_stations,
     get_dataset,
-    get_provider,
     init_store,
     read_catalog,
     run_command,
@@ -37,22 +36,17 @@ from tests.unit.test_store_catalog import DETAILS_PROPERTIES, sync_details, sync
 SCHEMAS = Path(__file__).parents[2] / "schemas"
 GOLDEN = Path(__file__).parents[1] / "fixtures" / "export_golden"
 ARCHIVES = Path(__file__).parents[1] / "fixtures" / "store" / "archives"
-ATTRIBUTION_COLUMNS = (
-    "attribution_source",
-    "attribution_processed",
-    "attribution",
-    "terms_notice",
-)
+ATTRIBUTION_COLUMNS = ("attribution", "terms_notice")
 DAILY, RABA = "pl.imgw.hydro_daily", "149190310"
-# Golden CSV of each shape of a series, saved with the CSV export of develop 9aefb23:
-# (store, dataset, station, options).
+# Golden CSV of each shape of a series, saved with the CSV export of develop 9aefb23,
+# its formula columns removed by ADR-028: (store, dataset, station, options).
 SERIES = {
     "hydro_daily": ("pl_cz", DAILY, RABA, {}),
     "meteo_precip_daily": ("pl_cz", "pl.imgw.meteo_precip_daily", "123750000", {}),
-    "chmi_meteo_daily": ("pl_cz", "cz.chmi.meteo_daily", "0-203-0-90001", {}),
-    "chmi_hydro_daily": (
+    "chmu_meteo_daily": ("pl_cz", "cz.chmu.meteo_daily", "0-203-0-90001", {}),
+    "chmu_hydro_daily": (
         "pl_cz",
-        "cz.chmi.hydro_daily",
+        "cz.chmu.hydro_daily",
         "0-203-1-900002",
         {"year_type": "hydrological"},
     ),
@@ -294,10 +288,10 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
     unlocated = {
         f["properties"]["provider"] for f in document["features"] if not f["geometry"]
     }
-    assert unlocated == {"IMGW-PIB", "CHMI"}
-    imgw, chmi = attribution("imgw", "gugik"), attribution("chmi", "cuzk")
+    assert unlocated == {"IMGW-PIB", "CHMU"}
+    imgw, chmu = attribution("imgw", "gugik"), attribution("chmu", "cuzk")
     assert {key: document[key] for key in ("attribution", "terms_notice")} == (
-        imgw | chmi
+        imgw | chmu
     ).fields()
     assert [
         (entry["provider"], entry["version"], entry["license"]["id"])
@@ -314,12 +308,12 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
         )
         for provider, key, license_id, terms in (
             ("IMGW-PIB", "pl.imgw.stations", "IMGW-PIB", list(imgw.terms_notice)),
-            ("CHMI", "cz.chmi.stations", "CC-BY-4.0", None),
+            ("CHMU", "cz.chmu.stations", "CC-BY-4.0", None),
         )
     ]
     assert [entry["attribution"] for entry in document["catalogs"]] == [
         list(imgw.attribution),
-        list(chmi.attribution),
+        list(chmu.attribution),
     ]
 
 
@@ -346,8 +340,8 @@ def test_the_series_of_a_station_are_read_from_the_series_indexes(fixture_root):
     assert {entry["dataset"] for entry in document["series"]} == {
         DAILY,
         "pl.imgw.meteo_precip_daily",
-        "cz.chmi.hydro_daily",
-        "cz.chmi.meteo_daily",
+        "cz.chmu.hydro_daily",
+        "cz.chmu.meteo_daily",
     }
     for feature in document["features"]:
         held = {
@@ -370,7 +364,7 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
     rows = table(export_stations(fixture_root, format="csv"))
 
     assert list(rows[0])[:4] == ["station_code", "name", "kind", "provider"]
-    assert list(rows[0])[-7:] == [
+    assert list(rows[0])[-5:] == [
         "latitude",
         "longitude",
         "datasets",
@@ -394,22 +388,16 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
         )
     for provider, origins in (
         ("IMGW-PIB", ("imgw", "gugik")),
-        ("CHMI", ("chmi", "cuzk")),
+        ("CHMU", ("chmu", "cuzk")),
     ):
         block = [row for row in rows if row["provider"] == provider]
-        owner = get_provider(provider)
         assert trailing_lines(block) == attribution(*origins)
-        assert (block[0]["attribution_source"], block[0]["attribution_processed"]) == (
-            owner.license.attribution,
-            owner.processed_attribution,
-        )
-        assert not any(row["attribution_source"] for row in block[1:])
 
 
 def test_kind_provider_and_series_narrow_what_is_read(fixture_root):
     hydro = json.loads(text(export_stations(fixture_root, kind="hydro")))
-    chmi = json.loads(
-        text(export_stations(fixture_root, provider="cz.chmi", series=False))
+    chmu = json.loads(
+        text(export_stations(fixture_root, provider="cz.chmu", series=False))
     )
     header = next(
         csv.reader(
@@ -421,11 +409,11 @@ def test_kind_provider_and_series_narrow_what_is_read(fixture_root):
     assert {get_dataset(item["dataset"]).kind for item in hydro["series"]} == {"hydro"}
     assert [entry["stations"] for entry in hydro["catalogs"]] == [
         len([f for f in hydro["features"] if f["properties"]["provider"] == provider])
-        for provider in ("IMGW-PIB", "CHMI")
+        for provider in ("IMGW-PIB", "CHMU")
     ]
-    assert {f["properties"]["provider"] for f in chmi["features"]} == {"CHMI"}
-    assert "series" not in chmi and "terms_notice" not in chmi
-    assert not any("series" in f["properties"] for f in chmi["features"])
+    assert {f["properties"]["provider"] for f in chmu["features"]} == {"CHMU"}
+    assert "series" not in chmu and "terms_notice" not in chmu
+    assert not any("series" in f["properties"] for f in chmu["features"])
     assert "datasets" not in header
 
 
@@ -569,7 +557,7 @@ def test_wrong_options_are_refused_before_reading(fixture_root, options, option)
 def test_a_store_without_a_catalog_is_not_found(tmp_path):
     root = init_store(tmp_path / "store", kind="data").root
 
-    for provider in (None, "CHMI"):
+    for provider in (None, "CHMU"):
         with pytest.raises(ObserwatorStoreError) as error:
             export_stations(root, provider=provider)
         assert error.value.code == "not_found" and error.value.hint

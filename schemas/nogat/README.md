@@ -28,6 +28,6 @@ for byte equal to Nogat's `develop` at commit `3859a30` (`tokens.css` apart from
 header).
 
 The GUI holds another copy of Nogat files, in `src/obserwator/gui/web/nogat/`: the files
-of Nogat's `design/kit/` listed in its `nogat-kit.json` (kit 1.0.0) and `marks/` of
+of Nogat's `design/kit/` listed in its `nogat-kit.json` (kit 1.1.0, copied from Nogat `c2507fa`) and `marks/` of
 `design/marks/` (ADR-011, ADR-013).
 Nogat's `scripts/ecosystem.py drift` reports every copy as current, behind or modified.

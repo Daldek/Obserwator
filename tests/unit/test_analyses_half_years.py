@@ -52,8 +52,8 @@ from tests.contract.support import (
 
 # The real Hydrolog of the test marked ``hydrolog``, read before any test changes it.
 REAL_HYDROLOG = os.environ.get("OBSERWATOR_HYDROLOG_COMMAND")
-CHMI_HYDRO = "0-203-1-900001"  # a ČHMÚ hydrological station of the fixture
-CHMI_DAILY = "cz.chmi.hydro_daily"
+CHMU_HYDRO = "0-203-1-900001"  # a ČHMÚ hydrological station of the fixture
+CHMU_DAILY = "cz.chmu.hydro_daily"
 SEMIANNUAL = "pl.imgw.hydro_semiannual"
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 # IMGW-PIB's half-year file as `series export` writes it.
@@ -143,7 +143,7 @@ def cells(row: dict[str, str], column: str) -> tuple[str, ...]:
 
 
 def version_of(root: Path, prefix: str) -> Path:
-    """The one analyses version of a provider (``pl.imgw``, ``cz.chmi``)."""
+    """The one analyses version of a provider (``pl.imgw``, ``cz.chmu``)."""
     (version,) = (root / "analyses" / "versions" / prefix).iterdir()
     return version
 
@@ -291,14 +291,14 @@ def test_half_years_of_daily_values_have_the_statistics_of_imgw_pibs_file():
     assert float(annual["Q_mean [m3/s]"]) == (182 * 3.0 + 184 * 1.0) / 366
 
 
-def test_the_file_of_a_chmi_station_is_imgw_pibs_export_of_its_daily_values(
+def test_the_file_of_a_chmu_station_is_imgw_pibs_export_of_its_daily_values(
     fixture_root, tmp_path
 ):
-    entry = current_version(fixture_root, slot=f"series:{CHMI_DAILY}")
+    entry = current_version(fixture_root, slot=f"series:{CHMU_DAILY}")
     assert entry is not None and entry.version is not None
     target = tmp_path / "half_years.csv"
 
-    report = _export_half_years(entry.version, station=CHMI_HYDRO, output=target)
+    report = _export_half_years(entry.version, station=CHMU_HYDRO, output=target)
 
     text = target.read_text(encoding="utf-8")
     assert report.files[0].sha256 == sha256(target)
@@ -306,16 +306,10 @@ def test_the_file_of_a_chmi_station_is_imgw_pibs_export_of_its_daily_values(
     first_line = GOLDEN.read_text(encoding="utf-8").splitlines(keepends=True)[0]
     assert text.splitlines(keepends=True)[0] == first_line
     table = list(csv.DictReader(io.StringIO(text, newline="")))
-    exported = "".join(export_series(entry.version, station=CHMI_HYDRO))
+    exported = "".join(export_series(entry.version, station=CHMU_HYDRO))
     daily = list(csv.DictReader(io.StringIO(exported, newline="")))
     # ČHMÚ's lines, as the export of the daily series has them
-    assert [
-        (row["attribution_source"], row["attribution_processed"]) for row in table
-    ] == [
-        (daily[0]["attribution_source"], daily[0]["attribution_processed"]),
-        *[("", "")] * (len(table) - 1),
-    ]
-    assert trailing_lines(table) == trailing_lines(daily) == attribution("chmi")
+    assert trailing_lines(table) == trailing_lines(daily) == attribution("chmu")
     # Each half-year from the daily values: only one with a value every day
     values = {
         (variable, date.fromisoformat(row["date"])): row[f"{variable} [{unit}]"]
@@ -358,42 +352,42 @@ def test_the_file_of_a_chmi_station_is_imgw_pibs_export_of_its_daily_values(
 # --------------------------------------------------------------------------
 
 
-def test_a_build_stores_chmis_computed_half_years_beside_imgw_pibs_published(built):
-    chmi_version = version_of(built, "cz.chmi")
-    chmi = records(chmi_version)
+def test_a_build_stores_chmus_computed_half_years_beside_imgw_pibs_published(built):
+    chmu_version = version_of(built, "cz.chmu")
+    chmu = records(chmu_version)
     imgw = records(version_of(built, "pl.imgw"))
 
-    computed = half_years(chmi)
+    computed = half_years(chmu)
 
-    assert {analysis for code, analysis in computed if code == CHMI_HYDRO} == {
+    assert {analysis for code, analysis in computed if code == CHMU_HYDRO} == {
         f"characteristic.{variable}.half_years" for variable in ("H", "Q", "T")
     }
     for (code, analysis), entry in computed.items():
         assert (entry["derived"], entry["datasets"], entry["status"]) == (
             "half_years",
-            [CHMI_DAILY],
+            [CHMU_DAILY],
             "ok",
         )
         assert entry["options"] == {
-            "half_year_file": f"{code}_chmi_hydro_daily_half_years.csv",
+            "half_year_file": f"{code}_chmu_hydro_daily_half_years.csv",
             "parameter": analysis.split(".")[1],
         }
         # The fake answers with the lines of the file it read: ČHMÚ's
-        line = load(chmi_version / entry["file"])
-        assert tuple(line["attribution"]) == attribution("chmi").attribution
+        line = load(chmu_version / entry["file"])
+        assert tuple(line["attribution"]) == attribution("chmu").attribution
     # The other analyses of ČHMÚ read the daily series, the flood frequency too
-    for code, record in chmi.items():
+    for code, record in chmu.items():
         for entry in record["results"]:
             if (code, entry["analysis"]) not in computed:
                 assert entry["derived"] is None
                 assert "half_year_file" not in entry["options"]
     # The station's record names its daily series once, with its series export
-    entry = current_version(built, slot=f"series:{CHMI_DAILY}")
+    entry = current_version(built, slot=f"series:{CHMU_DAILY}")
     assert entry is not None and entry.version is not None
-    exported = "".join(export_series(entry.version, station=CHMI_HYDRO))
-    (source,) = chmi[CHMI_HYDRO]["inputs"]
+    exported = "".join(export_series(entry.version, station=CHMU_HYDRO))
+    (source,) = chmu[CHMU_HYDRO]["inputs"]
     assert (source["dataset"], source["export_sha256"]) == (
-        CHMI_DAILY,
+        CHMU_DAILY,
         sha256(exported.encode("utf-8")),
     )
     # IMGW-PIB keeps the half-year file it publishes
@@ -410,7 +404,7 @@ def test_a_build_stores_chmis_computed_half_years_beside_imgw_pibs_published(bui
 
 
 def test_reading_and_exporting_say_which_half_years_were_computed(built):
-    summaries = list_analyses(root=built, station=CHMI_HYDRO)
+    summaries = list_analyses(root=built, station=CHMU_HYDRO)
 
     derived = {summary.analysis: summary.derived for summary in summaries}
     assert derived == {
@@ -418,17 +412,17 @@ def test_reading_and_exporting_say_which_half_years_were_computed(built):
     }
     assert derived["characteristic.Q.half_years"] == "half_years"
     result = read_analysis(
-        root=built, station=CHMI_HYDRO, analysis="characteristic.Q.half_years"
+        root=built, station=CHMU_HYDRO, analysis="characteristic.Q.half_years"
     )
     assert (result.status, result.derived) == ("ok", "half_years")
-    daily = read_analysis(root=built, station=CHMI_HYDRO, analysis="characteristic.Q")
+    daily = read_analysis(root=built, station=CHMU_HYDRO, analysis="characteristic.Q")
     assert daily.derived is None
     published = read_analysis(
         root=built, station=RABA, analysis="characteristic.Q.half_years"
     )
     assert (published.derived, published.inputs[0].dataset) == (None, SEMIANNUAL)
 
-    (line,) = export_analyses(root=built, station=CHMI_HYDRO)
+    (line,) = export_analyses(root=built, station=CHMU_HYDRO)
     document = json.loads(line)
     assert {item["analysis"]: item["derived"] for item in document["results"]} == (
         derived
@@ -436,13 +430,11 @@ def test_reading_and_exporting_say_which_half_years_were_computed(built):
 
     chosen = ["characteristic.Q", "characteristic.Q.half_years"]
     text = "".join(
-        export_analyses(root=built, station=CHMI_HYDRO, analyses=chosen, format="csv")
+        export_analyses(root=built, station=CHMU_HYDRO, analyses=chosen, format="csv")
     )
     head = text.splitlines()[0].split(",")
     assert head[head.index("value") + 1 :] == [
         "derived",
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
@@ -460,14 +452,14 @@ def test_on_the_fly_the_half_years_are_computed_of_the_current_daily_series(
 
     result = compute_analysis(
         fixture_root,
-        station=CHMI_HYDRO,
+        station=CHMU_HYDRO,
         analysis="characteristic.Q.half_years",
         options={"first_year": 2023},
     )
 
     assert (result.stored, result.status, result.derived) == (False, "ok", "half_years")
     assert result.options == {
-        "half_year_file": f"{CHMI_HYDRO}_chmi_hydro_daily_half_years.csv",
+        "half_year_file": f"{CHMU_HYDRO}_chmu_hydro_daily_half_years.csv",
         "parameter": "Q",
         "first_year": 2023,
     }
@@ -475,17 +467,17 @@ def test_on_the_fly_the_half_years_are_computed_of_the_current_daily_series(
     assert [call["options"] for run in batches() for call in run["calls"]] == [
         dict(result.options)
     ]
-    entry = current_version(fixture_root, slot=f"series:{CHMI_DAILY}")
+    entry = current_version(fixture_root, slot=f"series:{CHMU_DAILY}")
     assert entry is not None and entry.version is not None and entry.meta is not None
     computed = _export_half_years(
-        entry.version, station=CHMI_HYDRO, output=tmp_path / "computed.csv"
+        entry.version, station=CHMU_HYDRO, output=tmp_path / "computed.csv"
     )
     assert result.inputs == (
         AnalysisSource(
-            CHMI_DAILY,
+            CHMU_DAILY,
             entry.version.parent.relative_to(fixture_root).as_posix(),
             entry.meta.sha256,
-            read_series_index(entry.version).stations[CHMI_HYDRO].sha256,
+            read_series_index(entry.version).stations[CHMU_HYDRO].sha256,
             computed.files[0].sha256,
         ),
     )
@@ -504,16 +496,16 @@ def test_the_real_hydrolog_takes_the_half_years_of_the_computed_file(
     monkeypatch.setenv("OBSERWATOR_HYDROLOG_COMMAND", str(REAL_HYDROLOG))
 
     result = compute_analysis(
-        fixture_root, station=CHMI_HYDRO, analysis="characteristic.Q.half_years"
+        fixture_root, station=CHMU_HYDRO, analysis="characteristic.Q.half_years"
     )
 
     assert (result.status, result.derived) == ("ok", "half_years"), result.error
     assert result.envelope is not None
     found = result.envelope["result"]
-    entry = current_version(fixture_root, slot=f"series:{CHMI_DAILY}")
+    entry = current_version(fixture_root, slot=f"series:{CHMU_DAILY}")
     assert entry is not None and entry.version is not None
     target = tmp_path / "half_years.csv"
-    _export_half_years(entry.version, station=CHMI_HYDRO, output=target)
+    _export_half_years(entry.version, station=CHMU_HYDRO, output=target)
     with target.open(encoding="utf-8", newline="") as stream:
         table = [row for row in csv.DictReader(stream) if row["Q_min_flag"] == "value"]
     # Hydrolog's first degree is the file's: each half-year with its extremes' days

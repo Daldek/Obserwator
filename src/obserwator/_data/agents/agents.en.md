@@ -43,8 +43,8 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 
 <!-- obserwator:datasets -->
 
-- `stations`: WIGOS (required for `cz.chmi.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
+- `years`: required in `datasets files|download` (except `cz.chmu.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.hydro_daily` (none = the published years); never for `cz.chmu.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 

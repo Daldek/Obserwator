@@ -67,7 +67,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/unit/test_exceptions.py`|49|`ERROR_CODES`, codes and details, file-system errors|
 |`tests/unit/test_messages.py`|11|Message catalog: both languages, call sites against entries, Polish literals left|
 |`tests/unit/test_store_*.py` (IMGW), `test_series_export.py`|345|Store writer, sync, series, catalog, pmaxtp, reader, incremental scan, export, types, fixtures, markers of both roots (`test_store_marker.py`), the split of a combined store and a data root built from a read-only raw root (`test_store_split.py`)|
-|`tests/unit/test_*_chmi.py`, `test_parsing_chmi.py`, `test_store_content.py`|364|ČHMÚ: parsers, registry, listing sync, catalog, series, export, commands, stations, content form|
+|`tests/unit/test_*_chmu.py`, `test_parsing_chmu.py`, `test_store_content.py`|364|ČHMÚ: parsers, registry, listing sync, catalog, series, export, commands, stations, content form|
 |`tests/unit/test_catalog_effects.py`, `test_catalog_i18n.py`, `test_agent_guide.py`, `test_mcp_*.py`|212|Agents: effects = behavior, English texts, guide drift test, MCP tools/calls/stdio/HTTP|
 |`tests/unit/gui/`|295|The GUI's server through Starlette's `TestClient` on the fixture root and its read-only copy: routes, headers, refused methods and parameters, error statuses and cache rules, the app under a prefix, `gui serve` until `SIGTERM` (Ctrl+Break on Windows) and the `nogat.gui` entry point; the rate limit, daily totals, access log (`nogat_logging`, no client addresses, no admin key), „Zgłoś uwagę” and regulamin; the admin panel (`test_admin.py`: the key and its file read on every request, reports, stats, status; ADR-020); IMGW-PIB snapshots and PMAXTP from recorded answers; the climate stripes' colour scale on Hydrolog's annual means (`test_stripes.py`); the analyses that the recorded Hydrolog of `tests/fixtures/hydrolog` stored (listed with the options a person may change, read without running a program, named by the session, shown by `DataRoot` a minute after a build, exported as JSON and CSV) and a person's choices computed by recorded programs (refused options, the memory of results, two computations at a time, timeout and failure, no program found at the start)|
 |`tests/contract/test_gui_web.py`|9|The page's files: the SHA-256 of the copied Nogat files and the vendored libraries, no remote URL, no inline script or style in `index.html`, `admin/index.html` and the guide `instrukcja/index.html`, every text the scripts name a key of the area `gui`, no Polish literal in the scripts, every link of a section's explanation into the guide an id of the guide (Nogat DEV-15.14)|
@@ -79,11 +79,11 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/unit/` other files|316|fetch, models, stations, urls, coverage, download_archives, fixture builder, reference data, CLI admin/main, API main, attribution lines (ADR-012), harmonized exports (ADR-014), station sources (ADR-015), daily synop data (ADR-022, `test_synop.py`), error report|
 |`tests/contract/test_interface_contract.py`|95|Python = CLI = REST for all 33 REST commands, each on the root of its kind (analyses on the served data root, built by the recorded Hydrolog), error matrix, paging|
 |`tests/contract/test_command_lines.py`|202|Every example call of the catalog: `parse_command` reads its line, `validate_command` accepts it, `format_command` writes the same line|
-|`tests/contract/test_chmi_contract.py`|68|IMGW-15..19 on `complete_pl_cz`; Python = CLI = REST = MCP for ČHMÚ runs|
+|`tests/contract/test_chmu_contract.py`|68|IMGW-15..19 on `complete_pl_cz`; Python = CLI = REST = MCP for ČHMÚ runs|
 |`tests/contract/test_mcp_contract.py`, `test_mcp_http_contract.py`|100|MCP (stdio, `/mcp`) = Python = CLI = REST for every contract case and error code|
 |`tests/contract/` other files|146|Store contract (sidecar core of every kind of version), CLI = API parity, `obserwator-commands/1` against Nogat's `commands-1`, the vendored Nogat error registry|
 |`tests/live/test_interfaces_live.py`|50|Live IMGW-PIB: 35 commands × Python/`obserwator`/REST (the analyses with the recorded Hydrolog), 6 live errors, MCP leg (`-k obserwator_mcp`, 8 commands); marker `live`|
-|`tests/live/test_chmi_live.py`|22|Live ČHMÚ (opendata.chmi.cz) through Python/CLI/REST/MCP with a request log; marker `live`|
+|`tests/live/test_chmu_live.py`|22|Live ČHMÚ (opendata.chmi.cz) through Python/CLI/REST/MCP with a request log; marker `live`|
 
 **Total: 3549 tests** (`pytest --collect-only -q -m ''`, 2026-11-15): 3477 offline (152 of them in `tests/e2e`, skipped without Chromium), 72 live (`uv run pytest tests/live -m live`; JSON report via `OBSERWATOR_LIVE_REPORT=<file>`). The counts of the rows above were recounted the same day with `pytest --collect-only -q` and add up to that total, the GUI's rows included. The contract suite and the analyses tests run the recorded Hydrolog (`OBSERWATOR_HYDROLOG_COMMAND` set by their fixtures); no offline test needs the real program. Fixtures: `fixture_roots` (`FixtureRoots`), `fixture_root` (the data root) and `fixture_raw_root` (the raw root) in `tests/conftest.py`; `served_root`, `served_raw_root` and `served` (both server settings) in `tests/contract/conftest.py`.
 
@@ -116,7 +116,7 @@ tests/
 ├── fixtures/export_golden/  # Golden files of archive export (CSV with CRLF, JSONL)
 ├── unit/
 │   ├── test_fetch*.py, test_models.py, test_parsers.py, test_stations*.py, test_urls.py
-│   ├── test_datasets*.py, test_coverage*.py, test_download_archives*.py, test_parsing_chmi.py
+│   ├── test_datasets*.py, test_coverage*.py, test_download_archives*.py, test_parsing_chmu.py
 │   ├── test_store_*.py, test_series_export.py          # store: writer, sync, series, catalog, pmaxtp, reader, export, content
 │   ├── test_fixture_builder*.py                        # obserwator.testing (complete, complete_pl_cz)
 │   ├── test_commands*.py, test_command_schema.py       # command catalog, command_schema
@@ -138,7 +138,7 @@ tests/
 ```bash
 uv run pytest tests/live/test_interfaces_live.py -m live   # IMGW-PIB: 45 tests
 uv run pytest tests/live -m live -k obserwator_mcp         # the MCP leg only (obserwator mcp)
-uv run pytest tests/live/test_chmi_live.py -m live         # ČHMÚ: 22 tests, approx. 31 MB
+uv run pytest tests/live/test_chmu_live.py -m live         # ČHMÚ: 22 tests, approx. 31 MB
 ```
 
 JSON report of a run: `OBSERWATOR_LIVE_REPORT=<file>`; the ČHMÚ test writes a request log of each interface (Python, CLI, REST, MCP) and reports the number of requests and bytes (`-s`).

@@ -134,7 +134,7 @@ MESSAGES = {
         "Źródło {source}: powtórzony kod stacji {code}; katalog używa pierwszego "
         "wiersza",
     ),
-    "user_locations_unknown_codes_chmi": Text(
+    "user_locations_unknown_codes_chmu": Text(
         "User location file: {count} codes outside the ČHMÚ metadata and series "
         "(e.g. {unknown}); the user file only completes locations",
         "Plik położeń użytkownika: {count} kodów spoza metadanych ČHMÚ i szeregów "

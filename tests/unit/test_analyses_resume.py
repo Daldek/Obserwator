@@ -135,7 +135,7 @@ def test_a_resumed_build_computes_only_the_rest_and_stores_the_uninterrupted_ver
     use_fake_hydrolog(monkeypatch, tmp_path / "scratch")
     whole = copy(fixture_root, tmp_path / "whole")
     expected = build_analyses(whole)
-    imgw, chmi = (set(records(item.version.parent)) for item in expected.providers)
+    imgw, chmu = (set(records(item.version.parent)) for item in expected.providers)
     root = copy(fixture_root, tmp_path / "store")
     done = []
 
@@ -161,9 +161,9 @@ def test_a_resumed_build_computes_only_the_rest_and_stores_the_uninterrupted_ver
         len(imgw) - 2,
         0,
     )
-    assert (second.resumed, second.computed) == (0, len(chmi))
+    assert (second.resumed, second.computed) == (0, len(chmu))
     assert first.stations == first.computed + first.carried + first.resumed
-    assert called(batches()) == (imgw - taken) | chmi  # Hydrolog only for the rest
+    assert called(batches()) == (imgw - taken) | chmu  # Hydrolog only for the rest
     assert snapshot(root / "analyses") == snapshot(whole / "analyses")
     assert [(item.results_ok, item.results_failed) for item in report.providers] == [
         (item.results_ok, item.results_failed) for item in expected.providers

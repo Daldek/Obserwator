@@ -20,11 +20,11 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 from pydantic import ValidationError
 
-from obserwator._parsing.chmi import iter_stations, parse_listing
+from obserwator._parsing.chmu import iter_stations, parse_listing
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
 from obserwator.datasets import (
-    _CHMI_METEO_NOW_FILE,
+    _CHMU_METEO_NOW_FILE,
     ProviderDescriptor,
     _station_files,
     get_dataset,
@@ -246,11 +246,11 @@ def _live_sources(
     # The current ČHMÚ metadata, as the first source of its catalog (§7.2).
     sources: list[_LiveSource] = []
     for owner in owners:
-        if owner.id == "CHMI":
+        if owner.id == "CHMU":
             hydro = _LiveSource(
-                owner, "hydro", _station_files("cz.chmi.hydro_now")[0].url
+                owner, "hydro", _station_files("cz.chmu.hydro_now")[0].url
             )
-            meteo_now = get_dataset("cz.chmi.meteo_now")
+            meteo_now = get_dataset("cz.chmu.meteo_now")
             meteo = _LiveSource(
                 owner, "meteo", f"{owner.base_url}{meteo_now.server_dir}/", listing=True
             )
@@ -288,7 +288,7 @@ def _live_urls(
 
 def _identity(source: _LiveSource) -> tuple[Mapping[str, str] | None, str]:
     """Request headers and the server name of errors (ČHMÚ requests name the library)."""
-    if source.provider.id == "CHMI":
+    if source.provider.id == "CHMU":
         return _IDENTIFY, source.provider.short_name
     return None, "IMGW"
 
@@ -298,7 +298,7 @@ def _newest(source: _LiveSource, content: bytes) -> str:
     names = sorted(
         entry.name
         for entry in parse_listing(content, url=source.url)
-        if _CHMI_METEO_NOW_FILE.fullmatch(entry.name)
+        if _CHMU_METEO_NOW_FILE.fullmatch(entry.name)
     )
     if not names:
         raise ObserwatorDataError(
@@ -312,7 +312,7 @@ def _newest(source: _LiveSource, content: bytes) -> str:
 
 def _parsed(source: _LiveSource, content: bytes, url: str) -> list[StationListEntry]:
     """Stations of a live list: an IMGW-PIB CSV or ČHMÚ metadata JSON."""
-    if source.provider.id == "CHMI":
+    if source.provider.id == "CHMU":
         return list(iter_stations(content, kind=source.kind, filename=url))
     return list(parse_stations_csv(content, kind=source.kind))
 
@@ -505,8 +505,8 @@ def find_stations(
         Data root; required with ``source="store"`` and not allowed with
         ``source="live"``.
     provider : str or None, optional
-        Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMI"``,
-        ``"cz.chmi"``); None searches every provider and, with
+        Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMU"``,
+        ``"cz.chmu"``); None searches every provider and, with
         ``source="store"``, skips providers without a station catalog.
     bbox : sequence of four floats or None, optional
         Area of the search: ``(west, south, east, north)`` in WGS84 degrees,
@@ -559,7 +559,7 @@ def find_stations(
     Examples
     --------
     >>> [s.name for s in find_stations(kind="hydro", query="lodz")]
-    >>> find_stations(provider="CHMI", query="spindleruv")
+    >>> find_stations(provider="CHMU", query="spindleruv")
     >>> find_stations(query="1491", source="store", root="data/store")
     >>> find_stations(kind="hydro", bbox=(16.5, 51.3, 17.9, 51.7))  # Barycz
     """

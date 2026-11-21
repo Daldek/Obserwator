@@ -3,7 +3,7 @@
 Spec 2026-10-18 §6.1-§6.3 (calendar, per-station periods, Parquet columns and
 ``series.json``) and the §13.2 scenarios (1)-(3) and (8): ``sync_store`` writes
 the archives, ``build_series`` builds from them; replayed from
-``chmi_recordings.json`` with respx.
+``chmu_recordings.json`` with respx.
 Synthetic files only; codes 0-203-1-9… and 0-203-0-9… are not published by
 ČHMÚ.
 """
@@ -24,7 +24,7 @@ from obserwator.fetch import DownloadResult
 from obserwator.store import current_version, init_store, write_archive
 from obserwator.store.series import build_series, check_series
 from obserwator.store.sync import sync_store
-from tests.unit.test_store_sync_chmi import (
+from tests.unit.test_store_sync_chmu import (
     CASES,
     FIRST,
     FULL,
@@ -65,17 +65,17 @@ METEO_GETS = {
     if archive.station_code == FULL or archive.param == "SRA"
 }
 # The sidecar keeps one text: C. CP (ADR-012 D4).
-CHMI_ATTRIBUTION = ". ".join(attribution("chmi").attribution)
-CHMI_LICENSE = {
+CHMU_ATTRIBUTION = ". ".join(attribution("chmu").attribution)
+CHMU_LICENSE = {
     "id": "CC-BY-4.0",
-    "attribution": CHMI_ATTRIBUTION,
+    "attribution": CHMU_ATTRIBUTION,
     "url": "https://creativecommons.org/licenses/by/4.0/",
     "terms_url": "https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti",
 }
 # Spec 2026-10-18 §6.3 verbatim, with the lines of ADR-012 added below; its
 # Parquet SHA-256 is a placeholder.
 EXAMPLE_900002 = (
-    '{"schema":"obserwator-series/1","dataset":"cz.chmi.hydro_daily","year_type":"calendar",'
+    '{"schema":"obserwator-series/1","dataset":"cz.chmu.hydro_daily","year_type":"calendar",'
     '"periods":[["2004-01-01","2004-12-31"],["2006-01-01","2006-12-31"]],"stations":'
     '{"0-203-1-900002":{"file":"stations/0-203-1-900002.parquet","sha256":'
     '"0000000000000000000000000000000000000000000000000000000000000000","rows":1096,'
@@ -147,11 +147,11 @@ def test_station_with_an_unpublished_year_matches_the_spec_example(root, data):
 
     assert (report.status, report.stations, report.problems) == ("new", 1, ())
     version = report.version.parent
-    assert version.parent == data / "series" / "versions" / "chmi_hydro_daily"
+    assert version.parent == data / "series" / "versions" / "chmu_hydro_daily"
     parquet = version / "stations" / f"{S2}.parquet"
     digest = hashlib.sha256(parquet.read_bytes()).hexdigest()
     expected = json.loads(EXAMPLE_900002.replace("0" * 64, digest))
-    assert index_of(report) == {**expected, **attribution("chmi").fields()}
+    assert index_of(report) == {**expected, **attribution("chmu").fields()}
     # 2005 has no file: its days are rows without values, unknown rather than gaps.
     rows = {row["date"]: row for row in station_table(report, S2).to_pylist()}
     assert list(rows) == [date(2004, 1, 1) + timedelta(days=n) for n in range(1096)]
@@ -169,9 +169,9 @@ def test_station_with_an_unpublished_year_matches_the_spec_example(root, data):
     )
 
     meta = sidecar_of(report)
-    assert (meta["dataset"], meta["country"], meta["provider"]) == (HYDRO, "CZ", "CHMI")
+    assert (meta["dataset"], meta["country"], meta["provider"]) == (HYDRO, "CZ", "CHMU")
     assert meta["request"] == {"dataset": HYDRO}
-    assert meta["license"] == CHMI_LICENSE
+    assert meta["license"] == CHMU_LICENSE
     assert meta["extra"]["version"] == {"label": "2025-07-01", "label_source": "inputs"}
     # Inputs with a canonical form carry the content sum of their own sidecars.
     assert meta["extra"]["source_files"] == [
@@ -181,7 +181,7 @@ def test_station_with_an_unpublished_year_matches_the_spec_example(root, data):
             "sha256": item.sha256,
             "label": item.label,
             "content_sha256": inputs_meta["content_sha256"],
-            "content_form": "chmi-json/1",
+            "content_form": "chmu-json/1",
         }
         for item in inputs
         for inputs_meta in [
@@ -194,7 +194,7 @@ def test_station_with_an_unpublished_year_matches_the_spec_example(root, data):
         "marked."
     )
     assert [(notice.code, notice.message) for notice in notices] == [
-        ("license_terms", f"{CHMI_ATTRIBUTION}. {provider_notice}")
+        ("license_terms", f"{CHMU_ATTRIBUTION}. {provider_notice}")
     ]
 
 
@@ -333,8 +333,8 @@ def test_meteo_series_keeps_quality_and_source_flags_with_element_periods(root, 
     meta = sidecar_of(report)
     assert (meta["country"], meta["provider"], meta["license"]) == (
         "CZ",
-        "CHMI",
-        CHMI_LICENSE,
+        "CHMU",
+        CHMU_LICENSE,
     )
     assert len(meta["extra"]["source_files"]) == 7
     assert all(
@@ -365,7 +365,7 @@ def test_second_build_is_reused_without_writing(root, data):
             first[dataset].stations,
         )
     plan = check_series(data, raw_root=root, dataset=HYDRO)
-    assert plan.series_state == {"chmi_hydro_daily": "current"}
+    assert plan.series_state == {"chmu_hydro_daily": "current"}
     assert [(item.station_code, item.archive.year) for item in plan.items] == [
         (S1, 2023),
         (S2, 2004),
@@ -390,7 +390,7 @@ def test_a_series_whose_cp_names_the_processing_stays_current(root, data):
 
     assert (again.status, again.version) == ("unchanged", first.version)
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "chmi_hydro_daily": "current"
+        "chmu_hydro_daily": "current"
     }
 
 
@@ -410,7 +410,7 @@ def test_quality_outside_the_parquet_range_fails_without_a_version(root, data):
 
     assert report.status == "failed" and "300" in report.problems[0]
     assert [notice.code for notice in notices] == ["archive_failed"]
-    assert series_versions(data, "chmi_meteo_daily") == []
+    assert series_versions(data, "chmu_meteo_daily") == []
 
 
 def test_build_reuses_the_series_after_mass_republication(root, data, server):
@@ -444,10 +444,10 @@ def test_build_reuses_the_series_after_mass_republication(root, data, server):
     assert [item.status for item in report.items] == ["relabeled"] * 4
     # Same (slot, SHA-256) pairs: the series is reused, no version is added.
     plan = check_series(data, raw_root=root, dataset=HYDRO)
-    assert plan.series_state == {"chmi_hydro_daily": "current"}
+    assert plan.series_state == {"chmu_hydro_daily": "current"}
     reused = build_series(data, raw_root=root, dataset=HYDRO)
     assert (reused.status, reused.version) == ("unchanged", created.version)
-    assert series_versions(data, "chmi_hydro_daily") == [created.version.parent.name]
+    assert series_versions(data, "chmu_hydro_daily") == [created.version.parent.name]
 
 
 def test_build_reuses_the_series_after_reserialization(root, data, server):
@@ -469,7 +469,7 @@ def test_build_reuses_the_series_after_reserialization(root, data, server):
     assert "content_unchanged" in {notice.code for notice in notices}
     reused = build_series(data, raw_root=root, dataset=HYDRO)
     assert (reused.status, reused.version) == ("unchanged", created.version)
-    assert series_versions(data, "chmi_hydro_daily") == [created.version.parent.name]
+    assert series_versions(data, "chmu_hydro_daily") == [created.version.parent.name]
 
 
 def test_build_after_a_correction_writes_a_new_series_version(root, data, server):

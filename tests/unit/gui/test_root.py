@@ -20,7 +20,7 @@ from obserwator.store import (
 )
 from obserwator.testing import build_fixture_store
 from tests.contract.support import build_served_analyses
-from tests.unit.gui.conftest import HYDRO, HYDRO_CHMI
+from tests.unit.gui.conftest import HYDRO, HYDRO_CHMU
 
 
 class Clock:
@@ -75,11 +75,11 @@ def test_a_new_version_shows_a_minute_later_without_a_restart(
 
     assert set(before.catalogs) == {"IMGW-PIB"}
     assert within is before
-    assert set(after.catalogs) == {"IMGW-PIB", "CHMI"}
-    assert HYDRO_CHMI in after.features
+    assert set(after.catalogs) == {"IMGW-PIB", "CHMU"}
+    assert HYDRO_CHMU in after.features
     assert after.layer["count"] == 13
     assert after.layer_etag != before.layer_etag
-    document, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    document, _ = data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
     assert document["dates"][0] == "2023-01-01"
 
 
@@ -98,14 +98,14 @@ def test_new_stored_analyses_show_a_minute_later_and_keep_the_station_layer(
     after = data.snapshot()
 
     stored = obserwator.read_analysis(
-        root=root, station=HYDRO_CHMI, analysis="characteristic.Q"
+        root=root, station=HYDRO_CHMU, analysis="characteristic.Q"
     )
-    (version,) = (root / "analyses" / "versions" / "cz.chmi").iterdir()
+    (version,) = (root / "analyses" / "versions" / "cz.chmu").iterdir()
     assert before.analyses == {}
     assert within is before
-    assert set(after.analyses) == {"IMGW-PIB", "CHMI"}
-    assert after.analyses["CHMI"].label == version.name
-    assert after.analyses["CHMI"].hydrolog == stored.hydrolog["version"]
+    assert set(after.analyses) == {"IMGW-PIB", "CHMU"}
+    assert after.analyses["CHMU"].label == version.name
+    assert after.analyses["CHMU"].hydrolog == stored.hydrolog["version"]
     # The catalogs and series are unchanged: so is the station layer's ETag
     assert after.layer_etag == before.layer_etag
 
@@ -157,7 +157,7 @@ def test_requests_take_the_last_snapshot_while_one_re_read_runs(
     # The first read was the request's own; the later one ran behind the requests, once
     assert started == 1
     assert all(snapshot is before for snapshot in during)
-    assert set(after.catalogs) == {"IMGW-PIB", "CHMI"}
+    assert set(after.catalogs) == {"IMGW-PIB", "CHMU"}
     assert held.jobs == []
 
 
@@ -209,8 +209,8 @@ def test_the_stations_file_is_exported_once_per_versions(
     monkeypatch.setattr(_root, "export_stations", export)
     data = DataRoot(fixture_root, clock=clock)
 
-    first = data.stations_file("csv", "CHMI", "hydro")
-    again = data.stations_file("csv", "CHMI", "hydro")
+    first = data.stations_file("csv", "CHMU", "hydro")
+    again = data.stations_file("csv", "CHMU", "hydro")
     other = data.stations_file("geojson", None, None)
 
     assert again == first
@@ -218,13 +218,13 @@ def test_the_stations_file_is_exported_once_per_versions(
         first
         == "".join(
             obserwator.export_stations(
-                fixture_root, provider="CHMI", kind="hydro", format="csv"
+                fixture_root, provider="CHMU", kind="hydro", format="csv"
             )
         ).encode()
     )
     assert other.startswith(b"{")
     assert [(call["format"], call["provider"], call["kind"]) for call in calls] == [
-        ("csv", "CHMI", "hydro"),
+        ("csv", "CHMU", "hydro"),
         ("geojson", None, None),
     ]
 
@@ -269,7 +269,7 @@ def test_series_documents_in_memory_hold_at_most_the_cells_allowed(
     fixture_root, monkeypatch
 ):
     sizes = DataRoot(fixture_root)
-    chmi, _ = sizes.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    chmu, _ = sizes.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
     imgw, _ = sizes.series_document("pl.imgw.hydro_daily", HYDRO)
     reads = []
 
@@ -279,17 +279,17 @@ def test_series_documents_in_memory_hold_at_most_the_cells_allowed(
 
     monkeypatch.setattr(_root, "read_series", read)
     # Room for either document, not for both: the older goes when the newer comes.
-    allowed = series_cells(chmi) + series_cells(imgw) - 1
+    allowed = series_cells(chmu) + series_cells(imgw) - 1
     monkeypatch.setattr(_root, "SERIES_CELLS", allowed)
     data = DataRoot(fixture_root)
 
-    data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
     data.series_document("pl.imgw.hydro_daily", HYDRO)
     data.series_document("pl.imgw.hydro_daily", HYDRO)
-    again, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    again, _ = data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
 
-    assert reads == [HYDRO_CHMI, HYDRO, HYDRO_CHMI]
-    assert again == chmi
+    assert reads == [HYDRO_CHMU, HYDRO, HYDRO_CHMU]
+    assert again == chmu
 
 
 def test_a_series_document_larger_than_the_cells_allowed_stays_until_the_next(
@@ -305,10 +305,10 @@ def test_a_series_document_larger_than_the_cells_allowed_stays_until_the_next(
     monkeypatch.setattr(_root, "SERIES_CELLS", 1)
     data = DataRoot(fixture_root)
 
-    first, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
-    again, _ = data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    first, _ = data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
+    again, _ = data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
     data.series_document("pl.imgw.hydro_daily", HYDRO)
-    data.series_document("cz.chmi.hydro_daily", HYDRO_CHMI)
+    data.series_document("cz.chmu.hydro_daily", HYDRO_CHMU)
 
     assert again == first
-    assert reads == [HYDRO_CHMI, HYDRO, HYDRO_CHMI]
+    assert reads == [HYDRO_CHMU, HYDRO, HYDRO_CHMU]

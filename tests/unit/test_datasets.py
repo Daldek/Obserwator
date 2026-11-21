@@ -13,6 +13,7 @@ from obserwator.datasets import (
     archive_files,
     datasets,
     get_dataset,
+    get_provider,
     parse_months,
     parse_years,
     resolve_dataset_key,
@@ -130,13 +131,13 @@ _REGISTRY = [
     ("pl.imgw.actinometric", "meteo", False, "term", "calendar", 1990, None),
 ]
 # ČHMÚ datasets after the IMGW-PIB ones (spec 2026-10-18 §2.2).
-_CHMI_KEYS = [
-    "cz.chmi.hydro_daily",
-    "cz.chmi.meteo_daily",
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+_CHMU_KEYS = [
+    "cz.chmu.hydro_daily",
+    "cz.chmu.meteo_daily",
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 ]
 
 
@@ -167,10 +168,10 @@ def test_datasets_kind_filter():
     meteo = datasets(kind="meteo")
     assert [d.key for d in meteo] == [
         row[0] for row in _REGISTRY if row[1] == "meteo"
-    ] + ["cz.chmi.meteo_daily", "cz.chmi.meteo_stations", "cz.chmi.meteo_now"]
+    ] + ["cz.chmu.meteo_daily", "cz.chmu.meteo_stations", "cz.chmu.meteo_now"]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
-    ] + ["cz.chmi.hydro_daily", "cz.chmi.hydro_stations", "cz.chmi.hydro_now"]
+    ] + ["cz.chmu.hydro_daily", "cz.chmu.hydro_stations", "cz.chmu.hydro_now"]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
@@ -189,7 +190,7 @@ def test_get_dataset_unknown_lists_allowed_keys():
     with pytest.raises(ObserwatorValidationError) as exc:
         get_dataset("hydro/tygodniowe")
     assert exc.value.code == "validation_error"
-    assert exc.value.details["allowed"] == [row[0] for row in _REGISTRY] + _CHMI_KEYS
+    assert exc.value.details["allowed"] == [row[0] for row in _REGISTRY] + _CHMU_KEYS
 
 
 def test_every_dataset_key_follows_the_key_convention():
@@ -204,16 +205,15 @@ def test_every_dataset_key_follows_the_key_convention():
         assert old not in keys and current in keys, (old, current)
 
 
-def test_renamed_key_resolves_to_the_current_key(monkeypatch):
-    monkeypatch.setattr(
-        DATASETS_MODULE,
-        "DATASET_KEY_ALIASES",
-        {"pl.imgw.hydro_day": "pl.imgw.hydro_daily"},
-    )
-
-    assert resolve_dataset_key("pl.imgw.hydro_day") == "pl.imgw.hydro_daily"
-    assert get_dataset("pl.imgw.hydro_day") is get_dataset("pl.imgw.hydro_daily")
-    assert resolve_dataset_key("pl.imgw.hydro_daily") == "pl.imgw.hydro_daily"
+def test_a_renamed_key_is_read_from_the_store_but_no_input_takes_it():
+    # ADR-028: ČHMÚ's keys of 3.0.x resolve, as stored history, to the current ones.
+    assert resolve_dataset_key("cz.chmi.hydro_daily") == "cz.chmu.hydro_daily"
+    assert resolve_dataset_key("cz.chmu.hydro_daily") == "cz.chmu.hydro_daily"
+    with pytest.raises(ObserwatorValidationError) as exc:
+        get_dataset("cz.chmi.hydro_daily")
+    assert exc.value.details["value"] == "cz.chmi.hydro_daily"
+    with pytest.raises(ObserwatorValidationError):
+        get_provider("CHMI")
     # Unknown keys, slugs and legacy input words are not keys Obserwator knows.
     for value in ("sk.shmu.hydro_daily", "hydro_daily", "hydro/dobowe"):
         assert resolve_dataset_key(value) is None

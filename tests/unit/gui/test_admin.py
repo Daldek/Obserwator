@@ -628,7 +628,7 @@ def test_stored_analyses_name_the_providers_that_lack_them():
         None,
         "1.2.0",
     )
-    both = {"IMGW-PIB": version, "CHMI": version}
+    both = {"IMGW-PIB": version, "CHMU": version}
 
     partial = _analyses_check(
         Snapshot(catalogs=both, analyses={"IMGW-PIB": version}), "en"

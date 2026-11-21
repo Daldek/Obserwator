@@ -44,7 +44,7 @@ from tests.unit.test_store_catalog import sync_sources as sync_imgw_sources
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "store"
 ARCHIVES = FIXTURES / "archives"
 RECORDING = json.loads(
-    (FIXTURES / "chmi_catalog_recordings.json").read_text(encoding="utf-8")
+    (FIXTURES / "chmu_catalog_recordings.json").read_text(encoding="utf-8")
 )
 CASES = {entry["case"]: entry for entry in RECORDING["interactions"]}
 BASE_URL = RECORDING["base_url"]
@@ -60,10 +60,10 @@ SOURCES = (
 )
 # The station sources of the ČHMÚ catalog, which store sync puts into the store.
 SOURCE_DATASETS = (
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 )
 LISTS = SOURCE_DATASETS[:2]
 # The same sources after a regeneration of the envelopes (scenario 7 of §13.2).
@@ -86,7 +86,7 @@ CODES = [
 ]
 # The sidecar keeps one text: C. CP (ADR-012 D4).
 # The catalog's lines: ČHMÚ's and those of the border of RÚIAN (ADR-018)
-CHMI_ATTRIBUTION = ". ".join(attribution("chmi", "cuzk").attribution)
+CHMU_ATTRIBUTION = ". ".join(attribution("chmu", "cuzk").attribution)
 
 
 def body(case):
@@ -140,7 +140,7 @@ def offline_build(store, **options):
     """ČHMÚ catalog built from the sources of the raw root ``store``; any request would fail."""
     with respx.mock(assert_all_mocked=True) as offline:
         report = build_catalog(
-            data_root(store), raw_root=store, provider="CHMI", **options
+            data_root(store), raw_root=store, provider="CHMU", **options
         )
     assert not offline.calls
     return report
@@ -150,7 +150,7 @@ def offline_check(store, **options):
     """``check_catalog`` of the ČHMÚ catalog; any request would fail."""
     with respx.mock(assert_all_mocked=True) as offline:
         plan = check_catalog(
-            data_root(store), raw_root=store, provider="CHMI", **options
+            data_root(store), raw_root=store, provider="CHMU", **options
         )
     assert not offline.calls
     return plan
@@ -235,12 +235,12 @@ def test_every_station_of_the_sources_is_kept_also_without_location(store):
     assert list(found) == CODES
     assert (report.status, report.provider, report.station_count) == (
         "new",
-        "CHMI",
+        "CHMU",
         7,
     )
     assert (report.without_location, report.from_series) == (1, 0)
     assert report.version.parent.parent == (
-        data_root(store) / "stations/versions/chmi_stations"
+        data_root(store) / "stations/versions/chmu_stations"
     )
     assert not list((data_root(store) / "stations/versions").glob("*/stations.geojson"))
     assert schema_errors(document, "stations.geojson") == []
@@ -273,9 +273,9 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
     }
     properties = spindleruv["properties"]
     assert (properties["name"], properties["river"]) == ("Špindlerův Mlýn", "Labe")
-    assert properties["location_source"] == "chmi_hydro_now"
+    assert properties["location_source"] == "cz.chmu.hydro_now"
     assert properties["thresholds"] == {
-        "source": "chmi_hydro_now",
+        "source": "chmu_hydro_now",
         "type": "H",
         "H": {
             "unit": "cm",
@@ -302,14 +302,14 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
         alphanumeric["thresholds"]["source"],
         alphanumeric["thresholds"]["type"],
     ) == (
-        "chmi_hydro_now",
+        "chmu_hydro_now",
         "Q",
     )
     closed = found["0-203-1-900002"]
     assert closed["geometry"]["coordinates"] == [17.2512345, 49.8512345]
-    assert closed["properties"]["location_source"] == "chmi_hydro_stations"
+    assert closed["properties"]["location_source"] == "cz.chmu.hydro_stations"
     assert closed["properties"]["thresholds"] == {
-        "source": "chmi_hydro_stations",
+        "source": "chmu_hydro_stations",
         "type": "Q",
         "H": dict.fromkeys(("drought", "spa1", "spa2", "spa3", "q50")) | {"unit": "cm"},
         "Q": {
@@ -324,14 +324,14 @@ def test_location_name_river_and_thresholds_follow_source_precedence(store):
 
 
 def test_rejected_points_never_block_a_lower_source_and_reasons_are_kept(store):
-    plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
+    plant_series(data_root(store), "cz.chmu.hydro_daily", ["0-203-1-900005"])
     notices = []
     report = build(store, on_notice=notices.append)
     found = features(report)
 
     lower = found["0-203-1-900004"]
     assert lower["geometry"]["coordinates"] == [16.6012345, 49.2012345]
-    assert lower["properties"]["location_source"] == "chmi_hydro_stations"
+    assert lower["properties"]["location_source"] == "cz.chmu.hydro_stations"
     assert lower["properties"]["location_missing_reason"] is None
     foreign = found["0-20000-0-99903"]["properties"]
     assert foreign["location_missing_reason"] == "outside_country"
@@ -345,9 +345,9 @@ def test_rejected_points_never_block_a_lower_source_and_reasons_are_kept(store):
     )
     assert (report.from_series, report.without_location) == (1, 2)
     assert report.problems == (
-        "0-20000-0-99903: the source point chmi_meteo_now (-21.9405, 64.1311) was rejected — outside_country",
-        "0-20000-0-99903: the source point chmi_meteo_stations (-21.9405, 64.1311) was rejected — outside_country",
-        "0-203-1-900004: the source point chmi_hydro_now (0, 0) was rejected — zero",
+        "0-20000-0-99903: the source point cz.chmu.meteo_now (-21.9405, 64.1311) was rejected — outside_country",
+        "0-20000-0-99903: the source point cz.chmu.meteo_stations (-21.9405, 64.1311) was rejected — outside_country",
+        "0-203-1-900004: the source point cz.chmu.hydro_now (0, 0) was rejected — zero",
     )
     assert [n.message for n in notices if n.code == "location_rejected"] == list(
         report.problems
@@ -387,7 +387,7 @@ def test_location_conflict_names_stations_whose_valid_points_disagree(store):
     assert conflict.message.endswith(": 0-203-1-900001")
     assert not any("0-203-1-900001" in problem for problem in report.problems)
     assert features(report)["0-203-1-900001"]["properties"]["location_source"] == (
-        "chmi_hydro_now"
+        "cz.chmu.hydro_now"
     )
 
 
@@ -432,7 +432,7 @@ def test_meteo_fields_come_from_now_and_the_latest_historical_period(store):
         properties["name"],
         properties["active"],
         properties["elevation_m"],
-    ) == ("chmi_meteo_stations", "Fiktivní Ves-Horní", False, 318.5)
+    ) == ("cz.chmu.meteo_stations", "Fiktivní Ves-Horní", False, 318.5)
 
 
 def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(store):
@@ -450,7 +450,7 @@ def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(sto
     (observation,) = (slot / "observations").iterdir()
     unchanged = [n.message for n in notices if n.code == "content_unchanged"]
     assert any(
-        "archive:cz.chmi.hydro_stations:meta1.json" in text for text in unchanged
+        "archive:cz.chmu.hydro_stations:meta1.json" in text for text in unchanged
     )
     assert not [n for n in notices if n.code == "license_terms"]
     second = offline_build(store)
@@ -473,7 +473,7 @@ def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(sto
     assert (third.status, third.version) == ("unchanged", first.version)
 
 
-def test_sidecar_records_both_sums_of_every_source_and_the_chmi_license(tmp_path):
+def test_sidecar_records_both_sums_of_every_source_and_the_chmu_license(tmp_path):
     notices = []
     first = build(init_store(tmp_path / "a"), on_notice=notices.append)
     second = build(
@@ -483,34 +483,34 @@ def test_sidecar_records_both_sums_of_every_source_and_the_chmi_license(tmp_path
     meta, other = sidecar(first), sidecar(second)
     assert schema_errors(meta, "obserwator-meta/1") == []
     assert (meta["dataset"], meta["country"], meta["provider"]) == (
-        "cz.chmi.stations",
+        "cz.chmu.stations",
         "CZ",
-        "CHMI",
+        "CHMU",
     )
     assert meta["license"] == {
         "id": "CC-BY-4.0",
-        "attribution": CHMI_ATTRIBUTION,
+        "attribution": CHMU_ATTRIBUTION,
         "url": "https://creativecommons.org/licenses/by/4.0/",
         "terms_url": "https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti",
     }
     assert meta["extra"]["derived"] == "catalog"
     entries = {entry["source"]: entry for entry in meta["extra"]["catalog"]}
     assert list(entries) == [
-        "chmi_hydro_now",
-        "chmi_hydro_meta3",
-        "chmi_hydro_stations",
-        "chmi_meteo_now",
-        "chmi_meteo_stations",
+        "chmu_hydro_now",
+        "chmu_hydro_meta3",
+        "chmu_hydro_stations",
+        "chmu_meteo_now",
+        "chmu_meteo_stations",
     ]
     assert {source: entry["count"] for source, entry in entries.items()} == {
-        "chmi_hydro_now": 3,
-        "chmi_hydro_meta3": 2,
-        "chmi_hydro_stations": 3,
-        "chmi_meteo_now": 3,
-        "chmi_meteo_stations": 3,
+        "chmu_hydro_now": 3,
+        "chmu_hydro_meta3": 2,
+        "chmu_hydro_stations": 3,
+        "chmu_meteo_now": 3,
+        "chmu_meteo_stations": 3,
     }
-    assert all(entry["content_form"] == "chmi-json/1" for entry in entries.values())
-    assert entries["chmi_meteo_now"]["url"] == (
+    assert all(entry["content_form"] == "chmu-json/1" for entry in entries.values())
+    assert entries["chmu_meteo_now"]["url"] == (
         f"{BASE_URL}meteorology/climate/now/metadata/meta1-20261018.json"
     )
     for entry in entries.values():
@@ -519,28 +519,28 @@ def test_sidecar_records_both_sums_of_every_source_and_the_chmi_license(tmp_path
             stored.sha256,
             stored.content_sha256,
         )
-    now, regenerated = entries["chmi_hydro_now"], other["extra"]["catalog"][0]
-    assert regenerated["source"] == "chmi_hydro_now"
+    now, regenerated = entries["chmu_hydro_now"], other["extra"]["catalog"][0]
+    assert regenerated["source"] == "chmu_hydro_now"
     assert now["sha256"] != regenerated["sha256"]
     assert now["content_sha256"] == regenerated["content_sha256"]
     catalog = read_meta(first.version)
     assert (catalog.dataset_key, catalog.provider, catalog.country) == (
-        "cz.chmi.stations",
-        "CHMI",
+        "cz.chmu.stations",
+        "CHMU",
         "CZ",
     )
     assert notices[-1].code == "license_terms"
     assert notices[-1].message == (
-        f"{CHMI_ATTRIBUTION}. The CC BY 4.0 licence permits copying, changes and "
+        f"{CHMU_ATTRIBUTION}. The CC BY 4.0 licence permits copying, changes and "
         "commercial use provided that the author ČHMÚ is credited, the licence is given "
         "and the changes are marked."
     )
 
 
-def test_user_file_locates_chmi_codes_and_skips_codes_of_the_other_provider(
+def test_user_file_locates_chmu_codes_and_skips_codes_of_the_other_provider(
     store, tmp_path
 ):
-    plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
+    plant_series(data_root(store), "cz.chmu.hydro_daily", ["0-203-1-900005"])
     user = tmp_path / "polozenia.csv"
     user.write_text(
         "station_code,latitude,longitude,source\n"
@@ -576,7 +576,7 @@ def test_user_file_locates_chmi_codes_and_skips_codes_of_the_other_provider(
     ]
 
 
-def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
+def test_imgw_catalog_is_byte_identical_with_chmu_data_in_the_store(tmp_path):
     user = tmp_path / "polozenia.csv"
     user.write_text(
         "station_code,latitude,longitude\n"
@@ -590,9 +590,9 @@ def test_imgw_catalog_is_byte_identical_with_chmi_data_in_the_store(tmp_path):
         store = init_store(tmp_path / name)
         if name == "mixed":
             build(store)
-            plant_series(data_root(store), "cz.chmi.hydro_daily", ["0-203-1-900005"])
+            plant_series(data_root(store), "cz.chmu.hydro_daily", ["0-203-1-900005"])
             (archive,) = archive_files(
-                "cz.chmi.hydro_daily", stations=["0-203-1-900001"], years=[2023]
+                "cz.chmu.hydro_daily", stations=["0-203-1-900001"], years=[2023]
             )
             data = (ARCHIVES / archive.server_path).read_bytes()
             write_archive(
@@ -637,8 +637,8 @@ def test_catalog_builds_and_checks_with_the_network_off(store):
     sync_sources(store)
     raw = tree(store.root)
     with respx.mock(assert_all_mocked=True) as offline:
-        report = build_catalog(data_root(store), raw_root=store, provider="CHMI")
-        plan = check_catalog(data_root(store), raw_root=store, provider="CHMI")
+        report = build_catalog(data_root(store), raw_root=store, provider="CHMU")
+        plan = check_catalog(data_root(store), raw_root=store, provider="CHMU")
     assert not offline.calls
     assert (report.status, report.station_count) == ("new", len(CODES))
     assert report.version.is_relative_to(data_root(store))
@@ -646,11 +646,11 @@ def test_catalog_builds_and_checks_with_the_network_off(store):
     assert plan.items == ()
     assert [action.status for action in plan.actions] == ["current"] * 7
     assert [action.detail.split(":", 1)[0] for action in plan.actions[:5]] == [
-        "source chmi_hydro_stations",
-        "source chmi_meteo_stations",
-        "source chmi_hydro_now",
-        "source chmi_hydro_meta3",
-        "source chmi_meteo_now",
+        "source chmu_hydro_stations",
+        "source chmu_meteo_stations",
+        "source chmu_hydro_now",
+        "source chmu_hydro_meta3",
+        "source chmu_meteo_now",
     ]
 
 
@@ -659,10 +659,10 @@ def test_catalog_builds_and_checks_with_the_network_off(store):
     [
         ((), list(SOURCE_DATASETS)),
         (
-            ("cz.chmi.hydro_stations", "cz.chmi.hydro_now"),
-            ["cz.chmi.meteo_stations", "cz.chmi.meteo_now"],
+            ("cz.chmu.hydro_stations", "cz.chmu.hydro_now"),
+            ["cz.chmu.meteo_stations", "cz.chmu.meteo_now"],
         ),
-        (SOURCE_DATASETS[:3], ["cz.chmi.meteo_now"]),
+        (SOURCE_DATASETS[:3], ["cz.chmu.meteo_now"]),
     ],
     ids=["empty", "meteo", "meteo-now"],
 )
@@ -691,8 +691,8 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
     assert [n.code for n in notices] == ["source_missing"] * 5
     assert notices[-1].message == message(
         "catalog.source_not_stored",
-        source="chmi_meteo_now",
-        dataset="cz.chmi.meteo_now",
+        source="chmu_meteo_now",
+        dataset="cz.chmu.meteo_now",
     )
     assert not (store.root / "archives").exists()
 
@@ -711,7 +711,7 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
         for item in sync_sources(store, hydro_meta3_get=changed_meta3).items
         if item.status == "new"
     ]
-    assert meta3.slot == "archive:cz.chmi.hydro_now:meta3.json"
+    assert meta3.slot == "archive:cz.chmu.hydro_now:meta3.json"
     assert [action.status for action in offline_check(store).actions] == [
         "current",
         "current",
@@ -746,13 +746,13 @@ def test_broken_observation_of_a_list_fails_its_sync_not_the_offline_build(store
     [
         (
             {"hydro_now_get": None},
-            "cz.chmi.hydro_now",
+            "cz.chmu.hydro_now",
             "source_unavailable",
             "HTTP 503",
         ),
         (
             {"hydro_meta3_get": b'{"zaznamID":"a","zaznamID":"b"}'},
-            "cz.chmi.hydro_now",
+            "cz.chmu.hydro_now",
             "data_error",
             "a repeated key",
         ),
@@ -764,7 +764,7 @@ def test_broken_observation_of_a_list_fails_its_sync_not_the_offline_build(store
                     if b"meta1-" not in line
                 )
             },
-            "cz.chmi.meteo_now",
+            "cz.chmu.meteo_now",
             "data_error",
             message("sync.no_file_in_listing"),
         ),
@@ -794,11 +794,11 @@ def test_failed_source_sync_keeps_the_stored_version_for_the_build(store):
     outage = [case for case in SOURCES if case != "hydro_now_get"]
     synced = sync_sources(store, *outage, "hydro_now_outage")
     assert [(item.slot, item.error_code) for item in synced.items] == [
-        ("archive:cz.chmi.hydro_stations:meta1.json", None),
-        ("archive:cz.chmi.meteo_stations:meta1.json", None),
-        ("archive:cz.chmi.hydro_now:meta1.json", "source_unavailable"),
-        ("archive:cz.chmi.hydro_now:meta3.json", None),
-        ("archive:cz.chmi.meteo_now:meta1-20261018.json", None),
+        ("archive:cz.chmu.hydro_stations:meta1.json", None),
+        ("archive:cz.chmu.meteo_stations:meta1.json", None),
+        ("archive:cz.chmu.hydro_now:meta1.json", "source_unavailable"),
+        ("archive:cz.chmu.hydro_now:meta3.json", None),
+        ("archive:cz.chmu.meteo_now:meta1-20261018.json", None),
     ]
     report = offline_build(store)
     assert (report.status, report.version) == ("unchanged", first.version)
@@ -845,7 +845,7 @@ def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothi
         routes = serve(
             router, *SOURCES, "meteo_now_previous_get", meteo_now_listing=older
         )
-        sync_store(store, datasets=["cz.chmi.meteo_now"])
+        sync_store(store, datasets=["cz.chmu.meteo_now"])
         assert routes["meteo_now_previous_get"].called
         assert not routes["meteo_now_get"].called
     with respx.mock(assert_all_called=False) as router:
@@ -861,14 +861,14 @@ def test_build_reads_the_newest_stored_meteo_now_file_and_cancel_publishes_nothi
     assert (cancelled.status, cancelled.version, cancelled.provider) == (
         "cancelled",
         None,
-        "CHMI",
+        "CHMU",
     )
     assert not (data_root(store) / "stations").exists()
 
     (entry,) = [
         entry
         for entry in sidecar(offline_build(store))["extra"]["catalog"]
-        if entry["source"] == "chmi_meteo_now"
+        if entry["source"] == "chmu_meteo_now"
     ]
     assert entry["url"] == (
         f"{BASE_URL}meteorology/climate/now/metadata/meta1-20261018.json"
@@ -880,11 +880,11 @@ def test_provider_is_validated_and_key_prefix_names_it(store):
     for call in (build_catalog, check_catalog):
         with pytest.raises(ObserwatorValidationError) as error:
             call(data_root(store), raw_root=store, provider="SHMU")
-        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMI"]
+        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
     sync_sources(store)
     with respx.mock(assert_all_mocked=True):
-        built = build_catalog(data_root(store), raw_root=store, provider="cz.chmi")
-    assert built.provider == "CHMI"
+        built = build_catalog(data_root(store), raw_root=store, provider="cz.chmu")
+    assert built.provider == "CHMU"
 
 
 def test_czech_outline_validates_points_of_czechia_only():

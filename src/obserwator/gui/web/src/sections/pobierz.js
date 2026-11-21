@@ -18,7 +18,7 @@ const FORMATS = { csv: "CSV", json: "JSON", parquet: "Parquet" };
 /** The names of the formats of the stored analyses. */
 const RESULT_FORMATS = { json: "JSON", csv: "CSV" };
 /** The daily hydrological datasets: the hand-off of daily values reads them. */
-const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmi.hydro_daily"];
+const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmu.hydro_daily"];
 
 /**
  * A command line with „Kopiuj” (also the PMAXTP view's, pmaxtp/result.js).

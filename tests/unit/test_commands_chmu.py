@@ -1,7 +1,7 @@
 """Command catalog for ČHMÚ (spec 2026-10-18 §9.2–§9.3): options, rules, views, parity.
 
-ČHMÚ answers come from the recordings of ``chmi_recordings.json`` and
-``chmi_catalog_recordings.json`` only; respx refuses every other request.
+ČHMÚ answers come from the recordings of ``chmu_recordings.json`` and
+``chmu_catalog_recordings.json`` only; respx refuses every other request.
 """
 
 import importlib
@@ -37,22 +37,22 @@ from tests.contract.support import (
     rest_request,
     violations,
 )
-from tests.unit.test_store_catalog_chmi import SOURCES
-from tests.unit.test_store_catalog_chmi import serve as serve_catalog
-from tests.unit.test_store_sync_chmi import BASE, FIRST
-from tests.unit.test_store_sync_chmi import serve as serve_files
+from tests.unit.test_store_catalog_chmu import SOURCES
+from tests.unit.test_store_catalog_chmu import serve as serve_catalog
+from tests.unit.test_store_sync_chmu import BASE, FIRST
+from tests.unit.test_store_sync_chmu import serve as serve_files
 
-HYDRO, METEO = "cz.chmi.hydro_daily", "cz.chmi.meteo_daily"
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
 S1, S2 = "0-203-1-900001", "0-203-1-900002"
 FULL = "0-203-0-90001"
 ROOT = "/data/obserwator"
 HYDRO_NOW = BASE + "hydrology/now/metadata/meta1.json"
 # The station sources of the ČHMÚ catalog, synced before a catalog (ADR-015).
 STATION_SOURCES = [
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 ]
 METEO_LISTING = BASE + "meteorology/climate/now/metadata/"
 FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
@@ -96,7 +96,7 @@ def frozen(monkeypatch):
 
 
 @pytest.fixture
-def chmi():
+def chmu():
     """Recorded ČHMÚ: current metadata, station lists and the daily-file listings."""
     with respx.mock(assert_all_called=False) as router:
         serve_catalog(router, *SOURCES)
@@ -122,11 +122,11 @@ def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
     planned = check_command("datasets providers", options={})
 
     assert listed.status == "ok"
-    assert [provider.id for provider in listed.result] == ["IMGW-PIB", "CHMI"]
+    assert [provider.id for provider in listed.result] == ["IMGW-PIB", "CHMU"]
     assert (listed.result, listed.page.total) == (providers(), 2)
     assert [action.status for action in planned.result.actions] == ["current"]
-    chmi = run_command("datasets list", options={"provider": "CHMI"}).result
-    assert [descriptor.key for descriptor in chmi] == [HYDRO, METEO, *STATION_SOURCES]
+    chmu = run_command("datasets list", options={"provider": "CHMU"}).result
+    assert [descriptor.key for descriptor in chmu] == [HYDRO, METEO, *STATION_SOURCES]
     assert run_command("datasets list", options={}).page.total == len(datasets())
 
 
@@ -146,10 +146,10 @@ def _values(option):
 def test_command_schema_publishes_provider_stations_and_their_rules():
     for name in ("datasets list", "stations find", "store scan"):
         provider = _options(name)["provider"]
-        assert _values(provider) == ["IMGW-PIB", "CHMI"]
+        assert _values(provider) == ["IMGW-PIB", "CHMU"]
         assert "default" not in provider
     catalog = _options("store catalog")["provider"]
-    assert (_values(catalog), catalog["default"]) == (["IMGW-PIB", "CHMI"], "IMGW-PIB")
+    assert (_values(catalog), catalog["default"]) == (["IMGW-PIB", "CHMU"], "IMGW-PIB")
     for name in ("datasets files", "datasets download", "store check", "store sync"):
         entry = _entry(name)
         stations = _options(name)["stations"]
@@ -158,7 +158,7 @@ def test_command_schema_publishes_provider_stations_and_their_rules():
         # Years depend on the dataset, so the schema leaves them to the rules.
         assert _options(name)["years"]["required"] is False
         rules = entry["rules"]
-        assert any("stations" in rule and "cz.chmi" in rule for rule in rules)
+        assert any("stations" in rule and "cz.chmu" in rule for rule in rules)
         assert any("years" in rule and METEO in rule for rule in rules)
     archive = _values(_options("datasets files")["dataset"])
     assert archive == [
@@ -180,8 +180,8 @@ def test_command_schema_publishes_provider_stations_and_their_rules():
     assert entry["rest"]["path"] == "/api/v1/datasets/providers"
 
 
-def test_chmi_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices():
-    view = data_commands(provider="CHMI")
+def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices():
+    view = data_commands(provider="CHMU")
 
     groups = {command.name.split()[0] for command in view}
     assert not groups & {"current", "pmaxtp"}
@@ -190,14 +190,14 @@ def test_chmi_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
         for option in command.options:
             if option.name in ("dataset", "datasets"):
                 assert option.choices
-                assert all(key.startswith("cz.chmi.") for key in option.choices)
+                assert all(key.startswith("cz.chmu.") for key in option.choices)
             elif option.name == "provider":
                 assert (option.choices, option.required, option.default) == (
-                    ("CHMI",),
+                    ("CHMU",),
                     True,
                     None,
                 )
-    assert data_commands(provider="cz.chmi") == view
+    assert data_commands(provider="cz.chmu") == view
     imgw = data_commands(provider="IMGW-PIB")
     assert [command.name for command in imgw] == [c.name for c in data_commands()]
     assert all(
@@ -245,7 +245,7 @@ REJECTED = [
         "params",
     ),
     ("datasets list", {"provider": "SHMU"}, "provider"),
-    ("stations find", {"provider": "chmi"}, "provider"),
+    ("stations find", {"provider": "chmu"}, "provider"),
     ("store scan", {"root": ROOT, "provider": "CZ"}, "provider"),
     ("store catalog", {"root": ROOT, "provider": "SHMU"}, "provider"),
     (
@@ -305,20 +305,20 @@ def test_validate_command_applies_the_rules_of_the_dataset_provider(
 
 
 VALID = [
-    ("datasets list", {"provider": "CHMI", "kind": "hydro"}),
+    ("datasets list", {"provider": "CHMU", "kind": "hydro"}),
     (
         "datasets files",
         {"dataset": HYDRO, "stations": [S2, S1, S2], "years": "2004-2006"},
     ),
-    ("datasets files", {"dataset": "chmi_meteo_daily", "stations": FULL}),
+    ("datasets files", {"dataset": "chmu_meteo_daily", "stations": FULL}),
     (
         "datasets download",
         {"dataset": METEO, "stations": [FULL], "output_dir": "/tmp/pobrane dane"},
     ),
     ("datasets providers", {"limit": 1}),
-    ("stations find", {"provider": "cz.chmi", "kind": "hydro", "query": "spindleruv"}),
-    ("stations find", {"provider": "CHMI", "source": "store", "root": ROOT}),
-    ("store scan", {"root": ROOT, "provider": "CHMI", "kind": "archive"}),
+    ("stations find", {"provider": "cz.chmu", "kind": "hydro", "query": "spindleruv"}),
+    ("stations find", {"provider": "CHMU", "source": "store", "root": ROOT}),
+    ("store scan", {"root": ROOT, "provider": "CHMU", "kind": "archive"}),
     ("store check", {"root": ROOT, "datasets": HYDRO, "stations": [S1, S2]}),
     (
         "store check",
@@ -331,7 +331,7 @@ VALID = [
         },
     ),
     ("store check", {"root": ROOT, "datasets": METEO, "stations": FULL}),
-    ("store check", {"root": ROOT, "datasets": ["cz.chmi.hydro_now"]}),
+    ("store check", {"root": ROOT, "datasets": ["cz.chmu.hydro_now"]}),
     (
         "store sync",
         {
@@ -343,22 +343,22 @@ VALID = [
         },
     ),
     ("store sync", {"root": ROOT, "datasets": STATION_SOURCES}),
-    ("store catalog", {"root": ROOT, "provider": "CHMI"}),
+    ("store catalog", {"root": ROOT, "provider": "CHMU"}),
 ]
 
 
 @pytest.mark.parametrize(("command", "options"), VALID)
-def test_chmi_examples_normalize_to_options_of_the_command_schema(command, options):
+def test_chmu_examples_normalize_to_options_of_the_command_schema(command, options):
     normalized = validate_command(command, options=options)
 
     assert violations(jsonable(normalized), input_schema(command)) == []
 
 
-def test_validate_command_normalizes_chmi_selectors():
+def test_validate_command_normalizes_chmu_selectors():
     files = validate_command(
         "datasets files",
         options={
-            "dataset": "chmi_hydro_daily",
+            "dataset": "chmu_hydro_daily",
             "stations": f"{S2},{S1},{S2}",
             "years": "2024",
         },
@@ -372,8 +372,8 @@ def test_validate_command_normalizes_chmi_selectors():
         (S1,),
         False,
     )
-    assert validate_command("datasets list", options={"provider": "cz.chmi"}) == {
-        "provider": "CHMI"
+    assert validate_command("datasets list", options={"provider": "cz.chmu"}) == {
+        "provider": "CHMU"
     }
 
 
@@ -424,9 +424,9 @@ def test_unpublished_files_count_as_successful_items_of_a_download(tmp_path):
     assert canonical(json.loads(printed.stdout)) == canonical(result.to_json())
 
 
-def test_check_of_a_live_chmi_search_names_its_sources_without_requests():
+def test_check_of_a_live_chmu_search_names_its_sources_without_requests():
     with respx.mock(assert_all_called=False) as router:
-        plan = check_command("stations find", options={"provider": "CHMI"}).result
+        plan = check_command("stations find", options={"provider": "CHMU"}).result
 
     assert not router.calls
     assert [action.status for action in plan.actions] == ["unverifiable"] * 3
@@ -434,12 +434,12 @@ def test_check_of_a_live_chmi_search_names_its_sources_without_requests():
     assert HYDRO_NOW in details and METEO_LISTING in details
 
 
-def test_source_unavailable_title_is_neutral_and_the_detail_names_chmi(server):
+def test_source_unavailable_title_is_neutral_and_the_detail_names_chmu(server):
     assert ERROR_CODES["source_unavailable"].title == "Data source unavailable"
     with respx.mock(assert_all_called=False) as router:
         serve_catalog(router, "hydro_now_outage")
         response = TestClient(rest_app).get(
-            "/api/v1/stations/find", params={"provider": "CHMI", "kind": "hydro"}
+            "/api/v1/stations/find", params={"provider": "CHMU", "kind": "hydro"}
         )
 
     problem = response.json()
@@ -460,23 +460,23 @@ def test_source_unavailable_title_is_neutral_and_the_detail_names_chmi(server):
 # The third column: the kind of root the command works on (ADR-017), or None.
 PARITY = [
     ("datasets providers", {"limit": 5}, None),
-    ("datasets list", {"provider": "CHMI", "limit": 10}, None),
+    ("datasets list", {"provider": "CHMU", "limit": 10}, None),
     (
         "datasets files",
         {"dataset": HYDRO, "stations": [S1, S2], "years": "2023-2024", "limit": 10},
         None,
     ),
-    ("stations find", {"provider": "CHMI", "query": "spindleruv", "limit": 10}, None),
-    ("stations find", {"provider": "CHMI", "source": "store", "limit": 10}, "data"),
-    ("store scan", {"provider": "CHMI", "kind": "catalog", "limit": 10}, "data"),
+    ("stations find", {"provider": "CHMU", "query": "spindleruv", "limit": 10}, None),
+    ("stations find", {"provider": "CHMU", "source": "store", "limit": 10}, "data"),
+    ("store scan", {"provider": "CHMU", "kind": "catalog", "limit": 10}, "data"),
     ("store check", {"datasets": [HYDRO], "stations": [S1, S2]}, "raw"),
     ("store check", {"datasets": [METEO], "stations": [FULL]}, "raw"),
 ]
 
 
 @pytest.mark.parametrize(("command", "options", "kind"), PARITY)
-def test_chmi_commands_answer_alike_in_python_cli_and_rest(
-    tmp_path, monkeypatch, server, frozen, chmi, command, options, kind
+def test_chmu_commands_answer_alike_in_python_cli_and_rest(
+    tmp_path, monkeypatch, server, frozen, chmu, command, options, kind
 ):
     root = None
     if kind is not None:
@@ -484,17 +484,17 @@ def test_chmi_commands_answer_alike_in_python_cli_and_rest(
         data = tmp_path / "data"
         # The catalog reads the synced station sources offline (ADR-015, ADR-017).
         sync_store(raw, datasets=STATION_SOURCES)
-        build_catalog(data, raw_root=raw, provider="CHMI")
+        build_catalog(data, raw_root=raw, provider="CHMU")
         root = raw.root if kind == "raw" else data
         monkeypatch.setattr(server, "root", data)
         monkeypatch.setattr(server, "raw_root", raw.root)
     local = options if root is None else {"root": root, **options}
 
-    start = len(chmi.calls)
+    start = len(chmu.calls)
     python = run_command(command, options=local)
-    middle = len(chmi.calls)
+    middle = len(chmu.calls)
     printed = CliRunner().invoke(cli_app, cli_words(command, local))
-    end = len(chmi.calls)
+    end = len(chmu.calls)
     answered = TestClient(rest_app).request(**rest_request(command, options))
 
     assert python.status == "ok"
@@ -505,24 +505,24 @@ def test_chmi_commands_answer_alike_in_python_cli_and_rest(
         python.to_json(root=root, server=True)
     )
     requests = [
-        [(c.request.method, str(c.request.url)) for c in chmi.calls[a:b]]
-        for a, b in ((start, middle), (middle, end), (end, len(chmi.calls)))
+        [(c.request.method, str(c.request.url)) for c in chmu.calls[a:b]]
+        for a, b in ((start, middle), (middle, end), (end, len(chmu.calls)))
     ]
     assert requests[0] == requests[1] == requests[2]
 
 
-def test_store_catalog_of_chmi_is_planned_alike_offline_in_python_cli_and_rest(
-    tmp_path, monkeypatch, server, frozen, chmi
+def test_store_catalog_of_chmu_is_planned_alike_offline_in_python_cli_and_rest(
+    tmp_path, monkeypatch, server, frozen, chmu
 ):
     raw = init_store(tmp_path / "raw").root
     root = init_store(tmp_path / "data", kind="data").root
     synced = sync_store(raw, datasets=STATION_SOURCES)
     monkeypatch.setattr(server, "root", root)
     monkeypatch.setattr(server, "raw_root", raw)
-    options = {"provider": "CHMI"}
+    options = {"provider": "CHMU"}
     local = {"root": root, "raw_root": raw, **options}
 
-    start = len(chmi.calls)
+    start = len(chmu.calls)
     python = check_command("store catalog", options=local)
     printed = CliRunner().invoke(
         cli_app, [*cli_words("store catalog", local), "--check"]
@@ -531,7 +531,7 @@ def test_store_catalog_of_chmi_is_planned_alike_offline_in_python_cli_and_rest(
     request["url"] += "?check=true"
     answered = TestClient(rest_app).request(**request)
 
-    assert len(chmi.calls) == start  # the plan reads the stored sources only
+    assert len(chmu.calls) == start  # the plan reads the stored sources only
     assert python.result.items == ()
     # Five stored source files (hydro now has meta1 and meta3), the series
     # indexes and the catalog: no catalog yet, so nothing is current.

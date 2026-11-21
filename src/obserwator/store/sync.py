@@ -14,10 +14,10 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
-from obserwator._parsing.chmi import ListingEntry, parse_listing
+from obserwator._parsing.chmu import ListingEntry, parse_listing
 from obserwator.datasets import (
-    _CHMI_HYDRO_FILE,
-    _CHMI_METEO_FILE,
+    _CHMU_HYDRO_FILE,
+    _CHMU_METEO_FILE,
     _IMGW_STATION_FILE,
     _METEO_LAYOUT,
     HYDRO_DETAILS,
@@ -103,8 +103,8 @@ _SYNC = "store sync"
 # File-name grammar of per-station archives (spec 2026-10-18 §2.3); group 1 is
 # the station code.
 _STATION_FILES = {
-    "station_year": _CHMI_HYDRO_FILE,
-    "station_element": _CHMI_METEO_FILE,
+    "station_year": _CHMU_HYDRO_FILE,
+    "station_element": _CHMU_METEO_FILE,
 }
 Status = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
 
@@ -932,8 +932,8 @@ def check_store(
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
         items. Required for IMGW-PIB datasets; optional for
-        ``cz.chmi.hydro_daily`` (None checks every year the listing shows for
-        the stations); rejected for ``cz.chmi.meteo_daily``.
+        ``cz.chmu.hydro_daily`` (None checks every year the listing shows for
+        the stations); rejected for ``cz.chmu.meteo_daily``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
         IMGW-PIB files only (also the running year's monthly synop files);
@@ -1657,7 +1657,7 @@ def sync_store(
     # ČHMÚ requests name obserwator/<version> (spec 2026-10-18 §4.5), also those
     # of its station sources, which have no listing signal.
     identify = any(
-        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMI"
+        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMU"
         for item in plan.items
     )
     with httpx.Client(

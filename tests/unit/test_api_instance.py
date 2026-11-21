@@ -31,21 +31,21 @@ from tests.contract.support import DAILY, RABA, FakeImgw, use_fake_hydrolog
 
 RUNNER = CliRunner()
 TOKEN = "s3cret-token"
-CHMI_DAILY = "cz.chmi.hydro_daily"
+CHMU_DAILY = "cz.chmu.hydro_daily"
 BEZ_Q = "149190311"  # in the IMGW-PIB series, no location in the catalog
 NOWHERE = "149199999"  # no such IMGW-PIB station
 SPINDLER = "0-203-1-900001"  # ČHMÚ, inside the clipped area
 ZAPADLA = "0-203-1-900002"  # ČHMÚ, outside it
-NO_CHMI = "0-203-1-999999"  # no such ČHMÚ station
+NO_CHMU = "0-203-1-999999"  # no such ČHMÚ station
 MISSING_LABEL = "2000-01-01_00000000"
 POINT = {
     "latitude": "52.23",
     "longitude": "21.01",
 }  # Warszawa: the recorded PMAXTP point
-CHMI_OFF = '[obserwator.instance.providers]\nCHMI = "off"\n'
+CHMU_OFF = '[obserwator.instance.providers]\nCHMU = "off"\n'
 IMGW_OFF = '[obserwator.instance.providers]\nIMGW-PIB = "off"\n'
 # Every provider off: valid while PMAXTP is served.
-NONE_SERVED = '[obserwator.instance.providers]\nIMGW-PIB = "off"\nCHMI = "off"\n'
+NONE_SERVED = '[obserwator.instance.providers]\nIMGW-PIB = "off"\nCHMU = "off"\n'
 CURRENT = (
     "current hydro",
     "current meteo",
@@ -193,7 +193,7 @@ def uvicorn_calls(monkeypatch):
 def test_datasets_routes_list_and_page_only_the_providers_served(
     client, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
     served = [item.key for item in registry() if item.provider == "IMGW-PIB"]
 
     pages, cursor = [], None
@@ -204,10 +204,10 @@ def test_datasets_routes_list_and_page_only_the_providers_served(
         if cursor is None:
             break
     found = client.get(path_of("datasets providers")).json()
-    named = client.get(path_of("datasets list"), params={"provider": "cz.chmi"})
+    named = client.get(path_of("datasets list"), params={"provider": "cz.chmu"})
     files = client.get(
         path_of("datasets files"),
-        params={"dataset": "chmi_hydro_daily", "years": "2023", "stations": SPINDLER},
+        params={"dataset": "chmu_hydro_daily", "years": "2023", "stations": SPINDLER},
     )
 
     assert [item["key"] for page in pages for item in page["result"]] == served
@@ -217,12 +217,12 @@ def test_datasets_routes_list_and_page_only_the_providers_served(
     assert found["page"]["total"] == 1
     assert problem(named, 404, "not_found")["details"] == {
         "option": "provider",
-        "value": "CHMI",
+        "value": "CHMU",
         "reason": "not_served",
     }
     assert problem(files, 404, "not_found")["details"] == {
         "option": "dataset",
-        "value": CHMI_DAILY,
+        "value": CHMU_DAILY,
         "reason": "not_served",
     }
 
@@ -263,12 +263,12 @@ def test_stations_find_names_the_one_provider_served(
     client, served, tmp_path, monkeypatch, imgw
 ):
     imgw.publish_catalog_sources()
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
 
     stored = client.get(path_of("stations find"), params={"source": "store"})
     live = client.get(path_of("stations find"), params={"kind": "hydro"})
     named = client.get(
-        path_of("stations find"), params={"source": "store", "provider": "CHMI"}
+        path_of("stations find"), params={"source": "store", "provider": "CHMU"}
     )
     deploy(tmp_path, monkeypatch, NONE_SERVED)
     nothing = client.get(path_of("stations find"), params={"source": "store"})
@@ -279,10 +279,10 @@ def test_stations_find_names_the_one_provider_served(
     )
     assert stored.json() == expected.to_json(root=served, server=True)
     assert {entry["provider"] for entry in live.json()["result"]} == {"IMGW-PIB"}
-    assert imgw.traffic() and all("chmi" not in url for _, url in imgw.traffic())
+    assert imgw.traffic() and all("chmu" not in url for _, url in imgw.traffic())
     assert problem(named, 404, "not_found")["details"] == {
         "option": "provider",
-        "value": "CHMI",
+        "value": "CHMU",
         "reason": "not_served",
     }
     assert problem(nothing, 404, "not_found")["details"] == {
@@ -314,7 +314,7 @@ def test_stations_find_under_clip_pages_only_the_stations_inside(
     }
     assert second["page"] == {"total": 2, "next_cursor": None, "truncated": False}
     # The lines of each page are those of its own stations, as run_command's.
-    for page, code, provider in ((first, RABA, "IMGW-PIB"), (second, SPINDLER, "CHMI")):
+    for page, code, provider in ((first, RABA, "IMGW-PIB"), (second, SPINDLER, "CHMU")):
         alone = run_command(
             "stations find",
             options={
@@ -330,7 +330,7 @@ def test_stations_find_under_clip_pages_only_the_stations_inside(
 def test_stations_export_holds_only_the_stations_served_and_their_lines(
     client, served, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
     narrowed = client.get(path_of("stations export"))
     deploy(tmp_path, monkeypatch, area=CLIPPED)
     clipped = client.get(path_of("stations export"))
@@ -498,10 +498,10 @@ def test_series_under_clip_answer_only_the_stations_inside(
         params={"dataset": DAILY, "stations": [RABA, BEZ_Q]},
     )
     inside = client.get(
-        path_of("series export"), params={"dataset": CHMI_DAILY, "station": SPINDLER}
+        path_of("series export"), params={"dataset": CHMU_DAILY, "station": SPINDLER}
     )
     outside = client.get(
-        path_of("series export"), params={"dataset": CHMI_DAILY, "station": ZAPADLA}
+        path_of("series export"), params={"dataset": CHMU_DAILY, "station": ZAPADLA}
     )
 
     expected = run_command(
@@ -520,7 +520,7 @@ def test_series_under_clip_answer_only_the_stations_inside(
     assert problem(selected, 404, "not_found")["details"]["value"] == BEZ_Q
     exported = run_command(
         "series export",
-        options={"dataset": CHMI_DAILY, "station": SPINDLER, "root": served},
+        options={"dataset": CHMU_DAILY, "station": SPINDLER, "root": served},
     )
     assert inside.text == "".join(exported.result)
     problem(outside, 404, "not_found")
@@ -529,25 +529,25 @@ def test_series_under_clip_answer_only_the_stations_inside(
 def test_series_of_an_off_provider_are_404_by_dataset_and_by_version(
     client, served, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
-    version = relative(current_version(served, slot=f"series:{CHMI_DAILY}"), served)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    version = relative(current_version(served, slot=f"series:{CHMU_DAILY}"), served)
     missing = missing_version(version)
 
     by_key = client.get(
-        path_of("series read"), params={"dataset": CHMI_DAILY, "station": SPINDLER}
+        path_of("series read"), params={"dataset": CHMU_DAILY, "station": SPINDLER}
     )
     by_slug = client.get(
-        path_of("series summary"), params={"dataset": "chmi_hydro_daily"}
+        path_of("series summary"), params={"dataset": "chmu_hydro_daily"}
     )
     by_version = client.get(path_of("series summary"), params={"version": version})
     by_missing = client.get(path_of("series summary"), params={"version": missing})
 
     assert problem(by_key, 404, "not_found")["details"] == {
         "option": "dataset",
-        "value": CHMI_DAILY,
+        "value": CHMU_DAILY,
         "reason": "not_served",
     }
-    assert problem(by_slug, 404, "not_found")["details"]["value"] == CHMI_DAILY
+    assert problem(by_slug, 404, "not_found")["details"]["value"] == CHMU_DAILY
     assert problem(by_version, 404, "not_found")["details"] == {
         "option": "version",
         "value": version,
@@ -564,11 +564,11 @@ def test_series_of_an_off_provider_are_404_by_dataset_and_by_version(
 def test_analyses_of_an_off_provider_are_404_and_its_data_stop_a_build(
     client, served, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
     analysis = analysis_definitions()[0].id
 
     listed = client.get(path_of("analyses list"), params={"station": SPINDLER})
-    unknown = client.get(path_of("analyses list"), params={"station": NO_CHMI})
+    unknown = client.get(path_of("analyses list"), params={"station": NO_CHMU})
     read = client.get(
         path_of("analyses read"), params={"station": SPINDLER, "analysis": analysis}
     )
@@ -577,7 +577,7 @@ def test_analyses_of_an_off_provider_are_404_and_its_data_stop_a_build(
         path_of("analyses list"),
         params={
             "station": RABA,
-            "version": f"analyses/versions/cz.chmi/{MISSING_LABEL}",
+            "version": f"analyses/versions/cz.chmu/{MISSING_LABEL}",
         },
     )
     build = client.post(f"{path_of('analyses build')}?check=true", json={})
@@ -588,7 +588,7 @@ def test_analyses_of_an_off_provider_are_404_and_its_data_stop_a_build(
             "value": SPINDLER,
             "reason": "not_served",
         }
-    alike(listed, unknown, SPINDLER, NO_CHMI)
+    alike(listed, unknown, SPINDLER, NO_CHMU)
     assert problem(pinned, 404, "not_found")["details"]["option"] == "version"
     # The fixture's data root holds ČHMÚ series: a build would name ČHMÚ.
     assert problem(build, 403, "forbidden")["details"] == {"reason": "not_served"}
@@ -600,7 +600,7 @@ def test_analyses_build_of_a_root_without_the_off_provider_is_served(
     use_fake_hydrolog(monkeypatch, tmp_path / "scratch")
     roots = build_fixture_store(tmp_path / "raw", data_root=tmp_path / "data")
     monkeypatch.setattr(settings, "root", roots.data.root)
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
 
     planned = client.post(f"{path_of('analyses build')}?check=true", json={})
 
@@ -619,14 +619,14 @@ def test_analyses_under_clip_read_only_the_stations_inside(
 
     inside = client.get(path_of("analyses list"), params={"station": RABA})
     outside = client.get(path_of("analyses list"), params={"station": ZAPADLA})
-    unknown = client.get(path_of("analyses list"), params={"station": NO_CHMI})
+    unknown = client.get(path_of("analyses list"), params={"station": NO_CHMU})
     planned = client.post(f"{path_of('analyses build')}?check=true", json={})
 
     assert inside.status_code == 200, inside.text
     assert inside.json() == run_command(
         "analyses list", options={"station": RABA, "root": root}
     ).to_json(root=root, server=True)
-    alike(outside, unknown, ZAPADLA, NO_CHMI)
+    alike(outside, unknown, ZAPADLA, NO_CHMU)
     assert planned.status_code == 200, planned.text
 
 
@@ -635,9 +635,9 @@ def test_analyses_under_clip_read_only_the_stations_inside(
 # --------------------------------------------------------------------------
 
 
-def chmi_plan(tmp_path):
+def chmu_plan(tmp_path):
     """An ``obserwator-plan/1`` document of one ČHMÚ archive, for the served raw root."""
-    archive = archive_files(CHMI_DAILY, years=[2023], stations=[SPINDLER])[0]
+    archive = archive_files(CHMU_DAILY, years=[2023], stations=[SPINDLER])[0]
     item = PlanItem(
         archive, "missing", None, None, None, None, None, None, SPINDLER, "listing"
     )
@@ -649,29 +649,29 @@ def chmi_plan(tmp_path):
 def test_store_routes_hide_and_refuse_an_off_provider_before_any_request(
     client, served, fixture_raw_root, tmp_path, monkeypatch, imgw, writable
 ):
-    deploy(tmp_path, monkeypatch, CHMI_OFF)
-    slot = f"archive:{CHMI_DAILY}:H_{SPINDLER}_DQ_2023.json"
+    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    slot = f"archive:{CHMU_DAILY}:H_{SPINDLER}_DQ_2023.json"
     archive = relative(current_version(fixture_raw_root, slot=slot), fixture_raw_root)
     missing = missing_version(archive)
-    selection = {"datasets": [CHMI_DAILY], "stations": [SPINDLER]}
+    selection = {"datasets": [CHMU_DAILY], "stations": [SPINDLER]}
 
     info = client.get(path_of("store info")).json()["result"]
     scan = client.get(path_of("store scan")).json()
     refused = {
-        "scan": client.get(path_of("store scan"), params={"provider": "CHMI"}),
+        "scan": client.get(path_of("store scan"), params={"provider": "CHMU"}),
         "check": client.get(path_of("store check"), params=selection),
         "sync check": client.post(
             f"{path_of('store sync')}?check=true", json=selection
         ),
         "sync": client.post(path_of("store sync"), json=selection, headers=writable),
         "plan": client.post(
-            path_of("store sync"), json={"plan": chmi_plan(tmp_path)}, headers=writable
+            path_of("store sync"), json={"plan": chmu_plan(tmp_path)}, headers=writable
         ),
         "catalog": client.post(
-            path_of("store catalog"), json={"provider": "CHMI"}, headers=writable
+            path_of("store catalog"), json={"provider": "CHMU"}, headers=writable
         ),
         "build": client.post(
-            path_of("series build"), json={"dataset": CHMI_DAILY}, headers=writable
+            path_of("series build"), json={"dataset": CHMU_DAILY}, headers=writable
         ),
         "export": client.get(path_of("store export"), params={"version": archive}),
     }
