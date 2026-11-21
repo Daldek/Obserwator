@@ -43,6 +43,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
 from obserwator._borders import CZECHIA, POLAND
+from obserwator._http_headers import security_headers
 from obserwator.attribution import (
     ORIGINS,
     Attribution,
@@ -1363,15 +1364,13 @@ def methods(path: str) -> tuple[str, ...]:
 
 
 def _security(policy: str) -> list[tuple[bytes, bytes]]:
-    """The headers of D16 with a Content-Security-Policy."""
+    """The headers of D16 with a Content-Security-Policy and those of both servers."""
     return [
         (b"content-security-policy", policy.encode()),
         (b"x-frame-options", b"DENY"),
-        (b"x-content-type-options", b"nosniff"),
-        (b"referrer-policy", b"no-referrer"),
+        *security_headers(),
         (b"cross-origin-opener-policy", b"same-origin"),
         (b"cross-origin-resource-policy", b"same-origin"),
-        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
     ]
 
 

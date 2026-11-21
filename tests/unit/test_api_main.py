@@ -120,6 +120,25 @@ def test_api_main_cors_star_allows_every_origin_never_with_credentials():
     assert "access-control-allow-credentials" not in preflight.headers
 
 
+def test_api_main_every_answer_carries_the_security_headers(client):
+    answers = [
+        client.get("/health"),
+        client.get("/docs"),
+        client.get("/openapi.json"),
+        client.get("/", follow_redirects=False),
+        client.get("/api/v1/nothing"),
+        client.options("/api/v1/stations/find", headers=PREFLIGHT),
+    ]
+
+    assert {answer.status_code for answer in answers} == {200, 307, 400, 404}
+    for answer in answers:
+        assert answer.headers["x-content-type-options"] == "nosniff", answer.url
+        assert answer.headers["referrer-policy"] == "no-referrer", answer.url
+        policy = answer.headers["permissions-policy"]
+        for feature in ("camera", "microphone", "geolocation", "payment", "usb"):
+            assert f"{feature}=()" in policy, (answer.url, feature)
+
+
 def test_api_main_gzip_applies_only_above_threshold(client):
     large = client.get("/openapi.json", headers={"Accept-Encoding": "gzip"})
     small = client.get("/health", headers={"Accept-Encoding": "gzip"})

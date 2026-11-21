@@ -142,6 +142,7 @@ Deeper changes (each needs a plan approved by the author, DEV-17.4):
 ### Release 3.1.0: findings of the release round (the coordinator's list of 2026-11-21)
 
 - [x] REST CORS: `allow_origins=["*"]` with `allow_credentials=True` replaced by `OBSERWATOR_CORS_ORIGINS` (`cors_origins` in `[obserwator]`; default no cross-origin access, never credentials; `config show` lists it).
+- [x] Security headers: `obserwator server` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and the GUI's `Permissions-Policy`, which now denies every unused browser feature (`_http_headers.py`); the GUI's start page and admin panel checked in Chromium without a console warning.
 
 ### Release 3.1.1 (the author's decision of 2026-11-20)
 

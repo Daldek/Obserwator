@@ -115,6 +115,18 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   of another origin that called the API needs its origin in the setting. Credentials are
   never allowed (the API authenticates with the `X-API-Key` header, not cookies); methods
   `GET`, `HEAD` and `POST`. `docker-compose.yml` passes the variable through.
+- **Both servers send the same security headers; the REST server sent none.** `obserwator
+  server` answered without `X-Content-Type-Options`, `Referrer-Policy` or
+  `Permissions-Policy`; every answer now carries `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer` and a `Permissions-Policy`, as the GUI's (no
+  Content-Security-Policy: `/docs` and `/redoc` load Swagger UI and ReDoc from their CDN).
+  The `Permissions-Policy` of both servers, which denied only `camera`, `microphone` and
+  `geolocation`, now denies every browser feature no page uses (`accelerometer`,
+  `autoplay`, `browsing-topics`, `camera`, `display-capture`, `encrypted-media`,
+  `fullscreen`, `geolocation`, `gyroscope`, `hid`, `idle-detection`, `local-fonts`,
+  `magnetometer`, `microphone`, `midi`, `payment`, `picture-in-picture`,
+  `publickey-credentials-get`, `screen-wake-lock`, `serial`, `usb`,
+  `xr-spatial-tracking`); the clipboard stays allowed for the hand-off to Hydrolog.
 
 ## [3.0.1] - 2026-11-18
 

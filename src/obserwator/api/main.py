@@ -34,8 +34,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse, Response
 from fastapi.routing import APIRoute
 from starlette.applications import Starlette
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from obserwator import _environment as environment
+from obserwator._http_headers import security_headers
 from obserwator._version import __version__
 from obserwator.agent_guide import agent_guide
 from obserwator.api.errors import EXCEPTION_HANDLERS, accept_language
@@ -185,6 +187,38 @@ def cors_options(origins: Sequence[str]) -> dict[str, Any]:
     }
 
 
+class SecurityHeaders:
+    """
+    The security headers of both servers (`security_headers`) on every answer.
+
+    ``X-Content-Type-Options: nosniff``, ``Referrer-Policy: no-referrer`` and a
+    ``Permissions-Policy`` that denies the browser features the API's pages (``/docs``,
+    ``/redoc``) never use; a header a route set itself is kept. No
+    Content-Security-Policy: the documentation pages load Swagger UI and ReDoc from
+    their CDN.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.headers = security_headers()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Add the headers to the start of every HTTP answer."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def wrapped(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                given = list(message.get("headers", []))
+                names = {name.lower() for name, _ in given}
+                given += [pair for pair in self.headers if pair[0] not in names]
+                message["headers"] = given
+            await send(message)
+
+        await self.app(scope, receive, wrapped)
+
+
 def _operation_id(route: APIRoute) -> str:
     """``operationId`` of a route outside the catalog: ``obserwator_system_<function>``."""
     # Catalog routes name their id themselves (obserwator_<group>_<verb>, AGI-6.2).
@@ -219,6 +253,7 @@ app = FastAPI(
 # Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CORSMiddleware, **cors_options(settings.cors_origins))
+app.add_middleware(SecurityHeaders)
 # Outermost: the access log records every answer, the middleware's own too (DEV-12.8).
 app.add_middleware(AccessLog, log=SERVER_LOG, quiet=QUIET)
 
