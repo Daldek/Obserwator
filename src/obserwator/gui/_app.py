@@ -77,6 +77,7 @@ from obserwator.gui._http import (
     json_response,
     not_modified,
     page_lang,
+    prebuilt_response,
 )
 from obserwator.gui._live import (
     PMAXTP_METHODS,
@@ -351,16 +352,29 @@ async def texts(request: Request) -> Response:
 
 @_route
 async def stations(request: Request) -> Response:
-    """The station layer: every station of the current catalogs and the series holding it."""
+    """
+    The station layer: every station of the current catalogs and the series holding it.
+
+    A request holding the layer's ETag gets ``304`` before anything is built; else the
+    answer built and gzipped once per layer (`GuiState.layer`).
+    """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
-    lines = Attribution()
-    for feature in snapshot.features.values():
-        lines = lines | _station_origins(
-            feature.provider, feature.properties, location=True
-        )
-    document = {**snapshot.layer, **lines.fields()}
-    return json_response(request, document, etag=_etag(request, snapshot.layer_etag))
+    etag = _etag(request, snapshot.layer_etag)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+
+    def build() -> dict[str, Any]:
+        lines = Attribution()
+        for feature in snapshot.features.values():
+            lines = lines | _station_origins(
+                feature.provider, feature.properties, location=True
+            )
+        return {**snapshot.layer, **lines.fields()}
+
+    bodies = await _thread(lambda: _gui(request).layer.bodies(etag, build))
+    return prebuilt_response(request, bodies, etag)
 
 
 @_route

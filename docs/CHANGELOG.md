@@ -103,6 +103,14 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   190 ms against 1 ms warm). Only the first read is now a request's own; later, the request
   that finds the read older than a minute starts one re-read in a thread and every request
   takes the last snapshot until it is replaced.
+- **The GUI's `api/stations` answers `304` without building its answer and keeps the built
+  one.** The station layer (1.63 MB of JSON, 141 KB gzipped on the deployment's root) was
+  assembled and compressed on every request, about 220 ms, and a `304` still took about
+  100 ms. The request's `If-None-Match` is now checked against the layer's ETag first, and
+  the answer is built and gzipped once per layer and kept in memory (`GuiState.layer`,
+  `gui/_http.py` `Prebuilt`) until the snapshot changes: on a local copy of the deployment's
+  root a `200` takes about 3 ms and a `304` about 2 ms, against 0.9 s and 0.3–0.6 s before on
+  the same, loaded machine.
 
 ## [3.0.1] - 2026-11-18
 

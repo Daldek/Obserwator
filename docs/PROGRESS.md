@@ -123,7 +123,7 @@ Found on 2026-11-20 from the access logs of 2026-11-14 to 2026-11-20 (about 4,30
 
 Quick fixes:
 
-- [ ] `api/stations` answers `304` without building its answer: today the layer (1.63 MB of JSON, 141 KB gzipped) is assembled on every request, about 220 ms, and a `304` still takes about 100 ms. Check `If-None-Match` against the layer's ETag first and keep the built, compressed answer in memory until the snapshot changes.
+- [x] `api/stations` answers `304` without building its answer: today the layer (1.63 MB of JSON, 141 KB gzipped) is assembled on every request, about 220 ms, and a `304` still takes about 100 ms. Check `If-None-Match` against the layer's ETag first and keep the built, compressed answer in memory until the snapshot changes.
 - [ ] The start does not wait in a chain: `index.html` preloads `api/texts?lang=…`, `api/session` and `api/stations` (`<link rel="preload" as="fetch" crossorigin>`) and the entry modules (`modulepreload`), or `main.js` asks for them together; two to three round trips less.
 - [ ] `favicon.ico`, `robots.txt` and `apple-touch-icon.png` (with `apple-touch-icon-precomposed.png`) are served: 43 answers `404` in the logs.
 - [x] The data root's snapshot is read again in the background: `DataRoot.snapshot` reads it on a request when the last read is older than a minute, so at low traffic nearly every visit pays for it (`api/session` cold about 190 ms against 1 ms warm, median 314 ms in the logs). The requests take the last snapshot while one read runs, as the refresh of `/api/current` in the section above, which today takes about 1 s cold against 36 ms.

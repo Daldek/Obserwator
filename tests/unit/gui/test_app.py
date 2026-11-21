@@ -285,6 +285,35 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
     assert again.headers["etag"] == answer.headers["etag"]
 
 
+def test_the_station_layer_is_built_once_and_a_304_builds_nothing(client, monkeypatch):
+    from obserwator.gui import _app
+
+    built = []
+    origins = _app._station_origins
+
+    def counted(*args, **kwargs):
+        built.append(args[0])
+        return origins(*args, **kwargs)
+
+    monkeypatch.setattr(_app, "_station_origins", counted)
+    packed = client.get("/api/stations", headers={"Accept-Encoding": "gzip"})
+    after_first = len(built)
+    plain = client.get("/api/stations", headers={"Accept-Encoding": "identity"})
+    unchanged = client.get(
+        "/api/stations", headers={"If-None-Match": packed.headers["etag"]}
+    )
+
+    assert after_first == 13
+    assert len(built) == 13
+    assert packed.headers["content-encoding"] == "gzip"
+    assert "content-encoding" not in plain.headers
+    assert packed.headers["vary"] == plain.headers["vary"] == "Accept-Encoding"
+    assert packed.headers["cache-control"] == "no-cache"
+    assert packed.json() == plain.json()
+    assert packed.headers["etag"] == plain.headers["etag"]
+    assert unchanged.status_code == 304
+
+
 def test_a_station_answers_its_properties_series_and_lines(client):
     hydro = client.get(f"/api/stations/{HYDRO}").json()
     chmi = client.get(f"/api/stations/{HYDRO_CHMI}").json()
