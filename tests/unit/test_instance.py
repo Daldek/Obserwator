@@ -340,6 +340,8 @@ def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_ty
     assert (instance.logo.media_type, instance.logo.data) == (media_type, content)
 
 
+# Short ids: pytest puts the id into PYTEST_CURRENT_TEST, which Windows caps at 32767
+# characters, and the bytes of the large logo would be its id.
 @pytest.mark.parametrize(
     "content",
     [
@@ -349,6 +351,7 @@ def test_a_logo_is_typed_by_its_content(tmp_path, monkeypatch, content, media_ty
         b"<svg>no namespace</svg>",
         PNG + b"\x00" * LOGO_MAX_BYTES,
     ],
+    ids=["gif", "html", "svg-entity", "svg-no-namespace", "png-too-large"],
 )
 def test_a_logo_that_is_no_small_png_webp_or_svg_is_refused(
     tmp_path, monkeypatch, content
