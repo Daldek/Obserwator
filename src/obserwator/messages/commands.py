@@ -642,10 +642,11 @@ MESSAGES = {
     "analyses_build_description": Text(
         "Compute and store the analyses of every station with Hydrolog. Stations "
         "whose series, thresholds, Hydrolog version and registry are unchanged are "
-        "carried forward without a call.",
+        "carried forward without a call, and a build resumes an interrupted one "
+        "from the stations it computed.",
         "Oblicz i zapisz analizy każdej stacji Hydrologiem. Stacje o niezmienionych "
         "szeregach, progach, wersji Hydrologa i rejestrze przechodzą do nowej wersji "
-        "bez obliczeń.",
+        "bez obliczeń, a budowa wznawia przerwaną od stacji, które ta obliczyła.",
     ),
     "analyses_list_description": Text(
         "List the stored analyses of a station. Each names its command, options, "
