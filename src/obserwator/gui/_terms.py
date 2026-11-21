@@ -24,6 +24,7 @@ from pathlib import Path
 
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.gui._config import GuiConfig
+from obserwator.instance import SECTION
 from obserwator.messages import message
 
 _LOG = logging.getLogger(__name__)
@@ -259,7 +260,7 @@ def terms_page(config: GuiConfig, web: Path) -> bytes | None:
         except ValueError as exc:
             raise ObserwatorValidationError(
                 message("instance.terms_unfilled", path=terms.path, reason=str(exc)),
-                details={"option": "instance.terms", "path": str(terms.path)},
+                details={"option": f"{SECTION}.terms", "path": str(terms.path)},
             ) from None
         return page.encode("utf-8")
     service_url = config.gui.get("obserwator")
