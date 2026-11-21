@@ -219,7 +219,7 @@ def _dataset(request: Request, snapshot: Snapshot) -> str:
 def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
     """The station of the address, held by the dataset's series; else ``not_found``."""
     code = _station(request, snapshot)
-    if code not in snapshot.series[dataset].index.stations:
+    if code not in snapshot.series[dataset].stations:
         raise GuiError(
             "not_found",
             message("gui.errors.no_series", station=code, dataset=dataset),
@@ -282,8 +282,8 @@ async def session(request: Request) -> Response:
             "series": {
                 key: {
                     **series.version.to_dict(),
-                    "year_type": series.index.year_type,
-                    "stations": len(series.index.stations),
+                    "year_type": series.year_type,
+                    "stations": len(series.stations),
                 }
                 for key, series in snapshot.series.items()
             },
@@ -1122,8 +1122,7 @@ async def handoff(request: Request) -> Response:
             (
                 key
                 for key in HYDRO_DAILY
-                if key in snapshot.series
-                and code in snapshot.series[key].index.stations
+                if key in snapshot.series and code in snapshot.series[key].stations
             ),
             None,
         )

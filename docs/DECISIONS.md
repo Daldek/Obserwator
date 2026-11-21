@@ -980,3 +980,26 @@ Three parts of the public data had no dataset: the observation-time synop archiv
 ### Consequences
 
 Additive: four registry entries (the IMGW-PIB download-only datasets are nine), the alias `meteo/terminowe/synop` resolves (no longer `per_station`), `archive_scope` `station_year` is used by IMGW-PIB too, ArchiveFile URLs are percent-encoded (`quote`, identical for the ASCII paths of before), and `AGENTS.md` folds the download-only keys as `pl.imgw.{…}`. Tests replay real files and indexes recorded on 2026-11-14 (`tests/fixtures/download_only/`: one station's 1966_1970 synop archive, the hydrological warnings of 2018-12, the index of Kłodzko, two of its DAN files and the summary; the root index and one year index trimmed to fewer rows).
+
+## ADR-024: The GUI's memory: what it keeps of the data root
+
+**Date:** 2026-11-21  
+**Status:** Accepted (finding E7-11 of the 3.1.0 review: an idle `obserwator gui serve` held about 1 GB in swap)  
+**Standard:** amends ADR-013 D5 (what the GUI holds in memory)
+
+### Context and options
+
+On the deployed data root an idle GUI held 1.5 GB (RSS) after a typical set of requests, 2.4 GB plus 0.8 GB of swap after two days. Measured (`/proc/<pid>/smaps_rollup`, `sys._debugmallocstats`, `mallinfo2`): the snapshot kept every series index whole, 234 MB of it the 1.8 million ranges without a value of the precipitation series' snow variables, of which the GUI shows only the number; up to 32 series documents of any size (a synoptic station's is 50 to 70 MB); and Python's small-object allocator held 440 MB of free memory it could not return, as an arena (1 MiB) goes back to the system only when every object in it is gone: what a large read keeps, and the modules pyarrow imports on its first read (pandas with it), was made among the read's objects and the free lists kept some of them. pyarrow's pool (mimalloc) and glibc's arenas held little (0 and 47 MB free).
+
+### Decisions
+
+| ID | Decision | Rejected |
+|---|---|---|
+| D1 | **The snapshot keeps a summary of each index**: per station its rows and per variable the unit, period, first and last day, units with a value, accumulated units and the number of ranges without a value. | Keeping the index (234 MB, its ranges never shown); a store change of `series.json` (a contract change, left to the author). |
+| D2 | **What a large read keeps is copied once the read is over** (`compact`): kept as bytes (`pickle`) while the read's objects go and the free lists are emptied (`gc.collect`), then made again; for the summary of an index and a station's series document. A cache miss costs a full collection (tenths of a second, beside seconds of reading). | `PYTHONMALLOC=malloc` with `malloc_trim` or `PYTHONMALLOC=mimalloc` (a setting of each deployment; measured: mimalloc kept 592 MB, glibc 800 MB until trimmed); reading in a subprocess (spawn cost, state of tests and hosts). |
+| D3 | **Series documents in memory: at most 32 and 2 million cells** (rows times columns, and flags; 30 to 60 bytes each), the most recent kept even when larger alone. | A count alone (a synoptic station's document is 600 times a half-year one). |
+| D4 | **The modules of a Parquet read are imported when the data root is made** (`pyarrow.parquet`, `pyarrow.dataset`; pandas with them when installed), not during the first request of a series. | Leaving them to the first read (190 MB kept for the life of the server). |
+
+### Consequences
+
+Measured on the deployed data root (method and numbers in the item's report): the snapshot of the root takes 113 MB instead of 724 MB in one process, a cached precipitation document grows the process by its own size instead of 100–200 MB. The GUI's answers are unchanged.
