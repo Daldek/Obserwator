@@ -398,7 +398,7 @@ def test_a_build_stores_chmus_computed_half_years_beside_imgws_published(built):
     for (code, analysis), entry in published.items():
         assert (entry["derived"], entry["datasets"]) == (None, [SEMIANNUAL])
         assert entry["options"] == {
-            "half_year_file": f"{code}_hydro_semiannual.csv",
+            "half_year_file": f"{code}_imgw_hydro_semiannual.csv",
             "parameter": analysis.split(".")[1],
         }
 

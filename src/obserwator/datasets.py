@@ -229,8 +229,8 @@ class DatasetDescriptor:
     key : str
         Full namespaced dataset key, e.g. ``"pl.imgw.hydro_daily"``.
     slug : str
-        Short name used only in store directory names, e.g. ``"hydro_daily"``;
-        unique across providers.
+        Short name used only in store directory names: the provider's acronym and
+        the last part of the key, e.g. ``"imgw_hydro_daily"`` (ADR-028).
     kind : {"hydro", "meteo"} or None
         Data family; None for PMAXTP.
     title : str
@@ -444,7 +444,7 @@ _IMGW_SNOW_COVER = message("datasets.note_imgw_snow_cover")
 _DATASETS = (
     DatasetDescriptor(
         key="pl.imgw.hydro_daily",
-        slug="hydro_daily",
+        slug="imgw_hydro_daily",
         kind="hydro",
         title=message("datasets.title_hydro_daily"),
         server_dir="dane_hydrologiczne/dobowe",
@@ -465,7 +465,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_monthly",
-        slug="hydro_monthly",
+        slug="imgw_hydro_monthly",
         kind="hydro",
         title=message("datasets.title_hydro_monthly"),
         server_dir="dane_hydrologiczne/miesieczne",
@@ -482,7 +482,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_semiannual",
-        slug="hydro_semiannual",
+        slug="imgw_hydro_semiannual",
         kind="hydro",
         title=message("datasets.title_hydro_semiannual"),
         server_dir="dane_hydrologiczne/polroczne_i_roczne",
@@ -499,7 +499,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_climate_daily",
-        slug="meteo_climate_daily",
+        slug="imgw_meteo_climate_daily",
         kind="meteo",
         title=message("datasets.title_meteo_climate_daily"),
         server_dir="dane_meteorologiczne/dobowe/klimat",
@@ -530,7 +530,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_precip_daily",
-        slug="meteo_precip_daily",
+        slug="imgw_meteo_precip_daily",
         kind="meteo",
         title=message("datasets.title_meteo_precip_daily"),
         server_dir="dane_meteorologiczne/dobowe/opad",
@@ -554,7 +554,7 @@ _DATASETS = (
     # files of the whole country (the store finds both in the folder index).
     DatasetDescriptor(
         key="pl.imgw.meteo_synop_daily",
-        slug="meteo_synop_daily",
+        slug="imgw_meteo_synop_daily",
         kind="meteo",
         title=message("datasets.title_meteo_synop_daily"),
         server_dir="dane_meteorologiczne/dobowe/synop",
@@ -648,7 +648,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_stations",
-        slug="hydro_stations",
+        slug="imgw_hydro_stations",
         kind="hydro",
         title=message("datasets.title_hydro_stations"),
         server_dir="dane_hydrologiczne",
@@ -664,7 +664,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_stations",
-        slug="meteo_stations",
+        slug="imgw_meteo_stations",
         kind="meteo",
         title=message("datasets.title_meteo_stations"),
         server_dir="dane_meteorologiczne",
@@ -684,7 +684,7 @@ _DATASETS = (
     # each station's code, name, river and coordinates only (ADR-015 D5).
     DatasetDescriptor(
         key="pl.imgw.hydro_now",
-        slug="hydro_now",
+        slug="imgw_hydro_now",
         kind="hydro",
         title=message("datasets.title_hydro_now"),
         server_dir="api/data",
@@ -702,7 +702,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_now",
-        slug="meteo_now",
+        slug="imgw_meteo_now",
         kind="meteo",
         title=message("datasets.title_meteo_now"),
         server_dir="api/data",
@@ -725,7 +725,7 @@ _DATASETS = (
     # province and district), never its water states (ADR-015 D5, Nogat DEV-20.8).
     DatasetDescriptor(
         key=HYDRO_DETAILS,
-        slug="hydro_details",
+        slug="imgw_hydro_details",
         kind="hydro",
         title=message("datasets.title_hydro_details"),
         server_dir="station/hydro",
@@ -758,7 +758,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.pmaxtp",
-        slug="pmaxtp",
+        slug="imgw_pmaxtp",
         kind=None,
         title=message("datasets.title_pmaxtp"),
         server_dir=None,
@@ -774,7 +774,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.hydro_phenomena",
-        slug="hydro_phenomena",
+        slug="imgw_hydro_phenomena",
         kind="hydro",
         title=message("datasets.title_hydro_phenomena"),
         server_dir="dane_hydrologiczne/dobowe",
@@ -790,7 +790,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_climate_monthly",
-        slug="meteo_climate_monthly",
+        slug="imgw_meteo_climate_monthly",
         kind="meteo",
         title=message("datasets.title_meteo_climate_monthly"),
         server_dir="dane_meteorologiczne/miesieczne/klimat",
@@ -806,7 +806,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_precip_monthly",
-        slug="meteo_precip_monthly",
+        slug="imgw_meteo_precip_monthly",
         kind="meteo",
         title=message("datasets.title_meteo_precip_monthly"),
         server_dir="dane_meteorologiczne/miesieczne/opad",
@@ -822,7 +822,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_synop_monthly",
-        slug="meteo_synop_monthly",
+        slug="imgw_meteo_synop_monthly",
         kind="meteo",
         title=message("datasets.title_meteo_synop_monthly"),
         server_dir="dane_meteorologiczne/miesieczne/synop",
@@ -838,7 +838,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_climate_terms",
-        slug="meteo_climate_terms",
+        slug="imgw_meteo_climate_terms",
         kind="meteo",
         title=message("datasets.title_meteo_climate_terms"),
         server_dir="dane_meteorologiczne/terminowe/klimat",
@@ -854,7 +854,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.meteo_synop_terms",
-        slug="meteo_synop_terms",
+        slug="imgw_meteo_synop_terms",
         kind="meteo",
         title=message("datasets.title_meteo_synop_terms"),
         server_dir="dane_meteorologiczne/terminowe/synop",
@@ -872,7 +872,7 @@ _DATASETS = (
     # The monthly archives of the warnings, outside the measurement data (ADR-023).
     DatasetDescriptor(
         key="pl.imgw.warnings_hydro_archive",
-        slug="warnings_hydro_archive",
+        slug="imgw_warnings_hydro_archive",
         kind="hydro",
         title=message("datasets.title_warnings_hydro_archive"),
         server_dir="arch/ost_hydro",
@@ -889,7 +889,7 @@ _DATASETS = (
     ),
     DatasetDescriptor(
         key="pl.imgw.warnings_meteo_archive",
-        slug="warnings_meteo_archive",
+        slug="imgw_warnings_meteo_archive",
         kind="meteo",
         title=message("datasets.title_warnings_meteo_archive"),
         server_dir="arch/ost_meteo",
@@ -908,7 +908,7 @@ _DATASETS = (
     # (no codes), their files found in the server's folder index (ADR-023).
     DatasetDescriptor(
         key="pl.imgw.actinometric",
-        slug="actinometric",
+        slug="imgw_actinometric",
         kind="meteo",
         title=message("datasets.title_actinometric"),
         server_dir="dane_aktynometryczne",
@@ -1230,9 +1230,10 @@ def get_dataset(dataset: str, /) -> DatasetDescriptor:
     Parameters
     ----------
     dataset : str
-        Full key (``"pl.imgw.hydro_daily"``), slug (``"hydro_daily"``) or
+        Full key (``"pl.imgw.hydro_daily"``), slug (``"imgw_hydro_daily"``) or
         legacy alias (``"hydro/dobowe"``), tried in this order. A renamed key
-        of ``DATASET_KEY_ALIASES`` is no input (ADR-028).
+        of ``DATASET_KEY_ALIASES`` and a slug of 3.0.x without its provider's
+        acronym (``"hydro_daily"``) are no input (ADR-028).
 
     Returns
     -------

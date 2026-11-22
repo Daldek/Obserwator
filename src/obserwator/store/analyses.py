@@ -183,7 +183,7 @@ class AnalysisSource:
         Dataset key of the series.
     series_version : str
         The series version directory relative to the data root (POSIX), e.g.
-        ``series/versions/hydro_daily/2026-10-19_fc3541d8``.
+        ``series/versions/imgw_hydro_daily/2026-10-19_fc3541d8``.
     series_sha256 : str
         SHA-256 of its ``series.json``.
     station_sha256 : str

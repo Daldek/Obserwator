@@ -243,8 +243,8 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
   .incoming/<host>_<pid>_<token>/                       # staging; leftovers >24 h cleaned
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker: the same fields; written by store init --kind data or the first build
-  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet
-  stations/versions/<label>_<sha8>/stations.geojson + .meta.json                 # IMGW-PIB catalog
+  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet   # <slug> imgw_* or chmu_* (ADR-028)
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json   # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json   # ČHMÚ catalog
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/<host>_<pid>_<token>/                       # staging; leftovers >24 h cleaned (an interrupted analyses build's stations resumed first)

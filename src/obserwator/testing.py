@@ -26,7 +26,7 @@ from unittest import mock
 
 import httpx
 
-from obserwator.datasets import archive_files
+from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorDataError,
     ObserwatorStoreError,
@@ -271,7 +271,11 @@ def _add_unknown_version(root: Path) -> None:
     data = _canonical({"schema": "obserwator-series/2", "dataset": _HYDRO})
     sha = hashlib.sha256(data).hexdigest()
     target = (
-        root / "series" / "versions" / "hydro_daily" / f"{_UNKNOWN_LABEL}_{sha[:8]}"
+        root
+        / "series"
+        / "versions"
+        / get_dataset(_HYDRO).slug
+        / f"{_UNKNOWN_LABEL}_{sha[:8]}"
     )
     target.mkdir(parents=True)
     (target / "series.json").write_bytes(data)
@@ -351,16 +355,17 @@ def build_fixture_store(
 
     * ``codz_2024.zip`` (``pl.imgw.hydro_daily``) in three versions: the old one, the
       same bytes relabeled under a newer HTTP signal and newer bytes (current);
-    * two ``hydro_daily`` series: an older one built from the old archive and the
-      current one built from the newer archive;
-    * ``meteo_precip_daily`` series that is outdated (``1995_o.zip`` was stored after
-      the series was built from ``2001_01_o.zip``);
+    * two ``imgw_hydro_daily`` series: an older one built from the old archive and
+      the current one built from the newer archive;
+    * ``imgw_meteo_precip_daily`` series that is outdated (``1995_o.zip`` was stored
+      after the series was built from ``2001_01_o.zip``);
     * both station lists and a ``stations.geojson`` catalog with stations whose
-      ``geometry`` is ``null``, built without the local static locations file
-      (recorded in its sidecar as ``available: false``).
+      ``geometry`` is ``null`` in ``stations/versions/imgw_stations/``, built
+      without the local static locations file (recorded in its sidecar as
+      ``available: false``).
 
     ``corrupt`` additionally truncates the sidecar of the old hydro archive
-    version (raw root); ``unknown_schema`` additionally adds a ``hydro_daily``
+    version (raw root); ``unknown_schema`` additionally adds an ``imgw_hydro_daily``
     series version with ``obserwator-meta/2``/``obserwator-series/2`` that
     readers must report without parsing (data root).
 

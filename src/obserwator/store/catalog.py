@@ -12,7 +12,7 @@ import re
 import shutil
 import socket
 import uuid
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -100,21 +100,21 @@ from obserwator.store.writer import (
 
 RootArg = PathArg | StoreHandle
 
-CATALOG_SLOT = "stations/versions"
 CATALOG_FILE = "stations.geojson"
-# Version directory of each provider's station catalog (ADR-003 D5): the IMGW-PIB
-# catalog keeps the 3.0.0 layout and the catalog of another provider lies in a
-# directory named after its slug inside it (slugs start with a letter, labels with
-# a digit).
+# Version directory of each provider's station catalog (ADR-003 D5, ADR-028): a
+# directory of ``stations/versions/`` named by the provider's acronym, as its slugs
+# are.
 _CATALOG_DIRS: Mapping[str, str] = MappingProxyType(
-    {"IMGW": CATALOG_SLOT, "CHMU": f"{CATALOG_SLOT}/chmu_stations"}
+    {
+        "IMGW": "stations/versions/imgw_stations",
+        "CHMU": "stations/versions/chmu_stations",
+    }
 )
-# Slug directory under ``stations/versions/`` → provider of the catalog inside it.
+# Directory under ``stations/versions/`` → provider of the catalog inside it.
 _NESTED_CATALOGS: Mapping[str, str] = MappingProxyType(
     {
         PurePosixPath(directory).name: provider
         for provider, directory in _CATALOG_DIRS.items()
-        if directory != CATALOG_SLOT
     }
 )
 STATIC_LOCATIONS = "hydro_stations_locations.csv"
@@ -236,7 +236,6 @@ def _publish_version(
     label: str,
     on_notice: NoticeHook | None = None,
     attachments: Mapping[str, bytes] | None = None,
-    skip: Collection[str] = (),
 ) -> tuple[Path, bool]:
     """Stage ``name`` + sidecar and publish ``<slot>/<label>_<sha8>`` without replacement.
 
@@ -245,8 +244,7 @@ def _publish_version(
     concurrently published version yields ``False``. ``on_notice`` receives a
     ``leftover_incoming`` warning for every removed staging directory older than 24 h.
     ``attachments`` are extra files (name → bytes) published before the sidecar; the
-    caller documents them in ``meta``. ``skip`` names child directories of the slot
-    that are not its versions (catalogs of other providers).
+    caller documents them in ``meta``.
     """
     sha = meta["sha256"]
     slot_dir = _validate_slot(root, slot)
@@ -265,7 +263,7 @@ def _publish_version(
         try:
             _publish_dir(staging, target, f"{name}.meta.json")
         except FileExistsError as exc:
-            for old_file, old_meta in _existing(slot_dir, name, skip=skip):
+            for old_file, old_meta in _existing(slot_dir, name):
                 if old_file.parent == target and old_meta["sha256"] == sha:
                     return old_file, False
             raise ObserwatorStoreConflictError(
@@ -1485,16 +1483,11 @@ def _static_file() -> tuple[Path, bytes | None]:
         ) from exc
 
 
-def _skip(provider: str) -> Collection[str]:
-    """Directories of other providers' catalogs inside a provider's catalog slot."""
-    return _NESTED_CATALOGS.keys() if _CATALOG_DIRS[provider] == CATALOG_SLOT else ()
-
-
 def _current_catalog(
     root: Path, provider: str = "IMGW"
 ) -> tuple[Path, dict[str, Any]] | None:
     slot = _validate_slot(root, _CATALOG_DIRS[provider])
-    return _newest_downloaded(_existing(slot, CATALOG_FILE, skip=_skip(provider)))
+    return _newest_downloaded(_existing(slot, CATALOG_FILE))
 
 
 def _catalog_meteo_kinds(path: Path, meta: Mapping[str, Any]) -> dict[str, object]:
@@ -2096,7 +2089,6 @@ class _Build:
             meta=meta,
             label=label,
             on_notice=self.on_notice,
-            skip=_skip(provider.id),
         )
         status: Literal["new", "unchanged"] = "new" if created else "unchanged"
         self.progress(
@@ -2149,8 +2141,8 @@ def build_catalog(
     whatever the envelopes of the sources) yields ``unchanged`` without a new
     version.
 
-    IMGW-PIB (``stations/versions/<label>_<sha8>/``): every code of the lists,
-    the stored answers of the current hydro and meteo data API
+    IMGW-PIB (``stations/versions/imgw_stations/<label>_<sha8>/``): every code of
+    the lists, the stored answers of the current hydro and meteo data API
     (``pl.imgw.hydro_now``, ``pl.imgw.meteo_now``), the static file and the
     current series indexes is kept (a code only in the static file is a hydro
     station; a code

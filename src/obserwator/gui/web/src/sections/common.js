@@ -228,7 +228,7 @@ export function Provenance({ results }) {
 }
 
 /** The label of a series version (`2026-09-21_95988ba3`) from an input's identifier, the
- * version's directory in the data root (`series/versions/hydro_daily/2026-09-21_95988ba3`). */
+ * version's directory in the data root (`series/versions/imgw_hydro_daily/2026-09-21_95988ba3`). */
 function versionLabel(id) {
   return String(id).split("/").filter(Boolean).pop() || String(id);
 }

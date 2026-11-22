@@ -1424,22 +1424,21 @@ def _download(
         return _archive_response(
             client, archive.url, source=source, zipped=_zipped(archive)
         )
-    slug = descriptor.slug
     assert archive.year is not None
-    if slug.startswith("hydro_"):
+    if descriptor.kind == "hydro":
         intervals: dict[str, Literal["dobowe", "miesieczne", "polroczne_i_roczne"]] = {
-            "hydro_daily": "dobowe",
-            "hydro_monthly": "miesieczne",
-            "hydro_semiannual": "polroczne_i_roczne",
+            "pl.imgw.hydro_daily": "dobowe",
+            "pl.imgw.hydro_monthly": "miesieczne",
+            "pl.imgw.hydro_semiannual": "polroczne_i_roczne",
         }
         return download_hydro_data(
-            intervals[slug],
+            intervals[descriptor.key],
             archive.year,
             archive.month,
             cast(Literal["T", "Q", "H"] | None, archive.param),
         )
     subtype: Literal["klimat", "opad"] = (
-        "klimat" if slug == "meteo_climate_daily" else "opad"
+        "klimat" if descriptor.key == "pl.imgw.meteo_climate_daily" else "opad"
     )
     return download_meteo_data("dobowe", subtype, archive.year, archive.month)
 

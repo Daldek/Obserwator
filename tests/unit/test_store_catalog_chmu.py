@@ -242,7 +242,7 @@ def test_every_station_of_the_sources_is_kept_also_without_location(store):
     assert report.version.parent.parent == (
         data_root(store) / "stations/versions/chmu_stations"
     )
-    assert not list((data_root(store) / "stations/versions").glob("*/stations.geojson"))
+    assert not (data_root(store) / "stations/versions/imgw_stations").exists()
     assert schema_errors(document, "stations.geojson") == []
     kinds = {code: feature["properties"]["kind"] for code, feature in found.items()}
     assert kinds == {code: "meteo" if "-0-" in code else "hydro" for code in CODES}

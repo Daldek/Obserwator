@@ -40,7 +40,7 @@ _DAILY_VERSION = (
     "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/"
     "2026-10-19_b6a19f65/codz_2024.zip"
 )
-_SERIES_VERSION = "series/versions/hydro_daily/2026-10-19_9a64f921/series.json"
+_SERIES_VERSION = "series/versions/imgw_hydro_daily/2026-10-19_9a64f921/series.json"
 _CELL_VERSION = "pmaxtp/versions/POT/751_317/2026-10-25_3f9c2a71/cell.json"
 _PMAXTP = {"method": "POT", "latitude": 52.23, "longitude": 21.01}
 _RABA_ITEM = {
@@ -428,7 +428,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             "obserwator store catalog --root /data/obserwator --raw-root /data/obserwator-raw --json",
             {
                 "status": "new",
-                "version": "stations/versions/2026-10-25_da58e6b7/stations.geojson",
+                "version": "stations/versions/imgw_stations/2026-10-25_da58e6b7/stations.geojson",
                 "station_count": 1705,
                 "without_location": 37,
             },
@@ -461,7 +461,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             {
                 "schema": "obserwator-plan/1",
                 "root": _ROOT,
-                "series_state": {"hydro_daily": "current"},
+                "series_state": {"imgw_hydro_daily": "current"},
                 "actions": [{"command": "series build", "status": "current"}],
             },
         ),

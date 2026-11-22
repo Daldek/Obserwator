@@ -213,11 +213,14 @@ VALID: dict[str, list[dict[str, object]]] = {
             "end": "2024-01-31",
             "limit": 10,
         },
-        {"version": "/data/obserwator/series/versions/hydro_daily/v", "station": RABA},
+        {
+            "version": "/data/obserwator/series/versions/imgw_hydro_daily/v",
+            "station": RABA,
+        },
     ],
     "series summary": [
         {"root": ROOT, "dataset": DAILY, "stations": [RABA]},
-        {"version": "series/versions/hydro_daily/v/series.json", "root": ROOT},
+        {"version": "series/versions/imgw_hydro_daily/v/series.json", "root": ROOT},
     ],
     "series export": [
         {
@@ -231,7 +234,7 @@ VALID: dict[str, list[dict[str, object]]] = {
         },
         {"root": ROOT, "dataset": DAILY, "station": RABA, "format": "json"},
         {
-            "version": "series/versions/hydro_daily/v",
+            "version": "series/versions/imgw_hydro_daily/v",
             "root": ROOT,
             "station": RABA,
             "variables": ["Q", "H"],
@@ -571,7 +574,7 @@ def test_validate_command_normalizes_aliases_numbers_dates_years_and_paths(
         ("2020,2022", (2020, 2022)),
         ([2020, "2022-2023"], (2020, 2022, 2023)),
     ):
-        options = {"root": "s", "datasets": "hydro_daily", "years": years}
+        options = {"root": "s", "datasets": "imgw_hydro_daily", "years": years}
         assert validate_command("store check", options=options)["years"] == expected
     assert validate_command(
         "pmaxtp fetch", options={"latitude": " 52.23", "longitude": 21}

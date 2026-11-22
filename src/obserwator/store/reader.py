@@ -1219,10 +1219,10 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
     """
     Station catalog versions and problems below ``stations/versions/``.
 
-    A directory named ``<label>_<sha8>`` (or holding files) is a version of the
-    IMGW-PIB catalog; a directory named after the slug of another provider's
-    catalog holds the versions of that catalog (ADR-003 D5); any other
-    directory is an unknown element.
+    A directory named after a provider's catalog (``imgw_stations``,
+    ``chmu_stations``; ADR-003 D5, ADR-028) holds the versions of that
+    catalog; any other element is unknown, a catalog version of the 3.0.x
+    layout directly in ``stations/versions/`` too.
     """
     for child in _directories(root, versions):
         if isinstance(child, StoreEntry):
@@ -1233,17 +1233,6 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
                 yield _derived_entry(
                     root, version, "catalog", slot, CATALOG_FILE, known
                 )
-        elif _VERSION_DIR.match(child.name) or any(
-            not item.is_dir() or item.is_symlink() for item in child.iterdir()
-        ):
-            yield _derived_entry(
-                root,
-                child,
-                "catalog",
-                f"catalog:{_CATALOG_DATASETS['IMGW']}",
-                CATALOG_FILE,
-                known,
-            )
         else:
             yield _unknown(root, child)
 
@@ -1454,7 +1443,7 @@ def iter_store(
         The versions the caller already knows: the path of a version
         directory relative to the root, with ``/`` (``archives/versions/<server
         dir>/<stem>/<label>_<sha8>``, ``series/versions/<slug>/<label>_<sha8>``,
-        ``stations/versions/[<provider catalog>/]<label>_<sha8>``,
+        ``stations/versions/<provider catalog>/<label>_<sha8>``,
         ``pmaxtp/versions/<method>/<cell>/<label>_<sha8>`` or
         ``analyses/versions/<key prefix>/<label>_<sha8>``), mapped to the
         names of its data files: the main file of the version, e.g.
@@ -1643,13 +1632,8 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         return None
     versions: list[tuple[Path, dict[str, Any]]] = []
     entries: dict[Path, StoreEntry] = {}
-    # Catalogs of other providers lie in named directories of the IMGW-PIB slot.
-    imgw_catalog = slot == f"catalog:{_CATALOG_DATASETS['IMGW']}"
-    nested = _NESTED_CATALOGS if imgw_catalog else {}
     for version in sorted(directory.iterdir()):
-        if (kind == "archive" and _is_register(version)) or (
-            version.name in nested and version.is_dir() and not version.is_symlink()
-        ):
+        if kind == "archive" and _is_register(version):
             continue
         entry = (
             _entry(path, kind, slot, version, name, strict=True, **options)

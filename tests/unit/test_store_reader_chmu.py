@@ -122,8 +122,8 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     assert [entry.slot for entry in imgw if entry.kind == "problem"] == [None]
     assert list(iter_store(root, kind="catalog")) == []
     assert [(e.slot, e.provider) for e in iter_store(data, kind="catalog")] == [
-        ("catalog:pl.imgw.stations", "IMGW"),
         ("catalog:cz.chmu.stations", "CHMU"),
+        ("catalog:pl.imgw.stations", "IMGW"),
     ]
     with pytest.raises(ObserwatorValidationError) as error:
         iter_store(root, provider="SHMU")
@@ -138,7 +138,7 @@ def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path
     imgw = current_version(data, slot="catalog:pl.imgw.stations")
     chmu = current_version(data, slot="catalog:cz.chmu.stations")
     assert imgw is not None and chmu is not None
-    assert imgw.version.parent.parent == data / "stations/versions"
+    assert imgw.version.parent.parent == data / "stations/versions/imgw_stations"
     assert chmu.version.parent.parent == data / "stations/versions/chmu_stations"
     assert (imgw.provider, chmu.provider) == ("IMGW", "CHMU")
     assert (chmu.meta.dataset_key, chmu.meta.provider) == ("cz.chmu.stations", "CHMU")
@@ -150,11 +150,15 @@ def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path
     shutil.copytree(imgw.version.parent, misplaced)
     (nested / "observations").mkdir()
     (data / "stations/versions/obce").mkdir()
+    # A version of the 3.0.x layout, directly in stations/versions, is no catalog.
+    old_layout = data / "stations/versions" / imgw.version.parent.name
+    shutil.copytree(imgw.version.parent, old_layout)
     problems = [
         (entry.slot, entry.version.relative_to(data).as_posix(), entry.problem_code)
         for entry in iter_store(data, kind="problem")
     ]
     assert problems == [
+        (None, old_layout.relative_to(data).as_posix(), "unknown_entry"),
         (
             "catalog:cz.chmu.stations",
             misplaced.relative_to(data).as_posix(),
@@ -164,7 +168,7 @@ def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path
         (None, "stations/versions/obce", "unknown_entry"),
     ]
     (data / "stations/versions/obce").rmdir()
-    # Broken versions of a nested catalog never touch the IMGW-PIB catalog slot.
+    # Broken versions of another catalog never touch the IMGW-PIB catalog slot.
     assert current_version(data, slot="catalog:pl.imgw.stations") == imgw
     with pytest.raises(ObserwatorDataError, match="catalog:cz.chmu.stations"):
         current_version(data, slot="catalog:cz.chmu.stations")

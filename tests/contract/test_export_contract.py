@@ -151,7 +151,7 @@ SERIES_VERSION = object()  # the query's version: the served root's hydro_daily 
         ),
         (
             "series export",
-            {"dataset": "hydro_daily", "station": RABA, "format": "json"},
+            {"dataset": "imgw_hydro_daily", "station": RABA, "format": "json"},
             f"obserwator_series_{DAILY}_{RABA}.json",
         ),
         (

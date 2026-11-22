@@ -155,7 +155,12 @@ def test_registry_has_the_imgw_descriptors_with_spec_fields():
         )
         for d in descriptors
     ] == _REGISTRY
-    assert all(entry.key == f"pl.imgw.{entry.slug}" for entry in descriptors)
+    # Decision 1a of ADR-028: a slug is the provider's acronym and the key's last part.
+    assert all(entry.slug == f"imgw_{entry.key[8:]}" for entry in descriptors)
+    for old in ("hydro_daily", "meteo_precip_daily", "pmaxtp"):
+        with pytest.raises(ObserwatorValidationError) as exc:
+            get_dataset(old)
+        assert exc.value.details["value"] == old
     assert all(entry.title and entry.license.id == "IMGW-PIB" for entry in descriptors)
     assert all(
         entry.parser is None and not entry.variables

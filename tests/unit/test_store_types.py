@@ -118,7 +118,7 @@ def _plan(tmp_path):
         tmp_path,
         datetime(2026, 10, 17, tzinfo=UTC),
         (item,),
-        {"hydro_daily": "outdated"},
+        {"imgw_hydro_daily": "outdated"},
         cancelled=True,
     )
 
@@ -137,7 +137,7 @@ def test_plan_roundtrip_cancelled_and_additive_fields(tmp_path):
     assert loaded.items[0].archive.period_start == archive.period_start
     assert loaded.items[0].archive.period_end == archive.period_end
     assert loaded.items[0].remote_etag == '"new"'
-    assert loaded.series_state == {"hydro_daily": "outdated"}
+    assert loaded.series_state == {"imgw_hydro_daily": "outdated"}
     assert loaded.checked_at == plan.checked_at
     with pytest.raises(ObserwatorDataError, match="plan"):
         path.write_text('{"schema":"obserwator-plan/2"}')

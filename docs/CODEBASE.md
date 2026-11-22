@@ -400,7 +400,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`cz.chmu.hydro_stations`, `cz.chmu.meteo_stations`|—|yes (station lists, canonical form `chmu-json/1`)|
 |`cz.chmu.hydro_now`, `cz.chmu.meteo_now`|—|yes (`now` station metadata, canonical form `chmu-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmu_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (the provider's acronym and the last part of the key, e.g. `imgw_hydro_daily`, `chmu_hydro_daily`; a slug of 3.0.x without `imgw_` is no input, ADR-028) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):
@@ -512,8 +512,8 @@ The table `instance` of `[obserwator]` (ADR-025; `obserwator.instance.load_insta
   .incoming/                                            # staging; never a version
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker: the same fields (ADR-017)
-  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet
-  stations/versions/<label>_<sha8>/stations.geojson + .meta.json                # IMGW-PIB catalog
+  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet  # <slug> imgw_* or chmu_* (ADR-028)
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json  # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json  # ČHMÚ catalog
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/                                            # staging; never a version

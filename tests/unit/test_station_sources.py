@@ -303,7 +303,7 @@ def test_a_sync_writes_no_series_and_build_series_builds_it_afterwards(
     assert not (root / "series").exists()
     assert list(iter_store(target)) == []
     series = check_series(target, raw_root=root, dataset=H2024.dataset)
-    assert series.series_state == {"hydro_daily": "missing"}
+    assert series.series_state == {"imgw_hydro_daily": "missing"}
 
     built = build_series(target, raw_root=root, dataset=H2024.dataset)
 
@@ -311,7 +311,7 @@ def test_a_sync_writes_no_series_and_build_series_builds_it_afterwards(
     assert built.source_files == (report.items[0].version,)
     assert built.version.is_relative_to(target)
     series = check_series(target, raw_root=root, dataset=H2024.dataset)
-    assert series.series_state == {"hydro_daily": "current"}
+    assert series.series_state == {"imgw_hydro_daily": "current"}
 
 
 # --------------------------------------------------------------------------

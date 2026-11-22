@@ -2622,10 +2622,12 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
         slot, name = found[0], PurePosixPath(found[1]).name
     elif where[:2] == ("series", "versions") and len(where) == 4 and where[2] in series:
         slot, name = f"series:{series[where[2]].key}", _reader.SERIES_FILE
-    elif where[:2] == ("stations", "versions") and (
-        len(where) == 3 or (len(where) == 4 and where[2] in _NESTED_CATALOGS)
+    elif (
+        where[:2] == ("stations", "versions")
+        and len(where) == 4
+        and where[2] in _NESTED_CATALOGS
     ):
-        owner = "IMGW" if len(where) == 3 else _NESTED_CATALOGS[where[2]]
+        owner = _NESTED_CATALOGS[where[2]]
         slot, name = f"catalog:{_CATALOG_DATASETS[owner]}", CATALOG_FILE
     elif (
         where[:2] == ("pmaxtp", "versions")

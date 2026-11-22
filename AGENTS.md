@@ -49,7 +49,7 @@ An error has a code from a closed registry, the same in Python, the CLI, REST (p
 
 ## Datasets
 
-A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
 
 | Key | Variables | First year |
 |---|---|---|

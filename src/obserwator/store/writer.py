@@ -12,7 +12,7 @@ import shutil
 import socket
 import time
 import uuid
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -1137,7 +1137,7 @@ def _cleanup(incoming: Path, *, on_notice: NoticeHook | None = None) -> None:
 
 
 def _existing(
-    slot: Path, name: str, *, archive: bool = False, skip: Collection[str] = ()
+    slot: Path, name: str, *, archive: bool = False
 ) -> list[tuple[Path, dict[str, Any]]]:
     """
     Every committed version of a slot with its sidecar, verified by SHA-256.
@@ -1154,9 +1154,6 @@ def _existing(
     archive : bool, optional
         Whether ``slot`` is an archive slot: its observation register
         ``observations/`` is then not a version.
-    skip : collection of str, optional
-        Names of child directories that are not versions of the slot, e.g.
-        the catalogs of other providers inside the IMGW-PIB catalog slot.
 
     Returns
     -------
@@ -1173,9 +1170,7 @@ def _existing(
         return []
     entries = []
     for directory in sorted(slot.iterdir()):
-        if (archive and _is_register(directory)) or (
-            directory.name in skip and directory.is_dir() and not directory.is_symlink()
-        ):
+        if archive and _is_register(directory):
             continue
         if directory.is_symlink() or not directory.is_dir():
             raise ObserwatorStoreConflictError(

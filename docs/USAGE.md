@@ -93,7 +93,7 @@ for s in alarmed:
 ```python
 from obserwator import archive_files, datasets, download_archives, download_hydro_data, parse_zip_file
 
-# Dataset registry: key (pl.imgw.hydro_daily), slug (hydro_daily) or alias (hydro/dobowe)
+# Dataset registry: key (pl.imgw.hydro_daily), slug (imgw_hydro_daily) or alias (hydro/dobowe)
 for dataset in datasets(kind="hydro"):
     print(dataset.key, dataset.legacy_alias, dataset.first_year)
 
@@ -328,7 +328,7 @@ call = command_for_version("archives/versions/dane_hydrologiczne/dobowe/2024/cod
 print(format_command(call.command, options=call.options))
 # obserwator store sync --root /dane/obserwator-raw --datasets pl.imgw.hydro_daily --years 2024
 plan = check_command(call.command, options=call.options)  # plan for this file (listing + HEAD)
-call = command_for_version("series/versions/hydro_daily/2026-10-19_b85f50c3/series.json",
+call = command_for_version("series/versions/imgw_hydro_daily/2026-10-19_b85f50c3/series.json",
                            root="/dane/obserwator", raw_root="/dane/obserwator-raw")
 # obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw --dataset pl.imgw.hydro_daily
 ```
@@ -1072,8 +1072,8 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
   .incoming/                                            # staging; never a version
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker
-  series/versions/<slug>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet
-  stations/versions/<label>_<sha8>/stations.geojson[.meta.json]                 # IMGW-PIB catalog
+  series/versions/<slug>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet   # <slug> imgw_* or chmu_* (ADR-028)
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson[.meta.json]   # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson[.meta.json]   # ČHMÚ catalog
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json[.meta.json] + stations/<code>.json + stations/<code>/<id>.json   # Hydrolog's analyses (ADR-016)
   .incoming/                                            # staging; never a version

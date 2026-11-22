@@ -1441,7 +1441,7 @@
         }
       ],
       "series_state": {
-        "hydro_daily": "outdated"
+        "imgw_hydro_daily": "outdated"
       },
       "actions": []
     },

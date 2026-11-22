@@ -39,7 +39,7 @@ Błąd ma kod z zamkniętego rejestru, ten sam w Pythonie, CLI, REST (problem+js
 
 ## Zbiory danych
 
-Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane tylko na wejściu. Zbiory magazynu:
+Klucz zbioru ma postać `<kraj>.<dostawca>.<zbiór>`; slug (`imgw_hydro_daily`) i alias legacy (`hydro/dobowe`, patrz `obserwator datasets list`) są przyjmowane tylko na wejściu. Zbiory magazynu:
 
 <!-- obserwator:datasets -->
 

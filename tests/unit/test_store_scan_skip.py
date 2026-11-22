@@ -125,7 +125,9 @@ def test_a_known_version_that_broke_since_is_not_seen_but_the_rest_is(tmp_path, 
     gone = next(iter_store(data, kind="series", provider="CHMU"))
     Path(f"{broken.version}.meta.json").write_text("{broken", encoding="utf-8")
     shutil.rmtree(gone.version.parent)
-    unfinished = data / "stations" / "versions" / "2026-01-01_deadbeef"
+    unfinished = (
+        data / "stations" / "versions" / "imgw_stations" / "2026-01-01_deadbeef"
+    )
     unfinished.mkdir()
     (new,) = store_archives(raw, DAILY, [2023])
 
@@ -216,7 +218,7 @@ def test_what_names_no_version_of_the_store_is_read_as_unknown(roots):
         known = {
             "archives/versions": ("x.zip",),
             "archives/versions/dane_hydrologiczne/dobowe/2024": ("codz_2024.zip",),
-            "series/versions/hydro_daily/2026-01-01_deadbeef": ("series.json",),
+            "series/versions/imgw_hydro_daily/2026-01-01_deadbeef": ("series.json",),
             "elsewhere/2026-01-01_deadbeef": ("codz_2024.zip",),
             # a version whose names lack its main file: the caller is not sure of it
             version.version.parent.relative_to(root).as_posix(): ("another.zip",),
