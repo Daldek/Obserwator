@@ -56,8 +56,8 @@ def stations_file_name(provider: str | None, kind: str | None, extension: str) -
     Parameters
     ----------
     provider : str or None
-        The provider's id; the name holds its national acronym in lower case, the one
-        of its dataset keys (``imgw``, ``chmu``). None for every provider.
+        The provider's id; the name holds it in lower case, its national acronym
+        (``imgw``, ``chmu``). None for every provider.
     kind : str or None
         ``hydro`` or ``meteo``; None for both.
     extension : str
@@ -68,9 +68,7 @@ def stations_file_name(provider: str | None, kind: str | None, extension: str) -
     str
         For example ``obserwator_stations_imgw_meteo.csv`` or ``obserwator_stations.geojson``.
     """
-    acronym = None
-    if provider is not None:
-        acronym = get_provider(provider).key_prefix.rpartition(".")[2]
+    acronym = None if provider is None else get_provider(provider).id.lower()
     parts = (part for part in (acronym, kind) if part)
     return _name("stations", *parts, extension=extension)
 
