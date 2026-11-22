@@ -356,8 +356,9 @@ function save(blob, name) {
 
 function Downloads({ data, station, axis }) {
   const [error, setError] = useState(null);
-  const names = { code: station.code, first: data.first_year, last: data.last_year };
-  const base = t(axis ? "meteo.stripes.file_axis" : "meteo.stripes.file", names);
+  // One name in both languages (Nogat DEV-19.21): obserwator_climate-stripes_<code>_<first>_<last>[_axis].
+  const stem = `obserwator_climate-stripes_${station.code}_${data.first_year}_${data.last_year}`;
+  const base = axis ? `${stem}_axis` : stem;
   const run = (fn) => async () => {
     setError(null);
     try {
@@ -368,7 +369,7 @@ function Downloads({ data, station, axis }) {
   };
   const png = run(async () => save(await pngOf(stripesDocument(data, station, axis)), `${base}.png`));
   const svg = run(() => save(new Blob([stripesDocument(data, station, axis).text], { type: "image/svg+xml" }), `${base}.svg`));
-  const csv = run(() => save(new Blob([stripesCsv(data, station)], { type: "text/csv;charset=utf-8" }), `${t("meteo.stripes.file", names)}.csv`));
+  const csv = run(() => save(new Blob([stripesCsv(data, station)], { type: "text/csv;charset=utf-8" }), `${stem}.csv`));
   return html`<div class="btn-row files">
     <button type="button" class="btn sm" onClick=${png}><span class="fmt">PNG</span>${base}.png</button>
     <button type="button" class="btn sm" onClick=${svg}><span class="fmt">SVG</span>${base}.svg</button>

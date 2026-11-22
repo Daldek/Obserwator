@@ -68,8 +68,8 @@ for warning in fetch_warnings(kind="hydro"):
 from obserwator import fetch_hydro_states, find_stations
 
 # Search the station lists (case- and diacritics-insensitive);
-# provider: "IMGW-PIB" | "CHMU", omitted = both providers
-for station in find_stations(kind="hydro", query="wisla", provider="IMGW-PIB")[:5]:
+# provider: "IMGW" | "CHMU", omitted = both providers
+for station in find_stations(kind="hydro", query="wisla", provider="IMGW")[:5]:
     print(station.station_code, station.name, station.river)
 
 # Live coordinates: ČHMÚ from its metadata, IMGW-PIB from its current-data API
@@ -93,7 +93,7 @@ for s in alarmed:
 ```python
 from obserwator import archive_files, datasets, download_archives, download_hydro_data, parse_zip_file
 
-# Dataset registry: key (pl.imgw.hydro_daily), slug (hydro_daily) or alias (hydro/dobowe)
+# Dataset registry: key (pl.imgw.hydro_daily), slug (imgw_hydro_daily) or alias (hydro/dobowe)
 for dataset in datasets(kind="hydro"):
     print(dataset.key, dataset.legacy_alias, dataset.first_year)
 
@@ -328,7 +328,7 @@ call = command_for_version("archives/versions/dane_hydrologiczne/dobowe/2024/cod
 print(format_command(call.command, options=call.options))
 # obserwator store sync --root /dane/obserwator-raw --datasets pl.imgw.hydro_daily --years 2024
 plan = check_command(call.command, options=call.options)  # plan for this file (listing + HEAD)
-call = command_for_version("series/versions/hydro_daily/2026-10-19_b85f50c3/series.json",
+call = command_for_version("series/versions/imgw_hydro_daily/2026-10-19_b85f50c3/series.json",
                            root="/dane/obserwator", raw_root="/dane/obserwator-raw")
 # obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw --dataset pl.imgw.hydro_daily
 ```
@@ -524,7 +524,7 @@ Catalog commands (full list: `obserwator commands list`):
 
 Outside the catalog: `obserwator version`, `obserwator server`, `obserwator mcp`, `obserwator gui serve` (section [GUI](#gui)) and `obserwator admin keys|create|revoke|delete|stats`, which manages the REST API keys of `api_keys.json` (`OBSERWATOR_API_KEYS_FILE`), not the GUI's admin key (section [Admin panel](#admin-panel)).
 
-**Options.** Flag = `--` + option name with `-` instead of `_`; short forms: `-d` dataset(s), `-y` years, `-m` months, `-s` station(s), `-k` kind, `-q` query, `-o` plain-file directory (`--output-dir`), `-r` root, `-f` format; `--lat`/`--lon` are aliases of `--latitude`/`--longitude`. Write target (DEV-19.1): `--output-dir` (`-o`) writes plain files into a directory, `--root` (`-r`) writes to the versioned store, the raw root of a download or the data root of a build (the options are mutually exclusive; with neither of them, the default root of the command's kind: ADR-017), `--output` (no short form) writes one export file, and `--force` replaces existing plain files. `--raw-root` names the raw root that `series build` and `store catalog` read and never write (default: the raw root of `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw`). Lists: comma-separated values or a repeated flag. List commands have `--limit` and `--cursor` (the opaque `page.next_cursor` of the previous page; any other text → `validation_error` with `details.option="cursor"`). `--provider` (`IMGW-PIB` or `CHMU`) narrows `datasets list`, `stations find` and `store scan` to one provider (omitted = both) and selects the catalog in `store catalog` (default `IMGW-PIB`). `--check` (only in commands with a `--check` column) prints the plan without writing and without downloading data, `--schema` — the description of the command options without running it, `--json` (every command) — the envelope instead of the summary for a person, `--lang pl|en` (every command) — the language of that summary and of the stderr lines. Dataset-dependent rules (e.g. `--stations` for `cz.chmu.*`) are in `x-obserwator.rules` of the schema. `OBSERWATOR_LANG=en` switches the CLI help and the default `--lang` of the summary to English (a value outside `pl|en` → `validation_error`, code 2).
+**Options.** Flag = `--` + option name with `-` instead of `_`; short forms: `-d` dataset(s), `-y` years, `-m` months, `-s` station(s), `-k` kind, `-q` query, `-o` plain-file directory (`--output-dir`), `-r` root, `-f` format; `--lat`/`--lon` are aliases of `--latitude`/`--longitude`. Write target (DEV-19.1): `--output-dir` (`-o`) writes plain files into a directory, `--root` (`-r`) writes to the versioned store, the raw root of a download or the data root of a build (the options are mutually exclusive; with neither of them, the default root of the command's kind: ADR-017), `--output` (no short form) writes one export file, and `--force` replaces existing plain files. `--raw-root` names the raw root that `series build` and `store catalog` read and never write (default: the raw root of `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw`). Lists: comma-separated values or a repeated flag. List commands have `--limit` and `--cursor` (the opaque `page.next_cursor` of the previous page; any other text → `validation_error` with `details.option="cursor"`). `--provider` (`IMGW` for IMGW-PIB or `CHMU` for ČHMÚ) narrows `datasets list`, `stations find` and `store scan` to one provider (omitted = both) and selects the catalog in `store catalog` (default `IMGW`). `--check` (only in commands with a `--check` column) prints the plan without writing and without downloading data, `--schema` — the description of the command options without running it, `--json` (every command) — the envelope instead of the summary for a person, `--lang pl|en` (every command) — the language of that summary and of the stderr lines. Dataset-dependent rules (e.g. `--stations` for `cz.chmu.*`) are in `x-obserwator.rules` of the schema. `OBSERWATOR_LANG=en` switches the CLI help and the default `--lang` of the summary to English (a value outside `pl|en` → `validation_error`, code 2).
 
 **Output.** Without `--json` stdout carries a short summary for a person in the language of `--lang` (default `OBSERWATOR_LANG`): the status and the command, the items of a list as a table of their key fields with the page line (`Strona: 50 z 154, dalej: --cursor NTA`), the main fields of a document (work items with an error first), then the notices; its layout is not a contract. With `--json` stdout is one JSON line — the `obserwator-result/1` envelope (`schema`, `tool`, `version`, `command`, `check`, `status`, `result`, `notices` `{level, code, message}` and, for a list command, `page` `{total, next_cursor, truncated}`); `result` is a document with its own `schema` (`obserwator-<kind>/1`), the list of a page's items or null; store paths are relative to the root. `store export`, `series export` and `commands guide` without `--output` print a CSV/JSONL/Markdown stream (the same with and without `--json`); with `--output` they write one file (an existing one requires `--force`, a file in the store is a `conflict`), and the envelope `result` is `{schema, output, files[]}` (`obserwator-output/1`; `files[]` = `{path, size_bytes, sha256, status}`). Progress goes to stderr, as do the notices with `--json` (each distinct one once, e.g. `license_terms`; without `--json` they close the summary), and an error — as the JSON document `obserwator-error/1` (`schema`, `code`, `title`, `message`, `hint` when one fits — the option or command that fixes it, `details`, `exit_code`, `command` when known) on the last stderr line (stdout empty; without `--json` one readable line in the language of `--lang` comes before it). Exit codes:
 
@@ -600,6 +600,13 @@ After starting the server (`obserwator server`; it needs the extra `api`, and wi
 - `/mcp` — MCP server (Streamable HTTP) when `OBSERWATOR_MCP_ENABLED=true` (section "AI agents")
 
 Routes are generated from the catalog: `/api/v1/<group>/<command>` (table above; local commands — `datasets download`, `store init` — have no routes). GET takes options in the query (comma-separated lists or a repeated parameter), POST — in a JSON body; `?check=true` on POST returns the plan without writing. The response is the same `obserwator-result/1` envelope as in the CLI; list commands have `limit` (default and maximum `OBSERWATOR_API_MAX_LIMIT`, 1000) and `cursor` (`page.next_cursor` of the previous answer). Errors: `application/problem+json` (`type`, `title`, `status`, `detail`, `instance`, `code`, `hint` when one fits, `details`). Language: notices, item and plan texts and the problem+json `title`, `detail` and `hint` are in English, and in Polish with `Accept-Language: pl` (`q` weights per RFC 9110); commands with a `lang` option (`commands list`, `commands schema`, `commands guide`) take it from the query, and without it from the header. Every command response has `Content-Language`, and `Vary: Accept-Language` when the header decided. The OpenAPI document (`/openapi.json`) is in English.
+
+A stream (`series export`, `stations export`, `analyses export`, `store export`, `commands guide`) is an attachment, named by Nogat DEV-19.21 as the GUI names the same file: `obserwator_series_<dataset key>_<station>.<format>` (the key of `dataset`, or of the slug in `version`'s path), `obserwator_stations[_<provider>][_<kind>].<format>` (the provider by its national acronym, `imgw` or `chmu`), `obserwator_analyses_<station>.<format>`. A unit of `store export` keeps its name in the raw root (`codz_2024.csv`), a guide is `AGENTS.md` or `llms.txt`. `curl -OJ` saves the file under that name:
+
+```bash
+curl -OJ 'http://127.0.0.1:8000/api/v1/stations/export?provider=IMGW&kind=meteo&format=csv'   # obserwator_stations_imgw_meteo.csv
+curl -OJ 'http://127.0.0.1:8000/api/v1/series/export?dataset=pl.imgw.meteo_precip_daily&station=252170380'   # obserwator_series_pl.imgw.meteo_precip_daily_252170380.csv
+```
 
 Every answer carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a `Permissions-Policy` that denies the browser features no page of the server uses (the same headers as the GUI's, section [GUI](#gui)). A browser page of another origin may call the API only from an origin of `OBSERWATOR_CORS_ORIGINS` (none by default, `*` for every origin), never with credentials: the `X-API-Key` header of a write is no credential of CORS.
 
@@ -689,7 +696,7 @@ The tables `[nogat.gui]` and `[nogat.operator]` of `nogat.toml` are no settings 
 | `api/analyses/{code}`, `api/analysis/{code}/{id}?<options>` | the stored analyses of a station (`obserwator-analysis-summary/1`, each with the options a person may change) and whether a choice can be computed; one id's result (`obserwator-analysis/1`): without options the stored one (`source: stored`), with the person's options one computed on request (`source: computed`) |
 | `api/current`, `api/current/{code}` | the points of „Pomiary bieżące”; one IMGW-PIB station's current values with their times (and its synoptic report where it pairs) |
 | `api/pmaxtp?latitude=&longitude=&method=POT\|AMP` | PMAXTP of a point: the KS, SG and RB tables, IMGW-PIB's address of its answer and the equivalent `pmaxtp fetch` line |
-| `api/downloads/{code}`, `api/downloads/stations?provider=&kind=` | the files offered: a station's series and its stored analyses, or the stations; each format with its file name, address, command line and licence |
+| `api/downloads/{code}`, `api/downloads/stations?provider=&kind=` | the files offered: a station's series and its stored analyses, or the stations; each format with its file name, address, command line and licence, and the names of each stored analysis's own files (`analyses.each`: `{id: {json, csv}}`). The names follow Nogat DEV-19.21, as REST's: `obserwator_series_<dataset key>_<code>`, `obserwator_stations[_<imgw\|chmu>][_<kind>]`, `obserwator_analyses_<code>[_<id>]`, `obserwator_pmaxtp_<method>_<lat>_<lon>`; the page names the climate stripes `obserwator_climate-stripes_<code>_<first>_<last>[_axis]` and the kit the hand-off `obserwator_handoff_<subject>.json` |
 | `api/files/series/{dataset}/{code}?format=csv\|json\|parquet` | `export_series`: the file `obserwator series export` writes |
 | `api/files/stations?format=geojson\|csv&provider=&kind=` | `export_stations`: the file `obserwator stations export` writes |
 | `api/files/analyses/{code}?format=json\|csv&analysis=` | `export_analyses`: the file `obserwator analyses export` writes, every stored analysis of the station or the one `analysis` |
@@ -854,12 +861,12 @@ pmaxtp = "off"                         # on | off: PMAXTP served and fetched or 
 terms = "regulamin.md"                 # the operator's regulamin, from nogat-terms-operator.md (UTF-8; LF or CRLF)
 
 [obserwator.instance.providers]        # visible (default) | hidden | off
-IMGW-PIB = "hidden"
+IMGW = "hidden"                        # IMGW-PIB; ČHMÚ is CHMU
 ```
 
 Every provider's stations are drawn alike, by kind only (a triangle hydrological, a circle meteorological). With `featured_provider` the featured provider's stations lie on top at full strength and, until a person turns „Pokaż inne źródła” on, the other providers' are drawn at 70 % of the size and at the opacity `others_opacity` (a number from 0.1, barely visible, to 1.0, only smaller; 0.4 by default; it needs `featured_provider`); the legend of „Stacje” then has a group „Stacje: <provider>” and, while another provider is shown, a group „Pozostałe źródła” drawn as the map draws them. Without a featured provider, or with „Pokaż inne źródła” on, the legend names no provider. A provider `off` is absent from every route of both servers (the GUI and `obserwator server`) and gets no request; `hidden` is served but out of the map until a person turns „Pokaż inne źródła” on. The servers refuse to start on any wrong field (`validation_error`, exit 2, `details.option` names it); `obserwator config show --json` shows the resolved `instance` and the `problems`.
 
-**Outbound requests** and the setting that stops each: IMGW-PIB's current data (hydro-back.imgw.pl, danepubliczne.imgw.pl) — `IMGW-PIB = "off"`; PMAXTP (powietrze.imgw.pl, klimat.imgw.pl) — `pmaxtp = "off"`; the basemap, fetched by the browser — `OBSERWATOR_GUI_BASEMAP_URL` (a self-hosted TileJSON or `none`). Nothing else leaves the servers.
+**Outbound requests** and the setting that stops each: IMGW-PIB's current data (hydro-back.imgw.pl, danepubliczne.imgw.pl) — `IMGW = "off"`; PMAXTP (powietrze.imgw.pl, klimat.imgw.pl) — `pmaxtp = "off"`; the basemap, fetched by the browser — `OBSERWATOR_GUI_BASEMAP_URL` (a self-hosted TileJSON or `none`). Nothing else leaves the servers.
 
 **The REST server** (`obserwator server`, `/api/v1`) applies the same section, route by route (ADR-025 D3). A station not served and a code that does not exist answer identically; a refusal is `not_found` with `details.reason` `not_served`, `pmaxtp_off` or `outside_area`, or `forbidden` `instance_clip` where the answer cannot be made without stations outside a clipped area:
 
@@ -1065,8 +1072,8 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
   .incoming/                                            # staging; never a version
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker
-  series/versions/<slug>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet
-  stations/versions/<label>_<sha8>/stations.geojson[.meta.json]                 # IMGW-PIB catalog
+  series/versions/<slug>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet   # <slug> imgw_* or chmu_* (ADR-028)
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson[.meta.json]   # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson[.meta.json]   # ČHMÚ catalog
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json[.meta.json] + stations/<code>.json + stations/<code>/<id>.json   # Hydrolog's analyses (ADR-016)
   .incoming/                                            # staging; never a version

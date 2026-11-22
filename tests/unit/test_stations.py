@@ -83,7 +83,7 @@ def _rows(stations):
 
 
 def test_find_stations_without_query_returns_both_lists_in_order(lists):
-    stations = find_stations(provider="IMGW-PIB")
+    stations = find_stations(provider="IMGW")
 
     assert _rows(stations) == [
         ("hydro", "150190340", "ŁÓDŹ ZACHÓD"),
@@ -100,7 +100,7 @@ def test_find_stations_without_query_returns_both_lists_in_order(lists):
 async def test_live_imgw_stations_carry_the_coordinates_of_the_current_data_api(
     lists,
 ):
-    stations = find_stations(provider="IMGW-PIB")
+    stations = find_stations(provider="IMGW")
 
     assert [(s.station_code, s.latitude, s.longitude) for s in stations] == [
         ("150190340", 51.7592, 19.456),
@@ -111,7 +111,7 @@ async def test_live_imgw_stations_carry_the_coordinates_of_the_current_data_api(
         ("249190310", None, None),
         ("249190310", None, None),
     ]
-    assert await find_stations_async(provider="IMGW-PIB") == stations
+    assert await find_stations_async(provider="IMGW") == stations
 
 
 def test_a_live_api_answer_that_is_no_list_is_a_data_error(respx_mock):
@@ -119,7 +119,7 @@ def test_a_live_api_answer_that_is_no_list_is_a_data_error(respx_mock):
     respx_mock.get(HYDRO_API_URL).respond(json={"message": "brak"})
 
     with pytest.raises(ObserwatorDataError) as error:
-        find_stations(kind="hydro", provider="IMGW-PIB")
+        find_stations(kind="hydro", provider="IMGW")
     assert error.value.details == {"url": HYDRO_API_URL}
 
 
@@ -128,15 +128,14 @@ async def test_bbox_keeps_the_located_stations_inside_it_bounds_included(lists):
     # WSCHÓD (19.40 E) lies just west of the area.
     lodz = (19.456, 51.5, 20.0, 51.7592)
 
-    stations = find_stations(provider="IMGW-PIB", bbox=lodz)
+    stations = find_stations(provider="IMGW", bbox=lodz)
 
     assert _rows(stations) == [("hydro", "150190340", "ŁÓDŹ ZACHÓD")]
     # Stations without coordinates are never inside an area, even all of it.
-    world = find_stations(provider="IMGW-PIB", bbox=[-180, -90, 180, 90])
+    world = find_stations(provider="IMGW", bbox=[-180, -90, 180, 90])
     assert [s.station_code for s in world] == ["150190340", "149190310", "251190470"]
     assert (
-        await find_stations_async(provider="IMGW-PIB", query="lodz", bbox=lodz)
-        == stations
+        await find_stations_async(provider="IMGW", query="lodz", bbox=lodz) == stations
     )
 
 
@@ -156,7 +155,7 @@ async def test_bbox_keeps_the_located_stations_inside_it_bounds_included(lists):
     ],
 )
 def test_find_stations_matches_name_river_and_code_prefix(lists, query, expected):
-    stations = find_stations(query=query, provider="IMGW-PIB")
+    stations = find_stations(query=query, provider="IMGW")
     assert [(s.kind, s.station_code) for s in stations] == expected
 
 
@@ -164,11 +163,11 @@ async def test_find_stations_kind_requests_only_its_list(respx_mock):
     meteo = respx_mock.get(METEO_URL).respond(content=METEO_CSV.encode("cp1250"))
     meteo_api = respx_mock.get(METEO_API_URL).respond(json=METEO_API)
 
-    stations = find_stations(kind="meteo", query="raba", provider="IMGW-PIB")
+    stations = find_stations(kind="meteo", query="raba", provider="IMGW")
 
     assert _rows(stations) == [("meteo", "249190310", "RABA GÓRNA")] * 2
     assert (
-        await find_stations_async(kind="meteo", query="raba", provider="IMGW-PIB")
+        await find_stations_async(kind="meteo", query="raba", provider="IMGW")
         == stations
     )
     assert (meteo.call_count, meteo_api.call_count) == (2, 2)
@@ -247,7 +246,7 @@ async def test_find_stations_store_reads_catalog_coordinates_offline(fixture_sto
         raba.river_order,
         raba.short_code,
         raba.provider,
-    ) == ("Raba Górna", "Raba", "213", 12, None, "IMGW-PIB")
+    ) == ("Raba Górna", "Raba", "213", 12, None, "IMGW")
 
 
 def test_find_stations_store_filters_like_live(fixture_store):
@@ -278,7 +277,7 @@ def test_find_stations_store_skips_a_provider_without_a_catalog_unless_named(
     fixture_store,
 ):
     assert {s.provider for s in find_stations(source="store", root=fixture_store)} == {
-        "IMGW-PIB"
+        "IMGW"
     }
     with pytest.raises(ObserwatorStoreError) as error:
         find_stations(source="store", root=fixture_store, provider="CHMU")
@@ -290,7 +289,7 @@ def test_find_stations_store_reads_the_catalog_of_every_provider(fixture_root):
     stations = find_stations(source="store", root=fixture_root)
     chmu = find_stations(source="store", root=fixture_root, provider="CHMU")
 
-    assert {s.provider for s in stations} == {"IMGW-PIB", "CHMU"}
+    assert {s.provider for s in stations} == {"IMGW", "CHMU"}
     assert chmu == tuple(s for s in stations if s.provider == "CHMU")
 
 

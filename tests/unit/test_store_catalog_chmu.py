@@ -242,7 +242,7 @@ def test_every_station_of_the_sources_is_kept_also_without_location(store):
     assert report.version.parent.parent == (
         data_root(store) / "stations/versions/chmu_stations"
     )
-    assert not list((data_root(store) / "stations/versions").glob("*/stations.geojson"))
+    assert not (data_root(store) / "stations/versions/imgw_stations").exists()
     assert schema_errors(document, "stations.geojson") == []
     kinds = {code: feature["properties"]["kind"] for code, feature in found.items()}
     assert kinds == {code: "meteo" if "-0-" in code else "hydro" for code in CODES}
@@ -880,7 +880,7 @@ def test_provider_is_validated_and_key_prefix_names_it(store):
     for call in (build_catalog, check_catalog):
         with pytest.raises(ObserwatorValidationError) as error:
             call(data_root(store), raw_root=store, provider="SHMU")
-        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
+        assert error.value.details["allowed"] == ["IMGW", "CHMU"]
     sync_sources(store)
     with respx.mock(assert_all_mocked=True):
         built = build_catalog(data_root(store), raw_root=store, provider="cz.chmu")

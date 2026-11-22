@@ -192,13 +192,13 @@ def test_a_version_is_reused_only_for_the_same_subset(raw, tmp_path):
         "unchanged",
         first.version,
     )
-    assert state(stations=[RABA]) == {"hydro_daily": "current"}
-    assert state(stations=[NO_Q, RABA]) == {"hydro_daily": "outdated"}
+    assert state(stations=[RABA]) == {"imgw_hydro_daily": "current"}
+    assert state(stations=[NO_Q, RABA]) == {"imgw_hydro_daily": "outdated"}
 
     # Every station of the archives is still a subset: no full series.
     every = build_series(data, raw_root=raw, dataset=HYDRO, stations=[NO_Q, RABA])
     assert every.status == "new" and current() == every.version
-    assert state() == {"hydro_daily": "outdated"}
+    assert state() == {"imgw_hydro_daily": "outdated"}
 
     full = build_series(data, raw_root=raw, dataset=HYDRO)
     assert full.status == "new" and current() == full.version

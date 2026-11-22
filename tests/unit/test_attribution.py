@@ -311,7 +311,7 @@ def test_json_documents_of_the_store_carry_the_lines_at_the_top(
         # Built without the static locations: no hydro.imgw.pl lines; the locations
         # checked against the packaged borders (ADR-018).
         "stations.geojson IMGW-PIB": (
-            load(next(catalogs.glob("*_*/stations.geojson"))),
+            load(next(catalogs.glob("imgw_stations/*/stations.geojson"))),
             IMGW | attribution("gugik"),
         ),
         "stations.geojson ČHMÚ": (

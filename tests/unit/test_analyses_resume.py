@@ -257,7 +257,7 @@ def test_a_damaged_staged_station_is_computed_again_and_its_leftover_kept_as_it_
     assert stamps(root) == before  # read and hashed, never linked
     assert planned.actions[0].detail == message(
         "analyses.plan_build",
-        provider=get_provider("IMGW-PIB").short_name,
+        provider=get_provider("IMGW").short_name,
         computed=1,
         carried=0,
         resumed=len(taken) - 1,

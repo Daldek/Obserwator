@@ -18,6 +18,7 @@ import importlib
 import importlib.util
 import io
 import json
+import re
 import shutil
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
@@ -336,19 +337,19 @@ def test_imgw_15_k1_both_providers_scan_clean_with_a_provider_on_every_entry(pl_
     entries = entries_of(pl_cz)
 
     assert [entry.problem for entry in entries if entry.kind == "problem"] == []
-    assert {entry.provider for entry in entries} == {"IMGW-PIB", "CHMU"}
+    assert {entry.provider for entry in entries} == {"IMGW", "CHMU"}
     (seen,) = [entry for entry in entries if entry.kind == "observation"]
     assert (seen.provider, seen.slot) == ("CHMU", SLOT_2023)
     assert {
         entry.slot: entry.provider for entry in entries if entry.kind == "catalog"
     } == {
-        "catalog:pl.imgw.stations": "IMGW-PIB",
+        "catalog:pl.imgw.stations": "IMGW",
         "catalog:cz.chmu.stations": "CHMU",
     }
     features = read_catalog(root=pl_cz.data)
     pairs = [(feature.provider, feature.station_code) for feature in features]
     assert len(pairs) == len(set(pairs))
-    assert {provider for provider, _ in pairs} == {"IMGW-PIB", "CHMU"}
+    assert {provider for provider, _ in pairs} == {"IMGW", "CHMU"}
     # Each provider's catalog is a separate entry with its own stations.
     assert {
         feature.provider for feature in read_catalog(root=pl_cz.data, provider="CHMU")
@@ -365,32 +366,32 @@ def _scan(roots: Roots, *, provider: str | None = None) -> list[tuple[object, ..
 
 
 def test_imgw_15_k2_a_store_without_chmu_reads_as_before(complete, pl_cz):
-    assert {entry.provider for entry in entries_of(complete)} == {"IMGW-PIB"}
-    assert _scan(complete) == _scan(pl_cz, provider="IMGW-PIB")
+    assert {entry.provider for entry in entries_of(complete)} == {"IMGW"}
+    assert _scan(complete) == _scan(pl_cz, provider="IMGW")
     for kind in ("raw", "data"):
         assert (
             store_info(getattr(complete, kind)).contracts
             == store_info(getattr(pl_cz, kind)).contracts
         )
     assert read_catalog(root=complete.data) == read_catalog(
-        root=pl_cz.data, provider="IMGW-PIB"
+        root=pl_cz.data, provider="IMGW"
     )
     assert {feature.provider for feature in read_catalog(root=complete.data)} == {
-        "IMGW-PIB"
+        "IMGW"
     }
 
 
 def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
     for root in (pl_cz.raw, pl_cz.data):
         assert [provider.id for provider in store_info(root).providers] == [
-            "IMGW-PIB",
+            "IMGW",
             "CHMU",
         ]
 
     chmu = _scan(pl_cz, provider="CHMU")
-    imgw = _scan(pl_cz, provider="IMGW-PIB")
+    imgw = _scan(pl_cz, provider="IMGW")
     assert {row[2] for row in chmu} == {"CHMU"}
-    assert {row[2] for row in imgw} == {"IMGW-PIB"}
+    assert {row[2] for row in imgw} == {"IMGW"}
     assert sorted(chmu + imgw, key=repr) == sorted(_scan(pl_cz), key=repr)
     assert Counter(row[0] for row in chmu) == {
         "archive": 19,  # 14 data files, 2 station lists, 3 current-metadata files
@@ -1668,34 +1669,38 @@ def test_imgw_19_k3_every_chmu_sidecar_and_export_names_cc_by_and_chmu(pl_cz):
 
 
 def _old_names(raw: Path) -> int:
-    """Rewrite the ČHMÚ sidecars and observations of a raw root as 3.0.x wrote them."""
+    """Rewrite the sidecars and observations of a raw root as 3.0.x wrote them."""
     renamed = 0
     for path in sorted(raw.rglob("*.json")):
         if not (path.name.endswith(".meta.json") or path.parent.name == "observations"):
             continue
         document = load(path)
-        if not str(document.get("dataset", "")).startswith("cz.chmu."):
+        if str(document.get("dataset", "")).startswith("cz.chmu."):
+            document["dataset"] = document["dataset"].replace("cz.chmu.", "cz.chmi.")
+            if "provider" in document:
+                document["provider"] = "CHMI"
+            if "content_form" in document:
+                document["content_form"] = "chmi-json/1"
+        elif document.get("provider") == "IMGW":
+            document["provider"] = "IMGW-PIB"
+        else:
             continue
-        document["dataset"] = document["dataset"].replace("cz.chmu.", "cz.chmi.")
-        if "provider" in document:
-            document["provider"] = "CHMI"
-        if "content_form" in document:
-            document["content_form"] = "chmi-json/1"
         path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
         renamed += 1
     return renamed
 
 
-def test_a_raw_root_of_the_old_names_builds_the_cz_chmu_series_and_catalog(
-    pl_cz, tmp_path
-):
+def test_a_raw_root_of_the_old_names_builds_the_series_and_catalogs(pl_cz, tmp_path):
     roots = copy_of(pl_cz, tmp_path / "store")
     assert _old_names(roots.raw) > 0
+    stored = " ".join(path.read_text("utf-8") for path in roots.raw.rglob("*.json"))
+    assert '"provider": "IMGW-PIB"' in stored and '"provider": "CHMI"' in stored
     data = init_store(tmp_path / "data", kind="data").root
 
-    for dataset in (HYDRO, METEO):
+    for dataset in (HYDRO, METEO, "pl.imgw.hydro_daily"):
         assert build_series(data, raw_root=roots.raw, dataset=dataset).status == "new"
     assert build_catalog(data, raw_root=roots.raw, provider="CHMU").status == "new"
+    assert build_catalog(data, raw_root=roots.raw, provider="IMGW").status == "new"
 
     # Stored history keeps its raw names and is read under the current ones.
     archives = list(iter_store(roots.raw, kind="archive", provider="CHMU"))
@@ -1705,16 +1710,26 @@ def test_a_raw_root_of_the_old_names_builds_the_cz_chmu_series_and_catalog(
         (entry.meta.dataset_key[:8], entry.meta.provider) for entry in archives
     } == {("cz.chmu.", "CHMU")}
     assert {entry.meta.content_form for entry in archives} == {"chmu-json/1", None}
+    imgw = list(iter_store(roots.raw, kind="archive", provider="IMGW"))
+    assert imgw and all(entry.problem_code is None for entry in imgw)
+    assert {entry.meta.provider for entry in imgw} == {"IMGW"}
     # The data root is the one the current names give, and only they are written.
     for slot, part in (
         (f"series:{HYDRO}", "stations"),
         (f"series:{METEO}", "stations"),
+        ("series:pl.imgw.hydro_daily", "stations"),
         ("catalog:cz.chmu.stations", "features"),
     ):
         built, fixture = version_of(data, slot), version_of(pl_cz.data, slot)
         assert load(built)[part] == load(fixture)[part], slot
+    assert {
+        feature.provider for feature in read_catalog(root=data, provider="IMGW")
+    } == {"IMGW"}
     written = " ".join(path.read_text("utf-8") for path in data.rglob("*.json"))
     assert "cz.chmi." not in written and "chmi-json" not in written
     assert '"CHMI"' not in written
+    assert re.search(r'"provider":\s*"IMGW-PIB"', written) is None
     with pytest.raises(ObserwatorValidationError):
         build_series(data, raw_root=roots.raw, dataset="cz.chmi.hydro_daily")
+    with pytest.raises(ObserwatorValidationError):
+        build_catalog(data, raw_root=roots.raw, provider="IMGW-PIB")

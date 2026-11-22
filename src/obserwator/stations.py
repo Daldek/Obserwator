@@ -505,7 +505,7 @@ def find_stations(
         Data root; required with ``source="store"`` and not allowed with
         ``source="live"``.
     provider : str or None, optional
-        Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMU"``,
+        Provider identifier or key prefix (``"IMGW"``, ``"CHMU"``,
         ``"cz.chmu"``); None searches every provider and, with
         ``source="store"``, skips providers without a station catalog.
     bbox : sequence of four floats or None, optional

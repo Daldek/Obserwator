@@ -174,7 +174,7 @@ _SYNC_DATASETS = _SERIES_DATASETS + tuple(
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
 # Groups reading the sources of one provider only (spec 2026-10-18 §9.3).
-_GROUP_PROVIDERS = {"current": "IMGW-PIB", "pmaxtp": "IMGW-PIB"}
+_GROUP_PROVIDERS = {"current": "IMGW", "pmaxtp": "IMGW"}
 _DONE = ("new", "relabeled", "unchanged")
 _EXIT_CODES = {"ok": 0, "partial": 10, "failed": 11, "cancelled": 130}
 _GROUPS = {
@@ -1051,7 +1051,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             replace(
                 _PROVIDER,
                 help=message("commands.store_catalog_provider_help"),
-                default="IMGW-PIB",
+                default="IMGW",
             ),
             _option(
                 "user_locations",
@@ -2622,10 +2622,12 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
         slot, name = found[0], PurePosixPath(found[1]).name
     elif where[:2] == ("series", "versions") and len(where) == 4 and where[2] in series:
         slot, name = f"series:{series[where[2]].key}", _reader.SERIES_FILE
-    elif where[:2] == ("stations", "versions") and (
-        len(where) == 3 or (len(where) == 4 and where[2] in _NESTED_CATALOGS)
+    elif (
+        where[:2] == ("stations", "versions")
+        and len(where) == 4
+        and where[2] in _NESTED_CATALOGS
     ):
-        owner = "IMGW-PIB" if len(where) == 3 else _NESTED_CATALOGS[where[2]]
+        owner = _NESTED_CATALOGS[where[2]]
         slot, name = f"catalog:{_CATALOG_DATASETS[owner]}", CATALOG_FILE
     elif (
         where[:2] == ("pmaxtp", "versions")
@@ -3087,12 +3089,12 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     located = {
         entry.station_code
         for entry in entries
-        if entry.provider == "IMGW-PIB" and entry.latitude is not None
+        if entry.provider == "IMGW" and entry.latitude is not None
     }
     if not located:
         return lines
     try:
-        features = _store.read_catalog(root=options["root"], provider="IMGW-PIB")
+        features = _store.read_catalog(root=options["root"], provider="IMGW")
     except ObserwatorStoreError:
         return lines
     if any(

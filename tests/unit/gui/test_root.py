@@ -73,9 +73,9 @@ def test_a_new_version_shows_a_minute_later_without_a_restart(
     clock.now += 2
     after = data.snapshot()
 
-    assert set(before.catalogs) == {"IMGW-PIB"}
+    assert set(before.catalogs) == {"IMGW"}
     assert within is before
-    assert set(after.catalogs) == {"IMGW-PIB", "CHMU"}
+    assert set(after.catalogs) == {"IMGW", "CHMU"}
     assert HYDRO_CHMU in after.features
     assert after.layer["count"] == 13
     assert after.layer_etag != before.layer_etag
@@ -103,7 +103,7 @@ def test_new_stored_analyses_show_a_minute_later_and_keep_the_station_layer(
     (version,) = (root / "analyses" / "versions" / "cz.chmu").iterdir()
     assert before.analyses == {}
     assert within is before
-    assert set(after.analyses) == {"IMGW-PIB", "CHMU"}
+    assert set(after.analyses) == {"IMGW", "CHMU"}
     assert after.analyses["CHMU"].label == version.name
     assert after.analyses["CHMU"].hydrolog == stored.hydrolog["version"]
     # The catalogs and series are unchanged: so is the station layer's ETag
@@ -157,7 +157,7 @@ def test_requests_take_the_last_snapshot_while_one_re_read_runs(
     # The first read was the request's own; the later one ran behind the requests, once
     assert started == 1
     assert all(snapshot is before for snapshot in during)
-    assert set(after.catalogs) == {"IMGW-PIB", "CHMU"}
+    assert set(after.catalogs) == {"IMGW", "CHMU"}
     assert held.jobs == []
 
 

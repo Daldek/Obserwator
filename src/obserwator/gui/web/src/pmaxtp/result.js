@@ -44,12 +44,12 @@ function probability(key) {
   return fmt(Number(key), decimals);
 }
 
-/** The file of the point in a format, as the server names it. */
+/** The file of the point in a format, named as the server names it (Nogat DEV-19.21). */
 function file(doc, format) {
   const query = pmaxtpQuery({ lat: doc.latitude, lon: doc.longitude }, doc.method);
   return {
     url: api.pmaxtpFileUrl({ ...query, format }),
-    name: `pmaxtp_${query.method}_${query.latitude}_${query.longitude}.${format}`,
+    name: `obserwator_pmaxtp_${query.method}_${query.latitude}_${query.longitude}.${format}`,
   };
 }
 

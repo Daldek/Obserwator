@@ -40,7 +40,7 @@ _DAILY_VERSION = (
     "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/"
     "2026-10-19_b6a19f65/codz_2024.zip"
 )
-_SERIES_VERSION = "series/versions/hydro_daily/2026-10-19_9a64f921/series.json"
+_SERIES_VERSION = "series/versions/imgw_hydro_daily/2026-10-19_9a64f921/series.json"
 _CELL_VERSION = "pmaxtp/versions/POT/751_317/2026-10-25_3f9c2a71/cell.json"
 _PMAXTP = {"method": "POT", "latitude": 52.23, "longitude": 21.01}
 _RABA_ITEM = {
@@ -48,7 +48,7 @@ _RABA_ITEM = {
     "station_code": "149190310",
     "name": "Raba Górna",
     "river": "Raba",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
 }
 _ANALYSES_VERSION = "analyses/versions/pl.imgw/2026-11-13_5d1e0a27/analyses.json"
 _RABA_ANALYSIS = {
@@ -100,7 +100,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                     "title": "Daily hydrological data",
                     "variables": {"H": "cm", "Q": "m3/s", "T": "degC"},
                     "first_year": 1951,
-                    "provider": "IMGW-PIB",
+                    "provider": "IMGW",
                 },
                 "obserwator-dataset/1",
             ),
@@ -192,7 +192,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             "obserwator datasets providers --json",
             _page(
                 {
-                    "id": "IMGW-PIB",
+                    "id": "IMGW",
                     "country": "PL",
                     "key_prefix": "pl.imgw",
                     "license": {"id": "IMGW-PIB"},
@@ -428,7 +428,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             "obserwator store catalog --root /data/obserwator --raw-root /data/obserwator-raw --json",
             {
                 "status": "new",
-                "version": "stations/versions/2026-10-25_da58e6b7/stations.geojson",
+                "version": "stations/versions/imgw_stations/2026-10-25_da58e6b7/stations.geojson",
                 "station_count": 1705,
                 "without_location": 37,
             },
@@ -461,7 +461,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             {
                 "schema": "obserwator-plan/1",
                 "root": _ROOT,
-                "series_state": {"hydro_daily": "current"},
+                "series_state": {"imgw_hydro_daily": "current"},
                 "actions": [{"command": "series build", "status": "current"}],
             },
         ),
@@ -543,7 +543,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                 "hydrolog_version": "1.0.0",
                 "providers": [
                     {
-                        "provider": "IMGW-PIB",
+                        "provider": "IMGW",
                         "status": "new",
                         "version": _ANALYSES_VERSION,
                         "stations": 2,

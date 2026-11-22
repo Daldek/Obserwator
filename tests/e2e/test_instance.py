@@ -333,7 +333,7 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
 ):
     stations = catalog(featured_url)
     chmu = located(stations, shown(stations, "CHMU"))
-    imgw = located(stations, shown(stations, "IMGW-PIB"))
+    imgw = located(stations, shown(stations, "IMGW"))
     assert chmu and imgw
     page = open_page(base=featured_url)
     ready(page)
@@ -417,7 +417,7 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
 def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden_url):
     stations = catalog(hidden_url)
     chmu = shown(stations, "CHMU")
-    imgw = shown(stations, "IMGW-PIB")
+    imgw = shown(stations, "IMGW")
     assert located(stations, imgw)
     page = open_page(base=hidden_url)
     ready(page)

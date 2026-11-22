@@ -350,8 +350,8 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
         second = build_catalog(data, raw_root=store)
         plan = check_catalog(data, raw_root=store)
     assert source_actions(stale) == {
-        "hydro_stations": "newer",
-        "meteo_stations": "current",
+        "imgw_hydro_stations": "newer",
+        "imgw_meteo_stations": "current",
         "api_hydro": "current",
         "api_meteo": "current",
         "hydro_details": "current",  # stored by neither side: nothing to pick up
@@ -367,7 +367,7 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
     sources = json.loads(
         second.version.with_name("stations.geojson.meta.json").read_text("utf-8")
     )["extra"]["catalog"]
-    hydro_source = next(s for s in sources if s["source"] == "hydro_stations")
+    hydro_source = next(s for s in sources if s["source"] == "imgw_hydro_stations")
     assert hydro_source["sha256"] == hashlib.sha256(newer_csv).hexdigest()
     assert hydro_source["file"].startswith(
         "archives/versions/dane_hydrologiczne/lista_stacji_hydro/2026-10-19_"
@@ -914,7 +914,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     raw = report.version.read_bytes()
     document = json.loads(raw)
     assert report.version.relative_to(data.root).as_posix() == (
-        f"stations/versions/{datetime.now(UTC).date().isoformat()}_{hashlib.sha256(raw).hexdigest()[:8]}/stations.geojson"
+        f"stations/versions/imgw_stations/{datetime.now(UTC).date().isoformat()}_{hashlib.sha256(raw).hexdigest()[:8]}/stations.geojson"
     )
     assert document["type"] == "FeatureCollection"
     # no crs member, no catalog date; the lines of ADR-012 D4
@@ -955,18 +955,19 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert meta["extra"]["version"]["label_source"] == "downloaded"
     by_source = {entry["source"]: entry for entry in meta["extra"]["catalog"]}
     assert set(by_source) == {
-        "hydro_stations",
-        "meteo_stations",
+        "imgw_hydro_stations",
+        "imgw_meteo_stations",
         "api_hydro",
         "api_meteo",
         "static",
         "hydro_details",
     }
     assert (
-        by_source["hydro_stations"]["sha256"] == hashlib.sha256(HYDRO_CSV).hexdigest()
+        by_source["imgw_hydro_stations"]["sha256"]
+        == hashlib.sha256(HYDRO_CSV).hexdigest()
     )
-    assert by_source["hydro_stations"]["url"] == HYDRO_LIST.url
-    assert by_source["hydro_stations"]["file"].startswith(
+    assert by_source["imgw_hydro_stations"]["url"] == HYDRO_LIST.url
+    assert by_source["imgw_hydro_stations"]["file"].startswith(
         "archives/versions/dane_hydrologiczne/lista_stacji_hydro/"
     )
     assert by_source["api_hydro"]["count"] == 4 and by_source["api_hydro"][
@@ -1213,7 +1214,7 @@ def test_identical_content_next_day_is_unchanged(store, data, tmp_path, monkeypa
     assert third.version.parent.name.startswith(
         (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
     )
-    assert len(list((data.root / "stations/versions").iterdir())) == 2
+    assert len(list((data.root / "stations/versions/imgw_stations").iterdir())) == 2
 
 
 def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
@@ -1227,8 +1228,8 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
     # action is missing too, but no source_missing notice is given for them.
     assert source_actions(plan) == dict.fromkeys(
         (
-            "hydro_stations",
-            "meteo_stations",
+            "imgw_hydro_stations",
+            "imgw_meteo_stations",
             "api_hydro",
             "api_meteo",
             "hydro_details",
@@ -1266,8 +1267,8 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
 
 
 SOURCE_DATASETS = {
-    "hydro_stations": "pl.imgw.hydro_stations",
-    "meteo_stations": "pl.imgw.meteo_stations",
+    "imgw_hydro_stations": "pl.imgw.hydro_stations",
+    "imgw_meteo_stations": "pl.imgw.meteo_stations",
     "api_hydro": "pl.imgw.hydro_now",
     "api_meteo": "pl.imgw.meteo_now",
 }

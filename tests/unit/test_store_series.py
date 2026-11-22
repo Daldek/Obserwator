@@ -59,7 +59,7 @@ def read_index(report):
     return json.loads(report.version.read_text(encoding="utf-8"))
 
 
-def series_versions(root, slug="hydro_daily"):
+def series_versions(root, slug="imgw_hydro_daily"):
     base = root / "series" / "versions" / slug
     return sorted(base.iterdir()) if base.exists() else []
 
@@ -94,7 +94,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
     before = tree(root), tree(data)
     plan = check_series(data, raw_root=root, dataset=HYDRO)
     assert (tree(root), tree(data)) == before
-    assert plan.series_state == {"hydro_daily": "missing"}
+    assert plan.series_state == {"imgw_hydro_daily": "missing"}
     assert [item.status for item in plan.items] == ["current"] * 3
     assert {item.local_sha256 for item in plan.items} == {
         entry.sha256 for entry in written
@@ -106,7 +106,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
 
     assert build_series(data, raw_root=root, dataset=HYDRO).status == "new"
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
 
     archive = archive_files(HYDRO, years=[2024])[0]
@@ -119,7 +119,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
         ),
     )
     outdated = check_series(data, raw_root=root, dataset=HYDRO)
-    assert outdated.series_state == {"hydro_daily": "outdated"}
+    assert outdated.series_state == {"imgw_hydro_daily": "outdated"}
     assert outdated.actions[0].status == "newer"
 
     cancelled = check_series(data, raw_root=root, dataset=HYDRO, cancel=lambda: True)
@@ -134,7 +134,7 @@ def test_daily_hydro_snapshot_covers_every_day_and_all_stations(root, data):
     assert report.status == "new" and report.stations == 2 and report.problems == ()
     assert set(report.source_files) == {entry.path for entry in written}
     version_dir = report.version.parent
-    assert version_dir.parent == data / "series/versions/hydro_daily"
+    assert version_dir.parent == data / "series/versions/imgw_hydro_daily"
 
     raw = report.version.read_bytes()
     index = json.loads(raw)
@@ -471,7 +471,7 @@ def test_second_build_is_reused_without_parquet_writer(root, data, monkeypatch):
     assert [entry.status for entry in relabeled] == ["relabeled"]
     assert build_series(data, raw_root=root, dataset=HYDRO).status == "unchanged"
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
     assert len(series_versions(data)) == 1
 
@@ -542,7 +542,7 @@ def test_reverted_input_builds_new_current_series_instead_of_reusing_old(root, d
         == third.version
     )
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
     again = build_series(data, raw_root=root, dataset=HYDRO)
     assert (again.status, again.version) == ("unchanged", third.version)
@@ -564,7 +564,7 @@ def test_alternating_input_under_dominating_label_keeps_series_current(root, dat
             == report.version
         )
         assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-            "hydro_daily": "current"
+            "imgw_hydro_daily": "current"
         }
     assert {version.parent.name[:10] for version in built} == {"2026-12-01"}
     assert built[4].read_bytes() == built[2].read_bytes() == built[0].read_bytes()

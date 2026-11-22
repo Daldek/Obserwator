@@ -3,10 +3,12 @@
 
 Every series file the panel offers, in each format, is byte for byte the file of
 `export_series` with the same options; the command line it shows for a format, run on the
-fixture root (`obserwator.run_command`), makes that very file; the hand-off of the daily
+fixture root (`obserwator.run_command`), makes that very file; each stored analysis
+downloads under the name the server gives it (Nogat DEV-19.21); the hand-off of the daily
 series to Hydrolog, saved or copied, is a `nogat-handoff/1` valid against Nogat's schema
-that holds the series' days with values; and „Pobierz listę stacji” of the panel without a
-station gives the stations of the list's provider and kind as `export_stations` makes them.
+that holds the series' days with values, saved as `obserwator_handoff_<subject>.json`; and
+„Pobierz listę stacji” of the panel without a station gives the stations of the list's
+provider and kind as `export_stations` makes them.
 """
 
 from __future__ import annotations
@@ -133,6 +135,29 @@ def test_the_command_line_shown_makes_the_same_file(
             assert made.read_bytes() == body, line
 
 
+@pytest.mark.parametrize("fmt", ["json", "csv"])
+def test_an_analysis_downloads_under_the_name_the_server_gives_it(
+    open_page: Any, stored_url: str, fmt: str
+) -> None:
+    code = FIXTURE_STATIONS["hydro"]
+    page = open_page(f"?station={code}&section=pobierz", base=stored_url)
+    item = page.locator('.acc-item[data-section="pobierz"]')
+    pattern = "api/files/analysis/" if fmt == "json" else "api/files/analyses/"
+    link = item.locator(f'table a[href*="{pattern}"]').first
+    link.wait_for(timeout=WAIT)
+    href = urllib.parse.urlsplit(link.get_attribute("href"))
+    analysis = (
+        urllib.parse.unquote(href.path.rsplit("/", 1)[1])
+        if fmt == "json"
+        else urllib.parse.parse_qs(href.query)["analysis"][0]
+    )
+
+    name, _ = download(link)
+
+    assert name == f"obserwator_analyses_{code}_{analysis}.{fmt}"
+    assert name == link.get_attribute("download")
+
+
 @pytest.mark.parametrize("code", sorted(HYDRO_DAILY))
 @pytest.mark.parametrize("how", ["file", "clipboard"])
 def test_the_hand_off_is_a_valid_nogat_hand_off_of_the_daily_series(
@@ -158,6 +183,10 @@ def test_the_hand_off_is_a_valid_nogat_hand_off_of_the_daily_series(
         with page.expect_download(timeout=WAIT) as started:
             buttons.nth(1).click()
         text = Path(started.value.path()).read_text(encoding="utf-8")
+        assert re.fullmatch(
+            r"obserwator_handoff_[a-z0-9]+(-[a-z0-9]+)*\.json",
+            started.value.suggested_filename,
+        )
     else:
         page.context.grant_permissions(["clipboard-read", "clipboard-write"])
         buttons.nth(0).click()

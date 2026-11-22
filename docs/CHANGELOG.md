@@ -175,14 +175,48 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
 
 ### Changed
 
-- **ČHMÚ is `CHMU` in every identifier, a location's source is named by its dataset, and the
-  CSV's attribution columns are `attribution` and `terms_notice` (ADR-028; the author's
-  decisions of 2026-11-21, Nogat ECO-082).** The provider `CHMI` is `CHMU`, the keys
+- **Every file Obserwator names for a user is `obserwator_<content>_<qualifiers>.<extension>`
+  (Nogat DEV-19.21, ECO-083; plan `2026-11-21-download-file-names.md` step 2).** One module,
+  `obserwator._file_names`, names the GUI's downloads and the REST attachments alike:
+
+  | File | Before | Now |
+  |---|---|---|
+  | stations (GUI, `GET /api/v1/stations/export`) | `stations_imgw-pib_meteo.csv`, REST `stations.<format>` whatever the filters | `obserwator_stations_imgw_meteo.csv`, `obserwator_stations.geojson` (the provider by its national acronym, `imgw`, `chmu`) |
+  | a series (GUI, `GET /api/v1/series/export`) | `252170380_meteo_precip_daily.csv`, REST `<station>.<format>` | `obserwator_series_pl.imgw.meteo_precip_daily_252170380.csv` (the dataset's key, also of a `version`) |
+  | a station's analyses (GUI, `GET /api/v1/analyses/export`) | `252170380_analyses.csv` | `obserwator_analyses_252170380.csv` |
+  | one analysis (GUI) | `149190310_flood_frequency.Q.json` | `obserwator_analyses_149190310_flood_frequency.Q.json`; the page takes the name from `api/downloads/{code}` (`analyses.each`) |
+  | PMAXTP (GUI) | `pmaxtp_POT_52.4142_17.4586.csv` | `obserwator_pmaxtp_POT_52.4142_17.4586.csv` |
+  | climate stripes (GUI) | `climate-stripes-<code>-<first>-<last>[-axis]`, in Polish `paski-klimatyczne-…[-os]` | `obserwator_climate-stripes_<code>_<first>_<last>[_axis]`, one name in both languages |
+  | hand-off (GUI) | `Stróża (Raba) — Q, wartości dobowe.handoff.json` | `obserwator_handoff_stroza-raba-q-wartosci-dobowe.json` |
+  | admin statistics (GUI) | `obserwator-stats-<first>-<last>.csv` | `obserwator_stats_<first>_<last>.csv` |
+
+  The last two come from Nogat's kit 1.1.0, copied byte for byte from Nogat `998d05e`
+  (`nogat-handoff.js`, `nogat-admin.js`, `nogat-kit.json`). Unchanged: a unit of `store
+  export` keeps its name in the raw root (DEV-19.5), the guides stay `AGENTS.md` and
+  `llms.txt`, and `--output` is the caller's name. The OpenAPI document names each stream's
+  `Content-Disposition`. **Migration:** a script that relied on REST's `<station>.csv` or
+  `stations.csv` names its own file with `curl -o`, or reads the new name with `curl -OJ`.
+
+- **ČHMÚ is `CHMU` and IMGW-PIB `IMGW` in every identifier, every slug and store directory of
+  a provider starts with its acronym, a location's source is named by its dataset, and the
+  CSV's attribution columns are `attribution` and `terms_notice` (ADR-028 and its errata; the
+  author's decisions of 2026-11-21, Nogat ECO-082).** The provider `CHMI` is `CHMU`, the keys
   `cz.chmi.*` are `cz.chmu.*` with the slugs `chmu_*` and the data root's directories
   `series/versions/chmu_*`, `stations/versions/chmu_stations` and `analyses/versions/cz.chmu`,
   the content form `chmi-json/1` is `chmu-json/1`, the modules are `_parsing/chmu.py` and
   `messages/chmu.py`, and the regulamin's block is `chmu` (Nogat's kit 1.1.0, copied byte for
-  byte from Nogat `c2507fa`); texts for people keep „ČHMÚ” and the provider's addresses stay.
+  byte from Nogat `c2507fa`). The provider `IMGW-PIB` is `IMGW` (`--provider IMGW`, the REST
+  and MCP values, the `provider` of every sidecar, catalog, series, analyses record, stations
+  export and hand-off written, the hand-off's `provenance.series.source` `imgw`, the keys of
+  `[obserwator.instance.providers]` and `featured_provider`); its keys `pl.imgw.*` stay, and
+  so does the license identifier `IMGW-PIB`, the name of its terms of use. Its slugs gain
+  `imgw_` (`hydro_daily` → `imgw_hydro_daily`, `pmaxtp` → `imgw_pmaxtp`, every `pl.imgw.*`
+  slug), so its series lie in `series/versions/imgw_*` beside `chmu_*` and its catalog moves
+  from `stations/versions` itself into `stations/versions/imgw_stations` beside
+  `chmu_stations`; the keys of `series_state`, the catalog's sources `imgw_hydro_stations` and
+  `imgw_meteo_stations` and the series files handed to Hydrolog follow, while the slots
+  (`series:<key>`, `catalog:pl.imgw.stations`) and the legacy aliases (`hydro/dobowe`) stay.
+  Texts for people keep „IMGW-PIB” and „ČHMÚ”, and the providers' addresses stay.
   `location_source` is the key of the dataset whose file gave the point: `api_hydro` →
   `pl.imgw.hydro_now`, `api_meteo` → `pl.imgw.meteo_now`, `chmi_hydro_now` and
   `chmi_hydro_meta3` → `cz.chmu.hydro_now`, `chmi_hydro_stations` → `cz.chmu.hydro_stations`,
@@ -190,14 +224,19 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `static` and `user` stay, and the catalog's `sources` keep naming the file. The CSV of a
   series, of the stations and of an analysis drops `attribution_source` and
   `attribution_processed`, which repeated the first two cells of `attribution`. Every schema
-  stays `/1`, and no input takes an old name. **Migration:** say `CHMU`, `cz.chmu.*` and the
-  new `location_source` values, and read the lines from `attribution`. A data root built by
-  3.0.x or by an earlier `3.1.0.dev0` is built again into a new data root from its raw root,
-  which stays as it is: its sidecars keep `cz.chmi.*`, `CHMI` and `chmi-json/1` and are read
-  under the new names (`Meta.dataset` raw, `Meta.dataset_key` and `Meta.provider` current).
-  `obserwator series build --root DATA --raw-root RAW --dataset <key>` for every dataset of
-  the series, `obserwator store catalog --root DATA --raw-root RAW --provider IMGW-PIB` and
-  `--provider CHMU`, then `obserwator analyses build --root DATA`.
+  stays `/1`, and no input takes an old name, an old slug (`hydro_daily`) included.
+  **Migration:** say `IMGW` and `CHMU`, `cz.chmu.*`, the slugs `imgw_*` and the new
+  `location_source` values, and read the lines from `attribution`; an operator's `nogat.toml`
+  names `IMGW` instead of `IMGW-PIB` in `[obserwator.instance.providers]` and
+  `featured_provider` (an instance naming `IMGW-PIB` does not start). A data root built by
+  3.0.x or by a `3.1.0.dev0` before this change holds its series and catalogs where this
+  version does not read them (`series/versions/hydro_daily`, `stations/versions/<label>`, the
+  `chmi` directories): it is built again into a new data root from its raw root, which stays
+  as it is: its sidecars keep `cz.chmi.*`, `CHMI`, `IMGW-PIB` and `chmi-json/1` and are read
+  under the new names (`Meta.dataset` raw, `Meta.dataset_key` and `Meta.provider` current),
+  and it records no slug. `obserwator series build --root DATA --raw-root RAW --dataset <key>`
+  for every dataset of the series, `obserwator store catalog --root DATA --raw-root RAW
+  --provider IMGW` and `--provider CHMU`, then `obserwator analyses build --root DATA`.
 
 - **GUI: one symbol per kind of station for every provider, and the legend of „Stacje”
   (ADR-025 and ADR-013 errata of 2026-11-21, the author's decision).** No provider has a

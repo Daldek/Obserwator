@@ -1303,7 +1303,7 @@
       "producer_version": "3.0.0",
       "dataset": "pl.imgw.hydro_daily",
       "country": "PL",
-      "provider": "IMGW-PIB",
+      "provider": "IMGW",
       "request": {
         "server_path": "dane_hydrologiczne/dobowe/2024/codz_2024.zip",
         "year": 2024,
@@ -1441,7 +1441,7 @@
         }
       ],
       "series_state": {
-        "hydro_daily": "outdated"
+        "imgw_hydro_daily": "outdated"
       },
       "actions": []
     },

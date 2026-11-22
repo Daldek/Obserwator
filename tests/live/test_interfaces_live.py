@@ -365,7 +365,7 @@ FAILURES: dict[str, Failure] = {
     "missing_series_version": Failure(
         "series read",
         {
-            "version": "series/versions/hydro_daily/2000-01-01_00000000/series.json",
+            "version": "series/versions/imgw_hydro_daily/2000-01-01_00000000/series.json",
             "station": STATION,
         },
         "not_found",

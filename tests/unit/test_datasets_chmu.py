@@ -43,7 +43,7 @@ CHMU_KEYS = [
 def test_providers_follow_the_registry_table():
     imgw, chmu = providers()
     assert (imgw.id, imgw.short_name, imgw.country, imgw.key_prefix) == (
-        "IMGW-PIB",
+        "IMGW",
         "IMGW-PIB",
         "PL",
         "pl.imgw",
@@ -90,7 +90,7 @@ def test_providers_follow_the_registry_table():
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
-    chmu, imgw = get_provider("CHMU"), get_provider("IMGW-PIB")
+    chmu, imgw = get_provider("CHMU"), get_provider("IMGW")
     source, processed_line = attribution("chmu").attribution
 
     notice = chmu.license_notice()
@@ -115,12 +115,12 @@ def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked
 
 def test_provider_lookup_by_id_or_key_prefix():
     assert get_provider("cz.chmu") is get_provider("CHMU")
-    assert get_provider("pl.imgw") is get_provider("IMGW-PIB")
+    assert get_provider("pl.imgw") is get_provider("IMGW")
     for unknown in ("ČHMÚ", "chmu", "sk.shmu", None):
         with pytest.raises(ObserwatorValidationError) as error:
             get_provider(unknown)
         assert error.value.details["option"] == "provider"
-        assert error.value.details["allowed"] == ["IMGW-PIB", "CHMU"]
+        assert error.value.details["allowed"] == ["IMGW", "CHMU"]
 
 
 def test_registry_invariants_across_providers():
@@ -168,7 +168,7 @@ def test_registry_invariants_across_providers():
     # hydro.imgw.pl's station pages below its backend (ADR-021) and the warning
     # archives below the published files (ADR-023).
     assert roots == {
-        "IMGW-PIB": {
+        "IMGW": {
             "dane_hydrologiczne",
             "dane_meteorologiczne",
             "dane_aktynometryczne",
@@ -402,13 +402,13 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
-        elif item.update_signal == "listing" and item.provider == "IMGW-PIB":
+        elif item.update_signal == "listing" and item.provider == "IMGW":
             # Files named in the folder index: one in a range folder, the summary.
             files += [
                 _indexed_file(item, "Kłodzko/Źródłowe/1991-1992/Klodzko1991-1992.xls"),
                 _indexed_file(item, "Promieniowanie słoneczne_zakres danych.xlsx"),
             ]
-        elif item.archive_scope == "station_year" and item.provider == "IMGW-PIB":
+        elif item.archive_scope == "station_year" and item.provider == "IMGW":
             # A station's file per folder, and the monthly files from 2001.
             years = [item.first_year or 1966, 1995, 2000, 2001, 2024]
             files += archive_files(
@@ -501,7 +501,7 @@ def test_new_fields_have_defaults_so_3_0_constructors_still_work():
         False,
     )
     assert (license_.terms_url, archive.station_code) == (None, None)
-    assert (descriptor.provider, descriptor.archive_scope) == ("IMGW-PIB", "country")
+    assert (descriptor.provider, descriptor.archive_scope) == ("IMGW", "country")
     assert (descriptor.variable_notes, descriptor.measurement_fields) == ({}, ())
     assert (descriptor.content_form, descriptor.volatile_fields) == (None, ())
     assert get_dataset("chmu_meteo_daily").key == METEO

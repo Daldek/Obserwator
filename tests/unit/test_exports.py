@@ -288,7 +288,7 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
     unlocated = {
         f["properties"]["provider"] for f in document["features"] if not f["geometry"]
     }
-    assert unlocated == {"IMGW-PIB", "CHMU"}
+    assert unlocated == {"IMGW", "CHMU"}
     imgw, chmu = attribution("imgw", "gugik"), attribution("chmu", "cuzk")
     assert {key: document[key] for key in ("attribution", "terms_notice")} == (
         imgw | chmu
@@ -307,7 +307,7 @@ def test_stations_of_both_providers_are_one_geojson_of_rfc_7946_and_its_schema(
             terms,
         )
         for provider, key, license_id, terms in (
-            ("IMGW-PIB", "pl.imgw.stations", "IMGW-PIB", list(imgw.terms_notice)),
+            ("IMGW", "pl.imgw.stations", "IMGW-PIB", list(imgw.terms_notice)),
             ("CHMU", "cz.chmu.stations", "CC-BY-4.0", None),
         )
     ]
@@ -387,7 +387,7 @@ def test_the_csv_has_the_rows_of_the_geojson_and_each_provider_its_lines(
             thresholds
         )
     for provider, origins in (
-        ("IMGW-PIB", ("imgw", "gugik")),
+        ("IMGW", ("imgw", "gugik")),
         ("CHMU", ("chmu", "cuzk")),
     ):
         block = [row for row in rows if row["provider"] == provider]
@@ -409,7 +409,7 @@ def test_kind_provider_and_series_narrow_what_is_read(fixture_root):
     assert {get_dataset(item["dataset"]).kind for item in hydro["series"]} == {"hydro"}
     assert [entry["stations"] for entry in hydro["catalogs"]] == [
         len([f for f in hydro["features"] if f["properties"]["provider"] == provider])
-        for provider in ("IMGW-PIB", "CHMU")
+        for provider in ("IMGW", "CHMU")
     ]
     assert {f["properties"]["provider"] for f in chmu["features"]} == {"CHMU"}
     assert "series" not in chmu and "terms_notice" not in chmu

@@ -1,8 +1,9 @@
-"""Contract of the binary export (ADR-014): Parquet is one file in Python, CLI, MCP and REST.
+"""Contract of the exports' files (ADR-014, Nogat DEV-19.21).
 
-Python, ``obserwator`` and the stdio MCP server write the same bytes with ``output``,
-REST answers them as an attachment; without ``output`` the call is the same
-``validation_error`` in every interface, MCP over HTTP included.
+Parquet is one file in Python, CLI, MCP and REST: Python, ``obserwator`` and the stdio
+MCP server write the same bytes with ``output``, REST answers them as an attachment;
+without ``output`` the call is the same ``validation_error`` in every interface, MCP over
+HTTP included. REST names an attachment as the GUI names the same file.
 """
 
 import importlib.util
@@ -13,7 +14,8 @@ import anyio
 import pytest
 
 from obserwator import ObserwatorValidationError, run_command
-from tests.contract.support import ANYWHERE
+from obserwator.store import current_version
+from tests.contract.support import ANYWHERE, BEZ_Q, DAILY, RABA
 
 MCP = importlib.util.find_spec("mcp") is not None
 METEO, STATION = "cz.chmu.meteo_daily", "0-203-0-90001"
@@ -90,7 +92,7 @@ def test_parquet_is_one_file_in_python_cli_mcp_and_a_rest_attachment(
     assert answered.content == data
     assert answered.headers["content-type"] == "application/vnd.apache.parquet"
     assert answered.headers["content-disposition"] == (
-        f'attachment; filename="{STATION}.parquet"'
+        f'attachment; filename="obserwator_series_{METEO}_{STATION}.parquet"'
     )
     assert answered.headers["x-obserwator-status"] == python.status == "ok"
     assert json.loads(answered.headers["x-obserwator-attribution"]) == list(
@@ -134,3 +136,61 @@ def test_parquet_without_output_is_one_validation_error_everywhere(fixture_root,
                 "validation_error",
                 REFUSAL,
             )
+
+
+SERIES_VERSION = object()  # the query's version: the served root's hydro_daily series
+
+
+@pytest.mark.parametrize(
+    ("command", "query", "name"),
+    [
+        (
+            "series export",
+            {"dataset": DAILY, "station": RABA},
+            f"obserwator_series_{DAILY}_{RABA}.csv",
+        ),
+        (
+            "series export",
+            {"dataset": "imgw_hydro_daily", "station": RABA, "format": "json"},
+            f"obserwator_series_{DAILY}_{RABA}.json",
+        ),
+        (
+            "series export",
+            {"version": SERIES_VERSION, "station": RABA},
+            f"obserwator_series_{DAILY}_{RABA}.csv",
+        ),
+        ("stations export", {}, "obserwator_stations.geojson"),
+        (
+            "stations export",
+            {"provider": "IMGW", "kind": "hydro", "format": "csv"},
+            "obserwator_stations_imgw_hydro.csv",
+        ),
+        (
+            "stations export",
+            {"provider": "CHMU"},
+            "obserwator_stations_chmu.geojson",
+        ),
+        (
+            "stations export",
+            {"kind": "meteo", "format": "csv"},
+            "obserwator_stations_meteo.csv",
+        ),
+        ("analyses export", {"station": BEZ_Q}, f"obserwator_analyses_{BEZ_Q}.json"),
+        (
+            "analyses export",
+            {"station": RABA, "format": "csv"},
+            f"obserwator_analyses_{RABA}.csv",
+        ),
+    ],
+)
+def test_rest_names_an_attachment_by_its_tool_content_and_qualifiers(
+    rest, served, served_root, command, query, name
+):
+    if query.get("version") is SERIES_VERSION:
+        entry = current_version(served_root, slot=f"series:{DAILY}")
+        query = {**query, "version": entry.version.relative_to(served_root).as_posix()}
+
+    answered = rest.get(f"/api/v1/{command.replace(' ', '/')}", params=query)
+
+    assert answered.status_code == 200, answered.text
+    assert answered.headers["content-disposition"] == f'attachment; filename="{name}"'

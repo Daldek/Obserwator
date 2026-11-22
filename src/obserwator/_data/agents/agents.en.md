@@ -39,7 +39,7 @@ An error has a code from a closed registry, the same in Python, the CLI, REST (p
 
 ## Datasets
 
-A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
 
 <!-- obserwator:datasets -->
 
@@ -64,7 +64,7 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 
 ## What not to do
 
-1. Do not build or crawl IMGW-PIB and ČHMÚ server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
+1. Do not build or crawl the providers' server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.

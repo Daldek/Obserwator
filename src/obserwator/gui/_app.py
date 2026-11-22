@@ -42,6 +42,12 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
 from obserwator._borders import CZECHIA, POLAND
+from obserwator._file_names import (
+    analyses_file_name,
+    pmaxtp_file_name,
+    series_file_name,
+    stations_file_name,
+)
 from obserwator._http_headers import security_headers
 from obserwator.attribution import (
     ORIGINS,
@@ -129,10 +135,10 @@ ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
-CURRENT_PROVIDER = "IMGW-PIB"
+CURRENT_PROVIDER = "IMGW"
 """The provider of the current measurements view: the only live data the GUI serves."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
-    "IMGW-PIB": ("imgw", "imgw_hydro"),
+    "IMGW": ("imgw", "imgw_hydro"),
     "CHMU": ("chmu",),
 }
 """The origins of each provider's data (``obserwator.attribution``), dropped when an
@@ -404,16 +410,12 @@ def _station_origins(
     carries them (``details_source``, ADR-021).
     """
     lines = attribution(provider_origin(provider))
-    if (
-        details
-        and provider == "IMGW-PIB"
-        and properties.get("details_source") is not None
-    ):
+    if details and provider == "IMGW" and properties.get("details_source") is not None:
         lines = lines | attribution("imgw_hydro")
     if not location:
         return lines
     lines = lines | attribution(border_origin(provider))
-    if provider == "IMGW-PIB" and properties.get("location_source") == "static":
+    if provider == "IMGW" and properties.get("location_source") == "static":
         lines = lines | attribution("imgw_hydro")
     return lines
 
@@ -730,15 +732,10 @@ async def analysis_file(request: Request) -> Response:
     return attachment(
         request,
         dumps(result, indent=2),
-        filename=f"{code}_{name}.json",
+        filename=analyses_file_name(code, name, "json"),
         media_type="application/json",
         etag=_etag(request, etag),
     )
-
-
-def _analyses_name(code: str, analysis: str | None, fmt: str) -> str:
-    """The name of a station's stored analyses file: ``<code>_analyses.<format>``."""
-    return f"{code}_{analysis or 'analyses'}.{fmt}"
 
 
 @_route
@@ -789,7 +786,7 @@ async def analyses_file(request: Request) -> Response:
     return attachment(
         request,
         body,
-        filename=_analyses_name(code, name, fmt),
+        filename=analyses_file_name(code, name, fmt),
         media_type="text/csv" if fmt == "csv" else "application/json",
         etag=etag,
     )
@@ -828,7 +825,7 @@ async def current(request: Request) -> Response:
     if unchanged is not None:
         return unchanged
     document = {
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
         "hydro": _inside(request, hydro_points(snaps["states"], snaps["hydro"])),
         "meteo": _inside(request, meteo_points(snaps["meteo"])),
@@ -845,7 +842,7 @@ async def current_station(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     feature = snapshot.features[code]
-    if feature.provider != "IMGW-PIB":
+    if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
             message("gui.errors.no_current_chmu"),
@@ -880,7 +877,7 @@ async def current_station(request: Request) -> Response:
     document: dict[str, Any] = {
         "station": code,
         "kind": kind,
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
         "record": main.items.get(code),
         **(
@@ -991,7 +988,7 @@ async def pmaxtp_file(request: Request) -> Response:
     document = await _thread(
         lambda: _gui(request).pmaxtp.get(method, latitude, longitude)
     )
-    stem = f"pmaxtp_{method}_{latitude:.4f}_{longitude:.4f}"
+    name = pmaxtp_file_name(method, latitude, longitude, fmt)
     if fmt == "json":
         body = dumps(
             {
@@ -1023,7 +1020,7 @@ async def pmaxtp_file(request: Request) -> Response:
     else:
         body = pmaxtp_csv(document).encode("utf-8")
     _gui(request).traffic.count("downloads")
-    return attachment(request, body, filename=f"{stem}.{fmt}", media_type=SEXT[fmt])
+    return attachment(request, body, filename=name, media_type=SEXT[fmt])
 
 
 # --- files and command lines -------------------------------------------------------------
@@ -1049,11 +1046,6 @@ def _shown_command(command: str, options: Mapping[str, Any]) -> str:
     return shlex.join(shown)
 
 
-def _series_name(dataset: str, code: str, fmt: str) -> str:
-    """The name of a station's series file: ``<code>_<dataset slug>.<format>``."""
-    return f"{code}_{get_dataset(dataset).slug}.{fmt}"
-
-
 @_route
 async def downloads(request: Request) -> Response:
     """The files of a station: its series and stored analyses in each format, with commands."""
@@ -1067,7 +1059,7 @@ async def downloads(request: Request) -> Response:
         descriptor = get_dataset(dataset)
         formats = {}
         for fmt in SERIES_FORMATS:
-            name = _series_name(dataset, code, fmt)
+            name = series_file_name(dataset, code, fmt)
             options = {"dataset": dataset, "station": code, "output": name}
             formats[fmt] = {
                 "file": name,
@@ -1096,7 +1088,7 @@ async def downloads(request: Request) -> Response:
     if stored:
         formats = {}
         for fmt in ANALYSES_FORMATS:
-            name = _analyses_name(code, None, fmt)
+            name = analyses_file_name(code, None, fmt)
             formats[fmt] = {
                 "file": name,
                 "url": f"api/files/analyses/{code}?format={fmt}",
@@ -1111,6 +1103,14 @@ async def downloads(request: Request) -> Response:
             "computed_at": stored[0].get("computed_at"),
             "count": len(stored),
             "formats": formats,
+            # The name of each analysis's own files (JSON, CSV), which the page offers.
+            "each": {
+                item["analysis"]: {
+                    fmt: analyses_file_name(code, item["analysis"], fmt)
+                    for fmt in ANALYSES_FORMATS
+                }
+                for item in stored
+            },
             "attribution": stored[0].get("attribution", []),
             "terms_notice": stored[0].get("terms_notice", []),
         }
@@ -1137,7 +1137,7 @@ async def series_file(request: Request) -> Response:
     code = _held(request, snapshot, dataset)
     fmt = params.choice(query.get("format"), "format", SERIES_FORMATS, "csv")
     state = _gui(request)
-    name = _series_name(dataset, code, fmt)
+    name = series_file_name(dataset, code, fmt)
     etag = _etag(request, "file", snapshot.series[dataset].version.sha256, code, fmt)
     unchanged = not_modified(request, etag)
     if unchanged is not None:
@@ -1204,12 +1204,6 @@ def _stations_of(
     return chosen
 
 
-def _stations_name(provider: str | None, kind: str | None, fmt: str) -> str:
-    """The name of a stations file: ``stations[_<provider>][_<kind>].<format>``."""
-    parts = ["stations", *(part for part in (provider, kind) if part)]
-    return f"{'_'.join(parts).lower()}.{fmt}"
-
-
 @_route
 async def stations_downloads(request: Request) -> Response:
     """The stations of the current catalogs as files: each format, its command line."""
@@ -1228,7 +1222,7 @@ async def stations_downloads(request: Request) -> Response:
     }
     formats = {}
     for fmt in STATIONS_FORMATS:
-        name = _stations_name(provider, kind, fmt)
+        name = stations_file_name(provider, kind, fmt)
         options = {**selection, "output": name}
         formats[fmt] = {
             "file": name,
@@ -1283,7 +1277,7 @@ async def stations_file(request: Request) -> Response:
     return attachment(
         request,
         body,
-        filename=_stations_name(provider, kind, fmt),
+        filename=stations_file_name(provider, kind, fmt),
         media_type=SEXT[fmt],
         etag=etag,
     )

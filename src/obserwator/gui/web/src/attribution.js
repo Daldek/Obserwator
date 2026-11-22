@@ -110,10 +110,10 @@ export function merge(texts, sets) {
 }
 
 /** The origin of a provider's catalog and archives (obserwator.attribution.provider_origin). */
-const PROVIDER_ORIGINS = { "IMGW-PIB": "imgw", CHMU: "chmu" };
+const PROVIDER_ORIGINS = { IMGW: "imgw", CHMU: "chmu" };
 /** The origin of the packaged border a provider's catalog was checked against
  * (obserwator.attribution.border_origin, ADR-018). */
-const BORDER_ORIGINS = { "IMGW-PIB": "gugik", CHMU: "cuzk" };
+const BORDER_ORIGINS = { IMGW: "gugik", CHMU: "cuzk" };
 /** The origins of the packaged borders, PRG of GUGiK and RÚIAN of ČÚZK, while the map draws
  * them as its background. */
 export const BORDER_SOURCES = ["gugik", "cuzk"];

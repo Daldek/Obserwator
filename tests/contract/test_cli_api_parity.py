@@ -249,7 +249,7 @@ def test_two_obserwator_processes_building_one_series_publish_it_once(
     raw, root = tmp_path / "raw", tmp_path / "data"
     shutil.copytree(fixture_raw_root, raw)
     shutil.copytree(fixture_root, root)
-    slot = root / "series" / "versions" / "meteo_precip_daily"
+    slot = root / "series" / "versions" / "imgw_meteo_precip_daily"
     before = {path.name for path in slot.iterdir()}
     read = stamps(raw)
 

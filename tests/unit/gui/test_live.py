@@ -59,7 +59,7 @@ def report(index: str, name: str) -> SimpleNamespace:
     )
 
 
-def test_a_snapshot_is_asked_of_imgw_pib_at_most_once_in_ten_minutes(live):
+def test_a_snapshot_is_asked_of_imgw_at_most_once_in_ten_minutes(live):
     clock = Clock()
     source = Source(live.records["states"])
     current = CurrentData({"states": source}, clock=clock, start=inline)
@@ -112,7 +112,7 @@ def test_a_source_that_never_answered_has_no_items_and_its_error(live):
     assert snapshot.error is live.outage
 
 
-def test_requests_at_the_same_time_ask_imgw_pib_once(live):
+def test_requests_at_the_same_time_ask_imgw_once(live):
     release = threading.Event()
     source = Source(live.records["meteo"])
 

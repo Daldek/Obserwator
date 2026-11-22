@@ -210,8 +210,7 @@ EXPECTED: dict[tuple[str, int], Callable[[Mapping[str, Any]], bool]] = {
         and d["result"][0]["latitude"] is not None
     ),
     ("store info", 0): lambda d: (
-        [provider["id"] for provider in d["result"]["providers"]]
-        == ["IMGW-PIB", "CHMU"]
+        [provider["id"] for provider in d["result"]["providers"]] == ["IMGW", "CHMU"]
     ),
     ("store check", 0): lambda d: (
         _statuses(d) == ["current", "current", "unverifiable"]
