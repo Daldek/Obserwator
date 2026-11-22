@@ -1,9 +1,8 @@
 # Copies of the Nogat standard
 
-Verbatim copies (ERR-3, AGI-4.1) of the files below, from the standard 1.1 of the
-[Nogat](https://github.com/Daldek/Nogat) repository, branch `develop` at the commits
-named below (the tag `std-1.1` does not exist yet; refresh the copies from `std-1.1`
-at the tag when it does):
+Verbatim copies (ERR-3, AGI-4.1) of the files below, from the standard 1.1 (tag
+`std-1.1`) of the [Nogat](https://github.com/Daldek/Nogat) repository, copied at the
+commits named below:
 
 - `error_registry.json` (Nogat `standards/error_registry.json`), copied again from
   Nogat commit `975136e` (standard 1.1, which changes only its `standard_version`):

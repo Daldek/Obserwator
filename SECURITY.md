@@ -21,8 +21,10 @@ Obserwator downloads public data from IMGW-PIB and ČHMÚ and writes it to local
 versioned store. Reports about the following are in scope:
 
 - the REST server (`obserwator server`, `/api/v1`), including the store write routes and
-  their token (`OBSERWATOR_STORE_WRITES_ENABLED`, `OBSERWATOR_STORE_WRITE_TOKEN`, header
-  `X-API-Key`) and the file of the REST API keys of `obserwator admin` (`api_keys.json`);
+  their token (`OBSERWATOR_STORE_WRITES_ENABLED`, `OBSERWATOR_STORE_WRITE_TOKEN` or the
+  file named by `OBSERWATOR_STORE_WRITE_TOKEN_FILE`, header `X-API-Key`), its
+  cross-origin rule (`OBSERWATOR_CORS_ORIGINS`) and the file of the REST API keys of
+  `obserwator admin` (`api_keys.json`; deprecated, removed in v4.0.0);
 - the web GUI, its own server (`obserwator gui serve`): its private API under `api/`,
   including the computations on request that run Hydrolog's program; its rate limit per
   client address (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`, `429` with
@@ -87,6 +89,11 @@ browser.
   `Content-Security-Policy: sandbox; default-src 'none'` and `nosniff`; the regulamin is
   Markdown rendered with raw HTML escaped and links only to `https`, `http`, `mailto`,
   `#` or a field; the page's own CSP allows its origin and the basemap's only.
+- *A page of another origin reads the API with a visitor's browser*: the REST server
+  allows cross-origin requests only from the origins of `OBSERWATOR_CORS_ORIGINS` (none
+  when unset), never with credentials; both servers send `X-Content-Type-Options:
+  nosniff`, `Referrer-Policy: no-referrer` and a `Permissions-Policy` that denies every
+  browser feature no page uses.
 - *Overload*: the rate limit per client address of the GUI (`OBSERWATOR_REQUEST_LIMIT`),
   the page size limit of REST lists, the readers' limit of the GUI.
 
