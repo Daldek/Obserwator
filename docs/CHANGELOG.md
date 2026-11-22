@@ -346,6 +346,11 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   overflowed the bar by 5 px and was cut by the screen's edge (ANNOPOL on an iPhone 13); the
   button now shrinks to what the bar leaves, cuts the name with an ellipsis and names it
   whole in its `title`.
+- **The copies of Nogat's standard 1.1** (DEV-15.6; Nogat's release set candidate-11):
+  `schemas/nogat/error_registry.json` from Nogat `975136e`, whose registry changes only its
+  `standard_version` to 1.1, and `schemas/nogat/handoff-1.schema.json` from Nogat `c47c42e`,
+  whose example records the result of Hydrolog 0.9.0, both byte for byte; the codes, exit
+  codes and the hand-off Obserwator writes are unchanged.
 
 ### Deprecated
 
