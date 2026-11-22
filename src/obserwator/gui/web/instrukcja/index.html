@@ -864,7 +864,7 @@
   </dl>
 
   <h3 id="lista-stacji">Lista stacji: „Pobierz listę stacji”</h3>
-  <p>Gdy żadna stacja nie jest wybrana, panel „Stacja” (na telefonie jego arkusz) ma kartę „Pobierz listę stacji”: stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez współrzędnych. Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i „tylko czynne” go nie zawężają. Karta podaje, ile stacji ma plik, a pod przyciskami są „GeoJSON z wiersza poleceń”, „CSV z wiersza poleceń”, licencje i wiersze dostawców. Nazwy plików: <code>stations.geojson</code>, a z filtrami np. <code>stations_imgw-pib_hydro.csv</code>.</p>
+  <p>Gdy żadna stacja nie jest wybrana, panel „Stacja” (na telefonie jego arkusz) ma kartę „Pobierz listę stacji”: stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez współrzędnych. Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i „tylko czynne” go nie zawężają. Karta podaje, ile stacji ma plik, a pod przyciskami są „GeoJSON z wiersza poleceń”, „CSV z wiersza poleceń”, licencje i wiersze dostawców. Nazwy plików: <code>stations.geojson</code>, a z filtrami np. <code>stations_imgw_hydro.csv</code>.</p>
   <dl class="defs">
     <div><dt>GeoJSON</dt><dd>Dokument <code>obserwator-stations-export/1</code>: FeatureCollection z odczytanymi katalogami, szeregami, w których jest każda stacja, i wierszami dostawców. Właściwości stacji: kod (<code>station_code</code>), nazwa, rodzaj, dostawca, rzeka, wysokość, źródło położenia i inne pola katalogu.</dd></div>
     <div><dt>CSV</dt><dd>UTF-8, przecinek jako separator, kropka dziesiętna; wiersz na stację z jej właściwościami z katalogu, współrzędnymi (<code>latitude</code>, <code>longitude</code>), zbiorami (<code>datasets</code>, rozdzielone średnikiem) i wierszami dostawców.</dd></div>
@@ -894,7 +894,7 @@
   <pre class="cmd cli-line"><code>obserwator series export --dataset pl.imgw.hydro_daily --station 149190310 --variables Q --start 2024-01-01 --end 2024-01-31 --output 149190310_Q_2024-01.csv</code></pre>
   <p>Lista stacji wszystkich katalogów jako GeoJSON i stacje hydrologiczne IMGW-PIB jako CSV:</p>
   <pre class="cmd cli-line"><code>obserwator stations export --output stations.geojson</code></pre>
-  <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW-PIB --kind hydro --format csv --output stations_imgw-pib_hydro.csv</code></pre>
+  <pre class="cmd cli-line"><code>obserwator stations export --provider IMGW --kind hydro --format csv --output stations_imgw_hydro.csv</code></pre>
   <p>Zapisane analizy stacji jako CSV:</p>
   <pre class="cmd cli-line"><code>obserwator analyses export --station 149190310 --format csv --output 149190310_analyses.csv</code></pre>
   <p>Każde polecenie wypisuje też wiersze dostawcy i jego warunki, a <code>--help</code> opisuje wszystkie opcje.</p>
@@ -913,7 +913,7 @@ tabela = pq.read_table("149190310_hydro_daily.parquet")
 print(json.loads(tabela.schema.metadata[b"attribution"]))   # wiersze dostawcy
 szereg = tabela.to_pandas()
 
-stacje = pd.read_csv("stations_imgw-pib_hydro.csv", dtype={"station_code": str})</code></pre>
+stacje = pd.read_csv("stations_imgw_hydro.csv", dtype={"station_code": str})</code></pre>
   <p>R (bez dodatkowych pakietów dla CSV; Parquet czyta pakiet arrow):</p>
   <pre class="cmd"><code>szereg &lt;- read.csv("149190310_hydro_daily.csv", check.names = FALSE, fileEncoding = "UTF-8")
 szereg$date &lt;- as.Date(szereg$date)

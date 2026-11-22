@@ -48,7 +48,7 @@ _RABA_ITEM = {
     "station_code": "149190310",
     "name": "Raba Górna",
     "river": "Raba",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
 }
 _ANALYSES_VERSION = "analyses/versions/pl.imgw/2026-11-13_5d1e0a27/analyses.json"
 _RABA_ANALYSIS = {
@@ -100,7 +100,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                     "title": "Daily hydrological data",
                     "variables": {"H": "cm", "Q": "m3/s", "T": "degC"},
                     "first_year": 1951,
-                    "provider": "IMGW-PIB",
+                    "provider": "IMGW",
                 },
                 "obserwator-dataset/1",
             ),
@@ -192,7 +192,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             "obserwator datasets providers --json",
             _page(
                 {
-                    "id": "IMGW-PIB",
+                    "id": "IMGW",
                     "country": "PL",
                     "key_prefix": "pl.imgw",
                     "license": {"id": "IMGW-PIB"},
@@ -543,7 +543,7 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
                 "hydrolog_version": "1.0.0",
                 "providers": [
                     {
-                        "provider": "IMGW-PIB",
+                        "provider": "IMGW",
                         "status": "new",
                         "version": _ANALYSES_VERSION,
                         "stations": 2,

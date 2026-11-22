@@ -686,7 +686,7 @@ def sync_pmaxtp(
         "producer_version": __version__,
         "dataset": PMAXTP_DATASET,
         "country": "PL",
-        "provider": "IMGW-PIB",
+        "provider": _provider().id,
         "request": {
             "method": method,
             "ind_x": cell[0],

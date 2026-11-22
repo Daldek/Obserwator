@@ -89,7 +89,7 @@ pmaxtp = "off"
 terms = "regulamin.md"
 
 [obserwator.instance.providers]
-IMGW-PIB = "off"
+IMGW = "off"
 """
 HIDDEN_INSTANCE = """[obserwator.instance]
 featured_provider = "CHMU"
@@ -98,7 +98,7 @@ area = "area.geojson"
 area_mode = "focus"
 
 [obserwator.instance.providers]
-IMGW-PIB = "hidden"
+IMGW = "hidden"
 """
 FEATURED_OTHERS_OPACITY = 0.25
 """The opacity of the other providers' stations in `FEATURED_INSTANCE`."""

@@ -101,7 +101,7 @@ def test_gui_serve_answers_until_sigterm_logs_and_ends_with_exit_code_0(
     printed = [start] + [json.loads(line) for line in list(lines.queue)]
 
     assert status == 200
-    assert set(session["root"]["catalogs"]) == {"IMGW-PIB", "CHMU"}
+    assert set(session["root"]["catalogs"]) == {"IMGW", "CHMU"}
     assert code == 0
     # Standard output and error: the lifecycle records only (Nogat DEV-12.7).
     assert stdout == ""

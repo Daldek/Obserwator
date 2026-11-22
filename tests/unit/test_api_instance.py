@@ -43,9 +43,9 @@ POINT = {
     "longitude": "21.01",
 }  # Warszawa: the recorded PMAXTP point
 CHMU_OFF = '[obserwator.instance.providers]\nCHMU = "off"\n'
-IMGW_OFF = '[obserwator.instance.providers]\nIMGW-PIB = "off"\n'
+IMGW_OFF = '[obserwator.instance.providers]\nIMGW = "off"\n'
 # Every provider off: valid while PMAXTP is served.
-NONE_SERVED = '[obserwator.instance.providers]\nIMGW-PIB = "off"\nCHMU = "off"\n'
+NONE_SERVED = '[obserwator.instance.providers]\nIMGW = "off"\nCHMU = "off"\n'
 CURRENT = (
     "current hydro",
     "current meteo",
@@ -194,7 +194,7 @@ def test_datasets_routes_list_and_page_only_the_providers_served(
     client, tmp_path, monkeypatch
 ):
     deploy(tmp_path, monkeypatch, CHMU_OFF)
-    served = [item.key for item in registry() if item.provider == "IMGW-PIB"]
+    served = [item.key for item in registry() if item.provider == "IMGW"]
 
     pages, cursor = [], None
     while True:
@@ -213,7 +213,7 @@ def test_datasets_routes_list_and_page_only_the_providers_served(
     assert [item["key"] for page in pages for item in page["result"]] == served
     assert {page["page"]["total"] for page in pages} == {len(served)}
     assert all("attribution" not in page for page in [*pages, found])
-    assert [item["id"] for item in found["result"]] == ["IMGW-PIB"]
+    assert [item["id"] for item in found["result"]] == ["IMGW"]
     assert found["page"]["total"] == 1
     assert problem(named, 404, "not_found")["details"] == {
         "option": "provider",
@@ -275,10 +275,10 @@ def test_stations_find_names_the_one_provider_served(
 
     expected = run_command(
         "stations find",
-        options={"source": "store", "provider": "IMGW-PIB", "root": served},
+        options={"source": "store", "provider": "IMGW", "root": served},
     )
     assert stored.json() == expected.to_json(root=served, server=True)
-    assert {entry["provider"] for entry in live.json()["result"]} == {"IMGW-PIB"}
+    assert {entry["provider"] for entry in live.json()["result"]} == {"IMGW"}
     assert imgw.traffic() and all("chmu" not in url for _, url in imgw.traffic())
     assert problem(named, 404, "not_found")["details"] == {
         "option": "provider",
@@ -314,7 +314,7 @@ def test_stations_find_under_clip_pages_only_the_stations_inside(
     }
     assert second["page"] == {"total": 2, "next_cursor": None, "truncated": False}
     # The lines of each page are those of its own stations, as run_command's.
-    for page, code, provider in ((first, RABA, "IMGW-PIB"), (second, SPINDLER, "CHMU")):
+    for page, code, provider in ((first, RABA, "IMGW"), (second, SPINDLER, "CHMU")):
         alone = run_command(
             "stations find",
             options={
@@ -336,7 +336,7 @@ def test_stations_export_holds_only_the_stations_served_and_their_lines(
     clipped = client.get(path_of("stations export"))
 
     expected = run_command(
-        "stations export", options={"provider": "IMGW-PIB", "root": served}
+        "stations export", options={"provider": "IMGW", "root": served}
     )
     assert narrowed.text == "".join(expected.result)
     assert json.loads(narrowed.headers["x-obserwator-attribution"]) == list(
@@ -355,7 +355,7 @@ def test_stations_export_holds_only_the_stations_served_and_their_lines(
 # --------------------------------------------------------------------------
 
 
-def test_current_routes_of_an_off_imgw_pib_are_404_without_a_request(
+def test_current_routes_of_an_off_imgw_are_404_without_a_request(
     client, served, tmp_path, monkeypatch, imgw
 ):
     imgw.publish_live()
@@ -372,7 +372,7 @@ def test_current_routes_of_an_off_imgw_pib_are_404_without_a_request(
     # store catalog builds IMGW-PIB's catalog unless told otherwise.
     assert problem(catalog, 404, "not_found")["details"] == {
         "option": "provider",
-        "value": "IMGW-PIB",
+        "value": "IMGW",
         "reason": "not_served",
     }
     assert imgw.traffic() == []
@@ -677,8 +677,8 @@ def test_store_routes_hide_and_refuse_an_off_provider_before_any_request(
     }
     exported_missing = client.get(path_of("store export"), params={"version": missing})
 
-    assert [provider["id"] for provider in info["providers"]] == ["IMGW-PIB"]
-    assert {entry["provider"] for entry in scan["result"]} == {"IMGW-PIB"}
+    assert [provider["id"] for provider in info["providers"]] == ["IMGW"]
+    assert {entry["provider"] for entry in scan["result"]} == {"IMGW"}
     assert scan["page"]["total"] == len(scan["result"])
     options = {
         name: problem(r, 404, "not_found")["details"] for name, r in refused.items()

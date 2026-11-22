@@ -107,7 +107,7 @@ CATALOG_FILE = "stations.geojson"
 # directory named after its slug inside it (slugs start with a letter, labels with
 # a digit).
 _CATALOG_DIRS: Mapping[str, str] = MappingProxyType(
-    {"IMGW-PIB": CATALOG_SLOT, "CHMU": f"{CATALOG_SLOT}/chmu_stations"}
+    {"IMGW": CATALOG_SLOT, "CHMU": f"{CATALOG_SLOT}/chmu_stations"}
 )
 # Slug directory under ``stations/versions/`` → provider of the catalog inside it.
 _NESTED_CATALOGS: Mapping[str, str] = MappingProxyType(
@@ -203,7 +203,7 @@ _Candidate = tuple[str, object, object]
 # Location source of a point of IMGW-PIB's current-data answer of each station
 # family: the dataset of the answer.
 _API_LOCATION_SOURCES: Mapping[str, str] = MappingProxyType(
-    {"hydro": _CATALOG_SOURCES["IMGW-PIB"][2], "meteo": _CATALOG_SOURCES["IMGW-PIB"][3]}
+    {"hydro": _CATALOG_SOURCES["IMGW"][2], "meteo": _CATALOG_SOURCES["IMGW"][3]}
 )
 
 # --------------------------------------------------------------------------
@@ -622,7 +622,7 @@ def _catalog_sources(
         (get_dataset(key).slug, _station_files(key)[0])
         for key in (hydro_list, meteo_list)
     ]
-    if provider.id == "IMGW-PIB":
+    if provider.id == "IMGW":
         return [
             *lists,
             ("api_hydro", _station_files(hydro_now)[0]),
@@ -676,7 +676,7 @@ def _read_sources(
 def _source_datasets(provider: ProviderDescriptor) -> list[str]:
     """Dataset of each source of `_catalog_sources`, in the same order."""
     hydro_list, meteo_list, hydro_now, meteo_now = _CATALOG_SOURCES[provider.id]
-    if provider.id == "IMGW-PIB":
+    if provider.id == "IMGW":
         return [hydro_list, meteo_list, hydro_now, meteo_now]
     return [hydro_list, meteo_list, hydro_now, hydro_now, meteo_now]
 
@@ -1086,7 +1086,7 @@ def _catalog_bytes(
         if page is not None:
             detailed += 1
         features.append(feature)
-    lines = _catalog_lines(get_provider("IMGW-PIB"), {**used, DETAILS_SOURCE: detailed})
+    lines = _catalog_lines(get_provider("IMGW"), {**used, DETAILS_SOURCE: detailed})
     document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), unlocated, used, series_only, detailed
 
@@ -1491,7 +1491,7 @@ def _skip(provider: str) -> Collection[str]:
 
 
 def _current_catalog(
-    root: Path, provider: str = "IMGW-PIB"
+    root: Path, provider: str = "IMGW"
 ) -> tuple[Path, dict[str, Any]] | None:
     slot = _validate_slot(root, _CATALOG_DIRS[provider])
     return _newest_downloaded(_existing(slot, CATALOG_FILE, skip=_skip(provider)))
@@ -1587,7 +1587,7 @@ def check_catalog(
     /,
     *,
     raw_root: RootArg,
-    provider: str = "IMGW-PIB",
+    provider: str = "IMGW",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -1614,7 +1614,7 @@ def check_catalog(
         Raw root whose station sources the build reads; only read.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
-        ``"IMGW-PIB"`` by default.
+        ``"IMGW"`` by default.
     user_locations : str, os.PathLike or None, optional
         User CSV ``station_code,latitude,longitude[,source]`` whose SHA-256 is
         compared with the one recorded in the catalog.
@@ -1682,7 +1682,7 @@ def check_catalog(
         zip(_catalog_sources(raw, owner), _source_datasets(owner), strict=True)
     )
     # IMGW-PIB has one more, optional source: the station details of hydro.imgw.pl.
-    optional = owner.id == "IMGW-PIB"
+    optional = owner.id == "IMGW"
     total = len(sources) + (3 if optional else 2)
     cancelled = False
     for index, ((source, archive), key) in enumerate(sources, start=1):
@@ -1739,7 +1739,7 @@ def check_catalog(
                 )
             )
     local_files: list[tuple[str, bytes | None, Path]] = []
-    if owner.id == "IMGW-PIB":
+    if owner.id == "IMGW":
         static_path, static_bytes = _static_file()
         local_files.append(("static", static_bytes, static_path))
     if user is not None:
@@ -2129,7 +2129,7 @@ def build_catalog(
     /,
     *,
     raw_root: RootArg,
-    provider: str = "IMGW-PIB",
+    provider: str = "IMGW",
     user_locations: PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -2215,7 +2215,7 @@ def build_catalog(
         Raw root whose station sources are read; never written.
     provider : str, optional
         Provider of the catalog (``ProviderDescriptor.id`` or key prefix),
-        ``"IMGW-PIB"`` by default.
+        ``"IMGW"`` by default.
     user_locations : str, os.PathLike or None, optional
         User CSV ``station_code,latitude,longitude[,source]`` with fallback
         station locations.
@@ -2286,7 +2286,7 @@ def build_catalog(
         on_notice,
         cancel,
     )
-    return _build_imgw(build) if owner.id == "IMGW-PIB" else _build_chmu(build)
+    return _build_imgw(build) if owner.id == "IMGW" else _build_chmu(build)
 
 
 def _build_imgw(build: _Build) -> CatalogReport:

@@ -3,7 +3,7 @@
 from obserwator.messages import Text
 
 MESSAGES: dict[str, Text] = {
-    "words.provider.imgw_pib": Text(
+    "words.provider.imgw": Text(
         "Institute of Meteorology and Water Management – National Research Institute",
         "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
     ),

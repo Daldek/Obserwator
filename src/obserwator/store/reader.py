@@ -1240,7 +1240,7 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
                 root,
                 child,
                 "catalog",
-                f"catalog:{_CATALOG_DATASETS['IMGW-PIB']}",
+                f"catalog:{_CATALOG_DATASETS['IMGW']}",
                 CATALOG_FILE,
                 known,
             )
@@ -1644,7 +1644,7 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     versions: list[tuple[Path, dict[str, Any]]] = []
     entries: dict[Path, StoreEntry] = {}
     # Catalogs of other providers lie in named directories of the IMGW-PIB slot.
-    imgw_catalog = slot == f"catalog:{_CATALOG_DATASETS['IMGW-PIB']}"
+    imgw_catalog = slot == f"catalog:{_CATALOG_DATASETS['IMGW']}"
     nested = _NESTED_CATALOGS if imgw_catalog else {}
     for version in sorted(directory.iterdir()):
         if (kind == "archive" and _is_register(version)) or (
@@ -2024,7 +2024,7 @@ def read_catalog(
 # --------------------------------------------------------------------------
 
 
-def _station_lists(provider: str = "IMGW-PIB") -> dict[str, ArchiveFile]:
+def _station_lists(provider: str = "IMGW") -> dict[str, ArchiveFile]:
     """Station list source of each kind of a provider, keyed ``"hydro"`` / ``"meteo"``."""
     return dict(
         zip(("hydro", "meteo"), station_source_files(provider=provider), strict=True)
@@ -2036,7 +2036,7 @@ def read_station_list(
     /,
     *,
     kind: Literal["hydro", "meteo"],
-    provider: str = "IMGW-PIB",
+    provider: str = "IMGW",
 ) -> tuple[StationListEntry, ...]:
     """
     Stations of the current stored station list of one family (offline).
@@ -2058,7 +2058,7 @@ def read_station_list(
         Station family of the list.
     provider : str, optional
         Provider of the list (``ProviderDescriptor.id`` or key prefix),
-        ``"IMGW-PIB"`` by default.
+        ``"IMGW"`` by default.
 
     Returns
     -------
@@ -2204,7 +2204,7 @@ def read_archive(version: PathArg, /) -> Iterator[NormalizedRecord]:
             )
         option = (
             ""
-            if descriptor.provider == "IMGW-PIB"
+            if descriptor.provider == "IMGW"
             else f", provider={descriptor.provider!r}"
         )
         raise ObserwatorValidationError(

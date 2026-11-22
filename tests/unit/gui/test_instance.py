@@ -74,7 +74,7 @@ def clipped(tmp_path: Path, **more: object) -> Instance:
         area="area.geojson",
         area_mode="clip",
         pmaxtp="off",
-        providers={"IMGW-PIB": "off"},
+        providers={"IMGW": "off"},
         **more,
     )
 
@@ -94,7 +94,7 @@ def test_without_an_instance_the_session_names_none(client):
     session = client.get("/api/session").json()
 
     assert session["instance"] is None
-    assert list(session["providers"]) == ["IMGW-PIB", "CHMU"]
+    assert list(session["providers"]) == ["IMGW", "CHMU"]
     assert set(session["attribution"]["origins"]) == {
         "imgw",
         "imgw_hydro",
@@ -137,7 +137,7 @@ def test_the_session_tells_the_page_the_instance_but_no_path(make_client, tmp_pa
 def test_an_empty_start_view_falls_back_with_one_warning(make_client, tmp_path, caplog):
     nowhere = instance(
         tmp_path,
-        featured_provider="IMGW-PIB",
+        featured_provider="IMGW",
         start_view="featured",
         area="area.geojson",
         area_mode="clip",
@@ -160,7 +160,7 @@ def test_the_station_layer_holds_only_what_the_instance_serves(
 ):
     clipping = make_client(instance=clipped(tmp_path))
     hiding = make_client(
-        instance=instance(tmp_path, providers={"IMGW-PIB": "hidden", "CHMU": "off"})
+        instance=instance(tmp_path, providers={"IMGW": "hidden", "CHMU": "off"})
     )
 
     assert codes(clipping) == INSIDE
@@ -209,8 +209,8 @@ def test_an_off_provider_has_no_dataset_and_no_stations_file(make_client, tmp_pa
     assert (
         client.get(f"/api/files/series/pl.imgw.hydro_daily/{HYDRO}").status_code == 404
     )
-    assert client.get("/api/downloads/stations?provider=IMGW-PIB").status_code == 404
-    assert client.get("/api/files/stations?provider=IMGW-PIB").status_code == 404
+    assert client.get("/api/downloads/stations?provider=IMGW").status_code == 404
+    assert client.get("/api/files/stations?provider=IMGW").status_code == 404
     feedback = client.post(
         "/api/feedback",
         json={"text": "uwaga", "view": "stations", "station": OUTSIDE},
@@ -240,7 +240,7 @@ def test_the_stations_files_hold_only_the_stations_inside(make_client, tmp_path)
 # --- live sources: no request leaves for what is off ----------------------------------------
 
 
-def test_no_request_leaves_for_an_off_imgw_pib(make_client, tmp_path, live):
+def test_no_request_leaves_for_an_off_imgw(make_client, tmp_path, live):
     sources = dict.fromkeys(live.records, never)
     client = make_client(instance=clipped(tmp_path), sources=sources)
 

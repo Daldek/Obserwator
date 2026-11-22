@@ -172,7 +172,7 @@ def half_years(stations: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]
 # --------------------------------------------------------------------------
 
 
-def test_half_years_of_daily_values_have_the_statistics_of_imgw_pibs_file():
+def test_half_years_of_daily_values_have_the_statistics_of_imgws_file():
     level: dict[date, float] = {}
     fill(level, date(2022, 10, 15), date(2023, 4, 30), 100.0)
     # Two separate runs at the winter minimum, one day at its maximum: mean 100
@@ -291,7 +291,7 @@ def test_half_years_of_daily_values_have_the_statistics_of_imgw_pibs_file():
     assert float(annual["Q_mean [m3/s]"]) == (182 * 3.0 + 184 * 1.0) / 366
 
 
-def test_the_file_of_a_chmu_station_is_imgw_pibs_export_of_its_daily_values(
+def test_the_file_of_a_chmu_station_is_imgws_export_of_its_daily_values(
     fixture_root, tmp_path
 ):
     entry = current_version(fixture_root, slot=f"series:{CHMU_DAILY}")
@@ -352,7 +352,7 @@ def test_the_file_of_a_chmu_station_is_imgw_pibs_export_of_its_daily_values(
 # --------------------------------------------------------------------------
 
 
-def test_a_build_stores_chmus_computed_half_years_beside_imgw_pibs_published(built):
+def test_a_build_stores_chmus_computed_half_years_beside_imgws_published(built):
     chmu_version = version_of(built, "cz.chmu")
     chmu = records(chmu_version)
     imgw = records(version_of(built, "pl.imgw"))

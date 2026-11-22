@@ -64,7 +64,7 @@ TEXTS: dict[str, dict[str, Any]] = {
 
 
 @pytest.mark.parametrize("lang", ["pl", "en"])
-def test_a_chmu_station_calls_its_half_years_computed_not_imgw_pibs(
+def test_a_chmu_station_calls_its_half_years_computed_not_imgws(
     open_page: Any, stored_url: str, lang: str
 ) -> None:
     texts = TEXTS[lang]

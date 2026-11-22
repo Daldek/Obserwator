@@ -499,7 +499,7 @@ function usePmaxtpBeside(station, days, session) {
 
 /** Why a station has no PMAXTP beside its quantiles, or null. */
 function missingReason(station, minutes) {
-  if (station.provider !== "IMGW-PIB") return t("meteo.opady.pmaxtp.poland_only");
+  if (station.provider !== "IMGW") return t("meteo.opady.pmaxtp.poland_only");
   if (!Number.isFinite(station.lat) || !Number.isFinite(station.lon)) return t("meteo.opady.pmaxtp.no_point");
   if (!minutes) return t("meteo.opady.pmaxtp.up_to_3_days");
   return null;

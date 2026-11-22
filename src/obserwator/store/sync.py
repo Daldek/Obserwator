@@ -176,7 +176,7 @@ def _failure_code(error: str | None) -> ErrorCode:
 def _source(archive: ArchiveFile) -> str:
     """Provider name in the messages about an archive's server."""
     descriptor = get_dataset(archive.dataset)
-    if descriptor.provider == "IMGW-PIB":
+    if descriptor.provider == "IMGW":
         return "IMGW"
     return get_provider(descriptor.provider).short_name
 
@@ -670,12 +670,12 @@ def _country_archives(
     """Country archives (IMGW-PIB) of the request, in the 3.0.0 order."""
     if stations is not None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_archives_cover_whole"),
+            message("sync.imgw_archives_cover_whole"),
             details={"option": "stations", "value": None},
         )
     if years is None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_datasets_need_option"),
+            message("sync.imgw_datasets_need_option"),
             details={"option": "years", "value": None},
         )
     selected_years = parse_years(years, option="years")
@@ -746,7 +746,7 @@ def _scope(descriptor: DatasetDescriptor) -> _Scope:
     """
     if descriptor.archive_scope == "country":
         return "country"
-    return "folders" if descriptor.provider == "IMGW-PIB" else "stations"
+    return "folders" if descriptor.provider == "IMGW" else "stations"
 
 
 def _folders(descriptor: DatasetDescriptor, years: Iterable[int]) -> list[str]:
@@ -786,16 +786,14 @@ def _folder_request(
     """
     if years is None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_datasets_need_option"),
+            message("sync.imgw_datasets_need_option"),
             details={"option": "years", "value": None},
         )
     selected = parse_years(years, option="years")
     if months is not None:
         parse_months(months, option="months")
     codes = (
-        _parse_stations(stations, get_provider("IMGW-PIB"))
-        if stations is not None
-        else ()
+        _parse_stations(stations, get_provider("IMGW")) if stations is not None else ()
     )
     for descriptor in descriptors:
         _minimum_year(selected, descriptor)

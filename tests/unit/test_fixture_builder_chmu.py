@@ -151,7 +151,7 @@ def test_chmu_series_and_catalog_are_current_and_the_scan_is_clean(store, data):
     }
     assert {"0-203-1-900001", "0-203-1-900002", "0-203-0-90001"} <= stations
     assert {feature.provider for feature in read_catalog(root=data)} == {
-        "IMGW-PIB",
+        "IMGW",
         "CHMU",
     }
     entries = [*iter_store(store), *iter_store(data)]

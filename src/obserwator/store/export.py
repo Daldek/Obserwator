@@ -1760,7 +1760,7 @@ def export_stations(
         Data root whose current catalogs and series are read (ADR-017); None
         is the default data root (`obserwator.store_root`).
     provider : str or None, optional
-        Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMU"``,
+        Provider identifier or key prefix (``"IMGW"``, ``"CHMU"``,
         ``"cz.chmu"``); None exports every provider with a catalog.
     kind : {"hydro", "meteo"} or None, optional
         Only the stations of this kind (and the series of its datasets);

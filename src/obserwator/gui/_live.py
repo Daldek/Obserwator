@@ -322,9 +322,7 @@ def synop_indices(features: Mapping[str, StationFeature]) -> dict[str, str]:
     """
     endings: dict[str, list[str]] = {}
     for code, feature in features.items():
-        meteo = (
-            feature.provider == "IMGW-PIB" and feature.properties.get("kind") == "meteo"
-        )
+        meteo = feature.provider == "IMGW" and feature.properties.get("kind") == "meteo"
         if meteo and len(code) == 9 and code[0] == "3" and code[5] == "0":
             endings.setdefault(code[6:], []).append(code)
     return {

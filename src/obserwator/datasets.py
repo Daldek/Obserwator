@@ -32,7 +32,7 @@ CATALOG_DATASET = "pl.imgw.stations"
 
 # Derived dataset key of each provider's station catalog, by provider id (ADR-003 D5).
 _CATALOG_DATASETS: Mapping[str, str] = MappingProxyType(
-    {"IMGW-PIB": CATALOG_DATASET, "CHMU": "cz.chmu.stations"}
+    {"IMGW": CATALOG_DATASET, "CHMU": "cz.chmu.stations"}
 )
 
 DATASET_KEY_ALIASES: Mapping[str, str] = MappingProxyType(
@@ -57,13 +57,15 @@ archive datasets of 3.0.x (``cz.chmi.*``). Unlike ``legacy_alias`` (pre-3.0 inpu
 words), entries are stored keys.
 """
 
-PROVIDER_ID_ALIASES: Mapping[str, str] = MappingProxyType({"CHMI": "CHMU"})
+PROVIDER_ID_ALIASES: Mapping[str, str] = MappingProxyType(
+    {"CHMI": "CHMU", "IMGW-PIB": "IMGW"}
+)
 """
 Renamed provider identifiers: published id → current id (ADR-028).
 
 The reading of stored history, as `DATASET_KEY_ALIASES`: `read_meta` gives the
 current id as ``Meta.provider`` for the ``provider`` of a sidecar written before the
-rename; no input takes an old id.
+rename (3.0.x wrote ``CHMI`` and ``IMGW-PIB``); no input takes an old id.
 """
 
 _YEAR = re.compile(r"([0-9]{1,4})(?:-([0-9]{1,4}))?")
@@ -145,7 +147,7 @@ class ProviderDescriptor:
     Attributes
     ----------
     id : str
-        Value of the ``provider`` fields, ``"IMGW-PIB"`` or ``"CHMU"``.
+        Value of the ``provider`` fields, ``"IMGW"`` or ``"CHMU"``.
     short_name : str
         Name shown in texts, ``"IMGW-PIB"`` or ``"ČHMÚ"``.
     name : str
@@ -306,7 +308,7 @@ class DatasetDescriptor:
     license: License
     legacy_alias: str | None
     in_store: bool
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
     archive_scope: Literal["country", "station_year", "station_element"] = "country"
     variable_notes: Mapping[str, str] = field(default_factory=dict)
     measurement_fields: tuple[Literal["quality", "source_flag"], ...] = ()
@@ -1061,7 +1063,7 @@ _DATASETS = (
 )
 _PROVIDERS = (
     ProviderDescriptor(
-        id="IMGW-PIB",
+        id="IMGW",
         short_name="IMGW-PIB",
         name=message("legal.imgw_name"),
         country="PL",
@@ -1074,7 +1076,7 @@ _PROVIDERS = (
             terms=" ".join(attribution("imgw").terms_notice),
         ),
         station_code_pattern=r"^[0-9]{9}$",
-        datasets=tuple(item.key for item in _DATASETS if item.provider == "IMGW-PIB"),
+        datasets=tuple(item.key for item in _DATASETS if item.provider == "IMGW"),
     ),
     ProviderDescriptor(
         id="CHMU",
@@ -1133,7 +1135,7 @@ def providers() -> tuple[ProviderDescriptor, ...]:
     Returns
     -------
     tuple of ProviderDescriptor
-        ``IMGW-PIB``, then ``CHMU`` (a fixed order).
+        ``IMGW``, then ``CHMU`` (a fixed order).
     """
     return _PROVIDERS
 
@@ -1145,7 +1147,7 @@ def get_provider(provider: str, /) -> ProviderDescriptor:
     Parameters
     ----------
     provider : str
-        Identifier (``"IMGW-PIB"``, ``"CHMU"``) or key prefix
+        Identifier (``"IMGW"``, ``"CHMU"``) or key prefix
         (``"pl.imgw"``, ``"cz.chmu"``).
 
     Returns
@@ -1619,7 +1621,7 @@ def archive_files(
         return _country_archives(
             descriptor, years=years, months=months, params=params, stations=stations
         )
-    if descriptor.provider == "IMGW-PIB":
+    if descriptor.provider == "IMGW":
         return _imgw_station_archives(
             descriptor, years=years, months=months, params=params, stations=stations
         )
@@ -1977,7 +1979,7 @@ def _imgw_station_path(
 
 def _indexed(descriptor: DatasetDescriptor) -> bool:
     """Whether the dataset's files are named only in the server's folder index."""
-    return descriptor.provider == "IMGW-PIB" and descriptor.update_signal == "listing"
+    return descriptor.provider == "IMGW" and descriptor.update_signal == "listing"
 
 
 def _indexed_years(
@@ -2056,7 +2058,7 @@ _CHMU_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
 # then the hydro and meteo station metadata.
 _CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
     {
-        "IMGW-PIB": (
+        "IMGW": (
             "pl.imgw.hydro_stations",
             "pl.imgw.meteo_stations",
             "pl.imgw.hydro_now",
@@ -2090,9 +2092,7 @@ def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
     )
 
 
-def station_source_files(
-    *, provider: str = "IMGW-PIB"
-) -> tuple[ArchiveFile, ArchiveFile]:
+def station_source_files(*, provider: str = "IMGW") -> tuple[ArchiveFile, ArchiveFile]:
     """
     Return the two station list sources of a provider as archive descriptors.
 
@@ -2156,7 +2156,7 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
         if not server_path.startswith(prefix) or server_path.endswith("/"):
             return None
         return _indexed_file(descriptor, server_path.removeprefix(prefix))
-    if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW-PIB":
+    if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW":
         return _imgw_station_path(descriptor, directory, name)
     if descriptor.archive_scope == "station_year":
         hydro = _CHMU_HYDRO_FILE.fullmatch(name)

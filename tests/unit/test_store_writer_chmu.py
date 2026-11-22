@@ -189,7 +189,7 @@ def test_chmu_sidecar_with_another_origin_is_invalid(root):
     )
     path = Path(f"{written.path}.meta.json")
     path.write_text(
-        json.dumps({**sidecar(written.path), "country": "PL", "provider": "IMGW-PIB"}),
+        json.dumps({**sidecar(written.path), "country": "PL", "provider": "IMGW"}),
         encoding="utf-8",
     )
     assert [(e.kind, e.slot, e.problem_code) for e in iter_store(root)] == [
@@ -533,7 +533,7 @@ def test_imgw_sidecars_carry_no_chmu_fields(tmp_path):
     assert trees == {raw: {"archives", "pmaxtp"}, data: {"series", "stations"}}
     for path in sorted([*raw.rglob("*.meta.json"), *data.rglob("*.meta.json")]):
         meta = json.loads(path.read_text(encoding="utf-8"))
-        assert (meta["country"], meta["provider"]) == ("PL", "IMGW-PIB"), path
+        assert (meta["country"], meta["provider"]) == ("PL", "IMGW"), path
         assert set(meta["license"]) == {"id", "attribution", "url"}, path
         assert "content_sha256" not in meta and "content_form" not in meta, path
         if path.is_relative_to(raw / "archives"):

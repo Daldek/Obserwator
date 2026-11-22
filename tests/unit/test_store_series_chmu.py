@@ -576,7 +576,7 @@ def test_imgw_series_keep_the_layout_of_3_0_0(root, data):
     joined = ". ".join(lines.attribution)
     assert (meta["country"], meta["provider"], meta["license"]) == (
         "PL",
-        "IMGW-PIB",
+        "IMGW",
         {
             "id": "IMGW-PIB",
             "attribution": joined,
@@ -588,7 +588,7 @@ def test_imgw_series_keep_the_layout_of_3_0_0(root, data):
         for entry in meta["extra"]["source_files"]
     )
     assert [notice.message for notice in notices] == [
-        get_provider("IMGW-PIB").license_notice(lines)
+        get_provider("IMGW").license_notice(lines)
     ]
     assert str(notices[0].message).startswith(
         f"{joined}. {' '.join(lines.terms_notice)}"

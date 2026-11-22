@@ -92,7 +92,7 @@ def test_a_scan_gives_the_known_versions_back_without_listing_or_reading_them(
         "catalog",
         "pmaxtp",
     }
-    assert {entry.provider for entry in versions} == {"IMGW-PIB", "CHMU"}
+    assert {entry.provider for entry in versions} == {"IMGW", "CHMU"}
     for root, full in scans.items():
         known = known_versions(root, full)
         directories = {root / directory for directory in known}

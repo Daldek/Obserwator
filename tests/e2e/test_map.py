@@ -115,7 +115,7 @@ def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
     located = codes(catalog, located=True)
     unlocated = codes(catalog, located=False)
     by_code = {station["code"]: station for station in catalog}
-    assert {by_code[code]["provider"] for code in located} == {"IMGW-PIB", "CHMU"}
+    assert {by_code[code]["provider"] for code in located} == {"IMGW", "CHMU"}
     assert unlocated
     page = open_page()
     show_inactive(page)
