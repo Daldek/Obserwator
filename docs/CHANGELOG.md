@@ -6,7 +6,7 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
+Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
 
 ### Added
 
@@ -137,8 +137,8 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   `OBSERWATOR_STORE_WRITE_TOKEN_FILE`); the guide's part 02 „Serwis prowadzony przez
   operatora” (the operator's logo and title, the featured provider, „Pokaż inne źródła”,
   the area's outline, the views and sources served, the operator's regulamin).
-- Nogat's kit: `nogat-kit.json` and the operator's draft regulamin `nogat-terms-operator.md`
-  copied byte for byte from Nogat `eba117f` (kit 1.0.0, ECO-079).
+- Nogat's kit: the operator's draft regulamin `nogat-terms-operator.md` (ECO-079), copied
+  byte for byte with `nogat-kit.json` from Nogat's kit, now 1.1.0 (see "Changed").
 - **`stations find` gives IMGW-PIB coordinates live and filters by area (GEO-04).** A live
   IMGW-PIB search now reads the current-data API (`api/data/hydro`, `api/data/meteo`) after
   each station list and gives every listed station the `latitude`/`longitude` the API
@@ -509,6 +509,14 @@ Changes since 3.0.1, for 3.1.0 (`develop` carries `3.1.0.dev0`, Nogat REL-1.1): 
   „Pomiary bieżące” and the sections' tiles) held their notes as `<small>` beside `dt` and
   `dd` (axe-core: serious): each note is now a `dd` of its tile. The browser tests run
   axe-core (`tests/e2e/vendor/`, test files only) on the start page and a station's panel.
+- **The GUI's guide and the documents describe 3.1.0.** The guide's part 06 said Obserwator
+  installs from PyPI; it names the Git tag `v3.1.0`, as the README and USAGE do. Part 05 no
+  longer puts PMAXTP's lines under the chart (they are in the view's strip), part 08 sends
+  a report to whoever runs the service (the author or an operator) and lists every setting
+  the browser keeps, and parts 01, 02 and 07 describe the one-line strip on a phone and
+  `others_opacity`. USAGE, CODEBASE and ARCHITECTURE add the GUI's `api/logo` and
+  `api/area`, `OBSERWATOR_STORE_WRITE_TOKEN_FILE`, `config show`'s `instance` and
+  `problems`, and the deprecated `obserwator admin`.
 
 ### Security
 

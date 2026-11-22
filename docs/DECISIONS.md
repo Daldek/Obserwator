@@ -40,7 +40,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 ## ADR-001: Versioned IMGW store
 
 **Date:** 2026-10-17  
-**Status:** Accepted; the project parts (D1, Q1, Q2, version policy) superseded by ADR-008 (2026-10-31)  
+**Status:** Accepted; the project parts (D1, Q1, Q2, version policy) superseded by ADR-008 (2026-10-31); Q10's columns `attribution_source` and `attribution_processed` superseded by ADR-028 (2026-11-21)  
 **Spec:** `docs/superpowers/specs/2026-10-17-versioned-store-design.md`  
 **Plan:** `docs/superpowers/plans/2026-10-17-versioned-store.md`  
 **Contract source:** `Archiwista/docs/SPEC.md` 4.8, 12.7–12.9; `Archiwista/docs/wymagania-imgwtools.md` IMGW-1..14 and R1..12. Cooperation does not mean a package dependency on Archiwista or Kartograf.
@@ -206,7 +206,7 @@ Unchanged: `download_hydro_data`/`download_meteo_data` (2.1.1 arguments, result 
 ## ADR-003: ČHMÚ provider in the IMGW store
 
 **Date:** 2026-10-18  
-**Status:** Accepted (2026-10-18, owner approval) — D2 and D17: widening of the `/1` contracts in C01 before the v3.0.0 tag; D18 settles the open question about the signal after `unchanged` with different bytes; D14 and the parts of D2, D17, D18 about projects superseded by ADR-008 (2026-10-31)  
+**Status:** Accepted (2026-10-18, owner approval) — D2 and D17: widening of the `/1` contracts in C01 before the v3.0.0 tag; D18 settles the open question about the signal after `unchanged` with different bytes; D14 and the parts of D2, D17, D18 about projects superseded by ADR-008 (2026-10-31); the identifiers `CHMI` and `cz.chmi.*` of D1, D4, D5 and D17 superseded by ADR-028 (2026-11-21)  
 **Spec:** `docs/superpowers/specs/2026-10-18-chmi-provider-design.md` (plan C01–C10 in §16)  
 **Contract source:** `Archiwista/docs/wymagania-imgwtools.md` IMGW-15..19 (sections 4.15–4.19, priority P3, Archiwista v0.6 "PL + CZ"), as of Archiwista commit `4435cf7` (IMGW-15 and IMGW-16 after IMGWTools' comments; previously `a59c6bc`); within the bounds of ADR-001 and ADR-002.  
 **Source of facts:** live survey of opendata.chmi.cz on 2026-10-18 (hydrology, climatology, license and HTTP headers); in the spec every source fact is marked [V] (verified), [I] (inference) or [U] (open).
@@ -635,7 +635,7 @@ The pages link to every other GUI of the deployment, opened in the tab `nogat-<n
 ## ADR-012: Provider attribution in every product
 
 **Date:** 2026-11-13  
-**Status:** Accepted (the author's order of 2026-11-13: the attribution the IMGW-PIB terms require appears in every product with their data, and the ČHMÚ terms are met; recorded by Nogat as ECO-060); D7 (web pages) superseded by ADR-013 (2026-11-13), whose views and files carry the lines  
+**Status:** Accepted (the author's order of 2026-11-13: the attribution the IMGW-PIB terms require appears in every product with their data, and the ČHMÚ terms are met; recorded by Nogat as ECO-060); D7 (web pages) superseded by ADR-013 (2026-11-13), whose views and files carry the lines; the CSV's columns `attribution_source` and `attribution_processed` of D4 superseded by ADR-028 (2026-11-21)  
 **Standard:** Nogat DEV §20 (DEV-20.1 to DEV-20.8, Nogat commit `6f75180`), ECO-060; changes ADR-001 Q10 (CSV of `series export`), ADR-003 D12 (ČHMÚ attribution) and ADR-007 D3 (plain mode)  
 
 ### Context and options

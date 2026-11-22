@@ -26,12 +26,12 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 Obserwator is not on PyPI yet (the name `imgwtools` there holds the releases up to 2.1.1); install it from Git (Python 3.12 or newer):
 
 ```bash
-uv tool install "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
-uv add "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.0.0"
-uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0" obserwator mcp
+uv tool install "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0"
+uv add "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.1.0"
+uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
 ```
 
-The lines install the CLI of the release 3.0.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs`; the extras add the rest:
+The lines install the CLI of the release 3.1.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs`; the extras add the rest:
 
 | Extra | Adds |
 |---|---|
@@ -63,6 +63,7 @@ Offline: the URLs of a dataset's files, nothing downloaded. The envelope names t
 {
   "schema": "obserwator-result/1",
   "tool": "obserwator",
+  "version": "3.1.0",
   "command": "datasets files",
   "check": false,
   "status": "ok",
@@ -73,8 +74,12 @@ Offline: the URLs of a dataset's files, nothing downloaded. The envelope names t
       "server_path": "dane_hydrologiczne/dobowe/2023/codz_2023.zip",
       "url": "https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/dane_hydrologiczne/dobowe/2023/codz_2023.zip",
       "year": 2023,
+      "month": null,
+      "param": null,
+      "year_type": "hydrological",
       "period_start": "2022-11-01",
-      "period_end": "2023-10-31"
+      "period_end": "2023-10-31",
+      "station_code": null
     }
   ],
   "notices": [],
@@ -164,8 +169,8 @@ The full list with effects is `obserwator commands list --json`; Python names ar
 `obserwator mcp` serves the 35 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
 
 ```bash
-claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0" obserwator mcp
-codex mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0" obserwator mcp
+claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
+codex mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
 ```
 
 Cursor reads `.cursor/mcp.json`:
@@ -175,7 +180,7 @@ Cursor reads `.cursor/mcp.json`:
   "mcpServers": {
     "obserwator": {
       "command": "uvx",
-      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0", "obserwator", "mcp"]
+      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0", "obserwator", "mcp"]
     }
   }
 }
@@ -188,7 +193,7 @@ VS Code reads `.vscode/mcp.json`, whose key is `servers`:
   "servers": {
     "obserwator": {
       "command": "uvx",
-      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.0.0", "obserwator", "mcp"]
+      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0", "obserwator", "mcp"]
     }
   }
 }
@@ -246,7 +251,7 @@ Data is written only where the user says: `--output-dir` (plain files), `--root`
 | [USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md) | task-oriented guide to the library, the CLI, REST, the GUI and the MCP server; configuration, the versioned store, Docker, server logs |
 | [ARCHITECTURE.md](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) | layers, store layout, data flow, CI/CD |
 | [CODEBASE.md](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) | public API, command catalog, option and error tables, data formats |
-| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-023 |
+| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-028 |
 | [PRD.md](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) | product requirements and scope |
 | [CHANGELOG.md](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) | changes per release, including the breaking changes and the migration from IMGWTools 2.1.1 |
 
