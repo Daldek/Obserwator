@@ -197,7 +197,9 @@ def test_the_stripes_files_carry_the_station_the_credit_and_the_lines(
             section.locator("button", has=page.locator(".fmt", has_text=fmt)).click()
         files[fmt] = (download.value.suggested_filename, download.value.path())
     png_name, png_path = files["PNG"]
-    assert png_name == "paski-klimatyczne-250190390-1961-2025.png"
+    assert png_name == "obserwator_climate-stripes_250190390_1961_2025.png"
+    assert files["SVG"][0] == "obserwator_climate-stripes_250190390_1961_2025.svg"
+    assert files["CSV"][0] == "obserwator_climate-stripes_250190390_1961_2025.csv"
     assert png_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     svg = files["SVG"][1].read_text(encoding="utf-8")
     # the image's texts, its wrapped lines joined again

@@ -142,7 +142,7 @@ Data is written only after explicit configuration: an absolute `OBSERWATOR_RAW_R
 - **Preact 10.29.8 + htm 3.1.1** as ES modules without a build step, vendored byte for byte with their licences and SHA-256 (`gui/web/vendor/vendor.json`)
 - **MapLibre GL JS 6.14.0**, vendored with its module worker (a same-origin file) and the Noto Sans glyphs; the basemap is a TileJSON from settings (OpenFreeMap's by default) drawn in the GUI's own grey style, or offline the packaged borders of Poland and Czechia
 - **An own SVG chart module** (`gui/web/src/charts/`): linear, log, date, time and Gumbel-probability axes; lines, steps, areas, bands, bars, points and reference marks; long series decimated to the first, last, lowest and highest point per pixel column; zoom and a readout by pointer and keys
-- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 1.1.0 (Nogat `c2507fa`; `nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`, `nogat-admin.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
+- **Nogat's identity**: copies of `tokens.css` (Nogat `55a2d4b`), the marks and kit 1.1.0 (Nogat `998d05e`; `nogat-app-menu.*`, `nogat-sources.*`, `nogat-handoff.js`, `nogat-terms.*`, `nogat-admin.*`), byte for byte with their manifests (DEV-15.3, DEV-15.6); light and dark theme; the top bar, side panels that resize, bottom sheets at 860 px and below
 - **Provider lines on screen** (DEV-20.5, ECO-064): one compact `<nogat-sources>` of the kit per view, across the page under the map and both panels, fed the union of the lines of what the list and the map show and of what the right panel shows (the station's header, its open cards and their results, the stations files or PMAXTP's tables), the basemap's credit after it; never per panel or card; on a phone the sheets stop above it. A set of catalog stations brings the line of the state border its locations were checked against (G or Z, ADR-018). S, P, PS, PP and the short forms of ČHMÚ's, GUGiK's and ČÚZK's lines (CK, GK, ZK) on screen, every line and the terms behind „Źródła i warunki”; a welcome window on the first visit with the same full content (`fillSources`). Files, images, hand-offs and the API keep the full lines
 - **Texts**: the area `gui` of the message catalog (`messages/gui/`, `Text(en, pl)`, ADR-006), served by `api/texts`; Polish by default, English through „PL | EN”
 
@@ -400,6 +400,7 @@ Obserwator/
 │   ├── attribution.py    # Provider attribution and terms lines of every product (ADR-012)
 │   ├── _borders.py       # Packaged state borders of Poland and Czechia (ADR-018), read by the catalog, the GUI and attribution
 │   ├── _http_headers.py  # Security headers of both servers (nosniff, Referrer-Policy, Permissions-Policy)
+│   ├── _file_names.py    # The names of the files both servers send (Nogat DEV-19.21): obserwator_<content>_<qualifiers>.<extension>
 │   ├── nogat_logging.py  # Nogat's reference logging module, copied byte for byte: logs of both servers (ADR-019)
 │   ├── _version.py       # Version, single source (pyproject reads it)
 │   ├── fetch.py          # PUBLIC: fetch_* (live), download_archives, download_* -> DownloadResult

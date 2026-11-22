@@ -454,14 +454,6 @@ MESSAGES: dict[str, Text] = {
         "colour_index: 0 = najciemniejszy niebieski, 15 = najciemniejszy czerwony; "
         "pusty = brak średniej rocznej",
     ),
-    "meteo.stripes.file": Text(
-        "climate-stripes-{code}-{first}-{last}",
-        "paski-klimatyczne-{code}-{first}-{last}",
-    ),
-    "meteo.stripes.file_axis": Text(
-        "climate-stripes-{code}-{first}-{last}-axis",
-        "paski-klimatyczne-{code}-{first}-{last}-os",
-    ),
     "meteo.stripes.csv_label": Text(
         "years, means, anomalies", "lata, średnie, anomalie"
     ),

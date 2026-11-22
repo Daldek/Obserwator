@@ -26,6 +26,7 @@ src/obserwator/
 ├── _environment.py       # nogat.toml, NOGAT_* variables, user directories (DEV-18.1); [nogat.gui] (gui_addresses), [nogat.operator] (operator); credential keys
 ├── _borders.py           # The packaged state borders (border, PROVIDERS): PRG (GUGiK) and RÚIAN (ČÚZK), written only by scripts/build_borders.py (ADR-018); standard library only
 ├── _http_headers.py      # Security headers of both servers (nosniff, Referrer-Policy, Permissions-Policy): security_headers; standard library only
+├── _file_names.py        # The names of the GUI's downloads and REST's attachments (Nogat DEV-19.21): series_file_name, stations_file_name, analyses_file_name, pmaxtp_file_name
 ├── attribution.py        # Provider attribution and terms lines of every product (ADR-012): attribution, carried, origins imgw, imgw_hydro, pmaxtp, chmu, gugik (G), cuzk (Z)
 ├── _examples.py          # Example calls of the catalog (examples of command_schema): canonical line + result excerpt
 ├── output.py             # Plain output (ADR-007): resolve_target, plan_plain, refuse, Staging, FileResult, OutputReport, STORE_MARKERS, DATA_MARKER
