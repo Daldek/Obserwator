@@ -57,7 +57,18 @@ _COLUMNS: Mapping[str, tuple[str, ...]] = {
     "items": ("slot", "server_path", "station_code", "status", "error_code", "error"),
     "actions": ("command", "status", "detail"),
     "files": ("path", "status", "size_bytes"),
-    "providers": ("id", "country", "name"),
+    # A provider of the registry, or of an analyses build (`ProviderAnalyses`).
+    "providers": (
+        "id",
+        "country",
+        "name",
+        "provider",
+        "status",
+        "stations",
+        "computed",
+        "carried",
+        "resumed",
+    ),
     "examples": ("call",),
 }
 # Main fields of a document, by its ``schema``; any other document shows all.

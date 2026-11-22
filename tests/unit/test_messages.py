@@ -211,6 +211,45 @@ def test_polish_literals_stay_only_in_the_catalog():
     assert found == [], "a Polish text belongs in obserwator.messages"
 
 
+def test_no_text_calls_pmaxtp_the_probable_maximum_precipitation():
+    # T26 of the formula audit of 2026-11-18: PMAXTP gives quantiles of maximum
+    # precipitation of a duration and a probability of exceedance; the probable maximum
+    # precipitation (PMP, WMO-No. 1045) is an upper bound without a probability
+    pmp = re.compile(
+        r"probable maximum precipitation|opad\w* maksymaln\w* prawdopodobn", re.I
+    )
+    texts = [(key, value) for key, text in entries() for value in (text.en, text.pl)]
+    texts += [
+        (
+            f"{form} guide ({lang})",
+            "".join(obserwator.agent_guide(format=form, lang=lang)),
+        )
+        for form in ("agents", "llms")
+        for lang in LANGS
+    ]
+    assert [key for key, value in texts if pmp.search(value)] == []
+
+
+# Hydrolog 0.9.0.dev5's vocabulary of the rating curve (spec rating_curve_fit version 2,
+# Hydrolog ADR-0071): a period's `reason` and the `details.constraint` of a refusal. The
+# page builds their keys at run time, so a missing label would show the bare key.
+RATING_PERIOD_REASONS = ("too_few_pairs", "no_least_squares_minimum", "fit_failed")
+RATING_CONSTRAINTS = (
+    "enough_pairs",
+    "levels_not_all_equal",
+    "discharges_not_all_equal",
+    "least_squares_minimum",
+)
+
+
+def test_every_reason_and_constraint_of_hydrologs_rating_curve_is_worded():
+    keys = [f"gui.hydro.rating.reason.{name}" for name in RATING_PERIOD_REASONS]
+    keys += [f"gui.sections.constraint.{name}" for name in RATING_CONSTRAINTS]
+    known = dict(entries())
+
+    assert [key for key in keys if key not in known] == []
+
+
 # --------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------

@@ -10,7 +10,7 @@ Examples::
     obserwator datasets download -d hydro/dobowe -y 2023 -m 1
     obserwator stations find -k hydro -q raba --limit 20
     obserwator store sync --root /dane/obserwator-raw -d pl.imgw.hydro_daily -y 2024
-    obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw -d hydro_daily
+    obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw -d imgw_hydro_daily
     obserwator series summary --root /dane/obserwator -d pl.imgw.hydro_daily -s 149190310
     obserwator commands schema --command "store sync"
     obserwator mcp --allow-writes --allow-dir /dane
@@ -39,6 +39,7 @@ from obserwator.cli._dispatch import (
     register_catalog,
 )
 from obserwator.config import settings
+from obserwator.exceptions import ObserwatorError
 from obserwator.messages import message
 
 app = typer.Typer(
@@ -84,7 +85,10 @@ def server(
 
     It prints nothing of its own: the lifecycle record ``start`` on standard error names
     the address (Nogat DEV-12.7); the logs are in ``<state_dir>/obserwator/logs``.
-    Without FastAPI or uvicorn (the ``api`` extra) it ends with ``missing_dependency``.
+    Without FastAPI or uvicorn (the ``api`` extra) it ends with ``missing_dependency``;
+    a problem of ``[obserwator.instance]``, a root of an unknown layout or, with that
+    section, a weak write token ends it with the error line before the server starts
+    (ADR-025).
     """
     for module in ("fastapi", "uvicorn"):
         try:
@@ -98,8 +102,15 @@ def server(
                     hint='pip install "obserwator[api]"',
                 )
             ) from None
+    from obserwator.api.instance import check_start
     from obserwator.api.main import run_server
 
+    try:
+        check_start(warn=False)  # the server's start logs a weak token
+    except ObserwatorError as exc:
+        raise typer.Exit(
+            _error_line(exc.code, exc.detail, exc.details, hint=exc.hint)
+        ) from None
     run_server(host=host, port=port, reload=reload)
 
 

@@ -115,7 +115,7 @@ def test_the_map_draws_the_located_stations_of_both_providers_and_the_list_all(
     located = codes(catalog, located=True)
     unlocated = codes(catalog, located=False)
     by_code = {station["code"]: station for station in catalog}
-    assert {by_code[code]["provider"] for code in located} == {"IMGW-PIB", "CHMI"}
+    assert {by_code[code]["provider"] for code in located} == {"IMGW", "CHMU"}
     assert unlocated
     page = open_page()
     show_inactive(page)
@@ -252,11 +252,11 @@ def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, c
     page.get_by_role("radiogroup", name="Dostawca").get_by_role(
         "radio", name="ČHMÚ"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMI"])
+    check([s for s in catalog if s["provider"] == "CHMU"])
     page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
         "radio", name="Meteorologiczne"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMI" and s["kind"] == "meteo"])
+    check([s for s in catalog if s["provider"] == "CHMU" and s["kind"] == "meteo"])
     # a dataset's chip under another provider is not offered; back to every provider
     expect(
         page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
@@ -314,6 +314,47 @@ def test_current_measurements_replace_the_station_layer_and_stations_bring_it_ba
     wait_drawn(page, ["current", "current-selected"], set())
 
 
+def test_the_poll_of_current_measurements_is_revalidated_and_keeps_the_points(
+    open_page, catalog, gui_url
+):
+    page = open_page()
+    wait_drawn(page, ["stations"], codes(active(catalog), located=True))
+    current = api(gui_url, "api/current")
+    (west, south), (east, north) = page.evaluate(
+        "() => document.querySelector('.map').maplibre.getBounds().toArray()"
+    )
+    points = {
+        r["code"]
+        for r in current["hydro"] + current["meteo"]
+        if west <= r["lon"] <= east and south <= r["lat"] <= north
+    }
+    answers: list[Any] = []
+    page.on(
+        "response",
+        lambda r: answers.append(r) if r.url.endswith("/api/current") else None,
+    )
+    page.clock.install()
+    page.get_by_role("radio", name="Pomiary bieżące").click()
+    page.clock.run_for(1000)
+    wait_drawn(page, ["current"], points)
+
+    page.clock.run_for(600_000)  # the view asks again every 10 minutes
+    for _ in range(50):
+        if len(answers) >= 2:
+            break
+        page.wait_for_timeout(100)
+
+    first, poll = answers
+    etag = first.headers["etag"]
+    # The browser revalidates by itself: the server's 304 carries no body, and the page
+    # gets the kept answer (200) and draws the same points.
+    assert poll.request.all_headers()["if-none-match"] == etag
+    assert first.request.sizes()["responseBodySize"] > 0
+    assert poll.request.sizes()["responseBodySize"] == 0
+    assert poll.status == 200
+    wait_drawn(page, ["current"], points)
+
+
 def test_a_point_names_its_station_and_a_click_selects_it(open_page, catalog):
     page = open_page()
     wait_drawn(page, ["stations"], codes(active(catalog), located=True))
@@ -342,7 +383,6 @@ def test_the_legend_explains_the_symbols_of_the_stations(open_page):
     expect(symbol("hydrologiczna")).to_have_class(re.compile(r"\bhydro\b"))
     expect(symbol("meteorologiczna")).to_have_class(re.compile(r"\bmeteo\b"))
     expect(symbol("tylko w katalogu")).to_have_class(re.compile(r"\bhollow\b"))
-    expect(symbol("ČHMÚ (obrys przerywany)")).to_have_class(re.compile(r"\bdashed\b"))
     expect(symbol("nieczynna (blado)")).to_have_class(re.compile(r"\bfaded\b"))
     selected = symbol("wybrana").bounding_box()
     usual = symbol("hydrologiczna").bounding_box()
@@ -404,7 +444,7 @@ def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):
 
 
 def test_an_address_with_a_station_opens_the_same_selection(open_page, gui_url):
-    code = FIXTURE_STATIONS["hydro_chmi"]
+    code = FIXTURE_STATIONS["hydro_chmu"]
     page = open_page()
     row(page, code).click()
     expect(row(page, code)).to_have_attribute("aria-current", "true")

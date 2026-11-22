@@ -3,11 +3,11 @@
 from obserwator.messages import Text
 
 MESSAGES: dict[str, Text] = {
-    "words.provider.imgw_pib": Text(
+    "words.provider.imgw": Text(
         "Institute of Meteorology and Water Management – National Research Institute",
         "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
     ),
-    "words.provider.chmi": Text(
+    "words.provider.chmu": Text(
         "Czech Hydrometeorological Institute", "Czeski Instytut Hydrometeorologiczny"
     ),
     "words.kind.hydro": Text("hydrological", "hydrologiczna"),
@@ -37,14 +37,14 @@ MESSAGES: dict[str, Text] = {
         "Daily synoptic data (IMGW-PIB)", "Dane synoptyczne dobowe (IMGW-PIB)"
     ),
     "words.dataset.pl_imgw_meteo_synop_daily.short": Text("Synoptic", "Synoptyczne"),
-    "words.dataset.cz_chmi_hydro_daily.title": Text(
+    "words.dataset.cz_chmu_hydro_daily.title": Text(
         "Daily hydrological data (ČHMÚ)", "Dane hydrologiczne dobowe (ČHMÚ)"
     ),
-    "words.dataset.cz_chmi_hydro_daily.short": Text("Daily", "Dobowe"),
-    "words.dataset.cz_chmi_meteo_daily.title": Text(
+    "words.dataset.cz_chmu_hydro_daily.short": Text("Daily", "Dobowe"),
+    "words.dataset.cz_chmu_meteo_daily.title": Text(
         "Daily meteorological data (ČHMÚ)", "Dane meteorologiczne dobowe (ČHMÚ)"
     ),
-    "words.dataset.cz_chmi_meteo_daily.short": Text("Daily", "Dobowe"),
+    "words.dataset.cz_chmu_meteo_daily.short": Text("Daily", "Dobowe"),
     "words.variable.h": Text("water level", "stan wody"),
     "words.variable.q": Text("discharge", "przepływ"),
     "words.variable.t": Text("water temperature", "temperatura wody"),

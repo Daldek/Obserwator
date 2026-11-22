@@ -120,6 +120,10 @@ MESSAGES = {
         "Analyses of the station {station} carried forward",
         "Przeniesiono analizy stacji {station}",
     ),
+    "station_resumed": Text(
+        "Analyses of the station {station} taken from an interrupted build",
+        "Przejęto analizy stacji {station} z przerwanej budowy",
+    ),
     "version_unchanged": Text(
         "The analyses of {provider} are unchanged",
         "Analizy {provider} bez zmian",
@@ -133,8 +137,8 @@ MESSAGES = {
         "Analizy {provider} są aktualne ({stations} stacji)",
     ),
     "plan_build": Text(
-        "A new analyses version of {provider}: {computed} stations computed by Hydrolog {version}, {carried} carried forward",
-        "Nowa wersja analiz {provider}: {computed} stacji do obliczenia Hydrologiem {version}, {carried} do przeniesienia",
+        "A new analyses version of {provider}: {computed} stations computed by Hydrolog {version}, {carried} carried forward, {resumed} taken from an interrupted build",
+        "Nowa wersja analiz {provider}: {computed} stacji do obliczenia Hydrologiem {version}, {carried} do przeniesienia, {resumed} do przejęcia z przerwanej budowy",
     ),
     # --- reading -----------------------------------------------------------------------
     "no_version": Text(
@@ -203,16 +207,20 @@ MESSAGES = {
         "Charakterystyczne temperatury wody (I i II stopnia)",
     ),
     "title_half_years_h": Text(
-        "Characteristic water levels from IMGW-PIB's half-years",
-        "Stany charakterystyczne z półroczy IMGW-PIB",
+        "Characteristic water levels from IMGW-PIB's half-years or those computed "
+        "for ČHMÚ",
+        "Stany charakterystyczne z półroczy IMGW-PIB albo obliczonych dla ČHMÚ",
     ),
     "title_half_years_q": Text(
-        "Characteristic discharges from IMGW-PIB's half-years",
-        "Przepływy charakterystyczne z półroczy IMGW-PIB",
+        "Characteristic discharges from IMGW-PIB's half-years or those computed for "
+        "ČHMÚ",
+        "Przepływy charakterystyczne z półroczy IMGW-PIB albo obliczonych dla ČHMÚ",
     ),
     "title_half_years_t": Text(
-        "Characteristic water temperatures from IMGW-PIB's half-years",
-        "Charakterystyczne temperatury wody z półroczy IMGW-PIB",
+        "Characteristic water temperatures from IMGW-PIB's half-years or those "
+        "computed for ČHMÚ",
+        "Charakterystyczne temperatury wody z półroczy IMGW-PIB albo obliczonych dla "
+        "ČHMÚ",
     ),
     "title_events_h_swx": Text(
         "Days and events at or above SWW", "Dni i epizody od SWW wzwyż"
@@ -473,7 +481,7 @@ MESSAGES = {
         "Trend rocznej średniej temperatury powietrza",
     ),
     "title_trend_frost_days": Text(
-        "Trend of the frost days", "Trend liczby dni przymrozkowych"
+        "Trend of the frost days", "Trend liczby dni z przymrozkiem"
     ),
     "title_trend_summer_days": Text(
         "Trend of the summer days", "Trend liczby dni gorących"

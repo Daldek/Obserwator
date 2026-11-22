@@ -44,3 +44,14 @@ htmlcov/
 # The default NOGAT_STATE_DIR of docker/docker-compose.yml: the server's logs,
 # state/obserwator/logs
 /state/
+
+# Credentials (DEV-18.4): the .env of the settings (the store write token, the GUI's
+# admin key), the REST API keys of `obserwator admin` (api_keys.json), key and secret
+# files. .env.example is the template and stays tracked.
+.env
+.env.*
+!/.env.example
+api_keys.json
+*.key
+*.pem
+*.secret

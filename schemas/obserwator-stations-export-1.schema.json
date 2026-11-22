@@ -77,7 +77,7 @@
         "version": {
           "description": "The catalog version read, its directory relative to the root",
           "type": "string",
-          "pattern": "^stations/versions/([a-z][a-z0-9_]*/)?[^/]+_[0-9a-f]{8}$"
+          "pattern": "^stations/versions/[a-z][a-z0-9_]*/[^/]+_[0-9a-f]{8}$"
         },
         "label": {"description": "The version label", "type": ["string", "null"]},
         "downloaded_at": {

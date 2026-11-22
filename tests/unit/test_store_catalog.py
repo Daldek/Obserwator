@@ -23,6 +23,7 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
 )
 from obserwator.fetch import DownloadResult
+from obserwator.messages import message
 from obserwator.store import (
     build_series,
     catalog,
@@ -349,8 +350,8 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
         second = build_catalog(data, raw_root=store)
         plan = check_catalog(data, raw_root=store)
     assert source_actions(stale) == {
-        "hydro_stations": "newer",
-        "meteo_stations": "current",
+        "imgw_hydro_stations": "newer",
+        "imgw_meteo_stations": "current",
         "api_hydro": "current",
         "api_meteo": "current",
         "hydro_details": "current",  # stored by neither side: nothing to pick up
@@ -366,7 +367,7 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
     sources = json.loads(
         second.version.with_name("stations.geojson.meta.json").read_text("utf-8")
     )["extra"]["catalog"]
-    hydro_source = next(s for s in sources if s["source"] == "hydro_stations")
+    hydro_source = next(s for s in sources if s["source"] == "imgw_hydro_stations")
     assert hydro_source["sha256"] == hashlib.sha256(newer_csv).hexdigest()
     assert hydro_source["file"].startswith(
         "archives/versions/dane_hydrologiczne/lista_stacji_hydro/2026-10-19_"
@@ -568,9 +569,13 @@ def test_meteo_kind_comes_from_the_climate_and_precipitation_series(store, data)
     assert set(kinds(climate, "hydro").values()) == {None}
 
 
-def test_meteo_kind_of_a_station_in_the_synop_series_is_synop(store, data):
-    # Recorded IMGW-PIB files (tests/fixtures/synop): the monthly synop file of
-    # January 2026 (349190600, 353140200) and the climate year 1965 (353140200).
+def put_recorded_synop(store, data):
+    """
+    Store recorded IMGW-PIB files of tests/fixtures/synop and build their series.
+
+    The monthly synop file of January 2026 (349190600, 353140200) and the climate
+    year 1965 (353140200).
+    """
     recorded = Path(__file__).parents[1] / "fixtures" / "synop" / "archives"
     for archive in (
         archive_files("pl.imgw.meteo_synop_daily", years=[2026], months=[1])[0],
@@ -583,6 +588,10 @@ def test_meteo_kind_of_a_station_in_the_synop_series_is_synop(store, data):
         write_archive(store, archive=archive, response=response)
     for dataset in ("pl.imgw.meteo_climate_daily", "pl.imgw.meteo_synop_daily"):
         assert build_series(data, raw_root=store, dataset=dataset).status == "new"
+
+
+def test_meteo_kind_of_a_station_in_the_synop_series_is_synop(store, data):
+    put_recorded_synop(store, data)
     with respx.mock(assert_all_called=False) as router:
         sync_sources(store, router)
         report = build_catalog(data, raw_root=store)
@@ -593,6 +602,58 @@ def test_meteo_kind_of_a_station_in_the_synop_series_is_synop(store, data):
     }
     # A synoptic station's programme includes the climate one: synop wins.
     assert (kinds["353140200"], kinds["349190600"]) == ("synop", "synop")
+
+
+# The series meteo_kind comes from, in its order of precedence.
+METEO_KIND_SERIES = (
+    "pl.imgw.meteo_synop_daily",
+    "pl.imgw.meteo_climate_daily",
+    "pl.imgw.meteo_precip_daily",
+)
+
+
+def test_meteo_series_missing_from_the_data_root_are_named_for_meteo_kind(store, data):
+    def series_missing():
+        notices = []
+        build_catalog(data, raw_root=store, on_notice=notices.append)
+        return [(n.level, n.message) for n in notices if n.code == "series_missing"]
+
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        none = series_missing()
+        put_meteo(store, data, "pl.imgw.meteo_precip_daily")
+        partial = series_missing()
+        put_recorded_synop(store, data)
+        complete = series_missing()
+
+    # Without any of them every meteorological station has a null kind: a warning.
+    assert none == [
+        (
+            "warning",
+            message(
+                "catalog.meteo_kind_without_series",
+                datasets=", ".join(METEO_KIND_SERIES),
+                root=data.root,
+                raw=store.root,
+                dataset="pl.imgw.meteo_synop_daily",
+            ),
+        )
+    ]
+    # Without some, a station of a missing one has a lower kind or none.
+    assert partial == [
+        (
+            "info",
+            message(
+                "catalog.meteo_kind_partial_series",
+                sources=", ".join(METEO_KIND_SERIES),
+                root=data.root,
+                datasets="pl.imgw.meteo_synop_daily, pl.imgw.meteo_climate_daily",
+                raw=store.root,
+                dataset="pl.imgw.meteo_synop_daily",
+            ),
+        )
+    ]
+    assert complete == []
 
 
 def test_location_precedence_rejections_and_reasons(
@@ -637,7 +698,7 @@ def test_location_precedence_rejections_and_reasons(
     def props(code):
         return found[code]["properties"]
 
-    assert props("150000020")["location_source"] == "api_hydro"
+    assert props("150000020")["location_source"] == "pl.imgw.hydro_now"
     assert found["150000020"]["geometry"]["coordinates"] == [18.3275, 49.9213]
     assert props("150000021")["location_source"] == "static"
     assert found["150000021"]["geometry"]["coordinates"] == [18.32665589, 49.95453369]
@@ -671,21 +732,42 @@ def test_location_precedence_rejections_and_reasons(
     assert static_source["sha256"] == hashlib.sha256(static.read_bytes()).hexdigest()
 
 
-def test_missing_static_file_is_reported_and_recorded(
+def test_missing_static_file_is_a_warning_that_counts_the_unlocated_map_stations(
     store, data, isolated_reference_dir
 ):
-    notices = []
+    static = isolated_reference_dir / "hydro_stations_locations.csv"
+
+    def build():
+        notices = []
+        report = build_catalog(data, raw_root=store, on_notice=notices.append)
+        static_notices = [
+            n.message
+            for n in notices
+            if n.code == "source_missing" and n.level == "warning"
+        ]
+        problem_notices = [n for n in notices if n.code == "catalog_problem"]
+        assert not any("reference_data" in n.message for n in problem_notices)
+        return report, static_notices
+
     with respx.mock(assert_all_called=False) as router:
         sync_sources(store, router)
-        report = build_catalog(data, raw_root=store, on_notice=notices.append)
-    assert report.status == "new"
-    expected = (isolated_reference_dir / "hydro_stations_locations.csv").as_posix()
-    assert any(
-        expected in problem and "static" in problem for problem in report.problems
-    )
-    assert any(
-        n.code == "catalog_problem" and "reference_data" in n.message for n in notices
-    )
+        report, notices = build()
+        sync_details(store, router)
+        detailed, detailed_notices = build()
+        # The file the warning asks for, with points of the two stations of the map
+        # the current-data API does not locate (149190311 at 0,0, 149190312 none).
+        static.write_text(
+            "station_code,latitude,longitude\n"
+            "149190311,50.0512,19.9512\n149190312,50.0612,19.9612\n",
+            encoding="utf-8",
+        )
+        located, located_notices = build()
+
+    path = static.as_posix()
+    # Without the station details the cost of the missing file is unknown.
+    unknown = message("catalog.static_missing", static_path=path)
+    assert (report.status, notices) == ("new", [unknown])
+    assert unknown in report.problems
     sources = json.loads(
         report.version.with_name("stations.geojson.meta.json").read_text("utf-8")
     )["extra"]["catalog"]
@@ -696,6 +778,22 @@ def test_missing_static_file_is_reported_and_recorded(
         f["properties"]["location_source"] != "static"
         for f in features(report).values()
     )
+    # With them, the stations of hydro.imgw.pl's map left without a location are
+    # exactly those the file would locate: they are counted.
+    counted = message(
+        "catalog.static_missing_stations",
+        static_path=path,
+        count=2,
+        example="149190311",
+    )
+    assert detailed_notices == [counted] and counted in detailed.problems
+    assert located_notices == []
+    assert not any("reference_data" in problem for problem in located.problems)
+    found = features(located)
+    assert {
+        code: found[code]["properties"]["location_source"]
+        for code in ("149190311", "149190312")
+    } == dict.fromkeys(("149190311", "149190312"), "static")
 
 
 BORDER_POINTS = {
@@ -816,7 +914,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     raw = report.version.read_bytes()
     document = json.loads(raw)
     assert report.version.relative_to(data.root).as_posix() == (
-        f"stations/versions/{datetime.now(UTC).date().isoformat()}_{hashlib.sha256(raw).hexdigest()[:8]}/stations.geojson"
+        f"stations/versions/imgw_stations/{datetime.now(UTC).date().isoformat()}_{hashlib.sha256(raw).hexdigest()[:8]}/stations.geojson"
     )
     assert document["type"] == "FeatureCollection"
     # no crs member, no catalog date; the lines of ADR-012 D4
@@ -835,7 +933,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert warsaw["geometry"]["coordinates"] == [21.01, 52.23]  # [lon, lat]
     assert (
         warsaw["properties"]["kind"] == "meteo"
-        and warsaw["properties"]["location_source"] == "api_meteo"
+        and warsaw["properties"]["location_source"] == "pl.imgw.meteo_now"
     )
     # A location from the static file of the hydro.imgw.pl map adds H and RH.
     static_station = next(f for f in document["features"] if f["id"] == "149190312")
@@ -857,18 +955,19 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert meta["extra"]["version"]["label_source"] == "downloaded"
     by_source = {entry["source"]: entry for entry in meta["extra"]["catalog"]}
     assert set(by_source) == {
-        "hydro_stations",
-        "meteo_stations",
+        "imgw_hydro_stations",
+        "imgw_meteo_stations",
         "api_hydro",
         "api_meteo",
         "static",
         "hydro_details",
     }
     assert (
-        by_source["hydro_stations"]["sha256"] == hashlib.sha256(HYDRO_CSV).hexdigest()
+        by_source["imgw_hydro_stations"]["sha256"]
+        == hashlib.sha256(HYDRO_CSV).hexdigest()
     )
-    assert by_source["hydro_stations"]["url"] == HYDRO_LIST.url
-    assert by_source["hydro_stations"]["file"].startswith(
+    assert by_source["imgw_hydro_stations"]["url"] == HYDRO_LIST.url
+    assert by_source["imgw_hydro_stations"]["file"].startswith(
         "archives/versions/dane_hydrologiczne/lista_stacji_hydro/"
     )
     assert by_source["api_hydro"]["count"] == 4 and by_source["api_hydro"][
@@ -1040,11 +1139,19 @@ def test_station_details_of_hydro_imgw_pl_fill_the_hydro_stations_only(
     assert entry["sha256"] == hashlib.sha256(stored.read_bytes()).hexdigest()
     assert entry["fetched_at"].endswith("Z")
 
-    (missing,) = [n for n in notices if n.code == "source_missing"]
+    # The details' own notice; the absent static file has another (a warning).
+    (missing,) = [
+        n
+        for n in notices
+        if n.code == "source_missing" and DETAILS_DATASET in n.message
+    ]
     assert missing.level == "info"
     assert "store sync" in missing.message
     assert f"--datasets {DETAILS_DATASET}" in missing.message
-    assert not any(n.code == "source_missing" for n in detailed_notices)
+    assert not any(
+        n.code == "source_missing" and DETAILS_DATASET in n.message
+        for n in detailed_notices
+    )
     # Seven steps: four sources, the details, the assembly and the publication.
     for steps, details_status in ((progress, "missing"), (detailed_progress, "done")):
         assert [(p.current, p.total) for p in steps] == [(i, 7) for i in range(1, 8)]
@@ -1107,7 +1214,7 @@ def test_identical_content_next_day_is_unchanged(store, data, tmp_path, monkeypa
     assert third.version.parent.name.startswith(
         (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
     )
-    assert len(list((data.root / "stations/versions").iterdir())) == 2
+    assert len(list((data.root / "stations/versions/imgw_stations").iterdir())) == 2
 
 
 def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
@@ -1121,8 +1228,8 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
     # action is missing too, but no source_missing notice is given for them.
     assert source_actions(plan) == dict.fromkeys(
         (
-            "hydro_stations",
-            "meteo_stations",
+            "imgw_hydro_stations",
+            "imgw_meteo_stations",
             "api_hydro",
             "api_meteo",
             "hydro_details",
@@ -1160,8 +1267,8 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
 
 
 SOURCE_DATASETS = {
-    "hydro_stations": "pl.imgw.hydro_stations",
-    "meteo_stations": "pl.imgw.meteo_stations",
+    "imgw_hydro_stations": "pl.imgw.hydro_stations",
+    "imgw_meteo_stations": "pl.imgw.meteo_stations",
     "api_hydro": "pl.imgw.hydro_now",
     "api_meteo": "pl.imgw.meteo_now",
 }

@@ -6,7 +6,7 @@ import typer
 
 from obserwator.cli._dispatch import _LANG, ObserwatorCommand, ObserwatorSubgroup, _json
 from obserwator.config import environment_report
-from obserwator.messages import message
+from obserwator.messages import localize, message
 
 app = typer.Typer(help=message("cli.config_help", lang=_LANG), cls=ObserwatorSubgroup)
 
@@ -65,6 +65,22 @@ def _render(report: dict[str, Any]) -> str:
                 ),
             )
         )
+    # The instance's section (ADR-025) and what keeps a server from starting or warns.
+    instance = report.get("instance")
+    if instance is None:
+        lines.append(message("cli.config_instance_none", lang=_LANG))
+    else:
+        lines.append(message("cli.config_instance_title", lang=_LANG))
+        for key, value in instance.items():
+            lines.append(f"  {key} = {_json(value)}")
+    problems = report.get("problems") or []
+    if not problems:
+        lines.append(message("cli.config_no_problems", lang=_LANG))
+    else:
+        lines.append(message("cli.config_problems_title", lang=_LANG))
+        for problem in problems:
+            text = localize(problem["message"], _LANG)
+            lines.append(f"  [{problem['code']}] {problem['option']}: {text}")
     return "\n".join(lines)
 
 

@@ -197,8 +197,27 @@ MESSAGES = {
         "zwracają plan (check=true), a zapisują przy check=false",
     ),
     # obserwator admin
-    "admin_help": Text("API key administration", "Administracja kluczy API"),
-    "admin_group_help": Text("Administration (API keys)", "Administracja (klucze API)"),
+    "admin_help": Text(
+        "API key administration (deprecated: nothing checks these keys; removed in "
+        "v4.0.0)",
+        "Administracja kluczy API (wycofywane: nic nie sprawdza tych kluczy; znika "
+        "w v4.0.0)",
+    ),
+    "admin_group_help": Text(
+        "Administration (API keys; deprecated, removed in v4.0.0)",
+        "Administracja (klucze API; wycofywane, znika w v4.0.0)",
+    ),
+    "admin_deprecated": Text(
+        "Deprecated: the API keys of obserwator admin (api_keys.json) are checked by "
+        "nothing, and the command and the file are removed in v4.0.0. REST writes use "
+        "OBSERWATOR_STORE_WRITE_TOKEN or OBSERWATOR_STORE_WRITE_TOKEN_FILE; the GUI's "
+        "admin panel OBSERWATOR_ADMIN_API_KEY or OBSERWATOR_ADMIN_API_KEY_FILE.",
+        "Wycofywane: kluczy API polecenia obserwator admin (api_keys.json) nic nie "
+        "sprawdza, a polecenie i plik znikają w v4.0.0. Zapisy przez REST używają "
+        "OBSERWATOR_STORE_WRITE_TOKEN albo OBSERWATOR_STORE_WRITE_TOKEN_FILE; panel "
+        "administracyjny GUI OBSERWATOR_ADMIN_API_KEY albo "
+        "OBSERWATOR_ADMIN_API_KEY_FILE.",
+    ),
     "admin_keys_help": Text("List the API keys.", "Lista kluczy API."),
     "admin_no_keys": Text("No API keys registered", "Brak zarejestrowanych kluczy API"),
     "admin_keys_title": Text("API keys", "Klucze API"),
@@ -306,6 +325,15 @@ MESSAGES = {
         "Raw root: {root}  [{origin}]  {size}",
         "Katalog surowy: {root}  [{origin}]  {size}",
     ),
+    "config_instance_none": Text(
+        "Instance: none ([obserwator.instance] not set: everything is served)",
+        "Instancja: brak (bez [obserwator.instance]: udostępniane jest wszystko)",
+    ),
+    "config_instance_title": Text(
+        "Instance ([obserwator.instance]):", "Instancja ([obserwator.instance]):"
+    ),
+    "config_problems_title": Text("Problems:", "Problemy:"),
+    "config_no_problems": Text("Problems: none", "Problemy: brak"),
     "mcp_allow_dir_help": Text(
         "Directory the MCP server may read and write (repeatable); without one a "
         "writing tool only plans",

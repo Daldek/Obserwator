@@ -11,7 +11,10 @@ or from the station's catalog entry (picks), and the options a person may change
 when the analysis is computed on the fly (`compute_analysis`). An analysis that
 takes an option from another's result runs in the next round of calls: every
 such number is Hydrolog's, copied from its result; Obserwator computes none
-(Nogat ECO-059).
+(Nogat ECO-059). The one file Obserwator computes itself is a derived input
+(`AnalysisInput.derived`): the half-year characteristics of a ČHMÚ station,
+taken from its daily series with the definitions of IMGW-PIB's half-year file,
+because ČHMÚ publishes none (the author's decision of 2026-11-18).
 """
 
 from __future__ import annotations
@@ -213,7 +216,7 @@ class AnalysisInput:
     ----------
     option : str
         The Hydrolog option that takes the file: ``input_file`` (a daily
-        series) or ``half_year_file`` (IMGW-PIB's half-year characteristics).
+        series) or ``half_year_file`` (half-year characteristics).
     datasets : tuple of str
         Dataset keys, in order of preference: the first whose current series
         holds the station with every variable is exported (``series export``).
@@ -226,12 +229,19 @@ class AnalysisInput:
         and variable by variable, what it lacks (a ``missing`` value or a day
         without a row), the earlier dataset taking precedence; empty reads the
         chosen dataset alone.
+    derived : str or None, optional
+        None: the file is the series of the dataset (``series export``).
+        ``"half_years"``: the half-year characteristics Obserwator computes
+        from the daily series of the dataset with the definitions of
+        IMGW-PIB's ``pl.imgw.hydro_semiannual``, for a provider that publishes
+        none (ČHMÚ): computed, not published by the provider.
     """
 
     option: str
     datasets: tuple[str, ...]
     variables: tuple[str, ...]
     joined: tuple[str, ...] = ()
+    derived: str | None = None
 
 
 @dataclass(frozen=True)
@@ -354,13 +364,16 @@ class AnalysisDefinition:
 
 # --- definitions -------------------------------------------------------------------------
 
-_HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
+_HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmu.hydro_daily")
 _HALF_YEARS = ("pl.imgw.hydro_semiannual",)
+# The daily series whose half-year characteristics Obserwator computes: ČHMÚ
+# publishes none (the author's decision of 2026-11-18).
+_COMPUTED_HALF_YEARS = ("cz.chmu.hydro_daily",)
 _METEO_DAILY = (
     "pl.imgw.meteo_synop_daily",
     "pl.imgw.meteo_climate_daily",
     "pl.imgw.meteo_precip_daily",
-    "cz.chmi.meteo_daily",
+    "cz.chmu.meteo_daily",
 )
 # The daily meteo record of an IMGW-PIB station (ADR-022): its synoptic series,
 # then its climate series, then its precipitation series (P and snow only) for
@@ -462,6 +475,26 @@ def _half_years(variable: str) -> AnalysisVariant:
     )
 
 
+def _computed_half_years(variable: str) -> AnalysisVariant:
+    """
+    A variant reading the half-year characteristics of ``variable`` Obserwator computes.
+
+    They come from ČHMÚ's daily series with the definitions of IMGW-PIB's
+    half-year file (`_export_half_years`): computed, not published by ČHMÚ.
+    """
+    return AnalysisVariant(
+        (
+            AnalysisInput(
+                "half_year_file",
+                _COMPUTED_HALF_YEARS,
+                (variable,),
+                derived="half_years",
+            ),
+        ),
+        _frozen({"parameter": variable}),
+    )
+
+
 def _meteo(*variables: str, columns: Mapping[str, Any]) -> AnalysisVariant:
     """A variant reading a station's daily meteorological record (IMGW-PIB or ČHMÚ)."""
     return AnalysisVariant(
@@ -516,7 +549,7 @@ _LEVEL_TITLES = {
     ("Q", "ssx"): "analyses.title_events_q_ssx",
     ("Q", "snx"): "analyses.title_events_q_snx",
 }
-_CHMI_TITLES = {
+_CHMU_TITLES = {
     ("H", "spa1"): "analyses.title_events_h_spa1",
     ("H", "spa2"): "analyses.title_events_h_spa2",
     ("H", "spa3"): "analyses.title_events_h_spa3",
@@ -607,7 +640,7 @@ def _hydro() -> list[AnalysisDefinition]:
                 "hydro",
                 half_title,
                 "stats characteristic",
-                (_half_years(variable),),
+                (_half_years(variable), _computed_half_years(variable)),
                 overridable=_YEARS,
             )
         )
@@ -626,7 +659,7 @@ def _hydro() -> list[AnalysisDefinition]:
                 overridable=_EVENT_OPTIONS,
             )
         )
-    for (variable, key), title in _CHMI_TITLES.items():
+    for (variable, key), title in _CHMU_TITLES.items():
         found.append(
             _define(
                 f"threshold_events.{variable}.{key}",
@@ -973,7 +1006,7 @@ def _meteo_definitions() -> list[AnalysisDefinition]:
                     "array",
                     items="number",
                     exclusive_minimum=0.0,
-                    maximum=100.0,
+                    exclusive_maximum=100.0,
                     min_items=1,
                     max_items=5,
                 ),
@@ -1310,6 +1343,7 @@ def _digest_document(definition: AnalysisDefinition) -> dict[str, Any]:
                         list(item.datasets),
                         list(item.variables),
                         list(item.joined),
+                        item.derived,
                     ]
                     for item in variant.inputs
                 ],

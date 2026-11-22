@@ -1,4 +1,11 @@
-"""Admin commands for API key management."""
+"""
+Admin commands for API key management, deprecated (ADR-025, I10).
+
+Nothing checks the keys of ``api_keys.json``: REST writes use the store write token and
+the GUI's admin panel its own key. Every call says so on standard error; the command and
+the file are removed in v4.0.0 (REL-1.1: only a major may remove), and ``obserwator
+config show`` reports a leftover file as a problem.
+"""
 
 import json
 import secrets
@@ -15,6 +22,12 @@ from obserwator.messages import message
 
 app = typer.Typer(help=message("cli.admin_help", lang=_LANG), cls=ObserwatorSubgroup)
 console = Console()
+
+
+@app.callback()
+def deprecated() -> None:
+    """Say on every call that the keys are checked by nothing and go in v4.0.0."""
+    typer.echo(message("cli.admin_deprecated", lang=_LANG), err=True)
 
 
 def load_api_keys() -> dict[str, Any]:

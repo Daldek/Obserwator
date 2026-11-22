@@ -2,7 +2,9 @@
 Stored analyses of the stations: Hydrolog's results kept in the data root (ADR-016).
 
 `build_analyses` exports the current series of every station (``series
-export``), runs the calls of the registry (`analysis_definitions`) through
+export``; for the half-year characteristics of a ČHMÚ station, which ČHMÚ does
+not publish, the file Obserwator computes of its daily series, `AnalysisInput`
+``derived``), runs the calls of the registry (`analysis_definitions`) through
 Hydrolog's program in batches (`obserwator._hydrolog`) and stores each answer
 line verbatim, one slot per provider::
 
@@ -15,9 +17,15 @@ line verbatim, one slot per provider::
 A station whose inputs (the SHA-256 of its station Parquet in each dataset, the
 catalog thresholds used, Hydrolog's version and the digest of the registry)
 equal its record in the current version is carried forward by hard links,
-without a Hydrolog call. `list_analyses`, `read_analysis` and `export_analyses`
-read a version; `compute_analysis` computes one analysis with a person's options
-on the fly and keeps nothing.
+without a Hydrolog call; Hydrolog's version is compared as a string, so every
+development build Hydrolog numbers anew (``0.9.0.dev3`` → ``0.9.0.dev4``)
+computes every station again. Each stored result keeps the ``formula_versions``
+of Hydrolog's envelope (Nogat CMP-2.8). A build that ends before it publishes
+keeps the stations it computed in its staging directory, and the next build
+takes from there, by hard links, those whose inputs are unchanged (`_take`,
+Nogat ECO-073). `list_analyses`, `read_analysis` and `export_analyses` read a
+version; `compute_analysis` computes one analysis with a person's options on
+the fly and keeps nothing.
 """
 
 from __future__ import annotations
@@ -82,6 +90,7 @@ from obserwator.store.export import (
     _csv_line,
     _csv_lines,
     _deliver,
+    _export_half_years,
     _export_joined,
     _format,
     _Lines,
@@ -120,6 +129,7 @@ from obserwator.store.writer import (
     _fsync_dir,
     _link,
     _publish_dir,
+    _sha256_file,
     _utc,
     _validate_slot,
     _write_json,
@@ -140,16 +150,18 @@ _FORMATS = ("json", "csv")
 # mostly imports) is paid once for all their calls.
 _CHUNK_STATIONS = 16
 _DEFAULT_TIMEOUT = 30.0
+# What an input of a station's record names of the series it read (`_Station.sources`).
+_SOURCE_KEYS = ("dataset", "series_version", "series_sha256", "station_sha256")
 _CSV_HEADER = (
     "station",
     "analysis",
     "command",
     "series_version",
     "hydrolog_version",
+    "formula_versions",
     "path",
     "value",
-    "attribution_source",
-    "attribution_processed",
+    "derived",
     "attribution",
     "terms_notice",
 )
@@ -171,13 +183,15 @@ class AnalysisSource:
         Dataset key of the series.
     series_version : str
         The series version directory relative to the data root (POSIX), e.g.
-        ``series/versions/hydro_daily/2026-10-19_fc3541d8``.
+        ``series/versions/imgw_hydro_daily/2026-10-19_fc3541d8``.
     series_sha256 : str
         SHA-256 of its ``series.json``.
     station_sha256 : str
         SHA-256 of the station's Parquet file in that version.
     export_sha256 : str
-        SHA-256 of the ``series export`` CSV file Hydrolog read.
+        SHA-256 of the file of the series Hydrolog read: its ``series export``
+        CSV, or the half-year characteristics Obserwator computed of it
+        (``derived``) when the station's analyses read only these.
     """
 
     dataset: str
@@ -212,6 +226,12 @@ class AnalysisSummary:
         results gave its options).
     hydrolog : Mapping of str to str
         ``{"version": …}`` of the Hydrolog that computed it.
+    formula_versions : Mapping of str to int
+        The ``formula_version`` of each formula with a spec that gave the
+        result, by the spec's name (Hydrolog's envelope, Nogat CMP-2.8); empty
+        for a failed analysis and a Hydrolog before 0.9.0. A record stored
+        before Obserwator 3.1.0 has none, so `list_analyses` gives none for it
+        while `read_analysis` reads them from Hydrolog's stored envelope.
     computed_at : datetime
         When Hydrolog computed it (UTC).
     stored : bool
@@ -228,6 +248,11 @@ class AnalysisSummary:
     analyses_version : str or None
         The name of the stored version, ``<label>_<sha8>`` (the label is its
         build date); None for a result computed on the fly.
+    derived : str or None, optional
+        ``"half_years"`` when the analysis read the half-year characteristics
+        Obserwator computed of the daily series (ČHMÚ publishes none), not
+        characteristics the provider published; None when it read the files
+        of its series (``series export``).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-analysis-summary/1"
@@ -240,6 +265,7 @@ class AnalysisSummary:
     options: Mapping[str, Any]
     inputs: tuple[AnalysisSource, ...]
     hydrolog: Mapping[str, str]
+    formula_versions: Mapping[str, int]
     computed_at: datetime
     stored: bool
     status: Literal["ok", "failed"]
@@ -247,6 +273,7 @@ class AnalysisSummary:
     attribution: tuple[str, ...]
     terms_notice: tuple[str, ...]
     analyses_version: str | None
+    derived: str | None = None
 
 
 @dataclass(frozen=True)
@@ -258,7 +285,9 @@ class AnalysisResult:
     ``hydrolog-result/1``, with ``result``, ``notices`` and ``inputs``) of an
     ``ok`` analysis, or ``error`` (its ``hydrolog-error/1``) of a ``failed``
     one. A stored ``envelope`` echoes the absolute paths of the series files
-    Hydrolog read, in a scratch directory that no longer exists.
+    Hydrolog read, in a scratch directory that no longer exists. ``derived``
+    ``"half_years"`` says that the analysis read the half-year characteristics
+    Obserwator computed of the daily series, not ones the provider published.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-analysis/1"
@@ -271,6 +300,7 @@ class AnalysisResult:
     options: Mapping[str, Any]
     inputs: tuple[AnalysisSource, ...]
     hydrolog: Mapping[str, str]
+    formula_versions: Mapping[str, int]
     computed_at: datetime
     stored: bool
     status: Literal["ok", "failed"]
@@ -280,6 +310,7 @@ class AnalysisResult:
     attribution: tuple[str, ...]
     terms_notice: tuple[str, ...]
     analyses_version: str | None
+    derived: str | None = None
 
 
 @dataclass(frozen=True)
@@ -297,17 +328,22 @@ class ProviderAnalyses:
     version : Path or None
         ``analyses.json`` of the new or unchanged version.
     stations : int
-        Stations in the version.
+        Stations in the version: ``computed + carried + resumed`` of a new or
+        unchanged one.
     computed : int
         Stations computed by Hydrolog in this build.
     carried : int
         Stations carried forward from the previous version.
     results_ok : int
-        Analyses of the computed stations with Hydrolog's envelope.
+        Analyses of the computed and resumed stations with Hydrolog's envelope.
     results_failed : int
-        Analyses of the computed stations with Hydrolog's error document.
+        Analyses of the computed and resumed stations with Hydrolog's error
+        document.
     problems : tuple of str, optional
         Why the build failed.
+    resumed : int, optional
+        Stations taken from the staging directory of an interrupted build:
+        computed there and not again (Nogat ECO-073).
     """
 
     provider: str
@@ -319,6 +355,7 @@ class ProviderAnalyses:
     results_ok: int
     results_failed: int
     problems: tuple[str, ...] = ()
+    resumed: int = 0
 
 
 @dataclass(frozen=True)
@@ -430,18 +467,28 @@ def _current_catalog(root: Path, provider: ProviderDescriptor) -> _Catalog | Non
 # --------------------------------------------------------------------------
 
 
+# A series file of a station: the datasets it is made of and its ``derived`` kind.
+_Export = tuple[tuple[str, ...], str | None]
+
+
 @dataclass(frozen=True)
 class _Planned:
     """
     An analysis of the registry that applies to a station: its variant and files.
 
-    Each file is a Hydrolog option and the datasets its series file is made
-    of: one, or the joined daily record of the station (ADR-022).
+    Each file is a Hydrolog option, the datasets its series file is made of
+    (one, or the joined daily record of the station, ADR-022) and its
+    ``derived`` kind (`AnalysisInput.derived`: None for the series itself).
     """
 
     definition: AnalysisDefinition
     variant: AnalysisVariant
-    files: tuple[tuple[str, tuple[str, ...]], ...]
+    files: tuple[tuple[str, tuple[str, ...], str | None], ...]
+
+    @property
+    def derived(self) -> str | None:
+        """The ``derived`` kind of the files it reads (``half_years``), or None."""
+        return next((kind for _, _, kind in self.files if kind is not None), None)
 
 
 @dataclass(frozen=True)
@@ -461,16 +508,24 @@ class _Station:
             dict.fromkeys(
                 key
                 for planned in self.planned
-                for _, keys in planned.files
+                for _, keys, _ in planned.files
                 for key in keys
             )
         )
 
-    def exports(self) -> tuple[tuple[str, ...], ...]:
-        """The series files of the planned analyses (their datasets), once each."""
-        return tuple(
-            dict.fromkeys(keys for planned in self.planned for _, keys in planned.files)
+    def exports(self) -> tuple[_Export, ...]:
+        """
+        The series files of the planned analyses, once each: the series exports first.
+
+        A dataset's ``export_sha256`` is that of its first file here, so of its
+        ``series export`` whenever an analysis reads one.
+        """
+        found = dict.fromkeys(
+            (keys, derived)
+            for planned in self.planned
+            for _, keys, derived in planned.files
         )
+        return tuple(sorted(found, key=lambda item: item[1] is not None))
 
     def thresholds(self) -> object:
         """The catalog thresholds an analysis takes, or None."""
@@ -551,6 +606,19 @@ def _is_number(value: object) -> bool:
     )
 
 
+def _formula_versions(document: Mapping[str, Any]) -> dict[str, int]:
+    """
+    The ``formula_versions`` of Hydrolog's envelope by spec name, sorted (CMP-2.8).
+
+    Empty for an error document and for an envelope without them (a Hydrolog
+    before 0.9.0, or no formula with a spec gave the result).
+    """
+    found = (
+        document.get("formula_versions") if document.get("schema") == _RESULT else None
+    )
+    return dict(sorted(found.items())) if isinstance(found, Mapping) else {}
+
+
 def _holdings(index: SeriesIndex, code: str) -> frozenset[str]:
     """The variables of the station with a value in a series (half-years without ``@``)."""
     return frozenset(
@@ -579,7 +647,7 @@ def _plan(
         ):
             continue
         for variant in definition.variants:
-            files: list[tuple[str, tuple[str, ...]]] = []
+            files: list[tuple[str, tuple[str, ...], str | None]] = []
             for item in variant.inputs:
                 held = [
                     key
@@ -594,7 +662,7 @@ def _plan(
                 if held[0] in item.joined:
                     later = item.joined[item.joined.index(held[0]) + 1 :]
                     keys += tuple(key for key in later if key in held)
-                files.append((item.option, keys))
+                files.append((item.option, keys, item.derived))
             else:
                 planned[definition.id] = _Planned(definition, variant, tuple(files))
                 break
@@ -676,6 +744,10 @@ class _Outcome:
     def error_code(self) -> str | None:
         code = self.document.get("code")
         return None if self.ok or not isinstance(code, str) else code
+
+    @property
+    def formula_versions(self) -> dict[str, int]:
+        return _formula_versions(self.document)
 
     def lines(self) -> Attribution:
         """
@@ -761,15 +833,28 @@ def _datasets_of(station: _Station, planned: _Planned) -> tuple[str, ...]:
     pending = [planned]
     while pending:
         current = pending.pop()
-        for _, keys in current.files:
+        for _, keys, _ in current.files:
             found.update(dict.fromkeys(keys))
         pending += [by_id[name] for name in current.definition.depends_on]
     return tuple(key for key in station.datasets() if key in found)
 
 
-def _export_name(code: str, keys: tuple[str, ...]) -> str:
-    """The series file of a station: one dataset or its joined record (ADR-022)."""
-    return f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}.csv"
+def _export_name(code: str, keys: tuple[str, ...], derived: str | None) -> str:
+    """
+    The series file of a station: one dataset, its joined record (ADR-022) or derived.
+
+    A derived file is named after its dataset and kind
+    (``<code>_chmu_hydro_daily_half_years.csv``), so it never meets the
+    series export of the same dataset.
+    """
+    name = f"{code}_{'+'.join(get_dataset(key).slug for key in keys)}"
+    return f"{name}.csv" if derived is None else f"{name}_{derived}.csv"
+
+
+# The writers of the derived series files (`AnalysisInput.derived`), by kind.
+_DERIVED: Final[Mapping[str, Callable[..., OutputReport]]] = {
+    "half_years": _export_half_years
+}
 
 
 def _compute(
@@ -785,9 +870,10 @@ def _compute(
     """
     Every planned analysis of ``stations``: one Hydrolog process per round of calls.
 
-    The series files go to ``scratch`` (``<code>_<dataset slug>.csv``) and are
-    removed after the last round; an analysis whose option an earlier answer
-    or the catalog does not give is left out.
+    The series files go to ``scratch`` (``<code>_<dataset slug>.csv``, a derived
+    file ``<code>_<dataset slug>_<derived>.csv``) and are removed after the last
+    round; an analysis whose option an earlier answer or the catalog does not
+    give is left out.
 
     Returns
     -------
@@ -797,21 +883,21 @@ def _compute(
     exports: dict[str, dict[str, str]] = {}
     for station in stations:
         hashes: dict[str, str] = {}
-        for keys in station.exports():
+        for keys, derived in station.exports():
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("common.cancelled"))
-            target = scratch / _export_name(station.code, keys)
-            report = (
-                export_series(
-                    station.series[keys[0]].path, station=station.code, output=target
-                )
-                if len(keys) == 1
-                else _export_joined(
+            target = scratch / _export_name(station.code, keys, derived)
+            series = station.series[keys[0]].path
+            if derived is not None:
+                report = _DERIVED[derived](series, station=station.code, output=target)
+            elif len(keys) == 1:
+                report = export_series(series, station=station.code, output=target)
+            else:
+                report = _export_joined(
                     [station.series[key].path for key in keys],
                     station=station.code,
                     output=target,
                 )
-            )
             for key in keys:
                 hashes.setdefault(key, report.files[0].sha256)
         exports[station.code] = hashes
@@ -833,8 +919,8 @@ def _compute(
                     **definition.options,
                     **planned.variant.options,
                     **{
-                        option: _export_name(station.code, keys)
-                        for option, keys in planned.files
+                        option: _export_name(station.code, keys, derived)
+                        for option, keys, derived in planned.files
                     },
                     **picked,
                     **((overrides or {}).get(definition.id) or {}),
@@ -855,8 +941,10 @@ def _compute(
                 _datasets_of(station, planned),
             )
     for station in stations:
-        for keys in station.exports():
-            (scratch / _export_name(station.code, keys)).unlink(missing_ok=True)
+        for keys, derived in station.exports():
+            (scratch / _export_name(station.code, keys, derived)).unlink(
+                missing_ok=True
+            )
     now = datetime.now(UTC)
     return version, [
         _Computed(
@@ -1105,6 +1193,7 @@ def _summary(
             if item["dataset"] in entry["datasets"]
         ),
         record["hydrolog"],
+        dict(entry.get("formula_versions") or {}),
         datetime.fromisoformat(str(record["computed_at"])),
         True,
         entry["status"],
@@ -1112,6 +1201,7 @@ def _summary(
         lines.attribution,
         lines.terms_notice,
         version.directory.name,
+        entry.get("derived"),
     )
 
 
@@ -1260,8 +1350,10 @@ def _stage(
                 "command": definition.command,
                 "options": dict(outcome.options),
                 "datasets": list(outcome.datasets),
+                "derived": outcome.planned.derived,
                 "status": "ok" if outcome.ok else "failed",
                 "error_code": outcome.error_code,
+                "formula_versions": outcome.formula_versions,
                 "file": relative,
                 "sha256": _write(staging / relative, outcome.line),
             }
@@ -1281,16 +1373,23 @@ def _stage(
         **_station_lines(computed).fields(),
     }
     file = f"stations/{station.code}.json"
+    sha256 = _write(staging / file, _canonical(record))
+    return record, _index_entry(station, sha256, results)
+
+
+def _index_entry(
+    station: _Station, sha256: str, results: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """The entry of a staged station in ``analyses.json``: its record and result counts."""
     ok = sum(1 for item in results if item["status"] == "ok")
-    entry = {
+    return {
         "provider": station.provider.id,
         "kind": station.kind,
-        "file": file,
-        "sha256": _write(staging / file, _canonical(record)),
+        "file": f"stations/{station.code}.json",
+        "sha256": sha256,
         "n_ok": ok,
         "n_failed": len(results) - ok,
     }
-    return record, entry
 
 
 def _carry(
@@ -1303,6 +1402,182 @@ def _carry(
         _link(version.directory / str(name), staging / str(name))
     _fsync_dir(staging / "stations" / code)
     return entry
+
+
+# --------------------------------------------------------------------------
+# Resuming an interrupted build (Nogat ECO-073)
+# --------------------------------------------------------------------------
+
+
+def _leftovers(incoming: Path, own: Path | None = None) -> list[Path]:
+    """
+    The staging directories in ``incoming`` other than ``own``, by name.
+
+    Symbolic links and files are skipped, and so is a directory removed
+    meanwhile by its build or by a cleanup; no ``incoming`` gives none.
+    """
+    try:
+        children = sorted(incoming.iterdir())
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    found = []
+    for child in children:
+        try:
+            if child == own or child.is_symlink() or not child.is_dir():
+                continue
+        except OSError:
+            continue
+        found.append(child)
+    return found
+
+
+def _source_set(items: Iterable[Mapping[str, Any]]) -> set[tuple[Any, ...]]:
+    """The series of a record's ``inputs`` or of `_Station.sources`, without the exports."""
+    return {tuple(item[key] for key in _SOURCE_KEYS) for item in items}
+
+
+def _leftover_record(
+    leftover: Path, station: _Station, version: str, digest: str
+) -> tuple[bytes, dict[str, Any]] | None:
+    """
+    The record of ``station`` in the staging directory ``leftover``, if a build may take it.
+
+    The record must be whole (``obserwator-station-analyses/1`` ending with
+    the line feed of `_canonical`: a record still being written does not
+    parse or lacks it), of this station, provider and kind, and hold the
+    inputs the station has now: the Hydrolog version, registry digest and
+    catalog thresholds of the carry-forward (`_fingerprint`), and the same
+    series versions and station files (``inputs`` without the exported
+    file), so a resumed station is what this build would compute and records
+    of different series versions never mix. Each result must be an analysis
+    of the registry in its own file ``stations/<code>/<id>.json``, with its
+    SHA-256 and the status ``ok`` or ``failed``.
+
+    Returns
+    -------
+    tuple of (bytes, dict) or None
+        The bytes and the document of the record; None for any other file.
+    """
+    code = station.code
+    try:
+        content = (leftover / "stations" / f"{code}.json").read_bytes()
+        record = json.loads(content)
+    except (OSError, ValueError):
+        return None
+    if not content.endswith(b"\n") or not isinstance(record, dict):
+        return None
+    try:
+        current = (
+            record.get("schema") == STATION_SCHEMA
+            and record.get("station") == code
+            and record.get("provider") == station.provider.id
+            and record.get("kind") == station.kind
+            and _record_fingerprint(record) == station.fingerprint(version, digest)
+            and _source_set(record["inputs"]) == _source_set(station.sources())
+        )
+    except (KeyError, TypeError):
+        return None
+    results = record.get("results")
+    ids = {definition.id for definition in analysis_definitions()}
+    if (
+        not current
+        or not isinstance(results, list)
+        or not all(
+            isinstance(item, dict)
+            and item.get("analysis") in ids
+            and item.get("file") == f"stations/{code}/{item['analysis']}.json"
+            and isinstance(item.get("sha256"), str)
+            and item.get("status") in ("ok", "failed")
+            for item in results
+        )
+    ):
+        return None
+    return content, record
+
+
+def _intact(directory: Path, record: Mapping[str, Any]) -> bool:
+    """Whether each result file of ``record`` in ``directory`` has the SHA-256 it names."""
+    try:
+        return all(
+            _sha256_file(directory / item["file"]) == item["sha256"]
+            for item in record["results"]
+        )
+    except OSError:
+        return False
+
+
+def _linked(source: Path, target: Path, sha256: object) -> bool:
+    """Link ``source`` as ``target``; whether the linked file has the SHA-256 ``sha256``."""
+    _link(source, target)
+    return _sha256_file(target) == sha256
+
+
+def _take(
+    staging: Path,
+    leftovers: Sequence[Path],
+    station: _Station,
+    version: str,
+    digest: str,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """
+    Link a station another build staged into ``staging``; its record and index entry.
+
+    The first leftover whose record of the station `_leftover_record`
+    accepts gives it: its result files, then its record, are hard-linked
+    where `_stage` writes them, each linked result checked against the
+    SHA-256 the record names, and the record's own SHA-256 goes into the
+    entry. On any failure (a file missing or removed meanwhile, an
+    ``OSError``, a mismatch, no hard link) the links made for the station
+    are removed from ``staging`` and the next leftover is tried; None when
+    none gives the station, which is then computed.
+
+    The store has no locks, and a leftover may belong to a build that still
+    runs. Its rules make reading it safe: a staging directory is unique to
+    its build, its files are written once (``O_EXCL``, flushed and fsynced)
+    and never changed, a station's record is written after its result
+    files, and only the whole directory is removed, by its build or by the
+    24-hour `_cleanup`. So a record that parses whole names result files
+    complete before it was written, a record still being written is not
+    taken, a link never replaces an entry (`_link`), and the hashes catch
+    anything else. Another staging directory is never changed, moved or
+    removed here; a linked file outlives the removal of its leftover.
+    """
+    code = station.code
+    directory = staging / "stations" / code
+    file = f"stations/{code}.json"
+    for leftover in leftovers:
+        found = _leftover_record(leftover, station, version, digest)
+        if found is None:
+            continue
+        content, record = found
+        sha256 = hashlib.sha256(content).hexdigest()
+        try:
+            directory.mkdir()
+            whole = all(
+                _linked(leftover / item["file"], staging / item["file"], item["sha256"])
+                for item in record["results"]
+            )
+            if whole:
+                _fsync_dir(directory)
+                whole = _linked(leftover / file, staging / file, sha256)
+        except (OSError, ObserwatorStoreConflictError):
+            whole = False
+        if whole:
+            return record, _index_entry(station, sha256, record["results"])
+        shutil.rmtree(directory, ignore_errors=True)
+        (staging / file).unlink(missing_ok=True)
+    return None
+
+
+def _resumable(
+    leftovers: Sequence[Path], station: _Station, version: str, digest: str
+) -> bool:
+    """Whether a build would take ``station`` from a leftover; reads, links nothing."""
+    for leftover in leftovers:
+        found = _leftover_record(leftover, station, version, digest)
+        if found is not None and _intact(leftover, found[1]):
+            return True
+    return False
 
 
 def _publish(
@@ -1409,9 +1684,9 @@ def _build_provider(
 ) -> ProviderAnalyses:
     provider = plan.provider
     total = len(plan.stations)
+    version = hydrolog.version or ""
     incoming = root / ".incoming"
     incoming.mkdir(exist_ok=True)
-    _cleanup(incoming, on_notice=on_notice)
     staging = incoming / f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex}"
     (staging / "stations").mkdir(parents=True)
     scratch = _scratch()
@@ -1422,8 +1697,29 @@ def _build_provider(
 
     records: dict[str, Mapping[str, Any]] = {}
     entries: dict[str, Mapping[str, Any]] = {}
-    ok = failed = done = 0
+    ok = failed = done = computed = resumed = 0
+    path: Path | None = None
     try:
+        digest = definitions_digest()
+        # Before the cleanup, which removes the leftovers older than 24 hours.
+        leftovers = _leftovers(incoming, staging)
+        for station in plan.compute:
+            taken = _take(staging, leftovers, station, version, digest)
+            if taken is None:
+                continue
+            records[station.code], entries[station.code] = taken
+            ok += taken[1]["n_ok"]
+            failed += taken[1]["n_failed"]
+            resumed += 1
+            done += 1
+            _progress(
+                on_progress,
+                done,
+                total,
+                "resumed",
+                message("analyses.station_resumed", station=station.code),
+            )
+        _cleanup(incoming, on_notice=on_notice)
         for code, record in plan.carried.items():
             entries[code] = _carry(staging, cast(_Version, plan.current), code, record)
             records[code] = record
@@ -1435,22 +1731,23 @@ def _build_provider(
                 "carried",
                 message("analyses.station_carried", station=code),
             )
-        digest = definitions_digest()
+        pending = [station for station in plan.compute if station.code not in records]
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures: list[Future[tuple[str, list[_Computed]]]] = [
                 pool.submit(
                     _compute, hydrolog, scratch, f"part{number}", chunk, cancel=stopped
                 )
-                for number, chunk in enumerate(_chunks(plan.compute, workers))
+                for number, chunk in enumerate(_chunks(pending, workers))
             ]
             try:
                 for future in as_completed(futures):
-                    for computed in future.result()[1]:
-                        record, entry = _stage(staging, computed, digest)
-                        code = computed.station.code
+                    for answers in future.result()[1]:
+                        record, entry = _stage(staging, answers, digest)
+                        code = answers.station.code
                         records[code], entries[code] = record, entry
                         ok += entry["n_ok"]
                         failed += entry["n_failed"]
+                        computed += 1
                         done += 1
                         _progress(
                             on_progress,
@@ -1466,13 +1763,14 @@ def _build_provider(
                 raise
         if stopped():
             raise ObserwatorCancelledError(message("common.cancelled"))
-        path = _publish(
-            root, staging, plan, records, entries, hydrolog.version or "", selected
-        )
+        path = _publish(root, staging, plan, records, entries, version, selected)
     except ObserwatorCancelledError:
         return ProviderAnalyses(provider.id, "cancelled", None, total, 0, 0, 0, 0)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        # Not published, the stations computed or resumed stay for the next
+        # build (`_take`); the scratch directory never stays.
+        if path is not None or not (computed or resumed):
+            shutil.rmtree(staging, ignore_errors=True)
         shutil.rmtree(scratch, ignore_errors=True)
     if on_notice is not None:
         on_notice(
@@ -1487,10 +1785,11 @@ def _build_provider(
         "new",
         path,
         total,
-        len(plan.compute),
+        computed,
         len(plan.carried),
         ok,
         failed,
+        resumed=resumed,
     )
 
 
@@ -1540,6 +1839,19 @@ def build_analyses(
     are the stations of its current version is ``unchanged`` and gets no new
     version.
 
+    A build that ends before it publishes a provider's version (cancelled,
+    an error, Ctrl+C, a killed process) keeps the stations it computed in its
+    staging directory ``.incoming/<host>_<pid>_<token>/`` of the data root.
+    The next build takes from every such directory, by hard links and
+    without a call, each station to compute whose record there is whole,
+    names the series versions and station files the station has now and the
+    same catalog thresholds, Hydrolog version and registry digest, and whose
+    result files have the SHA-256 the record names; it computes the rest and
+    publishes as before, so the version is the one an uninterrupted build
+    gives. It never changes another build's staging directory (that build
+    may still run); those older than 24 hours are removed once the stations
+    are taken.
+
     Parameters
     ----------
     root : str, os.PathLike, StoreHandle or None, optional
@@ -1553,21 +1865,23 @@ def build_analyses(
         Hydrolog processes run at a time (at least 1).
     on_progress : ProgressHook or None, optional
         Called after each station with ``unit="station"`` and the status
-        ``computed`` or ``carried``.
+        ``computed``, ``carried`` or ``resumed`` (taken from an interrupted
+        build).
     on_notice : NoticeHook or None, optional
         Receives the ``license_terms`` notice of every new version and a
         ``leftover_incoming`` warning for every removed old staging directory.
     cancel : Cancel or None, optional
         Polled while Hydrolog runs; ``True`` stops the build and nothing more
-        is published.
+        is published (the stations computed so far stay for the next build).
 
     Returns
     -------
     AnalysesReport
         Per provider ``new``, ``unchanged`` or ``cancelled`` with the version,
-        the stations computed and carried forward and the analyses that
-        Hydrolog answered with its envelope or with an error document;
-        ``failed`` when the data root holds no series to analyse.
+        the stations computed, carried forward and resumed and the analyses
+        that Hydrolog answered (in this build or in the interrupted one) with
+        its envelope or with an error document; ``failed`` when the data root
+        holds no series to analyse.
 
     Raises
     ------
@@ -1656,7 +1970,9 @@ def check_analyses(
 
     Hydrolog's program is asked only for its version (``config show``),
     which decides with the series and the registry which stations a build
-    computes and which it carries forward.
+    computes and which it carries forward. The stations an interrupted build
+    left (`build_analyses`) are read and their result files hashed, never
+    linked, to count those a build would resume.
 
     Parameters
     ----------
@@ -1669,9 +1985,9 @@ def check_analyses(
     StorePlan
         ``obserwator-plan/1`` with one ``analyses build`` action per provider:
         ``current`` (the version stays), ``newer`` (a new version: stations
-        to compute and to carry forward) or ``missing`` (no version yet); a
-        ``missing`` action without series to analyse; a ``conflict`` action
-        for a root that a build refuses.
+        to compute, to carry forward and to resume) or ``missing`` (no
+        version yet); a ``missing`` action without series to analyse; a
+        ``conflict`` action for a root that a build refuses.
 
     Raises
     ------
@@ -1685,8 +2001,11 @@ def check_analyses(
         return refused
     path = _data_root(root)
     hydrolog = open_hydrolog()
+    version = hydrolog.version or ""
+    digest = definitions_digest()
+    leftovers = _leftovers(path / ".incoming")
     actions: list[PlanAction] = []
-    for plan in _plans(path, hydrolog.version or "", selected):
+    for plan in _plans(path, version, selected):
         name = plan.provider.short_name
         if plan.unchanged:
             actions.append(
@@ -1701,6 +2020,10 @@ def check_analyses(
                 )
             )
         else:
+            resumed = sum(
+                _resumable(leftovers, station, version, digest)
+                for station in plan.compute
+            )
             actions.append(
                 PlanAction(
                     _COMMAND,
@@ -1708,8 +2031,9 @@ def check_analyses(
                     message(
                         "analyses.plan_build",
                         provider=name,
-                        computed=len(plan.compute),
+                        computed=len(plan.compute) - resumed,
                         carried=len(plan.carried),
+                        resumed=resumed,
                         version=hydrolog.version,
                     ),
                 )
@@ -1796,6 +2120,7 @@ def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisRe
         summary.options,
         summary.inputs,
         summary.hydrolog,
+        summary.formula_versions or _formula_versions(document),
         summary.computed_at,
         summary.stored,
         summary.status,
@@ -1805,6 +2130,7 @@ def _result(summary: AnalysisSummary, document: Mapping[str, Any]) -> AnalysisRe
         summary.attribution,
         summary.terms_notice,
         summary.analyses_version,
+        summary.derived,
     )
 
 
@@ -1960,15 +2286,19 @@ def export_analyses(
     ``series_versions`` (dataset, version directory, SHA-256),
     ``hydrolog_version`` and ``results``, each with ``analysis``,
     ``command``, ``options``, ``status``, ``computed_at``, ``series_versions``,
+    ``formula_versions`` (`AnalysisSummary`), ``derived`` (``half_years``
+    when the analysis read the half-year characteristics Obserwator computed
+    of the daily series, not ones the provider published; else null),
     Hydrolog's ``result`` and ``notices`` (or its ``error`` document),
     ``attribution`` and ``terms_notice``; then the station's ``attribution``
     and ``terms_notice``. ``csv`` (UTF-8, comma, CRLF) is long: one row per
     scalar leaf of Hydrolog's ``result`` of every ``ok`` analysis,
-    ``station,analysis,command,series_version,hydrolog_version,path,value``
-    with ``path`` a JSON Pointer (RFC 6901) into ``result``, followed by the
-    attribution columns of ``series export`` (``attribution_source`` and
-    ``attribution_processed`` in the first row, ``attribution`` and
-    ``terms_notice`` one line per row from the first).
+    ``station,analysis,command,series_version,hydrolog_version,formula_versions,path,value,derived``
+    with ``formula_versions`` as ``name=version`` pairs joined by ``;``,
+    ``path`` a JSON Pointer (RFC 6901) into ``result`` and ``derived`` as in
+    ``json`` (empty for null), followed by the attribution columns of
+    ``series export``, ``attribution`` and ``terms_notice``, one line per row
+    from the first (ADR-028).
 
     Parameters
     ----------
@@ -2043,6 +2373,8 @@ def export_analyses(
                     "status": entry["status"],
                     "computed_at": record["computed_at"],
                     "series_versions": _series_versions(record, entry),
+                    "formula_versions": _formula_versions(document),
+                    "derived": entry.get("derived"),
                     "result": document.get("result") if ok else None,
                     "notices": document.get("notices", []) if ok else [],
                     "error": None if ok else document,
@@ -2072,19 +2404,16 @@ def export_analyses(
         rows: Iterable[str] = [text]
         head: tuple[str, ...] = ()
     else:
-        first = record["inputs"][0]["dataset"] if record["inputs"] else None
-        formulas = (
-            (get_dataset(first).license.attribution, provider.processed_attribution)
-            if first is not None
-            else ("", "")
-        )
 
         def table() -> Iterator[list[str]]:
-            number = 0
             for entry, document in zip(chosen, documents, strict=True):
                 if document.get("schema") != _RESULT:
                     continue
                 series = ";".join(_series_versions(record, entry))
+                formulas_of = ";".join(
+                    f"{name}={number}"
+                    for name, number in _formula_versions(document).items()
+                )
                 for path, value in _leaves(document.get("result")):
                     yield [
                         code,
@@ -2092,11 +2421,11 @@ def export_analyses(
                         str(entry["command"]),
                         series,
                         hydrolog_version,
+                        formulas_of,
                         path,
                         _cell(value),
-                        *(formulas if number == 0 else ("", "")),
+                        _cell(entry.get("derived")),
                     ]
-                    number += 1
 
         head = (_csv_line(list(_CSV_HEADER)),)
         rows = _csv_lines(_with_lines(table(), lines))
@@ -2214,9 +2543,11 @@ def compute_analysis(
     Compute one analysis of a station on the fly with a person's options; keep nothing.
 
     The station's current series go to a fresh scratch directory outside the
-    data root (removed afterwards) and Hydrolog computes the analysis and the
-    analyses it takes numbers from, one process per round, as a build does;
-    nothing is written to the data root or to any other lasting file.
+    data root (removed afterwards), with the half-year characteristics
+    Obserwator computes of a ČHMÚ daily series where the analysis reads them,
+    and Hydrolog computes the analysis and the analyses it takes numbers from,
+    one process per round, as a build does; nothing is written to the data
+    root or to any other lasting file.
 
     Parameters
     ----------
@@ -2241,7 +2572,8 @@ def compute_analysis(
     -------
     AnalysisResult
         ``stored`` False and ``analyses_version`` None; ``inputs`` name the
-        current series versions and the files Hydrolog read.
+        current series versions and the files Hydrolog read; ``derived`` is
+        ``half_years`` for computed half-year characteristics.
 
     Raises
     ------
@@ -2331,6 +2663,7 @@ def compute_analysis(
         dict(outcome.options),
         tuple(AnalysisSource(**sources[key]) for key in outcome.datasets),
         {"version": version},
+        outcome.formula_versions,
         computed[0].computed_at,
         False,
         "ok" if outcome.ok else "failed",
@@ -2338,5 +2671,6 @@ def compute_analysis(
         lines.attribution,
         lines.terms_notice,
         None,
+        outcome.planned.derived,
     )
     return _result(summary, outcome.document)

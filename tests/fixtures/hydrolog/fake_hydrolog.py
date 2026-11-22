@@ -6,10 +6,12 @@ It answers the two calls Obserwator makes, as Hydrolog 1.0 does:
 - ``config show --json``: the envelope with ``version``;
 - ``commands batch --input-file CALLS --output RESULTS --json``: one line per call
   in RESULTS, the recorded answer of the call's command (``answers.json``, real
-  Hydrolog answers on the fixture store): its envelope with the call's own
-  ``inputs`` (paths absolute against the directory of CALLS) and the attribution
-  lines of the series file it read, or the recorded error document; the
-  envelope of the batch on stdout and the exit code 0, 10 or 11.
+  Hydrolog answers on the fixture store, of Hydrolog 0.9.0.dev4 but for ``stats
+  harmonics``, whose 0.9.0 refuses the fixture's short series): its envelope with
+  its ``formula_versions``, the call's own ``inputs`` (paths absolute against the
+  directory of CALLS) and the attribution lines of the series file it read, or
+  the recorded error document; the envelope of the batch on stdout and the exit
+  code 0, 10 or 11.
 
 The environment steers it: ``FAKE_HYDROLOG_VERSION`` (the version, else
 ``1.0.0.dev0``), ``FAKE_HYDROLOG_SLEEP`` (seconds before a batch answers),
@@ -30,7 +32,9 @@ VERSION = os.environ.get("FAKE_HYDROLOG_VERSION", "1.0.0.dev0")
 FILES = ("input_file", "half_year_file")
 
 
-def envelope(command, result, inputs, *, status="ok", notices=(), lines=None):
+def envelope(
+    command, result, inputs, *, status="ok", notices=(), lines=None, formulas=None
+):
     document = {
         "schema": "hydrolog-result/1",
         "tool": "hydrolog",
@@ -40,6 +44,8 @@ def envelope(command, result, inputs, *, status="ok", notices=(), lines=None):
         "status": status,
         "result": result,
     }
+    if formulas:
+        document["formula_versions"] = formulas
     if lines:
         document["attribution"] = lines[0]
         if lines[1]:
@@ -88,7 +94,12 @@ def answer(call, base, answers):
     files = [Path(inputs[key]) for key in FILES if key in inputs]
     lines = series_lines(files[0]) if files else None
     return True, envelope(
-        command, recorded["result"], inputs, notices=recorded["notices"], lines=lines
+        command,
+        recorded["result"],
+        inputs,
+        notices=recorded["notices"],
+        lines=lines,
+        formulas=recorded.get("formula_versions"),
     )
 
 

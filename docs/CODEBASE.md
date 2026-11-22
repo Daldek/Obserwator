@@ -1,6 +1,6 @@
 # Obserwator — Codebase Reference
 
-Code and module reference moved out of [CLAUDE.md](../CLAUDE.md) (Nogat standard 1.0, DOC-3.2): package tree, public library API, command catalog, data sources and formats, deployment, versioned store. Architecture and component diagrams: [ARCHITECTURE.md](ARCHITECTURE.md); tests: [TESTING.md](TESTING.md); task-oriented usage: [USAGE.md](USAGE.md).
+Code and module reference moved out of [CLAUDE.md](../CLAUDE.md) (Nogat standard 1.1, DOC-3.2): package tree, public library API, command catalog, data sources and formats, deployment, versioned store. Architecture and component diagrams: [ARCHITECTURE.md](ARCHITECTURE.md); tests: [TESTING.md](TESTING.md); task-oriented usage: [USAGE.md](USAGE.md).
 
 ## Package Tree
 
@@ -25,19 +25,22 @@ src/obserwator/
 ├── _jsonable.py          # Single JSON converter (envelope, relative store paths)
 ├── _environment.py       # nogat.toml, NOGAT_* variables, user directories (DEV-18.1); [nogat.gui] (gui_addresses), [nogat.operator] (operator); credential keys
 ├── _borders.py           # The packaged state borders (border, PROVIDERS): PRG (GUGiK) and RÚIAN (ČÚZK), written only by scripts/build_borders.py (ADR-018); standard library only
-├── attribution.py        # Provider attribution and terms lines of every product (ADR-012): attribution, carried, origins imgw, imgw_hydro, pmaxtp, chmi, gugik (G), cuzk (Z)
+├── _http_headers.py      # Security headers of both servers (nosniff, Referrer-Policy, Permissions-Policy): security_headers; standard library only
+├── _file_names.py        # The names of the GUI's downloads and REST's attachments (Nogat DEV-19.21): series_file_name, stations_file_name, analyses_file_name, pmaxtp_file_name
+├── attribution.py        # Provider attribution and terms lines of every product (ADR-012): attribution, carried, origins imgw, imgw_hydro, pmaxtp, chmu, gugik (G), cuzk (Z)
 ├── _examples.py          # Example calls of the catalog (examples of command_schema): canonical line + result excerpt
 ├── output.py             # Plain output (ADR-007): resolve_target, plan_plain, refuse, Staging, FileResult, OutputReport, STORE_MARKERS, DATA_MARKER
 ├── reference_data.py     # python -m obserwator.reference_data (reference files in OBSERWATOR_REFERENCE_DIR)
+├── instance.py           # [obserwator.instance] of nogat.toml (ADR-025): load_instance, Instance (keeps, reduce): the one filter of both servers
 ├── config.py             # Settings (pydantic-settings, OBSERWATOR_*), log_dir = <state_dir>/obserwator/logs, store_root, check_config, environment_report (config show)
 ├── nogat_logging.py      # Nogat's reference module, copied byte for byte (DEV-12.9): ServerLog, AccessLog of both servers; never edited
 ├── _hydrolog.py          # Hydrolog's program (setting hydrolog_command): open_hydrolog, Hydrolog.batch (`commands batch` in a separate process; ADR-016)
 ├── _data/                # Poland/Czechia borders (PRG, RÚIAN; ADR-018), agents/ guide templates, packaged fixtures
-├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmi.py (ČHMÚ files, listings, metadata)
+├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files, listings, metadata)
 ├── store/                # Versioned store in two roots, raw and data (ADR-017) [Parquet: obserwator[store]]
 │   ├── types.py          # Dataclasses: StorePlan, CommandResult, Page, StoreEntry, StoreHandle, ...; RootKind
 │   ├── writer.py         # init_store (raw or data root), open_store, write_archive (atomic, append-only, content_unchanged + observations)
-│   ├── content.py        # Canonical content forms (chmi-json/1), content_sha256
+│   ├── content.py        # Canonical content forms (chmu-json/1), content_sha256
 │   ├── sync.py           # check_store, sync_store (IMGW-PIB: listing + HEAD; ČHMÚ: directory listing)
 │   ├── series.py         # check_series, build_series (Parquet in the data root, from the archives of the raw root)
 │   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider in the data root, from the station sources of the raw root)
@@ -50,6 +53,7 @@ src/obserwator/
 ├── api/                  # FastAPI REST API [optional: obserwator[api]]
 │   ├── main.py           # App entry point (/health, /api/v1, /llms.txt, /docs, /mcp; GET / redirects to /docs)
 │   ├── routes/commands.py# Routes generated from the catalog (commands._input_schemas, x-obserwator.rest), Accept-Language (English by default)
+│   ├── instance.py       # [obserwator.instance] on the REST routes (ADR-025): check_start (the instance, the roots' layouts, the write token), Scope of each request
 │   ├── errors.py         # application/problem+json handlers, hide_server_paths, accept_language
 │   └── schemas.py        # HealthCheck
 ├── cli/                  # Typer/Click CLI [optional: obserwator[cli]]
@@ -72,15 +76,16 @@ src/obserwator/
     ├── _http.py          # JSON answers with strong ETags, attachments, obserwator-error/1 in the page's language without server paths
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app
-    ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute
+    ├── _page.py          # Site (index.html rendered: v/<build>/ addresses, modulepreload of the start's modules, vendor versions) and WebFiles (a year's cache of versioned addresses)
+    ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute; each read reduced by the instance (Instance.reduce, ADR-025)
     ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only
     ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl, next id in feedback.next_id (DEV-15.12), rewritten atomically under flock
     ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
-    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.0.0, regulamin 1.0) filled for the deployment (DEV-15.7)
-    └── web/              # The page (package data): index.html, theme-init.js, src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.0.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.1.0, regulamin 1.0) filled for the deployment (DEV-15.7), or the operator's of [obserwator.instance] (terms, from nogat-terms-operator.md)
+    └── web/              # The page (package data): index.html, theme-init.js, favicon.ico and apple-touch-icon.png (rendered from nogat/marks/obserwator.svg), src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.1.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```
@@ -96,6 +101,7 @@ obserwator datasets list -k hydro                    # Dataset registry
 obserwator datasets files -d hydro/dobowe -y 2023 -m 1  # Archive URLs (no download)
 obserwator datasets download -d hydro/dobowe -y 2023 -m 1 -o dane  # Download archives
 obserwator stations find -k hydro -q wisla --limit 20  # Search station lists
+obserwator stations find --bbox 16.5,51.3,17.9,51.7    # Stations in an area (west,south,east,north, WGS84)
 obserwator current hydro -s 150160180                # Current hydro data
 obserwator current warnings -k meteo                 # Warnings
 obserwator pmaxtp fetch --lat 52.23 --lon 21.01      # PMAXTP data (method POT)
@@ -104,16 +110,16 @@ obserwator store init --kind data --root /dane/obserwator  # Data root (series, 
 obserwator store sync --root /dane/obserwator-raw -d pl.imgw.hydro_daily -y 2024 --check  # Plan only
 obserwator series build --root /dane/obserwator --raw-root /dane/obserwator-raw -d hydro/dobowe
 obserwator series summary --root /dane/obserwator -d hydro/dobowe -s 149180020
-obserwator datasets providers                        # IMGW-PIB and CHMI
-obserwator stations find -k hydro -q spindleruv --provider CHMI  # ČHMÚ station (WIGOS id)
-obserwator store check --root /dane/obserwator-raw -d cz.chmi.hydro_daily -s 0-203-1-001000 -y 2024-2025  # ČHMÚ listing check
-obserwator store catalog --root /dane/obserwator --raw-root /dane/obserwator-raw --provider CHMI  # ČHMÚ station catalog
+obserwator datasets providers                        # IMGW and CHMU
+obserwator stations find -k hydro -q spindleruv --provider CHMU  # ČHMÚ station (WIGOS id)
+obserwator store check --root /dane/obserwator-raw -d cz.chmu.hydro_daily -s 0-203-1-001000 -y 2024-2025  # ČHMÚ listing check
+obserwator store catalog --root /dane/obserwator --raw-root /dane/obserwator-raw --provider CHMU  # ČHMÚ station catalog
 obserwator commands schema --command "store sync" --json  # obserwator-commands/1 of a command
 obserwator commands schema --command "store sync" --lang pl  # Readable, Polish texts
 obserwator store sync --schema                       # Same, via the command itself
 obserwator commands guide --format agents --output AGENTS.md --force  # Regenerate AGENTS.md (English)
 obserwator mcp [--allow-writes --allow-dir DIR]      # MCP server on stdio, English; writes only inside --allow-dir (obserwator[mcp])
-obserwator admin keys                                # List REST API keys
+obserwator admin keys                                # List REST API keys (obserwator admin: deprecated, removed in v4.0.0)
 obserwator admin create --name "User1"               # Create a REST API key
 obserwator admin revoke <key_id>                     # Revoke a REST API key
 obserwator admin delete <key_id>                     # Delete a REST API key
@@ -133,7 +139,7 @@ The public API is exposed via `from obserwator import ...` (one `__all__`, also 
 |`fetch_synop(*, station=None, station_name=None)`|Current synop data (`SynopData`)|
 |`fetch_warnings(*, kind=None)`|Hydro/meteo warnings (`WarningData`; `None` = both)|
 |`fetch_hydro_states(*, main_only=False)`|Hydro stations with coordinates and water state (`HydroState`)|
-|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None)`|Search IMGW-PIB and/or ČHMÚ station lists live, or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint) (`StationListEntry`)|
+|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None, bbox=None)`|Search IMGW-PIB and/or ČHMÚ station lists live (coordinates: ČHMÚ metadata; IMGW-PIB `lat`/`lon` of the current-data API `api/data/hydro` and `api/data/meteo`, None for a listed station it does not report), or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint); `bbox=(west, south, east, north)` in WGS84 degrees keeps the stations with coordinates inside it, bounds included (`StationListEntry`)|
 |`download_archives(dataset, /, *, years, months, params, stations, output_dir, root, force)`|Download archives as plain files named by the provider's server path (`output_dir`) or into the raw root (`root`; neither = the default raw root) (`DownloadReport`: `mode`, `output_dir`, `root`, `files[]`; ČHMÚ 404 → `not_published`)|
 |`download_hydro_data(interval, year, month, param)`|One hydro archive as `DownloadResult` (bytes in `.data`)|
 |`download_meteo_data(interval, subtype, year, month)`|One meteo archive as `DownloadResult`|
@@ -143,11 +149,11 @@ Every live function but `download_archives` has an `*_async` twin with identical
 **Registry and URLs:**
 |Function|Description|
 |---|---|
-|`providers()`, `get_provider(id or key_prefix)`|Provider registry (`ProviderDescriptor`: `IMGW-PIB`, `CHMI`)|
-|`datasets(*, kind=None, provider=None)`|Dataset descriptors (`DatasetDescriptor`; 22)|
+|`providers()`, `get_provider(id or key_prefix)`|Provider registry (`ProviderDescriptor`: `IMGW` (IMGW-PIB), `CHMU` (ČHMÚ))|
+|`datasets(*, kind=None, provider=None)`|Dataset descriptors (`DatasetDescriptor`; 27)|
 |`get_dataset(dataset)`|Descriptor by key, slug or legacy alias|
-|`archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)`|Archive files with URLs (`ArchiveFile`; `stations` required for `cz.chmi.*`)|
-|`station_source_files(*, provider="IMGW-PIB")`|The two station lists of a provider as `ArchiveFile`s (hydro, meteo): IMGW-PIB `lista_stacji_hydro.csv`, `wykaz_stacji.csv`; ČHMÚ the two `historical` `meta1.json`|
+|`archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)`|Archive files with URLs (`ArchiveFile`; `stations` required for `cz.chmu.*`)|
+|`station_source_files(*, provider="IMGW")`|The two station lists of a provider as `ArchiveFile`s (hydro, meteo): IMGW-PIB `lista_stacji_hydro.csv`, `wykaz_stacji.csv`; ČHMÚ the two `historical` `meta1.json`|
 |`build_pmaxtp_url(latitude, longitude, *, method="POT")`|PMAXTP API URL|
 |`build_api_url(endpoint, /, *, station, station_name)`|IMGW real-time API URL|
 
@@ -160,14 +166,14 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`store_root(*, kind="data")`|The default root of a kind without reading it: `StoreRoot(root, source, name, marker_exists)`; the data root is `OBSERWATOR_ROOT`, `[obserwator] root` or `<data_dir>/obserwator`, the raw root `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw` (DEV-19.2, ADR-017; Kartograf has the same function)|
 |`check_store`, `sync_store`|Raw root: freshness plan (IMGW-PIB: listing + HEAD; ČHMÚ: one directory listing, `stations`; `series_state` `{}`) and download of new/missing archives; `sync_store(root=None, *, output_dir=None, force=False, ...)` writes plain files with `output_dir` (no `plan`, no series)|
 |`write_archive(root, /, *, archive, response, on_progress=None, on_notice=None, cancel=None)`|Commit one downloaded file (`DownloadResult`) and its `*.meta.json` sidecar as a version `<label>_<sha8>` of the raw root, published by hard links, the sidecar last, never replacing a version (`VersionResult`; equal canonical content → `unchanged` + an observation, ADR-003)|
-|`build_series(root, /, *, raw_root, dataset, on_progress=None, on_notice=None, cancel=None)`, `check_series(...)`|Parquet station series in the data root `root`, built from the current archive versions of the raw root `raw_root` (keyword-only, required; only read: no marker, staging or clean-up there); `SeriesReport.source_files` and the plan items name files of the raw root|
-|`build_catalog(root, /, *, raw_root, provider="IMGW-PIB", user_locations=None, ...)`, `check_catalog(...)`|`stations.geojson` catalog of one provider (`"IMGW-PIB"` default, `"CHMI"`) in the data root `root`, built offline from the station sources of the raw root `raw_root` and the series indexes of the data root|
+|`build_series(root, /, *, raw_root, dataset, stations=None, years=None, on_progress=None, on_notice=None, cancel=None)`, `check_series(...)`|Parquet station series in the data root `root`, built from the current archive versions of the raw root `raw_root` (keyword-only, required; only read: no marker, staging or clean-up there); `SeriesReport.source_files` and the plan items name files of the raw root. `stations` and `years` build a subset (ADR-026): only the archives holding them are read, `series.json` records `subset`, the sidecar `request.stations|years`; a version is reused only for the same subset, and a data root holding a full version of the dataset refuses a subset (`conflict`, `details.reason="full_series"`)|
+|`build_catalog(root, /, *, raw_root, provider="IMGW", user_locations=None, ...)`, `check_catalog(...)`|`stations.geojson` catalog of one provider (`"IMGW"` default, `"CHMU"`) in the data root `root`, built offline from the station sources of the raw root `raw_root` and the series indexes of the data root|
 |`check_pmaxtp`, `sync_pmaxtp`, `read_pmaxtp`|PMAXTP grid cells of the raw root|
-|`current_version(root, /, *, slot)`|Current version of a slot; the slot decides the kind of root: `archive:<key>:<file>`, `pmaxtp:…` raw; `series:<key>`, `catalog:<prefix>.stations`, `analyses:<prefix>.analyses` (`analyses:pl.imgw.analyses`, `analyses:cz.chmi.analyses`) data|
-|`read_meta`, `read_archive`, `read_station_list(root, /, *, kind, provider="IMGW-PIB")`, `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index`, `read_series`|Offline readers (`read_archive` and `read_station_list` of the raw root, `read_catalog` and the series readers of the data root)|
+|`current_version(root, /, *, slot)`|Current version of a slot; the slot decides the kind of root: `archive:<key>:<file>`, `pmaxtp:…` raw; `series:<key>`, `catalog:<prefix>.stations`, `analyses:<prefix>.analyses` (`analyses:pl.imgw.analyses`, `analyses:cz.chmu.analyses`) data|
+|`read_meta`, `read_archive`, `read_station_list(root, /, *, kind, provider="IMGW")`, `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index`, `read_series`|Offline readers (`read_archive` and `read_station_list` of the raw root, `read_catalog` and the series readers of the data root); `SeriesIndex.subset` is the `SeriesSubset(stations, years)` of a subset version (ADR-026), None for a full series|
 |`select_series`, `summarize_series`|Series selection and coverage (data root)|
 |`export_archive`, `export_series`|CSV/JSONL export of an archive version; one station's series as CSV, JSON (`obserwator-series-export/1`) or Parquet (needs `output`); a line iterator, or with `output` (+ `force`) one plain file and its `OutputReport`|
-|`export_stations`|The stations of the current catalogs as GeoJSON (`obserwator-stations-export/1`, RFC 7946) or CSV, with the series that hold them (ADR-014; schemas in `schemas/`)|
+|`export_stations`|The stations of the current catalogs as GeoJSON (`obserwator-stations-export/1`, RFC 7946) or CSV, with the series that hold them (ADR-014; schemas in `schemas/`); `keep=` a predicate of the stations exported (a server's instance filter, no catalog option)|
 
 **Offline fixture roots** (`obserwator.testing`, outside `obserwator.__all__`; ADR-017 D9): `build_fixture_store(root, *, data_root, variant="complete") -> FixtureRoots` builds a raw root at `root` (archives, station sources) and the data root built from it at `data_root` (series, catalogs) with the public writers and recorded answers, without the network; `FixtureRoots(raw, data)` is a frozen dataclass of the two `StoreHandle`s. Variants: `complete`, `complete_pl_cz` (ČHMÚ too), `corrupt` (a sidecar of the raw root truncated) and `unknown_schema` (a series version of `/2` in the data root).
 
@@ -175,10 +181,10 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |Function|Description|
 |---|---|
 |`analysis_definitions(kind=None)`|The registry: 87 `AnalysisDefinition` (59 `hydro`, 28 `meteo`) with `id`, `kind`, title key, Hydrolog `command`, `options`, `variants` (`AnalysisVariant`, `AnalysisInput`), `picks` (`AnalysisPick`), `overridable` (`AnalysisOption` with type and bounds), `depends_on`, `level` (round), `locked`; `kind` other than `hydro`/`meteo` → `validation_error`|
-|`build_analyses(root=None, /, *, stations=None, workers=1, on_progress, on_notice, cancel)`, `check_analyses(...)`|Compute every station of the data root with Hydrolog and store one version per provider there (no raw root is read; `AnalysesReport` `obserwator-analyses-report/1`: `status`, `hydrolog_version`, `providers[]` = `ProviderAnalyses` with `new`/`unchanged`/`cancelled`/`failed`, `computed`, `carried`, `results_ok`, `results_failed`); carry-forward by hard links on an equal fingerprint; the check is an `obserwator-plan/1` of the stations to compute and carry|
-|`list_analyses(version=None, /, *, root=None, station)`|`AnalysisSummary` (`obserwator-analysis-summary/1`) per stored analysis of a station: command, options, `inputs` (`AnalysisSource`: dataset, series version, SHA-256s), status, `error_code`, versions, attribution|
+|`build_analyses(root=None, /, *, stations=None, workers=1, on_progress, on_notice, cancel)`, `check_analyses(...)`|Compute every station of the data root with Hydrolog and store one version per provider there (no raw root is read; `AnalysesReport` `obserwator-analyses-report/1`: `status`, `hydrolog_version`, `providers[]` = `ProviderAnalyses` with `new`/`unchanged`/`cancelled`/`failed`, `computed`, `carried`, `results_ok`, `results_failed`, `resumed`); carry-forward by hard links on an equal fingerprint; an interrupted build keeps its staged stations in `.incoming/`, and the next one takes by hard links those whose inputs, series versions included, are unchanged (`resumed`, progress status `resumed`; ADR-016 erratum 2026-11-21); the check is an `obserwator-plan/1` of the stations to compute, carry and resume|
+|`list_analyses(version=None, /, *, root=None, station)`|`AnalysisSummary` (`obserwator-analysis-summary/1`) per stored analysis of a station: command, options, `inputs` (`AnalysisSource`: dataset, series version, SHA-256s), status, `error_code`, versions (`hydrolog`, `formula_versions` of Hydrolog's envelope, CMP-2.8), attribution|
 |`read_analysis(version=None, /, *, root=None, station, analysis)`|`AnalysisResult` (`obserwator-analysis/1`): the summary with Hydrolog's `envelope` (`hydrolog-result/1`) or `error` (`hydrolog-error/1`) as stored|
-|`export_analyses(version=None, /, *, root=None, station, analyses=None, format="json", output=None, force=False, ...)`|`json`: one `obserwator-analyses-export/1` line; `csv`: one row per scalar leaf of `result` (`path` a JSON Pointer) with the attribution columns; a line iterator, or with `output` one plain file and its `OutputReport`|
+|`export_analyses(version=None, /, *, root=None, station, analyses=None, format="json", output=None, force=False, ...)`|`json`: one `obserwator-analyses-export/1` line (each result with its `formula_versions`); `csv`: one row per scalar leaf of `result` (`path` a JSON Pointer) with `hydrolog_version`, `formula_versions` (`name=version` joined by `;`) and the attribution columns; a line iterator, or with `output` one plain file and its `OutputReport`|
 |`compute_analysis(root=None, /, *, station, analysis, options=None, timeout=30.0, cancel=None)`|One analysis on the fly with a person's overridable options (of it or of its dependencies, minus `locked`); `stored=False`, nothing written; not a catalog command|
 
 **Command Catalog:**
@@ -190,8 +196,8 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`validate_command(command, /, *, options)`|Normalized options or `ObserwatorValidationError` with `details.option`|
 |`format_command(command, /, *, options, run=None)`|Canonical CLI command line of a call; `run={"check": True}` adds `--check`|
 |`parse_command(line, /)`|An `obserwator` line (text or words) → `CommandCall(command, options, run)` with the texts the CLI passes (`run`: `check`); a mistake of the line is `validation_error`, `details.reason="usage"`|
-|`command_for_version(version, *, root=None, raw_root=None)`|Offline, read-only: the `CommandCall` that fetches or builds a stored version again, from its sidecar and the layout. The first directory of `version` gives the kind of its root (`archives/`, `pmaxtp/` raw; `series/`, `stations/`, `analyses/` data); a relative `version` lies in `root`, else in the default root of its kind, an absolute one in `root` or its nearest ancestor with a marker (directory, main file, sidecar, PMAXTP `response.json`, a series or analyses station file); the shape `parse_command` gives, with the absolute `root`. Archives → `store sync` (IMGW-PIB `--datasets --years [--months]`, ČHMÚ `--datasets --stations [--years]`), station lists and station metadata → `store sync --datasets <key>` (ADR-015), catalogs → `store catalog --raw-root <raw> --provider`, series → `series build --raw-root <raw> --dataset`, analyses → `analyses build`, PMAXTP → `pmaxtp sync` of its point and cell; `<raw>` is `raw_root`, else the default raw root (ADR-017 D6). Refusals: `unsupported` with `details.reason="command_not_rebuildable"` (catalog built with `user_locations`, sidecar without a needed field, a file `store sync` does not select), `not_found`, `data_error`, `store_unavailable` (`wrong_root`), `validation_error` (a version in no root); ADR-008|
-|`run_command(command, /, *, options)`|Run a command → `CommandResult` (list commands → `Page`)|
+|`command_for_version(version, *, root=None, raw_root=None)`|Offline, read-only: the `CommandCall` that fetches or builds a stored version again, from its sidecar and the layout. The first directory of `version` gives the kind of its root (`archives/`, `pmaxtp/` raw; `series/`, `stations/`, `analyses/` data); a relative `version` lies in `root`, else in the default root of its kind, an absolute one in `root` or its nearest ancestor with a marker (directory, main file, sidecar, PMAXTP `response.json`, a series or analyses station file); the shape `parse_command` gives, with the absolute `root`. Archives → `store sync` (IMGW-PIB `--datasets --years [--months]`, ČHMÚ `--datasets --stations [--years]`), station lists and station metadata → `store sync --datasets <key>` (ADR-015), catalogs → `store catalog --raw-root <raw> --provider`, series → `series build --raw-root <raw> --dataset` (with `--stations` and `--years` of a subset, ADR-026), analyses → `analyses build`, PMAXTP → `pmaxtp sync` of its point and cell; `<raw>` is `raw_root`, else the default raw root (ADR-017 D6). Refusals: `unsupported` with `details.reason="command_not_rebuildable"` (catalog built with `user_locations`, sidecar without a needed field, a file `store sync` does not select), `not_found`, `data_error`, `store_unavailable` (`wrong_root`), `validation_error` (a version in no root); ADR-008|
+|`run_command(command, /, *, options, ..., keep=None)`|Run a command → `CommandResult` (list commands → `Page`); `keep` a predicate of the stations (a server's instance filter, no catalog option)|
 |`check_command(command, /, *, options)`|Plan of a command without side effects → `CommandResult`|
 |`agent_guide(*, format="agents", lang="en", output=None, force=False)`|Agent guide `AGENTS.md`/`llms.txt`: line iterator, or with `output` one plain file and its `OutputReport`|
 
@@ -218,11 +224,11 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`ObserwatorConnectionError`|`source_unavailable`|Connection/timeout/HTTP errors|
 |`ObserwatorDataError`|`data_error`|Data parsing errors|
 |`ObserwatorStoreError`|`store_unavailable`|Bad/unsupported root or a root of the other kind (`details.reason="wrong_root"`; `not_found` for missing versions)|
-|`ObserwatorStoreConflictError`|`conflict`|Collisions, races, non-atomic filesystems|
+|`ObserwatorStoreConflictError`|`conflict`|Collisions, races, non-atomic filesystems, a subset of a series beside its full series (`details.reason="full_series"`, ADR-026)|
 |`ObserwatorStoreDependencyError`|`missing_dependency`|pyarrow missing|
 |`ObserwatorCancelledError`|`cancelled`|Cancelled operation|
 
-**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_meteo_synop_daily` (`s_d` and `s_d_t`, ADR-022), `parse_chmi_hydro_daily`, `parse_chmi_meteo_daily`, `parse_chmi_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
+**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_meteo_synop_daily` (`s_d` and `s_d_t`, ADR-022), `parse_chmu_hydro_daily`, `parse_chmu_meteo_daily`, `parse_chmu_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
 
 ## Key Module: `commands.py`
 
@@ -252,11 +258,11 @@ The command catalog is the single source of options, validation, help texts and 
 
 ### Map Stations API
 - **Hydro stations with coordinates**: `https://hydro-back.imgw.pl/map/stations/hydrologic?onlyMainStations=false`
-  - Requires headers: `User-Agent`, `Referer: https://hydro.imgw.pl/`
+  - Header: `User-Agent: Obserwator/<version> (+https://github.com/Daldek/Obserwator)`, no `Referer` (3.1.0); the backend answers 403 to the default user agents of curl and httpx
   - Returns: 900+ stations with lat/lon and water state (alarm, warning, high, medium, low, etc.)
   - Public access: `fetch_hydro_states()`, `obserwator current hydro-states`, `GET /api/v1/current/hydro-states`
 - **Hydro station details** (`pl.imgw.hydro_details`, ADR-021): `https://hydro-back.imgw.pl/station/hydro/status?id=<code>`, the data of a station page of hydro.imgw.pl
-  - Same headers (`User-Agent: Obserwator/<version>`, `Referer: https://hydro.imgw.pl/`; without the Referer the backend answers 403); an unknown code answers `200` with `null`
+  - Same header (`User-Agent: Obserwator/<version> (+https://github.com/Daldek/Obserwator)`, no `Referer`); an unknown code answers `200` with `null`
   - `store sync` asks the map above for the codes, then each station once, in map order and one request at a time (about 910 requests, a few minutes); a `null` answer is skipped, any HTTP error fails the item (`source_unavailable`, nothing written, no retries); `cancel` is polled before each station
   - Kept (dotted `kept_fields`, a derived JSON list sorted by `id`): `id`, `properties.{maximumStateValue, maximumStateDate, minimumStateValue, minimumStateDate, district, waterGaugeZeroOrdinate, waterGaugeZeroOrdinateReferrenceSystem, yearOfEstablishment}`, `status.{riverCourseKm, catchmentArea, province, alarmValue, warningValue}`; never the water states and trends (operational, DEV-20.8), `status.notes`, `properties.dataClause`, the internal `status.id` or the coordinates
   - No freshness signal (`update_signal="none"`): `store check` → `unverifiable`, `store sync` always downloads; license = the hydro.imgw.pl terms (`https://hydro.imgw.pl/#/regulamin`), lines S, P, RH
@@ -267,10 +273,10 @@ The command catalog is the single source of options, validation, help texts and 
 - **Meteo**: `https://hydro.imgw.pl/#/station/meteo/{station_code}`
 
 ### ČHMÚ (opendata.chmi.cz, ADR-003)
-- **Hydro daily** (`cz.chmi.hydro_daily`): `https://opendata.chmi.cz/hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON per station and calendar year (from 1887); `HD`/`QD`/`TD` → H [cm], Q [m3/s], T [°C]
-- **Meteo daily** (`cz.chmi.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — four CSV files per station with the whole station history; `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
-- **Station lists** (`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`): `hydrology/historical/metadata/meta1.json`, `meteorology/climate/historical/metadata/meta1.json` (JSON envelope `zaznamID`/`datumVytvoreni` changes with every regeneration → canonical form `chmi-json/1`)
-- **Catalog sources** (`cz.chmi.hydro_now`, `cz.chmi.meteo_now`, stored by `store sync --datasets`; ADR-015): `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
+- **Hydro daily** (`cz.chmu.hydro_daily`): `https://opendata.chmi.cz/hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON per station and calendar year (from 1887); `HD`/`QD`/`TD` → H [cm], Q [m3/s], T [°C]
+- **Meteo daily** (`cz.chmu.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature,snow}/dly-<WIGOS>-{SRA,T,TMA,TMI,SCE,SNO}.csv` — six CSV files per station with the whole station history (`SCE` → `snow_cover`, `SNO` → `fresh_snow` [cm], since 3.1.0); `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
+- **Station lists** (`cz.chmu.hydro_stations`, `cz.chmu.meteo_stations`): `hydrology/historical/metadata/meta1.json`, `meteorology/climate/historical/metadata/meta1.json` (JSON envelope `zaznamID`/`datumVytvoreni` changes with every regeneration → canonical form `chmu-json/1`)
+- **Catalog sources** (`cz.chmu.hydro_now`, `cz.chmu.meteo_now`, stored by `store sync --datasets`; ADR-015): `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
 - **Inventory and freshness**: nginx directory listings (name, mtime to the minute, size): one GET instead of a HEAD per file; requests are sequential with `User-Agent: obserwator/<version>`; license CC BY 4.0 (attribution from the registry)
 - Out of scope: `now`/`recent` measurements, hourly data, CAP warnings, PMAXTP
 
@@ -318,13 +324,13 @@ CLI command = `obserwator <group> <name>`; REST route = `/api/v1/<group>/<name>`
 
 The `analyses` group (ADR-016): `analyses build` takes `root` (the data root), `stations` (`-s`, compute only these; the others are carried forward) and `workers` (Hydrolog processes at a time, ≥ 1, default 1) and is store only; `analyses list|read|export` take `version` (directory, `analyses.json` or sidecar; default the current version of the station's provider), `root` and the required `station` (`-s`; its code names the provider), `analyses read` the required `analysis` and `analyses export` the list `analyses` (both from the 87 registry ids, with their titles as `enum` meanings), `format` (`json`|`csv`), `output` and `force`. No option names Hydrolog's program. Errors (`errors` of `command_schema`): `analyses build` `validation_error`, `not_found`, `conflict`, `source_unavailable` (`hydrolog_failed`, `timeout`), `missing_dependency` (`hydrolog_missing`), `data_error`, `store_unavailable`, `io_error`, `cancelled`, `forbidden`, `internal_error`; `analyses list` and `analyses read` `validation_error`, `not_found`, `missing_dependency`, `data_error`, `store_unavailable`, `forbidden`, `internal_error`; `analyses export` the same plus `io_error` and `cancelled`.
 
-Outside the catalog: `obserwator version`, `obserwator server` (`--host`, `--port`, `--reload`), `obserwator mcp` (`--allow-writes`, repeatable `--allow-dir`), `obserwator gui serve` (`--host`, `--port`, `--root`, `--no-browser`; the GUI and its private API, `docs/USAGE.md` „GUI”), `obserwator admin keys|create|revoke|delete|stats`, `obserwator config show`, `GET /health`, `GET /api/v1` (name, version, schema route, list of catalog routes), `GET /llms.txt` (agent guide, language from `Accept-Language`) and `/mcp` (MCP Streamable HTTP, English, only with `OBSERWATOR_MCP_ENABLED=true`).
+Outside the catalog: `obserwator version`, `obserwator server` (`--host`, `--port`, `--reload`), `obserwator mcp` (`--allow-writes`, repeatable `--allow-dir`), `obserwator gui serve` (`--host`, `--port`, `--root`, `--no-browser`; the GUI and its private API, `docs/USAGE.md` „GUI”), `obserwator admin keys|create|revoke|delete|stats` (deprecated, removed in v4.0.0), `obserwator config show`, `GET /health`, `GET /api/v1` (name, version, schema route, list of catalog routes), `GET /llms.txt` (agent guide, language from `Accept-Language`) and `/mcp` (MCP Streamable HTTP, English, only with `OBSERWATOR_MCP_ENABLED=true`).
 
 Effects (`effects.writes`/`effects.network` of `command_schema`, ADR-004 D2): `none` = no file changes, `add` = only new files/versions, `replace` = may replace or remove user content (no command by its own run, only its writing options; a command's `effects.writes` is the strongest of its run and its options, and `destructive` when that is `replace`); writing options (`writes` of an option): `plan` of `store check` (`replace`), `output_dir` of `datasets download`/`store sync`/`pmaxtp sync` and `output` of `stations export`/`store export`/`series export`/`analyses export`/`commands guide` (`add`: new files), and `force` of the same commands (`replace`: an existing file). Every writing command has a check twin.
 
 ### Options
 
-Option name = function parameter = JSON field; CLI flag = `--` + name with `_` → `-`. Short aliases: `-d` dataset(s), `-y` years, `-m` months, `-s` station(s), `-k` kind, `-q` query, `-o` output-dir, `-r` root, `-f` format; `--lat`/`--lon` alias `--latitude`/`--longitude`. Write targets: see "Data output" below. Lists: comma-separated or repeated flag/parameter. `--root` defaults to the root of the command's kind (ADR-017): `OBSERWATOR_RAW_ROOT` for `datasets download`, `store init|check|sync|export` and `pmaxtp check|sync|read`, `OBSERWATOR_ROOT` for the others and `store info|scan` (for `stations find` only with `--source store`; rule `DataCommand.env_root_when`, shared with MCP stdio); `store init --kind data` (`-k`) takes the data root; `--raw-root` of `series build` and `store catalog` defaults to `OBSERWATOR_RAW_ROOT`. List commands accept `--limit`/`--cursor` (`page.next_cursor`; a malformed cursor → `validation_error`, `details.option="cursor"`). `--check` exists only on commands with a check twin; `--schema` prints the command's schema without running it. `--provider` (`IMGW-PIB`|`CHMI`) in `datasets list`, `stations find`, `stations export`, `store scan` (absent = all) and `store catalog` (default `IMGW-PIB`); `--stations`/`-s` in `datasets files|download`, `store check|sync` (required for `cz.chmi.*`, forbidden for `pl.imgw.*`; `years` dataset-dependent — see `x-obserwator.rules`). `--lang pl|en` in `commands list`/`commands schema`/`commands guide` (default `en`); `OBSERWATOR_LANG=pl|en` sets only the CLI help language (incl. Typer/Click elements; invalid value → `validation_error`, exit 2).
+Option name = function parameter = JSON field; CLI flag = `--` + name with `_` → `-`. Short aliases: `-d` dataset(s), `-y` years, `-m` months, `-s` station(s), `-k` kind, `-q` query, `-o` output-dir, `-r` root, `-f` format; `--lat`/`--lon` alias `--latitude`/`--longitude`. Write targets: see "Data output" below. Lists: comma-separated or repeated flag/parameter. `--root` defaults to the root of the command's kind (ADR-017): `OBSERWATOR_RAW_ROOT` for `datasets download`, `store init|check|sync|export` and `pmaxtp check|sync|read`, `OBSERWATOR_ROOT` for the others and `store info|scan` (for `stations find` only with `--source store`; rule `DataCommand.env_root_when`, shared with MCP stdio); `store init --kind data` (`-k`) takes the data root; `--raw-root` of `series build` and `store catalog` defaults to `OBSERWATOR_RAW_ROOT`. List commands accept `--limit`/`--cursor` (`page.next_cursor`; a malformed cursor → `validation_error`, `details.option="cursor"`). `--check` exists only on commands with a check twin; `--schema` prints the command's schema without running it. `--provider` (`IMGW`|`CHMU`) in `datasets list`, `stations find`, `stations export`, `store scan` (absent = all) and `store catalog` (default `IMGW`); `--stations`/`-s` in `datasets files|download`, `store check|sync` (required for `cz.chmu.*`, forbidden for `pl.imgw.*`; `years` dataset-dependent — see `x-obserwator.rules`); `--stations`/`-s` (codes of the dataset's provider) and `--years`/`-y` (in the dataset's year numbering) of `series build` build a subset (ADR-026). `--lang pl|en` in `commands list`/`commands schema`/`commands guide` (default `en`); `OBSERWATOR_LANG=pl|en` sets only the CLI help language (incl. Typer/Click elements; invalid value → `validation_error`, exit 2).
 
 ### Data output
 
@@ -390,12 +396,12 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.meteo_synop_terms`|`meteo/terminowe/synop`|download only (per station × folder, `stations` or `months`)|
 |`pl.imgw.warnings_hydro_archive`, `pl.imgw.warnings_meteo_archive`|—|download only (`data/arch/ost_hydro\|ost_meteo/<YYYY>/<MM>.zip`)|
 |`pl.imgw.actinometric`|—|download only (files of the folder index, ADR-023)|
-|`cz.chmi.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
-|`cz.chmi.meteo_daily`|—|yes (4 files per station: SRA, T, TMA, TMI; no `years`)|
-|`cz.chmi.hydro_stations`, `cz.chmi.meteo_stations`|—|yes (station lists, canonical form `chmi-json/1`)|
-|`cz.chmi.hydro_now`, `cz.chmi.meteo_now`|—|yes (`now` station metadata, canonical form `chmi-json/1`)|
+|`cz.chmu.hydro_daily`|—|yes (per station × calendar year, `stations` required)|
+|`cz.chmu.meteo_daily`|—|yes (6 files per station: SRA, T, TMA, TMI, SCE, SNO; no `years`)|
+|`cz.chmu.hydro_stations`, `cz.chmu.meteo_stations`|—|yes (station lists, canonical form `chmu-json/1`)|
+|`cz.chmu.hydro_now`, `cz.chmu.meteo_now`|—|yes (`now` station metadata, canonical form `chmu-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (e.g. `hydro_daily`, `chmi_hydro_daily`) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (the provider's acronym and the last part of the key, e.g. `imgw_hydro_daily`, `chmu_hydro_daily`; a slug of 3.0.x without `imgw_` is no input, ADR-028) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):
@@ -427,7 +433,7 @@ docker compose up -d
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d  # with /mcp
 ```
 
-Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process with `--no-access-log --log-level warning`, container `obserwator-api`), nginx (reverse proxy, container `obserwator-nginx`; `location /api/` and `location = /mcp` with the `api_limit` zone, burst 20, `/mcp` without buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`) and `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`), mounts `../data` read-only at `/app/data` and keeps the REST API keys in the volume `api_keys` (`OBSERWATOR_API_KEYS_FILE=/app/keys/api_keys.json`); it sets neither `OBSERWATOR_ROOT` nor `OBSERWATOR_RAW_ROOT`, so the routes of the commands that need a root answer 503 `not_configured` until they are added. No Redis needed. The GUI is not part of the image.
+Services: app (FastAPI, `python:3.12-slim`, `pip install ".[api,mcp]"`, one uvicorn process with `--no-access-log --log-level warning`, container `obserwator-api`), nginx (reverse proxy, container `obserwator-nginx`; `location /api/` and `location = /mcp` with the `api_limit` zone, burst 20, `/mcp` without buffering). Compose passes `OBSERWATOR_MCP_ENABLED` (default `false`), `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) and `OBSERWATOR_CORS_ORIGINS` (default empty: no cross-origin access), mounts `../data` read-only at `/app/data` and keeps the REST API keys in the volume `api_keys` (`OBSERWATOR_API_KEYS_FILE=/app/keys/api_keys.json`); it sets neither `OBSERWATOR_ROOT` nor `OBSERWATOR_RAW_ROOT`, so the routes of the commands that need a root answer 503 `not_configured` until they are added. No Redis needed. The GUI is not part of the image.
 
 Logs (Nogat DEV-12.6 to DEV-12.8): the app writes its access, application and lifecycle records to `/state/obserwator/logs` (`NOGAT_STATE_DIR=/state`), the host's `${NOGAT_STATE_DIR:-../state}/obserwator` (relative to `docker/`; writable by the image's `appuser`, UID 1000), and deletes them after 14 days; both containers use the logging driver `local` (`max-size: "1m"`, `max-file: "3"`), which holds only the lifecycle records and errors reduced to their type. nginx keeps no log (`access_log off;`, `error_log /dev/null;`, so the rejections of `limit_req` are not logged either) and passes no `X-Request-ID`.
 
@@ -446,10 +452,10 @@ Application hosted on a private server. Components:
 - API keys carry a rate limit (`obserwator admin create --limit`, default 100, stored in JSON), not enforced (see below)
 - GUI: per client address in the app, 300 requests in 60 s by default (`OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW`; Nogat DEV-15.9), static files not counted; behind a proxy uvicorn's `FORWARDED_ALLOW_IPS` names the proxy
 
-### Authorization (Planned)
+### Authorization
 API keys in a JSON file (`api_keys.json`). Header: `X-API-Key: <token>`
 
-**Note:** API key validation middleware is not yet implemented. Keys are managed via CLI but not enforced in API requests. Store writes over REST use their own token (`OBSERWATOR_STORE_WRITE_TOKEN`, sent as `X-API-Key`).
+**Note:** nothing checks the keys of `obserwator admin`: they are managed via CLI but not enforced in API requests, and `obserwator admin` with its `api_keys.json` is deprecated in 3.1.0 (every call says so on standard error; removed in v4.0.0). Store writes over REST use their own token (`OBSERWATOR_STORE_WRITE_TOKEN` or the file of `OBSERWATOR_STORE_WRITE_TOKEN_FILE`, sent as `X-API-Key`); the GUI's admin panel its own key (`OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE`).
 
 ### API versioning
 All endpoints under `/api/v1/...`
@@ -460,21 +466,25 @@ The store has two roots (ADR-017), each readable offline, also from network shar
 
 ### Configuration
 
-Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. `OBSERWATOR_STORE_WRITE_TOKEN` and the GUI's admin key (`OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE`) are credentials (`CREDENTIAL_KEYS`): environment or `.env` only, never from the file, never printed (`config show` says only `present` or `missing`). Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
+Resolution (DEV-18.1, `src/obserwator/_environment.py` and `config.py`): command-line option, `OBSERWATOR_<KEY>` variable, the same key in `.env`, `NOGAT_<KEY>` (shared keys `data_dir`, `cache_dir`, `state_dir`, `lang`), `[obserwator]` then `[nogat]` of `nogat.toml` (user config dir, or `NOGAT_CONFIG`; read with `tomllib`, absence is no error, an unusable file is `validation_error` for every `obserwator` call), default. The REST write token (`OBSERWATOR_STORE_WRITE_TOKEN`, `OBSERWATOR_STORE_WRITE_TOKEN_FILE`) and the GUI's admin key (`OBSERWATOR_ADMIN_API_KEY`, `OBSERWATOR_ADMIN_API_KEY_FILE`) are credentials (`CREDENTIAL_KEYS`): environment or `.env` only, never from the file, never printed (`config show` says only `present` or `missing`). Nothing is written to the working directory. `obserwator config show [--json]` reports every key with its source (`obserwator-config/1`, DEV-18.6; outside the catalog, `config_cmd.py`).
 
 The table `gui` of `[nogat]` (DEV-15.4, ADR-011) is no setting: only the file gives it, and no variable or default does. Its keys are registry names in lower case, its values GUI addresses (absolute or a path), e.g. `[nogat.gui]` with `hydrolog = "http://127.0.0.1:8070/"`. The GUI reads it when its app starts (`_environment.gui_addresses`) and gives it to the page in `api/session`, which hands it to Nogat's `<nogat-app-menu>` in the top bar; with no other GUI in it the menu is not drawn. Its `obserwator` entry is the GUI's own public address, named by the regulamin and by a hand-off.
 
-The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) names who runs a deployment open to others, from the file only: `name`, `email`, `terms_effective` (a TOML date or `YYYY-MM-DD`), `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` may be empty or left out (Nogat kit 1.0.0). A table with a required key missing or empty is not used. With a usable table and the `obserwator` address of `[nogat.gui]`, the GUI is public and serves `regulamin.html` (`docs/USAGE.md` „GUI”, „Public deployment”).
+The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) names who runs a deployment open to others, from the file only: `name`, `email`, `terms_effective` (a TOML date or `YYYY-MM-DD`), `processor` and `mail_provider` must have a value; `processor_transfer`, `processor_cookie` and `mail_transfer` may be empty or left out (Nogat kit 1.1.0). A table with a required key missing or empty is not used. With a usable table and the `obserwator` address of `[nogat.gui]`, the GUI is public and serves `regulamin.html` (`docs/USAGE.md` „GUI”, „Public deployment”).
+
+The table `instance` of `[obserwator]` (ADR-025; `obserwator.instance.load_instance`) describes an operator's instance, from the file only, read once as `obserwator gui serve` or `obserwator server` starts: `title`, `logo` (PNG, WebP or SVG, at most 200 kB), `featured_provider`, `others_opacity` (the opacity of the other providers' stations faded beside the featured one, 0.1 to 1.0, 0.4 by default; needs `featured_provider`), `start_view` (`all`, `featured`, `area`), `area` (one GeoJSON Polygon or MultiPolygon in WGS84, UTF-8, a BOM ignored), `area_mode` (`focus`, `clip`), `pmaxtp` (`on`, `off`), `terms` (the operator's regulamin, UTF-8 Markdown; a BOM and CRLF line ends, as Windows editors write them, give the same text and SHA-256 as LF) and `[obserwator.instance.providers]` (`visible`, the default, `hidden`, `off`). Relative paths start at `nogat.toml`'s directory; the table holds no credential. Any wrong field refuses the start (`validation_error`, exit 2, `details.option` `instance.<field>`); with the table a key or token shorter than 32 bytes or a key file others may access refuses it too. Both servers apply it route by route (a provider `off` and, in `clip`, a station outside the area are not served; `pmaxtp = "off"` serves no PMAXTP and asks IMGW-PIB nothing); the CLI, the library and `obserwator mcp` never do. `config show --json` gives the resolved `instance`. Example, the rules of each route and the deployment: `docs/USAGE.md` „Deploying an instance for an operator”.
 
 |Variable|Default|Description|
 |---|---|---|
 |`OBSERWATOR_ROOT`|`<data_dir>/obserwator`|The data root (series, station catalogs, analyses; ADR-017) of the CLI, the library and `obserwator mcp` when `--root` of a command of the data root is absent (also `root` in `[obserwator]` of `nogat.toml`); of the REST server its data root: unset → the routes of those commands 503 `not_configured`, never the default|
 |`OBSERWATOR_RAW_ROOT`|`<data_dir>/obserwator-raw`|The raw root (archives, station sources, PMAXTP cells; ADR-017) of the CLI, the library and `obserwator mcp`: `--root` of `datasets download`, `store init\|check\|sync\|export` and `pmaxtp check\|sync\|read` and `--raw-root` of `series build` and `store catalog` when absent (also `raw_root` in `[obserwator]`); of the REST server its raw root: unset → the routes of those commands 503 `not_configured`, never the default|
 |`OBSERWATOR_STORE_WRITES_ENABLED`|`false`|Allow REST writes (`POST` store/series/pmaxtp routes)|
-|`OBSERWATOR_STORE_WRITE_TOKEN`|unset|Token required in `X-API-Key` for REST writes (else 403 `forbidden`)|
+|`OBSERWATOR_STORE_WRITE_TOKEN`|unset|Credential: the token required in `X-API-Key` for REST writes (else 403 `forbidden`); read on each write|
+|`OBSERWATOR_STORE_WRITE_TOKEN_FILE`|unset|Credential: a file holding the write token (UTF-8, mode 0600, a BOM and surrounding white space dropped; another encoding gives no token and the problem `secret_file_encoding`), used when `OBSERWATOR_STORE_WRITE_TOKEN` is unset; read on each write (ADR-025 D10)|
 |`OBSERWATOR_USER_LOCATIONS_DIR`|unset|Directory of user location CSVs allowed in REST `user_locations`|
 |`OBSERWATOR_API_MAX_LIMIT`|`1000`|Default and maximum `limit` of REST list commands|
-|`OBSERWATOR_DATA_DIR`|user data dir of `nogat`|DEV-18.2 meaning since this change: parent of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`), of the API keys and of the GUI's `stats.jsonl` and `feedback.jsonl`; shared key (also `NOGAT_DATA_DIR`, `[nogat] data_dir`). Until 3.0.0 `IMGW_DATA_DIR` held the reference data: that is `OBSERWATOR_REFERENCE_DIR` now|
+|`OBSERWATOR_CORS_ORIGINS`|unset (no cross-origin access)|Browser origins that may call the REST server cross-origin (CORS; comma-separated `https://example.org`, scheme and host with an optional port, or `*` for every origin; also `cors_origins` in `[obserwator]`); never with credentials (the API authenticates with `X-API-Key`, not cookies)|
+|`OBSERWATOR_DATA_DIR`|user data dir of `nogat`|DEV-18.2 meaning since 3.0.0: parent of the roots (`<data_dir>/obserwator-raw`, `<data_dir>/obserwator`), of the API keys and of the GUI's `stats.jsonl` and `feedback.jsonl`; shared key (also `NOGAT_DATA_DIR`, `[nogat] data_dir`). Until 3.0.0 `IMGW_DATA_DIR` held the reference data: that is `OBSERWATOR_REFERENCE_DIR` now|
 |`OBSERWATOR_REFERENCE_DIR`|`<cache_dir>/obserwator/reference`|IMGW-PIB reference data (`hydro_stations_locations.csv`, `desc/`; `python -m obserwator.reference_data`); `settings.reference_dir`|
 |`OBSERWATOR_LANG`|`pl`|`pl`\|`en`: CLI help, progress and notice lines only (`--lang` of `commands list\|schema\|guide` defaults to English whatever it says; REST answers follow `Accept-Language`, English without it; MCP is always English; the CLI error line and the envelope are English)|
 |`OBSERWATOR_MCP_ENABLED`|`false`|Serve MCP Streamable HTTP at `/mcp` in `obserwator server` (needs `obserwator[mcp]`; read and plan only)|
@@ -503,18 +513,20 @@ The table `operator` of `[nogat]` (DEV-15.7, DEV-18.1; `_environment.operator`) 
   .incoming/                                            # staging; never a version
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker: the same fields (ADR-017)
-  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet
-  stations/versions/<label>_<sha8>/stations.geojson + .meta.json                # IMGW-PIB catalog
-  stations/versions/chmi_stations/<label>_<sha8>/stations.geojson + .meta.json  # ČHMÚ catalog
-  analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
+  series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet  # <slug> imgw_* or chmu_* (ADR-028)
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json  # IMGW-PIB catalog
+  stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json  # ČHMÚ catalog
+  analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/                                            # staging; never a version
 ```
 
-Slots (spec §13.7; the slot decides the kind of root `current_version` needs): of the raw root `archive:<key>:<file>` (e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `archive:cz.chmi.hydro_daily:H_0-203-1-001000_DQ_2025.json`, `archive:cz.chmi.meteo_daily:precipitation/dly-0-203-0-11573-SRA.csv`) and `pmaxtp:pl.imgw.pmaxtp:<METHOD>/<indX>_<indY>`; of the data root `series:<key>`, `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`, `analyses:pl.imgw.analyses` and `analyses:cz.chmi.analyses`. A path in a sidecar is relative to its own root: the sources of a series or catalog under `archives/` of the raw root, the series a catalog read under `series/` of the data root.
+Slots (spec §13.7; the slot decides the kind of root `current_version` needs): of the raw root `archive:<key>:<file>` (e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`, `archive:cz.chmu.hydro_daily:H_0-203-1-001000_DQ_2025.json`, `archive:cz.chmu.meteo_daily:precipitation/dly-0-203-0-11573-SRA.csv`) and `pmaxtp:pl.imgw.pmaxtp:<METHOD>/<indX>_<indY>`; of the data root `series:<key>`, `catalog:pl.imgw.stations`, `catalog:cz.chmu.stations`, `analyses:pl.imgw.analyses` and `analyses:cz.chmu.analyses`. A path in a sidecar is relative to its own root: the sources of a series or catalog under `archives/` of the raw root, the series a catalog read under `series/` of the data root.
 
-Analyses versions (ADR-016): one slot per provider; `analyses.json` (`obserwator-analyses/1`) is the main file and its sidecar (`dataset` `pl.imgw.analyses`/`cz.chmi.analyses`, `extra.derived="analyses"`) is published last; `stations/<code>.json` (`obserwator-station-analyses/1`) records the inputs (series version, station Parquet and export SHA-256), options, Hydrolog version and registry digest of a station, and `stations/<code>/<id>.json` is Hydrolog's answer line byte for byte. They are entries of kind `analyses` of the data root (`store scan --kind analyses`, `iter_store`), and `current_version(root, slot="analyses:pl.imgw.analyses")` gives the newest by `downloaded_at`, then by path (ADR-017).
+Analyses versions (ADR-016): one slot per provider; `analyses.json` (`obserwator-analyses/1`) is the main file and its sidecar (`dataset` `pl.imgw.analyses`/`cz.chmu.analyses`, `extra.derived="analyses"`) is published last; `stations/<code>.json` (`obserwator-station-analyses/1`) records the inputs (series version, station Parquet and export SHA-256), options, Hydrolog version and registry digest of a station, each result with the `formula_versions` of Hydrolog's envelope and its optional `derived` (`"half_years"` when it read the half-year characteristics Obserwator computed of ČHMÚ's daily series, `AnalysisInput.derived`; else null), and `stations/<code>/<id>.json` is Hydrolog's answer line byte for byte. The CSV of `analyses export` has the columns `station,analysis,command,series_version,hydrolog_version,formula_versions,path,value,derived` and the attribution columns. They are entries of kind `analyses` of the data root (`store scan --kind analyses`, `iter_store`), and `current_version(root, slot="analyses:pl.imgw.analyses")` gives the newest by `downloaded_at`, then by path (ADR-017).
 
-ČHMÚ specifics (ADR-003): freshness from one directory listing per dataset (plan fields `station_code`, `signal`, `remote_listed_at`, `local_observation`, `requests`); a station × year missing at the source is `unverifiable` with `error="not published"` (`download_archives`: `not_published`); datasets with the content form `chmi-json/1` store `content_sha256` — other bytes with the same canonical content give `unchanged` + notice `content_unchanged` + an observation, not a new version; series of per-station datasets carry `stations[<code>].periods` (unpublished years are unknown, not gaps); meteo series add `<V>_quality`/`<V>_source_flag`. Projects that pin store versions (by `sha256` and `content_sha256`) belong to Archiwista (`archiwista-project/1`, ADR-008).
+An analyses build that ends before it publishes (cancelled, an error, Ctrl+C, a killed process) keeps its staging directory `.incoming/<host>_<pid>_<token>/` when it holds stations it computed; the next build takes from every other staging directory, by hard links and before the 24-hour cleanup, each station whose whole record names the inputs of now (series versions and station Parquet SHA-256s, thresholds, Hydrolog version, registry digest) and whose result files match their SHA-256 (`_take` in `store/analyses.py`; ADR-016 erratum 2026-11-21). It never changes another staging directory.
+
+ČHMÚ specifics (ADR-003): freshness from one directory listing per dataset (plan fields `station_code`, `signal`, `remote_listed_at`, `local_observation`, `requests`); a station × year missing at the source is `unverifiable` with `error="not published"` (`download_archives`: `not_published`); datasets with the content form `chmu-json/1` store `content_sha256` — other bytes with the same canonical content give `unchanged` + notice `content_unchanged` + an observation, not a new version; series of per-station datasets carry `stations[<code>].periods` (unpublished years are unknown, not gaps); meteo series add `<V>_quality`/`<V>_source_flag`. Projects that pin store versions (by `sha256` and `content_sha256`) belong to Archiwista (`archiwista-project/1`, ADR-008).
 
 ### Contracts (IMGW-13)
 
@@ -543,7 +555,7 @@ src/obserwator/
 ├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
-├── datasets.py   # Registry of providers and 27 datasets (pl.imgw.*, cz.chmi.*), archive file generator
+├── datasets.py   # Registry of providers and 27 datasets (pl.imgw.*, cz.chmu.*), archive file generator
 ├── commands.py   # Catalog of 35 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads

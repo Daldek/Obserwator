@@ -14,10 +14,10 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
-from obserwator._parsing.chmi import ListingEntry, parse_listing
+from obserwator._parsing.chmu import ListingEntry, parse_listing
 from obserwator.datasets import (
-    _CHMI_HYDRO_FILE,
-    _CHMI_METEO_FILE,
+    _CHMU_HYDRO_FILE,
+    _CHMU_METEO_FILE,
     _IMGW_STATION_FILE,
     _METEO_LAYOUT,
     HYDRO_DETAILS,
@@ -103,8 +103,8 @@ _SYNC = "store sync"
 # File-name grammar of per-station archives (spec 2026-10-18 §2.3); group 1 is
 # the station code.
 _STATION_FILES = {
-    "station_year": _CHMI_HYDRO_FILE,
-    "station_element": _CHMI_METEO_FILE,
+    "station_year": _CHMU_HYDRO_FILE,
+    "station_element": _CHMU_METEO_FILE,
 }
 Status = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
 
@@ -176,7 +176,7 @@ def _failure_code(error: str | None) -> ErrorCode:
 def _source(archive: ArchiveFile) -> str:
     """Provider name in the messages about an archive's server."""
     descriptor = get_dataset(archive.dataset)
-    if descriptor.provider == "IMGW-PIB":
+    if descriptor.provider == "IMGW":
         return "IMGW"
     return get_provider(descriptor.provider).short_name
 
@@ -670,12 +670,12 @@ def _country_archives(
     """Country archives (IMGW-PIB) of the request, in the 3.0.0 order."""
     if stations is not None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_archives_cover_whole"),
+            message("sync.imgw_archives_cover_whole"),
             details={"option": "stations", "value": None},
         )
     if years is None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_datasets_need_option"),
+            message("sync.imgw_datasets_need_option"),
             details={"option": "years", "value": None},
         )
     selected_years = parse_years(years, option="years")
@@ -746,7 +746,7 @@ def _scope(descriptor: DatasetDescriptor) -> _Scope:
     """
     if descriptor.archive_scope == "country":
         return "country"
-    return "folders" if descriptor.provider == "IMGW-PIB" else "stations"
+    return "folders" if descriptor.provider == "IMGW" else "stations"
 
 
 def _folders(descriptor: DatasetDescriptor, years: Iterable[int]) -> list[str]:
@@ -786,16 +786,14 @@ def _folder_request(
     """
     if years is None:
         raise ObserwatorValidationError(
-            message("sync.imgw_pib_datasets_need_option"),
+            message("sync.imgw_datasets_need_option"),
             details={"option": "years", "value": None},
         )
     selected = parse_years(years, option="years")
     if months is not None:
         parse_months(months, option="months")
     codes = (
-        _parse_stations(stations, get_provider("IMGW-PIB"))
-        if stations is not None
-        else ()
+        _parse_stations(stations, get_provider("IMGW")) if stations is not None else ()
     )
     for descriptor in descriptors:
         _minimum_year(selected, descriptor)
@@ -932,8 +930,8 @@ def check_store(
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
         items. Required for IMGW-PIB datasets; optional for
-        ``cz.chmi.hydro_daily`` (None checks every year the listing shows for
-        the stations); rejected for ``cz.chmi.meteo_daily``.
+        ``cz.chmu.hydro_daily`` (None checks every year the listing shows for
+        the stations); rejected for ``cz.chmu.meteo_daily``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
         IMGW-PIB files only (also the running year's monthly synop files);
@@ -1426,22 +1424,21 @@ def _download(
         return _archive_response(
             client, archive.url, source=source, zipped=_zipped(archive)
         )
-    slug = descriptor.slug
     assert archive.year is not None
-    if slug.startswith("hydro_"):
+    if descriptor.kind == "hydro":
         intervals: dict[str, Literal["dobowe", "miesieczne", "polroczne_i_roczne"]] = {
-            "hydro_daily": "dobowe",
-            "hydro_monthly": "miesieczne",
-            "hydro_semiannual": "polroczne_i_roczne",
+            "pl.imgw.hydro_daily": "dobowe",
+            "pl.imgw.hydro_monthly": "miesieczne",
+            "pl.imgw.hydro_semiannual": "polroczne_i_roczne",
         }
         return download_hydro_data(
-            intervals[slug],
+            intervals[descriptor.key],
             archive.year,
             archive.month,
             cast(Literal["T", "Q", "H"] | None, archive.param),
         )
     subtype: Literal["klimat", "opad"] = (
-        "klimat" if slug == "meteo_climate_daily" else "opad"
+        "klimat" if descriptor.key == "pl.imgw.meteo_climate_daily" else "opad"
     )
     return download_meteo_data("dobowe", subtype, archive.year, archive.month)
 
@@ -1657,7 +1654,7 @@ def sync_store(
     # ČHMÚ requests name obserwator/<version> (spec 2026-10-18 §4.5), also those
     # of its station sources, which have no listing signal.
     identify = any(
-        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMI"
+        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMU"
         for item in plan.items
     )
     with httpx.Client(

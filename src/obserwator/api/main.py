@@ -9,7 +9,9 @@ the documentation ``/docs``. With ``OBSERWATOR_MCP_ENABLED=true`` and the ``mcp`
 extra, ``/mcp`` serves the MCP server in mode ``http`` (Streamable HTTP, spec §6.2,
 §6.9), in English like every MCP server; its session manager runs in the lifespan of
 this application. The web GUI is a server of its own, ``obserwator gui serve``
-(ADR-013), which this application does not serve.
+(ADR-013), which this application does not serve. A browser page of another origin may
+call it only from an origin of ``OBSERWATOR_CORS_ORIGINS`` (`cors_options`; none by
+default), never with credentials.
 
 The server keeps Nogat's logs (DEV-12.4 to DEV-12.9) with `SERVER_LOG`: the access log
 of the outermost middleware `obserwator.nogat_logging.AccessLog` (no client address,
@@ -22,9 +24,9 @@ command line ``--no-access-log --log-level warning``).
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, nullcontext
-from typing import cast
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,11 +34,14 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse, Response
 from fastapi.routing import APIRoute
 from starlette.applications import Starlette
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from obserwator import _environment as environment
+from obserwator._http_headers import security_headers
 from obserwator._version import __version__
 from obserwator.agent_guide import agent_guide
 from obserwator.api.errors import EXCEPTION_HANDLERS, accept_language
+from obserwator.api.instance import check_start
 from obserwator.api.routes import commands
 from obserwator.api.schemas import HealthCheck
 from obserwator.commands import command_schema
@@ -126,6 +131,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Start the logs, check ``nogat.toml``, run the session manager of ``/mcp`` with the app.
 
+    ``[obserwator.instance]``, the layout of the roots and the write token are checked
+    once (`obserwator.api.instance.check_start`): a problem stops the start.
+
     The lifecycle record ``start`` sums up the settings (`SERVER_LOG`); ``stop`` follows
     the end of serving, also when the start fails.
     """
@@ -147,6 +155,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "install obserwator[mcp]; the route /mcp does not exist"
             )
         check_config()  # an unusable settings file stops the server instead of being ignored
+        check_start()  # the instance, the roots' layouts, the write token (ADR-025)
         # A route of another application never runs its lifespan by itself.
         async with (
             nullcontext() if _MCP is None else _MCP.router.lifespan_context(_MCP)
@@ -154,6 +163,65 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             yield
     finally:
         SERVER_LOG.stop()
+
+
+def cors_options(origins: Sequence[str]) -> dict[str, Any]:
+    """
+    Options of the CORS middleware for the allowed origins (``OBSERWATOR_CORS_ORIGINS``).
+
+    Parameters
+    ----------
+    origins : sequence of str
+        Origins a browser may call the API from (``https://example.org``), or ``*``
+        among them for every origin. Empty: no cross-origin access (a preflight is
+        refused and no answer carries ``Access-Control-Allow-Origin``).
+
+    Returns
+    -------
+    dict of {str : Any}
+        Keyword arguments of `CORSMiddleware`. Credentials are never allowed: the
+        API authenticates with the ``X-API-Key`` header, which a cross-origin
+        request may send without them, and ``*`` with credentials would let every
+        site act with a browser's cookies.
+    """
+    return {
+        "allow_origins": ["*"] if "*" in origins else list(origins),
+        "allow_credentials": False,
+        "allow_methods": ["GET", "HEAD", "POST"],
+        "allow_headers": ["*"],
+    }
+
+
+class SecurityHeaders:
+    """
+    The security headers of both servers (`security_headers`) on every answer.
+
+    ``X-Content-Type-Options: nosniff``, ``Referrer-Policy: no-referrer`` and a
+    ``Permissions-Policy`` that denies the browser features the API's pages (``/docs``,
+    ``/redoc``) never use; a header a route set itself is kept. No
+    Content-Security-Policy: the documentation pages load Swagger UI and ReDoc from
+    their CDN.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.headers = security_headers()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Add the headers to the start of every HTTP answer."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def wrapped(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                given = list(message.get("headers", []))
+                names = {name.lower() for name, _ in given}
+                given += [pair for pair in self.headers if pair[0] not in names]
+                message["headers"] = given
+            await send(message)
+
+        await self.app(scope, receive, wrapped)
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -189,13 +257,8 @@ app = FastAPI(
 
 # Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, **cors_options(settings.cors_origins))
+app.add_middleware(SecurityHeaders)
 # Outermost: the access log records every answer, the middleware's own too (DEV-12.8).
 app.add_middleware(AccessLog, log=SERVER_LOG, quiet=QUIET)
 

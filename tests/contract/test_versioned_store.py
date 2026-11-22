@@ -62,10 +62,8 @@ from tests.contract.support import (
     O2001,
     OLD,
     PRECIP,
-    PROCESSED,
     RABA,
     SCHEMAS,
-    SOURCE,
     V1,
     V2,
     V3,
@@ -327,7 +325,7 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
         assert re.fullmatch(r"[A-Z]{2}", document["country"]), where
         assert scope == document["country"].lower(), where
         assert key_provider and name, where
-        assert document["provider"] in ("IMGW-PIB", "CHMI"), where
+        assert document["provider"] in ("IMGW", "CHMU"), where
         # size_bytes and sha256 of the main file
         assert document["size_bytes"] == main.stat().st_size, where
         assert re.fullmatch(r"[0-9a-f]{64}", document["sha256"]), where
@@ -355,8 +353,8 @@ def test_every_kind_of_version_has_the_sidecar_core_of_dev_19_16(
     assert seen == {
         (kind, provider)
         for kind in ("archive", "series", "catalog")
-        for provider in ("IMGW-PIB", "CHMI")
-    } | {("pmaxtp", "IMGW-PIB")}
+        for provider in ("IMGW", "CHMU")
+    } | {("pmaxtp", "IMGW")}
 
 
 @pytest.mark.parametrize(
@@ -432,8 +430,10 @@ def test_cell_and_plans_of_every_check_conform_to_schemas(tmp_path, complete, im
     assert items[h2001.server_path].error == "not published"
     # The raw root holds no series: its plan states none; series plans do (ADR-017).
     assert plans["store"].series_state == {}
-    assert plans["series"].series_state == {"hydro_daily": "current"}
-    assert plans["series_precip"].series_state == {"meteo_precip_daily": "outdated"}
+    assert plans["series"].series_state == {"imgw_hydro_daily": "current"}
+    assert plans["series_precip"].series_state == {
+        "imgw_meteo_precip_daily": "outdated"
+    }
 
 
 def set_read_only(root: Path, read_only: bool) -> None:
@@ -618,11 +618,11 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert newer.status == "new"
     assert newer.version == root / SLOT_DIR / f"2026-10-19_{new8}" / "codz_2024.zip"
     outdated = check_series(data, raw_root=root, dataset=DAILY)
-    assert outdated.series_state == {"hydro_daily": "outdated"}
+    assert outdated.series_state == {"imgw_hydro_daily": "outdated"}
     series = build_series(data, raw_root=root, dataset=DAILY)
     assert series.status == "new" and series.source_files == (newer.version,)
     current = check_series(data, raw_root=root, dataset=DAILY)
-    assert current.series_state == {"hydro_daily": "current"}
+    assert current.series_state == {"imgw_hydro_daily": "current"}
     assert (
         current_version(data, slot="series:pl.imgw.hydro_daily").version
         == series.version
@@ -695,8 +695,8 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
     assert build_catalog(data, raw_root=root).status == "unchanged"
     assert len(imgw.router.calls) == requests  # build and check request nothing
 
-    # CSV: one header row with units, both formulas once, every day of the series,
-    # the lines of ADR-012 in the trailing columns.
+    # CSV: one header row with units, every day of the series, the lines of ADR-012
+    # in the trailing columns attribution and terms_notice (ADR-028).
     target = export_series(
         series.version, station=RABA, output=tmp_path / "raba.csv", variables=["H", "Q"]
     ).output
@@ -709,18 +709,9 @@ def test_lifecycle_head_plan_stale_sync_series_catalog_csv_relabel(tmp_path, img
         "H_flag",
         "Q [m3/s]",
         "Q_flag",
-        "attribution_source",
-        "attribution_processed",
         "attribution",
         "terms_notice",
     ]
-    assert (table[0]["attribution_source"], table[0]["attribution_processed"]) == (
-        SOURCE,
-        PROCESSED,
-    )
-    assert not any(
-        row["attribution_source"] or row["attribution_processed"] for row in table[1:]
-    )
     assert trailing_lines(table) == attribution("imgw")
     assert [(row["date"], row["H_flag"], row["Q_flag"]) for row in table] == [
         (row.date.isoformat(), row.measurements["H"].flag, row.measurements["Q"].flag)
@@ -849,7 +840,7 @@ def test_concurrent_writers_publish_each_version_once(tmp_path):
         "unchanged",
     ]
     assert len({report.version for report in built}) == 1
-    assert len(list((data / "series" / "versions" / "hydro_daily").iterdir())) == 1
+    assert len(list((data / "series/versions/imgw_hydro_daily").iterdir())) == 1
     assert not any(data.glob(".incoming/*"))
     assert not any((root / ".incoming").iterdir())
     assert_no_partial_version(data)

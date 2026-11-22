@@ -5,15 +5,19 @@
 // remembered), the counts „na mapie N · bez współrzędnych M”
 // and the list, which keeps the stations without coordinates, marked; a click selects the
 // station and the map flies to it when it has a location. The filters choose the map's
-// stations too (`onMap`); the search is the list's.
+// stations too (`onMap`); the search is the list's. On an operator's instance (ADR-025,
+// instance.js) the switch and the chips name only the providers served, the featured one
+// first, whose stations lead the list (`featuredFirst`); „Pokaż inne źródła” (off on every
+// visit) puts a hidden provider's stations back, which also choosing it in the switch does.
 
+import { leftOut } from "./instance.js";
 import { fmt, html, t, tn, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { StationSymbol } from "./symbols.js";
 import { Seg } from "./ui/seg.js";
 import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerName } from "./words.js";
 
-/** The filters of „Wyczyść filtry”: every station of the catalogs. */
-export const NO_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false });
+/** The filters of „Wyczyść filtry”, which keeps „Pokaż inne źródła” as it is: every station of the catalogs. */
+export const NO_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false, others: false });
 
 /** localStorage key of the person's „tylko czynne” choice: "1" checked, "0" not. */
 export const ACTIVE_KEY = "obserwator-active-only";
@@ -41,8 +45,6 @@ function rememberActive(active) {
 }
 
 const PAGE = 150;
-/** The providers in the order of the registry. */
-const PROVIDERS = ["IMGW-PIB", "CHMI"];
 /** Station names are Polish and Czech: sorted as Polish, whatever the page's language. */
 const collator = new Intl.Collator("pl", { sensitivity: "base", numeric: true });
 
@@ -82,9 +84,26 @@ export function prepareStations(stations) {
     .sort((a, b) => hasSeries(b) - hasSeries(a) || a.unnamed - b.unnamed || b.datasets.length - a.datasets.length || collator.compare(a.name || a.code, b.name || b.code));
 }
 
-/** Whether the map shows a station under the filters (provider, kind, datasets, active); the search is the list's only. */
-export function onMap(station, filters) {
+/**
+ * The stations in the list's order on an instance with a featured provider (I6): its
+ * stations first, each part in the order of prepareStations.
+ *
+ * @param {object[]} stations of prepareStations
+ * @param {string|null} featured the featured provider
+ * @returns {object[]}
+ */
+export function featuredFirst(stations, featured) {
+  if (!featured) return stations;
+  return [...stations.filter((station) => station.provider === featured), ...stations.filter((station) => station.provider !== featured)];
+}
+
+/**
+ * Whether the map shows a station under the filters (provider, kind, datasets, active) and
+ * the instance (a hidden provider, `leftOut`); the search is the list's only.
+ */
+export function onMap(station, filters, scope) {
   if (filters.provider !== "all" && station.provider !== filters.provider) return false;
+  if (leftOut(station.provider, filters, scope)) return false;
   if (filters.kind !== "all" && station.kind !== filters.kind) return false;
   if (filters.active && !station.active) return false;
   const chosen = filters.datasets || [];
@@ -92,8 +111,8 @@ export function onMap(station, filters) {
   return true;
 }
 
-function matches(station, filters, needle) {
-  if (!onMap(station, filters)) return false;
+function matches(station, filters, needle, scope) {
+  if (!onMap(station, filters, scope)) return false;
   if (!needle) return true;
   return station.foldedName.includes(needle) || station.foldedRiver.includes(needle) || station.foldedCode.startsWith(needle);
 }
@@ -117,9 +136,9 @@ function datasetsOf(stations) {
   return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
 }
 
-/** Whether a dataset's chip belongs under the provider and kind chosen. */
-function offered(entry, filters) {
-  return (filters.provider === "all" || entry.provider === filters.provider) && (filters.kind === "all" || entry.kind === filters.kind);
+/** Whether a dataset's chip belongs under the provider and kind chosen; a hidden provider's not while it is left out. */
+function offered(entry, filters, scope) {
+  return (filters.provider === "all" || entry.provider === filters.provider) && (filters.kind === "all" || entry.kind === filters.kind) && !leftOut(entry.provider, filters, scope);
 }
 
 /** Bring a station's row into the list's view when its scrolling box shows (not a closed sheet). */
@@ -137,11 +156,11 @@ function reveal(item) {
   else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight + 8;
 }
 
-/** The chips of the datasets that hold stations, grouped by provider. */
-function DatasetChips({ entries, filters, onToggle }) {
-  const providers = [...new Set([...PROVIDERS, ...entries.map((entry) => entry.provider)])];
+/** The chips of the datasets that hold stations, grouped by provider in the order of the switch. */
+function DatasetChips({ entries, filters, scope, onToggle }) {
+  const providers = [...new Set([...scope.providers, ...entries.map((entry) => entry.provider)])];
   const groups = providers
-    .map((provider) => [provider, entries.filter((entry) => entry.provider === provider && offered(entry, filters))])
+    .map((provider) => [provider, entries.filter((entry) => entry.provider === provider && offered(entry, filters, scope))])
     .filter(([, shown]) => shown.length);
   if (!groups.length) return null;
   return html`<div class="ds-filter" role="group" aria-label=${t("stations.list.datasets")}>
@@ -162,7 +181,7 @@ function DatasetChips({ entries, filters, onToggle }) {
               title=${title}
               onClick=${() => onToggle(entry.key)}
             >
-              <${StationSymbol} kind=${entry.kind} provider=${entry.provider} data=${true} size=${11} />${datasetShort(entry.key)}
+              <${StationSymbol} kind=${entry.kind} data=${true} size=${11} />${datasetShort(entry.key)}
             </button>`;
           })}
         </span>
@@ -191,26 +210,28 @@ function StationSub({ station }) {
 /**
  * The panel's body.
  *
- * @param {{stations: object[], filters: object, onFilters: (next: object) => void,
- *   selected: string|null, onSelect: (code: string, options: {fly: boolean}) => void}} props
- *   the stations of prepareStations, the filters (NO_FILTERS' fields), their handler,
- *   the selected station and the selection's handler
+ * @param {{stations: object[], filters: object, scope: object, onFilters: (next: object) =>
+ *   void, selected: string|null, onSelect: (code: string, options: {fly: boolean}) => void}}
+ *   props the stations of prepareStations, the filters (NO_FILTERS' fields), what the
+ *   deployment shows (instance.js `scopeOf`), the filters' handler, the selected station and
+ *   the selection's handler
  * @returns {object}
  */
-export function StationList({ stations, filters, onFilters, selected, onSelect }) {
+export function StationList({ stations, filters, scope, onFilters, selected, onSelect }) {
   const [shown, setShown] = useState(PAGE);
   const list = useRef(null);
   const needle = fold(filters.query.trim());
-  const found = useMemo(() => stations.filter((station) => matches(station, filters, needle)), [stations, filters, needle]);
+  const found = useMemo(() => stations.filter((station) => matches(station, filters, needle, scope)), [stations, filters, needle, scope]);
   const datasets = useMemo(() => datasetsOf(stations), [stations]);
   const located = found.filter((station) => station.lon !== null).length;
   const change = (next) => {
     setShown(PAGE);
     if (next.active !== filters.active) rememberActive(next.active);
-    // A dataset chosen under another provider or kind is dropped with its chip
+    // A dataset chosen under another provider or kind, or of a provider left out again, is
+    // dropped with its chip
     const chosen = (next.datasets || []).filter((key) => {
       const entry = datasets.find((item) => item.key === key);
-      return entry && offered(entry, next);
+      return entry && offered(entry, next, scope);
     });
     onFilters({ ...next, datasets: chosen });
   };
@@ -249,7 +270,7 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
         label=${t("stations.list.provider")}
         value=${filters.provider}
         onChange=${set("provider")}
-        items=${[{ value: "all", label: t("stations.list.provider_all") }, ...PROVIDERS.map((id) => ({ value: id, label: providerName(id) }))]}
+        items=${[{ value: "all", label: t("stations.list.provider_all") }, ...scope.providers.map((id) => ({ value: id, label: providerName(id) }))]}
       />
       <${Seg}
         full
@@ -264,9 +285,12 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
           { value: "all", label: t("stations.list.kind_all") },
         ]}
       />
-      <${DatasetChips} entries=${datasets} filters=${filters} onToggle=${toggle} />
+      <${DatasetChips} entries=${datasets} filters=${filters} scope=${scope} onToggle=${toggle} />
       <div class="check-row">
         <label class="check"><input type="checkbox" checked=${filters.active} onChange=${(event) => set("active")(event.target.checked)} />${t("stations.list.active_only")}</label>
+        ${scope.offersOthers
+          ? html`<label class="check"><input type="checkbox" checked=${filters.others} onChange=${(event) => set("others")(event.target.checked)} />${t("stations.list.others")}</label>`
+          : null}
       </div>
     </div>
     <p class="counts" aria-live="polite">${counts.map((part, index) => html`${index ? " · " : ""}<span class="count">${part}</span>`)}</p>
@@ -281,7 +305,7 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
                 aria-current=${station.code === selected ? "true" : undefined}
                 onClick=${() => onSelect(station.code, { fly: true })}
               >
-                <${StationSymbol} kind=${station.kind} provider=${station.provider} data=${station.datasets.length > 0} active=${station.active} />
+                <${StationSymbol} kind=${station.kind} data=${station.datasets.length > 0} active=${station.active} />
                 <span class="st-name">${station.name || station.code}</span>
                 <code class="st-code">${station.code}</code>
                 <${StationSub} station=${station} />
@@ -291,7 +315,7 @@ export function StationList({ stations, filters, onFilters, selected, onSelect }
         </ul>`
       : html`<div class="empty-note">
           <p>${t("stations.list.none")}</p>
-          ${filtered ? html`<button type="button" class="btn sm" onClick=${() => change(NO_FILTERS)}>${t("stations.list.clear")}</button>` : null}
+          ${filtered ? html`<button type="button" class="btn sm" onClick=${() => change({ ...NO_FILTERS, others: filters.others })}>${t("stations.list.clear")}</button>` : null}
         </div>`}
     ${found.length > shown
       ? html`<button type="button" class="btn sm more" onClick=${() => setShown(shown + PAGE)}>

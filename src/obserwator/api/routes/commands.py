@@ -9,9 +9,13 @@ comma-separated text), POST from a JSON body checked by a model built with
 list, object). Values are normalized only by `validate_command`; the answer is
 the ``obserwator-result/1`` envelope of `run_command` (on POST with ``?check=true``
 of `check_command`) with the store root written as ``"."``, or an attachment for
-``store export``, ``stations export``, ``series export`` and ``commands guide``:
-the text stream, or for a binary format (Parquet) the file the export wrote to
-a private directory outside the store, removed after the answer is read.
+``store export``, ``stations export``, ``series export``, ``analyses export`` and
+``commands guide``: the text stream, or for a binary format (Parquet) the file the
+export wrote to a private directory outside the store, removed after the answer is
+read. An attachment of a series, the stations or the analyses is named as the GUI
+names it (Nogat DEV-19.21, `obserwator._file_names`): ``obserwator_series_<dataset
+key>_<station>``, ``obserwator_stations[_<provider>][_<kind>]``,
+``obserwator_analyses_<station>``; a stored unit keeps its name, the guides theirs.
 
 Server rules: the root of a command comes only from the setting of its kind
 (ADR-017 D7): ``OBSERWATOR_ROOT`` for the data root (series, catalogs, analyses,
@@ -24,10 +28,14 @@ for an unsupported root); ``version`` is a path relative to the root under the
 ``OBSERWATOR_USER_LOCATIONS_DIR``; the ``store sync`` plan is an ``obserwator-plan/1``
 object. Server and local options in a request are refused. Writes (POST
 without ``?check=true``) need ``OBSERWATOR_STORE_WRITES_ENABLED``, a configured
-``OBSERWATOR_STORE_WRITE_TOKEN`` and a matching ``X-API-Key`` (constant-time
-comparison) and are checked before the root; list commands page by ``limit``
-(default and maximum ``OBSERWATOR_API_MAX_LIMIT``) and ``cursor`` (``page.next_cursor``
-of the previous answer). The catalog
+``OBSERWATOR_STORE_WRITE_TOKEN`` (or ``OBSERWATOR_STORE_WRITE_TOKEN_FILE``, read on
+each write) and a matching ``X-API-Key`` (constant-time comparison) and are checked
+before the root; list commands page by ``limit`` (default and maximum
+``OBSERWATOR_API_MAX_LIMIT``) and ``cursor`` (``page.next_cursor`` of the previous
+answer). With ``[obserwator.instance]`` every route serves only what the instance
+serves (ADR-025, `obserwator.api.instance`): a provider, dataset, version or station
+not served is ``not_found`` before any request, a list keeps only the items served
+before it is paged. The catalog
 messages of an answer (notices, texts of failed items) and the texts of a command
 with a ``lang`` option are in the language of ``?lang=``, else of
 ``Accept-Language`` (English by default, AGI-6.4); every answer names it in
@@ -64,8 +72,14 @@ from pydantic import (
 )
 
 import obserwator
+from obserwator._file_names import (
+    analyses_file_name,
+    series_file_name,
+    stations_file_name,
+)
 from obserwator._jsonable import jsonable
 from obserwator.api.errors import PROBLEM_RESPONSES, accept_language, hide_server_paths
+from obserwator.api.instance import Scope, scope_of
 from obserwator.commands import (
     _input_schemas,
     _root_kind,
@@ -74,7 +88,7 @@ from obserwator.commands import (
     run_command,
     validate_command,
 )
-from obserwator.config import settings
+from obserwator.config import configured_token, settings
 from obserwator.datasets import ArchiveFile, License, ProviderDescriptor
 from obserwator.exceptions import (
     ErrorCode,
@@ -133,6 +147,14 @@ _MEDIA_TYPES = {
 }
 # File names of the guide streams of commands guide (spec 2026-10-19 §3.4).
 _GUIDE_FILES = {"agents": "AGENTS.md", "llms": "llms.txt"}
+# An example of each stream's attachment name (Nogat DEV-19.21; see `_attachment`).
+_ATTACHMENT_EXAMPLES = {
+    "series export": "obserwator_series_pl.imgw.hydro_daily_150160180.csv",
+    "stations export": "obserwator_stations_chmu_hydro.csv",
+    "analyses export": "obserwator_analyses_149190310.json",
+    "store export": "codz_2024.csv",
+    "commands guide": "AGENTS.md",
+}
 # Option given in REST as an obserwator-plan/1 object instead of a file (spec §13.2).
 _PLAN = "plan"
 # Option chosen by Accept-Language when the request omits it (spec 2026-10-19 §4.2).
@@ -368,8 +390,8 @@ def _write_access(request: Request, api_key: str | None = Security(_API_KEY)) ->
             message("api.writing_store_over_rest_disabled"),
             "writes_disabled",
         )
-    token = settings.store_write_token
-    secret = token.get_secret_value() if token is not None else ""
+    # The variable, else the file it names, read now: a rotated file needs no restart.
+    secret = configured_token() or ""
     if not secret:
         raise _forbidden(
             message("api.writing_store_needs_configured_obserwator"),
@@ -452,8 +474,15 @@ def _server_raw_root(route: _Route) -> Path | None:
     return _configured("raw")
 
 
-def _confine_version(route: _Route, root: Path, value: object) -> None:
-    """``version`` relative to the root under the command's ``*/versions/``."""
+def _confine_version(
+    route: _Route, root: Path, value: object, scope: Scope | None
+) -> None:
+    """
+    ``version`` relative to the root under the command's ``*/versions/``.
+
+    An instance refuses a version of a provider it does not serve by the path alone,
+    before the path is looked up (`Scope.version`).
+    """
     text = value if isinstance(value, str) else ""
     details = {"option": "version", "value": text}
     parts = text.split("/")
@@ -478,6 +507,8 @@ def _confine_version(route: _Route, root: Path, value: object) -> None:
             ),
             details=details,
         )
+    if scope is not None:
+        scope.version(parts)
     path = root
     for part in parts:
         path = path / part
@@ -592,20 +623,47 @@ def _stream_format(route: _Route, options: Mapping[str, object]) -> str:
 
 
 def _attachment(route: _Route, options: Mapping[str, object]) -> str:
-    """File name of an exported stream or of a guide."""
+    """
+    File name of an exported stream or of a guide (Nogat DEV-19.21).
+
+    A series, the stations and a station's analyses are named as the GUI names them
+    (`obserwator._file_names`); a unit of the raw root keeps its name in the store
+    (DEV-19.5), the guides theirs.
+    """
     format_ = _stream_format(route, options)
     if format_ in _GUIDE_FILES:
         return _GUIDE_FILES[format_]
     if route.spec.name == "series export":
-        return f"{options['station']}.{format_}"
+        return series_file_name(
+            _series_dataset(options), cast(str, options["station"]), format_
+        )
     if route.spec.name == "stations export":
-        return f"stations.{format_}"
+        return stations_file_name(
+            cast(str | None, options.get("provider")),
+            cast(str | None, options.get("kind")),
+            format_,
+        )
     if route.spec.name == "analyses export":
-        return f"{options['station']}_analyses.{format_}"
+        return analyses_file_name(cast(str, options["station"]), None, format_)
     version = cast(Path, options["version"])
     name = version.name.removesuffix(".meta.json")
     stem = version.parent.name if version.is_dir() else PurePosixPath(name).stem
     return f"{stem}.{format_}"
+
+
+def _series_dataset(options: Mapping[str, object]) -> str:
+    """The dataset of a series export: ``dataset``, else the slug of ``version``'s path."""
+    dataset = options.get("dataset")
+    if dataset is not None:
+        return cast(str, dataset)
+    # series/versions/<slug>/<label>_<sha8>[/series.json[.meta.json]] below the root.
+    parts = Path(cast(str | Path, options["version"])).parts
+    at = max(
+        index
+        for index in range(len(parts) - 2)
+        if parts[index : index + 2] == ("series", "versions")
+    )
+    return parts[at + 2]
 
 
 def _binary(route: _Route, options: Mapping[str, object]) -> bool:
@@ -671,11 +729,13 @@ def _ascii_json(value: object) -> str:
 def _respond(
     route: _Route, options: dict[str, object], *, check: bool, lang: Lang
 ) -> Response:
+    # An instance refuses a route it does not serve before anything else (ADR-025).
+    scope = scope_of(route.spec)
     root = _server_root(route, options)
     if root is not None:
         options["root"] = root
         if "version" in options:
-            _confine_version(route, root, options["version"])
+            _confine_version(route, root, options["version"], scope)
     raw_root = _server_raw_root(route)
     if raw_root is not None:
         options["raw_root"] = raw_root
@@ -693,6 +753,9 @@ def _respond(
             # A binary export has no lines: it writes its file, which is sent.
             options["output"] = stack.enter_context(_binary_file())
         normalized = validate_command(route.spec.name, options=options)
+        if scope is not None:
+            # After the catalog's normalization, before any request or write.
+            scope.guard(normalized)
         if check:
             envelope: CommandResult[Any] = check_command(
                 route.spec.name, options=normalized
@@ -700,7 +763,11 @@ def _respond(
         else:
             if route.spec.result == "list":
                 _paged(normalized)
-            envelope = run_command(route.spec.name, options=normalized)
+            envelope = (
+                run_command(route.spec.name, options=normalized)
+                if scope is None
+                else scope.run(normalized)
+            )
             if binary and envelope.status != "cancelled":
                 data = cast(Path, normalized["output"]).read_bytes()
     if envelope.status == "cancelled":
@@ -955,6 +1022,19 @@ def _add_route(route: _Route) -> None:
                     else {"type": "string"}
                 }
                 for name in route.schema["properties"]["format"]["enum"]
+            },
+            "headers": {
+                "Content-Disposition": {
+                    "description": "attachment; the file name of a series, the "
+                    "stations or a station's analyses follows Nogat DEV-19.21: "
+                    "obserwator_series_<dataset key>_<station>.<format>, "
+                    "obserwator_stations[_<provider acronym>][_<kind>].<format>, "
+                    "obserwator_analyses_<station>.<format>; a stored unit keeps its "
+                    "name in the store, a guide is AGENTS.md or llms.txt",
+                    "schema": {"type": "string"},
+                    "example": "attachment; "
+                    f'filename="{_ATTACHMENT_EXAMPLES[route.spec.name]}"',
+                }
             },
         }
     router.add_api_route(

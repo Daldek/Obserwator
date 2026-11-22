@@ -36,21 +36,29 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import obserwator
 from obserwator._borders import CZECHIA, POLAND
+from obserwator._file_names import (
+    analyses_file_name,
+    pmaxtp_file_name,
+    series_file_name,
+    stations_file_name,
+)
+from obserwator._http_headers import security_headers
 from obserwator.attribution import (
     ORIGINS,
     Attribution,
+    Origin,
     attribution,
     border_origin,
     dataset_origin,
     provider_origin,
 )
+from obserwator.config import check_credentials
 from obserwator.datasets import get_dataset, get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
@@ -77,6 +85,7 @@ from obserwator.gui._http import (
     json_response,
     not_modified,
     page_lang,
+    prebuilt_response,
 )
 from obserwator.gui._live import (
     PMAXTP_METHODS,
@@ -89,6 +98,7 @@ from obserwator.gui._live import (
     synop_record,
     utc_now,
 )
+from obserwator.gui._page import Site, WebFiles
 from obserwator.gui._root import (
     ANALYSES_SLOTS,
     DataRoot,
@@ -100,6 +110,7 @@ from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
 from obserwator.gui._traffic import Traffic, TrafficState, is_admin
+from obserwator.instance import Instance
 from obserwator.messages import LANGS, Lang, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
@@ -113,7 +124,7 @@ BORDERS = {name: DATA / name for name in (POLAND, CZECHIA)}
 SESSION_SCHEMA = "obserwator-gui-session/1"
 HANDOFF_SCHEMA = "nogat-handoff/1"
 SERIES_SCHEMA = "hydrolog-series/1"
-HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmi.hydro_daily")
+HYDRO_DAILY = ("pl.imgw.hydro_daily", "cz.chmu.hydro_daily")
 PMAXTP_TABLES = ("ks", "sg", "rb")
 SERIES_FORMATS: tuple[str, ...] = ("csv", "json", "parquet")
 """The formats of a station's series file (`export_series`, ADR-014)."""
@@ -124,6 +135,16 @@ ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
+CURRENT_PROVIDER = "IMGW"
+"""The provider of the current measurements view: the only live data the GUI serves."""
+PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
+    "IMGW": ("imgw", "imgw_hydro"),
+    "CHMU": ("chmu",),
+}
+"""The origins of each provider's data (``obserwator.attribution``), dropped when an
+instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
+LOGO_CSP = "sandbox; default-src 'none'"
+"""The operator's logo's own policy (I14): an SVG opened by itself runs nothing."""
 SEXT = {
     "csv": "text/csv; charset=utf-8",
     "json": "application/json",
@@ -131,8 +152,9 @@ SEXT = {
     "geojson": "application/geo+json",
 }
 QUIET = (
-    r"^/(css|src|vendor|nogat|data|instrukcja)/|^/(admin/)?theme-init\.js$"
+    r"^/(css|src|vendor|nogat|data|instrukcja|v)/|^/(admin/)?theme-init\.js$"
     r"|^/regulamin\.html$"
+    r"|^/(favicon\.ico|robots\.txt|apple-touch-icon(-precomposed)?\.png)$"
 )
 """The static content of the access log (Nogat DEV-12.5), paths at the origin's root: the
 page's files, the admin page's script, the packaged borders, the guide and the regulamin,
@@ -159,6 +181,150 @@ def _route(handler: Handler) -> Handler:
     wrapped.__name__ = handler.__name__
     wrapped.__doc__ = handler.__doc__
     return wrapped
+
+
+# --- the instance (ADR-025) ------------------------------------------------------------
+
+
+def _instance(request: Request) -> Instance | None:
+    return _gui(request).config.instance
+
+
+def served_origins(instance: Instance | None) -> tuple[Origin, ...]:
+    """The origins of the data a deployment serves: every one without an instance."""
+    if instance is None:
+        return ORIGINS
+    dropped: set[str] = {
+        origin
+        for provider, origins in PROVIDER_ORIGINS.items()
+        if not instance.serves(provider)
+        for origin in origins
+    }
+    if not instance.pmaxtp:
+        dropped.add("pmaxtp")
+    return tuple(origin for origin in ORIGINS if origin not in dropped)
+
+
+def _needs_current(handler: Handler) -> Handler:
+    """A route of IMGW-PIB's current data: ``not_found`` before any request when it is off (I8)."""
+
+    async def wrapped(request: Request) -> Response:
+        instance = _instance(request)
+        if instance is not None and not instance.serves(CURRENT_PROVIDER):
+            raise GuiError(
+                "not_found",
+                message("instance.not_served", provider=CURRENT_PROVIDER),
+                details={"reason": "not_served"},
+            )
+        return await handler(request)
+
+    functools.update_wrapper(wrapped, handler)
+    return wrapped
+
+
+def _needs_pmaxtp(handler: Handler) -> Handler:
+    """
+    A route of PMAXTP: ``not_found`` before any request with ``pmaxtp = "off"`` (I8).
+
+    With ``area_mode = "clip"`` a point outside the area is ``not_found`` too.
+    """
+
+    async def wrapped(request: Request) -> Response:
+        instance = _instance(request)
+        if instance is not None and not instance.pmaxtp:
+            raise GuiError(
+                "not_found",
+                message("instance.pmaxtp_off"),
+                details={"reason": "pmaxtp_off"},
+            )
+        if instance is not None and instance.clips:
+            _, latitude, longitude = _pmaxtp_query(request.query_params)
+            if not instance.keeps_point(longitude, latitude):
+                raise GuiError(
+                    "not_found",
+                    message(
+                        "instance.outside_area", latitude=latitude, longitude=longitude
+                    ),
+                    details={"option": "latitude", "reason": "outside_area"},
+                )
+        return await handler(request)
+
+    functools.update_wrapper(wrapped, handler)
+    return wrapped
+
+
+def _inside(request: Request, points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The current points an instance serves: with ``clip``, those inside its area."""
+    instance = _instance(request)
+    if instance is None or not instance.clips:
+        return points
+    return [p for p in points if instance.keeps_point(p.get("lon"), p.get("lat"))]
+
+
+_STARTS: dict[
+    tuple[str, str], tuple[str, tuple[float, float, float, float] | None]
+] = {}
+"""The start view of each instance and station layer, worked out once (I5)."""
+
+
+def _start(
+    instance: Instance, snapshot: Snapshot
+) -> tuple[str, tuple[float, float, float, float] | None]:
+    """
+    Where the map starts: `Instance.start` of the snapshot's stations, once per layer.
+
+    A start view that holds no station falls back to ``all`` with one warning.
+    """
+    key = (instance.key, snapshot.layer_etag)
+    found = _STARTS.get(key)
+    if found is None:
+        found = instance.start(snapshot.features)
+        if found[0] != instance.start_view:
+            LOG.warning("%s", message("instance.empty_start", view=instance.start_view))
+        if len(_STARTS) > 16:
+            _STARTS.clear()
+        _STARTS[key] = found
+    return found
+
+
+def _instance_document(
+    instance: Instance | None, snapshot: Snapshot
+) -> dict[str, Any] | None:
+    """
+    What the page needs of the instance (ADR-025, I7): never a path of the server.
+
+    ``title``, ``logo`` (the address of `logo` or null), ``featured`` (a provider or
+    null), ``others_opacity`` (the opacity of the other providers' stations while they
+    are faded), ``providers`` (the state of each provider served, the featured one first),
+    ``start`` (``view`` and ``box`` [west, south, east, north] or null for the whole
+    data set), ``area`` (``mode``, ``box``, ``bounds`` of the map in ``clip`` and the
+    address of its ``outline``, `area_outline`) and whether ``pmaxtp`` and the
+    ``current`` data are served; null without ``[obserwator.instance]``.
+    """
+    if instance is None:
+        return None
+    view, box = _start(instance, snapshot) if snapshot.error is None else ("all", None)
+    area = instance.area
+    return {
+        "title": instance.title,
+        "logo": None if instance.logo is None else "api/logo",
+        "featured": instance.featured,
+        "others_opacity": instance.others_opacity,
+        "providers": {
+            provider: instance.providers[provider] for provider in instance.served
+        },
+        "start": {"view": view, "box": None if box is None else list(box)},
+        "area": None
+        if area is None
+        else {
+            "mode": area.mode,
+            "box": list(area.box),
+            "bounds": list(area.bounds) if area.clips else None,
+            "outline": "api/area",
+        },
+        "pmaxtp": instance.pmaxtp,
+        "current": instance.serves(CURRENT_PROVIDER),
+    }
 
 
 _LIMITERS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, CapacityLimiter] = (
@@ -219,7 +385,7 @@ def _dataset(request: Request, snapshot: Snapshot) -> str:
 def _held(request: Request, snapshot: Snapshot, dataset: str) -> str:
     """The station of the address, held by the dataset's series; else ``not_found``."""
     code = _station(request, snapshot)
-    if code not in snapshot.series[dataset].index.stations:
+    if code not in snapshot.series[dataset].stations:
         raise GuiError(
             "not_found",
             message("gui.errors.no_series", station=code, dataset=dataset),
@@ -244,16 +410,12 @@ def _station_origins(
     carries them (``details_source``, ADR-021).
     """
     lines = attribution(provider_origin(provider))
-    if (
-        details
-        and provider == "IMGW-PIB"
-        and properties.get("details_source") is not None
-    ):
+    if details and provider == "IMGW" and properties.get("details_source") is not None:
         lines = lines | attribution("imgw_hydro")
     if not location:
         return lines
     lines = lines | attribution(border_origin(provider))
-    if provider == "IMGW-PIB" and properties.get("location_source") == "static":
+    if provider == "IMGW" and properties.get("location_source") == "static":
         lines = lines | attribution("imgw_hydro")
     return lines
 
@@ -263,7 +425,13 @@ def _station_origins(
 
 @_route
 async def session(request: Request) -> Response:
-    """``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus."""
+    """
+    ``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus.
+
+    On an instance (ADR-025) only what it serves: its providers (the featured one
+    first), the origins of their lines (the featured provider's lines first in
+    ``order``) and ``instance`` (`_instance_document`); null without one.
+    """
     params.only(request.query_params, ())
     state = _gui(request)
     snapshot = await _thread(state.root.snapshot)
@@ -274,6 +442,19 @@ async def session(request: Request) -> Response:
         else None
     )
     config = state.config
+    instance = config.instance
+    origins = served_origins(instance)
+    every = attribution(*origins)
+    first = (
+        Attribution()
+        if instance is None or instance.featured is None
+        else attribution(provider_origin(instance.featured))
+    )
+    shown = (
+        providers()
+        if instance is None
+        else [get_provider(provider) for provider in instance.served]
+    )
     document = {
         "schema": SESSION_SCHEMA,
         "version": {"obserwator": state.version, "hydrolog": hydrolog},
@@ -282,8 +463,8 @@ async def session(request: Request) -> Response:
             "series": {
                 key: {
                     **series.version.to_dict(),
-                    "year_type": series.index.year_type,
-                    "stations": len(series.index.stations),
+                    "year_type": series.year_type,
+                    "stations": len(series.stations),
                 }
                 for key, series in snapshot.series.items()
             },
@@ -292,6 +473,7 @@ async def session(request: Request) -> Response:
                 if (version := snapshot.analyses.get(provider)) is None
                 else {**version.to_dict(), "hydrolog": version.hydrolog}
                 for provider in ANALYSES_SLOTS
+                if instance is None or instance.serves(provider)
             },
             "error": None
             if snapshot.error is None
@@ -303,12 +485,14 @@ async def session(request: Request) -> Response:
                 "name": provider.name,
                 **attribution(provider_origin(provider.id)).fields(),
             }
-            for provider in providers()
+            for provider in shown
         },
         "attribution": {
-            "origins": {origin: attribution(origin).fields() for origin in ORIGINS},
-            "order": list(attribution(*ORIGINS).attribution),
-            "terms_order": list(attribution(*ORIGINS).terms_notice),
+            "origins": {origin: attribution(origin).fields() for origin in origins},
+            "order": list(dict.fromkeys([*first.attribution, *every.attribution])),
+            "terms_order": list(
+                dict.fromkeys([*first.terms_notice, *every.terms_notice])
+            ),
         },
         "basemap": None
         if config.basemap is None
@@ -324,6 +508,7 @@ async def session(request: Request) -> Response:
             "processes": PROCESSES,
             "timeout_s": TIMEOUT_S,
         },
+        "instance": _instance_document(instance, snapshot),
     }
     return json_response(request, document)
 
@@ -351,16 +536,29 @@ async def texts(request: Request) -> Response:
 
 @_route
 async def stations(request: Request) -> Response:
-    """The station layer: every station of the current catalogs and the series holding it."""
+    """
+    The station layer: every station of the current catalogs and the series holding it.
+
+    A request holding the layer's ETag gets ``304`` before anything is built; else the
+    answer built and gzipped once per layer (`GuiState.layer`).
+    """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
-    lines = Attribution()
-    for feature in snapshot.features.values():
-        lines = lines | _station_origins(
-            feature.provider, feature.properties, location=True
-        )
-    document = {**snapshot.layer, **lines.fields()}
-    return json_response(request, document, etag=_etag(request, snapshot.layer_etag))
+    etag = _etag(request, snapshot.layer_etag)
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
+
+    def build() -> dict[str, Any]:
+        lines = Attribution()
+        for feature in snapshot.features.values():
+            lines = lines | _station_origins(
+                feature.provider, feature.properties, location=True
+            )
+        return {**snapshot.layer, **lines.fields()}
+
+    bodies = await _thread(lambda: _gui(request).layer.bodies(etag, build))
+    return prebuilt_response(request, bodies, etag)
 
 
 @_route
@@ -534,15 +732,10 @@ async def analysis_file(request: Request) -> Response:
     return attachment(
         request,
         dumps(result, indent=2),
-        filename=f"{code}_{name}.json",
+        filename=analyses_file_name(code, name, "json"),
         media_type="application/json",
         etag=_etag(request, etag),
     )
-
-
-def _analyses_name(code: str, analysis: str | None, fmt: str) -> str:
-    """The name of a station's stored analyses file: ``<code>_analyses.<format>``."""
-    return f"{code}_{analysis or 'analyses'}.{fmt}"
 
 
 @_route
@@ -593,7 +786,7 @@ async def analyses_file(request: Request) -> Response:
     return attachment(
         request,
         body,
-        filename=_analyses_name(code, name, fmt),
+        filename=analyses_file_name(code, name, fmt),
         media_type="text/csv" if fmt == "csv" else "application/json",
         etag=etag,
     )
@@ -615,39 +808,44 @@ def _snapshot_times(snaps: Mapping[str, Any], lang: str) -> dict[str, Any]:
 
 
 @_route
+@_needs_current
 async def current(request: Request) -> Response:
     """The points of „Pomiary bieżące”: IMGW-PIB's hydrological and meteorological stations."""
     params.only(request.query_params, ())
     live = _gui(request).current
-    names = ("states", "hydro", "meteo")
-    snaps = {name: await _thread(partial(live.get, name)) for name in names}
+    snaps = await _thread(partial(live.get_many, ("states", "hydro", "meteo")))
     if all(snap.items is None for snap in snaps.values()):
         error = next(
             (snap.error for snap in snaps.values() if snap.error is not None), None
         )
         raise error or GuiError("source_unavailable", message("gui.errors.no_current"))
     lang = page_lang(request)
+    etag = _etag(request, "current", lang, {k: s.serial for k, s in snaps.items()})
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
     document = {
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
-        "hydro": hydro_points(snaps["states"], snaps["hydro"]),
-        "meteo": meteo_points(snaps["meteo"]),
+        "hydro": _inside(request, hydro_points(snaps["states"], snaps["hydro"])),
+        "meteo": _inside(request, meteo_points(snaps["meteo"])),
         **attribution("imgw", "imgw_hydro").fields(),
     }
-    return json_response(request, document)
+    return json_response(request, document, etag=etag)
 
 
 @_route
+@_needs_current
 async def current_station(request: Request) -> Response:
     """One station's current values (IMGW-PIB only), with its synoptic report where paired."""
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     feature = snapshot.features[code]
-    if feature.provider != "IMGW-PIB":
+    if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
-            message("gui.errors.no_current_chmi"),
+            message("gui.errors.no_current_chmu"),
             details={"reason": "provider"},
         )
     live = _gui(request).current
@@ -658,17 +856,28 @@ async def current_station(request: Request) -> Response:
         if kind == "hydro"
         else (("meteo", "synop") if code in indices else ("meteo",))
     )
-    snaps = {name: await _thread(partial(live.get, name)) for name in names}
+    snaps = await _thread(partial(live.get_many, names))
     main = snaps[names[0]]
     if main.items is None:
         raise main.error or GuiError(
             "source_unavailable", message("gui.errors.no_current")
         )
     lang = page_lang(request)
+    etag = _etag(
+        request,
+        "current-station",
+        snapshot.key,
+        code,
+        lang,
+        {k: s.serial for k, s in snaps.items()},
+    )
+    unchanged = not_modified(request, etag)
+    if unchanged is not None:
+        return unchanged
     document: dict[str, Any] = {
         "station": code,
         "kind": kind,
-        "source": "IMGW-PIB",
+        "source": CURRENT_PROVIDER,
         "snapshots": _snapshot_times(snaps, lang),
         "record": main.items.get(code),
         **(
@@ -682,7 +891,7 @@ async def current_station(request: Request) -> Response:
         document["state"] = state.get("water_state") if state else None
     elif "synop" in snaps:
         document["synop"] = synop_record(code, feature, indices, snaps["synop"])
-    return json_response(request, document)
+    return json_response(request, document, etag=etag)
 
 
 def _pmaxtp_query(query: Mapping[str, str]) -> tuple[PmaxtpMethod, float, float]:
@@ -700,6 +909,7 @@ def _pmaxtp_query(query: Mapping[str, str]) -> tuple[PmaxtpMethod, float, float]
 
 
 @_route
+@_needs_pmaxtp
 async def pmaxtp(request: Request) -> Response:
     """PMAXTP of a point: the three tables, IMGW-PIB's address of the answer, the lines."""
     params.only(request.query_params, ("latitude", "longitude", "method"))
@@ -768,6 +978,7 @@ def pmaxtp_csv(document: Mapping[str, Any]) -> str:
 
 
 @_route
+@_needs_pmaxtp
 async def pmaxtp_file(request: Request) -> Response:
     """PMAXTP of a point as a file packed by the server: CSV or JSON with PMAXTP's lines."""
     query = request.query_params
@@ -777,7 +988,7 @@ async def pmaxtp_file(request: Request) -> Response:
     document = await _thread(
         lambda: _gui(request).pmaxtp.get(method, latitude, longitude)
     )
-    stem = f"pmaxtp_{method}_{latitude:.4f}_{longitude:.4f}"
+    name = pmaxtp_file_name(method, latitude, longitude, fmt)
     if fmt == "json":
         body = dumps(
             {
@@ -809,7 +1020,7 @@ async def pmaxtp_file(request: Request) -> Response:
     else:
         body = pmaxtp_csv(document).encode("utf-8")
     _gui(request).traffic.count("downloads")
-    return attachment(request, body, filename=f"{stem}.{fmt}", media_type=SEXT[fmt])
+    return attachment(request, body, filename=name, media_type=SEXT[fmt])
 
 
 # --- files and command lines -------------------------------------------------------------
@@ -835,11 +1046,6 @@ def _shown_command(command: str, options: Mapping[str, Any]) -> str:
     return shlex.join(shown)
 
 
-def _series_name(dataset: str, code: str, fmt: str) -> str:
-    """The name of a station's series file: ``<code>_<dataset slug>.<format>``."""
-    return f"{code}_{get_dataset(dataset).slug}.{fmt}"
-
-
 @_route
 async def downloads(request: Request) -> Response:
     """The files of a station: its series and stored analyses in each format, with commands."""
@@ -853,7 +1059,7 @@ async def downloads(request: Request) -> Response:
         descriptor = get_dataset(dataset)
         formats = {}
         for fmt in SERIES_FORMATS:
-            name = _series_name(dataset, code, fmt)
+            name = series_file_name(dataset, code, fmt)
             options = {"dataset": dataset, "station": code, "output": name}
             formats[fmt] = {
                 "file": name,
@@ -882,7 +1088,7 @@ async def downloads(request: Request) -> Response:
     if stored:
         formats = {}
         for fmt in ANALYSES_FORMATS:
-            name = _analyses_name(code, None, fmt)
+            name = analyses_file_name(code, None, fmt)
             formats[fmt] = {
                 "file": name,
                 "url": f"api/files/analyses/{code}?format={fmt}",
@@ -897,6 +1103,14 @@ async def downloads(request: Request) -> Response:
             "computed_at": stored[0].get("computed_at"),
             "count": len(stored),
             "formats": formats,
+            # The name of each analysis's own files (JSON, CSV), which the page offers.
+            "each": {
+                item["analysis"]: {
+                    fmt: analyses_file_name(code, item["analysis"], fmt)
+                    for fmt in ANALYSES_FORMATS
+                }
+                for item in stored
+            },
             "attribution": stored[0].get("attribution", []),
             "terms_notice": stored[0].get("terms_notice", []),
         }
@@ -923,7 +1137,7 @@ async def series_file(request: Request) -> Response:
     code = _held(request, snapshot, dataset)
     fmt = params.choice(query.get("format"), "format", SERIES_FORMATS, "csv")
     state = _gui(request)
-    name = _series_name(dataset, code, fmt)
+    name = series_file_name(dataset, code, fmt)
     etag = _etag(request, "file", snapshot.series[dataset].version.sha256, code, fmt)
     unchanged = not_modified(request, etag)
     if unchanged is not None:
@@ -990,12 +1204,6 @@ def _stations_of(
     return chosen
 
 
-def _stations_name(provider: str | None, kind: str | None, fmt: str) -> str:
-    """The name of a stations file: ``stations[_<provider>][_<kind>].<format>``."""
-    parts = ["stations", *(part for part in (provider, kind) if part)]
-    return f"{'_'.join(parts).lower()}.{fmt}"
-
-
 @_route
 async def stations_downloads(request: Request) -> Response:
     """The stations of the current catalogs as files: each format, its command line."""
@@ -1014,7 +1222,7 @@ async def stations_downloads(request: Request) -> Response:
     }
     formats = {}
     for fmt in STATIONS_FORMATS:
-        name = _stations_name(provider, kind, fmt)
+        name = stations_file_name(provider, kind, fmt)
         options = {**selection, "output": name}
         formats[fmt] = {
             "file": name,
@@ -1069,7 +1277,7 @@ async def stations_file(request: Request) -> Response:
     return attachment(
         request,
         body,
-        filename=_stations_name(provider, kind, fmt),
+        filename=stations_file_name(provider, kind, fmt),
         media_type=SEXT[fmt],
         etag=etag,
     )
@@ -1122,8 +1330,7 @@ async def handoff(request: Request) -> Response:
             (
                 key
                 for key in HYDRO_DAILY
-                if key in snapshot.series
-                and code in snapshot.series[key].index.stations
+                if key in snapshot.series and code in snapshot.series[key].stations
             ),
             None,
         )
@@ -1263,7 +1470,7 @@ def _page_address(request: Request, code: str) -> str:
 
 @_route
 async def regulamin(request: Request) -> Response:
-    """``regulamin.html`` (DEV-15.7): the kit's terms filled for the deployment."""
+    """``regulamin.html`` (DEV-15.7): the kit's terms, or the operator's, filled."""
     terms = _gui(request).terms
     if terms is None:
         raise GuiError(
@@ -1290,6 +1497,67 @@ async def border(request: Request) -> Response:
         path.read_bytes(),
         media_type="application/geo+json",
         headers={"Cache-Control": "no-cache"},
+    )
+
+
+async def touch_icon(request: Request) -> Response:
+    """``apple-touch-icon-precomposed.png``: the same icon as ``apple-touch-icon.png``."""
+    return FileResponse(WEB / "apple-touch-icon.png", media_type="image/png")
+
+
+async def robots(request: Request) -> Response:
+    """
+    ``robots.txt``: crawlers may read the page but not the API, which computes on request.
+
+    Made here rather than kept as a file of ``web/``: the API's path follows the prefix
+    the app is mounted under.
+    """
+    prefix = request.scope.get("root_path", "").rstrip("/")
+    return Response(
+        f"User-agent: *\nDisallow: {prefix}/api/\n", media_type="text/plain"
+    )
+
+
+@_route
+async def logo(request: Request) -> Response:
+    """
+    The operator's logo of ``[obserwator.instance]`` (I14), from the GUI's own origin.
+
+    Its type was read from its content at the start (PNG, WebP or SVG); it carries
+    `LOGO_CSP` and ``nosniff``, so an SVG opened by itself runs no script.
+    """
+    params.only(request.query_params, ())
+    instance = _instance(request)
+    found = None if instance is None else instance.logo
+    if found is None:
+        raise GuiError("not_found", message("gui.errors.not_found", path="api/logo"))
+    etag = _etag(request, "logo", found.sha256)
+    headers = {
+        "Cache-Control": "no-cache",
+        "ETag": f'"{etag}"',
+        "Content-Security-Policy": LOGO_CSP,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if not_modified(request, etag) is not None:
+        return Response(status_code=304, headers=headers)
+    return Response(found.data, media_type=found.media_type, headers=headers)
+
+
+@_route
+async def area_outline(request: Request) -> Response:
+    """The area of ``[obserwator.instance]`` (I4) as a GeoJSON Feature, for its outline."""
+    params.only(request.query_params, ())
+    instance = _instance(request)
+    found = None if instance is None else instance.area
+    if found is None:
+        raise GuiError("not_found", message("gui.errors.not_found", path="api/area"))
+    document = {
+        "type": "Feature",
+        "properties": {"mode": found.mode},
+        "geometry": found.geometry,
+    }
+    return json_response(
+        request, document, etag=_etag(request, "area", found.mode, found.sha256)
     )
 
 
@@ -1363,15 +1631,13 @@ def methods(path: str) -> tuple[str, ...]:
 
 
 def _security(policy: str) -> list[tuple[bytes, bytes]]:
-    """The headers of D16 with a Content-Security-Policy."""
+    """The headers of D16 with a Content-Security-Policy and those of both servers."""
     return [
         (b"content-security-policy", policy.encode()),
         (b"x-frame-options", b"DENY"),
-        (b"x-content-type-options", b"nosniff"),
-        (b"referrer-policy", b"no-referrer"),
+        *security_headers(),
         (b"cross-origin-opener-policy", b"same-origin"),
         (b"cross-origin-resource-policy", b"same-origin"),
-        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
     ]
 
 
@@ -1482,6 +1748,9 @@ def build_app(
         The app.
     """
     if state is None:
+        # A weak admin key: a warning here, an error at the start of an instance
+        # (`GuiConfig.resolve`, ADR-025)
+        check_credentials("admin", strict=config.instance is not None)
         writes = config.writes_own_files
         if not writes:
             LOG.warning(
@@ -1494,10 +1763,10 @@ def build_app(
             )
         state = GuiState(
             config=config,
-            root=DataRoot(config.root),
+            root=DataRoot(config.root, scope=config.instance),
             analyses=Analyses(config.root),
-            current=CurrentData(),
-            pmaxtp=Pmaxtp(),
+            current=CurrentData(log=log),
+            pmaxtp=Pmaxtp(log=log),
             traffic=TrafficState(
                 limit=config.request_limit,
                 window=config.request_window,
@@ -1518,6 +1787,7 @@ def build_app(
 
     for suffix in (".js", ".mjs"):
         mimetypes.add_type("text/javascript", suffix)
+    site = Site.load(WEB)
 
     routes = [
         Route("/api/session", session),
@@ -1546,11 +1816,17 @@ def build_app(
         Route("/api/admin/status", admin_status),
         Route("/api/admin", admin_not_found),
         Route("/api/admin/{rest:path}", admin_not_found),
+        Route("/api/logo", logo),
+        Route("/api/area", area_outline),
         Route("/api/{rest:path}", api_not_found),
         Route("/admin", admin_page),
         Route("/regulamin.html", regulamin),
         Route("/data/{name}", border),
-        Mount("/", StaticFiles(directory=WEB, html=True)),
+        Route("/apple-touch-icon-precomposed.png", touch_icon),
+        Route("/robots.txt", robots),
+        Route("/", site.index),
+        Route("/index.html", site.index),
+        Mount("/", WebFiles(site=site, directory=WEB, html=True)),
     ]
     middleware = [
         Middleware(Traffic, state=state.traffic),

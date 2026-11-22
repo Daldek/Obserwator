@@ -10,10 +10,12 @@ from and the query, with ``Cache-Control: no-cache``, so the browser asks again 
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import math
-from collections.abc import Iterable, Mapping
+import threading
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -184,6 +186,73 @@ def json_response(
         if status == 200 and _not_modified(request, etag):
             return Response(status_code=304, headers=extra)
     return Response(dumps(document), status_code=status, media_type=JSON, headers=extra)
+
+
+class Prebuilt:
+    """
+    One JSON answer built once per ETag, kept plain and gzipped until its ETag changes.
+
+    For a large answer read by every visit (the station layer): a request whose ETag the
+    kept answer has takes it as it is, without building or compressing it again.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._etag: str | None = None
+        self._bodies = (b"", b"")
+
+    def bodies(self, etag: str, build: Callable[[], Any]) -> tuple[bytes, bytes]:
+        """
+        The answer of ``etag``: its JSON and the same gzipped; built once by ``build``.
+
+        Parameters
+        ----------
+        etag : str
+            Strong ETag of the answer (`etag_of`).
+        build : callable
+            Makes the JSON-compatible document; called only when ``etag`` is new.
+
+        Returns
+        -------
+        tuple of (bytes, bytes)
+            The UTF-8 JSON and its gzip form.
+        """
+        with self._lock:
+            if self._etag != etag:
+                plain = dumps(build())
+                self._bodies = (plain, gzip.compress(plain, compresslevel=9, mtime=0))
+                self._etag = etag
+            return self._bodies
+
+
+def prebuilt_response(
+    request: Request, bodies: tuple[bytes, bytes], etag: str
+) -> Response:
+    """
+    The answer of `Prebuilt.bodies`: gzipped when the request accepts it, else plain.
+
+    Parameters
+    ----------
+    request : Request
+        The request answered.
+    bodies : tuple of (bytes, bytes)
+        The JSON and its gzip form.
+    etag : str
+        Strong ETag of the answer.
+
+    Returns
+    -------
+    Response
+        ``200`` with ``Cache-Control: no-cache`` and the ETag; the gzipped one with
+        ``Vary: Accept-Encoding``, which the app's `GZipMiddleware` adds to the plain one.
+    """
+    headers = {"Cache-Control": NO_CACHE, "ETag": f'"{etag}"'}
+    plain, packed = bodies
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        headers["Content-Encoding"] = "gzip"
+        headers["Vary"] = "Accept-Encoding"
+        return Response(packed, media_type=JSON, headers=headers)
+    return Response(plain, media_type=JSON, headers=headers)
 
 
 def content_disposition(filename: str) -> str:

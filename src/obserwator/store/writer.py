@@ -12,7 +12,7 @@ import shutil
 import socket
 import time
 import uuid
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -47,7 +47,7 @@ from obserwator.output import (
     FileResult,
     store_below,
 )
-from obserwator.store.content import CONTENT_FORMS, content_sha256
+from obserwator.store.content import CONTENT_FORMS, content_sha256, stored_form
 from obserwator.store.types import (
     Cancel,
     Notice,
@@ -103,10 +103,10 @@ OBSERVATION_SCHEMA = "obserwator-observation/1"
 _OBSERVATIONS = "observations"
 _SEEN_AT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 # File types each provider publishes as archives.
-_SUFFIXES = {"IMGW-PIB": (".zip", ".csv"), "CHMI": (".json", ".csv")}
+_SUFFIXES = {"IMGW": (".zip", ".csv"), "CHMU": (".json", ".csv")}
 # Provider whose archive sidecars keep the 3.0.0 layout: no station_code or
 # param in request and no station_code in extra.period (the same bytes).
-_COUNTRY_LAYOUT = "IMGW-PIB"
+_COUNTRY_LAYOUT = "IMGW"
 
 
 def _canonical_text(value: object) -> str:
@@ -1137,7 +1137,7 @@ def _cleanup(incoming: Path, *, on_notice: NoticeHook | None = None) -> None:
 
 
 def _existing(
-    slot: Path, name: str, *, archive: bool = False, skip: Collection[str] = ()
+    slot: Path, name: str, *, archive: bool = False
 ) -> list[tuple[Path, dict[str, Any]]]:
     """
     Every committed version of a slot with its sidecar, verified by SHA-256.
@@ -1154,9 +1154,6 @@ def _existing(
     archive : bool, optional
         Whether ``slot`` is an archive slot: its observation register
         ``observations/`` is then not a version.
-    skip : collection of str, optional
-        Names of child directories that are not versions of the slot, e.g.
-        the catalogs of other providers inside the IMGW-PIB catalog slot.
 
     Returns
     -------
@@ -1173,9 +1170,7 @@ def _existing(
         return []
     entries = []
     for directory in sorted(slot.iterdir()):
-        if (archive and _is_register(directory)) or (
-            directory.name in skip and directory.is_dir() and not directory.is_symlink()
-        ):
+        if archive and _is_register(directory):
             continue
         if directory.is_symlink() or not directory.is_dir():
             raise ObserwatorStoreConflictError(
@@ -1410,13 +1405,14 @@ def _content_fields(
     ``content_sha256`` and ``content_form`` of a new version's sidecar.
 
     A relabeled copy keeps the fields of the stored version with the same
-    bytes; otherwise the fields come from the dataset's form (none without
-    a form, so IMGW-PIB sidecars keep their bytes).
+    bytes, its form by the current identifier (ADR-028); otherwise the fields
+    come from the dataset's form (none without a form, so IMGW-PIB sidecars
+    keep their bytes).
     """
     for _, old_meta, _ in same:
         digest, old_form = old_meta.get("content_sha256"), old_meta.get("content_form")
         if isinstance(digest, str) and isinstance(old_form, str):
-            return {"content_sha256": digest, "content_form": old_form}
+            return {"content_sha256": digest, "content_form": stored_form(old_form)}
     if content is None or form is None:
         return {}
     return {"content_sha256": content, "content_form": form}

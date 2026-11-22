@@ -9,8 +9,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from obserwator import _environment as environment
-from obserwator.config import Settings, store_root
+from obserwator.config import (
+    Settings,
+    check_credentials,
+    check_root_layout,
+    store_root,
+)
 from obserwator.exceptions import ObserwatorValidationError
+from obserwator.instance import Instance, load_instance
 from obserwator.messages import message
 
 NO_BASEMAP = frozenset({"", "none", "off"})
@@ -65,6 +71,10 @@ class GuiConfig:
     operator : Mapping of str to str or None
         The deployment's ``[nogat.operator]`` table when it is usable: the GUI is
         public and serves ``regulamin.html`` (DEV-15.7); None otherwise.
+    instance : Instance or None
+        The deployment's ``[obserwator.instance]``, checked (ADR-025): what the GUI
+        serves, its featured provider, area, start view, title, logo and regulamin;
+        None without the section (everything is served, as before).
     """
 
     root: Path
@@ -74,6 +84,7 @@ class GuiConfig:
     request_window: int
     gui: Mapping[str, str]
     operator: Mapping[str, str] | None
+    instance: Instance | None = None
 
     @property
     def writes_own_files(self) -> bool:
@@ -104,6 +115,16 @@ class GuiConfig:
         -------
         GuiConfig
             The resolved settings.
+
+        Raises
+        ------
+        ObserwatorError
+            ``validation_error`` for an unusable setting: the basemap's address, any
+            problem of ``[obserwator.instance]`` (`load_instance`) and, with that
+            section, a weak admin key (`check_credentials`) or an operator's regulamin
+            the deployment cannot fill; ``store_unavailable`` for a data root of a
+            layout this version does not read (`check_root_layout`). The server does
+            not start (ADR-025, I7, I10, I12).
         """
         settings = Settings()
         chosen = (
@@ -124,8 +145,12 @@ class GuiConfig:
                 f"{parts.scheme}://{parts.netloc}",
                 settings.gui_basemap_attribution.strip(),
             )
+        instance = load_instance()
+        check_root_layout(chosen.absolute())
+        if instance is not None:
+            check_credentials("admin", strict=True)
         operator = environment.operator()
-        return cls(
+        config = cls(
             root=chosen.absolute(),
             gui_dir=(settings.data_dir / environment.TOOL).expanduser().absolute(),
             basemap=basemap,
@@ -133,7 +158,14 @@ class GuiConfig:
             request_window=settings.request_window,
             gui=environment.gui_addresses(),
             operator=dict(operator.values) if operator.usable else None,
+            instance=instance,
         )
+        if instance is not None and instance.terms is not None:
+            from obserwator.gui import WEB_DIR
+            from obserwator.gui._terms import terms_page
+
+            terms_page(config, WEB_DIR)  # one the deployment cannot fill: no start
+        return config
 
 
 def _overlap(first: Path, second: Path) -> bool:

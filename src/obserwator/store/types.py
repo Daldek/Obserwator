@@ -292,11 +292,13 @@ class PlanAction:
         a target that cannot be written; None outside plain writes.
     path : Path or None, optional
         Absolute path of the plain target, or None.
-    reason : {"duplicate_output_name", "output_exists", "output_in_store", "nested_store", "not_empty"} or None, optional
+    reason : {"duplicate_output_name", "output_exists", "output_in_store", "nested_store", "not_empty", "full_series"} or None, optional
         Why the target is a ``"conflict"``, or None. ``"nested_store"`` is the
-        root of a store write that would nest a store in another store and
+        root of a store write that would nest a store in another store,
         ``"not_empty"`` a root that holds other files and is no store
-        (``path`` is that root).
+        (``path`` is that root) and ``"full_series"`` a subset of a series
+        (``series build`` with ``stations`` or ``years``) refused beside the
+        full series of its dataset (``path`` is that version, ADR-026).
     """
 
     command: str
@@ -311,6 +313,7 @@ class PlanAction:
             "output_in_store",
             "nested_store",
             "not_empty",
+            "full_series",
         ]
         | None
     ) = None
@@ -789,7 +792,7 @@ class CatalogReport:
     without_location: int
     from_series: int
     problems: tuple[str, ...]
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
     files: tuple[FileResult, ...] = ()
 
 
@@ -827,9 +830,11 @@ class Meta:
         the sidecar has no content fields (every IMGW-PIB dataset).
     content_form : str or None, optional
         Identifier of the canonical form behind ``content_sha256``, e.g.
-        ``"chmi-json/1"``; present exactly when ``content_sha256`` is.
+        ``"chmu-json/1"``; present exactly when ``content_sha256`` is.
     provider : str, optional
-        ``provider`` field of the sidecar, e.g. ``"IMGW-PIB"`` or ``"CHMI"``.
+        ``provider`` field of the sidecar by its current identifier, ``"IMGW"`` or
+        ``"CHMU"`` (a sidecar of 3.0.x holds ``"IMGW-PIB"`` or ``"CHMI"``, read
+        through `PROVIDER_ID_ALIASES`, ADR-028).
     country : str, optional
         ``country`` field of the sidecar, e.g. ``"PL"`` or ``"CZ"``.
     producer : str, optional
@@ -855,7 +860,7 @@ class Meta:
     extra: Mapping[str, object]
     content_sha256: str | None = None
     content_form: str | None = None
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
     country: str = "PL"
     producer: str = "obserwator"
     producer_version: str | None = None
@@ -873,7 +878,7 @@ class Observation:
     Attributes
     ----------
     dataset : str
-        Full dataset key of the slot, e.g. ``"cz.chmi.hydro_daily"``.
+        Full dataset key of the slot, e.g. ``"cz.chmu.hydro_daily"``.
     seen_at : str
         UTC time of the observation, ``YYYY-MM-DDTHH:MM:SSZ``.
     url : str
@@ -988,7 +993,7 @@ class StationFeature:
     station_code: str
     geometry: tuple[float, float] | None
     properties: Mapping[str, str | int | float | bool | Mapping[str, object] | None]
-    provider: str = "IMGW-PIB"
+    provider: str = "IMGW"
 
 
 @dataclass(frozen=True)
@@ -1063,6 +1068,32 @@ class StationSeriesIndex:
 
 
 @dataclass(frozen=True)
+class SeriesSubset:
+    """
+    The stations and years a series version was built for (ADR-026).
+
+    ``series build`` with ``stations`` or ``years`` builds a subset of the
+    dataset's series; ``series.json`` records the request as ``subset`` and the
+    sidecar as ``request.stations`` and ``request.years``. A subset is never
+    taken for the full series of its dataset.
+
+    Attributes
+    ----------
+    stations : tuple of str or None, optional
+        The station codes asked for, sorted, also those the archives did not
+        hold (``SeriesIndex.stations`` has the stations built); None when
+        every station was built.
+    years : tuple of int or None, optional
+        The years asked for, sorted, in the numbering of the series
+        (``SeriesIndex.year_type``: hydrological years from November to
+        October, or calendar years); None when every year was built.
+    """
+
+    stations: tuple[str, ...] | None = None
+    years: tuple[int, ...] | None = None
+
+
+@dataclass(frozen=True)
 class SeriesIndex:
     """
     Parsed ``series.json`` index of an ``obserwator-series/1`` version.
@@ -1076,9 +1107,13 @@ class SeriesIndex:
     year_type : {"hydrological", "calendar"}
         Year numbering of the source archives.
     periods : tuple of tuple of (date, date)
-        Union of the input archives' periods, adjacent ranges merged.
+        Union of the input archives' periods, adjacent ranges merged; for a
+        subset of years cut to those years.
     stations : Mapping of str to StationSeriesIndex
         Per-station index, keyed by station code.
+    subset : SeriesSubset or None, optional
+        The stations and years of a subset version (ADR-026); None for the
+        series of every station and year of the archives.
     """
 
     schema: Literal["obserwator-series/1"]
@@ -1086,6 +1121,7 @@ class SeriesIndex:
     year_type: Literal["hydrological", "calendar"]
     periods: tuple[tuple[date, date], ...]
     stations: Mapping[str, StationSeriesIndex]
+    subset: SeriesSubset | None = None
 
 
 @dataclass(frozen=True)
@@ -1144,8 +1180,9 @@ class CommandOption:
         Default value published in the schema, or None.
     aliases : tuple of str, optional
         Short CLI aliases, e.g. ``("-y",)``.
-    items : {"str", "int", "year", "choice"} or None, optional
-        Item type of a ``"list"`` option, or None.
+    items : {"str", "int", "float", "year", "choice"} or None, optional
+        Item type of a ``"list"`` option, or None; ``"float"`` items keep
+        their order and repeats (the four numbers of a ``bbox``).
     minimum, maximum : float or None, optional
         Inclusive bounds published in the schema, or None.
     pattern : str or None, optional
@@ -1176,7 +1213,7 @@ class CommandOption:
     help: str
     default: object = None
     aliases: tuple[str, ...] = ()
-    items: Literal["str", "int", "year", "choice"] | None = None
+    items: Literal["str", "int", "float", "year", "choice"] | None = None
     minimum: float | None = None
     maximum: float | None = None
     pattern: str | None = None

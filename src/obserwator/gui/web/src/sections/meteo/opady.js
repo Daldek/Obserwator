@@ -482,17 +482,27 @@ function MaximaBody({ r, days, onDays }) {
 /**
  * PMAXTP of the station's point beside the maxima of 1, 2 or 3 days: both methods, asked of
  * IMGW-PIB through the server (cached there), only for IMGW-PIB's stations with coordinates.
+ * An operator's instance with PMAXTP off serves no api/pmaxtp (ADR-025, api/session's
+ * `instance.pmaxtp`): then nothing is asked and nothing shown (`off`), nor before api/session
+ * answers.
  */
-function usePmaxtpBeside(station, days) {
+function usePmaxtpBeside(station, days, session) {
   const minutes = PMAXTP_MINUTES[days];
-  let reason = null;
-  if (station.provider !== "IMGW-PIB") reason = t("meteo.opady.pmaxtp.poland_only");
-  else if (!Number.isFinite(station.lat) || !Number.isFinite(station.lon)) reason = t("meteo.opady.pmaxtp.no_point");
-  else if (!minutes) reason = t("meteo.opady.pmaxtp.up_to_3_days");
-  const point = reason ? null : { lat: station.lat, lon: station.lon };
+  const off = !session || Boolean(session.instance && !session.instance.pmaxtp);
+  const reason = off ? null : missingReason(station, minutes);
+  const point = off || reason ? null : { lat: station.lat, lon: station.lon };
   const pot = usePmaxtp(point, "POT");
   const amp = usePmaxtp(point, "AMP");
-  return { point, reason, minutes, hours: minutes ? minutes / 60 : null, methods: [["POT", pot, "s4"], ["AMP", amp, "s5"]] };
+  const methods = off ? [] : [["POT", pot, "s4"], ["AMP", amp, "s5"]];
+  return { off, point, reason, minutes, hours: minutes ? minutes / 60 : null, methods };
+}
+
+/** Why a station has no PMAXTP beside its quantiles, or null. */
+function missingReason(station, minutes) {
+  if (station.provider !== "IMGW") return t("meteo.opady.pmaxtp.poland_only");
+  if (!Number.isFinite(station.lat) || !Number.isFinite(station.lon)) return t("meteo.opady.pmaxtp.no_point");
+  if (!minutes) return t("meteo.opady.pmaxtp.up_to_3_days");
+  return null;
 }
 
 /** PMAXTP's depths of a duration by the exceedance probability [%], or null. */
@@ -604,9 +614,6 @@ function QuantilesBody({ station, quantiles, maxima, days, pmaxtp }) {
       .map(([name, value]) => `${paramName(name)} ${fmt(value, Math.abs(value) >= 100 ? 1 : 3)}`)
       .join(", "),
   }));
-  const point = pmaxtp.point;
-  const pmaxtpError = pmaxtp.methods.map(([, state]) => state.error).find(Boolean);
-  const pmaxtpLoading = pmaxtp.methods.some(([, state]) => state.loading);
   return html`<${Figures}
       items=${[
         { label: t("meteo.opady.quantiles.years"), value: String(r.n_years), note: complete.length ? `${complete[0].year}–${complete[complete.length - 1].year}` : "" },
@@ -620,18 +627,7 @@ function QuantilesBody({ station, quantiles, maxima, days, pmaxtp }) {
     <${QuantilesChart} r=${r} pm=${pm} duration=${duration} />
     <h4 class="me-sub">${t("meteo.opady.quantiles.table")}</h4>
     <${Table} columns=${columns} rows=${rows} />
-    ${pmaxtp.reason ? html`<p class="muted me-caption">${pmaxtp.reason}</p>` : null}
-    ${!pmaxtp.reason && pmaxtpLoading ? html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.loading")}</p>` : null}
-    ${!pmaxtp.reason && !pmaxtpLoading && pmaxtpError ? html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.failed", { error: pmaxtpError.message })}</p>` : null}
-    ${!pmaxtp.reason && !pmaxtpLoading && !pmaxtpError && !lines.length
-      ? html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.no_duration", { hours: pmaxtp.hours })}</p>`
-      : null}
-    ${lines.length
-      ? html`<p class="muted me-caption">
-            ${t("meteo.opady.quantiles.pmaxtp_caption", { hours: pmaxtp.hours, point: `${fmt(point.lat, 4)}° N, ${fmt(point.lon, 4)}° E` })}
-            ${" "}<a href=${`?${new URLSearchParams({ view: "pmaxtp", ...pmaxtpQueryPoint(point) }).toString()}`}>${t("meteo.opady.quantiles.pmaxtp_link")}</a>
-          </p>`
-      : null}
+    ${pmaxtp.off ? null : html`<${PmaxtpCaptions} pmaxtp=${pmaxtp} lines=${lines} />`}
     <details class="me-details">
       <summary>${t("meteo.opady.quantiles.all")}</summary>
       <${Table} columns=${allColumns} rows=${allRows} />
@@ -654,17 +650,32 @@ function QuantilesBody({ station, quantiles, maxima, days, pmaxtp }) {
     </details>`;
 }
 
+/** What PMAXTP beside the quantiles says: why it is missing, its state, or its point and link. */
+function PmaxtpCaptions({ pmaxtp, lines }) {
+  const point = pmaxtp.point;
+  const error = pmaxtp.methods.map(([, state]) => state.error).find(Boolean);
+  const loading = pmaxtp.methods.some(([, state]) => state.loading);
+  if (pmaxtp.reason) return html`<p class="muted me-caption">${pmaxtp.reason}</p>`;
+  if (loading) return html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.loading")}</p>`;
+  if (error) return html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.failed", { error: error.message })}</p>`;
+  if (!lines.length) return html`<p class="muted me-caption">${t("meteo.opady.pmaxtp.no_duration", { hours: pmaxtp.hours })}</p>`;
+  return html`<p class="muted me-caption">
+    ${t("meteo.opady.quantiles.pmaxtp_caption", { hours: pmaxtp.hours, point: `${fmt(point.lat, 4)}° N, ${fmt(point.lon, 4)}° E` })}
+    ${" "}<a href=${`?${new URLSearchParams({ view: "pmaxtp", ...pmaxtpQueryPoint(point) }).toString()}`}>${t("meteo.opady.quantiles.pmaxtp_link")}</a>
+  </p>`;
+}
+
 /** The point of the PMAXTP view's address (lat, lon with IMGW-PIB's four decimals). */
 function pmaxtpQueryPoint(point) {
   const query = pmaxtpQuery(point, "POT");
   return { lat: query.latitude, lon: query.longitude };
 }
 
-function Quantiles({ station, quantiles, maxima, opt, setOpt, durations, entry }) {
+function Quantiles({ station, session, quantiles, maxima, opt, setOpt, durations, entry }) {
   const days = opt.days;
   // the duration of the result shown (the previous one while the chosen one is computed)
   const shown = daysOfId(quantiles.data && quantiles.data.analysis) ?? days;
-  const pmaxtp = usePmaxtpBeside(station, shown);
+  const pmaxtp = usePmaxtpBeside(station, shown, session);
   const defaults = (entry && entry.options) || {};
   const distribution = opt.distribution ?? defaults.distribution ?? "all";
   const method = opt.fit_method ?? defaults.fit_method ?? "l_moments";
@@ -698,7 +709,7 @@ function Quantiles({ station, quantiles, maxima, opt, setOpt, durations, entry }
 }
 
 /** The card „Opady”. */
-export function Opady({ station, analyses }) {
+export function Opady({ station, session, analyses }) {
   const code = station.code;
   const list = listOf(analyses);
   const [opt, setOpt] = useOptions(
@@ -783,6 +794,7 @@ export function Opady({ station, analyses }) {
     ${quantiles.entry &&
     html`<${Quantiles}
       station=${station}
+      session=${session}
       quantiles=${quantiles}
       maxima=${maxima}
       opt=${{ ...opt, days: qDays }}

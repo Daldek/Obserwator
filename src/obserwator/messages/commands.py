@@ -273,9 +273,9 @@ MESSAGES = {
     ),
     "archive_dataset_help": Text(
         "Archive dataset: key, slug or legacy alias, e.g. pl.imgw.hydro_daily, "
-        "hydro/dobowe or cz.chmi.hydro_daily",
+        "hydro/dobowe or cz.chmu.hydro_daily",
         "Zbiór archiwalny: klucz, slug albo alias legacy, np. pl.imgw.hydro_daily, "
-        "hydro/dobowe albo cz.chmi.hydro_daily",
+        "hydro/dobowe albo cz.chmu.hydro_daily",
     ),
     "series_dataset_help": Text(
         "Series dataset: key, slug or legacy alias, e.g. pl.imgw.hydro_daily",
@@ -283,10 +283,10 @@ MESSAGES = {
     ),
     "datasets_help": Text(
         "Comma-separated store datasets: key, slug or legacy alias; datasets of one "
-        "kind: pl.imgw.* or cz.chmi.*; station sources (*_stations, *_now, "
+        "kind: pl.imgw.* or cz.chmu.*; station sources (*_stations, *_now, "
         "pl.imgw.hydro_details) alone",
         "Zbiory magazynu rozdzielone przecinkami: klucz, slug albo alias legacy; "
-        "zbiory jednego rodzaju: pl.imgw.* albo cz.chmi.*; źródła stacji "
+        "zbiory jednego rodzaju: pl.imgw.* albo cz.chmu.*; źródła stacji "
         "(*_stations, *_now, pl.imgw.hydro_details) osobno",
     ),
     "family_help": Text(
@@ -299,17 +299,17 @@ MESSAGES = {
     ),
     "archive_years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022; required except for "
-        "cz.chmi.meteo_daily (not allowed there)",
+        "cz.chmu.meteo_daily (not allowed there)",
         "Roczniki: liczby lub zakresy, np. 2023-2025 albo 2020,2022; wymagane poza "
-        "cz.chmi.meteo_daily (tam niedozwolone)",
+        "cz.chmu.meteo_daily (tam niedozwolone)",
     ),
     "store_years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022; required for "
-        "pl.imgw.*, optional for cz.chmi.hydro_daily (none = the published years), "
-        "not allowed for cz.chmi.meteo_daily",
+        "pl.imgw.*, optional for cz.chmu.hydro_daily (none = the published years), "
+        "not allowed for cz.chmu.meteo_daily",
         "Roczniki: liczby lub zakresy, np. 2023-2025 albo 2020,2022; wymagane dla "
-        "pl.imgw.*, opcjonalne dla cz.chmi.hydro_daily (brak = lata opublikowane), "
-        "niedozwolone dla cz.chmi.meteo_daily",
+        "pl.imgw.*, opcjonalne dla cz.chmu.hydro_daily (brak = lata opublikowane), "
+        "niedozwolone dla cz.chmu.meteo_daily",
     ),
     "months_help": Text(
         "Comma-separated months 1–12 (default: all); pl.imgw.* datasets only",
@@ -344,17 +344,17 @@ MESSAGES = {
     ),
     "archive_stations_help": Text(
         "Comma-separated station codes: ČHMÚ WIGOS identifiers (e.g. "
-        "0-203-1-001000), required for cz.chmi.* datasets; 9-digit IMGW-PIB codes "
+        "0-203-1-001000), required for cz.chmu.* datasets; 9-digit IMGW-PIB codes "
         "for the per-station synop archives of IMGW-PIB; not allowed for other "
         "pl.imgw.* datasets",
         "Kody stacji rozdzielone przecinkami: identyfikatory WIGOS ČHMÚ (np. "
-        "0-203-1-001000), wymagane dla zbiorów cz.chmi.*; 9-cyfrowe kody IMGW-PIB "
+        "0-203-1-001000), wymagane dla zbiorów cz.chmu.*; 9-cyfrowe kody IMGW-PIB "
         "dla archiwów synop IMGW-PIB publikowanych osobno dla każdej stacji; "
         "niedozwolone dla innych zbiorów pl.imgw.*",
     ),
     "provider_help": Text(
-        "Data provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",
-        "Dostawca danych: IMGW-PIB albo CHMI (ČHMÚ); brak = wszyscy dostawcy",
+        "Data provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca danych: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "variables_help": Text(
         "Comma-separated dataset variables, e.g. H,Q (default: all)",
@@ -468,8 +468,8 @@ MESSAGES = {
         "i zbiory.",
     ),
     "stations_find_description": Text(
-        "Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.",
-        "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece albo prefiksie kodu.",
+        "Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.",
+        "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece, prefiksie kodu albo obszarze.",
     ),
     "stations_export_description": Text(
         "Export the stations of the current catalogs as GeoJSON or CSV. Each "
@@ -494,6 +494,15 @@ MESSAGES = {
         "catalog; with an explicit provider a missing catalog is a not_found error",
         "source=store bez provider pomija dostawców bez katalogu stacji; przy jawnym "
         "provider brak katalogu to błąd not_found",
+    ),
+    "stations_find_rule_3": Text(
+        "bbox is west,south,east,north in WGS84 degrees, bounds included; a station "
+        "without coordinates (live: an IMGW-PIB station absent from the current-data "
+        "API; store: a catalog station with geometry null) is left out of an area search",
+        "bbox to zachód,południe,wschód,północ w stopniach WGS84, granice włącznie; "
+        "stacja bez współrzędnych (live: stacja IMGW-PIB nieobecna w API danych "
+        "bieżących; store: stacja katalogu z geometry null) jest pomijana w "
+        "wyszukiwaniu po obszarze",
     ),
     "current_hydro_description": Text(
         "Fetch current hydrological data from the IMGW API.",
@@ -602,9 +611,31 @@ MESSAGES = {
     ),
     "series_build_description": Text(
         "Build the Parquet series of a dataset from the current archives of the raw "
-        "root. The series go into the data root.",
+        "root. The series go into the data root; stations or years build a subset.",
         "Zbuduj szereg Parquet zbioru z bieżących archiwów katalogu surowego. Szeregi "
-        "trafiają do katalogu danych.",
+        "trafiają do katalogu danych; stations albo years budują podzbiór.",
+    ),
+    "series_build_stations_help": Text(
+        "Build only these stations: comma-separated codes of the dataset's provider "
+        "(default: every station); a subset",
+        "Zbuduj tylko te stacje: kody dostawcy zbioru rozdzielone przecinkami "
+        "(domyślnie wszystkie stacje); podzbiór",
+    ),
+    "series_build_years_help": Text(
+        "Build only these years: numbers or ranges, e.g. 2020-2025, hydrological "
+        "years of the pl.imgw.hydro_* datasets, else calendar years (default: every "
+        "year); a subset",
+        "Zbuduj tylko te lata: liczby lub zakresy, np. 2020-2025, lata hydrologiczne "
+        "zbiorów pl.imgw.hydro_*, inaczej kalendarzowe (domyślnie wszystkie lata); "
+        "podzbiór",
+    ),
+    "series_build_rule_subset": Text(
+        "stations or years build a subset, recorded as subset in series.json and as "
+        "the request of its sidecar; a data root holding the full series of the "
+        "dataset refuses a subset (conflict, full_series): build it into another root",
+        "stations albo years budują podzbiór, zapisany jako subset w series.json i "
+        "jako request jego sidecara; katalog danych z pełnym szeregiem zbioru odrzuca "
+        "podzbiór (conflict, full_series): zbuduj go w innym katalogu",
     ),
     "series_select_description": Text(
         "Select stations, variables and years of the current series. Nothing is written.",
@@ -642,10 +673,11 @@ MESSAGES = {
     "analyses_build_description": Text(
         "Compute and store the analyses of every station with Hydrolog. Stations "
         "whose series, thresholds, Hydrolog version and registry are unchanged are "
-        "carried forward without a call.",
+        "carried forward without a call, and a build resumes an interrupted one "
+        "from the stations it computed.",
         "Oblicz i zapisz analizy każdej stacji Hydrologiem. Stacje o niezmienionych "
         "szeregach, progach, wersji Hydrologa i rejestrze przechodzą do nowej wersji "
-        "bez obliczeń.",
+        "bez obliczeń, a budowa wznawia przerwaną od stacji, które ta obliczyła.",
     ),
     "analyses_list_description": Text(
         "List the stored analyses of a station. Each names its command, options, "
@@ -694,8 +726,8 @@ MESSAGES = {
         "Rodzina zbiorów: hydro albo meteo; brak = wszystkie",
     ),
     "datasets_list_provider_help": Text(
-        "Dataset provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",
-        "Dostawca zbiorów: IMGW-PIB albo CHMI (ČHMÚ); brak = wszyscy dostawcy",
+        "Dataset provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca zbiorów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "stations_find_family_help": Text(
         "Station kind; none = both families",
@@ -706,10 +738,10 @@ MESSAGES = {
         "Fragment nazwy lub rzeki albo prefiks kodu",
     ),
     "stations_find_source_help": Text(
-        "live: the providers' station lists, live; store: the current station "
-        "catalogs of the data root",
-        "live: listy stacji dostawców na żywo; store: bieżące katalogi stacji "
-        "katalogu danych",
+        "live: the providers' station lists, live (IMGW-PIB coordinates from its "
+        "current-data API); store: the current station catalogs of the data root",
+        "live: listy stacji dostawców na żywo (współrzędne IMGW-PIB z jego API "
+        "danych bieżących); store: bieżące katalogi stacji katalogu danych",
     ),
     "stations_find_root_help": Text(
         "Data root whose current catalogs are read (with source=store)",
@@ -717,8 +749,14 @@ MESSAGES = {
         "source=store)",
     ),
     "stations_find_provider_help": Text(
-        "Station provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers",
-        "Dostawca stacji: IMGW-PIB albo CHMI (ČHMÚ); brak = wszyscy dostawcy",
+        "Station provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
+        "Dostawca stacji: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+    ),
+    "stations_find_bbox_help": Text(
+        "Area: west,south,east,north in WGS84 degrees (e.g. 16.5,51.3,17.9,51.7); "
+        "stations without coordinates are left out",
+        "Obszar: zachód,południe,wschód,północ w stopniach WGS84 (np. "
+        "16.5,51.3,17.9,51.7); stacje bez współrzędnych są pomijane",
     ),
     "current_hydro_station_option_help": Text(
         "Station code (9 digits); none = all stations",
@@ -761,10 +799,10 @@ MESSAGES = {
         "problem; brak = wszystkie",
     ),
     "store_scan_provider_help": Text(
-        "Entry provider: IMGW-PIB or CHMI (ČHMÚ); none = all providers (problems "
-        "without a slot always)",
-        "Dostawca wpisów: IMGW-PIB albo CHMI (ČHMÚ); brak = wszyscy dostawcy "
-        "(problemy bez slotu zawsze)",
+        "Entry provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers "
+        "(problems without a slot always)",
+        "Dostawca wpisów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy "
+        "dostawcy (problemy bez slotu zawsze)",
     ),
     "store_sync_plan_help": Text(
         "obserwator-plan/1 plan file of the store check command (instead of datasets, "
@@ -773,10 +811,10 @@ MESSAGES = {
         "months i stations)",
     ),
     "store_catalog_provider_help": Text(
-        "Catalog provider: IMGW-PIB or CHMI (ČHMÚ); one catalog version of one "
-        "provider per call",
-        "Dostawca katalogu: IMGW-PIB albo CHMI (ČHMÚ); jedna wersja katalogu jednego "
-        "dostawcy na wywołanie",
+        "Catalog provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); one catalog version of "
+        "one provider per call",
+        "Dostawca katalogu: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); jedna wersja katalogu "
+        "jednego dostawcy na wywołanie",
     ),
     "store_catalog_user_locations_help": Text(
         "User's UTF-8 CSV file with the columns "
@@ -904,12 +942,12 @@ MESSAGES = {
         "Opis katalogu komend",
     ),
     "stations_rule": Text(
-        "stations required for cz.chmi.* datasets; for the per-station synop archives "
+        "stations required for cz.chmu.* datasets; for the per-station synop archives "
         "of IMGW-PIB 9-digit codes, optional in store check and store sync (none = "
         "every station of the folder index), datasets files and datasets download "
         "need them or months; not allowed for the other pl.imgw.* datasets; codes in "
         "the grammar of the dataset's provider",
-        "stations wymagane dla zbiorów cz.chmi.*; dla archiwów synop IMGW-PIB "
+        "stations wymagane dla zbiorów cz.chmu.*; dla archiwów synop IMGW-PIB "
         "publikowanych osobno dla każdej stacji 9-cyfrowe kody, opcjonalne w store "
         "check i store sync (brak = każda stacja z indeksu folderu), datasets files i "
         "datasets download wymagają ich albo months; niedozwolone dla innych zbiorów "
@@ -942,9 +980,9 @@ MESSAGES = {
         "roczniki nie wcześniejsze niż pierwszy rocznik zbioru (first_year)",
     ),
     "archive_rule_2": Text(
-        "years required except for cz.chmi.meteo_daily, whose files cover the whole "
+        "years required except for cz.chmu.meteo_daily, whose files cover the whole "
         "history of a station (years not allowed there)",
-        "years wymagane poza cz.chmi.meteo_daily, którego pliki obejmują całą "
+        "years wymagane poza cz.chmu.meteo_daily, którego pliki obejmują całą "
         "historię stacji (tam years niedozwolone)",
     ),
     "archive_rule_3": Text(
@@ -953,21 +991,21 @@ MESSAGES = {
     ),
     "store_rule_1": Text(
         "datasets of one kind: country archives pl.imgw.*, the synop station archives "
-        "pl.imgw.meteo_synop_daily or station files cz.chmi.*",
+        "pl.imgw.meteo_synop_daily or station files cz.chmu.*",
         "zbiory jednego rodzaju: archiwa krajowe pl.imgw.*, archiwa stacji "
-        "synoptycznych pl.imgw.meteo_synop_daily albo pliki stacji cz.chmi.*",
+        "synoptycznych pl.imgw.meteo_synop_daily albo pliki stacji cz.chmu.*",
     ),
     "store_rule_2": Text(
         "years not earlier than the first year of each dataset",
         "roczniki nie wcześniejsze niż pierwszy rocznik każdego zbioru",
     ),
     "store_rule_3": Text(
-        "years required for pl.imgw.* datasets, optional for cz.chmi.hydro_daily "
+        "years required for pl.imgw.* datasets, optional for cz.chmu.hydro_daily "
         "(none = the years published in the station listing) and not allowed for "
-        "cz.chmi.meteo_daily",
-        "years wymagane dla zbiorów pl.imgw.*, opcjonalne dla cz.chmi.hydro_daily "
+        "cz.chmu.meteo_daily",
+        "years wymagane dla zbiorów pl.imgw.*, opcjonalne dla cz.chmu.hydro_daily "
         "(brak = lata opublikowane w listingu stacji) i niedozwolone dla "
-        "cz.chmi.meteo_daily",
+        "cz.chmu.meteo_daily",
     ),
     "series_rule_1": Text(
         "exactly one of: version or root+dataset (the current series version of the "

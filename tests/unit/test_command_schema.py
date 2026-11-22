@@ -108,7 +108,12 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         },
         "limit": {"type": "integer", "minimum": 1},
         "cursor": {"type": "string", "minLength": 1},
-        "provider": {"enum": ["IMGW-PIB", "CHMI"]},
+        "provider": {"enum": ["IMGW", "CHMU"]},
+        "bbox": {
+            "type": "array",
+            "items": {"type": "number", "minimum": -180.0, "maximum": 180.0},
+            "minItems": 1,
+        },
     }
     meta = {
         key: value
@@ -134,6 +139,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
                 "source": ["--source"],
                 "root": ["--root", "-r"],
                 "provider": ["--provider"],
+                "bbox": ["--bbox"],
                 "limit": ["--limit"],
                 "cursor": ["--cursor"],
             },
@@ -278,7 +284,7 @@ def test_station_options_take_imgw_and_wigos_codes_live_readings_only_imgw():
             "series select",
             {
                 "root": ROOT,
-                "dataset": "cz.chmi.hydro_daily",
+                "dataset": "cz.chmu.hydro_daily",
                 "stations": ["0-203-1-CB900003"],
             },
         ),

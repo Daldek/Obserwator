@@ -83,20 +83,20 @@ def test_complete_store_holds_recorded_versions_series_and_catalog(tmp_path):
         ).hexdigest()
     )
 
-    hydro_series = sidecars(data, "series/versions/hydro_daily", "series.json")
+    hydro_series = sidecars(data, "series/versions/imgw_hydro_daily", "series.json")
     inputs = [
         {source["sha256"] for source in meta["extra"]["source_files"]}
         for meta in hydro_series.values()
     ]
     assert inputs == [{old["sha256"]}, {newer["sha256"]}]
     hydro = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
-    assert hydro.series_state == {"hydro_daily": "current"}
+    assert hydro.series_state == {"imgw_hydro_daily": "current"}
     precip = check_series(
         roots.data, raw_root=roots.raw, dataset="pl.imgw.meteo_precip_daily"
     )
-    assert precip.series_state == {"meteo_precip_daily": "outdated"}
+    assert precip.series_state == {"imgw_meteo_precip_daily": "outdated"}
 
-    (geojson,) = (data / "stations" / "versions").glob("*/stations.geojson")
+    (geojson,) = (data / "stations/versions/imgw_stations").glob("*/stations.geojson")
     features = {
         f["properties"]["station_code"]: f
         for f in json.loads(geojson.read_text(encoding="utf-8"))["features"]
@@ -148,7 +148,7 @@ def test_local_reference_data_does_not_leak_into_fixture_catalog(
         encoding="utf-8",
     )
     data = build_fixture_store(tmp_path / "raw", data_root=tmp_path / "data").data
-    (geojson,) = (data.root / "stations" / "versions").glob("*/stations.geojson")
+    (geojson,) = (data.root / "stations/versions/imgw_stations").glob("*/*.geojson")
     features = {
         f["id"]: f for f in json.loads(geojson.read_text(encoding="utf-8"))["features"]
     }
@@ -172,7 +172,7 @@ def test_corrupt_variant_truncates_old_archive_sidecar(tmp_path):
     with pytest.raises(json.JSONDecodeError):
         json.loads(broken.read_text(encoding="utf-8"))
     plan = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
-    assert plan.series_state == {"hydro_daily": "outdated"}
+    assert plan.series_state == {"imgw_hydro_daily": "outdated"}
     assert any(
         action.status == "check_failed" and "2026-10-17_688646cd" in action.detail
         for action in plan.actions
@@ -183,7 +183,7 @@ def test_unknown_schema_variant_adds_unparsed_series_version(tmp_path):
     roots = build_fixture_store(
         tmp_path / "raw", data_root=tmp_path / "data", variant="unknown_schema"
     )
-    versions = roots.data.root / "series/versions/hydro_daily"
+    versions = roots.data.root / "series/versions/imgw_hydro_daily"
     (unknown,) = versions.glob("2026-10-20_*")
     meta = json.loads((unknown / "series.json.meta.json").read_text(encoding="utf-8"))
     assert meta["schema"] == "obserwator-meta/2"
@@ -196,7 +196,7 @@ def test_unknown_schema_variant_adds_unparsed_series_version(tmp_path):
         == hashlib.sha256((unknown / "series.json").read_bytes()).hexdigest()
     )
     plan = check_series(roots.data, raw_root=roots.raw, dataset="pl.imgw.hydro_daily")
-    assert plan.series_state == {"hydro_daily": "current"}
+    assert plan.series_state == {"imgw_hydro_daily": "current"}
 
 
 def test_rejects_unknown_variant_and_non_empty_or_nested_roots(tmp_path):

@@ -77,7 +77,7 @@ GET_CASES = [
     ),
     (
         "stations find",
-        {"kind": "hydro", "query": "raba", "provider": "IMGW-PIB"},
+        {"kind": "hydro", "query": "raba", "provider": "IMGW"},
         None,
     ),
     ("stations find", {"source": "store", "query": "1491"}, "data"),
@@ -705,7 +705,7 @@ def test_api_exports_stream_the_cli_lines_with_status_and_notice_headers(
         filename = f"codz_2024.{fmt}"
     else:
         query = {"dataset": DAILY, "station": RABA}
-        filename = f"{RABA}.csv"
+        filename = f"obserwator_series_{DAILY}_{RABA}.csv"
     query["format"] = fmt
     expected = run_command(command, options={**query, "root": root})
     lines = "".join(expected.result)
@@ -902,7 +902,7 @@ def test_api_store_info_and_scan_describe_the_data_root(client, served):
 
 def test_api_stations_find_needs_the_root_only_for_the_store_source(client, live):
     found = client.get(
-        "/api/v1/stations/find", params={"query": "raba", "provider": "IMGW-PIB"}
+        "/api/v1/stations/find", params={"query": "raba", "provider": "IMGW"}
     )
     stored = client.get("/api/v1/stations/find", params={"source": "store"})
 
@@ -1002,16 +1002,16 @@ def test_api_file_system_and_program_errors_are_problem_documents(
     ("command", "version", "status"),
     [
         ("series summary", "/etc/passwd", 400),
-        ("series summary", "../store/series/versions/hydro_daily", 400),
+        ("series summary", "../store/series/versions/imgw_hydro_daily", 400),
         ("series summary", "series/versions/../../obserwator-store.json", 400),
-        ("series summary", "series/versions/hydro_daily/./x", 400),
-        ("series summary", "series//versions/hydro_daily", 400),
-        ("series summary", "series\\versions\\hydro_daily", 400),
+        ("series summary", "series/versions/imgw_hydro_daily/./x", 400),
+        ("series summary", "series//versions/imgw_hydro_daily", 400),
+        ("series summary", "series\\versions\\imgw_hydro_daily", 400),
         ("series summary", "series/versions", 400),
         ("series summary", "archives/versions/dane_hydrologiczne/dobowe", 400),
-        ("store export", "series/versions/hydro_daily", 400),
+        ("store export", "series/versions/imgw_hydro_daily", 400),
         ("pmaxtp read", "archives/versions/dane_hydrologiczne", 400),
-        ("series summary", "series/versions/hydro_daily/2000-01-01_00000000", 404),
+        ("series summary", "series/versions/imgw_hydro_daily/2000-01-01_00000000", 404),
         ("store export", "archives/versions/dane_hydrologiczne/brak", 404),
     ],
 )

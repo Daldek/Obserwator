@@ -13,11 +13,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
 from obserwator._parsing import normalize_archive
-from obserwator._parsing.chmi import iter_stations
+from obserwator._parsing.chmu import iter_stations
 from obserwator._parsing.stations import parse_stations_csv
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     DATASET_KEY_PATTERN,
+    PROVIDER_ID_ALIASES,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -51,10 +52,12 @@ from obserwator.store.catalog import (
     _signal_time,
     _timestamp,
 )
+from obserwator.store.content import stored_form
 from obserwator.store.pmaxtp import CELL_FILE, CELL_SCHEMA, RESPONSE_FILE
 from obserwator.store.series import (
     _FLAGS,
     SERIES_SCHEMA,
+    _document_subset,
     _pyarrow,
     _series_descriptor,
 )
@@ -362,7 +365,7 @@ def _content_fields(payload: Mapping[str, Any]) -> tuple[str | None, str | None]
     digest = payload["content_sha256"]
     if not isinstance(digest, str) or not _SHA.fullmatch(digest):
         raise _Invalid("invalid_meta", message("reader.field_content_sha256_must_have"))
-    return digest, _text(payload, "content_form")
+    return digest, stored_form(_text(payload, "content_form"))
 
 
 def _parse_meta(payload: object) -> Meta:
@@ -390,7 +393,9 @@ def _parse_meta(payload: object) -> Meta:
         raise _Invalid(
             "invalid_meta", message("reader.field_country_must_country_code")
         )
+    # A sidecar written before a provider was renamed holds its old id (ADR-028).
     provider = _text(payload, "provider")
+    provider = PROVIDER_ID_ALIASES.get(provider, provider)
     origin = _registry_origin(dataset)
     if origin is not None and (country, provider) != origin:
         raise _Invalid(
@@ -859,7 +864,7 @@ def _parse_observation(payload: object) -> Observation:
         raise _Invalid("invalid_meta", message("reader.field_size_bytes_must_non"))
     sha = _digest(payload, "sha256")
     content_sha256 = _digest(payload, "content_sha256")
-    content_form = _text(payload, "content_form")
+    content_form = stored_form(_text(payload, "content_form"))
     same = payload.get("same_content_as")
     if not isinstance(same, str) or not _SAME_CONTENT.fullmatch(same):
         raise _Invalid(
@@ -1214,10 +1219,10 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
     """
     Station catalog versions and problems below ``stations/versions/``.
 
-    A directory named ``<label>_<sha8>`` (or holding files) is a version of the
-    IMGW-PIB catalog; a directory named after the slug of another provider's
-    catalog holds the versions of that catalog (ADR-003 D5); any other
-    directory is an unknown element.
+    A directory named after a provider's catalog (``imgw_stations``,
+    ``chmu_stations``; ADR-003 D5, ADR-028) holds the versions of that
+    catalog; any other element is unknown, a catalog version of the 3.0.x
+    layout directly in ``stations/versions/`` too.
     """
     for child in _directories(root, versions):
         if isinstance(child, StoreEntry):
@@ -1228,17 +1233,6 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
                 yield _derived_entry(
                     root, version, "catalog", slot, CATALOG_FILE, known
                 )
-        elif _VERSION_DIR.match(child.name) or any(
-            not item.is_dir() or item.is_symlink() for item in child.iterdir()
-        ):
-            yield _derived_entry(
-                root,
-                child,
-                "catalog",
-                f"catalog:{_CATALOG_DATASETS['IMGW-PIB']}",
-                CATALOG_FILE,
-                known,
-            )
         else:
             yield _unknown(root, child)
 
@@ -1449,7 +1443,7 @@ def iter_store(
         The versions the caller already knows: the path of a version
         directory relative to the root, with ``/`` (``archives/versions/<server
         dir>/<stem>/<label>_<sha8>``, ``series/versions/<slug>/<label>_<sha8>``,
-        ``stations/versions/[<provider catalog>/]<label>_<sha8>``,
+        ``stations/versions/<provider catalog>/<label>_<sha8>``,
         ``pmaxtp/versions/<method>/<cell>/<label>_<sha8>`` or
         ``analyses/versions/<key prefix>/<label>_<sha8>``), mapped to the
         names of its data files: the main file of the version, e.g.
@@ -1600,10 +1594,10 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         dataset server directory>`` (e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``),
         ``series:<key>``, ``catalog:<catalog key>`` (``catalog:pl.imgw.stations``,
-        ``catalog:cz.chmi.stations``),
+        ``catalog:cz.chmu.stations``),
         ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>`` or
         ``analyses:<provider key prefix>.analyses``
-        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmi.analyses``). Station
+        (``analyses:pl.imgw.analyses``, ``analyses:cz.chmu.analyses``). Station
         selectors of series slots (``series:<key>:<station_code>``) are
         rejected.
 
@@ -1638,13 +1632,8 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         return None
     versions: list[tuple[Path, dict[str, Any]]] = []
     entries: dict[Path, StoreEntry] = {}
-    # Catalogs of other providers lie in named directories of the IMGW-PIB slot.
-    imgw_catalog = slot == f"catalog:{_CATALOG_DATASETS['IMGW-PIB']}"
-    nested = _NESTED_CATALOGS if imgw_catalog else {}
     for version in sorted(directory.iterdir()):
-        if (kind == "archive" and _is_register(version)) or (
-            version.name in nested and version.is_dir() and not version.is_symlink()
-        ):
+        if kind == "archive" and _is_register(version):
             continue
         entry = (
             _entry(path, kind, slot, version, name, strict=True, **options)
@@ -2019,7 +2008,7 @@ def read_catalog(
 # --------------------------------------------------------------------------
 
 
-def _station_lists(provider: str = "IMGW-PIB") -> dict[str, ArchiveFile]:
+def _station_lists(provider: str = "IMGW") -> dict[str, ArchiveFile]:
     """Station list source of each kind of a provider, keyed ``"hydro"`` / ``"meteo"``."""
     return dict(
         zip(("hydro", "meteo"), station_source_files(provider=provider), strict=True)
@@ -2031,18 +2020,18 @@ def read_station_list(
     /,
     *,
     kind: Literal["hydro", "meteo"],
-    provider: str = "IMGW-PIB",
+    provider: str = "IMGW",
 ) -> tuple[StationListEntry, ...]:
     """
     Stations of the current stored station list of one family (offline).
 
     Reads the current version of the provider's list dataset
     (``pl.imgw.hydro_stations``/``pl.imgw.meteo_stations`` for IMGW-PIB,
-    ``cz.chmi.hydro_stations``/``cz.chmi.meteo_stations`` — the historical
+    ``cz.chmu.hydro_stations``/``cz.chmu.meteo_stations`` — the historical
     ``meta1.json`` — for ČHMÚ), verifies its bytes against the SHA-256 and
     size of the sidecar and parses it with
     :func:`obserwator.parsers.parse_stations_csv` or
-    :func:`obserwator.parsers.parse_chmi_stations`. Lists are stored in the
+    :func:`obserwator.parsers.parse_chmu_stations`. Lists are stored in the
     raw root by ``obserwator store sync --datasets`` (ADR-015, ADR-017).
 
     Parameters
@@ -2053,7 +2042,7 @@ def read_station_list(
         Station family of the list.
     provider : str, optional
         Provider of the list (``ProviderDescriptor.id`` or key prefix),
-        ``"IMGW-PIB"`` by default.
+        ``"IMGW"`` by default.
 
     Returns
     -------
@@ -2109,7 +2098,7 @@ def read_station_list(
             )
         )
     data = _verified(entry.version)
-    if get_dataset(source.dataset).parser == "parse_chmi_stations":
+    if get_dataset(source.dataset).parser == "parse_chmu_stations":
         return tuple(iter_stations(data, kind=kind, filename=str(entry.version)))
     return tuple(parse_stations_csv(data, kind=kind))
 
@@ -2199,7 +2188,7 @@ def read_archive(version: PathArg, /) -> Iterator[NormalizedRecord]:
             )
         option = (
             ""
-            if descriptor.provider == "IMGW-PIB"
+            if descriptor.provider == "IMGW"
             else f", provider={descriptor.provider!r}"
         )
         raise ObserwatorValidationError(
@@ -2323,7 +2312,9 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     Parquet file must exist as a regular file, but its contents are not read.
     The known periods of a station (``stations[<code>].periods``, written for
     datasets of per-station files, ADR-003 D10) must be ascending,
-    non-overlapping date ranges when present.
+    non-overlapping date ranges when present, and the ``subset`` of a version
+    built for chosen stations or years (ADR-026) sorted, distinct and not
+    empty.
 
     Parameters
     ----------
@@ -2334,7 +2325,8 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     -------
     SeriesIndex
         Dataset, year type, periods and per-station Parquet index (with the
-        station periods, or None when the index has none).
+        station periods, or None when the index has none), and the subset of
+        a version built for chosen stations or years (None for a full series).
 
     Raises
     ------
@@ -2399,11 +2391,12 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
                 {key: _coverage(code, key, value) for key, value in variables.items()},
                 _station_periods(code, entry.get("periods")),
             )
+        subset = _document_subset(document.get("subset"))
     except (ObserwatorValidationError, KeyError, TypeError, ValueError) as exc:
         raise ObserwatorDataError(
             message("reader.invalid_series_index", path=path, exc=reason(exc))
         ) from exc
-    return SeriesIndex(SERIES_SCHEMA, dataset, year_type, periods, stations)
+    return SeriesIndex(SERIES_SCHEMA, dataset, year_type, periods, stations, subset)
 
 
 def _series_path(

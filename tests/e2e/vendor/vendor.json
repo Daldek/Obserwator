@@ -1,0 +1,23 @@
+{
+  "description": "Third-party files of the browser tests only (never served by the GUI), byte-identical to the listed source; the same manifest format as src/obserwator/gui/web/vendor/vendor.json.",
+  "libraries": [
+    {
+      "name": "axe-core",
+      "version": "4.13.0",
+      "license": "MPL-2.0",
+      "license_file": "axe-core/LICENSE",
+      "source": "https://registry.npmjs.org/axe-core/-/axe-core-4.13.0.tgz",
+      "integrity": "sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==",
+      "files": {
+        "axe-core/axe.min.js": {
+          "from": "package/axe.min.js",
+          "sha256": "c24f097bd2f451d4f933e8bc7d8d539f8672a2ebcb5cc9f9f3eec8ca9470a0c1"
+        },
+        "axe-core/LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "af175b9d96ee93c21a036152e1b905b0b95304d4ae8c2c921c7609100ba8df7e"
+        }
+      }
+    }
+  ]
+}

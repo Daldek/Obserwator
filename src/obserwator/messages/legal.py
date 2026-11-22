@@ -28,13 +28,13 @@ _PMAXTP_MONOGRAPH = (
     "prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, "
     f"{_IMGW_NAME}, Warszawa 2022"
 )
-_CHMI_ATTRIBUTION = (
+_CHMU_ATTRIBUTION = (
     "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
     "licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
 # CP never names the processing (ECO-071); `obserwator.attribution` reads an older
 # „Dane ČHMÚ zostały przetworzone (…)” as this line.
-_CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone"
+_CHMU_PROCESSED = "Dane ČHMÚ zostały przetworzone"
 _GUGIK_ATTRIBUTION = (
     "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products} (wytworzono "
     "{period}, pozyskano {date}); dane przetworzone"
@@ -87,8 +87,8 @@ MESSAGES = {
     "pmaxtp_processed_attribution": Text(_PMAXTP_PROCESSED, _PMAXTP_PROCESSED),
     "pmaxtp_monograph": Text(_PMAXTP_MONOGRAPH, _PMAXTP_MONOGRAPH),
     # C and CP of DEV-20.3 (ČHMÚ data, CC BY 4.0).
-    "chmi_attribution": Text(_CHMI_ATTRIBUTION, _CHMI_ATTRIBUTION),
-    "chmi_processed_attribution": Text(_CHMI_PROCESSED, _CHMI_PROCESSED),
+    "chmu_attribution": Text(_CHMU_ATTRIBUTION, _CHMU_ATTRIBUTION),
+    "chmu_processed_attribution": Text(_CHMU_PROCESSED, _CHMU_PROCESSED),
     # G of DEV-20.9 and Z of DEV-20.11 (GUGiK and ČÚZK data: the packaged state borders,
     # ADR-018); `obserwator.attribution` fills in the products and days of the files.
     "gugik_attribution": Text(_GUGIK_ATTRIBUTION, _GUGIK_ATTRIBUTION),

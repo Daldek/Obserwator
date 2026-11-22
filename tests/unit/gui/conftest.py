@@ -29,11 +29,11 @@ from tests.contract.support import build_served_analyses, command_line
 
 HYDRO = "149190310"
 """IMGW-PIB's hydrological station of the fixture root (daily H, Q, T of 2024)."""
-HYDRO_CHMI = "0-203-1-900001"
+HYDRO_CHMU = "0-203-1-900001"
 """ČHMÚ's hydrological station of the fixture root."""
 METEO = "123750000"
 """IMGW-PIB's precipitation station of the fixture root (January 2001)."""
-METEO_CHMI = "0-203-0-90001"
+METEO_CHMU = "0-203-0-90001"
 """ČHMÚ's meteorological station of the fixture root."""
 PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""
@@ -233,7 +233,7 @@ def make_client(
     address="testclient", **config)``: the app on ``root`` (the read-only root by
     default) with Hydrolog's program ``hydrolog`` (a command line's words; none by
     default), the settings changed by ``config``, the live sources of ``live``
-    (`Live.sources` names; recorded by default), the access log of ``log`` (a
+    (`Live.sources` names; recorded by default), the access and app log of ``log`` (a
     ``ServerLog``; none by default) and requests from the client address ``address``.
     """
     from obserwator.gui._app import build_app
@@ -259,8 +259,8 @@ def make_client(
         gui_dir = changes.pop("gui_dir", tmp_path / f"state-{len(opened)}")
         config = gui_config(root or read_only_root, gui_dir, **changes)
         app = build_app(config, log=log)
-        app.state.gui.current = CurrentData(sources=sources or live.sources())
-        app.state.gui.pmaxtp = Pmaxtp(fetch=fetch or live.fetch)
+        app.state.gui.current = CurrentData(sources=sources or live.sources(), log=log)
+        app.state.gui.pmaxtp = Pmaxtp(fetch=fetch or live.fetch, log=log)
         client = TestClient(app, headers=headers, client=(address, 50000))
         client.__enter__()
         opened.append(client)

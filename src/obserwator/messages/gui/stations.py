@@ -21,6 +21,8 @@ MESSAGES: dict[str, Text] = {
         "Series in the data root", "Szeregi w katalogu danych"
     ),
     "stations.list.active_only": Text("active only", "tylko czynne"),
+    # „Pokaż inne źródła” of an operator's instance (ADR-025): the other providers back
+    "stations.list.others": Text("Show other sources", "Pokaż inne źródła"),
     "stations.list.found.one": Text("station", "stacja"),
     "stations.list.found.few": Text("stations", "stacje"),
     "stations.list.found.many": Text("stations", "stacji"),
@@ -55,6 +57,10 @@ MESSAGES: dict[str, Text] = {
     ),
     "stations.tip.water_level": Text("Water level H", "Stan wody H"),
     "stations.tip.discharge": Text("Discharge Q", "Przepływ Q"),
+    "stations.tip.flow_stale": Text(
+        "(stale: more than 3 h older than the water level)",
+        "(nieaktualny: starszy od stanu wody o ponad 3 h)",
+    ),
     "stations.tip.water_temperature": Text("Water temperature", "Temperatura wody"),
     "stations.tip.no_values": Text(
         "IMGW-PIB gives no current measurements of this station.",
@@ -90,16 +96,20 @@ MESSAGES: dict[str, Text] = {
     "stations.precip.last_10_min": Text("in the last 10 min", "w ostatnich 10 min"),
     # The legend
     "stations.legend.title": Text("Legend", "Legenda"),
-    "stations.legend.chmi": Text(
-        "{provider} (dashed outline)", "{provider} (obrys przerywany)"
-    ),
+    "stations.legend.featured": Text("Stations: {provider}", "Stacje: {provider}"),
     "stations.legend.inactive": Text("inactive (faded)", "nieczynna (blado)"),
     "stations.legend.selected": Text("selected", "wybrana"),
+    "stations.legend.others": Text("Other sources", "Pozostałe źródła"),
+    "stations.legend.area": Text("service area", "obszar serwisu"),
     "stations.legend.stations_note": Text(
         "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl; the view "
         "“Current measurements” shows the water state and the precipitation.",
         "Kształty i kolory stacji jak na mapie hydro.imgw.pl (IMGW-PIB); stan wody "
         "i opad pokazuje widok „Pomiary bieżące”.",
+    ),
+    "stations.legend.symbols_note": Text(
+        "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl.",
+        "Kształty i kolory stacji jak na mapie hydro.imgw.pl (IMGW-PIB).",
     ),
     "stations.legend.hydro_title": Text(
         "Hydrological stations: water state", "Stacje hydrologiczne: stan wody"

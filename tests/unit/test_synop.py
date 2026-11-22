@@ -385,7 +385,7 @@ def test_meteo_analyses_read_the_joined_record_of_the_station():
     files = {
         (planned_.variant.inputs[0].variables, keys)
         for planned_ in planned
-        for _, keys in planned_.files
+        for _, keys, _ in planned_.files
     }
     assert ((("P",), (SYNOP, CLIMATE, PRECIP))) in files
     assert any(
@@ -393,4 +393,4 @@ def test_meteo_analyses_read_the_joined_record_of_the_station():
     )
     # A station with a climate series only reads it alone.
     alone = _plan("meteo", {CLIMATE: held[CLIMATE]}, {}, analysis_definitions())
-    assert {keys for item in alone for _, keys in item.files} == {(CLIMATE,)}
+    assert {keys for item in alone for _, keys, _ in item.files} == {(CLIMATE,)}

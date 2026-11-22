@@ -19,7 +19,8 @@ Quick Start:
     >>> print(f"Found stations: {len(stations)}")
 
 Features:
-    - PMAXTP data (probabilistic maximum precipitation)
+    - PMAXTP data (maximum precipitation of a given duration and probability of
+      exceedance, IMGW-PIB)
     - Current hydrological, meteorological and synoptic data
     - Weather and hydro warnings
     - Archive data download (daily, monthly, semi-annual)
@@ -140,9 +141,9 @@ from obserwator.output import FileResult, OutputReport
 from obserwator.parsers import (
     IMGW_ENCODING,
     normalize_archive,
-    parse_chmi_hydro_daily,
-    parse_chmi_meteo_daily,
-    parse_chmi_stations,
+    parse_chmu_hydro_daily,
+    parse_chmu_meteo_daily,
+    parse_chmu_stations,
     parse_daily_csv,
     parse_meteo_climate_daily,
     parse_meteo_precip_daily,
@@ -189,6 +190,7 @@ from obserwator.store import (
     RootKind,
     SeriesIndex,
     SeriesReport,
+    SeriesSubset,
     StationCoverage,
     StationFeature,
     StationSeriesIndex,
@@ -331,9 +333,9 @@ __all__ = [
     "parse_meteo_synop_daily",
     "normalize_archive",
     "IMGW_ENCODING",
-    "parse_chmi_hydro_daily",
-    "parse_chmi_meteo_daily",
-    "parse_chmi_stations",
+    "parse_chmu_hydro_daily",
+    "parse_chmu_meteo_daily",
+    "parse_chmu_stations",
     # Dataset registry
     "License",
     "ProviderDescriptor",
@@ -375,6 +377,7 @@ __all__ = [
     "StationFeature",
     "StationSeriesIndex",
     "SeriesIndex",
+    "SeriesSubset",
     "PMaXTPStoreResult",
     # Stored analyses computed by Hydrolog (ADR-016)
     "AnalysesReport",

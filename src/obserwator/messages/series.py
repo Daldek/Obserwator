@@ -127,4 +127,37 @@ MESSAGES = {
         "Station {code}",
         "Stacja {code}",
     ),
+    "stations_not_list": Text(
+        "stations must be a non-empty list of station codes",
+        "stations musi być niepustą listą kodów stacji",
+    ),
+    "stations_outside_grammar": Text(
+        "Station codes outside the {provider} grammar of the dataset {key}: {codes}; "
+        "expected {pattern}",
+        "Kody stacji spoza gramatyki {provider} zbioru {key}: {codes}; oczekiwano "
+        "{pattern}",
+    ),
+    "invalid_subset": Text(
+        "an invalid subset: stations and years must be sorted, distinct and not empty",
+        "niepoprawny podzbiór: stations i years muszą być posortowane, bez powtórzeń "
+        "i niepuste",
+    ),
+    "subset_beside_full_series": Text(
+        "The data root holds the full series of {key} ({version}); a subset of its "
+        "stations or years is never built beside it",
+        "Katalog danych zawiera pełny szereg {key} ({version}); podzbioru jego stacji "
+        "ani lat nie buduje się obok niego",
+    ),
+    "no_archives_of_subset": Text(
+        "The raw root holds no archive of {key} for the chosen stations and years",
+        "Katalog surowy nie zawiera archiwów {key} dla wybranych stacji i lat",
+    ),
+    "subset_holds_nothing": Text(
+        "The archives read hold no records of the chosen stations and years of {key}",
+        "Odczytane archiwa nie zawierają rekordów wybranych stacji i lat {key}",
+    ),
+    "stations_missing": Text(
+        "The archives of {key} read hold no records of the stations {codes}",
+        "Odczytane archiwa {key} nie zawierają rekordów stacji {codes}",
+    ),
 }

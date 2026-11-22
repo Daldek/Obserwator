@@ -1,15 +1,15 @@
-# Obserwator — guide for agents (version 3.0.1)
+# Obserwator — guide for agents (version 3.1.0)
 
 > Generated from the command catalog: `obserwator commands guide --format agents`. Do not edit by hand.
 
 ## What Obserwator is
 
-Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP probable maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
+Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
 Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
-- `IMGW-PIB` — Poland: keys `pl.imgw.*`, station code `^[0-9]{9}$`, license [IMGW-PIB](https://danepubliczne.imgw.pl/regulations)
-- `CHMI` (ČHMÚ) — Czechia: keys `cz.chmi.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- `IMGW` (IMGW-PIB) — Poland: keys `pl.imgw.*`, station code `^[0-9]{9}$`, license [IMGW-PIB](https://danepubliczne.imgw.pl/regulations)
+- `CHMU` (ČHMÚ) — Czechia: keys `cz.chmu.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Rules: check → run → read
 
@@ -49,7 +49,7 @@ An error has a code from a closed registry, the same in Python, the CLI, REST (p
 
 ## Datasets
 
-A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
 
 | Key | Variables | First year |
 |---|---|---|
@@ -65,17 +65,17 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`hydro_daily`) and
 | `pl.imgw.meteo_now` | — | — |
 | `pl.imgw.hydro_details` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
-| `cz.chmi.hydro_daily` | `H`, `Q`, `T` | 1887 |
-| `cz.chmi.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin` | — |
-| `cz.chmi.hydro_stations` | — | — |
-| `cz.chmi.meteo_stations` | — | — |
-| `cz.chmi.hydro_now` | — | — |
-| `cz.chmi.meteo_now` | — | — |
+| `cz.chmu.hydro_daily` | `H`, `Q`, `T` | 1887 |
+| `cz.chmu.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
+| `cz.chmu.hydro_stations` | — | — |
+| `cz.chmu.meteo_stations` | — | — |
+| `cz.chmu.hydro_now` | — | — |
+| `cz.chmu.meteo_now` | — | — |
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 
-- `stations`: WIGOS (required for `cz.chmi.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` (except `cz.chmi.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmi.hydro_daily` (none = the published years); never for `cz.chmi.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
+- `years`: required in `datasets files|download` (except `cz.chmu.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.hydro_daily` (none = the published years); never for `cz.chmu.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
@@ -106,7 +106,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 **Network — connects to a source, writes nothing**
 
-- `stations find` — Find IMGW-PIB and ČHMÚ stations by name, river or code prefix.
+- `stations find` — Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.
 - `current hydro` — Fetch current hydrological data from the IMGW API.
 - `current meteo` — Fetch current meteorological data from the IMGW API.
 - `current synop` — Fetch current synoptic data from the IMGW API.
@@ -127,7 +127,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 ## Flags and values
 
-- Lists (`--analyses`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
+- Lists (`--analyses`, `--bbox`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
 - CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
 - Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else `<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default `--raw-root` and `--root` of `datasets download`, `pmaxtp check|sync|read`, `store init|check|sync|export`, else `<data_dir>/obserwator-raw` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
@@ -148,15 +148,15 @@ Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of e
 
 ### 2. Daily discharge of a Czech station (ČHMÚ)
 
-1. `obserwator stations find --kind hydro --query spindleruv --provider CHMI --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
-2. `obserwator store check --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
-3. `obserwator store sync --datasets cz.chmi.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
-4. `obserwator series build --dataset cz.chmi.hydro_daily --json` — the station series in the data root.
-5. `obserwator series read --dataset cz.chmi.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
+1. `obserwator stations find --kind hydro --query spindleruv --provider CHMU --json` — the WIGOS identifier of the chosen station is `WIGOS_ID`.
+2. `obserwator store check --datasets cz.chmu.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — plan: the station files by year.
+3. `obserwator store sync --datasets cz.chmu.hydro_daily --years 2020-2025 --stations WIGOS_ID --json` — after the user agrees.
+4. `obserwator series build --dataset cz.chmu.hydro_daily --json` — the station series in the data root.
+5. `obserwator series read --dataset cz.chmu.hydro_daily --station WIGOS_ID --variables Q --limit 500 --json` — next pages: `--cursor` = `page.next_cursor`.
 
 ## What not to do
 
-1. Do not build or crawl IMGW-PIB and ČHMÚ server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
+1. Do not build or crawl the providers' server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
 2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.

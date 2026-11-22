@@ -26,7 +26,9 @@ MESSAGES: dict[str, Text] = {
         "Click the map or enter the coordinates on the left",
         "Kliknij mapę albo wpisz współrzędne po lewej",
     ),
-    "shell.map": Text("Station map", "Mapa stacji"),
+    # The region of the map and its bar, named by the view (the map's canvas is a region
+    # of its own, named by `stations.map.label` or `shell.map_pmaxtp`)
+    "shell.view_region": Text("View: {view}", "Widok: {view}"),
     "shell.map_pmaxtp": Text(
         "Map: choosing the PMAXTP point", "Mapa: wybór punktu PMAXTP"
     ),
@@ -50,8 +52,14 @@ MESSAGES: dict[str, Text] = {
         "Nie udało się wczytać ustawień serwera: {reason}",
     ),
     # The top bar
+    # The page's heading, for assistive technology only (the mark and the name show it)
+    "shell.heading": Text(
+        "Obserwator: hydrological and meteorological data of IMGW-PIB and ČHMÚ",
+        "Obserwator: dane hydrologiczne i meteorologiczne IMGW-PIB i ČHMÚ",
+    ),
     "shell.home": Text("Obserwator: start page", "Obserwator: strona główna"),
     "shell.selected_station": Text("Selected station", "Wybrana stacja"),
+    "shell.operator_logo": Text("The operator's logo", "Logo operatora"),
     "shell.guide": Text("Guide", "Instrukcja"),
     "shell.guide_title": Text(
         "The guide to this application (in Polish)", "Instrukcja obsługi aplikacji"
@@ -75,6 +83,12 @@ MESSAGES: dict[str, Text] = {
         " ČHMÚ on a map: choose one to see its measurements, analyses and files.",
         "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne IMGW-PIB"
         " i ČHMÚ: wybierz stację, aby zobaczyć jej pomiary, analizy i pliki.",
+    ),
+    "shell.welcome.intro_instance": Text(
+        "Obserwator shows hydrological and meteorological stations on a map: choose one"
+        " to see its measurements, analyses and files.",
+        "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne: wybierz"
+        " stację, aby zobaczyć jej pomiary, analizy i pliki.",
     ),
     "shell.welcome.start": Text("Got it", "Rozumiem"),
     "shell.welcome.close": Text("Close", "Zamknij"),

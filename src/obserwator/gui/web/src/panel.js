@@ -20,6 +20,7 @@
 import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
 import { catalogSources, compose, merge, useTexts } from "./attribution.js";
+import { scopeOf } from "./instance.js";
 import { fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { ResultLines, Section } from "./sections/common.js";
 import { DANE } from "./sections/dane.js";
@@ -30,8 +31,8 @@ import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
 import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerFullName, providerName } from "./words.js";
 
-/** The providers of the catalogs, in the order the panel lists them. */
-const PROVIDERS = ["IMGW-PIB", "CHMI"];
+/** The start of the keys of each provider's datasets (the registry's). */
+const DATASET_PREFIX = { IMGW: "pl.imgw.", CHMU: "cz.chmu." };
 /** The names of the formats of a stations file. */
 const STATIONS_FORMATS = { geojson: "GeoJSON", csv: "CSV" };
 
@@ -303,7 +304,8 @@ function StationsFiles({ provider, kind, onDoc }) {
 
 /**
  * The panel without a station: how to choose one, what the data root holds and the
- * stations of the list's provider and kind to download.
+ * stations of the list's provider and kind to download; on an operator's instance only of
+ * the providers it serves, in its order (ADR-025).
  *
  * @param {{session: object|null, stations: object[], provider?: string, kind?: string,
  *   onLines: (lines: object|null) => void}} props api/session, the stations of
@@ -321,14 +323,15 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
   const catalogs = (root && root.catalogs) || {};
   const analyses = (root && root.analyses) || {};
   const series = Object.entries(held);
-  const missing = Object.keys(DATASET_STEPS).filter((key) => !held[key]);
+  const providers = scopeOf(session).providers;
+  const missing = Object.keys(DATASET_STEPS).filter((key) => !held[key] && providers.some((id) => key.startsWith(DATASET_PREFIX[id])));
   return html`<div class="no-station">
     <p class="hint-box">${t("station.none.hint")}</p>
     ${root && root.error ? html`<p class="ana-error" role="alert">${t("station.none.root_error", { message: root.error.message })}</p>` : null}
     <h3 class="group-title">${t("station.none.catalogs")}</h3>
     <table class="params compact">
       <tbody>
-        ${PROVIDERS.map(
+        ${providers.map(
           (id) => html`<tr>
             <th scope="row">
               ${t("station.none.provider_kinds", { provider: providerName(id) })}
@@ -361,7 +364,7 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
     <h3 class="group-title">${t("station.none.analyses")}</h3>
     <table class="params compact" data-part="analyses">
       <tbody>
-        ${PROVIDERS.map(
+        ${providers.map(
           (id) => html`<tr data-provider=${id}>
             <th scope="row">
               ${providerName(id)}

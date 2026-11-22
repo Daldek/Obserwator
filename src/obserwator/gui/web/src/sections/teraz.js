@@ -9,7 +9,7 @@
 //   direction, humidity, the precipitation total, pressure).
 // IMGW-PIB's API gives its times in UTC, shown as such (current.js `measuredAt`).
 // Obserwator serves no current data of ČHMÚ: the section says so in the words of the
-// server's answer (`errors.no_current_chmi`) without asking it. The response's lines and
+// server's answer (`errors.no_current_chmu`) without asking it. The response's lines and
 // terms (Nogat DEV §20: S, P of danepubliczne.imgw.pl, and H for the water state of
 // hydro.imgw.pl) go to the view's strip (`ResultLines`).
 
@@ -44,7 +44,7 @@ function HydroNow({ doc }) {
     <${Figures}
       items=${[
         { label: t("station.now.water_level"), value: amount(r.water_level_cm, 0, "cm"), note: at(r.water_level_date) },
-        { label: t("station.now.discharge"), value: amount(r.flow_m3s, r.flow_m3s !== null && r.flow_m3s < 10 ? 2 : 1, "m³/s"), note: at(r.flow_date) },
+        { label: t("station.now.discharge"), value: amount(r.flow_m3s, r.flow_m3s !== null && r.flow_m3s < 10 ? 2 : 1, "m³/s"), note: at(r.flow_date), stale: r.flow_stale === true ? t("station.now.flow_stale") : null },
         { label: t("station.now.water_temperature"), value: amount(r.water_temp_c, 1, "°C"), note: at(r.water_temp_date) },
       ]}
     />
@@ -115,7 +115,7 @@ function Snapshots({ doc }) {
 }
 
 function Teraz({ station }) {
-  const imgw = station.provider === "IMGW-PIB";
+  const imgw = station.provider === "IMGW";
   const [state, setState] = useState({ doc: null, error: null, loading: imgw });
   const [round, setRound] = useState(0);
   useEffect(() => {
@@ -135,7 +135,7 @@ function Teraz({ station }) {
     if (report && state.doc) report(state.doc);
   }, [report, state.doc]);
   if (!imgw) {
-    return html`<p class="note-box">${t("errors.no_current_chmi")} ${t("station.now.chmi_note")}</p>`;
+    return html`<p class="note-box">${t("errors.no_current_chmu")} ${t("station.now.chmu_note")}</p>`;
   }
   const doc = state.doc;
   const hydro = station.properties.kind === "hydro";

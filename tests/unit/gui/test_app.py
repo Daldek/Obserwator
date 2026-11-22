@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import mimetypes
+import re
 import shlex
 import shutil
 from pathlib import Path
@@ -23,16 +24,17 @@ import obserwator
 from obserwator.attribution import attribution
 from obserwator.exceptions import ERROR_CODES
 from obserwator.gui._config import Basemap
+from obserwator.gui._live import CURRENT_TTL_S, CurrentData
 from obserwator.messages import message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.testing import _recorded_http
 from tests.unit.gui.conftest import (
     ANNUAL_MAXIMA,
     HYDRO,
-    HYDRO_CHMI,
+    HYDRO_CHMU,
     HYDROLOG_VERSION,
     METEO,
-    METEO_CHMI,
+    METEO_CHMU,
     PMAXTP_POINT,
     write_program,
 )
@@ -45,8 +47,27 @@ SECURITY = {
     "referrer-policy": "no-referrer",
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
 }
+UNUSED_FEATURES = {
+    "camera",
+    "microphone",
+    "geolocation",
+    "payment",
+    "usb",
+    "serial",
+    "browsing-topics",
+    "midi",
+    "display-capture",
+    "fullscreen",
+}
+
+
+def denied(header: str) -> set[str]:
+    """The features a ``Permissions-Policy`` denies to every origin (``name=()``)."""
+    entries = [entry.strip().split("=", 1) for entry in header.split(",")]
+    return {name for name, allow in entries if allow == "()"}
+
+
 OWN_ORIGIN_ONLY = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
@@ -163,12 +184,12 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
         "hydrolog": None,
     }
     root = session["root"]
-    assert set(root["catalogs"]) == {"IMGW-PIB", "CHMI"}
+    assert set(root["catalogs"]) == {"IMGW", "CHMU"}
     assert set(root["series"]) == {
         "pl.imgw.hydro_daily",
         "pl.imgw.meteo_precip_daily",
-        "cz.chmi.hydro_daily",
-        "cz.chmi.meteo_daily",
+        "cz.chmu.hydro_daily",
+        "cz.chmu.meteo_daily",
     }
     hydro = root["series"]["pl.imgw.hydro_daily"]
     assert hydro["year_type"] == "hydrological"
@@ -176,13 +197,13 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
     # The fixture root stores no analyses
-    assert root["analyses"] == {"IMGW-PIB": None, "CHMI": None}
-    assert set(session["providers"]) == {"IMGW-PIB", "CHMI"}
-    assert session["providers"]["CHMI"]["attribution"] == list(
-        attribution("chmi").attribution
+    assert root["analyses"] == {"IMGW": None, "CHMU": None}
+    assert set(session["providers"]) == {"IMGW", "CHMU"}
+    assert session["providers"]["CHMU"]["attribution"] == list(
+        attribution("chmu").attribution
     )
     origins = session["attribution"]["origins"]
-    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmi", "gugik", "cuzk"}
+    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
     assert session["basemap"] is None
     assert session["terms"] is None
     assert session["operator_email"] is None
@@ -195,8 +216,8 @@ def test_the_session_names_the_stored_analyses_of_each_provider(
     analyses = make_client(stored_root).get("/api/session").json()["root"]["analyses"]
 
     for provider, folder, station in (
-        ("IMGW-PIB", "pl.imgw", HYDRO),
-        ("CHMI", "cz.chmi", HYDRO_CHMI),
+        ("IMGW", "pl.imgw", HYDRO),
+        ("CHMU", "cz.chmu", HYDRO_CHMU),
     ):
         (version,) = (stored_root / "analyses" / "versions" / folder).iterdir()
         stored = obserwator.read_analysis(
@@ -261,21 +282,21 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
         "code": HYDRO,
         "name": "Raba Górna",
         "river": "Raba",
-        "provider": "IMGW-PIB",
+        "provider": "IMGW",
         "kind": "hydro",
         "meteo_kind": None,
         "active": True,
-        "location_source": "api_hydro",
+        "location_source": "pl.imgw.hydro_now",
         "lon": 20.1,
         "lat": 49.7,
         "datasets": ["pl.imgw.hydro_daily"],
         "first": "2023",
         "last": "2024",
     }
-    assert by_code[METEO_CHMI]["provider"] == "CHMI"
+    assert by_code[METEO_CHMU]["provider"] == "CHMU"
     assert by_code[METEO]["meteo_kind"] == "precipitation"
     # The catalogs' lines: the providers' and those of the packaged borders (ADR-018)
-    lines = attribution("imgw", "chmi", "gugik", "cuzk")
+    lines = attribution("imgw", "chmu", "gugik", "cuzk")
     assert layer["attribution"] == list(lines.attribution)
     assert layer["terms_notice"] == list(lines.terms_notice)
     again = client.get(
@@ -285,14 +306,43 @@ def test_the_station_layer_holds_every_station_of_both_catalogs(client):
     assert again.headers["etag"] == answer.headers["etag"]
 
 
+def test_the_station_layer_is_built_once_and_a_304_builds_nothing(client, monkeypatch):
+    from obserwator.gui import _app
+
+    built = []
+    origins = _app._station_origins
+
+    def counted(*args, **kwargs):
+        built.append(args[0])
+        return origins(*args, **kwargs)
+
+    monkeypatch.setattr(_app, "_station_origins", counted)
+    packed = client.get("/api/stations", headers={"Accept-Encoding": "gzip"})
+    after_first = len(built)
+    plain = client.get("/api/stations", headers={"Accept-Encoding": "identity"})
+    unchanged = client.get(
+        "/api/stations", headers={"If-None-Match": packed.headers["etag"]}
+    )
+
+    assert after_first == 13
+    assert len(built) == 13
+    assert packed.headers["content-encoding"] == "gzip"
+    assert "content-encoding" not in plain.headers
+    assert packed.headers["vary"] == plain.headers["vary"] == "Accept-Encoding"
+    assert packed.headers["cache-control"] == "no-cache"
+    assert packed.json() == plain.json()
+    assert packed.headers["etag"] == plain.headers["etag"]
+    assert unchanged.status_code == 304
+
+
 def test_a_station_answers_its_properties_series_and_lines(client):
     hydro = client.get(f"/api/stations/{HYDRO}").json()
-    chmi = client.get(f"/api/stations/{HYDRO_CHMI}").json()
+    chmu = client.get(f"/api/stations/{HYDRO_CHMU}").json()
     empty = client.get("/api/stations/149190312").json()
 
     assert (hydro["code"], hydro["provider"], hydro["lon"], hydro["lat"]) == (
         HYDRO,
-        "IMGW-PIB",
+        "IMGW",
         20.1,
         49.7,
     )
@@ -310,11 +360,11 @@ def test_a_station_answers_its_properties_series_and_lines(client):
         "gaps": 0,
     }
     assert hydro["attribution"] == list(attribution("imgw", "gugik").attribution)
-    assert chmi["properties"]["thresholds"]["Q"]["q50"] == 96
-    assert chmi["attribution_parts"]["series"]["attribution"] == list(
-        attribution("chmi").attribution
+    assert chmu["properties"]["thresholds"]["Q"]["q50"] == 96
+    assert chmu["attribution_parts"]["series"]["attribution"] == list(
+        attribution("chmu").attribution
     )
-    assert "terms_notice" not in chmi["attribution_parts"]["series"]
+    assert "terms_notice" not in chmu["attribution_parts"]["series"]
     assert empty["datasets"] == []
     assert empty["attribution_parts"]["series"] is None
 
@@ -373,8 +423,8 @@ def test_the_lines_of_stations_files_name_hydro_imgw_pl_for_stations_with_detail
     make_client, client, details_root
 ):
     detailed = make_client(details_root)
-    hydro = {"provider": "IMGW-PIB", "kind": "hydro"}
-    meteo = {"provider": "IMGW-PIB", "kind": "meteo"}
+    hydro = {"provider": "IMGW", "kind": "hydro"}
+    meteo = {"provider": "IMGW", "kind": "meteo"}
     with_details = detailed.get("/api/downloads/stations", params=hydro).json()
     without = detailed.get("/api/downloads/stations", params=meteo).json()
     before = client.get("/api/downloads/stations", params=hydro).json()
@@ -416,7 +466,7 @@ def test_a_series_answers_its_days_values_and_flags(client):
 
 
 def test_the_etag_of_a_series_follows_its_query(client):
-    path = f"/api/series/cz.chmi.hydro_daily/{HYDRO_CHMI}"
+    path = f"/api/series/cz.chmu.hydro_daily/{HYDRO_CHMU}"
     first = client.get(path, params={"variables": "Q"})
     tag = {"If-None-Match": first.headers["etag"]}
 
@@ -540,20 +590,27 @@ def test_the_stored_results_download_as_analyses_export_makes_them(
         ).encode("utf-8")
 
     assert files["formats"][fmt] == {
-        "file": f"{HYDRO}_analyses.{fmt}",
+        "file": f"obserwator_analyses_{HYDRO}.{fmt}",
         "url": f"api/files/analyses/{HYDRO}?format={fmt}",
         "command": (
             f"obserwator analyses export --station {HYDRO} --format {fmt} "
-            f"--output {HYDRO}_analyses.{fmt}"
+            f"--output obserwator_analyses_{HYDRO}.{fmt}"
         ),
     }
     (version,) = (stored_root / "analyses" / "versions" / "pl.imgw").iterdir()
     assert files["version"] == version.name
     assert whole.content == exported()
     assert whole.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO}_analyses.{fmt}"'
+        f'attachment; filename="obserwator_analyses_{HYDRO}.{fmt}"'
     )
     assert one.content == exported(analyses=["characteristic.Q"])
+    # The page offers one analysis's file under the name the server sends it with.
+    assert files["each"]["characteristic.Q"][fmt] == (
+        f"obserwator_analyses_{HYDRO}_characteristic.Q.{fmt}"
+    )
+    assert one.headers["content-disposition"].startswith(
+        f'attachment; filename="{files["each"]["characteristic.Q"][fmt]}"'
+    )
     problem(unknown, 404, "not_found")
 
 
@@ -579,7 +636,7 @@ def test_an_analysis_is_computed_by_hydrolog_once_and_served_again(
     assert document["inputs"][0]["dataset"] == "pl.imgw.hydro_daily"
     assert again.status_code == 304
     assert file.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO}_flood_frequency.Q.json"'
+        f'attachment; filename="obserwator_analyses_{HYDRO}_flood_frequency.Q.json"'
     )
     assert json.loads(file.content) == document
     assert session["compute"]["available"] is True
@@ -615,10 +672,10 @@ def test_an_analysis_outside_the_registry_or_the_station_is_refused(
 # --- current data and PMAXTP -----------------------------------------------------------------
 
 
-def test_the_current_data_of_imgw_pib_are_points_of_the_map(client):
+def test_the_current_data_of_imgw_are_points_of_the_map(client):
     current = client.get("/api/current").json()
 
-    assert current["source"] == "IMGW-PIB"
+    assert current["source"] == "IMGW"
     for name in ("states", "hydro", "meteo"):
         assert current["snapshots"][name]["fetched_at"].endswith("Z")
         assert current["snapshots"][name]["error"] is None
@@ -652,7 +709,7 @@ def test_no_current_data_at_all_is_an_error(make_client, live):
 def test_the_current_values_of_one_station(client):
     hydro = client.get(f"/api/current/{HYDRO}").json()
     meteo = client.get(f"/api/current/{METEO}").json()
-    chmi = client.get(f"/api/current/{HYDRO_CHMI}", headers=EN)
+    chmu = client.get(f"/api/current/{HYDRO_CHMU}", headers=EN)
 
     assert (hydro["station"], hydro["kind"], hydro["state"]) == (
         HYDRO,
@@ -663,8 +720,34 @@ def test_the_current_values_of_one_station(client):
     assert set(hydro["snapshots"]) == {"hydro", "states"}
     assert meteo["record"]["station_name"] == "Warszawa"
     assert "synop" not in meteo  # the code is no synoptic station's
-    body = problem(chmi, 404, "not_found", "en")
-    assert body["message"] == message("gui.errors.no_current_chmi")
+    body = problem(chmu, 404, "not_found", "en")
+    assert body["message"] == message("gui.errors.no_current_chmu")
+
+
+@pytest.mark.parametrize("path", ["/api/current", f"/api/current/{HYDRO}"])
+def test_current_data_answer_304_until_a_snapshot_changes(make_client, live, path):
+    now = [1000.0]
+    client = make_client()
+    client.app.state.gui.current = CurrentData(
+        live.sources(), clock=lambda: now[0], start=lambda run: run()
+    )
+    first = client.get(path)
+    etag = first.headers["etag"]
+
+    same = client.get(path, headers={"If-None-Match": etag})
+    other_lang = client.get(path, headers={"If-None-Match": etag, **EN})
+    now[0] += CURRENT_TTL_S  # a refresh: the same records, a new snapshot
+    refreshed = client.get(path, headers={"If-None-Match": etag})
+
+    assert first.status_code == 200
+    assert first.headers["cache-control"] == "no-cache"
+    assert (same.status_code, same.content) == (304, b"")
+    assert same.headers["etag"] == etag
+    assert other_lang.status_code == 200
+    assert other_lang.headers["etag"] != etag
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != etag
+    assert refreshed.json()["source"] == "IMGW"
 
 
 def test_pmaxtp_of_a_point_with_its_tables_its_source_and_command(client):
@@ -729,7 +812,7 @@ def test_wrong_pmaxtp_parameters_are_refused(client, query, option):
     bad_parameter(client.get("/api/pmaxtp", params=query), option)
 
 
-def test_a_point_outside_the_pmaxtp_grid_is_refused_with_imgw_pibs_reason(make_client):
+def test_a_point_outside_the_pmaxtp_grid_is_refused_with_imgws_reason(make_client):
     def fetch(latitude, longitude, *, method="POT"):
         with _recorded_http(["pmaxtp_outside_grid"], recordings=("recordings.json",)):
             return obserwator.fetch_pmaxtp(latitude, longitude, method=method)
@@ -749,7 +832,7 @@ def test_pmaxtp_files_hold_the_tables_and_pmaxtp_lines(client):
 
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert (
-        'filename="pmaxtp_POT_52.2300_21.0100.csv"'
+        'filename="obserwator_pmaxtp_POT_52.2300_21.0100.csv"'
         in (table.headers["content-disposition"])
     )
     rows = parsed_csv(table.content)
@@ -794,7 +877,7 @@ def test_the_files_of_a_station_come_with_the_readers_command_line(
     assert series["attribution"] == list(attribution("imgw").attribution)
     assert set(series["formats"]) == {"csv", "json", "parquet"}
     for fmt, entry in series["formats"].items():
-        assert entry["file"] == f"{HYDRO}_hydro_daily.{fmt}"
+        assert entry["file"] == f"obserwator_series_pl.imgw.hydro_daily_{HYDRO}.{fmt}"
         line = shlex.split(entry["command"])
         assert "--root" not in line
         assert line[line.index("--output") + 1] == entry["file"]
@@ -810,14 +893,14 @@ def test_the_files_of_a_station_come_with_the_readers_command_line(
 
 
 def test_series_files_are_made_by_export_series_on_the_read_only_root(client):
-    path = f"/api/files/series/cz.chmi.hydro_daily/{HYDRO_CHMI}"
+    path = f"/api/files/series/cz.chmu.hydro_daily/{HYDRO_CHMU}"
     table = client.get(path)
     document = client.get(path, params={"format": "json"})
     parquet = client.get(path, params={"format": "parquet"})
 
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert table.headers["content-disposition"].startswith(
-        f'attachment; filename="{HYDRO_CHMI}_chmi_hydro_daily.csv"'
+        f'attachment; filename="obserwator_series_cz.chmu.hydro_daily_{HYDRO_CHMU}.csv"'
     )
     assert parsed_csv(table.content)[1][0] == "2023-01-01"
     assert document.headers["content-type"] == "application/json"
@@ -832,7 +915,7 @@ def test_series_files_are_made_by_export_series_on_the_read_only_root(client):
 def test_the_stations_files_come_from_export_stations(client, read_only_root):
     listed = client.get("/api/downloads/stations").json()
     chosen = client.get(
-        "/api/downloads/stations", params={"provider": "CHMI", "kind": "meteo"}
+        "/api/downloads/stations", params={"provider": "CHMU", "kind": "meteo"}
     ).json()
     whole = client.get("/api/files/stations")
     table = client.get(chosen["formats"]["csv"]["url"])
@@ -840,25 +923,25 @@ def test_the_stations_files_come_from_export_stations(client, read_only_root):
     assert listed["stations"] == 13
     assert [item["provider"] for item in listed["licences"]] == ["IMGW-PIB", "ČHMÚ"]
     assert listed["formats"]["geojson"] == {
-        "file": "stations.geojson",
+        "file": "obserwator_stations.geojson",
         "url": "api/files/stations?format=geojson",
-        "command": "obserwator stations export --output stations.geojson",
+        "command": "obserwator stations export --output obserwator_stations.geojson",
     }
     assert chosen["stations"] == 3
     assert chosen["formats"]["csv"]["command"] == (
-        "obserwator stations export --provider CHMI --kind meteo --format csv "
-        "--output stations_chmi_meteo.csv"
+        "obserwator stations export --provider CHMU --kind meteo --format csv "
+        "--output obserwator_stations_chmu_meteo.csv"
     )
     assert whole.headers["content-type"] == "application/geo+json"
     assert whole.content == "".join(obserwator.export_stations(read_only_root)).encode()
     assert table.headers["content-disposition"].startswith(
-        'attachment; filename="stations_chmi_meteo.csv"'
+        'attachment; filename="obserwator_stations_chmu_meteo.csv"'
     )
     assert (
         table.content
         == "".join(
             obserwator.export_stations(
-                read_only_root, provider="CHMI", kind="meteo", format="csv"
+                read_only_root, provider="CHMU", kind="meteo", format="csv"
             )
         ).encode()
     )
@@ -885,8 +968,8 @@ def test_stations_of_a_provider_without_a_catalog_are_404(make_client, imgw_root
     client = make_client(imgw_root, headers=EN)
 
     for path in (
-        "/api/downloads/stations?provider=CHMI",
-        "/api/files/stations?provider=CHMI&format=csv",
+        "/api/downloads/stations?provider=CHMU",
+        "/api/files/stations?provider=CHMU&format=csv",
     ):
         body = problem(client.get(path), 404, "not_found", "en")
         assert body["message"] == message("gui.errors.no_stations")
@@ -897,9 +980,9 @@ def test_stations_of_a_provider_without_a_catalog_are_404(make_client, imgw_root
 
 
 def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
-    series = client.get(f"/api/series/cz.chmi.hydro_daily/{HYDRO_CHMI}").json()
+    series = client.get(f"/api/series/cz.chmu.hydro_daily/{HYDRO_CHMU}").json()
     answer = client.get(
-        f"/api/handoff/{HYDRO_CHMI}",
+        f"/api/handoff/{HYDRO_CHMU}",
         params={"variable": "Q", "first_year": "2024", "last_year": "2024"},
         headers=EN,
     ).json()
@@ -930,9 +1013,9 @@ def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
         station="Špindlerův Mlýn (Labe)",
         variable="Q",
     )
-    assert answer["producer"]["page"] == f"http://testserver/?station={HYDRO_CHMI}"
-    assert answer["provenance"]["series"]["dataset"] == "cz.chmi.hydro_daily"
-    assert answer["attribution"] == list(attribution("chmi").attribution)
+    assert answer["producer"]["page"] == f"http://testserver/?station={HYDRO_CHMU}"
+    assert answer["provenance"]["series"]["dataset"] == "cz.chmu.hydro_daily"
+    assert answer["attribution"] == list(attribution("chmu").attribution)
     assert "terms_notice" not in answer
 
 
@@ -949,7 +1032,7 @@ def test_the_handoff_of_daily_values_covers_the_years_chosen(client):
 def test_a_handoff_without_values_or_with_wrong_parameters_is_refused(
     client, query, status, code
 ):
-    problem(client.get(f"/api/handoff/{HYDRO_CHMI}", params=query), status, code)
+    problem(client.get(f"/api/handoff/{HYDRO_CHMU}", params=query), status, code)
 
 
 def test_a_meteorological_station_has_no_hydrological_handoff(client):
@@ -959,7 +1042,7 @@ def test_a_meteorological_station_has_no_hydrological_handoff(client):
         "gui.errors.no_series",
         lang="pl",
         station=METEO,
-        dataset="pl.imgw.hydro_daily, cz.chmi.hydro_daily",
+        dataset="pl.imgw.hydro_daily, cz.chmu.hydro_daily",
     )
 
 
@@ -1022,6 +1105,70 @@ def test_the_page_and_its_files_are_revalidated_on_every_load(client):
     assert again.status_code == 304
 
 
+def test_the_page_names_its_files_at_addresses_kept_for_a_year(client):
+    page = client.get("/")
+    loaded = re.findall(r'(?:src|href)="([^"]+)"', page.text)
+    (build,) = {m[1] for m in (re.match(r"v/([0-9a-f]{16})/", a) for a in loaded) if m}
+    preloaded = re.findall(r'<link rel="modulepreload" href="([^"]+)"', page.text)
+    answers = {address: client.get(f"/{address}") for address in loaded}
+
+    for address, answer in answers.items():
+        assert answer.status_code == 200, address
+        long = address.startswith(f"v/{build}/") or "?v=" in address
+        expected = "public, max-age=31536000, immutable" if long else "no-cache"
+        assert answer.headers["cache-control"] == expected, address
+    assert f"v/{build}/src/main.js" in loaded
+    assert "vendor/maplibre-gl/maplibre-gl.css?v=6.14.0" in loaded
+    # Every module of the start is asked for at once: the main module's imports, theirs, …
+    assert f"v/{build}/src/lib.js" in preloaded
+    assert f"v/{build}/vendor/preact/hooks.mjs" in preloaded
+    assert f"v/{build}/src/charts/draw.js" in preloaded
+    assert not any("maplibre" in address for address in preloaded)
+    assert page.headers["cache-control"] == "no-cache"
+    assert client.get("/index.html").content == page.content
+
+
+def test_an_address_of_another_build_or_version_is_revalidated(client):
+    build = re.search(r'src="v/([0-9a-f]{16})/src/main.js"', client.get("/").text)[1]
+    current = client.get(f"/v/{build}/src/main.js")
+    older = client.get("/v/0123456789abcdef/src/main.js")
+    module = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.14.0")
+    other = client.get("/vendor/maplibre-gl/maplibre-gl.mjs?v=6.13.0")
+    plain = client.get("/src/main.js")
+    again = client.get(
+        f"/v/{build}/src/main.js", headers={"If-None-Match": current.headers["etag"]}
+    )
+
+    assert current.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert module.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert again.status_code == 304
+    # An older build's address (a page cached across a release) gets this build's file
+    assert older.content == current.content == plain.content
+    for answer in (older, other, plain):
+        assert answer.status_code == 200
+        assert answer.headers["cache-control"] == "no-cache"
+    # Only the page's files are under a build's address
+    for path in ("admin/index.html", "instrukcja/index.html", "index.html", "x/y.js"):
+        assert client.get(f"/v/{build}/{path}").status_code == 404, path
+    assert client.get(f"/v/{build}").status_code == 404
+
+
+def test_the_icons_and_robots_txt_are_served(client):
+    favicon = client.get("/favicon.ico")
+    touch = client.get("/apple-touch-icon.png")
+    precomposed = client.get("/apple-touch-icon-precomposed.png")
+    robots = client.get("/robots.txt")
+
+    assert favicon.status_code == touch.status_code == precomposed.status_code == 200
+    assert favicon.content[:4] == b"\x00\x00\x01\x00"  # an ICO directory
+    assert touch.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert precomposed.headers["content-type"] == "image/png"
+    assert precomposed.content == touch.content
+    assert robots.headers["content-type"].startswith("text/plain")
+    # Crawlers keep to the page: the API computes on request
+    assert robots.text.splitlines() == ["User-agent: *", "Disallow: /api/"]
+
+
 def test_the_scripts_are_javascript_whatever_types_the_system_registers(
     make_client, monkeypatch
 ):
@@ -1067,6 +1214,9 @@ def test_every_answer_carries_the_security_headers(client):
     for answer in answers:
         for name, value in SECURITY.items():
             assert answer.headers[name] == value, (answer.url, name)
+        policy = denied(answer.headers["permissions-policy"])
+        assert policy >= UNUSED_FEATURES, answer.url
+        assert not {"clipboard-write", "clipboard-read"} & policy, answer.url
         assert csp(answer) == OWN_ORIGIN_ONLY, answer.url
         assert answer.headers["cache-control"] in ("no-cache", "no-store")
         assert "x-request-id" not in answer.headers  # the request id stays in the log
@@ -1177,7 +1327,7 @@ def exercise(client) -> None:
         f"/api/downloads/{HYDRO}",
         f"/api/files/series/pl.imgw.hydro_daily/{HYDRO}?format=parquet",
         "/api/files/stations?format=csv",
-        f"/api/handoff/{HYDRO_CHMI}",
+        f"/api/handoff/{HYDRO_CHMU}",
         f"/api/analysis/{HYDRO}/characteristic.Q",
     ):
         client.get(path)
@@ -1251,23 +1401,25 @@ def test_the_app_mounted_under_a_prefix_serves_the_page_and_the_api(
     with TestClient(host) as client:
         page = client.get("/m/obserwator/")
         station = client.get(f"/m/obserwator/api/stations/{HYDRO}")
-        handoff = client.get(f"/m/obserwator/api/handoff/{HYDRO_CHMI}").json()
+        handoff = client.get(f"/m/obserwator/api/handoff/{HYDRO_CHMU}").json()
         missing = client.get("/m/obserwator/api/nothing")
         refused = client.post("/m/obserwator/api/session")
         report = client.post("/m/obserwator/api/feedback", json=REPORT)
         downloads = client.get(f"/m/obserwator/api/downloads/{HYDRO}").json()
         url = downloads["series"][0]["formats"]["csv"]["url"]
         file = client.get(f"/m/obserwator/{url}")
+        robots = client.get("/m/obserwator/robots.txt")
 
     assert page.status_code == 200
     assert 'id="app"' in page.text
     assert station.json()["code"] == HYDRO
     assert handoff["producer"]["page"] == (
-        f"http://testserver/m/obserwator/?station={HYDRO_CHMI}"
+        f"http://testserver/m/obserwator/?station={HYDRO_CHMU}"
     )
     problem(missing, 404, "not_found")
     problem(refused, 405, "method_not_allowed")
     problem(report, 403, "forbidden")  # POST reaches the route: only the site is wrong
     assert file.status_code == 200
+    assert "Disallow: /m/obserwator/api/" in robots.text.splitlines()
     for answer in (page, station, missing, refused, file):
         assert csp(answer) == OWN_ORIGIN_ONLY

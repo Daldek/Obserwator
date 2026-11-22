@@ -22,6 +22,13 @@ uvicorn in a thread, on a free port of 127.0.0.1:
 * ``admin_site``: the GUI on the fixture root as ``gui_url`` but its own server, with the
   admin key `ADMIN_KEY` set and its own directory (``feedback.jsonl``, ``stats.jsonl``)
   given to the test, for the admin panel of Nogat DEV-15.13.
+* ``operator_url``, ``hidden_url``, ``featured_url``, ``no_pmaxtp_url``: the fixture root
+  on operators' instances (``[obserwator.instance]``, ADR-025) with their files beside
+  ``nogat.toml``: `OPERATOR_INSTANCE` (public, its title, logo and regulamin, ČHMÚ
+  featured, IMGW-PIB off, the area `INSTANCE_AREA` clipped, PMAXTP off),
+  `HIDDEN_INSTANCE` (ČHMÚ featured, IMGW-PIB hidden, the same area in focus, the map
+  starting on it), `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB drawn at
+  `FEATURED_OTHERS_OPACITY`, nothing else) and `NO_PMAXTP_INSTANCE` (every provider served, PMAXTP off).
 
 A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
 it computes nothing for its whole life.
@@ -58,13 +65,50 @@ PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""
 FIXTURE_STATIONS = {
     "hydro": "149190310",
-    "hydro_chmi": "0-203-1-900001",
+    "hydro_chmu": "0-203-1-900001",
     "meteo": "123750000",
-    "meteo_chmi": "0-203-0-90001",
+    "meteo_chmu": "0-203-0-90001",
 }
 """Stations of the fixture root: IMGW-PIB and ČHMÚ, hydrological and meteorological."""
 ADMIN_KEY = "klucz-e2e-0123"
 """The admin key of ``admin_site`` (``OBSERWATOR_ADMIN_API_KEY``, read on every request)."""
+INSTANCE_TITLE = "Operator Testowy"
+"""The title of `OPERATOR_INSTANCE`."""
+INSTANCE_AREA = [[14.0, 49.5], [16.0, 49.5], [16.0, 50.6], [14.0, 50.6], [14.0, 49.5]]
+"""Bohemia's west of the fixture root: four of its located ČHMÚ stations, no IMGW-PIB one."""
+OPERATOR_ADDRESS = "ul. Testowa 1, 00-001 Gdańsk"
+"""What the operator writes by hand into its regulamin (`_instance_files`)."""
+OPERATOR_INSTANCE = f"""[obserwator.instance]
+title = {json.dumps(INSTANCE_TITLE)}
+logo = "logo.svg"
+featured_provider = "CHMU"
+start_view = "featured"
+area = "area.geojson"
+area_mode = "clip"
+pmaxtp = "off"
+terms = "regulamin.md"
+
+[obserwator.instance.providers]
+IMGW = "off"
+"""
+HIDDEN_INSTANCE = """[obserwator.instance]
+featured_provider = "CHMU"
+start_view = "area"
+area = "area.geojson"
+area_mode = "focus"
+
+[obserwator.instance.providers]
+IMGW = "hidden"
+"""
+FEATURED_OTHERS_OPACITY = 0.25
+"""The opacity of the other providers' stations in `FEATURED_INSTANCE`."""
+FEATURED_INSTANCE = f"""[obserwator.instance]
+featured_provider = "CHMU"
+others_opacity = {FEATURED_OTHERS_OPACITY}
+"""
+NO_PMAXTP_INSTANCE = """[obserwator.instance]
+pmaxtp = "off"
+"""
 
 _CSP_LISTENER = """
 document.addEventListener("securitypolicyviolation", (event) => {
@@ -170,7 +214,9 @@ class _Server:
         self.thread.join(timeout=30)
 
 
-def _nogat_toml(path: Path, data_dir: Path, *, public_url: str | None) -> Path:
+def _nogat_toml(
+    path: Path, data_dir: Path, *, public_url: str | None, instance: str | None = None
+) -> Path:
     lines = ["[nogat]", f"data_dir = {json.dumps(str(data_dir))}", ""]
     if public_url is not None:
         lines += [
@@ -186,8 +232,28 @@ def _nogat_toml(path: Path, data_dir: Path, *, public_url: str | None) -> Path:
             'mail_provider = "Example Mail"',
             "",
         ]
+    if instance is not None:
+        lines += [instance]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _instance_files() -> dict[str, str]:
+    """The files an instance names beside its ``nogat.toml``: area, logo and regulamin."""
+    from obserwator.gui import WEB_DIR
+
+    draft = (WEB_DIR / "nogat" / "nogat-terms-operator.md").read_text(encoding="utf-8")
+    regulamin = (
+        draft[draft.index("# Regulamin") :]
+        .replace("{{operator_address}}", OPERATOR_ADDRESS)
+        .replace("{{operator_register}}", "KRS 0000000000")
+    )
+    return {
+        "area.geojson": json.dumps({"type": "Polygon", "coordinates": [INSTANCE_AREA]}),
+        "logo.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="24"'
+        ' viewBox="0 0 48 24"><rect width="48" height="24" rx="4" fill="#1f7a5c"/></svg>',
+        "regulamin.md": regulamin,
+    }
 
 
 def _start(
@@ -197,8 +263,9 @@ def _start(
     public: bool = False,
     hydrolog: str | None = None,
     recorded: bool = True,
+    instance: str | None = None,
 ) -> _Server:
-    """A GUI server on ``root``; its own files under ``work``."""
+    """A GUI server on ``root``; its own files under ``work``, an instance's beside them."""
     from obserwator.gui._app import build_app
     from obserwator.gui._config import GuiConfig
     from obserwator.gui._live import CurrentData, Pmaxtp
@@ -206,14 +273,24 @@ def _start(
     port = _free_port()
     url = f"http://127.0.0.1:{port}/"
     work.mkdir(parents=True, exist_ok=True)
+    if instance is not None:
+        for name, text in _instance_files().items():
+            (work / name).write_text(text, encoding="utf-8")
     toml = _nogat_toml(
-        work / "nogat.toml", work / "data", public_url=url if public else None
+        work / "nogat.toml",
+        work / "data",
+        public_url=url if public else None,
+        instance=instance,
     )
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("NOGAT_CONFIG", str(toml))
         # An empty value is ignored by the settings (env_ignore_empty): "none" is no basemap
         patch.setenv("OBSERWATOR_GUI_BASEMAP_URL", "none")
         patch.delenv("OBSERWATOR_ROOT", raising=False)
+        if instance is not None:
+            # An instance refuses a weak admin key (ADR-025): these servers have none
+            patch.delenv("OBSERWATOR_ADMIN_API_KEY", raising=False)
+            patch.delenv("OBSERWATOR_ADMIN_API_KEY_FILE", raising=False)
         if hydrolog:
             patch.setenv("OBSERWATOR_HYDROLOG_COMMAND", hydrolog)
         else:
@@ -285,6 +362,38 @@ def public_url(gui_root, tmp_path_factory) -> Iterator[str]:
     """The GUI on the fixture root as a public deployment (``[nogat.operator]``)."""
     work = tmp_path_factory.mktemp("gui-public")
     with _start(gui_root, work, public=True) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def operator_url(gui_root, tmp_path_factory) -> Iterator[str]:
+    """The GUI on the fixture root as an operator's public instance (`OPERATOR_INSTANCE`)."""
+    work = tmp_path_factory.mktemp("gui-operator")
+    with _start(gui_root, work, public=True, instance=OPERATOR_INSTANCE) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def hidden_url(gui_root, tmp_path_factory) -> Iterator[str]:
+    """The GUI on the fixture root as an instance with IMGW-PIB hidden (`HIDDEN_INSTANCE`)."""
+    work = tmp_path_factory.mktemp("gui-hidden")
+    with _start(gui_root, work, instance=HIDDEN_INSTANCE) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def featured_url(gui_root, tmp_path_factory) -> Iterator[str]:
+    """The GUI on the fixture root as an instance featuring ČHMÚ (`FEATURED_INSTANCE`)."""
+    work = tmp_path_factory.mktemp("gui-featured")
+    with _start(gui_root, work, instance=FEATURED_INSTANCE) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def no_pmaxtp_url(stored_root, tmp_path_factory) -> Iterator[str]:
+    """`stored_url`'s root as an instance without PMAXTP (`NO_PMAXTP_INSTANCE`)."""
+    work = tmp_path_factory.mktemp("gui-no-pmaxtp")
+    with _start(stored_root, work, instance=NO_PMAXTP_INSTANCE) as server:
         yield server.url
 
 

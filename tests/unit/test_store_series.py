@@ -59,7 +59,7 @@ def read_index(report):
     return json.loads(report.version.read_text(encoding="utf-8"))
 
 
-def series_versions(root, slug="hydro_daily"):
+def series_versions(root, slug="imgw_hydro_daily"):
     base = root / "series" / "versions" / slug
     return sorted(base.iterdir()) if base.exists() else []
 
@@ -94,7 +94,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
     before = tree(root), tree(data)
     plan = check_series(data, raw_root=root, dataset=HYDRO)
     assert (tree(root), tree(data)) == before
-    assert plan.series_state == {"hydro_daily": "missing"}
+    assert plan.series_state == {"imgw_hydro_daily": "missing"}
     assert [item.status for item in plan.items] == ["current"] * 3
     assert {item.local_sha256 for item in plan.items} == {
         entry.sha256 for entry in written
@@ -106,7 +106,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
 
     assert build_series(data, raw_root=root, dataset=HYDRO).status == "new"
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
 
     archive = archive_files(HYDRO, years=[2024])[0]
@@ -119,7 +119,7 @@ def test_check_series_is_offline_read_only_and_tracks_state(root, data):
         ),
     )
     outdated = check_series(data, raw_root=root, dataset=HYDRO)
-    assert outdated.series_state == {"hydro_daily": "outdated"}
+    assert outdated.series_state == {"imgw_hydro_daily": "outdated"}
     assert outdated.actions[0].status == "newer"
 
     cancelled = check_series(data, raw_root=root, dataset=HYDRO, cancel=lambda: True)
@@ -134,7 +134,7 @@ def test_daily_hydro_snapshot_covers_every_day_and_all_stations(root, data):
     assert report.status == "new" and report.stations == 2 and report.problems == ()
     assert set(report.source_files) == {entry.path for entry in written}
     version_dir = report.version.parent
-    assert version_dir.parent == data / "series/versions/hydro_daily"
+    assert version_dir.parent == data / "series/versions/imgw_hydro_daily"
 
     raw = report.version.read_bytes()
     index = json.loads(raw)
@@ -276,6 +276,69 @@ def test_meteo_snapshot_has_hydrological_year_leap_day_and_accumulated(root, dat
     ]
 
 
+def _o_d_archive(root, month, rows):
+    """Store IMGW-PIB's daily precipitation archive of a month of 2024 with these rows."""
+    (archive,) = archive_files(
+        "pl.imgw.meteo_precip_daily", years=[2024], months=[month]
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(f"o_d_{month:02d}_2024.csv", "".join(rows).encode("cp1250"))
+    content = buffer.getvalue()
+    response = DownloadResult(content, archive.url, SIGNAL[0], SIGNAL[1], len(content))
+    write_archive(root, archive=archive, response=response)
+
+
+def test_precip_total_after_missing_days_of_the_previous_archive_is_accumulated(
+    root, data
+):
+    # BORUCINO 254170210 (T24 of the formula audit of 2026-11-18): no reading from
+    # Friday 28 to Sunday 30 June 2024, the last rows of 2024_06_o.zip, then 13.1 mm on
+    # Monday 1 July, the first row of 2024_07_o.zip: the weekend's total
+    borucino = '"254170210","BORUCINO{}"'.format(" " * 22)
+    june = [
+        f'{borucino},"2024","06","{day}",,"9",,,"9",,"8",,"8",,"9"\n'
+        for day in (26, 27)
+    ] + [
+        f'{borucino},"2024","06","{day}",,"8",,,"8",,"8",,"8",,"8"\n'
+        for day in (28, 29, 30)
+    ]
+    july = [
+        f'{borucino},"2024","07","{day:02d}",{value},,"W",,"9",,"8",,"8",,"9"\n'
+        for day, value in ((1, "13.1"), (2, "23.0"), (3, "0.1"))
+    ]
+    # A station without a reading on 30 June whose July starts on the 2nd: its
+    # 1 July has no precipitation, so the 2nd is one day's
+    other = '"254170220","OTHER"'
+    june.append(f'{other},"2024","06","30",,"8",,,"8",,"8",,"8",,"8"\n')
+    july.append(f'{other},"2024","07","02",4.2,,"W",,"9",,"8",,"8",,"9"\n')
+    _o_d_archive(root, 6, june)
+    _o_d_archive(root, 7, july)
+    report = build_series(data, raw_root=root, dataset="pl.imgw.meteo_precip_daily")
+    rows = {
+        row["date"]: (row["P_value"], row["P_flag"])
+        for row in station_table(report, "254170210").to_pylist()
+    }
+    assert [rows[date(2024, 6, day)] for day in (27, 28, 29, 30)] == [
+        (0.0, "no_phenomenon"),
+        (None, "missing"),
+        (None, "missing"),
+        (None, "missing"),
+    ]
+    assert rows[date(2024, 7, 1)] == (13.1, "accumulated")
+    assert rows[date(2024, 7, 2)] == (23.0, "value")
+    assert (
+        read_index(report)["stations"]["254170210"]["variables"]["P"]["accumulated"]
+        == 1
+    )
+    others = {
+        row["date"]: (row["P_value"], row["P_flag"])
+        for row in station_table(report, "254170220").to_pylist()
+    }
+    assert others[date(2024, 7, 1)] == (0.0, "no_phenomenon")
+    assert others[date(2024, 7, 2)] == (4.2, "value")
+
+
 def test_monthly_and_semiannual_snapshots(root, data):
     store_archives(root, "pl.imgw.hydro_monthly", [2024])
     monthly = build_series(data, raw_root=root, dataset="pl.imgw.hydro_monthly")
@@ -408,7 +471,7 @@ def test_second_build_is_reused_without_parquet_writer(root, data, monkeypatch):
     assert [entry.status for entry in relabeled] == ["relabeled"]
     assert build_series(data, raw_root=root, dataset=HYDRO).status == "unchanged"
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
     assert len(series_versions(data)) == 1
 
@@ -479,7 +542,7 @@ def test_reverted_input_builds_new_current_series_instead_of_reusing_old(root, d
         == third.version
     )
     assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-        "hydro_daily": "current"
+        "imgw_hydro_daily": "current"
     }
     again = build_series(data, raw_root=root, dataset=HYDRO)
     assert (again.status, again.version) == ("unchanged", third.version)
@@ -501,7 +564,7 @@ def test_alternating_input_under_dominating_label_keeps_series_current(root, dat
             == report.version
         )
         assert check_series(data, raw_root=root, dataset=HYDRO).series_state == {
-            "hydro_daily": "current"
+            "imgw_hydro_daily": "current"
         }
     assert {version.parent.name[:10] for version in built} == {"2026-12-01"}
     assert built[4].read_bytes() == built[2].read_bytes() == built[0].read_bytes()

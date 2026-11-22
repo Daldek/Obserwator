@@ -43,8 +43,8 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |---|---------|--------|-------------|
 | FR-1.1 | Real-time data (IMGW API) | Implemented | Current hydro/meteo/synop data |
 | FR-1.2 | Archive data (ZIP/CSV) | Implemented | Dataset registry (21 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
-| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmi.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
-| FR-1.4 | PMAXTP data | Implemented | Probabilistic max precipitation (IMGW-PIB grid only) |
+| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmu.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, since 3.1.0 also the snow depth and new snow; station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
+| FR-1.4 | PMAXTP data | Implemented | Maximum precipitation of a given duration and probability of exceedance (IMGW-PIB grid only) |
 | FR-1.5 | Warnings | Implemented | Hydro/meteo warnings from API |
 | FR-1.6 | Versioned store | Implemented (3.0.0) | Immutable versions with provenance (both providers) in a raw root (archives, station sources, PMAXTP cells) and a data root (Parquet series, `stations.geojson` per provider, Hydrolog's stored analyses; ADR-016, ADR-017), freshness plan, canonical content (`content_sha256`) and the observation register for ČHMÚ |
 | FR-1.7 | Projects (pins of store versions) | Moved to Archiwista (ADR-008, 2026-10-31) | Obserwator's project manifest and the `imgw project` command group are removed; Archiwista keeps projects in `archiwista-project/1` and pins versions by the store's `sha256` and `content_sha256` |
@@ -95,14 +95,16 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-6.7 | Language negotiation (`Accept-Language`, `Content-Language`) | Implemented |
 | FR-6.8 | Agent guide `GET /llms.txt` | Implemented |
 | FR-6.9 | MCP Streamable HTTP `/mcp` (`OBSERWATOR_MCP_ENABLED`) | Implemented — read and plan only |
-| FR-6.10 | Store commands | Implemented — only with the server's `OBSERWATOR_RAW_ROOT` (raw root) and `OBSERWATOR_ROOT` (data root); writes need `OBSERWATOR_STORE_WRITES_ENABLED` + write token |
+| FR-6.10 | Store commands | Implemented — only with the server's `OBSERWATOR_RAW_ROOT` (raw root) and `OBSERWATOR_ROOT` (data root); writes need `OBSERWATOR_STORE_WRITES_ENABLED` + write token (`OBSERWATOR_STORE_WRITE_TOKEN` or `…_FILE`) |
 | FR-6.11 | Request logging (Nogat's `nogat_logging`: `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl`, kept 14 days, no client addresses) | Implemented (ADR-019) |
+| FR-6.14 | Cross-origin access only from the configured origins (`OBSERWATOR_CORS_ORIGINS`, none by default), never with credentials; the security headers the GUI sends (`nosniff`, `Referrer-Policy`, `Permissions-Policy`) | Implemented (3.1.0) |
+| FR-6.15 | An operator's instance (`[obserwator.instance]` of `nogat.toml`): the providers and the area served, filtered on the server for every route | Implemented (3.1.0, ADR-025) |
 
 ### Not Implemented
 
 | ID | Requirement | Status | Notes |
 |---|-------------|--------|-------|
-| FR-6.12 | API key validation | Not Implemented | Keys managed via CLI but not enforced |
+| FR-6.12 | API key validation | Not planned | The REST API keys of `obserwator admin` are checked by nothing, deprecated and removed in v4.0.0 (ADR-025 D10); store writes use the one write token |
 | FR-6.13 | Per-key rate limiting | Not Implemented | Only Nginx-level limiting |
 
 ---
@@ -128,6 +130,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-5.11 | Offline map without a basemap (the packaged borders) | Implemented |
 | FR-5.12 | Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms (linked from the left panel, the app menu and the welcome window; the statement of DEV-15.8 in § 3 of the terms), rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented |
 | FR-5.13 | Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` (or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`), not a REST API key | Implemented (ADR-020) |
+| FR-5.20 | An operator's instance (ADR-025): providers `visible`, `hidden` or `off`, a featured provider with the others faded (`others_opacity`) until „Pokaż inne źródła”, an area (`focus` or `clip`), the start view, PMAXTP on or off, the operator's title, logo and regulamin | Implemented (3.1.0) |
 | FR-5.14 | HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
@@ -150,7 +153,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |---|-------------|--------|
 | FR-7.1 | Installation from Git by tag (not on PyPI; README "Install") | Implemented |
 | FR-7.2 | `obserwator datasets`, `obserwator stations`, `obserwator current` (replace `imgw fetch`/`imgw list` of 2.x) | Implemented (3.0.0, generated from the command catalog; `--provider`, `--stations` for ČHMÚ) |
-| FR-7.3 | `obserwator admin` command (REST API keys) | Implemented |
+| FR-7.3 | `obserwator admin` command (REST API keys) | Implemented; deprecated, removed in v4.0.0 (ADR-025 D10) |
 | FR-7.4 | `obserwator server` command | Implemented |
 | FR-7.5 | `obserwator mcp` command (MCP server on stdio) | Implemented (3.0.0, `obserwator[mcp]`) |
 | FR-7.6 | `obserwator gui serve` command (the GUI) | Implemented (extra `gui` with `cli`, ADR-013) |
@@ -175,7 +178,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 | NFR-3 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
 | NFR-4 | Unit and contract tests | Implemented | 3325 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-15); Python = CLI = REST = MCP contract |
 | NFR-5 | GUI browser tests | Implemented | 152 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-15) |
-| NFR-6 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmi_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
+| NFR-6 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmu_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
 | NFR-7 | API response time < 2s | Implemented | For proxied requests |
 | NFR-8 | Online documentation | Implemented | Swagger at `/docs` |
 
@@ -211,7 +214,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 ## 10. Versioning
 
 - SemVer for API and CLI/GUI package
-- Current version: 3.0.0 (release notes: `docs/CHANGELOG.md`)
+- Current version: 3.1.0 (release notes: `docs/CHANGELOG.md`)
 - Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ and agent support add only optional fields within `/1`; the project manifest contract left with the projects (ADR-008)
 
 ---

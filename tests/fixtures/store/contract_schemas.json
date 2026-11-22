@@ -518,15 +518,14 @@
                   },
                   "location_source": {
                     "enum": [
-                      "api_hydro",
-                      "api_meteo",
+                      "pl.imgw.hydro_now",
+                      "pl.imgw.meteo_now",
                       "static",
                       "user",
-                      "chmi_hydro_now",
-                      "chmi_hydro_meta3",
-                      "chmi_hydro_stations",
-                      "chmi_meteo_now",
-                      "chmi_meteo_stations",
+                      "cz.chmu.hydro_now",
+                      "cz.chmu.hydro_stations",
+                      "cz.chmu.meteo_now",
+                      "cz.chmu.meteo_stations",
                       null
                     ]
                   },
@@ -1304,7 +1303,7 @@
       "producer_version": "3.0.0",
       "dataset": "pl.imgw.hydro_daily",
       "country": "PL",
-      "provider": "IMGW-PIB",
+      "provider": "IMGW",
       "request": {
         "server_path": "dane_hydrologiczne/dobowe/2024/codz_2024.zip",
         "year": 2024,
@@ -1442,7 +1441,7 @@
         }
       ],
       "series_state": {
-        "hydro_daily": "outdated"
+        "imgw_hydro_daily": "outdated"
       },
       "actions": []
     },
@@ -1477,7 +1476,7 @@
       "schema": "obserwator-observation/1",
       "producer": "obserwator",
       "producer_version": "3.1.0",
-      "dataset": "cz.chmi.hydro_daily",
+      "dataset": "cz.chmu.hydro_daily",
       "seen_at": "2026-10-19T06:00:00Z",
       "url": "https://opendata.chmi.cz/hydrology/historical/data/daily/H_0-203-1-001000_DQ_2025.json",
       "last_modified": "Mon, 19 Oct 2026 03:12:44 GMT",
@@ -1485,7 +1484,7 @@
       "size_bytes": 21702,
       "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
       "content_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "content_form": "chmi-json/1",
+      "content_form": "chmu-json/1",
       "same_content_as": "2026-05-21_00000000"
     },
     "obserwator-result/1": {

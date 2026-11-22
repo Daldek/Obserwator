@@ -125,7 +125,7 @@ LIVE_READS = [
     (
         find_stations,
         find_stations_async,
-        {"kind": "hydro", "provider": "IMGW-PIB"},
+        {"kind": "hydro", "provider": "IMGW"},
         HYDRO_LIST_URL,
         '"149190310","SAN ESCOBAR","Raba (2138)"\n'.encode("cp1250"),
     ),
@@ -176,6 +176,8 @@ async def test_live_read_async_twin_returns_identical_result(
     respx_mock, sync, asynchronous, kwargs, url, body
 ):
     respx_mock.get(url).mock(side_effect=lambda _: _respond(body))
+    # A live IMGW-PIB station search also reads the current-data API (coordinates).
+    respx_mock.get(f"{API}/hydro").respond(json=HYDRO_ITEMS)
     result = sync(**kwargs)
     assert result
     assert await asynchronous(**kwargs) == result

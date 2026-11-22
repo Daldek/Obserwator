@@ -134,7 +134,7 @@ MESSAGES = {
         "Źródło {source}: powtórzony kod stacji {code}; katalog używa pierwszego "
         "wiersza",
     ),
-    "user_locations_unknown_codes_chmi": Text(
+    "user_locations_unknown_codes_chmu": Text(
         "User location file: {count} codes outside the ČHMÚ metadata and series "
         "(e.g. {unknown}); the user file only completes locations",
         "Plik położeń użytkownika: {count} kodów spoza metadanych ČHMÚ i szeregów "
@@ -248,11 +248,50 @@ MESSAGES = {
         "obserwator store sync --root {root} --datasets {dataset} (jedno zapytanie "
         "na stację mapy hydro.imgw.pl)",
     ),
-    "no_static_locations": Text(
-        "No local location file {static_path}; the static source was skipped (python "
-        "-m obserwator.reference_data downloads the IMGW-PIB data)",
-        "Brak lokalnego pliku położeń {static_path}; źródło static pominięte (dane "
-        "IMGW-PIB pobiera python -m obserwator.reference_data)",
+    "static_missing": Text(
+        "No local location file {static_path} (source static): the station locations "
+        "of the hydro.imgw.pl map were skipped. IMGW-PIB data are not shipped with "
+        "Obserwator: python -m obserwator.reference_data downloads the file; then run "
+        "store catalog again",
+        "Brak lokalnego pliku położeń {static_path} (źródło static): pominięto położenia "
+        "stacji z mapy hydro.imgw.pl. Dane IMGW-PIB nie są dołączone do Obserwatora: "
+        "plik pobiera python -m obserwator.reference_data; potem uruchom ponownie "
+        "store catalog",
+    ),
+    "static_missing_stations": Text(
+        "No local location file {static_path} (source static): {count} hydrological "
+        "stations of the hydro.imgw.pl map have no location (e.g. {example}), since "
+        "the current-data API gives no valid point for them. IMGW-PIB data are not "
+        "shipped with Obserwator: python -m obserwator.reference_data downloads the "
+        "file; then run store catalog again",
+        "Brak lokalnego pliku położeń {static_path} (źródło static): {count} stacji "
+        "hydrologicznych z mapy hydro.imgw.pl nie ma położenia (np. {example}), bo API "
+        "danych bieżących nie podaje dla nich poprawnego punktu. Dane IMGW-PIB nie są "
+        "dołączone do Obserwatora: plik pobiera python -m obserwator.reference_data; "
+        "potem uruchom ponownie store catalog",
+    ),
+    "meteo_kind_without_series": Text(
+        "meteo_kind is null for every meteorological station: it comes from the "
+        "current series of {datasets} in the data root {root}, which holds none of "
+        "them. Build them (obserwator series build --root {root} --raw-root {raw} "
+        "--dataset {dataset}, one call per dataset), then run store catalog again",
+        "meteo_kind jest pusty dla każdej stacji meteorologicznej: pochodzi z "
+        "bieżących szeregów {datasets} w katalogu danych {root}, a nie ma w nim "
+        "żadnego z nich. Zbuduj je (obserwator series build --root {root} --raw-root "
+        "{raw} --dataset {dataset}, jedno wywołanie na zbiór), potem uruchom ponownie "
+        "store catalog",
+    ),
+    "meteo_kind_partial_series": Text(
+        "meteo_kind comes from the current series of {sources} in the data root "
+        "{root} (synop before climate before precipitation); the data root lacks "
+        "{datasets}, so a station of a missing series has a lower kind or none. "
+        "obserwator series build --root {root} --raw-root {raw} --dataset {dataset} "
+        "builds one; then run store catalog again",
+        "meteo_kind pochodzi z bieżących szeregów {sources} w katalogu danych {root} "
+        "(synop przed climate przed precipitation); w katalogu danych brak "
+        "{datasets}, więc stacja z brakującego szeregu ma niższy rodzaj albo żaden. "
+        "Szereg buduje obserwator series build --root {root} --raw-root {raw} "
+        "--dataset {dataset}; potem uruchom ponownie store catalog",
     ),
     "catalog_built": Text(
         "Built the catalog of {count} stations",

@@ -39,11 +39,12 @@ SHARED_KEYS: tuple[str, ...] = ("data_dir", "cache_dir", "state_dir", "lang")
 """Keys of ``[nogat]`` and ``NOGAT_<KEY>``: the same for every tool of the ecosystem."""
 CREDENTIAL_KEYS: tuple[str, ...] = (
     "store_write_token",
+    "store_write_token_file",
     "admin_api_key",
     "admin_api_key_file",
 )
 """Settings that only the environment may give (DEV-18.4): the REST server's store write
-token and the GUI's admin key, or the file holding it (Nogat DEV-15.13)."""
+token and the GUI's admin key, or the file holding each (Nogat DEV-15.13, ADR-025)."""
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ const FORMATS = { csv: "CSV", json: "JSON", parquet: "Parquet" };
 /** The names of the formats of the stored analyses. */
 const RESULT_FORMATS = { json: "JSON", csv: "CSV" };
 /** The daily hydrological datasets: the hand-off of daily values reads them. */
-const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmi.hydro_daily"];
+const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmu.hydro_daily"];
 
 /**
  * A command line with „Kopiuj” (also the PMAXTP view's, pmaxtp/result.js).
@@ -124,7 +124,11 @@ function ResultFiles({ code, analyses, stored }) {
               {
                 key: "file",
                 label: t("station.files.file"),
-                format: (_, row) => html`<a href=${api.analysisFileUrl(code, row.id)} download=${`${code}_${row.id}.json`}>JSON</a>${" · "}<a href=${api.analysesFileUrl(code, { format: "csv", analysis: row.id })} download=${`${code}_${row.id}.csv`}>CSV</a>`,
+                format: (_, row) => {
+                  const names = stored && stored.each ? stored.each[row.id] : null;
+                  if (!names) return "–";
+                  return html`<a href=${api.analysisFileUrl(code, row.id)} download=${names.json}>JSON</a>${" · "}<a href=${api.analysesFileUrl(code, { format: "csv", analysis: row.id })} download=${names.csv}>CSV</a>`;
+                },
               },
             ]}
             rows=${rows}

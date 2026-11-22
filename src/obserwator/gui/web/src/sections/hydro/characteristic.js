@@ -1,10 +1,12 @@
 // „Stany charakterystyczne” (Nogat plan H1, H2, H3): Hydrolog's `stats characteristic` of the
-// daily series (`characteristic.{H,Q,T}`) and of IMGW-PIB's half-year characteristics
-// (`characteristic.{H,Q,T}.half_years`): first degree per year and half-year, second degree
-// over the chosen years; `stats threshold-events` (`threshold_events.{H,Q}.<level>`) for
-// ČHMÚ's thresholds of the station's catalog entry and the characteristic levels SWW, SSW,
-// SNW (SWQ, SSQ, SNQ). IMGW-PIB's warning and alarm levels (hydro.imgw.pl, current values,
-// pl.imgw.hydro_details) are shown in „Informacje o stacji” and are not used here.
+// daily series (`characteristic.{H,Q,T}`) and of the half-year characteristics
+// (`characteristic.{H,Q,T}.half_years`: IMGW-PIB's published ones, or for a ČHMÚ station
+// those Obserwator computed of its daily series, the result's `derived` "half_years"): first
+// degree per year and half-year, second degree over the chosen years; `stats
+// threshold-events` (`threshold_events.{H,Q}.<level>`) for ČHMÚ's thresholds of the station's
+// catalog entry and the characteristic levels SWW, SSW, SNW (SWQ, SSQ, SNQ). IMGW-PIB's
+// warning and alarm levels (hydro.imgw.pl, current values, pl.imgw.hydro_details) are shown
+// in „Informacje o stacji” and are not used here.
 
 import { Chart, dayNumber, fmt, html, lang, t, tn, unit, useMemo } from "../../lib.js";
 import { periodName } from "../../words.js";
@@ -35,7 +37,7 @@ const ROWS = [
   ["row_min", "nwx", "nsx", "nnx"],
 ];
 /** The levels of `threshold_events.{H,Q}.<key>`: ČHMÚ's from the catalog, then Hydrolog's characteristic ones. */
-const CHMI_LEVELS = ["spa1", "spa2", "spa3", "q50", "drought"];
+const CHMU_LEVELS = ["spa1", "spa2", "spa3", "q50", "drought"];
 const OWN_LEVELS = ["swx", "ssx", "snx"];
 const LEVEL_CLASS = { spa1: "hy-lv-1", spa2: "hy-lv-2", spa3: "hy-lv-3", q50: "hy-lv-4", drought: "hy-lv-dry", swx: "hy-lv-c", ssx: "hy-lv-c", snx: "hy-lv-c" };
 const SHORT = { spa1: "SPA 1", spa2: "SPA 2", spa3: "SPA 3", q50: "Q50" };
@@ -46,13 +48,14 @@ function degree(result, period) {
   return period === "annual" ? result : result[period] || null;
 }
 
-function Matrix({ main, alt, period, variable }) {
+function Matrix({ main, alt, computed, period, variable }) {
   const values = degree(main, period);
   const other = degree(alt, period);
+  const altTitle = t(computed ? "hydro.characteristic.alt_title_computed" : "hydro.characteristic.alt_title");
   const cell = (key) => html`<td>
     <span class="hy-name">${main.labels[key]}</span>
     <strong>${fmtV(values[key], variable)}</strong>
-    ${other && html`<small class="hy-alt" title=${t("hydro.characteristic.alt_title")}>${fmtV(other[key], variable)}</small>`}
+    ${other && html`<small class="hy-alt" title=${altTitle}>${fmtV(other[key], variable)}</small>`}
   </td>`;
   return html`<div class="table-wrap"><table class="tbl hy-matrix">
     <thead><tr><th scope="col"></th>${["col_max", "col_mean", "col_min"].map((col) => html`<th scope="col">${t(`hydro.characteristic.${col}`)}</th>`)}</tr></thead>
@@ -68,7 +71,7 @@ function missingYears(result) {
   return out;
 }
 
-function SecondCaption({ main, alt, fromDaily, unitText }) {
+function SecondCaption({ main, alt, computed, fromDaily, unitText }) {
   const parts = [];
   if (fromDaily) {
     parts.push(t("hydro.characteristic.caption_daily", { from: main.first_year, to: main.last_year, years: main.period_years, unit: unitText }));
@@ -76,14 +79,16 @@ function SecondCaption({ main, alt, fromDaily, unitText }) {
     if (missing.length) parts.push(t("hydro.characteristic.caption_missing", { years: missing.join(", ") }));
     const partial = main.years.filter((row) => row.annual.days_with_data < row.annual.days).map((row) => row.year);
     if (partial.length) parts.push(t("hydro.characteristic.caption_partial", { years: partial.join(", ") }));
-    if (alt) parts.push(t("hydro.characteristic.caption_half", { from: alt.first_year, to: alt.last_year, years: alt.period_years }));
+    const half = computed ? "hydro.characteristic.caption_half_computed" : "hydro.characteristic.caption_half";
+    if (alt) parts.push(t(half, { from: alt.first_year, to: alt.last_year, years: alt.period_years }));
   } else {
-    parts.push(t("hydro.characteristic.caption_half_only", { from: main.first_year, to: main.last_year, years: main.period_years, unit: unitText }));
+    const only = computed ? "hydro.characteristic.caption_half_only_computed" : "hydro.characteristic.caption_half_only";
+    parts.push(t(only, { from: main.first_year, to: main.last_year, years: main.period_years, unit: unitText }));
   }
   return html`<p class="muted hy-caption">${parts.join(" ")}</p>`;
 }
 
-/** The rows of the first degree from the source chosen: IMGW-PIB's half-years, the daily series, or both. */
+/** The rows of the first degree from the source chosen: the half-years, the daily series, or both. */
 function firstRows(source, daily, half) {
   const rows = (result, from) => (result ? result.years.map((row) => ({ ...row, from })) : []);
   if (source === "half") return rows(half, "half");
@@ -92,7 +97,7 @@ function firstRows(source, daily, half) {
   return [...rows(half, "half"), ...rows(daily, "daily").filter((row) => !published.has(row.year))].sort((a, b) => a.year - b.year);
 }
 
-function FirstDegree({ rows, labels, variable, period, unitText }) {
+function FirstDegree({ rows, labels, computed, variable, period, unitText }) {
   const names = [labels.min, labels.mean, labels.max];
   const spec = useMemo(() => {
     const first = rows[0].year;
@@ -120,7 +125,7 @@ function FirstDegree({ rows, labels, variable, period, unitText }) {
     };
   }, [rows, variable, period, lang()]);
   const source = (row) => {
-    if (row.from === "half") return "IMGW-PIB";
+    if (row.from === "half") return computed ? t("hydro.characteristic.source_half_computed") : "IMGW-PIB";
     const part = row.part;
     return part.days_with_data < part.days
       ? t("hydro.characteristic.from_daily_part", { n: fmt(part.days_with_data, 0), days: fmt(part.days, 0) })
@@ -142,7 +147,7 @@ function FirstDegree({ rows, labels, variable, period, unitText }) {
 
 /** The value of a level: ČHMÚ's from the station's catalog entry, a characteristic one from Hydrolog. */
 function levelValue(key, variable, station, characteristic) {
-  if (CHMI_LEVELS.includes(key)) {
+  if (CHMU_LEVELS.includes(key)) {
     const thresholds = (station.properties && station.properties.thresholds) || {};
     const value = thresholds[variable] && thresholds[variable][key];
     return typeof value === "number" ? value : null;
@@ -151,7 +156,7 @@ function levelValue(key, variable, station, characteristic) {
 }
 
 function levelName(key, characteristic) {
-  if (CHMI_LEVELS.includes(key)) return t(`hydro.levels.name.${key}`);
+  if (CHMU_LEVELS.includes(key)) return t(`hydro.levels.name.${key}`);
   return `${characteristic.labels[key]} (${characteristic.first_year}–${characteristic.last_year})`;
 }
 
@@ -175,16 +180,16 @@ function Events({ result, variable, unitText }) {
 }
 
 function Levels({ station, code, session, ids, years, choice, setChoice }) {
-  const usable = ["H", "Q"].filter((v) => [...CHMI_LEVELS, ...OWN_LEVELS].some((key) => ids.has(`threshold_events.${v}.${key}`)));
+  const usable = ["H", "Q"].filter((v) => [...CHMU_LEVELS, ...OWN_LEVELS].some((key) => ids.has(`threshold_events.${v}.${key}`)));
   const variable = usable.includes(choice.lv) ? choice.lv : usable[0];
-  const keys = [...CHMI_LEVELS, ...OWN_LEVELS].filter((key) => ids.has(`threshold_events.${variable}.${key}`));
+  const keys = [...CHMU_LEVELS, ...OWN_LEVELS].filter((key) => ids.has(`threshold_events.${variable}.${key}`));
   const characteristic = useAnalysis(code, ids.has(`characteristic.${variable}`) ? `characteristic.${variable}` : null, years);
   const level = keys.includes(choice.level) ? choice.level : keys.find((key) => key.startsWith("spa")) || keys[0];
   const events = useAnalysis(code, level ? `threshold_events.${variable}.${level}` : null, years);
   const own = characteristic.result;
   const levels = keys
     .map((key) => ({ key, value: levelValue(key, variable, station, own) }))
-    .filter((item) => item.value !== null && (CHMI_LEVELS.includes(item.key) || own));
+    .filter((item) => item.value !== null && (CHMU_LEVELS.includes(item.key) || own));
   const dataset = dailyDataset(station);
   const from = own ? own.first_year : years.first_year;
   const to = own ? own.last_year : years.last_year;
@@ -224,7 +229,7 @@ function Levels({ station, code, session, ids, years, choice, setChoice }) {
   return html`<${Section} title=${t("hydro.levels.title")} info=${t("hydro.levels.info")} guide="metody-characteristic-progi" states=${[events]}>
     ${usable.length > 1 && html`<${Option} label=${t("hydro.common.variable")}><${VariableSeg} value=${variable} variables=${usable} onChange=${(v) => setChoice({ lv: v, level: undefined })} /></${Option}>`}
     <ul class="hy-levels">${levels.map(
-      (item) => html`<li class=${LEVEL_CLASS[item.key]}><i aria-hidden="true"></i>${levelName(item.key, own)}: <strong>${withUnit(item.value, variable, unitText)}</strong> <small>${CHMI_LEVELS.includes(item.key) ? "ČHMÚ" : "Hydrolog"}</small></li>`,
+      (item) => html`<li class=${LEVEL_CLASS[item.key]}><i aria-hidden="true"></i>${levelName(item.key, own)}: <strong>${withUnit(item.value, variable, unitText)}</strong> <small>${CHMU_LEVELS.includes(item.key) ? "ČHMÚ" : "Hydrolog"}</small></li>`,
     )}</ul>
     ${series.error ? html`<p class="ana-error">${series.error.message}</p>` : daily && html`<${Chart} spec=${daily} />`}
     ${levels.length > 0 &&
@@ -257,6 +262,8 @@ export function Characteristic({ station, session, analyses }) {
   const fromDaily = Boolean(daily.result);
   const main = daily.result || half.result;
   const alt = fromDaily ? half.result : null;
+  // ČHMÚ publishes no half-year characteristics: Obserwator computes them of its daily series
+  const computed = Boolean(half.data && half.data.derived === "half_years");
   const both = ids.has(`characteristic.${variable}`) && ids.has(`characteristic.${variable}.half_years`);
   const source = both ? opt.source : ids.has(`characteristic.${variable}`) ? "daily" : "half";
   const rows = firstRows(source, daily.result, half.result);
@@ -271,8 +278,8 @@ export function Characteristic({ station, session, analyses }) {
     </div>
     <${Section} title=${t("hydro.characteristic.second_title")} info=${t("hydro.characteristic.info")} guide="metody-characteristic-wartosci" states=${states}>
       ${main &&
-      html`<${Matrix} main=${main} alt=${alt} period=${opt.period} variable=${variable} />
-        <${SecondCaption} main=${main} alt=${alt} fromDaily=${fromDaily} unitText=${unitText} />
+      html`<${Matrix} main=${main} alt=${alt} computed=${computed} period=${opt.period} variable=${variable} />
+        <${SecondCaption} main=${main} alt=${alt} computed=${computed} fromDaily=${fromDaily} unitText=${unitText} />
         ${fromDaily && variable !== "T" && html`<${Handoff} code=${code} session=${session} variable=${variable} resolution="daily" from=${main.first_year} to=${main.last_year} doc=${daily.data} />`}`}
       <${Notices} states=${states} />
     </${Section}>
@@ -282,15 +289,15 @@ export function Characteristic({ station, session, analyses }) {
           value=${source}
           label=${t("hydro.characteristic.source")}
           options=${[
-            ["auto", t("hydro.characteristic.source_auto")],
-            ["half", t("hydro.characteristic.source_half")],
+            ["auto", t(computed ? "hydro.characteristic.source_auto_computed" : "hydro.characteristic.source_auto")],
+            ["half", t(computed ? "hydro.characteristic.source_half_computed" : "hydro.characteristic.source_half")],
             ["daily", t("hydro.characteristic.source_daily")],
           ]}
           onChange=${(v) => setOpt({ source: v })}
         /></${Option}>`}
       ${main &&
       (rows.length
-        ? html`<${FirstDegree} rows=${rows} labels=${main.first_degree_labels} variable=${variable} period=${opt.period} unitText=${unitText} />`
+        ? html`<${FirstDegree} rows=${rows} labels=${main.first_degree_labels} computed=${computed} variable=${variable} period=${opt.period} unitText=${unitText} />`
         : html`<p class="hy-note">${t("hydro.characteristic.none", { variable })}</p>`)}
     </${Section}>
     <${Levels} station=${station} code=${code} session=${session} ids=${ids} years=${years} choice=${opt} setChoice=${setOpt} />

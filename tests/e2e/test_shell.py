@@ -241,3 +241,26 @@ def test_on_a_phone_the_panels_are_bottom_sheets(open_page):
     assert round(foot["y"] + foot["height"]) == 844
     page.keyboard.press("Escape")
     expect(sheet).to_be_hidden()
+
+
+def test_on_a_phone_a_long_station_name_is_cut_inside_the_bar(open_page):
+    name = "Fiktivní Ves-Horní"
+    page = open_page(
+        f"?station={FIXTURE_STATIONS['meteo_chmu']}", width=390, height=844
+    )
+    page.keyboard.press("Escape")  # the link opened the station's sheet
+    button = page.locator(".map-bar .panel-toggle.right")
+    expect(button).to_have_attribute("title", name)
+    expect(button.locator(".label")).to_have_text(name)
+    box = button.bounding_box()
+    bar = page.locator(".map-bar")
+    assert box is not None
+    # the button ends inside the screen and the bar does not scroll sideways
+    assert box["x"] + box["width"] <= 390
+    assert bar.evaluate("(e) => e.scrollWidth <= e.clientWidth")
+    # the name is cut with an ellipsis, the other buttons are whole
+    label = button.locator(".label")
+    assert label.evaluate("(e) => e.scrollWidth > e.clientWidth")
+    expect(label).to_have_css("text-overflow", "ellipsis")
+    left = page.locator(".map-bar .panel-toggle.left .label")
+    assert left.evaluate("(e) => e.scrollWidth <= e.clientWidth")

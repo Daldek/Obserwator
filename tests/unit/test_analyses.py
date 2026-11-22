@@ -48,14 +48,13 @@ from obserwator import (
 )
 from obserwator._hydrolog import program_words
 from obserwator.attribution import Attribution, attribution
+from obserwator.store.export import _export_half_years
 from tests.contract.support import (
     BEZ_Q,
     DAILY,
     FAKE_HYDROLOG,
     PRECIP,
-    PROCESSED,
     RABA,
-    SOURCE,
     command_document,
     command_line,
     load,
@@ -75,9 +74,9 @@ ANSWERS: dict[str, Any] = json.loads(
 )
 FAILING = {key for key, answer in ANSWERS.items() if "error" in answer}
 VERSION = "1.0.0.dev0"  # the fake's version
-SLOTS = {"IMGW-PIB": "pl.imgw", "CHMI": "cz.chmi"}
+SLOTS = {"IMGW": "pl.imgw", "CHMU": "cz.chmu"}
 METEO = "123750000"  # an IMGW-PIB precipitation station of the fixture
-CHMI_METEO = "0-203-0-90001"  # a ČHMÚ climate station of the fixture
+CHMU_METEO = "0-203-0-90001"  # a ČHMÚ climate station of the fixture
 # The options of the series files Hydrolog reads (AnalysisInput.option).
 SERIES_FILES = {
     item.option
@@ -203,7 +202,9 @@ def recreate_series(root: Path, version: Path) -> Path:
 
     The envelopes name them (``inputs``) in the scratch directory of the build,
     which the build removed; each export gives the bytes the build gave
-    Hydrolog (``export_sha256`` of the record).
+    Hydrolog (``export_sha256`` of the record), and the half-year
+    characteristics computed of a series are computed again where an analysis
+    read them (``derived``).
     """
     stations = records(version)
     named = {
@@ -216,13 +217,23 @@ def recreate_series(root: Path, version: Path) -> Path:
     (directory,) = {path.parent for path in named}
     assert not directory.exists()
     for code, record in stations.items():
+        derived = {
+            key
+            for entry in record["results"]
+            if entry.get("derived") == "half_years"
+            for key in entry["datasets"]
+        }
         for item in record["inputs"]:
+            series = root / item["series_version"]
+            name = f"{code}_{get_dataset(item['dataset']).slug}"
             exported = export_series(
-                root / item["series_version"],
-                station=code,
-                output=directory / f"{code}_{get_dataset(item['dataset']).slug}.csv",
+                series, station=code, output=directory / f"{name}.csv"
             )
             assert exported.files[0].sha256 == item["export_sha256"]
+            if item["dataset"] in derived:
+                _export_half_years(
+                    series, station=code, output=directory / f"{name}_half_years.csv"
+                )
     assert all(path.is_file() for path in named)
     return directory
 
@@ -309,7 +320,7 @@ def test_build_stores_each_line_of_hydrolog_verbatim_with_its_record_and_sidecar
     report = build_analyses(root)
 
     assert (report.status, report.hydrolog_version) == ("new", VERSION)
-    assert [item.provider for item in report.providers] == ["IMGW-PIB", "CHMI"]
+    assert [item.provider for item in report.providers] == ["IMGW", "CHMU"]
     assert [(file.path, file.status) for file in report.files] == [
         (item.version, "new") for item in report.providers
     ]
@@ -350,6 +361,11 @@ def test_build_stores_each_line_of_hydrolog_verbatim_with_its_record_and_sidecar
                 assert result["sha256"] == sha256(version / result["file"])
                 assert (result["status"], result["error_code"]) == (
                     ("failed", "calculation_error") if failed else ("ok", None)
+                )
+                assert result["formula_versions"] == (
+                    {}
+                    if failed
+                    else ANSWERS[answer_key(result)].get("formula_versions", {})
                 )
                 files.add(result["file"])
             for source in record["inputs"]:  # the current series of the station
@@ -422,10 +438,11 @@ def test_a_rebuild_carries_every_station_until_hydrologs_version_changes(
     assert batches() == []
     assert snapshot(root / "analyses") == before
 
-    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
+    # Hydrolog's next development build of the same release (REL-1.1) computes anew.
+    monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.0.dev1")
     upgraded = build_analyses(root)
 
-    assert (upgraded.status, upgraded.hydrolog_version) == ("new", "1.0.1")
+    assert (upgraded.status, upgraded.hydrolog_version) == ("new", "1.0.0.dev1")
     assert [
         (item.status, item.computed, item.carried) for item in upgraded.providers
     ] == [("new", item.stations, 0) for item in upgraded.providers]
@@ -435,7 +452,7 @@ def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_othe
     tmp_path, built, fixture_raw_root, batches
 ):
     root = copy(built, tmp_path / "store")
-    (old,) = slot(root, "IMGW-PIB").iterdir()
+    (old,) = slot(root, "IMGW").iterdir()
     stored, kept = records(old), snapshot(old)
 
     def precipitation():
@@ -460,13 +477,13 @@ def test_a_new_series_version_recomputes_its_changed_stations_and_links_the_othe
 
     report = build_analyses(root)
 
-    imgw, chmi = report.providers
+    imgw, chmu = report.providers
     assert (imgw.status, imgw.computed, imgw.carried) == (
         "new",
         len(changed),
         len(stored) - len(changed),
     )
-    assert (chmi.status, chmi.computed) == ("unchanged", 0)
+    assert (chmu.status, chmu.computed) == ("unchanged", 0)
     assert called(batches()) == changed
     new = imgw.version.parent
     for code, record in records(new).items():
@@ -488,7 +505,7 @@ def test_stations_computes_only_the_chosen_stations_and_keeps_the_stored_ones(
 
     (imgw,) = first.providers
     assert (imgw.provider, imgw.status, imgw.stations, imgw.computed) == (
-        "IMGW-PIB",
+        "IMGW",
         "new",
         1,
         1,
@@ -583,9 +600,9 @@ def test_without_hydrologs_program_nothing_runs(
     ("station", "kind", "dataset", "lines"),
     [
         (RABA, "hydro", DAILY, attribution("imgw")),
-        (CHMI_METEO, "meteo", "cz.chmi.meteo_daily", attribution("chmi")),
+        (CHMU_METEO, "meteo", "cz.chmu.meteo_daily", attribution("chmu")),
     ],
-    ids=["IMGW-PIB", "CHMI"],
+    ids=["IMGW", "CHMU"],
 )
 def test_list_and_read_give_hydrologs_answers_with_their_provenance(
     station, kind, dataset, lines, built
@@ -615,6 +632,7 @@ def test_list_and_read_give_hydrologs_answers_with_their_provenance(
                 None,
             )
             assert result.error == {**ANSWERS[key]["error"], "command": summary.command}
+            assert (summary.formula_versions, result.formula_versions) == ({}, {})
         else:
             assert (result.status, result.error_code, result.error) == (
                 "ok",
@@ -624,6 +642,11 @@ def test_list_and_read_give_hydrologs_answers_with_their_provenance(
             assert result.envelope is not None
             assert result.envelope["result"] == ANSWERS[key]["result"]
             assert result.envelope["notices"] == ANSWERS[key]["notices"]
+            formulas = ANSWERS[key].get("formula_versions", {})
+            assert (summary.formula_versions, result.formula_versions) == (
+                formulas,
+                formulas,
+            )
     # A version given as its directory, main file or sidecar, or relative to the root.
     for given, root in (
         (version, None),
@@ -651,7 +674,7 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     ) == (
         "obserwator-analyses-export/1",
         RABA,
-        "IMGW-PIB",
+        "IMGW",
         summary.analyses_version,
         VERSION,
     )
@@ -665,6 +688,9 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
             )
         else:
             assert (result["result"], result["error"]) == (ANSWERS[key]["result"], None)
+            assert result["formula_versions"] == ANSWERS[key].get(
+                "formula_versions", {}
+            )
     assert Attribution(
         tuple(document["attribution"]), tuple(document["terms_notice"])
     ) == attribution("imgw")
@@ -683,8 +709,8 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     rows = text.splitlines(keepends=True)
     assert all(row.endswith("\r\n") for row in rows)
     assert rows[0] == (
-        "station,analysis,command,series_version,hydrolog_version,path,value,"
-        "attribution_source,attribution_processed,attribution,terms_notice\r\n"
+        "station,analysis,command,series_version,hydrolog_version,formula_versions,"
+        "path,value,derived,attribution,terms_notice\r\n"
     )
     table = list(csv.DictReader(io.StringIO(text, newline="")))
     keys = {name: answer_key(vars(summaries[name])) for name in chosen}
@@ -704,9 +730,19 @@ def test_export_gives_the_results_as_one_json_document_or_a_long_csv(built):
     assert {(row["series_version"], row["hydrolog_version"]) for row in table} == {
         (summary.inputs[0].series_version, VERSION)
     }
-    assert [
-        (row["attribution_source"], row["attribution_processed"]) for row in table
-    ] == [(SOURCE, PROCESSED), *[("", "")] * (len(table) - 1)]
+    assert {(row["analysis"], row["formula_versions"]) for row in table} == {
+        (
+            name,
+            ";".join(
+                f"{formula}={number}"
+                for formula, number in ANSWERS[keys[name]]
+                .get("formula_versions", {})
+                .items()
+            ),
+        )
+        for name in chosen
+        if keys[name] not in FAILING
+    }
     assert trailing_lines(table) == attribution("imgw")
 
 
@@ -741,7 +777,7 @@ def test_export_writes_one_file_and_replaces_it_only_with_force(tmp_path, built)
 )
 def test_a_tampered_stored_file_is_a_data_error(tampered, tmp_path, built):
     root = copy(built, tmp_path / "store")
-    (version,) = slot(root, "IMGW-PIB").iterdir()
+    (version,) = slot(root, "IMGW").iterdir()
     path = version / tampered
     path.write_bytes(path.read_bytes() + b" ")  # still JSON, no longer the stored bytes
 
@@ -839,10 +875,10 @@ def test_a_broken_analyses_version_is_refused_not_passed_over(
     tmp_path, built, monkeypatch
 ):
     root = copy(built, tmp_path / "store")
-    (older,) = slot(root, "IMGW-PIB").iterdir()
+    (older,) = slot(root, "IMGW").iterdir()
     monkeypatch.setenv("FAKE_HYDROLOG_VERSION", "1.0.1")
     assert build_analyses(root).status == "new"
-    (newer,) = set(slot(root, "IMGW-PIB").iterdir()) - {older}
+    (newer,) = set(slot(root, "IMGW").iterdir()) - {older}
     (newer / "analyses.json.meta.json").write_text("{", encoding="utf-8")
     before = snapshot(root / "analyses")
 

@@ -43,6 +43,11 @@ class Source:
         return list(self.records)
 
 
+def inline(run):
+    """Run a refresh at once, so that a test with a clock is deterministic."""
+    run()
+
+
 def meteo(code: str, name: str) -> StationFeature:
     return StationFeature(code, (19.8, 50.1), {"kind": "meteo", "name": name})
 
@@ -54,10 +59,10 @@ def report(index: str, name: str) -> SimpleNamespace:
     )
 
 
-def test_a_snapshot_is_asked_of_imgw_pib_at_most_once_in_ten_minutes(live):
+def test_a_snapshot_is_asked_of_imgw_at_most_once_in_ten_minutes(live):
     clock = Clock()
     source = Source(live.records["states"])
-    current = CurrentData({"states": source}, clock=clock)
+    current = CurrentData({"states": source}, clock=clock, start=inline)
 
     first = current.get("states")
     clock.now += CURRENT_TTL_S - 1
@@ -74,7 +79,7 @@ def test_a_snapshot_is_asked_of_imgw_pib_at_most_once_in_ten_minutes(live):
 def test_a_failed_refresh_keeps_the_last_snapshot_and_waits_a_minute(live):
     clock = Clock()
     source = Source(live.records["states"])
-    current = CurrentData({"states": source}, clock=clock)
+    current = CurrentData({"states": source}, clock=clock, start=inline)
     good = current.get("states")
     fetched_at, items = good.fetched_at, dict(good.items or {})
 
@@ -107,7 +112,7 @@ def test_a_source_that_never_answered_has_no_items_and_its_error(live):
     assert snapshot.error is live.outage
 
 
-def test_requests_at_the_same_time_ask_imgw_pib_once(live):
+def test_requests_at_the_same_time_ask_imgw_once(live):
     release = threading.Event()
     source = Source(live.records["meteo"])
 
@@ -131,6 +136,61 @@ def test_requests_at_the_same_time_ask_imgw_pib_once(live):
     assert source.calls == 1
     assert len(found) == 4
     assert all(snapshot.items == found[0].items for snapshot in found)
+
+
+def test_an_expired_snapshot_is_served_while_one_refresh_runs_in_the_background(live):
+    clock = Clock()
+    release = threading.Event()
+    source = Source(live.records["meteo"])
+    slow = threading.Event()  # set: the source waits for `release`
+
+    def fetch():
+        if slow.is_set():
+            release.wait(5)
+        return source()
+
+    current = CurrentData({"meteo": fetch}, clock=clock)
+    first = current.get("meteo")
+    slow.set()
+    clock.now += CURRENT_TTL_S
+
+    began = time.monotonic()
+    during = [current.get("meteo") for _ in range(3)]
+    waited = time.monotonic() - began
+    release.set()
+    for _ in range(100):  # the refresh ends in its own thread
+        if current.get("meteo").serial != first.serial:
+            break
+        time.sleep(0.02)
+    after = current.get("meteo")
+
+    assert waited < 1  # nobody waited for the slow source
+    assert all(snapshot is first for snapshot in during)
+    assert source.calls == 2  # one refresh for all requests
+    assert after.serial != first.serial
+    assert after.items == first.items
+
+
+def test_the_sources_of_one_request_are_fetched_at_the_same_time(live):
+    # Each source waits until all three are asked: one after another, they would fail.
+    together = threading.Barrier(3, timeout=5)
+
+    def source(name):
+        def fetch():
+            together.wait()
+            return list(live.records[name])
+
+        return fetch
+
+    names = ("states", "hydro", "meteo")
+    current = CurrentData({name: source(name) for name in names})
+
+    began = time.monotonic()
+    snapshots = current.get_many(names)
+
+    assert time.monotonic() - began < 5
+    assert all(snapshots[name].items for name in names)
+    assert len({snapshots[name].serial for name in names}) == 3
 
 
 def test_a_synoptic_report_is_paired_by_wmo_index_and_name():

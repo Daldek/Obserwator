@@ -67,18 +67,18 @@ STATION = "149190310"
 DAILY_2024 = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SERIES_DAILY = "series:pl.imgw.hydro_daily"
 CELL_SLOT = "pmaxtp:pl.imgw.pmaxtp:POT/751_317"
-CONTENT = {"content_sha256": "1" * 64, "content_form": "chmi-json/1"}
+CONTENT = {"content_sha256": "1" * 64, "content_form": "chmu-json/1"}
 # Fictional ČHMÚ sidecar (spec 2026-10-18 §3; codes 0-203-1-9… are not published).
-CHMI_PATH = "hydrology/historical/data/daily/H_0-203-1-900001_DQ_2025.json"
-CHMI_META = {
+CHMU_PATH = "hydrology/historical/data/daily/H_0-203-1-900001_DQ_2025.json"
+CHMU_META = {
     "schema": "obserwator-meta/1",
     "producer": "obserwator",
     "producer_version": "3.1.0",
-    "dataset": "cz.chmi.hydro_daily",
+    "dataset": "cz.chmu.hydro_daily",
     "country": "CZ",
-    "provider": "CHMI",
+    "provider": "CHMU",
     "request": {
-        "server_path": CHMI_PATH,
+        "server_path": CHMU_PATH,
         "year": 2025,
         "month": None,
         "station_code": "0-203-1-900001",
@@ -96,7 +96,7 @@ CHMI_META = {
     "extra": {
         "version": {"label": "2026-05-21", "label_source": "last_modified"},
         "http": {
-            "url": f"https://opendata.chmi.cz/{CHMI_PATH}",
+            "url": f"https://opendata.chmi.cz/{CHMU_PATH}",
             "etag": '"6a0eea27-2"',
             "last_modified": "Thu, 21 May 2026 11:19:03 GMT",
             "content_length": 2,
@@ -953,21 +953,21 @@ def test_select_series_matches_series_select_semantics(complete, offline):
         assert error.value.details["option"] == option
 
 
-def test_chmi_sidecar_meets_the_widened_meta_contract_with_optional_content(tmp_path):
+def test_chmu_sidecar_meets_the_widened_meta_contract_with_optional_content(tmp_path):
     sidecar = tmp_path / "H_0-203-1-900001_DQ_2025.json.meta.json"
-    with_content = {**CHMI_META, **CONTENT}
-    for document in (CHMI_META, with_content):
+    with_content = {**CHMU_META, **CONTENT}
+    for document in (CHMU_META, with_content):
         assert schema_errors(document, "obserwator-meta/1") == []
         sidecar.write_text(json.dumps(document), encoding="utf-8")
         meta = read_meta(sidecar)
-        assert (meta.dataset, meta.license.id) == ("cz.chmi.hydro_daily", "CC-BY-4.0")
+        assert (meta.dataset, meta.license.id) == ("cz.chmu.hydro_daily", "CC-BY-4.0")
         assert (meta.content_sha256, meta.content_form) == (
             document.get("content_sha256"),
             document.get("content_form"),
         )
     for document in (
-        {**CHMI_META, "content_sha256": "1" * 64},
-        {**CHMI_META, "content_form": "chmi-json/1"},
+        {**CHMU_META, "content_sha256": "1" * 64},
+        {**CHMU_META, "content_form": "chmu-json/1"},
         {**with_content, "content_sha256": "1" * 63 + "A"},
         {**with_content, "content_sha256": None},
         {**with_content, "content_form": ""},
@@ -995,14 +995,14 @@ def test_scan_enforces_content_pair_and_registry_origin_of_known_datasets(
     assert read_meta(written.path).content_sha256 == "1" * 64
     for document in (
         {**original, "content_sha256": "1" * 64},
-        {**original, "content_form": "chmi-json/1"},
+        {**original, "content_form": "chmu-json/1"},
         {**original, **CONTENT, "content_sha256": "X" * 64},
     ):
         assert schema_errors(document, "obserwator-meta/1")
         assert scan(document) == [("problem", DAILY_2024, "invalid_meta")]
     # The schema knows no registry: a pl.imgw.* sidecar of another provider is valid
     # JSON of obserwator-meta/1, but the reader rejects it.
-    for change in ({"provider": "CHMI"}, {"country": "CZ"}):
+    for change in ({"provider": "CHMU"}, {"country": "CZ"}):
         document = {**original, **change}
         assert schema_errors(document, "obserwator-meta/1") == []
         assert scan(document) == [("problem", DAILY_2024, "invalid_meta")]
@@ -1018,22 +1018,22 @@ def test_valid_sidecar_of_an_unknown_dataset_is_an_unknown_entry(root, offline):
         root
         / "archives/versions/hydrologia/denne"
         / stem
-        / f"2026-05-21_{CHMI_META['sha256'][:8]}"
+        / f"2026-05-21_{CHMU_META['sha256'][:8]}"
     )
     version.mkdir(parents=True)
     (version / f"{stem}.json").write_bytes(b"{}")
     unknown = {
-        **CHMI_META,
+        **CHMU_META,
         **CONTENT,
         "dataset": "sk.shmu.hydro_daily",
         "country": "SK",
         "provider": "SHMU",
-        "request": {**CHMI_META["request"], "server_path": server_path},
+        "request": {**CHMU_META["request"], "server_path": server_path},
     }
     (version / f"{stem}.json.meta.json").write_text(
         json.dumps(unknown), encoding="utf-8"
     )
-    assert read_meta(version / f"{stem}.json").content_form == "chmi-json/1"
+    assert read_meta(version / f"{stem}.json").content_form == "chmu-json/1"
     assert [(e.kind, e.slot, e.problem_code, e.version) for e in iter_store(root)] == [
         ("problem", None, "unknown_entry", version)
     ]
@@ -1148,7 +1148,7 @@ def test_observation_is_a_scan_entry_of_its_archive_slot_not_a_version(root, off
         before.meta.size_bytes + 1,
         "2" * 64,
         "1" * 64,
-        "chmi-json/1",
+        "chmu-json/1",
         written.path.parent.name,
     )
     assert current_version(root, slot=DAILY_2024) == before

@@ -4,6 +4,8 @@
 // from the switch, remembered under the key "obserwator-lang". A key is the catalog's
 // without the area: t("shell.view_stations") is `gui.shell.view_stations`.
 
+import { takeStart } from "./start.js";
+
 const STORAGE = "obserwator-lang";
 /** The languages of the page, the default first. */
 export const LANGS = ["pl", "en"];
@@ -37,7 +39,12 @@ export function storedLang() {
  */
 export async function loadTexts(next) {
   const chosen = LANGS.includes(next) ? next : "pl";
-  const response = await fetch(`api/texts?lang=${chosen}`, { headers: { Accept: "application/json" } });
+  const url = `api/texts?lang=${chosen}`;
+  const ask = () => fetch(url, { headers: { Accept: "application/json" } });
+  // The first texts were asked for at the start (start.js)
+  const started = takeStart(chosen, url);
+  let response = started ? await started.catch(() => null) : null;
+  if (!response || !response.ok) response = await ask();
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const doc = await response.json();
   texts = doc.texts || {};

@@ -1,4 +1,4 @@
-"""The GUI's access log (Nogat DEV-12.4 to DEV-12.8): the app that ``gui serve`` builds.
+"""The GUI's logs (Nogat DEV-12.4 to DEV-12.8): the app that ``gui serve`` builds.
 
 The app gets a ``ServerLog`` of the test (its own directory, a fixed clock and a stream
 in memory), as `obserwator.gui.serve` gives it one in ``<state_dir>/obserwator/logs``;
@@ -16,6 +16,7 @@ from obserwator import __version__
 from obserwator.gui._app import BORDERS
 from obserwator.nogat_logging import ServerLog
 from tests.contract.nogat import validate
+from tests.unit.gui.conftest import PMAXTP_POINT
 
 IP = "203.0.113.77"
 NOON = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
@@ -57,6 +58,10 @@ def test_each_answered_request_is_one_access_record_without_the_client(
             "/admin/theme-init.js",
             "/instrukcja/",
             f"/data/{next(iter(BORDERS))}",
+            "/favicon.ico",
+            "/robots.txt",
+            "/apple-touch-icon.png",
+            "/apple-touch-icon-precomposed.png",
         )
     ]
     static_missing = client.get("/css/nothing.css")
@@ -125,3 +130,49 @@ def test_no_log_holds_the_admin_key(make_client, tmp_path, monkeypatch):
     ]
     written = b"".join(path.read_bytes() for path in (tmp_path / "logs").iterdir())
     assert key.encode() not in written
+
+
+def test_every_request_to_imgw_is_one_app_record(make_client, live, tmp_path):
+    def defect():
+        raise RuntimeError("a defect of the parser")
+
+    log = server_log(tmp_path)
+    sources = {**live.sources(hydro=live.outage), "meteo": defect}
+    client = make_client(log=log, sources=sources, address=IP)
+    latitude, longitude = PMAXTP_POINT
+
+    current = client.get("/api/current")
+    point = client.get(
+        "/api/pmaxtp", params={"latitude": latitude, "longitude": longitude}
+    )
+
+    assert (current.status_code, point.status_code) == (200, 200)
+    path = tmp_path / "logs" / "app-2026-11-13.jsonl"
+    records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+    for record in records:
+        validate(record, "record-1")
+    fetches = {
+        r["message"].split(":")[0]: r for r in records if r["event"] == "upstream_fetch"
+    }
+    assert sorted(fetches) == [
+        f"IMGW-PIB {name}" for name in ("hydro", "meteo", "pmaxtp", "states")
+    ]
+    states, hydro = fetches["IMGW-PIB states"], fetches["IMGW-PIB hydro"]
+    meteo, pmaxtp = fetches["IMGW-PIB meteo"], fetches["IMGW-PIB pmaxtp"]
+    count = len(live.records["states"])
+    assert re.fullmatch(
+        rf"IMGW-PIB states: answered in \d+ ms, {count} records", states["message"]
+    )
+    assert (states["level"], states["error"]) == ("info", None)
+    assert re.fullmatch(r"IMGW-PIB pmaxtp: answered in \d+ ms", pmaxtp["message"])
+    assert hydro["level"] == "warning"
+    assert hydro["message"].startswith("IMGW-PIB hydro: failed after ")
+    assert f" ms, {live.outage.code}: " in hydro["message"]
+    assert meteo["level"] == "error"
+    assert " ms, internal_error: a defect of the parser" in meteo["message"]
+    assert meteo["error"]["type"] == "RuntimeError"
+    assert "Traceback" in meteo["error"]["stack"]
+    written = b"".join(path.read_bytes() for path in (tmp_path / "logs").iterdir())
+    assert IP.encode() not in written
+    app_log = path.read_bytes()
+    assert b"52.23" not in app_log and b"21.01" not in app_log  # never the point

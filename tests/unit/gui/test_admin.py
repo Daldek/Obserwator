@@ -182,6 +182,10 @@ def test_the_key_and_its_file_are_read_on_every_request(
     path.write_text("second-key", encoding="utf-8")
     refused(ask("first-key"), "admin_key_invalid")
     assert ask("second-key").status_code == 200
+    path.write_bytes(b"\xef\xbb\xbfthird-key\r\n")  # Notepad: a BOM and CRLF
+    assert ask("third-key").status_code == 200
+    path.write_bytes("third-key\r\n".encode("utf-16"))  # PowerShell 5.1's `>`
+    refused(ask("third-key"), "admin_key_not_configured")
     monkeypatch.setenv("OBSERWATOR_ADMIN_API_KEY", "from-the-environment")
     refused(ask("second-key"), "admin_key_invalid")
     assert ask("from-the-environment").status_code == 200
@@ -624,11 +628,9 @@ def test_stored_analyses_name_the_providers_that_lack_them():
         None,
         "1.2.0",
     )
-    both = {"IMGW-PIB": version, "CHMI": version}
+    both = {"IMGW": version, "CHMU": version}
 
-    partial = _analyses_check(
-        Snapshot(catalogs=both, analyses={"IMGW-PIB": version}), "en"
-    )
+    partial = _analyses_check(Snapshot(catalogs=both, analyses={"IMGW": version}), "en")
     complete = _analyses_check(Snapshot(catalogs=both, analyses=both), "en")
 
     assert partial == {

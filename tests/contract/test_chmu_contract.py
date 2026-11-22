@@ -1,0 +1,1735 @@
+"""Contract of the ČHMÚ provider: IMGW-15..IMGW-19 on complete_pl_cz and recordings.
+
+Spec 2026-10-18 §14 and §16 (C09). Every row of the acceptance table is a test
+whose name carries the row: the ``complete_pl_cz`` roots of
+``obserwator.testing`` (built at the frozen clock of the contract suite) and the
+recorded ČHMÚ answers of ``chmu_recordings.json``,
+``chmu_catalog_recordings.json`` and ``chmu_builder_recordings.json``. Archives,
+observations and station sources lie in the raw root; series and catalogs in
+the data root built from it (ADR-017), so every check runs on the root of its
+kind. The ČHMÚ commands answer alike in Python, ``obserwator``, REST and MCP at
+a frozen clock (IMGW-19 k1): canonical envelopes, the same requests to the
+recordings, the same SHA-256 of every written file and the same plan of every
+write. No request leaves the recordings.
+"""
+
+import csv
+import importlib
+import importlib.util
+import io
+import json
+import re
+import shutil
+from collections import Counter
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+from obserwator import (
+    ObserwatorValidationError,
+    build_catalog,
+    build_series,
+    check_catalog,
+    check_store,
+    current_version,
+    export_archive,
+    export_series,
+    get_provider,
+    init_store,
+    iter_store,
+    parse_chmu_stations,
+    read_catalog,
+    read_series_index,
+    run_command,
+    store_info,
+    sync_store,
+)
+from obserwator.attribution import attribution
+from obserwator.datasets import get_dataset
+from obserwator.store.types import page_cursor
+from obserwator.testing import build_fixture_store, fixture_files
+from tests.contract.conftest import _CLOCKED, FROZEN_AT
+from tests.contract.support import (
+    ANYWHERE,
+    DAILY,
+    RABA,
+    canonical,
+    cli_words,
+    input_schema,
+    load,
+    rest_request,
+    schema_errors,
+    slots,
+    snapshot,
+    unversioned,
+)
+from tests.contract.test_interface_contract import (
+    ROUTES,
+    Roots,
+    answer,
+    assert_alike,
+    line_of,
+    relative_reference_dir,  # noqa: F401 (fixture)
+    rooted,
+    stamps_of,
+)
+from tests.contract.test_interface_contract import serve as serve_roots
+
+HYDRO, METEO = "cz.chmu.hydro_daily", "cz.chmu.meteo_daily"
+# Fictional stations of the fixtures (spec 2026-10-18 §13.2).
+S1, S2 = "0-203-1-900001", "0-203-1-900002"  # 2023-2024 / 2004 and 2006 (2005 unknown)
+FULL, RAIN = "0-203-0-90001", "0-203-0-90000000002"  # four elements / SRA only
+ONLY_LISTED = "0-203-1-CB900003"  # in the station metadata, no daily files
+CHMU_PROVIDER = get_provider("CHMU")
+SOURCE = CHMU_PROVIDER.license.attribution
+PROCESSED = CHMU_PROVIDER.processed_attribution
+SLOT_2023 = f"archive:{HYDRO}:H_{S1}_DQ_2023.json"
+SLOT_2024 = f"archive:{HYDRO}:H_{S1}_DQ_2024.json"
+DAILY_DIR = "archives/versions/hydrology/historical/data/daily"
+LIST_DIR = "archives/versions/hydrology/historical/metadata/meta1"
+# ČHMÚ station sources (``time_unit="station_list"``) the offline catalog reads.
+CHMU_SOURCES = (
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
+)
+# Their recorded answers: lists by HEAD and GET, the current metadata by GET.
+CATALOG_GETS = (
+    "hydro_stations_head",
+    "meteo_stations_head",
+    "hydro_now_get",
+    "hydro_meta3_get",
+    "meteo_now_listing",
+    "meteo_now_get",
+    "hydro_stations_get",
+    "meteo_stations_get",
+)
+FIRST_900001 = (
+    "hydro_listing",
+    "h900001_2023_head",
+    "h900001_2023_get",
+    "h900001_2024_head",
+    "h900001_2024_get",
+)
+MCP = importlib.util.find_spec("mcp") is not None
+INTERFACES = ("python", "cli", "rest", "mcp") if MCP else ("python", "cli", "rest")
+LOCAL_INTERFACES = ("python", "cli", "mcp") if MCP else ("python", "cli")
+
+
+# --------------------------------------------------------------------------
+# Recorded opendata.chmi.cz
+# --------------------------------------------------------------------------
+
+
+def _recorded() -> dict[str, dict[str, Any]]:
+    """Every recorded ČHMÚ interaction by case; equal duplicates across files."""
+    found: dict[str, dict[str, Any]] = {}
+    for name in (
+        "chmu_recordings.json",
+        "chmu_catalog_recordings.json",
+        "chmu_builder_recordings.json",
+    ):
+        document = json.loads(fixture_files().joinpath(name).read_text("utf-8"))
+        for entry in document["interactions"]:
+            found.setdefault(
+                entry["case"], {**entry, "url": document["base_url"] + entry["path"]}
+            )
+    return found
+
+
+CHMU = _recorded()
+
+
+def content(case: str) -> bytes:
+    """Body of a recorded answer."""
+    entry = CHMU[case]
+    if "listing" in entry or "variant" in entry:
+        relative = entry.get("listing") or entry["variant"]
+        return fixture_files().joinpath(*relative.split("/")).read_bytes()
+    if "archive" in entry:
+        return (
+            fixture_files()
+            .joinpath("archives", *entry["archive"].split("/"))
+            .read_bytes()
+        )
+    return str(entry.get("body", "")).encode("utf-8")
+
+
+class FakeChmu:
+    """opendata.chmi.cz answering recorded cases; respx refuses any other request.
+
+    A later case for the same request replaces the earlier one.
+    """
+
+    def __init__(self, router: Any) -> None:
+        self.router = router
+
+    def serve(self, *cases: str) -> None:
+        for case in cases:
+            entry = CHMU[case]
+            route = self.router.route(method=entry["method"], url=entry["url"])
+            if "exception" in entry:
+                route.mock(side_effect=httpx.ConnectError("synthetyczny błąd sieci"))
+                continue
+            body = b"" if entry["method"] == "HEAD" else content(case)
+            route.mock(
+                return_value=httpx.Response(
+                    entry["status"], headers=entry.get("headers"), content=body
+                )
+            )
+
+    def traffic(self, start: int = 0) -> list[tuple[str, str]]:
+        return [
+            (call.request.method, str(call.request.url))
+            for call in self.router.calls[start:]
+        ]
+
+
+@pytest.fixture
+def chmu(imgw) -> FakeChmu:
+    """Recorded ČHMÚ on the respx router of the recorded IMGW-PIB."""
+    return FakeChmu(imgw.router)
+
+
+# --------------------------------------------------------------------------
+# Roots at the frozen clock
+# --------------------------------------------------------------------------
+
+
+def _frozen_build(path: Path, variant: str) -> Roots:
+    """``build_fixture_store`` at the frozen clock of the suite (reproducible bytes)."""
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return FROZEN_AT.astimezone(tz)
+
+    with pytest.MonkeyPatch.context() as patch:
+        for name in _CLOCKED:
+            patch.setattr(importlib.import_module(name), "datetime", Frozen)
+        built = build_fixture_store(
+            path / "raw",
+            data_root=path / "data",
+            variant=variant,  # type: ignore[arg-type]
+        )
+    return Roots(data=built.data.root, raw=built.raw.root)
+
+
+@pytest.fixture(scope="module")
+def pl_cz(tmp_path_factory) -> Roots:
+    """``complete_pl_cz``, read-only: tests that write take a copy."""
+    return _frozen_build(tmp_path_factory.mktemp("pl_cz"), "complete_pl_cz")
+
+
+@pytest.fixture(scope="module")
+def complete(tmp_path_factory) -> Roots:
+    """``complete`` (IMGW-PIB only) at the same frozen clock."""
+    return _frozen_build(tmp_path_factory.mktemp("complete"), "complete")
+
+
+def copy_of(roots: Roots, target: Path) -> Roots:
+    """A writable copy of both roots below ``target``."""
+    copy = Roots(data=target / "data", raw=target / "raw")
+    shutil.copytree(roots.raw, copy.raw)
+    shutil.copytree(roots.data, copy.data)
+    return copy
+
+
+def relative(root: Path, path: Path | None) -> str | None:
+    return None if path is None else path.relative_to(root).as_posix()
+
+
+def version_of(root: Path, slot: str) -> Path:
+    entry = current_version(root, slot=slot)
+    assert entry is not None and entry.version is not None, slot
+    return entry.version
+
+
+def sidecars(roots: Roots) -> dict[Path, dict[str, Any]]:
+    """Sidecars of the ČHMÚ versions of both roots."""
+    found = {
+        path: load(path)
+        for root in (roots.raw, roots.data)
+        for path in sorted(root.rglob("*.meta.json"))
+    }
+    return {path: meta for path, meta in found.items() if meta["provider"] == "CHMU"}
+
+
+def entries_of(roots: Roots, **options: Any) -> list[Any]:
+    """`iter_store` of the raw root, then of the data root."""
+    return [*iter_store(roots.raw, **options), *iter_store(roots.data, **options)]
+
+
+def statuses(items: Iterator[Any] | tuple[Any, ...]) -> list[str]:
+    return [item.status for item in items]
+
+
+# --------------------------------------------------------------------------
+# IMGW-15: contracts, scan and providers
+# --------------------------------------------------------------------------
+
+
+def test_imgw_15_chmu_documents_meet_the_1_contracts_and_imgw_bytes_stay(
+    pl_cz, complete, tmp_path, chmu, frozen
+):
+    assert (
+        schema_errors(load(pl_cz.raw / "obserwator-store.json"), "obserwator-store/1")
+        == []
+    )
+    assert load(pl_cz.data / "obserwator-data.json")["schema"] == "obserwator-data/1"
+    assert not (pl_cz.raw / "obserwator-data.json").exists()
+    assert not (pl_cz.data / "obserwator-store.json").exists()
+    contracts = {
+        "series.json": "obserwator-series/1",
+        "stations.geojson": "stations.geojson",
+    }
+    found = sidecars(pl_cz)
+    # 14 archives, 2 station lists, 3 current-metadata files (hydro meta1 and
+    # meta3, meteo meta1-<date>), 3 series versions and the catalog.
+    assert len(found) == 23
+    for sidecar, meta in found.items():
+        assert schema_errors(meta, "obserwator-meta/1") == [], sidecar
+        main = sidecar.with_name(sidecar.name.removesuffix(".meta.json"))
+        if main.name in contracts:
+            assert schema_errors(load(main), contracts[main.name]) == [], main
+    (observation,) = pl_cz.raw.glob(f"{DAILY_DIR}/*/observations/*.json")
+    assert schema_errors(load(observation), "obserwator-observation/1") == []
+
+    chmu.serve("hydro_listing_reserialized")
+    plan = check_store(
+        pl_cz.raw,
+        datasets=[HYDRO],
+        stations=[S1],
+        years=[2023],
+        plan=tmp_path / "p.json",
+    )
+    assert plan.items[0].local_observation is not None
+    assert schema_errors(load(tmp_path / "p.json"), "obserwator-plan/1") == []
+
+    # The IMGW-PIB part of each root is the ``complete`` root, byte for byte;
+    # ČHMÚ adds archives to the raw root, series and a catalog to the data root.
+    for root, alone_root, chmu_trees in (
+        (
+            pl_cz.raw,
+            complete.raw,
+            ("archives/versions/hydrology", "archives/versions/meteorology"),
+        ),
+        (
+            pl_cz.data,
+            complete.data,
+            ("series/versions/chmu_", "stations/versions/chmu_stations"),
+        ),
+    ):
+        both, alone = snapshot(root), snapshot(alone_root)
+        assert {path: both[path] for path in alone} == alone
+        added = sorted(set(both) - set(alone))
+        assert added and all(path.startswith(chmu_trees) for path in added)
+
+
+def test_imgw_15_k1_both_providers_scan_clean_with_a_provider_on_every_entry(pl_cz):
+    entries = entries_of(pl_cz)
+
+    assert [entry.problem for entry in entries if entry.kind == "problem"] == []
+    assert {entry.provider for entry in entries} == {"IMGW", "CHMU"}
+    (seen,) = [entry for entry in entries if entry.kind == "observation"]
+    assert (seen.provider, seen.slot) == ("CHMU", SLOT_2023)
+    assert {
+        entry.slot: entry.provider for entry in entries if entry.kind == "catalog"
+    } == {
+        "catalog:pl.imgw.stations": "IMGW",
+        "catalog:cz.chmu.stations": "CHMU",
+    }
+    features = read_catalog(root=pl_cz.data)
+    pairs = [(feature.provider, feature.station_code) for feature in features]
+    assert len(pairs) == len(set(pairs))
+    assert {provider for provider, _ in pairs} == {"IMGW", "CHMU"}
+    # Each provider's catalog is a separate entry with its own stations.
+    assert {
+        feature.provider for feature in read_catalog(root=pl_cz.data, provider="CHMU")
+    } == {"CHMU"}
+
+
+def _scan(roots: Roots, *, provider: str | None = None) -> list[tuple[object, ...]]:
+    """Entries of the raw root, then of the data root, relative to their root."""
+    return [
+        (entry.kind, entry.slot, entry.provider, relative(root, entry.version))
+        for root in (roots.raw, roots.data)
+        for entry in iter_store(root, provider=provider)
+    ]
+
+
+def test_imgw_15_k2_a_store_without_chmu_reads_as_before(complete, pl_cz):
+    assert {entry.provider for entry in entries_of(complete)} == {"IMGW"}
+    assert _scan(complete) == _scan(pl_cz, provider="IMGW")
+    for kind in ("raw", "data"):
+        assert (
+            store_info(getattr(complete, kind)).contracts
+            == store_info(getattr(pl_cz, kind)).contracts
+        )
+    assert read_catalog(root=complete.data) == read_catalog(
+        root=pl_cz.data, provider="IMGW"
+    )
+    assert {feature.provider for feature in read_catalog(root=complete.data)} == {
+        "IMGW"
+    }
+
+
+def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
+    for root in (pl_cz.raw, pl_cz.data):
+        assert [provider.id for provider in store_info(root).providers] == [
+            "IMGW",
+            "CHMU",
+        ]
+
+    chmu = _scan(pl_cz, provider="CHMU")
+    imgw = _scan(pl_cz, provider="IMGW")
+    assert {row[2] for row in chmu} == {"CHMU"}
+    assert {row[2] for row in imgw} == {"IMGW"}
+    assert sorted(chmu + imgw, key=repr) == sorted(_scan(pl_cz), key=repr)
+    assert Counter(row[0] for row in chmu) == {
+        "archive": 19,  # 14 data files, 2 station lists, 3 current-metadata files
+        "observation": 1,
+        "series": 3,
+        "catalog": 1,
+    }
+
+
+# --------------------------------------------------------------------------
+# IMGW-16: freshness from the listing, versions only for new content
+# --------------------------------------------------------------------------
+
+
+def test_imgw_16_k1_check_states_come_from_one_listing_without_any_content(
+    pl_cz, tmp_path, chmu
+):
+    before = stamps_of(pl_cz)
+    chmu.serve("hydro_listing_reserialized")
+
+    plan = check_store(
+        pl_cz.raw, datasets=[HYDRO], stations=[S1, S2], years="2023-2024"
+    )
+
+    states = {
+        (item.station_code, item.archive.year): (item.status, item.error)
+        for item in plan.items
+    }
+    assert states == {
+        (S1, 2023): ("current", None),  # the observation of scenario (8)
+        (S1, 2024): ("newer", None),  # the listing shows the first publication
+        (S2, 2023): ("unverifiable", "not published"),
+        (S2, 2024): ("unverifiable", "not published"),
+    }
+    first = plan.items[0]
+    assert first.local_observation is not None
+    assert first.local_observation.parent.name == "observations"
+    assert chmu.traffic() == [("GET", CHMU["hydro_listing"]["url"])]
+    assert plan.requests == {"made": 1, "planned": 2}
+
+    chmu.serve("precipitation_listing", "temperature_listing", "snow_listing")
+    start = len(chmu.router.calls)
+    meteo = check_store(pl_cz.raw, datasets=[METEO], stations=[FULL, RAIN])
+    assert Counter((item.station_code, item.status) for item in meteo.items) == {
+        (FULL, "current"): 6,
+        (RAIN, "current"): 1,
+        (RAIN, "unverifiable"): 5,
+    }
+    assert [method for method, _ in chmu.traffic(start)] == ["GET", "GET", "GET"]
+    assert meteo.requests == {"made": 3, "planned": 0}
+
+    empty = init_store(tmp_path / "empty").root
+    chmu.serve("hydro_listing")
+    start = len(chmu.router.calls)
+    missing = check_store(empty, datasets=[HYDRO], stations=[S1])
+    assert statuses(missing.items) == ["missing", "missing"]
+    assert missing.requests == {"made": 1, "planned": 4}
+    assert [method for method, _ in chmu.traffic(start)] == ["GET"]
+    assert stamps_of(pl_cz) == before
+
+
+def _versions(root: Path, slot_dir: str) -> list[str]:
+    return sorted(
+        path.name for path in (root / slot_dir).iterdir() if path.name != "observations"
+    )
+
+
+def _register(root: Path, slot_dir: str) -> list[str]:
+    directory = root / slot_dir / "observations"
+    return (
+        sorted(path.name for path in directory.iterdir()) if directory.exists() else []
+    )
+
+
+def test_imgw_16_k2_a_version_only_for_new_content(pl_cz, tmp_path, chmu, frozen):
+    roots = copy_of(pl_cz, tmp_path / "store")
+    root = roots.raw
+    slot_2023 = f"{DAILY_DIR}/H_{S1}_DQ_2023"
+    (first,) = _versions(root, slot_2023)
+    (seen,) = _register(root, slot_2023)
+
+    # The same bytes under a new signal: a relabeled version; a later build of
+    # the series reuses the current one (same inputs).
+    chmu.serve(
+        "hydro_listing_republished",
+        "h900001_2023_republished_head",
+        "h900001_2023_republished_get",
+    )
+    relabeled = sync_store(root, datasets=[HYDRO], stations=[S1], years=[2023])
+    assert statuses(relabeled.items) == ["relabeled"]
+    assert build_series(roots.data, raw_root=root, dataset=HYDRO).status == "unchanged"
+    assert _versions(root, slot_2023) == sorted([first, f"2026-02-06_{first[-8:]}"])
+
+    # Other bytes of the same canonical content: no version, one more observation.
+    notices = []
+    chmu.serve(
+        "hydro_listing_rewritten",
+        "h900001_2023_rewritten_head",
+        "h900001_2023_rewritten_get",
+    )
+    unchanged = sync_store(
+        root, datasets=[HYDRO], stations=[S1], years=[2023], on_notice=notices.append
+    )
+    assert statuses(unchanged.items) == ["unchanged"]
+    assert [notice.code for notice in notices] == ["content_unchanged"]
+    assert len(_versions(root, slot_2023)) == 2
+    assert len(_register(root, slot_2023)) == 2 and seen in _register(root, slot_2023)
+
+    # Other content (a corrected CSV, no canonical form): a new version.
+    sra = (
+        "archives/versions/meteorology/climate/historical_csv/data/daily/"
+        f"precipitation/dly-{FULL}-SRA"
+    )
+    (old,) = _versions(root, sra)
+    chmu.serve(
+        "precipitation_listing_corrected",
+        "temperature_listing",
+        "snow_listing",
+        "m90001_SRA_corrected_head",
+        "m90001_SRA_corrected_get",
+    )
+    meteo_series = snapshot(roots.data / "series" / "versions" / "chmu_meteo_daily")
+    corrected = sync_store(root, datasets=[METEO], stations=[FULL])
+    # Items by file name: SCE, SNO, SRA, T, TMA, TMI.
+    assert statuses(corrected.items) == [
+        "unchanged",
+        "unchanged",
+        "new",
+        "unchanged",
+        "unchanged",
+        "unchanged",
+    ]
+    # The sync writes raw data only; the series follows the new content when built.
+    assert (
+        snapshot(roots.data / "series" / "versions" / "chmu_meteo_daily")
+        == meteo_series
+    )
+    assert build_series(roots.data, raw_root=root, dataset=METEO).status == "new"
+    assert len(_versions(root, sra)) == 2 and old in _versions(root, sra)
+    assert [
+        entry.problem for entry in entries_of(roots) if entry.kind == "problem"
+    ] == []
+
+
+@pytest.mark.parametrize("after_download", [0, 1], ids=["before-staging", "staged"])
+@pytest.mark.parametrize("change", ["observation", "version"])
+def test_imgw_16_k2_cancelling_a_write_leaves_no_version_and_no_observation(
+    change, after_download, pl_cz, tmp_path, chmu, frozen
+):
+    root = copy_of(pl_cz, tmp_path / "store").raw
+    if change == "observation":
+        get = "h900001_2023_rewritten_get"
+        chmu.serve("hydro_listing_rewritten", "h900001_2023_rewritten_head", get)
+        selectors: dict[str, Any] = {
+            "datasets": [HYDRO],
+            "stations": [S1],
+            "years": [2023],
+        }
+    else:
+        get = "m90001_SRA_corrected_get"
+        chmu.serve(
+            "precipitation_listing_corrected",
+            "temperature_listing",
+            "snow_listing",
+            "m90001_SRA_corrected_head",
+            get,
+        )
+        selectors = {"datasets": [METEO], "stations": [FULL]}
+    url = CHMU[get]["url"]
+    polls_after = []
+
+    def cancel() -> bool:
+        if not any(call.request.url == url for call in chmu.router.calls):
+            return False
+        polls_after.append(True)
+        return bool(len(polls_after) > after_download)
+
+    before = snapshot(root)
+    report = sync_store(root, **selectors, cancel=cancel)
+
+    assert "cancelled" in statuses(report.items) and report.cancelled
+    # Only the (empty) staging directory may differ: no version, no observation.
+    after = snapshot(root)
+    assert {path: digest for path, digest in after.items() if path != ".incoming"} == {
+        path: digest for path, digest in before.items() if path != ".incoming"
+    }
+    incoming = root / ".incoming"
+    assert not incoming.exists() or not any(incoming.iterdir())
+
+
+def test_imgw_16_k3_the_plan_names_stations_files_sizes_and_requests(tmp_path, chmu):
+    root = init_store(tmp_path / "store").root
+    chmu.serve("hydro_listing")
+
+    plan = check_store(
+        root,
+        datasets=[HYDRO],
+        stations=[S1, S2, ONLY_LISTED],
+        years=[2004, 2005, 2006, 2023, 2024],
+        plan=tmp_path / "plan.json",
+    )
+
+    listed = {
+        item.archive.server_path: (
+            item.station_code,
+            item.status,
+            item.content_length,
+            item.remote_listed_at,
+        )
+        for item in plan.items
+        if item.status == "missing"
+    }
+    daily = "hydrology/historical/data/daily"
+    assert listed == {
+        f"{daily}/H_{S1}_DQ_2023.json": (S1, "missing", 23926, "2025-07-01T12:07Z"),
+        f"{daily}/H_{S1}_DQ_2024.json": (S1, "missing", 21835, "2025-07-01T12:07Z"),
+        f"{daily}/H_{S2}_DQ_2004.json": (S2, "missing", 13263, "2025-07-01T12:07Z"),
+        f"{daily}/H_{S2}_DQ_2006.json": (S2, "missing", 21746, "2025-07-01T12:07Z"),
+    }
+    assert {
+        (item.station_code, item.archive.year, item.error) for item in plan.items
+    } >= {(S2, 2005, "not published")}
+    assert [(action.command, action.status) for action in plan.actions] == [
+        ("store sync", "unverifiable")
+    ]
+    assert ONLY_LISTED in plan.actions[0].detail
+    assert plan.requests == {"made": 1, "planned": 8}
+    document = load(tmp_path / "plan.json")
+    assert schema_errors(document, "obserwator-plan/1") == []
+    assert document["requests"] == {"made": 1, "planned": 8}
+    assert {item["station_code"] for item in document["items"]} >= {S1, S2}
+
+
+# --------------------------------------------------------------------------
+# IMGW-17: the ČHMÚ station catalog
+# --------------------------------------------------------------------------
+
+# Recorded metadata files of the catalog with their station family.
+METADATA = (
+    ("hydro_now_get", "hydro"),
+    ("hydro_meta3_get", "hydro"),
+    ("hydro_stations_get", "hydro"),
+    ("meteo_now_get", "meteo"),
+    ("meteo_stations_get", "meteo"),
+)
+
+
+def test_imgw_17_k1_every_station_of_the_chmu_metadata_is_in_the_catalog(pl_cz):
+    published = {
+        entry.station_code
+        for case, kind in METADATA
+        for entry in parse_chmu_stations(content(case), kind=kind)
+    }
+
+    features = read_catalog(root=pl_cz.data, provider="CHMU")
+
+    assert {feature.station_code for feature in features} == published
+    unlocated = [feature for feature in features if feature.geometry is None]
+    assert unlocated and all(
+        feature.properties["location_missing_reason"] is not None
+        for feature in unlocated
+    )
+
+
+def _rows(case: str, code: str) -> dict[str, list[dict[str, object]]]:
+    """Rows of a recorded metadata envelope by station code, numbers as decimals."""
+    document = json.loads(content(case), parse_float=Decimal, parse_int=Decimal)
+    data = document["data"]["data"]
+    header = data["header"].split(",")
+    rows: dict[str, list[dict[str, object]]] = {}
+    for values in data["values"]:
+        row = dict(zip(header, values, strict=True))
+        rows.setdefault(str(row[code]), []).append(row)
+    return rows
+
+
+def test_imgw_17_k2_codes_stay_text_and_coordinates_equal_the_published_decimals(
+    pl_cz,
+):
+    catalog = version_of(pl_cz.data, "catalog:cz.chmu.stations")
+    document = json.loads(catalog.read_text("utf-8"), parse_float=Decimal)
+    # Files of each location source in precedence order: both files of the hydro now
+    # metadata, meta1 before meta3, locate a station as cz.chmu.hydro_now.
+    sources = {
+        "cz.chmu.hydro_now": (
+            (_rows("hydro_now_get", "objID"), _rows("hydro_meta3_get", "objID")),
+            "GEOGR1",
+            "GEOGR2",
+        ),
+        "cz.chmu.hydro_stations": (
+            (_rows("hydro_stations_get", "objID"),),
+            "GEOGR1",
+            "GEOGR2",
+        ),
+        # Meteo GEOGR1 is the longitude (spec §7.2).
+        "cz.chmu.meteo_now": ((_rows("meteo_now_get", "WSI"),), "GEOGR2", "GEOGR1"),
+        "cz.chmu.meteo_stations": (
+            (_rows("meteo_stations_get", "WSI"),),
+            "GEOGR2",
+            "GEOGR1",
+        ),
+    }
+    located = 0
+    for feature in document["features"]:
+        properties = feature["properties"]
+        assert isinstance(properties["station_code"], str)
+        assert feature["id"] == properties["station_code"]
+        code = properties["hydrographic_code"]
+        assert code is None or isinstance(code, str)
+        if feature["geometry"] is None:
+            continue
+        files, latitude, longitude = sources[properties["location_source"]]
+        rows = next(rows for rows in files if properties["station_code"] in rows)
+        row = max(
+            rows[properties["station_code"]], key=lambda row: str(row.get("BEGIN_DATE"))
+        )
+        assert feature["geometry"]["coordinates"] == [row[longitude], row[latitude]]
+        located += 1
+    assert located >= 5
+    hydro = {
+        f["properties"]["station_code"]: f["properties"] for f in document["features"]
+    }
+    assert hydro[S1]["hydrographic_code"] == "1-05-03-0110"
+
+
+def test_imgw_17_k3_a_new_metadata_envelope_creates_no_version(
+    pl_cz, tmp_path, chmu, frozen
+):
+    roots = copy_of(pl_cz, tmp_path / "store")
+    root = roots.raw
+    catalog = version_of(roots.data, "catalog:cz.chmu.stations")
+    (listed,) = _versions(root, LIST_DIR)
+    chmu.serve("hydro_stations_regenerated_head", "hydro_stations_regenerated_get")
+    notices = []
+
+    report = sync_store(
+        root, datasets=["cz.chmu.hydro_stations"], on_notice=notices.append
+    )
+
+    assert statuses(report.items) == ["unchanged"]
+    assert _versions(root, LIST_DIR) == [listed]
+    (seen,) = _register(root, LIST_DIR)
+    observation = load(root / LIST_DIR / "observations" / seen)
+    assert schema_errors(observation, "obserwator-observation/1") == []
+    assert observation["same_content_as"] == listed
+    (unchanged,) = [notice for notice in notices if notice.code == "content_unchanged"]
+    assert unchanged.level == "info"
+    assert "archive:cz.chmu.hydro_stations:meta1.json" in unchanged.message
+
+    # The stored version carries the old signal: the observation of the
+    # regenerated envelope is the slot's reference signal.
+    plan = check_store(root, datasets=["cz.chmu.hydro_stations"])
+    (item,) = plan.items
+    assert item.status == "current"
+    assert item.local_observation == Path(LIST_DIR, "observations", seen)
+
+    # The catalog reads the same stored version: it stays current, no new catalog.
+    assert (
+        check_catalog(roots.data, raw_root=root, provider="CHMU").actions[-1].status
+        == "current"
+    )
+    built = build_catalog(roots.data, raw_root=root, provider="CHMU")
+    assert (built.status, built.version, built.provider) == (
+        "unchanged",
+        catalog,
+        "CHMU",
+    )
+
+
+# --------------------------------------------------------------------------
+# IMGW-18: series and coverage, computed by hand from the stored files
+# --------------------------------------------------------------------------
+
+HYDRO_SERIES = {"HD": "H", "QD": "Q", "TD": "T"}
+METEO_ELEMENTS = {
+    "SRA": "P",
+    "T": "Tmean",
+    "TMA": "Tmax",
+    "TMI": "Tmin",
+    "SCE": "snow_cover",
+    "SNO": "fresh_snow",
+}
+
+
+@dataclass
+class Station:
+    """Daily values read by hand from the current stored files of a station."""
+
+    known: set[date] = field(default_factory=set)
+    values: dict[str, dict[date, float | None]] = field(default_factory=dict)
+    rows: dict[str, dict[date, dict[str, str]]] = field(default_factory=dict)
+
+
+def _days(first: date, last: date) -> Iterator[date]:
+    day = first
+    while day <= last:
+        yield day
+        day += timedelta(days=1)
+
+
+def _current_files(root: Path, dataset: str, pattern: str) -> Iterator[Path]:
+    """
+    The current version of every slot directory matching ``pattern``.
+
+    The slot selector of a ČHMÚ file is its path below the dataset's directory.
+    """
+    base = root / "archives" / "versions" / str(get_dataset(dataset).server_dir)
+    suffix = ".json" if dataset == HYDRO else ".csv"
+    for directory in sorted(root.glob(pattern)):
+        selector = directory.relative_to(base).as_posix() + suffix
+        yield version_of(root, f"archive:{dataset}:{selector}")
+
+
+def hydro_by_hand(root: Path, code: str) -> Station:
+    station = Station(values={name: {} for name in HYDRO_SERIES.values()})
+    for path in _current_files(root, HYDRO, f"{DAILY_DIR}/H_{code}_DQ_*"):
+        year = int(path.stem.rsplit("_", 1)[1])
+        station.known |= set(_days(date(year, 1, 1), date(year, 12, 31)))
+        for series in json.loads(path.read_bytes())["tsList"]:
+            name = HYDRO_SERIES.get(series["tsConID"])
+            if name is None:
+                continue  # PD: suspended sediment, outside the dataset
+            for moment, value in series["tsData"]["data"]["values"]:
+                station.values[name][date.fromisoformat(moment[:10])] = (
+                    None if value is None else float(value)
+                )
+    return station
+
+
+def meteo_by_hand(root: Path, code: str) -> Station:
+    station = Station(
+        values={name: {} for name in METEO_ELEMENTS.values()},
+        rows={name: {} for name in METEO_ELEMENTS.values()},
+    )
+    pattern = (
+        "archives/versions/meteorology/climate/historical_csv/data/daily/*/"
+        f"dly-{code}-*"
+    )
+    for path in _current_files(root, METEO, pattern):
+        element = path.stem.rsplit("-", 1)[1]
+        name = METEO_ELEMENTS[element]
+        dates = []
+        for row in csv.DictReader(io.StringIO(path.read_text("utf-8"))):
+            if element == "T" and row["TIMEFUNC"] != "AVG":
+                continue  # observation terms of T are not daily values
+            day = date.fromisoformat(row["DT"][:10])
+            dates.append(day)
+            station.rows[name][day] = row
+            station.values[name][day] = float(row["VALUE"]) if row["VALUE"] else None
+        station.known |= set(_days(min(dates), max(dates)))
+    return station
+
+
+def coverage_by_hand(station: Station, name: str) -> dict[str, object]:
+    """first, last, with_value and gaps of a variable (spec §6.4)."""
+    valued = sorted(
+        day for day, value in station.values[name].items() if value is not None
+    )
+    gaps: list[list[str]] = []
+    if valued:
+        run: list[date] = []
+        for day in _days(valued[0], valued[-1]):
+            if day in station.known and station.values[name].get(day) is None:
+                run.append(day)
+                continue
+            if run:
+                gaps.append([run[0].isoformat(), run[-1].isoformat()])
+                run = []
+    return {
+        "first": valued[0].isoformat() if valued else None,
+        "last": valued[-1].isoformat() if valued else None,
+        "with_value": len(valued),
+        "accumulated": 0,
+        "gaps": gaps,
+    }
+
+
+BY_HAND: dict[str, tuple[Callable[[Path, str], Station], tuple[str, ...]]] = {
+    HYDRO: (hydro_by_hand, (S1, S2)),
+    METEO: (meteo_by_hand, (FULL, RAIN)),
+}
+
+
+@pytest.mark.parametrize("dataset", [HYDRO, METEO])
+def test_imgw_18_k1_coverage_and_gaps_equal_a_computation_by_hand(dataset, pl_cz):
+    reader, codes = BY_HAND[dataset]
+    stations = {code: reader(pl_cz.raw, code) for code in codes}
+    expected = [
+        {"station_code": code, "variable": name, **coverage_by_hand(station, name)}
+        for code, station in sorted(stations.items())
+        for name in station.values
+    ]
+    keys = (
+        "station_code",
+        "variable",
+        "first",
+        "last",
+        "with_value",
+        "accumulated",
+        "gaps",
+    )
+
+    summary = run_command(
+        "series summary", options={"root": pl_cz.data, "dataset": dataset}
+    )
+    items = summary.to_json(root=pl_cz.data)["result"]
+    index = load(version_of(pl_cz.data, f"series:{dataset}"))
+
+    assert [{key: item[key] for key in keys} for item in items] == expected
+    for row in expected:
+        published = index["stations"][row["station_code"]]["variables"][row["variable"]]
+        assert {key: published[key] for key in keys[2:]} == {
+            key: row[key] for key in keys[2:]
+        }
+
+
+def _hydro_year(day: date) -> int:
+    return day.year + 1 if day.month >= 11 else day.year
+
+
+@pytest.mark.parametrize("year_type", ["hydrological", "calendar"])
+def test_imgw_18_k1_exports_follow_the_stored_values_in_both_year_types(
+    year_type, pl_cz
+):
+    station = hydro_by_hand(pl_cz.raw, S2)
+    lines = list(
+        export_series(root=pl_cz.data, dataset=HYDRO, station=S2, year_type=year_type)
+    )
+    rows = list(csv.DictReader(io.StringIO("".join(lines))))
+
+    # 2004 and 2006 are known; 2005 (unpublished) is a calendar of missing days.
+    assert [row["date"] for row in rows] == [
+        day.isoformat() for day in _days(date(2004, 1, 1), date(2006, 12, 31))
+    ]
+    for row in rows:
+        day = date.fromisoformat(row["date"])
+        assert int(row["year"]) == (
+            _hydro_year(day) if year_type == "hydrological" else day.year
+        )
+        for name, unit in (("H", "cm"), ("Q", "m3/s"), ("T", "degC")):
+            value = station.values[name].get(day)
+            if value is None:
+                assert (row[f"{name} [{unit}]"], row[f"{name}_flag"]) == ("", "missing")
+            else:
+                assert float(row[f"{name} [{unit}]"]) == value
+                assert row[f"{name}_flag"] == "value"
+    # C and CP head the column attribution (ADR-028: no formula columns).
+    assert [row["attribution"] for row in rows[:2]] == [SOURCE, PROCESSED]
+
+    meteo = meteo_by_hand(pl_cz.raw, FULL)
+    exported = list(
+        csv.DictReader(
+            io.StringIO(
+                "".join(
+                    export_series(
+                        root=pl_cz.data,
+                        dataset=METEO,
+                        station=FULL,
+                        year_type=year_type,
+                    )
+                )
+            )
+        )
+    )
+    for row in exported:
+        day = date.fromisoformat(row["date"])
+        assert int(row["year"]) == (
+            _hydro_year(day) if year_type == "hydrological" else day.year
+        )
+        # Precipitation, snow depth and new snow: 0 without a flag is no phenomenon.
+        for name, unit in (("P", "mm"), ("snow_cover", "cm"), ("fresh_snow", "cm")):
+            source = meteo.rows[name].get(day)
+            if source is None or not source["VALUE"]:
+                assert row[f"{name}_flag"] == "missing"
+                continue
+            nothing = float(source["VALUE"]) == 0.0 and not source["FLAG"]
+            flag = "no_phenomenon" if nothing else "value"
+            assert (float(row[f"{name} [{unit}]"]), row[f"{name}_flag"]) == (
+                float(source["VALUE"]),
+                flag,
+            )
+            assert row[f"{name}_source_flag"] == source["FLAG"]
+            quality = source["QUALITY"]
+            assert row[f"{name}_quality"] == (
+                str(int(float(quality))) if quality else ""
+            )
+
+
+def test_imgw_18_k2_every_station_of_a_chmu_dataset_is_in_its_series(pl_cz):
+    hydro = read_series_index(version_of(pl_cz.data, f"series:{HYDRO}"))
+    meteo = read_series_index(version_of(pl_cz.data, f"series:{METEO}"))
+
+    assert set(hydro.stations) == {S1, S2}
+    assert hydro.stations[S1].periods == ((date(2023, 1, 1), date(2024, 12, 31)),)
+    # The unpublished 2005 is unknown, not a gap.
+    assert hydro.stations[S2].periods == (
+        (date(2004, 1, 1), date(2004, 12, 31)),
+        (date(2006, 1, 1), date(2006, 12, 31)),
+    )
+    assert set(meteo.stations) == {FULL, RAIN}
+    stored = {
+        entry.meta.extra["period"]["station_code"]
+        for entry in iter_store(pl_cz.raw, kind="archive", provider="CHMU")
+        if entry.meta is not None and entry.meta.dataset in (HYDRO, METEO)
+    }
+    assert stored == set(hydro.stations) | set(meteo.stations)
+
+
+def test_imgw_18_k3_the_same_inputs_reuse_the_series(pl_cz, tmp_path, chmu, frozen):
+    roots = copy_of(pl_cz, tmp_path / "store")
+    current = {
+        dataset: version_of(roots.data, f"series:{dataset}")
+        for dataset in (HYDRO, METEO)
+    }
+
+    built = {
+        dataset: build_series(roots.data, raw_root=roots.raw, dataset=dataset)
+        for dataset in current
+    }
+
+    assert {
+        dataset: (report.status, report.version) for dataset, report in built.items()
+    } == {dataset: ("unchanged", version) for dataset, version in current.items()}
+    # Scenario (2): the same bytes republished — relabeled inputs, the series reused.
+    chmu.serve(
+        "hydro_listing_republished",
+        "h900001_2023_republished_head",
+        "h900001_2023_republished_get",
+    )
+    report = sync_store(roots.raw, datasets=[HYDRO], stations=[S1], years=[2023])
+    assert statuses(report.items) == ["relabeled"]
+    rebuilt = build_series(roots.data, raw_root=roots.raw, dataset=HYDRO)
+    assert rebuilt.status == "unchanged"
+    assert version_of(roots.data, f"series:{HYDRO}") == current[HYDRO]
+    assert snapshot(roots.data / "series") == snapshot(pl_cz.data / "series")
+
+
+# --------------------------------------------------------------------------
+# IMGW-19 k1: Python = obserwator = REST = MCP for the ČHMÚ commands
+# --------------------------------------------------------------------------
+
+# Versions of the read-only roots, resolved in the root of their slot before the run.
+PLACEHOLDERS = {
+    "<archive>": SLOT_2024,
+    "<meteo>": f"archive:{METEO}:precipitation/dly-{FULL}-SRA.csv",
+    "<series>": f"series:{HYDRO}",
+}
+# A plan file made by check_store on the fresh raw root before the run.
+PLAN = "<plan>"
+# Fresh roots of a write, one pair per interface: initialized ones, ones holding
+# only the ČHMÚ station sources (synced from the recorded cases of the run), a
+# copy of complete_pl_cz and one without the ČHMÚ meteo series.
+FRESH = ("empty", "sources", "pl_cz", "unbuilt")
+
+
+@dataclass(frozen=True)
+class Run:
+    """
+    A ČHMÚ run of a catalog command: JSON options without ``root`` and ``raw_root``.
+
+    ``store``: ``None`` = no root; ``"served"`` = the read-only
+    ``complete_pl_cz`` roots; one of ``FRESH`` = new roots for every interface.
+    The command works on the root of its kind (ADR-017).
+    ``cases``: recorded ČHMÚ answers; ``plan``: selectors of the plan file;
+    ``statuses``: of the report items; ``status``: of the result itself.
+    """
+
+    command: str
+    options: Mapping[str, object]
+    store: str | None = None
+    cases: tuple[str, ...] = ()
+    plan: Mapping[str, object] | None = None
+    statuses: tuple[str, ...] | None = None
+    status: str | None = None
+
+
+RUNS = [
+    Run("datasets providers", {"limit": 5}),
+    Run("datasets list", {"provider": "CHMU", "limit": 10}),
+    Run(
+        "datasets files",
+        {"dataset": HYDRO, "stations": [S2, S1], "years": "2004-2006", "limit": 10},
+    ),
+    Run("datasets files", {"dataset": METEO, "stations": [RAIN], "limit": 10}),
+    Run(
+        "stations find",
+        {"provider": "CHMU", "kind": "hydro", "query": "spindleruv", "limit": 5},
+        cases=("hydro_now_get",),
+    ),
+    Run(
+        "stations find",
+        {"provider": "CHMU", "query": "Ves", "limit": 5},
+        cases=("hydro_now_get", "meteo_now_listing", "meteo_now_get"),
+    ),
+    Run(
+        "stations find",
+        {"provider": "CHMU", "source": "store", "query": "0-203-1", "limit": 5},
+        "served",
+    ),
+    # Both providers of the store: IMGW-PIB first, by family, name and code.
+    Run("stations find", {"source": "store", "query": "a", "limit": 8}, "served"),
+    Run("store info", {}, "served"),
+    Run("store scan", {"provider": "CHMU", "limit": 25}, "served"),
+    # The data root holds no observations: a scan of its ČHMÚ series.
+    Run("store scan", {"provider": "CHMU", "kind": "series", "limit": 5}, "served"),
+    Run(
+        "store check",
+        {"datasets": [HYDRO], "stations": [S1, S2], "years": "2023-2024"},
+        "served",
+        ("hydro_listing_reserialized",),
+    ),
+    Run(
+        "store check",
+        {"datasets": [METEO], "stations": [FULL, RAIN]},
+        "served",
+        ("precipitation_listing", "temperature_listing", "snow_listing"),
+    ),
+    # An unreadable listing: check_failed items, no exception (spec §15).
+    Run(
+        "store check",
+        {"datasets": [HYDRO], "stations": [S1, ONLY_LISTED]},
+        "served",
+        ("hydro_listing_error",),
+    ),
+    Run(
+        "store sync",
+        {"datasets": [HYDRO], "stations": [S1], "years": [2023]},
+        "pl_cz",
+        (
+            "hydro_listing_rewritten",
+            "h900001_2023_rewritten_head",
+            "h900001_2023_rewritten_get",
+        ),
+        statuses=("unchanged",),
+    ),
+    Run(
+        "store sync",
+        {"datasets": [METEO], "stations": [RAIN]},
+        "empty",
+        (
+            "precipitation_listing",
+            "temperature_listing",
+            "snow_listing",
+            "m90000000002_SRA_head",
+            "m90000000002_SRA_get",
+        ),
+        # Items by file name: SCE, SNO (not published), SRA, T, TMA, TMI.
+        statuses=(
+            "unchanged",
+            "unchanged",
+            "new",
+            "unchanged",
+            "unchanged",
+            "unchanged",
+        ),
+    ),
+    Run(
+        "store sync",
+        {"plan": PLAN},
+        "empty",
+        FIRST_900001,
+        plan={"datasets": [HYDRO], "stations": [S1]},
+        statuses=("new", "new"),
+    ),
+    # The station sources: lists by HEAD and GET, the current metadata by GET.
+    Run(
+        "store sync",
+        {"datasets": list(CHMU_SOURCES)},
+        "empty",
+        CATALOG_GETS,
+        statuses=("new",) * 5,
+    ),
+    # The catalog is offline: it reads the stored station sources only.
+    Run("store catalog", {"provider": "CHMU"}, "pl_cz", status="unchanged"),
+    Run("store catalog", {"provider": "CHMU"}, "sources", CATALOG_GETS, status="new"),
+    Run("store export", {"version": "<archive>"}, "served"),
+    Run("store export", {"version": "<meteo>", "format": "jsonl"}, "served"),
+    Run("series build", {"dataset": HYDRO}, "pl_cz", status="unchanged"),
+    Run("series build", {"dataset": METEO}, "unbuilt", status="new"),
+    Run(
+        "series select",
+        {
+            "dataset": HYDRO,
+            "stations": [S2],
+            "years": "2004,2006",  # 2005 is unknown: outside the series
+            "year_type": "calendar",
+        },
+        "served",
+    ),
+    Run(
+        "series read",
+        {
+            "dataset": HYDRO,
+            "station": S2,
+            "start": "2005-12-30",
+            "end": "2006-01-02",
+            "limit": 10,
+        },
+        "served",
+    ),
+    Run(
+        "series read",
+        {
+            "dataset": METEO,
+            "station": FULL,
+            "variables": ["P", "Tmax"],
+            "limit": 5,
+            "cursor": page_cursor(5),
+        },
+        "served",
+    ),
+    Run("series summary", {"version": "<series>", "limit": 10}, "served"),
+    Run(
+        "series summary", {"dataset": METEO, "stations": [FULL], "limit": 10}, "served"
+    ),
+    Run("series export", {"dataset": METEO, "station": FULL}, "served"),
+    Run(
+        "series export", {"dataset": METEO, "station": FULL, "format": "json"}, "served"
+    ),
+    Run("stations export", {}, "served"),
+    Run("stations export", {"provider": "CHMU", "format": "csv"}, "served"),
+    Run(
+        "series export",
+        {
+            "dataset": HYDRO,
+            "station": S2,
+            "year_type": "hydrological",
+            "start": "2004-10-30",
+            "end": "2004-11-02",
+        },
+        "served",
+    ),
+]
+WRITE_RUNS = [run for run in RUNS if run.store in FRESH]
+
+
+def fresh(kind: str, roots: Roots, pl_cz: Roots) -> None:
+    """New roots of ``kind``; ``"sources"`` syncs from the served recordings."""
+    for root in (roots.raw, roots.data):
+        if root.exists():
+            shutil.rmtree(root)
+    if kind in ("empty", "sources"):
+        init_store(roots.raw)
+        init_store(roots.data, kind="data")
+        if kind == "sources":
+            sync_store(roots.raw, datasets=list(CHMU_SOURCES))
+        return
+    shutil.copytree(pl_cz.raw, roots.raw)
+    shutil.copytree(pl_cz.data, roots.data)
+    if kind == "unbuilt":
+        shutil.rmtree(roots.data / "series" / "versions" / "chmu_meteo_daily")
+
+
+def written(roots: Roots) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """`snapshot` of both roots."""
+    return snapshot(roots.raw), snapshot(roots.data)
+
+
+def resolved(run: Run, roots: Roots | None, plan: Path | None) -> dict[str, object]:
+    """Options with placeholders replaced: versions relative to their root, the plan."""
+    options = dict(run.options)
+    for name, value in run.options.items():
+        if value == PLAN:
+            options[name] = str(plan)
+        elif isinstance(value, str) and value in PLACEHOLDERS:
+            assert roots is not None
+            slot = PLACEHOLDERS[value]
+            root = roots.of_slot(slot)
+            options[name] = relative(root, version_of(root, slot))
+    return options
+
+
+def rest_options(options: Mapping[str, object]) -> dict[str, object]:
+    """REST takes the plan as an ``obserwator-plan/1`` object with root ``"."``."""
+    if "plan" not in options:
+        return dict(options)
+    document = load(Path(str(options["plan"])))
+    return {**options, "plan": {**document, "root": "."}}
+
+
+def mcp_answer(
+    command: str, options: Mapping[str, object], *, check: bool = False
+) -> Any:
+    """The tool of ``command`` on a fresh stdio server (writes: ``check: false``)."""
+    import anyio
+    from mcp import Client
+
+    from obserwator.mcp.server import create_server
+
+    meta = input_schema(command)["x-obserwator"]
+    arguments = {
+        name: str(value) if isinstance(value, Path) else value
+        for name, value in options.items()
+    }
+    writes = meta["writes"] != "none" and not check
+    if writes:
+        arguments["check"] = False
+
+    async def ask() -> Any:
+        async with Client(
+            create_server(mode="write" if writes else "read", allow_dirs=ANYWHERE)
+        ) as client:
+            return await client.call_tool(meta["operation_id"], arguments)
+
+    return anyio.run(ask)
+
+
+def assert_mcp_alike(
+    answered: Any, command: str, options, python, printed, root
+) -> None:
+    """MCP structured content = the Python envelope, text = the CLI line."""
+    assert answered.is_error is False, answered.content[0].text
+    if ROUTES[command]["result"] == "stream" and not python.check:
+        # The raw bytes: Click's ``stdout`` turns CRLF into LF.
+        data = printed.stdout_bytes.decode("utf-8")
+        default = input_schema(command)["properties"]["format"]["default"]
+        assert answered.content[0].text == data
+        assert answered.structured_content == {
+            **replace(python, result=None).to_json(root=root),
+            "result": {
+                "schema": "obserwator-stream/1",
+                "format": options.get("format", default),
+                "bytes": len(data.encode("utf-8")),
+                "lines": data.count("\n"),
+            },
+        }
+        return
+    assert canonical(answered.structured_content) == canonical(
+        python.to_json(root=root)
+    )
+    assert answered.content[0].text + "\n" == printed.stdout
+
+
+def _id(run: Run) -> str:
+    return f"{run.command}:{','.join(f'{k}={v}' for k, v in run.options.items())}"[:90]
+
+
+def _ask(
+    interface, run, options, root, raw_root, *, cli, rest, writable, check=False
+) -> Any:
+    if interface == "mcp":
+        return mcp_answer(run.command, rooted(options, root, raw_root), check=check)
+    given = rest_options(options) if interface == "rest" else options
+    return answer(
+        interface,
+        run.command,
+        given,
+        root,
+        raw_root=raw_root,
+        cli=cli,
+        rest=rest,
+        headers=writable,
+        check=check,
+    )
+
+
+def fresh_roots(tmp_path: Path) -> Roots:
+    """Where the fresh roots of a write lie."""
+    return Roots(data=tmp_path / "store" / "data", raw=tmp_path / "store" / "raw")
+
+
+@pytest.mark.parametrize("run", RUNS, ids=_id)
+def test_imgw_19_k1_chmu_commands_answer_alike_in_python_cli_rest_and_mcp(
+    run,
+    cli,
+    rest,
+    writable,
+    server,
+    monkeypatch,
+    tmp_path,
+    pl_cz,
+    chmu,
+    frozen,
+    relative_reference_dir,  # noqa: F811
+):
+    writes = run.store in FRESH
+    roots = (
+        fresh_roots(tmp_path) if writes else (pl_cz if run.store == "served" else None)
+    )
+    root = None if roots is None else roots.root(run.command)
+    raw_root = None if roots is None else roots.raw_root(run.command)
+    serve_roots(server, monkeypatch, roots)
+    chmu.serve(*run.cases)
+    plan = None
+    if run.plan is not None:
+        assert roots is not None and run.store is not None
+        fresh(run.store, roots, pl_cz)
+        plan = tmp_path / "plan.json"
+        check_store(roots.raw, **run.plan, plan=plan)
+    options = resolved(run, roots, plan)
+    before = stamps_of(pl_cz)
+    answers, requests, trees = {}, {}, {}
+    for interface in INTERFACES:
+        if writes:
+            assert roots is not None
+            fresh(str(run.store), roots, pl_cz)
+        start = len(chmu.router.calls)
+        answers[interface] = _ask(
+            interface,
+            run,
+            options,
+            root,
+            raw_root,
+            cli=cli,
+            rest=rest,
+            writable=writable,
+        )
+        requests[interface] = chmu.traffic(start)
+        if writes:
+            assert roots is not None
+            trees[interface] = written(roots)
+
+    python, printed = answers["python"], answers["cli"]
+    stream = ROUTES[run.command]["result"] == "stream"
+    if MCP:
+        assert_mcp_alike(answers["mcp"], run.command, options, python, printed, root)
+    assert_alike(run.command, python, printed, answers["rest"], root, raw_root=raw_root)
+    assert len({canonical(traffic) for traffic in requests.values()}) == 1
+    if run.command == "store catalog":
+        assert requests["python"] == []  # offline: the stored sources only
+    elif run.cases and not stream:
+        assert requests["python"], "żadne nagranie nie zostało użyte"
+    if writes:
+        assert len({canonical(tree) for tree in trees.values()}) == 1
+    assert stamps_of(pl_cz) == before
+    if run.statuses is not None:
+        assert tuple(statuses(python.result.items)) == run.statuses
+    if run.status is not None:
+        assert python.result.status == run.status
+    if roots is not None and not stream:
+        # Every slot paired with a version names a current_version (§13.7) in
+        # the root of its kind; an unpublished ČHMÚ file is a result with
+        # version null.
+        document = python.to_json(root=root)
+        for slot in set(slots(document)) - set(unversioned(document)):
+            entry = current_version(roots.of_slot(slot), slot=slot)
+            assert entry is not None and entry.slot == slot, slot
+
+
+@pytest.mark.parametrize("run", WRITE_RUNS, ids=_id)
+def test_imgw_19_k1_chmu_writes_are_planned_alike_without_writing(
+    run, cli, rest, server, monkeypatch, tmp_path, pl_cz, chmu, frozen
+):
+    roots = fresh_roots(tmp_path)
+    root, raw_root = roots.root(run.command), roots.raw_root(run.command)
+    assert run.store is not None
+    chmu.serve(*run.cases)
+    fresh(run.store, roots, pl_cz)
+    serve_roots(server, monkeypatch, roots)  # writes stay disabled
+    plan = None
+    if run.plan is not None:
+        plan = tmp_path / "plan.json"
+        check_store(roots.raw, **run.plan, plan=plan)
+    options = resolved(run, roots, plan)
+    before = stamps_of(roots)
+    answers = {
+        interface: _ask(
+            interface,
+            run,
+            options,
+            root,
+            raw_root,
+            cli=cli,
+            rest=rest,
+            writable=None,
+            check=True,
+        )
+        for interface in INTERFACES
+    }
+
+    python = answers["python"]
+    assert python.check is True
+    if MCP:
+        assert answers["mcp"].structured_content["check"] is True
+        assert_mcp_alike(
+            answers["mcp"], run.command, options, python, answers["cli"], root
+        )
+    assert_alike(
+        run.command, python, answers["cli"], answers["rest"], root, raw_root=raw_root
+    )
+    assert stamps_of(roots) == before
+    downloads = [
+        url
+        for method, url in chmu.traffic()
+        if method == "GET" and not url.endswith("/") and "metadata" not in url
+    ]
+    assert downloads == []
+
+
+# ČHMÚ selections refused before any request: the option and value of the error.
+REFUSED = [
+    ("store check", {"datasets": [HYDRO], "years": "2024"}, "stations", None),
+    (
+        "store check",
+        {"datasets": [HYDRO, DAILY], "stations": [S1], "years": "2024"},
+        "stations",
+        None,
+    ),
+    ("datasets files", {"dataset": HYDRO, "stations": [RABA]}, "stations", [RABA]),
+    # Regression: the codes were the Python repr "['149190310']", not a list.
+    ("series select", {"dataset": HYDRO, "stations": [RABA]}, "stations", [RABA]),
+]
+
+
+@pytest.mark.parametrize(("command", "options", "option", "value"), REFUSED)
+def test_imgw_19_k1_a_refused_chmu_selection_is_one_validation_error_everywhere(
+    command, options, option, value, cli, rest, server, monkeypatch, pl_cz, chmu
+):
+    root = (
+        pl_cz.root(command) if "root" in input_schema(command)["properties"] else None
+    )
+    serve_roots(server, monkeypatch, pl_cz)
+    with pytest.raises(ObserwatorValidationError) as caught:
+        run_command(command, options=rooted(options, root))
+    error = caught.value
+    expected = canonical([error.detail, dict(error.details)])
+
+    printed = cli(*cli_words(command, rooted(options, root)))
+    line = json.loads(printed.stderr.splitlines()[-1])
+    answered = rest.request(**rest_request(command, options))
+    body = answered.json()
+
+    assert (error.details["option"], error.details.get("value")) == (option, value)
+    assert (printed.exit_code, printed.stdout, line["code"]) == (
+        2,
+        "",
+        "validation_error",
+    )
+    assert canonical([line["message"], line["details"]]) == expected
+    assert (answered.status_code, body["code"]) == (400, "validation_error")
+    assert canonical([body["detail"], body["details"]]) == expected
+    if MCP:
+        document = mcp_answer(command, rooted(options, root)).structured_content
+        assert canonical([document["message"], document["details"]]) == expected
+    assert chmu.traffic() == []
+
+
+# --------------------------------------------------------------------------
+# IMGW-19 k1: local ČHMÚ commands
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Local:
+    """A local ČHMÚ command: its options and the directory it may write."""
+
+    options: dict[str, object]
+    place: Path
+
+
+def _datasets_download(tmp_path: Path, pl_cz: Roots, imgw, chmu: FakeChmu) -> Local:
+    chmu.serve("h900002_2004_get", "h900002_2005_get", "h900002_2006_get")
+    output = tmp_path / "pobrane"
+    options = {
+        "dataset": HYDRO,
+        "stations": [S2],
+        "years": "2004-2006",
+        "output_dir": output,
+    }
+    return Local(options, output)
+
+
+LOCAL = {
+    "datasets download": _datasets_download,
+}
+
+
+@pytest.mark.parametrize("command", list(LOCAL))
+def test_imgw_19_k1_local_chmu_commands_answer_alike_in_python_cli_and_mcp(
+    command, cli, tmp_path, pl_cz, imgw, chmu, frozen
+):
+    local = LOCAL[command](tmp_path, pl_cz, imgw, chmu)
+    template = tmp_path / "wzorzec"
+    if local.place.exists():
+        shutil.copytree(local.place, template)
+    answers, requests, trees = {}, {}, {}
+    for interface in LOCAL_INTERFACES:
+        if local.place.exists():
+            shutil.rmtree(local.place)
+        if template.exists():
+            shutil.copytree(template, local.place)
+        start = len(chmu.router.calls)
+        if interface == "python":
+            answers[interface] = run_command(command, options=local.options)
+        elif interface == "cli":
+            answers[interface] = cli(*cli_words(command, local.options))
+        else:
+            answers[interface] = mcp_answer(command, local.options)
+        requests[interface] = chmu.traffic(start)
+        trees[interface] = snapshot(local.place)
+
+    python, printed = answers["python"], answers["cli"]
+    document = python.to_json()
+    assert python.status == "ok", document
+    assert printed.exit_code == 0, printed.output
+    assert canonical(json.loads(printed.stdout)) == canonical(document)
+    for notice in python.notices:
+        assert printed.stderr.count(line_of(notice)) == 1
+    if MCP:
+        answered = answers["mcp"]
+        assert answered.is_error is False, answered.content[0].text
+        assert canonical(answered.structured_content) == canonical(document)
+    assert len({canonical(traffic) for traffic in requests.values()}) == 1
+    assert len({canonical(tree) for tree in trees.values()}) == 1
+    if command == "datasets download":
+        assert statuses(python.result.items) == [
+            "downloaded",
+            "not_published",
+            "downloaded",
+        ]
+
+
+# --------------------------------------------------------------------------
+# IMGW-19 k3: CC BY 4.0 and the ČHMÚ attribution everywhere
+# --------------------------------------------------------------------------
+
+
+def test_imgw_19_k3_every_chmu_sidecar_and_export_names_cc_by_and_chmu(pl_cz):
+    for sidecar, meta in sidecars(pl_cz).items():
+        license_ = meta["license"]
+        assert (meta["country"], meta["provider"]) == ("CZ", "CHMU"), sidecar
+        assert (license_["id"], license_["url"], license_["terms_url"]) == (
+            "CC-BY-4.0",
+            CHMU_PROVIDER.license.url,
+            CHMU_PROVIDER.license.terms_url,
+        ), sidecar
+        derived = meta["extra"].get("derived")
+        expected = SOURCE if derived is None else f"{SOURCE}. {PROCESSED}"
+        if derived == "catalog":
+            # its locations were checked against the packaged border of RÚIAN (ADR-018)
+            expected += ". " + attribution("cuzk").attribution[0]
+        assert license_["attribution"] == expected, sidecar
+
+    terms = f"{SOURCE}. {PROCESSED}. {CHMU_PROVIDER.notice}"
+    exported = 0
+    for entry in iter_store(pl_cz.raw, kind="archive", provider="CHMU"):
+        assert entry.meta is not None and entry.version is not None
+        if entry.meta.dataset not in (HYDRO, METEO):
+            continue  # station lists are read by stations find
+        for format_ in ("csv", "jsonl"):
+            notices = []
+            lines = list(
+                export_archive(entry.version, format=format_, on_notice=notices.append)
+            )
+            assert lines, entry.version
+            assert [(n.level, n.code, n.message) for n in notices] == [
+                ("info", "license_terms", terms)
+            ]
+            exported += 1
+    assert exported == 2 * 14
+    for dataset, codes in ((HYDRO, (S1, S2)), (METEO, (FULL, RAIN))):
+        for code in codes:
+            notices = []
+            rows = list(
+                csv.DictReader(
+                    io.StringIO(
+                        "".join(
+                            export_series(
+                                root=pl_cz.data,
+                                dataset=dataset,
+                                station=code,
+                                on_notice=notices.append,
+                            )
+                        )
+                    )
+                )
+            )
+            assert [row["attribution"] for row in rows[:2]] == [SOURCE, PROCESSED]
+            assert [notice.code for notice in notices] == ["license_terms"]
+
+
+# --------------------------------------------------------------------------
+# ADR-028: a raw root written under the old names
+# --------------------------------------------------------------------------
+
+
+def _old_names(raw: Path) -> int:
+    """Rewrite the sidecars and observations of a raw root as 3.0.x wrote them."""
+    renamed = 0
+    for path in sorted(raw.rglob("*.json")):
+        if not (path.name.endswith(".meta.json") or path.parent.name == "observations"):
+            continue
+        document = load(path)
+        if str(document.get("dataset", "")).startswith("cz.chmu."):
+            document["dataset"] = document["dataset"].replace("cz.chmu.", "cz.chmi.")
+            if "provider" in document:
+                document["provider"] = "CHMI"
+            if "content_form" in document:
+                document["content_form"] = "chmi-json/1"
+        elif document.get("provider") == "IMGW":
+            document["provider"] = "IMGW-PIB"
+        else:
+            continue
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        renamed += 1
+    return renamed
+
+
+def test_a_raw_root_of_the_old_names_builds_the_series_and_catalogs(pl_cz, tmp_path):
+    roots = copy_of(pl_cz, tmp_path / "store")
+    assert _old_names(roots.raw) > 0
+    stored = " ".join(path.read_text("utf-8") for path in roots.raw.rglob("*.json"))
+    assert '"provider": "IMGW-PIB"' in stored and '"provider": "CHMI"' in stored
+    data = init_store(tmp_path / "data", kind="data").root
+
+    for dataset in (HYDRO, METEO, "pl.imgw.hydro_daily"):
+        assert build_series(data, raw_root=roots.raw, dataset=dataset).status == "new"
+    assert build_catalog(data, raw_root=roots.raw, provider="CHMU").status == "new"
+    assert build_catalog(data, raw_root=roots.raw, provider="IMGW").status == "new"
+
+    # Stored history keeps its raw names and is read under the current ones.
+    archives = list(iter_store(roots.raw, kind="archive", provider="CHMU"))
+    assert archives and all(entry.problem_code is None for entry in archives)
+    assert {entry.meta.dataset.split(".")[1] for entry in archives} == {"chmi"}
+    assert {
+        (entry.meta.dataset_key[:8], entry.meta.provider) for entry in archives
+    } == {("cz.chmu.", "CHMU")}
+    assert {entry.meta.content_form for entry in archives} == {"chmu-json/1", None}
+    imgw = list(iter_store(roots.raw, kind="archive", provider="IMGW"))
+    assert imgw and all(entry.problem_code is None for entry in imgw)
+    assert {entry.meta.provider for entry in imgw} == {"IMGW"}
+    # The data root is the one the current names give, and only they are written.
+    for slot, part in (
+        (f"series:{HYDRO}", "stations"),
+        (f"series:{METEO}", "stations"),
+        ("series:pl.imgw.hydro_daily", "stations"),
+        ("catalog:cz.chmu.stations", "features"),
+    ):
+        built, fixture = version_of(data, slot), version_of(pl_cz.data, slot)
+        assert load(built)[part] == load(fixture)[part], slot
+    assert {
+        feature.provider for feature in read_catalog(root=data, provider="IMGW")
+    } == {"IMGW"}
+    written = " ".join(path.read_text("utf-8") for path in data.rglob("*.json"))
+    assert "cz.chmi." not in written and "chmi-json" not in written
+    assert '"CHMI"' not in written
+    assert re.search(r'"provider":\s*"IMGW-PIB"', written) is None
+    with pytest.raises(ObserwatorValidationError):
+        build_series(data, raw_root=roots.raw, dataset="cz.chmi.hydro_daily")
+    with pytest.raises(ObserwatorValidationError):
+        build_catalog(data, raw_root=roots.raw, provider="IMGW-PIB")

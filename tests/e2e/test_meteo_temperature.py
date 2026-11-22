@@ -9,7 +9,7 @@ with the stored results, so the numbers it shows are compared with the stored do
 (``source: stored``); the stripes' normal of their reference period is computed by
 Hydrolog's program on request and compared with the API's document of the same options
 (``source: computed``). Kraków (IMGW-PIB climate station, 1961–2025) and
-Praha-Klementinum (ČHMÚ, temperature since 1775, no snow cover).
+Praha-Klementinum (ČHMÚ, temperature since 1775, snow depth and new snow since 3.1.0).
 """
 
 from __future__ import annotations
@@ -197,7 +197,9 @@ def test_the_stripes_files_carry_the_station_the_credit_and_the_lines(
             section.locator("button", has=page.locator(".fmt", has_text=fmt)).click()
         files[fmt] = (download.value.suggested_filename, download.value.path())
     png_name, png_path = files["PNG"]
-    assert png_name == "paski-klimatyczne-250190390-1961-2025.png"
+    assert png_name == "obserwator_climate-stripes_250190390_1961_2025.png"
+    assert files["SVG"][0] == "obserwator_climate-stripes_250190390_1961_2025.svg"
+    assert files["CSV"][0] == "obserwator_climate-stripes_250190390_1961_2025.csv"
     assert png_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     svg = files["SVG"][1].read_text(encoding="utf-8")
     # the image's texts, its wrapped lines joined again
@@ -220,9 +222,10 @@ def test_the_stripes_files_carry_the_station_the_credit_and_the_lines(
     assert "#ShowYourStripes" in table[0]["method"]
 
 
-def test_snow_shows_the_winters_hydrolog_counted(open_page, analysis_url):
-    snow = card(open_page, analysis_url, KRAKOW, "snieg")
-    result = analysis(analysis_url, KRAKOW, "snow")
+@pytest.mark.parametrize("code", STATIONS)
+def test_snow_shows_the_winters_hydrolog_counted(open_page, analysis_url, code):
+    snow = card(open_page, analysis_url, code, "snieg")
+    result = analysis(analysis_url, code, "snow")
     period = result["period"]
     cover = part(snow, "Pokrywa śnieżna")
     assert number(figure(cover, "Dni z pokrywą ≥ 1 cm")) == pytest.approx(
@@ -237,12 +240,6 @@ def test_snow_shows_the_winters_hydrolog_counted(open_page, analysis_url):
     assert first_row.locator("td").first.inner_text() == (
         f"{newest - 1}/{str(newest)[2:]}"
     )
-
-
-def test_a_czech_station_has_no_snow(open_page, analysis_url):
-    page = open_page(f"?station={PRAHA}", base=analysis_url)
-    page.locator('[data-section="temperatura"]').wait_for(timeout=WAIT)
-    assert page.locator('[data-section="snieg"]').count() == 0
 
 
 @pytest.mark.parametrize("code", STATIONS)

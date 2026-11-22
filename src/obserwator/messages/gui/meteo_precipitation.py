@@ -385,7 +385,8 @@ MESSAGES: dict[str, Text] = {
         "The precipitation total of the chosen number of days that the annual maximum "
         "exceeds with the probability p, that is once in T years on average. Computed "
         "from distributions fitted to the annual maxima; beside them IMGW-PIB's PMAXTP "
-        "for the station's point.\n\n"
+        "of the cell of its grid at the station's point (kriged, so it may differ from "
+        "IMGW-PIB's own estimate for a station).\n\n"
         "T = 1 / p\n"
         "pₘ = m / (n + 1)\n"
         "where: p – exceedance probability [–], T – return period [years], pₘ – "
@@ -397,8 +398,9 @@ MESSAGES: dict[str, Text] = {
         "Sources: Hosking and Wallis 1997; Weiss 1964; PMAXTP: IMGW-PIB",
         "Suma opadu z wybranej liczby dni, którą maksimum roczne przekracza z "
         "prawdopodobieństwem p, czyli średnio raz na T lat. Liczona z rozkładów "
-        "dopasowanych do maksimów rocznych; obok PMAXTP IMGW-PIB dla punktu "
-        "stacji.\n\n"
+        "dopasowanych do maksimów rocznych; obok PMAXTP IMGW-PIB dla oczka jego siatki "
+        "w punkcie stacji (z krigingu, więc może różnić się od oszacowania IMGW-PIB "
+        "dla samej stacji).\n\n"
         "T = 1 / p\n"
         "pₘ = m / (n + 1)\n"
         "gdzie: p – prawdopodobieństwo przewyższenia [–], T – okres powtarzalności "
@@ -441,12 +443,12 @@ MESSAGES: dict[str, Text] = {
     ),
     "meteo.opady.quantiles.t_col": Text("T [years]", "T [lata]"),
     "meteo.opady.quantiles.pmaxtp_caption": Text(
-        "POT and AMP: IMGW-PIB's PMAXTP (precipitation lasting {hours} h) at the point "
-        "{point}, asked of IMGW-PIB, not computed here. PMAXTP's data have their own "
-        "terms:",
-        "POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania {hours} h) dla punktu "
-        "{point}, pobrane z IMGW-PIB, nie liczone tutaj. Dane PMAXTP mają własne "
-        "warunki korzystania:",
+        "POT and AMP: IMGW-PIB's PMAXTP (precipitation lasting {hours} h) of the cell "
+        "of its grid at the point {point}, asked of IMGW-PIB, not computed here. "
+        "PMAXTP's data have their own terms:",
+        "POT i AMP: PMAXTP IMGW-PIB (opad o czasie trwania {hours} h) dla oczka jego "
+        "siatki w punkcie {point}, pobrane z IMGW-PIB, nie liczone tutaj. Dane PMAXTP "
+        "mają własne warunki korzystania:",
     ),
     "meteo.opady.quantiles.pmaxtp_link": Text(
         "All PMAXTP tables of this point", "Wszystkie tabele PMAXTP tego punktu"
@@ -494,19 +496,25 @@ MESSAGES: dict[str, Text] = {
     "meteo.susze.spells.info": Text(
         "A dry spell is a run of consecutive days with precipitation below the "
         "threshold, a wet spell a run of days with at least the threshold (1 mm by "
-        "default). A spell counts in the year in which it starts.\n\n"
+        "default). A spell over 1 January counts whole in the year in which it ends; "
+        "a year that lies wholly inside a longer spell has no longest spell of its "
+        "own („–”).\n\n"
         "At a threshold of 1 mm, the longest spell of a year is the index CDD or CWD. "
         "The mark ≥ is an open spell, cut by a missing measurement: it may have been "
         "longer; the figures of the years take only the years with a measurement on "
         "every day.\n\n"
-        "Sources: ETCCDI (Zhang et al. 2011); Tallaksen and van Lanen 2004",
+        "Sources: ETCCDI (Zhang et al. 2011; climdex.pcic); ECA&D ATBD 2021; "
+        "Tallaksen and van Lanen 2004",
         "Okres bezopadowy to ciąg kolejnych dni z opadem mniejszym od progu, a okres "
         "opadowy ciąg dni z opadem co najmniej równym progowi (domyślnie 1 mm). Ciąg "
-        "należy do roku, w którym się zaczął.\n\n"
+        "przez 1 stycznia należy w całości do roku, w którym się skończył; rok leżący "
+        "w całości wewnątrz dłuższego ciągu nie ma własnego najdłuższego ciągu "
+        "(„–”).\n\n"
         "Przy progu 1 mm najdłuższy ciąg roku to wskaźnik CDD albo CWD. Znak ≥ oznacza "
         "ciąg otwarty, przerwany brakiem pomiaru: mógł być dłuższy; wartości lat liczą "
         "się tylko z lat z pomiarem w każdym dniu.\n\n"
-        "Źródła: ETCCDI (Zhang i in. 2011); Tallaksen i van Lanen 2004",
+        "Źródła: ETCCDI (Zhang i in. 2011; climdex.pcic); ECA&D ATBD 2021; Tallaksen "
+        "i van Lanen 2004",
     ),
     "meteo.susze.spells.kind_label": Text("Spells", "Ciągi"),
     "meteo.susze.spells.kind.dry": Text("dry", "bezopadowe"),
@@ -667,12 +675,14 @@ MESSAGES: dict[str, Text] = {
         "miesięcznych zastępują te dni, w statystykach dobowych są brakami.",
     ),
     "sections.notice.normal_not_computed": Text(
-        "The normal of {first_year}–{last_year} needs annual values in {required} of "
-        "its years and {years} have one (WMO-No. 1203): the normal and the percentages "
-        "of it are empty.",
-        "Normalna lat {first_year}–{last_year} wymaga wartości rocznych w {required} "
-        "latach okresu, a ma je {years} (WMO-No. 1203): normalna i procenty normalnej "
-        "są puste.",
+        "A monthly normal of {first_year}–{last_year} needs values in {required} of its "
+        "years and the month with the fewest has {years} (WMO-No. 1203, 4.4.2): that "
+        "normal, the normals made of it (half-years, seasons, the year) and the "
+        "percentages of them are empty.",
+        "Normalna miesiąca lat {first_year}–{last_year} wymaga wartości w {required} "
+        "latach okresu, a miesiąc z najmniejszą ich liczbą ma je w {years} (WMO-No. "
+        "1203, 4.4.2): ta normalna, normalne z niej złożone (półrocza, pory roku, rok) "
+        "i procenty tych normalnych są puste.",
     ),
     "sections.notice.spi_not_fitted": Text(
         "SPI-{scale_months}: the sums of the months {months} have no gamma fit (known "

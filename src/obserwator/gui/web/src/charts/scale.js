@@ -98,12 +98,14 @@ export function formatTime(minutes) {
  * Return the decimals that show every multiple of a step exactly.
  *
  * @param {number} step a tick step, e.g. 0.25
- * @returns {number} 2 for 0.25, 1 for 2.5, 0 for 50
+ * @returns {number} 2 for 0.25, 1 for 2.5, 0 for 50; 10 for a step that 10 decimals do
+ *   not show (1e-12)
  */
 export function stepDigits(step) {
   for (let digits = 0; digits < 10; digits += 1) {
     const scaled = step * 10 ** digits;
-    if (Math.abs(scaled - Math.round(scaled)) < 1e-9 * Math.max(1, scaled)) return digits;
+    const whole = Math.round(scaled);
+    if (whole >= 1 && Math.abs(scaled - whole) < 1e-9 * Math.max(1, scaled)) return digits;
   }
   return 10;
 }
@@ -134,25 +136,40 @@ function clean(value, digits) {
   return Number(value.toFixed(Math.min(12, digits + 2)));
 }
 
+/** The most ticks of a linear domain: a step far below its span is no tick step. */
+const MAX_TICKS = 1000;
+
 /**
  * Return the ticks of a linear domain at multiples of a step.
  *
  * @param {number} min the start of the domain
  * @param {number} max the end of the domain
  * @param {number} step the step
- * @returns {{value: number, label: string}[]} the ticks within [min, max]
+ * @returns {{value: number, label: string}[]} the ticks within [min, max]; none when the
+ *   step would give more than 1000 of them
  */
 export function linearTicks(min, max, step) {
   const digits = stepDigits(step);
   const ticks = [];
   const first = Math.ceil(min / step - 1e-9);
   const last = Math.floor(max / step + 1e-9);
-  for (let k = first; k <= last; k += 1) {
-    const value = clean(k * step, digits);
+  // Counted from 0, never from `first`: beyond 2^53 a whole number plus 1 is that number
+  const count = last - first;
+  if (!(count < MAX_TICKS)) return ticks;
+  for (let k = 0; k <= count; k += 1) {
+    const value = clean((first + k) * step, digits);
     ticks.push({ value, label: formatNumber(value, digits) });
   }
   return ticks;
 }
+
+/**
+ * The narrowest span of a linear domain, as a share of its largest absolute end (at
+ * least 1): values closer than that are one value, float noise of values that are equal
+ * (annual means of a constant record), and no rounded step with a label of at most 10
+ * decimals divides a narrower span.
+ */
+const SPAN_RESOLUTION = 1e-9;
 
 /**
  * Round a linear domain outwards to rounded ticks.
@@ -161,7 +178,9 @@ export function linearTicks(min, max, step) {
  * the span above the largest value (the headroom of the mockup's charts) and, when
  * the domain reaches below zero, below the smallest one. Negative values are drawn
  * (air temperatures, anomalies, day numbers before 1970); a quantity that is never
- * negative keeps `zero` so its axis starts at 0.
+ * negative keeps `zero` so its axis starts at 0. One value, or values within
+ * `SPAN_RESOLUTION` of one another, span 10 % of the value above it (1 for a value
+ * within 1e-8 of 0).
  *
  * @param {number[]} values the values to cover (non-finite ones are skipped)
  * @param {{count?: number, zero?: boolean, pad?: number, min?: number, max?: number}} [options]
@@ -175,7 +194,10 @@ export function niceDomain(values, options = {}) {
   let hi = options.max ?? (range ? range[1] : 1);
   if (zero && options.min === undefined) lo = Math.min(0, lo);
   if (zero && options.max === undefined) hi = Math.max(0, hi);
-  if (hi <= lo) hi = lo + (lo === 0 ? 1 : Math.abs(lo) * 0.1);
+  if (!(hi - lo > SPAN_RESOLUTION * Math.max(1, Math.abs(lo), Math.abs(hi)))) {
+    const width = Math.abs(lo) * 0.1;
+    hi = lo + (width > SPAN_RESOLUTION ? width : 1);
+  }
   const span = hi - lo;
   if (options.max === undefined) hi += pad * span;
   if (options.min === undefined && lo < 0) lo -= pad * span;

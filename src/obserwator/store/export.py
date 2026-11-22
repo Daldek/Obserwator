@@ -12,10 +12,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal, cast, overload
 
@@ -82,13 +84,10 @@ _YEAR_TYPES = ("hydrological", "calendar")
 _KINDS = ("hydro", "meteo")
 _PROGRESS_ROWS = 256
 _CANCELLED = message("export.cancelled")
-# The trailing columns of the CSV of a series or of the stations (ADR-001 Q10, ADR-012).
-_ATTRIBUTION_COLUMNS = (
-    "attribution_source",
-    "attribution_processed",
-    "attribution",
-    "terms_notice",
-)
+# The trailing columns of the CSV of a series or of the stations: the lines of
+# `obserwator.attribution` (ADR-012, Nogat DEV-20.5; ADR-028 dropped the formula
+# columns ``attribution_source`` and ``attribution_processed`` of ADR-001 Q10).
+_ATTRIBUTION_COLUMNS = ("attribution", "terms_notice")
 # Leading columns of the stations CSV; the other catalog properties follow sorted.
 _STATION_COLUMNS = ("station_code", "name", "kind")
 
@@ -585,7 +584,9 @@ def export_archive(
     if root is not None:
         source = _open(root, kind="raw") / source
     records = read_archive(source)
-    descriptor = get_dataset(read_meta(_archive_main(source)).dataset)
+    meta = read_meta(_archive_main(source))
+    # The current key: a sidecar of a renamed dataset keeps its old one (ADR-028).
+    descriptor = get_dataset(meta.dataset_key or meta.dataset)
     target = _target(output, force=force)
     head, rows = _archive_lines(records, format)
     _check_cancel(cancel)
@@ -886,17 +887,14 @@ def export_series(
     written. The three formats hold the same columns (ADR-014).
 
     The CSV (UTF-8 without BOM, comma, dot decimal, CRLF rows) has a single
-    header row ``date,year,<V> [<unit>],<V>_flag,…,attribution_source,
-    attribution_processed,attribution,terms_notice``; ČHMÚ meteo series add
-    ``<V>_quality`` and ``<V>_source_flag`` after the flag of every variable,
-    half-year series add ``period`` and ``<V>_start`` / ``<V>_end`` extremum
-    dates with ``<V>_occurrences`` (number of merged IMGW rows). The source
-    attribution and the processed-data attribution of the dataset's provider
-    appear only in the first data row (ADR-001 Q10); the columns
-    ``attribution`` and ``terms_notice`` hold the lines of `obserwator.attribution`
-    (ADR-012), one line per cell from the first data row down, the rest
-    joined with a line feed into the last row of a shorter series. Missing
-    values are empty cells flagged ``missing``.
+    header row ``date,year,<V> [<unit>],<V>_flag,…,attribution,terms_notice``;
+    ČHMÚ meteo series add ``<V>_quality`` and ``<V>_source_flag`` after the
+    flag of every variable, half-year series add ``period`` and ``<V>_start`` /
+    ``<V>_end`` extremum dates with ``<V>_occurrences`` (number of merged IMGW
+    rows). The columns ``attribution`` and ``terms_notice`` hold the lines of
+    `obserwator.attribution` (ADR-012, ADR-028), one line per cell from the
+    first data row down, the rest joined with a line feed into the last row
+    of a shorter series. Missing values are empty cells flagged ``missing``.
 
     JSON is one ``obserwator-series-export/1`` document (UTF-8, LF lines):
     ``schema``, ``dataset``, ``provider``, ``station``, ``series_version`` (the
@@ -1071,17 +1069,7 @@ def export_series(
             cancel=cancel,
             done=done,
         )
-    formulas = (
-        descriptor.license.attribution,
-        get_provider(descriptor.provider).processed_attribution,
-    )
-    rows = (
-        [
-            *(column.cell(record) for column in columns),
-            *(formulas if number == 0 else ("", "")),
-        ]
-        for number, record in enumerate(records)
-    )
+    rows = ([column.cell(record) for column in columns] for record in records)
     return _deliver(
         _Lines(
             (
@@ -1164,28 +1152,37 @@ def _export_joined(
     columns = _series_columns(
         replace(first, variables=units), list(units), indexes[0].year_type
     )
-    formulas = (
-        first.license.attribution,
-        get_provider(first.provider).processed_attribution,
+    return _station_csv(
+        [column.header for column in columns],
+        ([column.cell(record) for column in columns] for record in records),
+        first,
+        station=station,
+        output=output,
     )
-    rows = (
-        [
-            *(column.cell(record) for column in columns),
-            *(formulas if number == 0 else ("", "")),
-        ]
-        for number, record in enumerate(records)
-    )
+
+
+def _station_csv(
+    header: Sequence[str],
+    rows: Iterable[list[str]],
+    descriptor: DatasetDescriptor,
+    /,
+    *,
+    station: str,
+    output: PathArg,
+) -> OutputReport:
+    """
+    Write a station's CSV for Hydrolog with the attribution columns of `export_series`.
+
+    ``header`` and ``rows`` are the data columns; the lines of the dataset go to
+    ``attribution`` and ``terms_notice`` (ADR-012).
+    """
     target = _target(output, force=False)
     assert target is not None
     report = _deliver(
         _Lines(
-            (
-                _csv_line(
-                    [*(column.header for column in columns), *_ATTRIBUTION_COLUMNS]
-                ),
-            ),
-            _csv_lines(_with_lines(rows, _lines(first))),
-            total=len(records),
+            (_csv_line([*header, *_ATTRIBUTION_COLUMNS]),),
+            _csv_lines(_with_lines(rows, _lines(descriptor))),
+            total=None,
             label=message("export.station_progress", station=station),
             on_progress=None,
             cancel=None,
@@ -1196,6 +1193,162 @@ def _export_joined(
     )
     assert isinstance(report, OutputReport)
     return report
+
+
+# The statistics of a variable in IMGW-PIB's half-year file, in its column order.
+_HALF_YEAR_STATISTICS = ("min", "mean", "max")
+# Value, flag, start, end and occurrences of a statistic without a value.
+_NO_VALUE = ("", "missing", "", "", "")
+
+
+def _complete(
+    days: Mapping[date, Mapping[str, Measurement]], name: str, first: date, last: date
+) -> list[tuple[date, float]] | None:
+    """The daily values of ``name`` from ``first`` to ``last``; None when a day has none."""
+    found: list[tuple[date, float]] = []
+    day = first
+    while day <= last:
+        values = days.get(day)
+        measurement = None if values is None else values.get(name)
+        if measurement is None or measurement.value is None:
+            return None
+        found.append((day, measurement.value))
+        day += timedelta(days=1)
+    return found
+
+
+def _extreme_cells(values: Sequence[tuple[date, float]], extreme: float) -> list[str]:
+    """
+    The cells of an extreme of a half-year: value, flag, start, end, occurrences.
+
+    ``values`` hold every day of the half-year, so the days at the extreme form
+    runs of consecutive days: the start is the first day of the first run, the
+    end the last day of the last run and the occurrences the number of runs, as
+    IMGW-PIB merges its rows of one extreme.
+    """
+    at = [day for day, value in values if value == extreme]
+    runs = 1 + sum((later - earlier).days > 1 for earlier, later in pairwise(at))
+    return [_number(extreme), "value", at[0].isoformat(), at[-1].isoformat(), str(runs)]
+
+
+def _mean_cells(values: Sequence[tuple[date, float]]) -> list[str]:
+    """The cells of a mean: no dates and one occurrence, as in IMGW-PIB's file."""
+    mean = math.fsum(value for _, value in values) / len(values)
+    return [_number(mean), "value", "", "", "1"]
+
+
+def _half_year_cells(values: Sequence[tuple[date, float]] | None) -> list[str]:
+    """The minimum, mean and maximum cells of a half-year; ``missing`` without every day."""
+    if values is None:
+        return list(_NO_VALUE * len(_HALF_YEAR_STATISTICS))
+    numbers = [value for _, value in values]
+    return [
+        *_extreme_cells(values, min(numbers)),
+        *_mean_cells(values),
+        *_extreme_cells(values, max(numbers)),
+    ]
+
+
+def _annual_cells(
+    winter: Sequence[tuple[date, float]] | None,
+    summer: Sequence[tuple[date, float]] | None,
+) -> list[str]:
+    """The cells of a year: its mean with both half-years; no extremes, as IMGW-PIB's file."""
+    mean = (
+        _NO_VALUE
+        if winter is None or summer is None
+        else _mean_cells([*winter, *summer])
+    )
+    return [*_NO_VALUE, *mean, *_NO_VALUE]
+
+
+def _half_year_table(
+    days: Mapping[date, Mapping[str, Measurement]], units: Mapping[str, str]
+) -> tuple[list[str], list[list[str]]]:
+    """
+    The header and rows of the half-year characteristics of daily values (IMGW-PIB's file).
+
+    The columns are those `export_series` gives of ``pl.imgw.hydro_semiannual``
+    without the attribution: ``date,year,period`` and, per variable of ``units``
+    and statistic ``min``, ``mean``, ``max``, ``<V>_<statistic> [<unit>]`` with
+    ``_flag``, ``_start``, ``_end`` and ``_occurrences``. Each hydrological year
+    ``Y`` of ``days`` (November of ``Y`` − 1 to October of ``Y``) has three rows:
+    ``winter`` (XI–IV, dated November 1 of ``Y`` − 1) and ``summer`` (V–X, dated
+    May 1 of ``Y``) with the lowest, mean and highest daily value, and ``annual``
+    (dated November 1 of ``Y`` − 1) with the mean of the year only, as IMGW-PIB
+    publishes it. An extreme has the first and the last day (ISO dates) of its
+    runs of days and the number of runs; a mean has no dates and one occurrence.
+    IMGW-PIB publishes nothing for a period with a break in observations, so a
+    half-year with a day without a value has no values (``missing``, empty
+    cells), nor has the mean of a year without both half-years.
+    """
+    header = ["date", "year", "period"]
+    for name, unit in units.items():
+        for statistic in _HALF_YEAR_STATISTICS:
+            column = f"{name}_{statistic}"
+            header += [
+                f"{column} [{unit}]",
+                f"{column}_flag",
+                f"{column}_start",
+                f"{column}_end",
+                f"{column}_occurrences",
+            ]
+    first, last = min(days), max(days)
+    rows: list[list[str]] = []
+    # Hydrological year Y runs from November 1 of Y - 1 to October 31 of Y.
+    for year in range(
+        first.year + (first.month >= 11), last.year + (last.month >= 11) + 1
+    ):
+        winter_start, summer_start = date(year - 1, 11, 1), date(year, 5, 1)
+        winter: list[str] = []
+        summer: list[str] = []
+        annual: list[str] = []
+        for name in units:
+            winter_days = _complete(days, name, winter_start, date(year, 4, 30))
+            summer_days = _complete(days, name, summer_start, date(year, 10, 31))
+            winter += _half_year_cells(winter_days)
+            summer += _half_year_cells(summer_days)
+            annual += _annual_cells(winter_days, summer_days)
+        rows += [
+            [winter_start.isoformat(), str(year), "winter", *winter],
+            [summer_start.isoformat(), str(year), "summer", *summer],
+            [winter_start.isoformat(), str(year), "annual", *annual],
+        ]
+    return header, rows
+
+
+def _export_half_years(
+    series: Path, /, *, station: str, output: PathArg
+) -> OutputReport:
+    """
+    Write the half-year characteristics Obserwator computes of a station's daily series.
+
+    ČHMÚ publishes none, so they are computed from its daily series with the
+    definitions of IMGW-PIB's ``pl.imgw.hydro_semiannual`` (`_half_year_table`)
+    and written as the CSV `export_series` gives of that file, with the
+    attribution columns of the daily series (the author's decision of
+    2026-11-18, ADR-016).
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the series holds no record of the station.
+    """
+    descriptor = get_dataset(read_series_index(series).dataset)
+    days = {
+        record.date: record.measurements
+        for record in read_series(series, station=station)
+    }
+    if not days:
+        raise ObserwatorDataError(
+            message(
+                "export.series_station_empty_chosen_range",
+                station=station,
+                dataset=descriptor.key,
+            )
+        )
+    header, rows = _half_year_table(days, descriptor.variables)
+    return _station_csv(header, rows, descriptor, station=station, output=output)
 
 
 # --------------------------------------------------------------------------
@@ -1225,7 +1378,12 @@ class _Catalog:
     lines: Attribution
 
 
-def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catalog]:
+def _catalogs(
+    base: Path,
+    provider: str | None,
+    kind: str | None,
+    keep: Callable[[StationFeature], bool] | None = None,
+) -> list[_Catalog]:
     """
     The current catalogs of the chosen providers with their stations of ``kind``.
 
@@ -1233,6 +1391,8 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
     a catalog are those its builder gives it (ADR-012): the provider's processed
     lines, and the lines of hydro.imgw.pl when a station is located by the
     static file of its map or has the station details of its pages (ADR-021).
+    With ``keep`` only the stations it keeps count (the feature's provider set
+    to the catalog's), and a catalog without one is left out with its lines.
 
     Raises
     ------
@@ -1259,6 +1419,18 @@ def _catalogs(base: Path, provider: str | None, kind: str | None) -> list[_Catal
                 )
             continue
         features = read_catalog(entry.version)
+        if keep is not None:
+            features = tuple(
+                feature
+                for feature in features
+                if keep(
+                    feature
+                    if feature.provider == owner.id
+                    else replace(feature, provider=owner.id)
+                )
+            )
+            if not features:
+                continue
         static = sum(
             feature.properties.get("location_source") == "static"
             for feature in features
@@ -1457,8 +1629,7 @@ def _stations_csv(
     properties sorted by name, ``latitude``, ``longitude``, with series
     ``datasets`` (the keys of the series holding the station, joined with
     ``;``) and the attribution columns of the series CSV. Each provider's rows
-    form a block that starts with its lines: the formulas in its first row and
-    the lines of DEV-20.5 from its first row down.
+    form a block that carries its lines from its first row down (DEV-20.5).
     """
     names = dict.fromkeys(
         key
@@ -1479,8 +1650,7 @@ def _stations_csv(
 
     def rows(catalog: _Catalog) -> Iterator[list[str]]:
         owner = catalog.owner
-        formulas = (owner.license.attribution, owner.processed_attribution)
-        for number, station in enumerate(catalog.stations):
+        for station in catalog.stations:
             longitude, latitude = station.geometry or (None, None)
             cells = [
                 *(_property(station.properties.get(key)) for key in _STATION_COLUMNS),
@@ -1491,7 +1661,7 @@ def _stations_csv(
             ]
             if held is not None:
                 cells.append(";".join(held.get(station.station_code, {})))
-            yield [*cells, *(formulas if number == 0 else ("", ""))]
+            yield cells
 
     lines = (
         line
@@ -1515,6 +1685,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> Iterator[str]: ...
 
 
@@ -1532,6 +1703,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> OutputReport: ...
 
 
@@ -1548,6 +1720,7 @@ def export_stations(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    keep: Callable[[StationFeature], bool] | None = None,
 ) -> OutputReport | Iterator[str]:
     """
     Export the stations of the current catalogs as GeoJSON or CSV, with their series.
@@ -1578,9 +1751,8 @@ def export_stations(
     by name (an object such as the ČHMÚ ``thresholds`` as JSON, booleans
     ``true``/``false``), ``latitude,longitude`` (empty without a location),
     with ``series`` ``datasets`` (keys joined with ``;``), then the columns
-    ``attribution_source,attribution_processed,attribution,terms_notice`` of
-    `export_series`. The rows of each provider form a block that starts
-    with the provider's formulas and lines.
+    ``attribution,terms_notice`` of `export_series`. The rows of each
+    provider form a block that starts with the provider's lines.
 
     Parameters
     ----------
@@ -1588,8 +1760,8 @@ def export_stations(
         Data root whose current catalogs and series are read (ADR-017); None
         is the default data root (`obserwator.store_root`).
     provider : str or None, optional
-        Provider identifier or key prefix (``"IMGW-PIB"``, ``"CHMI"``,
-        ``"cz.chmi"``); None exports every provider with a catalog.
+        Provider identifier or key prefix (``"IMGW"``, ``"CHMU"``,
+        ``"cz.chmu"``); None exports every provider with a catalog.
     kind : {"hydro", "meteo"} or None, optional
         Only the stations of this kind (and the series of its datasets);
         None exports both.
@@ -1613,6 +1785,11 @@ def export_stations(
     cancel : Cancel or None, optional
         Polled before the first line, every 256 stations and before replacing
         the target; returning ``True`` aborts the export.
+    keep : callable or None, optional
+        Exports only the stations for which it returns True, given a catalog's
+        feature with the catalog's provider: a server's instance filter (ADR-025);
+        a catalog without a kept station is left out with its lines and series.
+        No option of the command catalog: the CLI and MCP export every station.
 
     Returns
     -------
@@ -1651,7 +1828,7 @@ def export_stations(
     chosen = None if provider is None else get_provider(provider).id
     base = _data_root(root)
     target = _target(output, force=force)
-    catalogs = _catalogs(base, chosen, kind)
+    catalogs = _catalogs(base, chosen, kind, keep)
     count = sum(len(catalog.stations) for catalog in catalogs)
     if not count:
         raise ObserwatorDataError(

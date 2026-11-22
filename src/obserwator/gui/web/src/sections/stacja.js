@@ -140,7 +140,7 @@ function Thresholds({ thresholds }) {
     Q: flows ? flows[key] : null,
   })).filter((row) => given(row.H) || given(row.Q));
   if (!rows.length) return null;
-  return html`<${Section} title=${t("station.info.thresholds")} info=${t("station.info.thresholds_info", { source: sourceName(thresholds.source) })} guide="chmi">
+  return html`<${Section} title=${t("station.info.thresholds")} info=${t("station.info.thresholds_info", { source: sourceName(thresholds.source) })} guide="chmu">
     <${Table}
       columns=${[
         { key: "label", label: t("station.info.threshold") },

@@ -26,7 +26,7 @@ from unittest import mock
 
 import httpx
 
-from obserwator.datasets import archive_files
+from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorDataError,
     ObserwatorStoreError,
@@ -50,7 +50,7 @@ __all__ = ["FixtureRoots", "FixtureVariant", "build_fixture_store", "fixture_fil
 FixtureVariant = Literal["complete", "corrupt", "unknown_schema", "complete_pl_cz"]
 
 _RECORDINGS = ("recordings.json", "builder_recordings.json")
-_CHMI_RECORDINGS = ("chmi_builder_recordings.json",)
+_CHMU_RECORDINGS = ("chmu_builder_recordings.json",)
 _HYDRO = "pl.imgw.hydro_daily"
 _METEO = "pl.imgw.meteo_precip_daily"
 _UNKNOWN_LABEL = "2026-10-20"
@@ -77,50 +77,50 @@ _IMGW_SOURCES = (
     "pl.imgw.hydro_now",
     "pl.imgw.meteo_now",
 )
-_CHMI_SOURCES = (
-    "cz.chmi.hydro_stations",
-    "cz.chmi.meteo_stations",
-    "cz.chmi.hydro_now",
-    "cz.chmi.meteo_now",
+_CHMU_SOURCES = (
+    "cz.chmu.hydro_stations",
+    "cz.chmu.meteo_stations",
+    "cz.chmu.hydro_now",
+    "cz.chmu.meteo_now",
 )
-_CHMI_HYDRO = "cz.chmi.hydro_daily"
-_CHMI_METEO = "cz.chmi.meteo_daily"
+_CHMU_HYDRO = "cz.chmu.hydro_daily"
+_CHMU_METEO = "cz.chmu.meteo_daily"
 # Fictional ČHMÚ stations of the fixture files (spec 2026-10-18 §13.2).
-_CHMI_FULL, _CHMI_GAP = "0-203-1-900001", "0-203-1-900002"
-_CHMI_ELEMENTS, _CHMI_RAIN = "0-203-0-90001", "0-203-0-90000000002"
+_CHMU_FULL, _CHMU_GAP = "0-203-1-900001", "0-203-1-900002"
+_CHMU_ELEMENTS, _CHMU_RAIN = "0-203-0-90001", "0-203-0-90000000002"
 # ČHMÚ part of complete_pl_cz (spec 2026-10-18 §13.2 scenarios (1)-(3) and (8)):
 # sync_store selectors with the expected statuses of the items and of the series.
-_CHMI_STEPS: tuple[tuple[str, Mapping[str, Any], tuple[str, ...], str], ...] = (
+_CHMU_STEPS: tuple[tuple[str, Mapping[str, Any], tuple[str, ...], str], ...] = (
     (
         "ČHMÚ hydro (1) first publication",
-        {"datasets": (_CHMI_HYDRO,), "stations": (_CHMI_FULL, _CHMI_GAP)},
+        {"datasets": (_CHMU_HYDRO,), "stations": (_CHMU_FULL, _CHMU_GAP)},
         ("new",) * 4,
         "new",
     ),
     (
         "ČHMÚ hydro (2) republication",
-        {"datasets": (_CHMI_HYDRO,), "stations": (_CHMI_GAP,)},
+        {"datasets": (_CHMU_HYDRO,), "stations": (_CHMU_GAP,)},
         ("relabeled",) * 2,
         "unchanged",
     ),
     (
         "ČHMÚ hydro (3) correction",
-        {"datasets": (_CHMI_HYDRO,), "stations": (_CHMI_FULL,), "years": (2024,)},
+        {"datasets": (_CHMU_HYDRO,), "stations": (_CHMU_FULL,), "years": (2024,)},
         ("new",),
         "new",
     ),
     (
         "ČHMÚ hydro (8) reserialization",
-        {"datasets": (_CHMI_HYDRO,), "stations": (_CHMI_FULL,), "years": (2023,)},
+        {"datasets": (_CHMU_HYDRO,), "stations": (_CHMU_FULL,), "years": (2023,)},
         ("unchanged",),
         "unchanged",
     ),
     (
         "ČHMÚ meteo",
-        {"datasets": (_CHMI_METEO,), "stations": (_CHMI_ELEMENTS, _CHMI_RAIN)},
-        # The three temperature elements of the precipitation-only station are
+        {"datasets": (_CHMU_METEO,), "stations": (_CHMU_ELEMENTS, _CHMU_RAIN)},
+        # The temperature and snow elements of the precipitation-only station are
         # not published: unchanged without a version.
-        ("new",) * 5 + ("unchanged",) * 3,
+        ("new",) * 7 + ("unchanged",) * 5,
         "new",
     ),
 )
@@ -135,8 +135,8 @@ def fixture_files() -> Traversable:
     Layout: ``archives/<server path>`` (IMGW-PIB yearbooks and station lists,
     ČHMÚ station files and metadata), ``listings/`` (ČHMÚ directory
     listings), ``variants/``, recorded HTTP answers ``recordings.json``,
-    ``builder_recordings.json``, ``chmi_recordings.json``,
-    ``chmi_catalog_recordings.json``, ``chmi_builder_recordings.json`` and
+    ``builder_recordings.json``, ``chmu_recordings.json``,
+    ``chmu_catalog_recordings.json``, ``chmu_builder_recordings.json`` and
     ``contract_recordings.json`` (live endpoints of the interface contract
     tests), and ``contract_schemas.json`` (JSON Schemas with examples of the
     store documents ``obserwator-store/1`` ... ``obserwator-pmaxtp/1``, the envelope
@@ -271,7 +271,11 @@ def _add_unknown_version(root: Path) -> None:
     data = _canonical({"schema": "obserwator-series/2", "dataset": _HYDRO})
     sha = hashlib.sha256(data).hexdigest()
     target = (
-        root / "series" / "versions" / "hydro_daily" / f"{_UNKNOWN_LABEL}_{sha[:8]}"
+        root
+        / "series"
+        / "versions"
+        / get_dataset(_HYDRO).slug
+        / f"{_UNKNOWN_LABEL}_{sha[:8]}"
     )
     target.mkdir(parents=True)
     (target / "series.json").write_bytes(data)
@@ -291,17 +295,17 @@ def _add_unknown_version(root: Path) -> None:
     )
 
 
-def _add_chmi(raw: StoreHandle, data: StoreHandle) -> None:
+def _add_chmu(raw: StoreHandle, data: StoreHandle) -> None:
     """
-    ČHMÚ part of ``complete_pl_cz``, replayed from ``chmi_builder_recordings.json``.
+    ČHMÚ part of ``complete_pl_cz``, replayed from ``chmu_builder_recordings.json``.
 
     Each step is one `sync_store` into the raw root (listing, then HEAD and GET
     of every new or changed file), then `build_series` of the step's dataset
     into the data root; the station sources are synchronized and the ČHMÚ
     catalog is built last.
     """
-    with _recorded_http(None, recordings=_CHMI_RECORDINGS):
-        for step, selectors, items, built in _CHMI_STEPS:
+    with _recorded_http(None, recordings=_CHMU_RECORDINGS):
+        for step, selectors, items, built in _CHMU_STEPS:
             report = sync_store(raw, **selectors)
             _expect(
                 step,
@@ -310,13 +314,13 @@ def _add_chmi(raw: StoreHandle, data: StoreHandle) -> None:
             )
             series = build_series(data, raw_root=raw, dataset=selectors["datasets"][0])
             _expect(f"{step}: series", series.status, built)
-        sources = sync_store(raw, datasets=_CHMI_SOURCES)
+        sources = sync_store(raw, datasets=_CHMU_SOURCES)
         _expect(
             "ČHMÚ station sources",
             ", ".join(sorted({item.status for item in sources.items})),
             "new",
         )
-        catalog = build_catalog(data, raw_root=raw, provider="CHMI")
+        catalog = build_catalog(data, raw_root=raw, provider="CHMU")
         _expect("ČHMÚ station catalog", catalog.status, "new")
 
 
@@ -351,34 +355,35 @@ def build_fixture_store(
 
     * ``codz_2024.zip`` (``pl.imgw.hydro_daily``) in three versions: the old one, the
       same bytes relabeled under a newer HTTP signal and newer bytes (current);
-    * two ``hydro_daily`` series: an older one built from the old archive and the
-      current one built from the newer archive;
-    * ``meteo_precip_daily`` series that is outdated (``1995_o.zip`` was stored after
-      the series was built from ``2001_01_o.zip``);
+    * two ``imgw_hydro_daily`` series: an older one built from the old archive and
+      the current one built from the newer archive;
+    * ``imgw_meteo_precip_daily`` series that is outdated (``1995_o.zip`` was stored
+      after the series was built from ``2001_01_o.zip``);
     * both station lists and a ``stations.geojson`` catalog with stations whose
-      ``geometry`` is ``null``, built without the local static locations file
-      (recorded in its sidecar as ``available: false``).
+      ``geometry`` is ``null`` in ``stations/versions/imgw_stations/``, built
+      without the local static locations file (recorded in its sidecar as
+      ``available: false``).
 
     ``corrupt`` additionally truncates the sidecar of the old hydro archive
-    version (raw root); ``unknown_schema`` additionally adds a ``hydro_daily``
+    version (raw root); ``unknown_schema`` additionally adds an ``imgw_hydro_daily``
     series version with ``obserwator-meta/2``/``obserwator-series/2`` that
     readers must report without parsing (data root).
 
     ``complete_pl_cz`` is ``complete`` plus the ČHMÚ provider (spec 2026-10-18
-    §13.3), synchronized with `sync_store` from ``chmi_builder_recordings.json``
+    §13.3), synchronized with `sync_store` from ``chmu_builder_recordings.json``
     (fictional station codes):
 
-    * ``cz.chmi.hydro_daily`` files: ``H_0-203-1-900002_DQ_2004.json`` and
+    * ``cz.chmu.hydro_daily`` files: ``H_0-203-1-900002_DQ_2004.json`` and
       ``…_2006.json`` in a first and a ``relabeled`` version (the same bytes
       republished), ``H_0-203-1-900001_DQ_2024.json`` in a first and a
       corrected version, and ``H_0-203-1-900001_DQ_2023.json`` in one version
       with an observation in ``observations/`` (re-serialized bytes with the
       same canonical content, ``content_unchanged``);
-    * ``cz.chmi.meteo_daily`` CSV files of ``0-203-0-90001`` (SRA, T, TMA,
-      TMI) and ``0-203-0-90000000002`` (SRA only);
-    * the ``chmi_hydro_daily`` series in two versions (before and after the
-      correction), the ``chmi_meteo_daily`` series, both ČHMÚ station lists
-      and the ČHMÚ catalog ``stations/versions/chmi_stations/``.
+    * ``cz.chmu.meteo_daily`` CSV files of ``0-203-0-90001`` (SRA, T, TMA,
+      TMI, SCE, SNO) and ``0-203-0-90000000002`` (SRA only);
+    * the ``chmu_hydro_daily`` series in two versions (before and after the
+      correction), the ``chmu_meteo_daily`` series, both ČHMÚ station lists
+      and the ČHMÚ catalog ``stations/versions/chmu_stations/``.
 
     Parameters
     ----------
@@ -476,5 +481,5 @@ def build_fixture_store(
     elif variant == "unknown_schema":
         _add_unknown_version(data.root)
     elif variant == "complete_pl_cz":
-        _add_chmi(raw, data)
+        _add_chmu(raw, data)
     return FixtureRoots(raw, data)

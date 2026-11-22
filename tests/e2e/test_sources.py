@@ -25,7 +25,7 @@ def _session(page: Any, base: str) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("width", WIDTHS)
-@pytest.mark.parametrize("kind", ["hydro", "hydro_chmi"])
+@pytest.mark.parametrize("kind", ["hydro", "hydro_chmu"])
 def test_a_view_has_one_strip_with_the_lines_of_the_map_and_the_panel(
     open_page: Any, stored_url: str, width: int, kind: str
 ) -> None:
@@ -57,6 +57,17 @@ def test_a_view_has_one_strip_with_the_lines_of_the_map_and_the_panel(
         foot = page.locator(".view-foot").bounding_box()
         assert sheet is not None and foot is not None
         assert sheet["y"] + sheet["height"] <= foot["y"] + 1
+        # one line on a phone; „więcej” unfolds the strip in place (Nogat ECO-080)
+        line = float(
+            on_screen.evaluate("(e) => parseFloat(getComputedStyle(e).lineHeight)")
+        )
+        box = on_screen.bounding_box()
+        assert box is not None and box["height"] < 2 * line
+        strip.get_by_role("button", name="więcej").click()
+        box = on_screen.bounding_box()
+        assert box is not None and box["height"] > 2 * line
+        strip.get_by_role("button", name="zwiń").click()
+        expect(strip.get_by_role("button", name="więcej")).to_be_visible()
     # „Źródła i warunki” opens every line and the terms; Escape closes it
     strip.get_by_role("button", name="Źródła i warunki").click()
     dialog = strip.locator("dialog")

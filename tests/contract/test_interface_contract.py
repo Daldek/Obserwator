@@ -172,8 +172,11 @@ CASES: dict[str, list[Case]] = {
     ],
     "datasets providers": [Case({"limit": 1, "cursor": page_cursor(1)})],
     "stations find": [
-        Case({"kind": "hydro", "query": "raba", "provider": "IMGW-PIB", "limit": 2}),
+        Case({"kind": "hydro", "query": "raba", "provider": "IMGW", "limit": 2}),
         Case({"source": "store", "query": "1491", "cursor": page_cursor(1)}, "served"),
+        # Live and stored coordinates in one area (the recorded Raba Górna).
+        Case({"kind": "hydro", "provider": "IMGW", "bbox": [19, 49, 21, 50]}),
+        Case({"source": "store", "bbox": "19,49,21,50"}, "served"),
     ],
     "current hydro": [Case({"station": RABA})],
     "current meteo": [Case({"limit": 1, "cursor": page_cursor(1)})],
@@ -701,9 +704,10 @@ def test_scanned_versions_work_as_obserwator_version_with_the_root_of_their_kind
             assert not Path(entry["version"]).is_absolute()
             assert_alike(command, python, printed, answered, root)
             read.append(kind)
-    # The record archives, the PMAXTP cell, the series and the analyses versions of
+    # The record archives (ČHMÚ's snow files SCE and SNO of station 0-203-0-90001
+    # among them), the PMAXTP cell, the series and the analyses versions of
     # IMGW-PIB and ČHMÚ in the served roots.
-    assert Counter(read) == {"archive": 17, "pmaxtp": 1, "series": 6, "analyses": 2}
+    assert Counter(read) == {"archive": 19, "pmaxtp": 1, "series": 6, "analyses": 2}
 
 
 # --------------------------------------------------------------------------

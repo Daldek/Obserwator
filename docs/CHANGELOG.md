@@ -4,6 +4,553 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [3.1.0] - 2026-11-22
+
+Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
+
+### Added
+
+- **The versions of Hydrolog's formulas with every stored analysis (Nogat CMP-2.8, plan
+  `2026-11-18-computation-standard.md` step 6; ADR-016 erratum of 2026-11-21).** Hydrolog
+  0.9.0 names in `formula_versions` of its envelope the `formula_version` of every formula
+  with a spec that gave a result. Each result of a station's record
+  (`obserwator-station-analyses/1`) keeps them (`{}` for a failed analysis or a result
+  without them), `AnalysisSummary` and `AnalysisResult` (`obserwator-analysis-summary/1`,
+  `obserwator-analysis/1`) gain the field `formula_versions`, `analyses export` gives them
+  per result in JSON and in the new CSV column `formula_versions` after `hydrolog_version`
+  (`mann_kendall=1;sen_slope=1`), and the GUI shows them beside Hydrolog's version („wzory:
+  mann_kendall 1, sen_slope 1”). A record stored before has none in `analyses list`;
+  `analyses read` and `analyses export` read them from Hydrolog's stored envelope.
+  **Migration:** a reader of the CSV by column position finds `path` and the following
+  columns one place further.
+- **„Dni przymrozkowe” in „Dni charakterystyczne i stopniodni”.** Hydrolog 0.9.0's
+  `freeze_thaw_days` (Tmin < 0 °C and Tmax > 0 °C, IMGW-PIB's „dni przymrozkowe”) is a tile,
+  a choice of the chart and a column of the months beside the frost days FD („z
+  przymrozkiem”, Tmin < 0 °C); a result of an older Hydrolog shows without it.
+- **Polish labels of Hydrolog 0.9.0's notices and refusals.** `outside_applicability` (and
+  `outside_typical_range`, its name before Hydrolog 0.9.0 that stored analyses keep) and
+  `outside_unverified_range` by their two-sided range, one end of it or the condition they
+  break; `single_year_month` and `unreferenced_formula`; a failed analysis whose
+  `details.reason` is `precondition_failed` (worded by `details.constraint`, e.g. a
+  likelihood without a maximum), `outside_physical_range` or `invalid_type`, with the
+  distribution and method of a fit, instead of Hydrolog's English message.
+- **A rating curve without a least-squares minimum says why (Hydrolog 0.9.0.dev5, spec
+  `rating_curve_fit` formula version 2, Hydrolog ADR-0071).** A period of „Krzywa natężenia
+  przepływu” whose `reason` is `no_least_squares_minimum` reads „brak krzywej: pary rosną jak
+  funkcja wykładnicza, np. dwie krzywe w okresie”, and a curve refused with
+  `details.constraint` `least_squares_minimum` names the cause (the discharge rises like an
+  exponential of the stage, as with two ratings in the years) and asks for the years of one
+  rating; the guide's part on the periods lists the reasons.
+- **„metoda p” in the Mann–Kendall tables** of „Trendy i bilans” and „Trendy”: Hydrolog
+  0.9.0's `p_value_method`, „rozkład dokładny” below 10 values and „przybliżenie normalne”
+  from 10 (Hydrolog ADR-0049), also beside p over each chart of „Trendy”.
+- **Rainfall intensity curves in the GUI's view „PMAXTP”.** Under the tables of a point, the
+  shared chart module draws the maximum rainfall intensity q [dm³/(s·ha)] against the
+  duration t [min] (5 min to 72 h), one curve per exceedance probability p of the answer, as
+  klimat.imgw.pl/opady-maksymalne does: PMAXTP's q = 166.7·J, J = h/t [mm/min] of the
+  quantile h (ks) of the point and method shown. Both axes are logarithmic; the curves run
+  from the rarest p (the highest, red) to the most frequent (blue), the legend names p in %,
+  and the readout gives q of every curve at a duration. The curves are processed data, so
+  the view's strip keeps PMAXTP's line PP („…zostały przetworzone”) beside PS, which
+  `api/pmaxtp` already carried; no image export (the module's other charts have none). The
+  guide's part 05 describes the chart.
+- **ČHMÚ's daily snow in `cz.chmu.meteo_daily` (the author's decision of 2026-11-18; ADR-003
+  erratum of 2026-11-21).** The dataset reads two more element files of ČHMÚ's
+  `historical_csv/data/daily/snow/` folder: `SCE`, the total snow depth at the morning term
+  (06:00Z) of day D, as `snow_cover` [cm], and `SNO`, the new snow from the morning of D to the
+  morning of D+1, as `fresh_snow` [cm] — the quantities of IMGW-PIB's `snow_cover` and
+  `fresh_snow` under their names, with their terms in `variable_notes`. A `0.0` without a ČHMÚ
+  `FLAG` is `no_phenomenon` (no cover, no new snow), a flagged one (`P` dusting, `N`
+  discontinuous cover, `R` melted) a `value`; `QUALITY` and `FLAG` stay in `<V>_quality` and
+  `<V>_source_flag`. A station has six files instead of four (`archive_files`, `datasets
+  files|download`, `store check|sync`, whose check reads a third listing), and the series and
+  its exports gain the eight columns of both variables. So Hydrolog's `snow` analysis and the
+  GUI's card „Śnieg” cover ČHMÚ stations as IMGW-PIB's once a deployment syncs the files
+  (`obserwator store sync --datasets cz.chmu.meteo_daily --stations …`) and rebuilds the series
+  and the analyses. ČHMÚ's water equivalent `SVH` [mm] is not IMGW-PIB's
+  `snow_water_equivalent` [mm/cm] (water per centimetre of snow) and is not read.
+- **`analyses build` resumes an interrupted build (Nogat ECO-073; ADR-016 erratum of
+  2026-11-21).** A build that ends before it publishes a provider's version (cancelled, an
+  error, Ctrl+C, a killed process) keeps the stations it computed in its staging directory
+  `.incoming/<host>_<pid>_<token>/` of the data root, where the next build's cleanup used to
+  remove them (on 2026-11-15 the deployment lost 2,332 of 3,240 stations, about 2 hours). The
+  next build takes them by hard links, without a Hydrolog call, before the 24-hour cleanup:
+  each station whose record is whole, whose result files match their SHA-256 and whose series
+  versions, station Parquet files, catalog thresholds, Hydrolog version and registry digest are
+  those of now; it computes the rest and publishes the version an uninterrupted build would.
+  Another build's staging directory is only read and linked from, never changed (the store has
+  no locks). `ProviderAnalyses.resumed` (new last field, default 0), progress status `resumed`
+  (`analyses.station_resumed`), the plan of `analyses build --check` counts the stations to
+  resume, and the CLI's summary of the providers shows `computed`, `carried` and `resumed`;
+  `results_ok` and `results_failed` count the analyses of the computed and resumed stations.
+- **ČHMÚ stations get half-year characteristics, computed by Obserwator from their daily
+  series** (the author's decision of 2026-11-18, ADR-016 erratum 2026-11-21). ČHMÚ publishes
+  none, so `characteristic.{H,Q,T}.half_years` of a ČHMÚ station read the file Obserwator
+  computes of `cz.chmu.hydro_daily` with the definitions and columns of IMGW-PIB's
+  `pl.imgw.hydro_semiannual`: per hydrological year the winter (XI–IV) and summer (V–X)
+  lowest, mean and highest daily value with the first and last day and the runs of each
+  extreme, and the annual mean; a half-year with a day without a value has none. IMGW-PIB
+  stations keep IMGW-PIB's published file; ČHMÚ's flood frequency, homogeneity and
+  seasonality keep the daily series. `AnalysisInput` gains the last field `derived`
+  (`"half_years"` for such a file; part of the registry digest, so the next `analyses build`
+  computes every station again); each result entry of `stations/<code>.json`,
+  `AnalysisSummary`, `AnalysisResult` and the JSON of `export_analyses` gain `derived`, and
+  its CSV the column `derived` after `value`. The GUI's „Stany charakterystyczne” says that
+  such half-years are computed from ČHMÚ's daily series, not published, and the titles of
+  `characteristic.{H,Q,T}.half_years` name both sources.
+- **An operator's instance: `[obserwator.instance]` of `nogat.toml` (ADR-025, Nogat plan
+  `2026-11-21-obserwator-instance.md` steps 2 to 5).** One section describes what a
+  deployment serves: the state of each provider (`visible`, `hidden`, `off`), a featured
+  provider, an area (one WGS84 Polygon or MultiPolygon, `focus` or `clip`), the start view
+  (`all`, `featured`, `area`), PMAXTP (`on`, `off`), the operator's title, logo and
+  regulamin. Both servers check it at start (`validation_error`, exit 2, `details.option`
+  `instance.<field>`) and filter on the server: an `off` provider and the stations outside
+  a clipped area are absent from every route of the GUI and of `/api/v1` (a station not
+  served is `not_found` like an unknown code) and no request leaves for an `off` IMGW-PIB
+  or with `pmaxtp = "off"`. The GUI starts on the featured provider's or the area's box,
+  draws the area's outline (and keeps to it in `clip`), draws the featured provider on top
+  with the others faded while „Pokaż inne źródła” is off, hides `hidden` providers until
+  then, shows the operator's title and logo (`api/logo`, sandboxed) beside Obserwator's
+  mark and serves the operator's regulamin (`terms`, Markdown built as the kit's) with the
+  source blocks of the served providers only. `api/session` gains `instance`; `api/area`
+  serves the area. Without the section nothing changes.
+- **`others_opacity` of `[obserwator.instance]` (ADR-025 erratum of 2026-11-21, the
+  author's decision).** How faded the other providers' stations are beside the featured
+  one while „Pokaż inne źródła” is off: a number from 0.1 to 1.0, 0.4 by default (the
+  opacity the GUI used); it needs `featured_provider`. A wrong value, a boolean, a text or
+  the field without a featured provider refuses the start (`validation_error`, exit 2,
+  `details.option` `instance.others_opacity` with `minimum` and `maximum`). It is part of
+  the instance's key, `obserwator config show --json` reports it and `api/session`'s
+  `instance` carries it; the faded stations stay at 70 % of the size.
+- **`OBSERWATOR_STORE_WRITE_TOKEN_FILE`**: the REST write token from a file (mode 0600),
+  read on each write, used without `OBSERWATOR_STORE_WRITE_TOKEN`.
+- **`obserwator config show`** reports `instance` (the resolved section) and `problems`: an
+  invalid section, a key or token shorter than 32 bytes, a key file group or others may
+  access (POSIX only: Windows has no permission bits), a key file that is not UTF-8
+  (`secret_file_encoding`), a leftover `api_keys.json`.
+- **`export_stations(keep=…)`** and **`run_command(keep=…)`**: a predicate of the stations
+  exported, a server's instance filter (no catalog option).
+- Both servers refuse at start a root whose marker names a layout this version does not
+  read (`store_unavailable`, `details.reason` `unsupported_layout`, with a hint).
+- `SECURITY.md`: a threat model of an instance on someone else's infrastructure; USAGE
+  „Deploying an instance for an operator”; CODEBASE's configuration (`[obserwator.instance]`,
+  `OBSERWATOR_STORE_WRITE_TOKEN_FILE`); the guide's part 02 „Serwis prowadzony przez
+  operatora” (the operator's logo and title, the featured provider, „Pokaż inne źródła”,
+  the area's outline, the views and sources served, the operator's regulamin).
+- Nogat's kit: the operator's draft regulamin `nogat-terms-operator.md` (ECO-079), copied
+  byte for byte with `nogat-kit.json` from Nogat's kit, now 1.1.0 (see "Changed").
+- **`stations find` gives IMGW-PIB coordinates live and filters by area (GEO-04).** A live
+  IMGW-PIB search now reads the current-data API (`api/data/hydro`, `api/data/meteo`) after
+  each station list and gives every listed station the `latitude`/`longitude` the API
+  publishes for it (as published, like the live ČHMÚ coordinates); a station the API does
+  not report (closed or not reporting now) keeps null, and a live IMGW-PIB search makes two
+  requests per family (on 2026-11-21: 807 of 1,301 hydro and 570 of 2,185 meteo stations
+  located). The new option `bbox` (`--bbox west,south,east,north`, WGS84 degrees, bounds
+  included; `find_stations(bbox=…)`) selects stations by area for both `--source live` and
+  `--source store`; stations without coordinates are left out of an area search, and an
+  invalid box is a `validation_error` with `details.option` `bbox`. List options of the
+  catalog accept number items (`float`, order and repeats kept). The `hydrographic_code` of
+  a live IMGW-PIB row stays the number the list publishes (`"14"` for the Barycz)
+  (ADR-024).
+- **`series build` builds a subset of chosen stations and years (E3-01 of the scenario test
+  of 2026-11-15/16, ADR-026).** A data root for a dozen stations needed the national series
+  (`pl.imgw.hydro_daily` 763 s for 1,372 stations; 479 MB of series for the 12 key
+  stations). `series build`, `build_series` and `check_series` take `stations` (`-s`, codes
+  of the dataset's provider) and `years` (`-y`, hydrological years for `pl.imgw.hydro_*`,
+  calendar years otherwise). Only the archives that hold them are read. For
+  `pl.imgw.meteo_precip_daily` the archive before a chosen one is read too, for the missing
+  days it leaves to the next. The daily and monthly country archives skip the rows of other
+  stations before their values are read. A station holds the rows and gaps it has in the
+  full series of the same inputs, within the chosen years; a chosen station the archives
+  lack is named in a `stations_missing` warning. The version records its subset: `subset`
+  in `series.json`, `request.stations` and `request.years` in the sidecar,
+  `SeriesIndex.subset` (new type `SeriesSubset`); `command_for_version` gives the same
+  call. These fields are optional and additive within `obserwator-series/1` and
+  `obserwator-meta/1`, and a full build writes the bytes of before. A version is reused
+  only for the same subset, so a full build never takes a subset for the series or the
+  other way round. A data root that holds a full version of the dataset refuses a subset
+  (`conflict`, `details.reason="full_series"`), so a subset never becomes the current
+  version beside the full series; build it into another data root. Measured for 10 key
+  stations under load: `pl.imgw.hydro_daily` 118 s instead of 763 s, 1.2 MB.
+
+### Changed
+
+- **Every file Obserwator names for a user is `obserwator_<content>_<qualifiers>.<extension>`
+  (Nogat DEV-19.21, ECO-083; plan `2026-11-21-download-file-names.md` step 2).** One module,
+  `obserwator._file_names`, names the GUI's downloads and the REST attachments alike:
+
+  | File | Before | Now |
+  |---|---|---|
+  | stations (GUI, `GET /api/v1/stations/export`) | `stations_imgw-pib_meteo.csv`, REST `stations.<format>` whatever the filters | `obserwator_stations_imgw_meteo.csv`, `obserwator_stations.geojson` (the provider by its national acronym, `imgw`, `chmu`) |
+  | a series (GUI, `GET /api/v1/series/export`) | `252170380_meteo_precip_daily.csv`, REST `<station>.<format>` | `obserwator_series_pl.imgw.meteo_precip_daily_252170380.csv` (the dataset's key, also of a `version`) |
+  | a station's analyses (GUI, `GET /api/v1/analyses/export`) | `252170380_analyses.csv` | `obserwator_analyses_252170380.csv` |
+  | one analysis (GUI) | `149190310_flood_frequency.Q.json` | `obserwator_analyses_149190310_flood_frequency.Q.json`; the page takes the name from `api/downloads/{code}` (`analyses.each`) |
+  | PMAXTP (GUI) | `pmaxtp_POT_52.4142_17.4586.csv` | `obserwator_pmaxtp_POT_52.4142_17.4586.csv` |
+  | climate stripes (GUI) | `climate-stripes-<code>-<first>-<last>[-axis]`, in Polish `paski-klimatyczne-…[-os]` | `obserwator_climate-stripes_<code>_<first>_<last>[_axis]`, one name in both languages |
+  | hand-off (GUI) | `Stróża (Raba) — Q, wartości dobowe.handoff.json` | `obserwator_handoff_stroza-raba-q-wartosci-dobowe.json` |
+  | admin statistics (GUI) | `obserwator-stats-<first>-<last>.csv` | `obserwator_stats_<first>_<last>.csv` |
+
+  The last two come from Nogat's kit 1.1.0, copied byte for byte from Nogat `998d05e`
+  (`nogat-handoff.js`, `nogat-admin.js`, `nogat-kit.json`). Unchanged: a unit of `store
+  export` keeps its name in the raw root (DEV-19.5), the guides stay `AGENTS.md` and
+  `llms.txt`, and `--output` is the caller's name. The OpenAPI document names each stream's
+  `Content-Disposition`. **Migration:** a script that relied on REST's `<station>.csv` or
+  `stations.csv` names its own file with `curl -o`, or reads the new name with `curl -OJ`.
+
+- **ČHMÚ is `CHMU` and IMGW-PIB `IMGW` in every identifier, every slug and store directory of
+  a provider starts with its acronym, a location's source is named by its dataset, and the
+  CSV's attribution columns are `attribution` and `terms_notice` (ADR-028 and its errata; the
+  author's decisions of 2026-11-21, Nogat ECO-082).** The provider `CHMI` is `CHMU`, the keys
+  `cz.chmi.*` are `cz.chmu.*` with the slugs `chmu_*` and the data root's directories
+  `series/versions/chmu_*`, `stations/versions/chmu_stations` and `analyses/versions/cz.chmu`,
+  the content form `chmi-json/1` is `chmu-json/1`, the modules are `_parsing/chmu.py` and
+  `messages/chmu.py`, and the regulamin's block is `chmu` (Nogat's kit 1.1.0, copied byte for
+  byte from Nogat `c2507fa`). The provider `IMGW-PIB` is `IMGW` (`--provider IMGW`, the REST
+  and MCP values, the `provider` of every sidecar, catalog, series, analyses record, stations
+  export and hand-off written, the hand-off's `provenance.series.source` `imgw`, the keys of
+  `[obserwator.instance.providers]` and `featured_provider`); its keys `pl.imgw.*` stay, and
+  so does the license identifier `IMGW-PIB`, the name of its terms of use. Its slugs gain
+  `imgw_` (`hydro_daily` → `imgw_hydro_daily`, `pmaxtp` → `imgw_pmaxtp`, every `pl.imgw.*`
+  slug), so its series lie in `series/versions/imgw_*` beside `chmu_*` and its catalog moves
+  from `stations/versions` itself into `stations/versions/imgw_stations` beside
+  `chmu_stations`; the keys of `series_state`, the catalog's sources `imgw_hydro_stations` and
+  `imgw_meteo_stations` and the series files handed to Hydrolog follow, while the slots
+  (`series:<key>`, `catalog:pl.imgw.stations`) and the legacy aliases (`hydro/dobowe`) stay.
+  Texts for people keep „IMGW-PIB” and „ČHMÚ”, and the providers' addresses stay.
+  `location_source` is the key of the dataset whose file gave the point: `api_hydro` →
+  `pl.imgw.hydro_now`, `api_meteo` → `pl.imgw.meteo_now`, `chmi_hydro_now` and
+  `chmi_hydro_meta3` → `cz.chmu.hydro_now`, `chmi_hydro_stations` → `cz.chmu.hydro_stations`,
+  `chmi_meteo_now` → `cz.chmu.meteo_now`, `chmi_meteo_stations` → `cz.chmu.meteo_stations`;
+  `static` and `user` stay, and the catalog's `sources` keep naming the file. The CSV of a
+  series, of the stations and of an analysis drops `attribution_source` and
+  `attribution_processed`, which repeated the first two cells of `attribution`. Every schema
+  stays `/1`, and no input takes an old name, an old slug (`hydro_daily`) included.
+  **Migration:** say `IMGW` and `CHMU`, `cz.chmu.*`, the slugs `imgw_*` and the new
+  `location_source` values, and read the lines from `attribution`; an operator's `nogat.toml`
+  names `IMGW` instead of `IMGW-PIB` in `[obserwator.instance.providers]` and
+  `featured_provider` (an instance naming `IMGW-PIB` does not start). A data root built by
+  3.0.x or by a `3.1.0.dev0` before this change holds its series and catalogs where this
+  version does not read them (`series/versions/hydro_daily`, `stations/versions/<label>`, the
+  `chmi` directories): it is built again into a new data root from its raw root, which stays
+  as it is: its sidecars keep `cz.chmi.*`, `CHMI`, `IMGW-PIB` and `chmi-json/1` and are read
+  under the new names (`Meta.dataset` raw, `Meta.dataset_key` and `Meta.provider` current),
+  and it records no slug. `obserwator series build --root DATA --raw-root RAW --dataset <key>`
+  for every dataset of the series, `obserwator store catalog --root DATA --raw-root RAW
+  --provider IMGW` and `--provider CHMU`, then `obserwator analyses build --root DATA`.
+
+- **GUI: one symbol per kind of station for every provider, and the legend of „Stacje”
+  (ADR-025 and ADR-013 errata of 2026-11-21, the author's decision).** No provider has a
+  symbol of its own: ČHMÚ's dashed outline is gone from the map, the list, the dataset
+  chips, the legend and the guide, and a station is a triangle (hydrological) or a circle
+  (meteorological) whoever provides it; a hollow centre, a faded inactive station and the
+  selected one at 32 px stay. The legend names no provider (its entry „ČHMÚ (obrys
+  przerywany)” is gone) unless an instance fades the others beside its featured provider:
+  then it has a group „Stacje: <provider>” and, while another provider is shown, a group
+  „Pozostałe źródła” (it was one entry „inne źródła (mniejsze, blado)”) with both kinds
+  drawn as the map draws them, at the instance's `others_opacity`.
+- **GUI: on a phone the sources strip is one line (Nogat ECO-080, DEV-20.5).** The kit's
+  `<nogat-sources>` (copied from Nogat `5f8cce0`) folds its lines to one line cut with an
+  ellipsis up to 860 px, followed by „więcej”, which unfolds them in place, and „Źródła i
+  warunki”; the basemap's credit runs on after the strip above 860 px only and takes the
+  line below it on a phone. The foot of „Stacje” on an iPhone 13 is 76 px instead of
+  127 px. The kit's draft `nogat-terms-operator.md` is unchanged.
+- **The analyses need Hydrolog 0.9.0 or later (ADR-016 erratum of 2026-11-21).** The GUI's
+  explanations and the guide describe what Hydrolog 0.9.0 computes: a dry or wet spell over
+  1 January counts in the year it ends, and a year inside a longer spell has no longest
+  spell („–”); the hydrothermal season is the days of April–September above 10 °C („k
+  okresu IV–IX z Tśr > 10 °C”); a normal of several months is made of the monthly normals
+  (the label of `normal_not_computed` follows its new details); the confidence interval of
+  a month's mean is built on the yearly means of the month and is „–” for a month of a
+  single year; the p of Mann–Kendall is exact below 10 values, where Sen's interval is „–”;
+  the critical values of A² come from a parametric bootstrap of each fit and only for
+  L-moments; the recession constant is WMO-No. 1029's daily k (no longer credited to
+  Tallaksen 1995). Nothing checks the version: an older Hydrolog still computes.
+- **The carry-forward of the analyses with Hydrolog's development builds.** The documents
+  said that Hydrolog's development builds all report `1.0.0.dev0`; Hydrolog now numbers
+  each one (`0.9.0.devN`, Nogat REL-1.1), and Obserwator compares the version as a string,
+  so every new build of Hydrolog computes every station again (unchanged code, tested with
+  a new `devN`).
+- **The recorded answers of the tests are Hydrolog 0.9.0.dev4's** (`tests/fixtures/hydrolog/
+  answers.json`, with `formula_versions`), but for `stats harmonics`, which 0.9.0 refuses
+  on the fixture's short series.
+- **Honest request headers to hydro-back.imgw.pl (ADR-021 erratum of 2026-11-21).** The map of
+  `fetch_hydro_states` (`current hydro-states`, the GUI's water states) and the station pages
+  of `store sync --datasets pl.imgw.hydro_details` no longer send `Referer:
+  https://hydro.imgw.pl/`, which passed Obserwator off as IMGW-PIB's own page, and their
+  `User-Agent` names the program and its project, `Obserwator/<version>
+  (+https://github.com/Daldek/Obserwator)`, never the person running it. The backend answers
+  both without the `Referer` (checked on 2026-11-14 and 2026-11-21); the docstrings and docs that
+  said it requires one are corrected.
+- **The GUI's current data refresh in the background and in parallel (ADR-013 erratum of
+  2026-11-21).** When a snapshot of IMGW-PIB's current data expires (10 minutes), the requests
+  get the last good one while one refresh runs in a background thread, instead of all waiting
+  on the lock for IMGW-PIB (up to 30 s per source); only a source that never answered is waited
+  for. The sources of one answer are fetched at the same time, so the first `api/current`
+  after a start waits for the slowest of `states`, `hydro` and `meteo`, not for their sum
+  (measured on a local instance, see `docs/PROGRESS.md`). Still at most one request per source
+  at a time and one per 10 minutes, a failure kept beside the last snapshot and retried after a
+  minute.
+- **`api/current` and `api/current/{code}` answer `304 Not Modified`.** They carry a strong
+  `ETag` of their snapshots, the station and the language, with `Cache-Control: no-cache`, and
+  a request with that `If-None-Match` gets `304` before the answer is built, so the poll every
+  10 minutes of an open tab no longer downloads the whole answer (about 300 KB) while no
+  snapshot changed. The page needs no change: the browser revalidates by itself.
+- **The GUI logs every request to IMGW-PIB.** Each fetch of current data (`states`, `hydro`,
+  `meteo`, `synop`) and of a PMAXTP point is one `nogat-log/1` app record `upstream_fetch`:
+  `info` „IMGW-PIB <source>: answered in <ms> ms, <n> records”, `warning` „… failed after <ms>
+  ms, <code>: <reason>” with the error registry's code, `error` with the trace when the program
+  fails on an answer. No client address and never PMAXTP's point. So the failures of IMGW-PIB
+  and the number of requests to it can be read from the app log.
+- **The GUI reads its data root again in the background.** `DataRoot.snapshot`
+  (`gui/_root.py`) read the current versions on the request that found the last read older
+  than a minute, so at low traffic nearly every visit paid for it (`api/session` cold about
+  190 ms against 1 ms warm). Only the first read is now a request's own; later, the request
+  that finds the read older than a minute starts one re-read in a thread and every request
+  takes the last snapshot until it is replaced.
+- **The GUI's `api/stations` answers `304` without building its answer and keeps the built
+  one.** The station layer (1.63 MB of JSON, 141 KB gzipped on the deployment's root) was
+  assembled and compressed on every request, about 220 ms, and a `304` still took about
+  100 ms. The request's `If-None-Match` is now checked against the layer's ETag first, and
+  the answer is built and gzipped once per layer and kept in memory (`GuiState.layer`,
+  `gui/_http.py` `Prebuilt`) until the snapshot changes: on a local copy of the deployment's
+  root a `200` takes about 3 ms and a `304` about 2 ms, against 0.9 s and 0.3–0.6 s before on
+  the same, loaded machine.
+- **The GUI serves `favicon.ico`, `robots.txt` and `apple-touch-icon.png`.** Browsers and
+  crawlers asked for them and got `404` (43 answers in the logs of 2026-11-14 to 2026-11-20).
+  `favicon.ico` (16, 32 and 48 px) and `apple-touch-icon.png` (180 px, also answered at
+  `apple-touch-icon-precomposed.png`) are rendered from Nogat's mark
+  `nogat/marks/obserwator.svg`; `robots.txt` lets crawlers read the page but not `api/`,
+  which computes on request, under the prefix the app is mounted at. None of them is logged
+  below `400`.
+- **The GUI's page starts without a chain of requests and its files are cached for a year.**
+  The start was a chain: the HTML and 71 files (63 modules imported level by level), then
+  `api/texts`, then `api/session` and `api/stations`, every file `Cache-Control: no-cache`, so
+  each visit asked again for all of them and MapLibre's module crossed the tunnel every time.
+  `index.html` is now served rendered (`gui/_page.py`): its own files (`theme-init.js`,
+  `src/`, `css/`, `nogat/`, `vendor/`) at `v/<build>/`, `<build>` a digest of those files,
+  MapLibre's module, worker, stylesheet and the glyphs at `vendor/…?v=<version>` of
+  `vendor/vendor.json` (named to `map.js` by `<meta name="obserwator-vendor">`), both with
+  `Cache-Control: public, max-age=31536000, immutable`, while the page, the API and any other
+  address (an older build's too) stay `no-cache`; a `modulepreload` of every module
+  `src/main.js` imports statically lets the browser ask for all of them at once; and
+  `theme-init.js` asks for `api/texts?lang=…`, `api/session` and `api/stations` before the
+  modules load, with the headers of `src/api.js`, whose answers `i18n.js` and `api.js` take
+  once (`src/start.js`; a `<link rel="preload">` cannot send the page's `Accept-Language`).
+  The packaged borders are asked for relative to the page. Measured on a local copy of the
+  deployment's root with an emulated iPhone 13 on Fast 3G with a 4× slower CPU, without a
+  basemap (median of 3 visits, a loaded machine): the three API answers at 8.4–8.5 s against
+  8.8–9.7 s on a first visit and at 1.8–2.2 s against 8.2–9.0 s on the next one, the station
+  list drawn at 12.0 s against 16.9 s and at 5.6 s against 10.2 s, the map at 14.3 s against
+  19.6 s and at 7.6 s against 10.4 s; the next visit takes 75 of its 83 files from the cache.
+- **On a phone the station's button of the map's bar ends inside the screen.** Its name
+  overflowed the bar by 5 px and was cut by the screen's edge (ANNOPOL on an iPhone 13); the
+  button now shrinks to what the bar leaves, cuts the name with an ellipsis and names it
+  whole in its `title`.
+- **The copies of Nogat's standard 1.1** (DEV-15.6; Nogat's release set candidate-11):
+  `schemas/nogat/error_registry.json` from Nogat `975136e`, whose registry changes only its
+  `standard_version` to 1.1, and `schemas/nogat/handoff-1.schema.json` from Nogat `c47c42e`,
+  whose example records the result of Hydrolog 0.9.0, both byte for byte; the codes, exit
+  codes and the hand-off Obserwator writes are unchanged.
+
+### Deprecated
+
+- **`obserwator admin` and its `api_keys.json`**: nothing checks these keys. Every call
+  says so on standard error; `config show` reports a leftover file; both are removed in
+  v4.0.0. A weak key or token (shorter than 32 bytes, or a key file others may access) is a
+  warning now and refuses the start from v4.0.0; with `[obserwator.instance]` it refuses
+  the start already.
+
+### Fixed
+
+- **An area saved with a BOM is read (ADR-025).** The `area` of `[obserwator.instance]`
+  refused a GeoJSON file that begins with a UTF-8 BOM (Notepad, some Windows tools) as
+  not JSON; the BOM is now ignored (RFC 8259 §8.1). The logo already accepted an SVG
+  with one, and the regulamin does too since the fix below.
+- **A secret file saved on Windows is read, or named when it cannot be (ADR-025).**
+  `OBSERWATOR_STORE_WRITE_TOKEN_FILE` and `OBSERWATOR_ADMIN_API_KEY_FILE` kept a UTF-8 BOM
+  (Notepad) in the key, so no client could match it. A file in another encoding, such as
+  UTF-16 from Windows PowerShell 5.1's `>`, counted silently as no key. Both are read by
+  one function now (`obserwator.config.read_secret_file`), which drops the BOM. A file
+  that is not UTF-8 still gives no key, so writes are refused with 403 and the admin
+  panel with 401. It is now also the problem `secret_file_encoding`: `config show`
+  reports it naming the variable and the encoding found, a server warns of it at start,
+  and an instance refuses to start (`details.reason` `secret_file_encoding`).
+- **A regulamin saved on Windows reads as the same text (ADR-025).** The `terms` of
+  `[obserwator.instance]` kept the CRLF line ends of a file written on Windows in its text
+  and its SHA-256, and a UTF-8 BOM (older Notepad) refused it as having no `# ` title. The
+  file now loses a BOM and its CRLF (or CR) line ends become LF before it is checked, so
+  `config show` reports, the page shows and the ETags use the same text and digest
+  whatever editor wrote it.
+- **„Opady” no longer asks for PMAXTP on an instance with PMAXTP off (ADR-025).** The
+  quantiles of an IMGW-PIB station requested `api/pmaxtp` beside them even with
+  `pmaxtp = "off"`, which answers 404 (two console errors per station). The card now reads
+  `instance.pmaxtp` of `api/session`: with PMAXTP off it neither asks nor shows the PMAXTP
+  lines and captions beside the quantiles.
+- **A null interval of Hydrolog 0.9.0 no longer shows as numbers.** Sen's interval of a
+  trend of fewer than 10 years read „(0 … 0)” in „Trendy i bilans” (null times 10 is 0) and
+  „– … –” in „Trendy”, and a monthly confidence interval of one year „–––”; each is now
+  „–” (Sen's slope alone in „Trendy i bilans”).
+- **The GUI no longer holds over a gigabyte once idle (E7-11).** On a full data root an idle
+  `obserwator gui serve` held 1.5 GB after a typical set of requests, mostly the gap ranges
+  of the precipitation series' index (shown only as a count) and memory Python could not
+  return after reading large indexes. It now keeps a summary of each series index, copies
+  what a large read keeps once the read is over, holds at most 2 million cells of series
+  documents as well as 32 documents, and imports pyarrow's Parquet modules at start (about
+  50 MB more right after start). Measured on the deployed root with the same 554 requests:
+  1,490 → 722 MB RSS when idle, peak 2,258 → 1,127 MB, snapshot of the root 724 → 113 MB;
+  the answers are unchanged (ADR-027).
+- **`store catalog` says which inputs left IMGW-PIB stations without a location or a `meteo_kind`
+  (GEO-03 of the 2026-11-15 end-to-end test).** Without the reference file
+  `hydro_stations_locations.csv` (the coordinates of the hydro.imgw.pl map; IMGW-PIB data are
+  not shipped with Obserwator, `python -m obserwator.reference_data` downloads it) the build said
+  so only as one `catalog_problem` line among the rejected points. It is now a `source_missing`
+  warning after the summary of the stations without a location, naming that command, and with
+  the station details of hydro.imgw.pl in the raw root it counts the stations of the map left
+  without a location, the ones the file would locate (34 of the 2,143 of the 2026-11 roots); the
+  line stays in `problems`. `meteo_kind` comes only from the current series
+  `pl.imgw.meteo_synop_daily`, `pl.imgw.meteo_climate_daily` and `pl.imgw.meteo_precip_daily` of
+  the data root, and a catalog built before them had a null kind for every meteorological station
+  without a word: a data root that lacks some of them now gets a `series_missing` notice naming
+  them and their `series build` (a warning when it holds none, information otherwise). The
+  catalogs themselves do not change. The other 2,109 stations without a location (495 hydro,
+  1,614 meteo) and the missing `established_year` of meteorological stations are not published
+  by any source the store keeps. The guide's part 07, which said the file ships in the package,
+  now names the command that downloads it.
+- **The Polish title of `mann_kendall.temperature.frost_days` names the frost days.** It read
+  „Trend liczby dni przymrozkowych”, but the series counts the days with Tmin < 0 °C (FD of
+  the ETCCDI), while IMGW-PIB's „dzień przymrozkowy” has Tmin < 0 °C and Tmax > 0 °C
+  (Hydrolog ADR-0044); it now reads „Trend liczby dni z przymrozkiem”, as the GUI's labels.
+- **The GUI's charts no longer hang on values a few ulps apart (T25 of the formula audit of
+  2026-11-18).** `niceDomain` of `gui/web/src/charts/scale.js` widened only a span of 0, so
+  two values that differ by float noise alone (`0.3` and `0.30000000000000004`, e.g. annual
+  means of a constant record) on an axis without `zero` (the H, Q and T charts of a station,
+  the regime, the trends, the temperature and the rating curve) gave a step of about 10⁻¹⁷,
+  and `linearTicks` counted its multiples from about 3·10¹⁶, beyond 2⁵³, where adding 1
+  changes nothing: the browser's tab hung. A span within 10⁻⁹ of the larger absolute end (at
+  least 1) is now one value, which spans 10 % of itself above it (1 for a value within 10⁻⁸ of
+  0), as a single value did; `stepDigits` gives a step below 10⁻⁹ its decimals, where it gave
+  0 and rounded both ends of the domain to one number; and `linearTicks` counts from 0 and
+  gives no ticks rather than more than 1,000, so it ends for every domain.
+- **A precipitation total after missing days at the end of the previous monthly archive is
+  `accumulated` (T24 of the formula audit of 2026-11-18).** `pl.imgw.meteo_precip_daily`
+  flags a daily total `accumulated` when it directly follows a listed day without a
+  measurement (status 8; `o_d_format.txt`: such a total is a collective sum of the days
+  without one), but every IMGW-PIB `o_d` archive since 2001 is one month and was parsed
+  alone, so a total on the 1st after such days at the end of the month before stayed
+  `value`: BORUCINO (254170210) 2024-07-01, 13.1 mm after no reading on 28–30 June, and 2 more
+  of the 39 such totals of 2023-01 to 2026-09 (250140010 2025-11-01, 253200160 2026-07-01).
+  Each entered Hydrolog's daily statistics (1-day maxima, heavy-precipitation days,
+  intensity, spells, the annual maxima of `precipitation_quantiles`) as one day's
+  precipitation. `series build` now carries the missing days of a station from one archive
+  to the next, and the status `Z` of IMGW-PIB's collective total is read: such a total is
+  `accumulated` wherever it stands (the code never read `Z`, while the dataset's note on `P`
+  said the flag came from it; the note now gives both rules). `normalize_archive` and
+  `parse_meteo_precip_daily` still parse one archive or file, where only `Z` marks a total on
+  its first day. **The stored series change only when rebuilt:** `series build` keeps a
+  version whose input archives are unchanged, so the flags of a stored
+  `pl.imgw.meteo_precip_daily` series, and the precipitation analyses built from it, change
+  with its next version (the next new or changed archive of the dataset).
+- **PMAXTP is named as IMGW-PIB names it, with IMGW-PIB's own advice on POT and AMP (T26 of
+  the formula audit of 2026-11-18).** The title of `pl.imgw.pmaxtp`, the PMAXTP view's hint,
+  `docs/USAGE.md` and the agent guide called PMAXTP „probable maximum precipitation” /
+  „opady maksymalne prawdopodobne”, which is PMP (WMO-No. 1045), the physical upper bound of
+  precipitation with no probability, not a quantile; the dataset's title is now „Maximum
+  precipitation of a given duration and probability of exceedance (PMAXTP)” / „Maksymalne
+  opady o określonym czasie trwania i prawdopodobieństwie przewyższenia (PMAXTP)”, the name of
+  the PMAXTP monograph (ed. B. Ozga-Zieliński, IMGW-PIB 2022), and the docstrings, the PRD
+  and the GUI's guide use it. `fetch_pmaxtp` said POT „is recommended for most
+  applications” without a source: the monograph (p. 23) recommends POT for p ≥ 50 % (e.g.
+  drainage design, on the safe side) and holds AMP and POT equivalent for p < 50 %, as the
+  docstring, `docs/USAGE.md`, the methods of the PMAXTP view and the guide now say. The texts
+  also say that the answer is the cell of IMGW-PIB's grid kriged from the estimates at 100
+  stations (1986–2015), which may differ from IMGW-PIB's own estimate for a station at the
+  same place (the PMAXTP view, the PMAXTP column of „Opady”, the guide). Texts only: no value
+  changes.
+- **The GUI's „Przepływy minimalne” shows the low-flow results of Hydrolog's corrected
+  maximum likelihood (follow-up of Hydrolog's `hotfix/ml-fits`, T28 of the formula audit of
+  2026-11-18).** Hydrolog's `stats low-flow` gives a discharge quantile that would fall below
+  0 m³/s as `null`, with the warning `negative_quantiles` (`details.return_periods`,
+  `details.zero_return_period`), and ends a sample it cannot fit with `calculation_error`
+  (`unbounded_likelihood`, `constant_values`, fewer than 4 complete years). The part now
+  leaves such points out of the curve, shows „–” in the table and in „NQ 10-letni” with a note
+  („F = 10 %: poniżej 0 m³/s”; under the table the return period at which the distribution
+  reaches 0 m³/s), and words the notice `negative_quantiles` in Polish and English; a failed
+  `low_flow.Q` shows Hydrolog's error in place of the part, as before. The other consumers of
+  `low_flow.Q` take `null` as it is: `analyses read` (Python, CLI, REST, MCP) passes the stored
+  document through, `analyses export` writes an empty CSV cell, the CLI's summary „—”, and the
+  analyses build reads no number of it. Tested on Hydrolog's own answers
+  (`tests/fixtures/hydrolog/low_flow_negative_quantiles.json`). The stored `low_flow.Q`
+  analyses change only when they are built again with that Hydrolog.
+- **The option `percentiles` of `precipitation.heavy` refuses 100 (T32 of the formula audit of
+  2026-11-18).** The registry declared it with the inclusive `maximum` 100, so the GUI's
+  `api/analysis/<station>/precipitation.heavy?percentiles=50,100` passed it on to Hydrolog,
+  whose range is (0, 100) and which now refuses 100 (`validation_error`, `details.reason`
+  `exclusive_maximum`). The option has `exclusive_maximum` 100, as `AnalysisOption` already
+  allows: 100 is a `validation_error` naming `percentiles` before Hydrolog runs.
+- **`current hydro` tells a stale flow from a current one (a tester's report of 2026-11-19).**
+  IMGW-PIB keeps publishing the last flow of a station that no longer computes one, next to a
+  current water level: on 2026-11-19 Ujście Nysy Kłodzkiej (150170130, Odra) gave 1,550 m³/s
+  of 2024-09-17 09:50, the peak of the September 2024 flood, with 274 cm of 10:50 that day, and
+  so did Opole-Groszowice and Oława (same time), Biała Nyska and Pustynia; 42 of the 696
+  stations with a flow had one at least 2 days older than their level. `fetch_hydro_current`
+  passed it on as a current value. `HydroCurrentData` has a new computed field `flow_stale`
+  (Python, CLI, REST, MCP): `true` when `flow_date` precedes `water_level_date` by more than
+  3 hours (`HydroCurrentData.FLOW_STALE_AFTER`), `false` otherwise, `null` without a flow or
+  without both dates; `flow_m3s` and `flow_date` stay as published. The threshold is short
+  because a flood rises within hours: on that day 570 of the 696 flows had the time of their
+  level and 600 were at most 3 h older. The GUI strikes such a flow through, in the map's
+  tooltip and in „Pomiary bieżące”, with „nieaktualny: starszy od stanu wody o ponad 3 h”.
+- **Accessibility of the GUI (axe-core 4.13).** The page had no level-one heading: it gets a
+  visually hidden `<h1>` („Obserwator: dane hydrologiczne i meteorologiczne IMGW-PIB i
+  ČHMÚ”). The region of the map's view and MapLibre's canvas were two landmarks named „Mapa
+  stacji”: the region is named by the view („Widok: Stacje”, „Widok: Pomiary bieżące”,
+  „Widok: PMAXTP”), the canvas by what it shows („Mapa stacji”, or „Mapa: wybór punktu
+  PMAXTP” in the view „PMAXTP”). The key figures' `<dl class="figures">` (a station's
+  „Pomiary bieżące” and the sections' tiles) held their notes as `<small>` beside `dt` and
+  `dd` (axe-core: serious): each note is now a `dd` of its tile. The browser tests run
+  axe-core (`tests/e2e/vendor/`, test files only) on the start page and a station's panel.
+- **The GUI's guide and the documents describe 3.1.0.** The guide's part 06 said Obserwator
+  installs from PyPI; it names the Git tag `v3.1.0`, as the README and USAGE do. Part 05 no
+  longer puts PMAXTP's lines under the chart (they are in the view's strip), part 08 sends
+  a report to whoever runs the service (the author or an operator) and lists every setting
+  the browser keeps, and parts 01, 02 and 07 describe the one-line strip on a phone and
+  `others_opacity`. USAGE, CODEBASE and ARCHITECTURE add the GUI's `api/logo` and
+  `api/area`, `OBSERWATOR_STORE_WRITE_TOKEN_FILE`, `config show`'s `instance` and
+  `problems`, and the deprecated `obserwator admin`.
+
+### Security
+
+- **A credential file of a checkout is no longer committed by accident.** `.gitignore`
+  left `.env` tracked (`git check-ignore .env` exited 1), while `.env` may hold the store
+  write token and the GUI's admin key (DEV-18.4), and so were the REST API keys of
+  `obserwator admin` (`api_keys.json`) and key files. `.env` and `.env.*` (but the template
+  `.env.example`), `api_keys.json`, `*.key`, `*.pem` and `*.secret` are now ignored in every
+  directory. Planned for 3.1.1, taken into 3.1.0.
+- **The REST server allows cross-origin requests only from configured origins, never with
+  credentials (`OBSERWATOR_CORS_ORIGINS`).** `obserwator server` answered every origin with
+  `Access-Control-Allow-Origin` set to it and `Access-Control-Allow-Credentials: true`
+  (`allow_origins=["*"]` with `allow_credentials=True`, marked „Configure for production”),
+  so any web page could read its answers with a visitor's credentials. The allowed origins
+  are now the setting `OBSERWATOR_CORS_ORIGINS` (also `cors_origins` in `[obserwator]` of
+  `nogat.toml`, `.env`; listed by `obserwator config show`): comma-separated origins
+  (`https://example.org`) or `*` for every origin. **Unset, the default, allows no
+  cross-origin request** (a preflight answers 400, no answer carries CORS headers): a page
+  of another origin that called the API needs its origin in the setting. Credentials are
+  never allowed (the API authenticates with the `X-API-Key` header, not cookies); methods
+  `GET`, `HEAD` and `POST`. `docker-compose.yml` passes the variable through.
+- **Both servers send the same security headers; the REST server sent none.** `obserwator
+  server` answered without `X-Content-Type-Options`, `Referrer-Policy` or
+  `Permissions-Policy`; every answer now carries `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer` and a `Permissions-Policy`, as the GUI's (no
+  Content-Security-Policy: `/docs` and `/redoc` load Swagger UI and ReDoc from their CDN).
+  The `Permissions-Policy` of both servers, which denied only `camera`, `microphone` and
+  `geolocation`, now denies every browser feature no page uses (`accelerometer`,
+  `autoplay`, `browsing-topics`, `camera`, `display-capture`, `encrypted-media`,
+  `fullscreen`, `geolocation`, `gyroscope`, `hid`, `idle-detection`, `local-fonts`,
+  `magnetometer`, `microphone`, `midi`, `payment`, `picture-in-picture`,
+  `publickey-credentials-get`, `screen-wake-lock`, `serial`, `usb`,
+  `xr-spatial-tracking`); the clipboard stays allowed for the hand-off to Hydrolog.
+
 ## [3.0.1] - 2026-11-18
 
 Changes since 3.0.0, to be released as 3.0.1: defect fixes only.

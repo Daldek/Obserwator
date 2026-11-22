@@ -26,9 +26,9 @@ from tests.e2e.conftest import FIXTURE_STATIONS, THEMES, WIDTHS
 expect = pytest.importorskip("playwright.sync_api").expect
 
 HYDRO = FIXTURE_STATIONS["hydro"]
-HYDRO_CHMI = FIXTURE_STATIONS["hydro_chmi"]
+HYDRO_CHMU = FIXTURE_STATIONS["hydro_chmu"]
 METEO = FIXTURE_STATIONS["meteo"]
-METEO_CHMI = FIXTURE_STATIONS["meteo_chmi"]
+METEO_CHMU = FIXTURE_STATIONS["meteo_chmu"]
 WAIT = 20_000
 """How long a section may take to load [ms]."""
 TABLE_ROWS = """rows => rows.map((row) => [...row.cells].map((cell) => {
@@ -222,15 +222,18 @@ def test_the_meteorological_stations_show_precipitation_and_temperatures(
     assert flag_word("accumulated") in marks
     assert flag_word("no_phenomenon") in marks
 
-    page = open_page(f"?station={METEO_CHMI}&section=dane")
+    page = open_page(f"?station={METEO_CHMU}&section=dane")
     data = card(page, "dane")
     chips = data.locator(".chips button")
     chips.first.wait_for(timeout=WAIT)
+    # Air temperature, precipitation and, since 3.1.0, ČHMÚ's snow (SCE, SNO).
     assert sorted(text.split()[0] for text in chips.all_inner_texts()) == [
         "P",
         "Tmax",
         "Tmean",
         "Tmin",
+        "fresh_snow",
+        "snow_cover",
     ]
     pressed = data.locator('.chips button[aria-pressed="true"]')
     assert sorted(text.split()[0] for text in pressed.all_inner_texts()) == [
@@ -245,10 +248,10 @@ def test_the_meteorological_stations_show_precipitation_and_temperatures(
     assert sorted(title.rsplit(": ", 1)[1] for title in titles) == ["P", "Tmean"]
 
 
-def test_a_chmi_station_shows_its_catalog_data_and_no_current_data(
+def test_a_chmu_station_shows_its_catalog_data_and_no_current_data(
     open_page: Any,
 ) -> None:
-    page = open_page(f"?station={HYDRO_CHMI}&section=stacja")
+    page = open_page(f"?station={HYDRO_CHMU}&section=stacja")
     asked: list[str] = []
     page.on("request", lambda request: asked.append(request.url))
     info = card(page, "stacja")
@@ -263,7 +266,7 @@ def test_a_chmi_station_shows_its_catalog_data_and_no_current_data(
 
     now = card(page, "teraz")
     expect(now.locator(".acc-body")).to_contain_text(
-        str(message("gui.errors.no_current_chmi", "pl"))
+        str(message("gui.errors.no_current_chmu", "pl"))
     )
     assert not [url for url in asked if "api/current" in url]
 
@@ -278,7 +281,7 @@ def test_current_values_of_an_imgw_station_come_with_their_times(
 
     shown = {
         tile.locator("dt").inner_text(): (
-            tile.locator("dd").inner_text(),
+            tile.locator("dd").first.inner_text(),
             tile.locator("small").inner_text() if tile.locator("small").count() else "",
         )
         for tile in tiles.all()

@@ -30,7 +30,7 @@ HEADINGS = {
     "imgw": "<h3>IMGW-PIB: dane publiczne</h3>",
     "imgw-hydro": "<h3>IMGW-PIB: serwis hydrologiczny</h3>",
     "pmaxtp": "<h3>IMGW-PIB: opady maksymalne PMAXTP</h3>",
-    "chmi": "<h3>ČHMÚ</h3>",
+    "chmu": "<h3>ČHMÚ</h3>",
     "gugik": "<h3>GUGiK</h3>",
     "cuzk": "<h3>ČÚZK</h3>",
     "osm": "<h3>OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)</h3>",
@@ -144,9 +144,9 @@ def test_a_failed_filling_gives_no_page_and_a_warning(tmp_path, caplog):
 
 
 def test_fill_drops_unlisted_blocks_with_their_markers():
-    text = fill(TEMPLATE, values(), ["chmi"])
+    text = fill(TEMPLATE, values(), ["chmu"])
 
-    assert HEADINGS["chmi"] in text
+    assert HEADINGS["chmu"] in text
     for block in ("imgw", "imgw-hydro", "pmaxtp", "gugik", "osm"):
         assert HEADINGS[block] not in text
     assert "<!-- block" not in text and "<!-- /block" not in text

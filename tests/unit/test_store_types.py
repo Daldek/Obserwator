@@ -118,7 +118,7 @@ def _plan(tmp_path):
         tmp_path,
         datetime(2026, 10, 17, tzinfo=UTC),
         (item,),
-        {"hydro_daily": "outdated"},
+        {"imgw_hydro_daily": "outdated"},
         cancelled=True,
     )
 
@@ -137,7 +137,7 @@ def test_plan_roundtrip_cancelled_and_additive_fields(tmp_path):
     assert loaded.items[0].archive.period_start == archive.period_start
     assert loaded.items[0].archive.period_end == archive.period_end
     assert loaded.items[0].remote_etag == '"new"'
-    assert loaded.series_state == {"hydro_daily": "outdated"}
+    assert loaded.series_state == {"imgw_hydro_daily": "outdated"}
     assert loaded.checked_at == plan.checked_at
     with pytest.raises(ObserwatorDataError, match="plan"):
         path.write_text('{"schema":"obserwator-plan/2"}')
@@ -405,7 +405,7 @@ def test_new_fields_have_defaults_and_catalog_constructs():
     assert (command.requires, command.one_of, command.rules) == ({}, (), ())
 
 
-def test_chmi_fields_default_so_3_0_constructors_keep_working():
+def test_chmu_fields_default_so_3_0_constructors_keep_working():
     version = VersionResult("unchanged", Path("/s/a.json"), "a" * 64, "2026-05-21")
     (archive,) = archive_files("pl.imgw.hydro_daily", years=[2024])
     item = PlanItem(archive, "current", None, None, None, None, None, None)
@@ -420,7 +420,7 @@ def test_chmi_fields_default_so_3_0_constructors_keep_working():
     assert (item.local_observation, plan.requests) == (None, None)
     assert StoreInfo(Path("/s"), True, None, True, {}, ()).providers == ()
     assert StoreEntry("problem", None, None, None, "x", "Brak").provider is None
-    assert CatalogReport("new", None, 0, 0, 0, ()).provider == "IMGW-PIB"
+    assert CatalogReport("new", None, 0, 0, 0, ()).provider == "IMGW"
 
 
 def test_fields_added_to_the_read_api_default_so_older_constructors_keep_working():
@@ -441,9 +441,9 @@ def test_fields_added_to_the_read_api_default_so_older_constructors_keep_working
     assert StoreEntry("problem", None, None, None, "x", "Brak").skipped is False
 
 
-def _chmi_plan(tmp_path):
+def _chmu_plan(tmp_path):
     (archive,) = archive_files(
-        "cz.chmi.hydro_daily", stations=["0-203-1-900001"], years=[2025]
+        "cz.chmu.hydro_daily", stations=["0-203-1-900001"], years=[2025]
     )
     item = PlanItem(
         archive,
@@ -464,13 +464,13 @@ def _chmi_plan(tmp_path):
         tmp_path,
         datetime(2026, 10, 19, tzinfo=UTC),
         (item,),
-        {"chmi_hydro_daily": "current"},
+        {"chmu_hydro_daily": "current"},
         requests={"made": 1, "planned": 0},
     )
 
 
-def test_plan_of_chmi_files_keeps_station_listing_signal_and_requests(tmp_path):
-    plan = _chmi_plan(tmp_path)
+def test_plan_of_chmu_files_keeps_station_listing_signal_and_requests(tmp_path):
+    plan = _chmu_plan(tmp_path)
     path = plan.to_json(tmp_path / "plan.json")
     payload = json.loads(path.read_text(encoding="utf-8"))
     (row,) = payload["items"]
@@ -489,7 +489,7 @@ def test_plan_of_chmi_files_keeps_station_listing_signal_and_requests(tmp_path):
     assert loaded.items[0].archive.period_end == date(2025, 12, 31)
 
 
-def test_plan_without_the_chmi_fields_reads_with_defaults(tmp_path):
+def test_plan_without_the_chmu_fields_reads_with_defaults(tmp_path):
     plan = _plan(tmp_path)
     path = plan.to_json(tmp_path / "plan.json")
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -516,8 +516,8 @@ def test_plan_without_the_chmi_fields_reads_with_defaults(tmp_path):
         ),
     ],
 )
-def test_plan_with_invalid_chmi_fields_is_a_data_error(tmp_path, change, text):
-    path = _chmi_plan(tmp_path).to_json(tmp_path / "plan.json")
+def test_plan_with_invalid_chmu_fields_is_a_data_error(tmp_path, change, text):
+    path = _chmu_plan(tmp_path).to_json(tmp_path / "plan.json")
     payload = json.loads(path.read_text(encoding="utf-8"))
     change(payload)
     path.write_text(json.dumps(payload), encoding="utf-8")

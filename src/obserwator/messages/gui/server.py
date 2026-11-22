@@ -30,6 +30,18 @@ MESSAGES: dict[str, Text] = {
         "{root}: nie zapisuje żadnego z nich (bez statystyk i zgłoszeń). "
         "Wskaż katalog danych poza {gui_dir} albo ustaw inny data_dir.",
     ),
+    "server.upstream_records": Text(
+        "IMGW-PIB {source}: answered in {duration_ms} ms, {records} records",
+        "IMGW-PIB {source}: odpowiedź w {duration_ms} ms, rekordów: {records}",
+    ),
+    "server.upstream_ok": Text(
+        "IMGW-PIB {source}: answered in {duration_ms} ms",
+        "IMGW-PIB {source}: odpowiedź w {duration_ms} ms",
+    ),
+    "server.upstream_failed": Text(
+        "IMGW-PIB {source}: failed after {duration_ms} ms, {code}: {reason}",
+        "IMGW-PIB {source}: błąd po {duration_ms} ms, {code}: {reason}",
+    ),
     "errors.bad_parameter": Text(
         "Invalid value of {option}: {value}", "Niepoprawna wartość {option}: {value}"
     ),
@@ -77,7 +89,7 @@ MESSAGES: dict[str, Text] = {
         "IMGW-PIB's current data are not available now.",
         "Dane bieżące IMGW-PIB są teraz niedostępne.",
     ),
-    "errors.no_current_chmi": Text(
+    "errors.no_current_chmu": Text(
         "ČHMÚ's current data are not provided.",
         "Dane bieżące ČHMÚ nie są udostępniane.",
     ),

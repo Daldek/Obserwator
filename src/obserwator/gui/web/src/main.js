@@ -14,6 +14,10 @@
 // with every line and, in a public deployment, „Regulamin serwisu” (ui/welcome.js); a
 // public deployment also links „Regulamin” at the bottom of the left panel (`TermsLink`).
 // „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's parameters.
+// On an operator's instance (ADR-025, instance.js: api/session's `instance`) the list and
+// the map wait for the session, so nothing the instance leaves out shows for a moment; the
+// map's bar offers only the views it serves (an address asking for another falls back to
+// „Stacje”) and the map starts on the instance's box.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
@@ -22,14 +26,15 @@ import { api } from "./api.js";
 import { BORDER_SOURCES, Sources, TermsLink, catalogSources, compose, merge, setTexts, useTexts } from "./attribution.js";
 import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
+import { fadesOthers, scopeOf } from "./instance.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
-import { StationList, onMap, prepareStations, startFilters } from "./list.js";
+import { StationList, featuredFirst, onMap, prepareStations, startFilters } from "./list.js";
 import { StationMap } from "./map.js";
 import { NoStation, StationPanel, sectionTitle } from "./panel.js";
 import { PmaxtpForm } from "./pmaxtp/form.js";
 import { PmaxtpResult } from "./pmaxtp/result.js";
 import { pointLabel, round4, usePmaxtp } from "./pmaxtp/state.js";
-import { readAddress, writeAddress } from "./state.js";
+import { VIEWS, readAddress, writeAddress } from "./state.js";
 import { FeedbackDialog } from "./ui/feedback.js";
 import { Seg } from "./ui/seg.js";
 import { openPanel } from "./ui/sheet.js";
@@ -66,19 +71,29 @@ function currentHint(current) {
 function App({ lang: language }) {
   const [start] = useState(readAddress);
   const [session, setSession] = useState(null);
+  // Whether api/session has answered, or failed: the stations, the views' requests and the
+  // map's start wait for it
+  const [asked, setAsked] = useState(false);
   const [stations, setStations] = useState(null);
   const [failure, setFailure] = useState(null);
   const [selected, setSelected] = useState(start.station);
   const [open, setOpen] = useState(start.section ? [start.section] : FIRST_OPEN);
   const [section, setSection] = useState(start.section);
   const [filters, setFilters] = useState(startFilters);
-  const [view, setView] = useState(start.view);
+  const [chosen, setView] = useState(start.view);
   const [fly, setFly] = useState(start.station ? { code: start.station, n: 0 } : null);
   const [pick, setPick] = useState(start.point ? { lat: round4(start.point.lat), lon: round4(start.point.lon) } : null);
   const [pickFly, setPickFly] = useState(start.point && start.view === "pmaxtp" ? { n: 0 } : null);
   const [method, setMethod] = useState(start.method);
-  const current = useCurrent(view === "current");
-  const pmaxtp = usePmaxtp(pick, method);
+  // What the deployment shows (instance.js), null until the session answers; the same
+  // object while the instance stays (the session comes again in each language)
+  const instanceKey = asked ? JSON.stringify(session ? session.instance : null) : null;
+  const scope = useMemo(() => (asked ? scopeOf(session) : null), [instanceKey]);
+  // A view the instance does not serve (an old link) falls back to „Stacje”
+  const view = scope && !scope.views.includes(chosen) ? VIEWS[0] : chosen;
+  const pmaxtpServed = scope !== null && scope.views.includes("pmaxtp");
+  const current = useCurrent(view === "current" && scope !== null);
+  const pmaxtp = usePmaxtp(pmaxtpServed ? pick : null, method);
   // The lines of what the station panel shows (panel.js `onLines`), whether the packaged
   // borders are the map's background and the basemap's credit (map.js `onBorders`,
   // `onCredit`)
@@ -99,9 +114,12 @@ function App({ lang: language }) {
         if (!live) return;
         setTexts(doc.attribution);
         setSession(doc);
+        setAsked(true);
       },
       (error) => {
-        if (live) toast(t("shell.session_failed", { reason: error.message }), "bad");
+        if (!live) return;
+        toast(t("shell.session_failed", { reason: error.message }), "bad");
+        setAsked(true);
       },
     );
     return () => {
@@ -110,12 +128,24 @@ function App({ lang: language }) {
   }, [language]);
   useEffect(() => writeAddress({ station: selected, section, view, point: pick, method }), [selected, section, view, pick, method]);
 
-  const all = stations || [];
-  const byCode = useMemo(() => new Map(all.map((station) => [station.code, station])), [stations]);
+  const featured = scope ? scope.featured : null;
+  const all = useMemo(() => (stations && scope ? featuredFirst(stations, featured) : []), [stations, scope !== null, featured]);
+  const byCode = useMemo(() => new Map(all.map((station) => [station.code, station])), [all]);
   const drawn = useMemo(
-    () => all.filter((station) => onMap(station, filters)),
-    [stations, filters.provider, filters.kind, filters.datasets, filters.active],
+    () => (scope ? all.filter((station) => onMap(station, filters, scope)) : []),
+    [all, scope, filters.provider, filters.kind, filters.datasets, filters.active, filters.others],
   );
+  // The other providers' stations faded beside the featured one (I6); the instance's start
+  // box (I5) unless the address names a station or a PMAXTP point of a view it serves
+  const fade = scope !== null && fadesOthers(filters, scope);
+  const named = start.station || (start.point && start.view === "pmaxtp" && pmaxtpServed);
+  const startBox = scope && scope.instance && !named ? scope.instance.start.box : null;
+  // A link to a station of a hidden provider (I2) shows the other providers' stations, as
+  // they were when it was copied
+  useEffect(() => {
+    const linked = start.station ? byCode.get(start.station) : null;
+    if (linked && scope.hidden.includes(linked.provider)) setFilters((now) => ({ ...now, others: true }));
+  }, [byCode]);
   const station = selected ? byCode.get(selected) || null : null;
   const texts = useTexts();
   const listed = useMemo(() => compose(texts, catalogSources(drawn)), [texts, drawn]);
@@ -125,7 +155,7 @@ function App({ lang: language }) {
   // right panel shows
   const shown = pmaxtpView ? [pmaxtp.doc, background] : [listed, view === "current" ? current.doc : null, background, panelLines];
   const lines = merge(texts, shown);
-  const viewItems = views();
+  const viewItems = views().filter((item) => !scope || scope.views.includes(item.value));
   const viewName = viewItems.find((item) => item.value === view).label;
   // What „Zgłoś uwagę” shows and sends: the view and, outside PMAXTP, the station of the
   // catalog with its open section, read when the dialog opens
@@ -168,8 +198,8 @@ function App({ lang: language }) {
         title: t("shell.panel.stations"),
         body: failure
           ? html`<p class="ana-error" role="alert">${t("shell.stations_failed", { reason: failure.message })}</p>`
-          : stations
-            ? html`<${StationList} stations=${all} filters=${filters} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
+          : stations && scope
+            ? html`<${StationList} stations=${all} filters=${filters} scope=${scope} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted" role="status">${t("shell.stations_loading")}</p>`,
         foot: terms,
       };
@@ -179,7 +209,7 @@ function App({ lang: language }) {
     pmaxtp: t("shell.hint.pmaxtp"),
   };
   const center = {
-    label: pmaxtpView ? t("shell.map_pmaxtp") : t("shell.map"),
+    label: t("shell.view_region", { view: viewName }),
     bar: html`<${Seg} items=${viewItems} value=${view} onChange=${setView} label=${t("shell.views")} />
       <span class="hint">${hints[view]}</span>`,
     body: html`<${StationMap}
@@ -190,10 +220,13 @@ function App({ lang: language }) {
       view=${view}
       current=${current}
       pick=${pick}
-      pickFly=${pickFly}
+      pickFly=${pmaxtpServed ? pickFly : null}
       onBorders=${setBorders}
       onCredit=${setCredit}
       session=${session}
+      scope=${scope}
+      fade=${fade}
+      startBox=${startBox}
       onSelect=${(code) => select(code)}
       onPick=${choosePoint}
     />`,
@@ -228,6 +261,7 @@ function App({ lang: language }) {
       context=${pmaxtpView && pick ? `${method} · ${pointLabel(pick)}` : null}
     />
     <main class="main">
+      <h1 class="visually-hidden">${t("shell.heading")}</h1>
       <${ViewLayout} left=${left} center=${center} right=${right} foot=${foot} />
     </main>
     <${FeedbackDialog} capture=${captureFeedback} session=${session} />

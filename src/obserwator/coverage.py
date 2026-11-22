@@ -89,6 +89,20 @@ class _KnownUnits:
             self._months.add(month)
             self._ordered = []
 
+    def add_months(self, months: Iterable[date]) -> None:
+        """
+        Mark calendar months published by records the caller did not parse.
+
+        ``months`` are the first days of the months of the rows a station
+        selection skipped (`normalize_in_sequence`'s ``skipped_months``), so a
+        series of chosen stations knows the months the archives publish, as the
+        series of every station does.
+        """
+        added = set(months) - self._months
+        if added:
+            self._months |= added
+            self._ordered = []
+
     def missing(
         self,
         period: str | None,
@@ -304,8 +318,8 @@ def summarize_coverage(
     periods: ``station_periods`` when given (the series builder uses the
     periods of the possessed files), otherwise derived from the records —
     every calendar year with a record of the station for station-year files
-    (``cz.chmi.hydro_daily``), the range from the first to the last record of
-    each variable for station-element files (``cz.chmi.meteo_daily``). A year
+    (``cz.chmu.hydro_daily``), the range from the first to the last record of
+    each variable for station-element files (``cz.chmu.meteo_daily``). A year
     without a published file therefore stays unknown, not a gap.
 
     Parameters
@@ -314,7 +328,7 @@ def summarize_coverage(
         Normalized records of a single dataset.
     dataset : str
         Dataset key with a ``day``, ``month`` or ``half_year`` time unit, e.g.
-        ``"pl.imgw.hydro_daily"`` or ``"cz.chmi.hydro_daily"``.
+        ``"pl.imgw.hydro_daily"`` or ``"cz.chmu.hydro_daily"``.
     station_periods : Mapping of str to Sequence of tuple of (date, date), optional
         Known periods of the stations of a per-station dataset as closed date
         ranges keyed by station code, e.g. ``StationSeriesIndex.periods`` of

@@ -61,6 +61,12 @@ _CHARACTERISTIC: dict[str, Text] = {
         "From IMGW-PIB's half-year characteristics",
         "Z charakterystyk półrocznych IMGW-PIB",
     ),
+    "hydro.characteristic.alt_title_computed": Text(
+        "From the half-year characteristics Obserwator computed from ČHMÚ's daily "
+        "series",
+        "Z charakterystyk półrocznych obliczonych przez Obserwatora z szeregu "
+        "dobowego ČHMÚ",
+    ),
     "hydro.characteristic.caption_daily": Text(
         "Bold: Hydrolog from the daily series, hydrological years {from}–{to}, "
         "years with values: {years} [{unit}].",
@@ -82,11 +88,31 @@ _CHARACTERISTIC: dict[str, Text] = {
         "{years}; maksimum roczne to większe z półrocznych, które może być chwilowe, "
         "więc bywa wyższe od dobowego.",
     ),
+    "hydro.characteristic.caption_half_computed": Text(
+        "Small type: Hydrolog from half-year characteristics that Obserwator computed "
+        "from ČHMÚ's daily series, as ČHMÚ publishes none, {from}–{to}, years: "
+        "{years}; their extremes are daily values, and a half-year with a day "
+        "without a value has none.",
+        "Mniejsze: Hydrolog z charakterystyk półrocznych, które Obserwator obliczył z "
+        "szeregu dobowego ČHMÚ, bo ČHMÚ ich nie publikuje, {from}–{to}, lat: "
+        "{years}; ich ekstrema to wartości dobowe, a półrocze z dniem bez wartości "
+        "nie ma charakterystyk.",
+    ),
     "hydro.characteristic.caption_half_only": Text(
         "Hydrolog from IMGW-PIB's half-year characteristics, hydrological years "
         "{from}–{to}, years: {years} [{unit}].",
         "Hydrolog z charakterystyk półrocznych IMGW-PIB, lata hydrologiczne "
         "{from}–{to}, lat: {years} [{unit}].",
+    ),
+    "hydro.characteristic.caption_half_only_computed": Text(
+        "Hydrolog from half-year characteristics that Obserwator computed from ČHMÚ's "
+        "daily series, as ČHMÚ publishes none, hydrological years {from}–{to}, "
+        "years: {years} [{unit}]; their extremes are daily values, and a half-year "
+        "with a day without a value has none.",
+        "Hydrolog z charakterystyk półrocznych, które Obserwator obliczył z szeregu "
+        "dobowego ČHMÚ, bo ČHMÚ ich nie publikuje, lata hydrologiczne {from}–{to}, "
+        "lat: {years} [{unit}]; ich ekstrema to wartości dobowe, a półrocze z dniem "
+        "bez wartości nie ma charakterystyk.",
     ),
     "hydro.characteristic.source": Text("Source", "Źródło"),
     "hydro.characteristic.source_auto": Text(
@@ -94,6 +120,13 @@ _CHARACTERISTIC: dict[str, Text] = {
     ),
     "hydro.characteristic.source_half": Text(
         "IMGW-PIB half-years", "półrocza IMGW-PIB"
+    ),
+    "hydro.characteristic.source_auto_computed": Text(
+        "computed half-years, other years daily",
+        "półrocza obliczone, pozostałe lata dobowe",
+    ),
+    "hydro.characteristic.source_half_computed": Text(
+        "computed half-years", "półrocza obliczone"
     ),
     "hydro.characteristic.source_daily": Text("daily series", "szereg dobowy"),
     "hydro.characteristic.chart_title": Text(
@@ -309,6 +342,10 @@ _RATING: dict[str, Text] = {
     "hydro.rating.reason.too_few_pairs": Text(
         "fewer than 30 H–Q pairs", "mniej niż 30 par H–Q"
     ),
+    "hydro.rating.reason.no_least_squares_minimum": Text(
+        "no curve: the pairs rise like an exponential, e.g. two ratings in the period",
+        "brak krzywej: pary rosną jak funkcja wykładnicza, np. dwie krzywe w okresie",
+    ),
     "hydro.rating.reason.fit_failed": Text(
         "the fit failed", "dopasowanie się nie powiodło"
     ),
@@ -404,10 +441,13 @@ _EXTREMES: dict[str, Text] = {
     "hydro.extremes.col_parameters": Text("parameters", "parametry"),
     "hydro.extremes.fit_caption": Text(
         "* The KS p-value is approximate: the parameters were estimated from the "
-        "same sample (Hydrolog ranks by AIC). A² is compared with its 5 % critical "
-        "value.",
+        "same sample (Hydrolog ranks by AIC). A² is compared with the 5 % critical "
+        "value of its fit, which Hydrolog gives for L-moments only (a parametric "
+        "bootstrap); A² of another method has none.",
         "* p-value KS orientacyjne: parametry oszacowano z tej samej próby (Hydrolog "
-        "porządkuje wg AIC). A² porównano z wartością krytyczną 5 %.",
+        "porządkuje wg AIC). A² porównano z wartością krytyczną 5 % jego "
+        "dopasowania, którą Hydrolog podaje tylko dla L-momentów (bootstrap "
+        "parametryczny); A² innej metody jej nie ma.",
     ),
     "hydro.extremes.incomplete": Text(
         "Hydrolog left out the incomplete years: {years}.",
@@ -509,6 +549,21 @@ _EXTREMES: dict[str, Text] = {
         "Minima roczne i rozkład Fishera–Tippetta",
     ),
     "hydro.extremes.fig_low_10": Text("NQ, 10 years", "NQ 10-letni"),
+    "hydro.extremes.low_below_zero": Text(
+        "F = 10 %: below 0 m³/s", "F = 10 %: poniżej 0 m³/s"
+    ),
+    "hydro.extremes.low_negative": Text(
+        "„–”: the fitted distribution reaches 0 m³/s at T = {years} [years], so the "
+        "quantiles of longer return periods would be negative and are not given.",
+        "„–”: dopasowany rozkład osiąga 0 m³/s przy T = {years} [lata], więc kwantyle "
+        "dłuższych okresów powtarzalności byłyby ujemne i nie są podane.",
+    ),
+    "hydro.extremes.low_negative_any": Text(
+        "„–”: the fitted distribution falls below 0 m³/s at this return period, so its "
+        "quantile would be negative and is not given.",
+        "„–”: dopasowany rozkład schodzi poniżej 0 m³/s przy tym okresie "
+        "powtarzalności, więc jego kwantyl byłby ujemny i nie jest podany.",
+    ),
 }
 
 _NOTICES: dict[str, Text] = {
@@ -548,6 +603,12 @@ _NOTICES: dict[str, Text] = {
     "sections.notice.homogeneity_rejected": Text(
         "Homogeneity of the series rejected at α = {alpha} by: {tests}.",
         "Jednorodność szeregu odrzucona przy α = {alpha} przez: {tests}.",
+    ),
+    "sections.notice.negative_quantiles": Text(
+        "The fitted Fisher–Tippett distribution reaches below zero flow: the quantiles "
+        "of the longer return periods would be negative discharges and are not given.",
+        "Dopasowany rozkład Fishera–Tippetta sięga poniżej przepływu zerowego: kwantyle "
+        "dłuższych okresów powtarzalności byłyby ujemnymi przepływami i nie są podane.",
     ),
 }
 
