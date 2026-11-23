@@ -473,9 +473,8 @@ def _every_file() -> list[ArchiveFile]:
                 item.key, stations=["353140200"], years=years, months=[1]
             )
         elif item.archive_scope == "station_year":
-            files += archive_files(
-                item.key, stations=[A, B], years=[item.first_year, 2025]
-            )
+            first = item.first_year or 1887
+            files += archive_files(item.key, stations=[A, B], years=[first, 2025])
         elif item.archive_scope == "station_month":
             files += archive_files(item.key, stations=[A, B], years=[2025, 2026])
         elif item.archive_scope in ("station_element", "station"):
