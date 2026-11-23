@@ -161,10 +161,11 @@ MESSAGES = {
         "zbiorze rodzaju {series}",
     ),
     # --- store import (obserwator.store.files) ------------------------------------------
-    "not_fed_by_files": Text(
-        "{provider} is no provider fed by files; the providers fed by files: {allowed}",
-        "{provider} nie jest dostawcą zasilanym plikami; dostawcy zasilani plikami: "
-        "{allowed}",
+    "not_listed": Text(
+        "{path} is no provider file of nogat.toml: give one of the files [obserwator] "
+        "provider_files lists (obserwator config show lists them)",
+        "{path} nie jest plikiem dostawcy z nogat.toml: podaj jeden z plików, które "
+        "wymienia [obserwator] provider_files (wypisuje je obserwator config show)",
     ),
     "data_file_missing": Text(
         "There is no file {path}",

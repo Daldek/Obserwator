@@ -1,5 +1,5 @@
 """
-Catalog of the 36 data commands and the single dispatcher of public functions.
+Catalog of the 37 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -67,6 +67,7 @@ from obserwator.datasets import (
     monthly_series,
     parse_months,
     parse_years,
+    provider_files,
     providers,
 )
 from obserwator.exceptions import (
@@ -99,6 +100,7 @@ from obserwator.store.types import (
     CommandResult,
     DataCommand,
     DownloadReport,
+    ImportReport,
     Meta,
     Notice,
     NoticeHook,
@@ -167,24 +169,38 @@ _SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
 # IMGW-PIB's warnings are of hydrological and meteorological stations only.
 _WARNING_KINDS = ("hydro", "meteo")
 _YEAR_TYPES = ("hydrological", "calendar")
+
+
+def _fed_by_files(descriptor: DatasetDescriptor) -> bool:
+    """Whether a dataset is of a provider fed by files: ``store import`` keeps its files."""
+    return get_provider(descriptor.provider).adapter.provider_file is not None
+
+
 # Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
-# station lists, PMAXTP and the captures (sealed from the spool, ADR-030 D3) have none.
+# station lists, PMAXTP, the captures (sealed from the spool, ADR-030 D3) and the
+# datasets of a provider fed by files (no server publishes them, ADR-033) have none.
 _ARCHIVE_DATASETS = tuple(
     d.key
     for d in datasets()
     if d.server_dir is not None
     and d.time_unit != "station_list"
     and d.archive_scope != CAPTURE_SCOPE
+    and not _fed_by_files(d)
 )
 _SERIES_DATASETS = tuple(d.key for d in datasets() if builds_series(d))
 # What ``store check`` and ``store sync`` download or seal: the measurement archives
 # (also those no series reads, ADR-032), the station sources of the catalogs (station
 # lists and metadata, ADR-015) and the captures of current data, sealed from the
-# spool per UTC day (ADR-030 D3).
-_SYNC_DATASETS = (
-    tuple(d.key for d in datasets() if keeps_archives(d))
-    + tuple(d.key for d in datasets() if d.in_store and d.time_unit == "station_list")
-    + tuple(d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE)
+# spool per UTC day (ADR-030 D3); never the files of a provider fed by files, which
+# ``store import`` keeps (ADR-033).
+_SYNC_DATASETS = tuple(
+    d.key
+    for d in (
+        *(d for d in datasets() if keeps_archives(d)),
+        *(d for d in datasets() if d.in_store and d.time_unit == "station_list"),
+        *(d for d in datasets() if d.archive_scope == CAPTURE_SCOPE),
+    )
+    if not _fed_by_files(d)
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
 # Groups reading the sources of one provider only (spec 2026-10-18 §9.3): those its
@@ -215,6 +231,8 @@ _STORE_FUNCTIONS = (
     "sync_store",
     "build_catalog",
     "check_catalog",
+    "import_files",
+    "check_import",
     "export_archive",
     "build_series",
     "check_series",
@@ -1123,6 +1141,29 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         writes="add",
     ),
     _command(
+        "store import",
+        message("commands.store_import_description"),
+        (
+            _ROOT,
+            _RAW_ROOT,
+            _option(
+                "provider_file",
+                "path",
+                message("commands.store_import_provider_file_help"),
+                required=True,
+                path_role="input",
+            ),
+        ),
+        function="import_files",
+        result_type="ImportReport",
+        root="data",
+        store_only=True,
+        check="check_import",
+        method="POST",
+        rules=(message("commands.store_import_rule"),),
+        writes="add",
+    ),
+    _command(
         "store export",
         message("commands.store_export_description"),
         (
@@ -1446,9 +1487,12 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
     The ``dataset``/``datasets`` choices keep the provider's keys and the
     ``provider`` option is fixed to it (required, its only choice, no
     default), so every call valid in the narrowed catalog concerns the
-    provider alone.
+    provider alone. ``store import`` is offered for a provider fed by files
+    only (ADR-033).
     """
     if _GROUP_PROVIDERS.get(command.name.split(" ", 1)[0], owner.id) != owner.id:
+        return None
+    if command.function == "import_files" and owner.adapter.provider_file is None:
         return None
     options: list[CommandOption] = []
     for option in command.options:
@@ -1466,7 +1510,7 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
 
 def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
     """
-    Return the catalog of all 36 data commands or its view for one provider.
+    Return the catalog of all 37 data commands or its view for one provider.
 
     Parameters
     ----------
@@ -1476,8 +1520,10 @@ def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
         and ``datasets`` options keep only its datasets, the ``provider``
         option becomes required with that provider as its only choice, and
         commands without any data of the provider are left out (for
-        ``CHMU``: ``current …`` and ``pmaxtp …``). `validate_command` and
-        the other functions always use the whole catalog.
+        ``CHMU``: ``current …``, ``pmaxtp …`` and ``store import``; for a
+        provider fed by files: ``current …``, ``pmaxtp …``, ``datasets
+        files|download`` and ``store check|sync``, ADR-033). `validate_command`
+        and the other functions always use the whole catalog.
 
     Returns
     -------
@@ -1802,9 +1848,16 @@ _PARSERS: dict[str, Callable[[CommandOption, object], object]] = {
 
 
 def _absolutize(options: Options) -> None:
-    """Paths → absolute: ``version`` against ``root``, others against the CWD."""
+    """
+    Paths → absolute: ``version`` against ``root``, others against the CWD.
+
+    ``provider_file`` lies in the directory of ``nogat.toml``, as the paths of
+    ``[obserwator] provider_files`` do (ADR-033).
+    """
     for name, value in list(options.items()):
-        if isinstance(value, Path) and name != "version":
+        if isinstance(value, Path) and name == "provider_file":
+            options[name] = provider_files().resolve(value)
+        elif isinstance(value, Path) and name != "version":
             options[name] = value.absolute()
     version = options.get("version")
     if isinstance(version, Path) and not version.is_absolute():
@@ -2160,7 +2213,8 @@ def validate_command(
     ``"2020-2023"``, ``"2020,2022"``, ``[2020, "2022-2023"]``) and ``months``
     becomes a sorted tuple of numbers, other lists become tuples without
     duplicates, and paths become absolute (``version`` against ``root``,
-    others against the working directory). A command that names no ``root``
+    ``provider_file`` against the directory of ``nogat.toml``, others against
+    the working directory). A command that names no ``root``
     (nor ``version`` or ``output_dir``) gets the default root of its kind
     (`config.store_root`): the raw root of a command on downloaded sources,
     the data root of one on what is built from them (``store info`` and
@@ -2772,7 +2826,8 @@ def _archive_call(
     ``store sync`` of an archive version or of a station source (ADR-015).
 
     A capture (ADR-030 D3) is refused: it holds what a source answered on one UTC
-    day, which no request gives again.
+    day, which no request gives again. So is a file of a provider fed by files
+    (ADR-033): its operator delivers it, no server.
     """
     descriptor = get_dataset(key)
     request = meta.request
@@ -2781,6 +2836,16 @@ def _archive_call(
     if descriptor.archive_scope == CAPTURE_SCOPE:
         _not_rebuildable(
             message("commands.version_command_capture", version=relative, dataset=key),
+            relative,
+            server_path=server_path,
+        )
+    if _fed_by_files(descriptor):
+        _not_rebuildable(
+            message(
+                "commands.version_command_fed_by_files",
+                version=relative,
+                provider=descriptor.provider,
+            ),
             relative,
             server_path=server_path,
         )
@@ -2922,9 +2987,10 @@ def command_for_version(
     provider), each with its own plan item. A version whose metadata does not
     give the call is refused, never guessed: a catalog built with a user's
     coordinates file (only its name is recorded), a sidecar without a field
-    the call needs, a file that ``store sync`` does not select, or a capture of
+    the call needs, a file that ``store sync`` does not select, a capture of
     current data (ADR-030 D3: what a source answered on one UTC day, which no
-    request gives again).
+    request gives again) or a file of a provider fed by files (ADR-033: its
+    operator delivers it; ``store import`` keeps what its provider file names).
 
     Parameters
     ----------
@@ -3105,6 +3171,16 @@ def _status(result: object) -> Status:
         )
     if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
         return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
+    if isinstance(result, ImportReport):
+        # Every file kept is done; a build that failed after them makes it partial.
+        builds = [item.status for item in result.series]
+        if result.catalog is not None:
+            builds.append(result.catalog.status)
+        return _outcome(
+            result.cancelled,
+            builds.count("failed"),
+            len(result.items) + sum(status in _DONE for status in builds),
+        )
     if isinstance(result, _analyses.AnalysesReport):
         providers_ = [item.status for item in result.providers]
         return _outcome(
@@ -3232,6 +3308,26 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     )
 
 
+def _import_lines(options: Options, result: object) -> Attribution:
+    """
+    The lines of ``store import`` (ADR-033): the files it kept, then what it built.
+
+    The provider's files in the raw root are copies as they came (its line); its
+    series and its catalog are processed data, the catalog's locations checked against
+    the packaged border of its country (`_catalog_lines`).
+    """
+    report = cast(ImportReport, result)
+    if not report.items:
+        return Attribution()
+    origin = provider_origin(report.provider)
+    lines = attribution(origin, processed=False)
+    if any(item.version is not None for item in report.series):
+        lines |= attribution(origin)
+    if report.catalog is not None:
+        lines |= _catalog_lines(options, report.catalog)
+    return lines
+
+
 def _stations_lines(options: Options, result: object) -> Attribution:
     """
     Lines of the providers of the stations found.
@@ -3339,6 +3435,7 @@ _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "pmaxtp read": _origin_lines("pmaxtp"),
     "store sync": _sync_lines,
     "store catalog": _catalog_lines,
+    "store import": _import_lines,
     "store export": _archive_lines,
     "series build": _series_lines,
     "series select": _series_lines,
@@ -4029,6 +4126,7 @@ _CHECKS: dict[str, Checker] = {
     "store check": _twin("check_store", without=("plan",)),
     "store sync": _check_store_sync,
     "store catalog": _twin("check_catalog"),
+    "store import": _twin("check_import"),
     "store export": _check_store_export,
     "series build": _twin("check_series"),
     "series select": _check_select,
@@ -4062,8 +4160,9 @@ def check_command(
     Plan a command without writing anything or downloading content.
 
     Commands with a check twin use it (``store sync`` → `check_store`,
-    ``store catalog`` → `check_catalog`, ``series build`` → `check_series`,
-    ``pmaxtp sync`` → `check_pmaxtp`); commands that are checks themselves run
+    ``store catalog`` → `check_catalog`, ``store import`` → `check_import`,
+    ``series build`` → `check_series`, ``pmaxtp sync`` → `check_pmaxtp`);
+    commands that are checks themselves run
     without writing their plan file. Every other command gets a general plan of
     `PlanAction` items: validation, URLs and expected paths, without any
     request (read-only commands are reported ``current``, live reads

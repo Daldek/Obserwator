@@ -52,6 +52,7 @@ from tests.contract.support import (
 )
 from tests.contract.test_interface_contract import (
     CASES,
+    IN_PROCESS,
     POST_COMMANDS,
     ROUTES,
     SCENARIOS,
@@ -137,7 +138,7 @@ def assert_stream(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", list(ROUTES))
+@pytest.mark.parametrize("command", IN_PROCESS)
 def test_every_rest_command_answers_alike_in_mcp_python_and_cli(
     command,
     cli,

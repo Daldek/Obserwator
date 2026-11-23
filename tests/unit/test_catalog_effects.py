@@ -71,6 +71,8 @@ EFFECTS = {
     "store sync": ("add", True, {"output_dir": "add", "force": "replace"}),
     # Offline: the catalog reads the station sources a store sync stored (ADR-015).
     "store catalog": ("add", False, {}),
+    # Offline: the files of a provider fed by files, named by its provider file (ADR-033).
+    "store import": ("add", False, {}),
     "store export": ("none", False, {"output": "add", "force": "replace"}),
     "stations export": ("none", False, {"output": "add", "force": "replace"}),
     "series build": ("add", False, {}),

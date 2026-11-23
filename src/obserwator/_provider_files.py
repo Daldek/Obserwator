@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from collections.abc import Collection, Mapping
@@ -281,11 +282,51 @@ class LoadedFiles:
     problems : tuple of ObserwatorValidationError
         One per file that could not be used (or one for a ``provider_files`` that is
         no list of paths).
+    base : pathlib.Path
+        The directory of ``nogat.toml``, absolute: a relative path of
+        ``provider_files`` lies in it.
     """
 
     paths: tuple[Path, ...]
     files: tuple[ProviderFile, ...]
     problems: tuple[ObserwatorValidationError, ...]
+    base: Path
+
+    def resolve(self, path: str | os.PathLike[str], /) -> Path:
+        """
+        A path as ``provider_files`` names a file: ``~`` expanded, a relative one to `base`.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            The path given, e.g. ``--provider-file`` of ``store import``.
+
+        Returns
+        -------
+        pathlib.Path
+            The path, absolute.
+        """
+        return _relative(self.base, path)
+
+    def find(self, path: str | os.PathLike[str], /) -> ProviderFile | None:
+        """
+        The valid file at ``path`` (`resolve`); None when ``provider_files`` lists none.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            The path given; it names a file when both lead to the same place (links
+            followed, ``..`` removed).
+
+        Returns
+        -------
+        ProviderFile or None
+            The provider file found.
+        """
+        wanted = self.resolve(path).resolve()
+        return next(
+            (item for item in self.files if item.path.resolve() == wanted), None
+        )
 
 
 def _invalid(
@@ -403,7 +444,7 @@ def _fields(
     return table
 
 
-def _relative(base: Path, value: str) -> Path:
+def _relative(base: Path, value: str | os.PathLike[str]) -> Path:
     """A path of the file: ``~`` expanded, a relative one to the file's directory."""
     found = Path(value).expanduser()
     return found if found.is_absolute() else base / found
@@ -716,17 +757,17 @@ def load_provider_files(
         The files listed, the valid ones and the problem of each other; a second
         file declaring an id already declared is a problem of its own.
     """
+    base = config.path.parent.absolute()
     value = config.sections.get("obserwator", {}).get(KEY)
     if value is None:
-        return LoadedFiles((), (), ())
+        return LoadedFiles((), (), (), base)
     if not isinstance(value, list) or not all(
         isinstance(item, str) and item for item in value
     ):
         problem = _invalid(
             config.path, KEY, message("provider_files.bad_list", key=KEY)
         )
-        return LoadedFiles((), (), (problem,))
-    base = config.path.parent
+        return LoadedFiles((), (), (problem,), base)
     paths = tuple(dict.fromkeys(_relative(base, item) for item in value))
     files: list[ProviderFile] = []
     problems: list[ObserwatorValidationError] = []
@@ -739,4 +780,4 @@ def load_provider_files(
             continue
         taken.add(found.acronym)
         files.append(found)
-    return LoadedFiles(paths, tuple(files), tuple(problems))
+    return LoadedFiles(paths, tuple(files), tuple(problems), base)

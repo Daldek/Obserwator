@@ -17,7 +17,8 @@ without an instance:
 - after `validate_command` (`Scope.guard`, also for ``?check=true``): a provider, a
   dataset or a station an option names and the instance does not serve is ``not_found``
   (``details.reason`` ``not_served``; a station by `Instance.serves_station`, which
-  answers a code that does not exist the same way); a PMAXTP point outside a clipped
+  answers a code that does not exist the same way), and so is the provider file of
+  ``store import`` that adds such a provider; a PMAXTP point outside a clipped
   area is ``not_found`` (``outside_area``); a command whose answer would hold stations
   outside a clipped area and cannot be reduced exactly is ``forbidden``
   (``instance_clip``); ``stations find`` and ``stations export`` without a provider name
@@ -47,6 +48,7 @@ from obserwator.datasets import (
     datasets,
     get_dataset,
     get_provider,
+    provider_files,
     providers,
 )
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
@@ -541,6 +543,20 @@ def _analyses_build(scope: Scope, options: dict[str, object]) -> None:
             )
 
 
+def _provider_file(scope: Scope, options: dict[str, object]) -> None:
+    """
+    ``store import`` of a provider that is ``off``, by the provider its file adds.
+
+    A path that names no provider file is left to the import, which refuses it.
+    """
+    path = options.get("provider_file")
+    found = provider_files().find(path) if isinstance(path, Path) else None
+    if found is not None and not scope.instance.serves(found.id):
+        raise _not_found(
+            _not_served(found.id), "not_served", "provider_file", str(path)
+        )
+
+
 _RULES: dict[str, Callable[[Scope, dict[str, object]], None]] = {
     "stations find": _narrow,
     "stations export": _narrow,
@@ -548,6 +564,7 @@ _RULES: dict[str, Callable[[Scope, dict[str, object]], None]] = {
     "store export": _unclipped,
     "store check": _selection,
     "store sync": _selection,
+    "store import": _provider_file,
     "pmaxtp fetch": _point,
     "pmaxtp url": _point,
     "pmaxtp check": _point,

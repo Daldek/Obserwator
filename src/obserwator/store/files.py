@@ -17,6 +17,7 @@ delivered once as CSV and once as Parquet are refused with ``validation_error``.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ from obserwator.datasets import (
     check_provider_files,
     get_dataset,
     get_provider,
-    providers,
+    provider_files,
 )
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -99,38 +100,37 @@ class _File:
     dataset: str
 
 
-def _provider(provider: object) -> tuple[ProviderDescriptor, ProviderFile]:
+def _provider(provider_file: object) -> tuple[ProviderDescriptor, ProviderFile]:
     """
     The provider fed by files of an import; refused before anything is read.
 
     Every provider file must be valid first (fail closed): a problem of any of them
-    is raised as it is, whichever provider is named.
+    is raised as it is, whichever file is named. ``provider_file`` must then be one of
+    the files ``[obserwator] provider_files`` lists, a relative path relative to the
+    directory of ``nogat.toml`` as there.
     """
     check_provider_files()
-    fed = [item.id for item in providers() if item.adapter.provider_file is not None]
-    owner = None
-    if isinstance(provider, str):
-        try:
-            owner = get_provider(provider)
-        except ObserwatorValidationError:
-            owner = None
-    found = None if owner is None else owner.adapter.provider_file
-    if owner is None or found is None:
-        shown = provider if isinstance(provider, str) else repr(provider)
+    loaded = provider_files()
+    found = (
+        loaded.find(provider_file)
+        if isinstance(provider_file, str | os.PathLike)
+        else None
+    )
+    if found is None:
+        shown = (
+            str(loaded.resolve(provider_file))
+            if isinstance(provider_file, str | os.PathLike)
+            else repr(provider_file)
+        )
         raise ObserwatorValidationError(
-            message(
-                "provider_files.not_fed_by_files",
-                provider=shown,
-                allowed=", ".join(fed) or message("common.none"),
-            ),
+            message("provider_files.not_listed", path=shown),
             details={
-                "option": "provider",
+                "option": "provider_file",
                 "value": shown,
-                "reason": "not_fed_by_files",
-                "allowed": fed,
+                "reason": "not_listed",
             },
         )
-    return owner, found
+    return get_provider(found.id), found
 
 
 def _refused(path: Path, option: str, text: Message) -> ObserwatorValidationError:
@@ -334,7 +334,7 @@ def import_files(
     /,
     *,
     raw_root: RootArg,
-    provider: str,
+    provider_file: PathArg,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -342,13 +342,13 @@ def import_files(
     """
     Import the files of a provider fed by files into the raw root and the data root.
 
-    The provider file (``[obserwator] provider_files`` of ``nogat.toml``, ADR-033) names
-    the station file and, per dataset, a directory of one file per station,
-    ``<station code>.csv`` (``obserwator-series-csv``, the CSV of ``series export``) or
-    ``<station code>.parquet`` (its Parquet). Every file is read and checked first;
-    then each is kept in the raw root as it came (`write_archive`: an archive version
-    with its sidecar, ``unchanged`` when the same bytes are stored), below
-    ``archives/versions/files/<acronym>/``: the station file as
+    The provider file (one of ``[obserwator] provider_files`` of ``nogat.toml``,
+    ADR-033) names the station file and, per dataset, a directory of one file per
+    station, ``<station code>.csv`` (``obserwator-series-csv``, the CSV of ``series
+    export``) or ``<station code>.parquet`` (its Parquet). Every file is read and
+    checked first; then each is kept in the raw root as it came (`write_archive`: an
+    archive version with its sidecar, ``unchanged`` when the same bytes are stored),
+    below ``archives/versions/files/<acronym>/``: the station file as
     ``station_list/stations.geojson``, a series as ``<dataset>/<file name>``. Then
     each dataset whose files the raw root holds is built (`build_series`) and the
     provider's catalog (`build_catalog`), into the data root. A version is never
@@ -362,8 +362,10 @@ def import_files(
         when new or empty.
     raw_root : str, os.PathLike or StoreHandle
         The raw root the files are kept in; created with its marker when new or empty.
-    provider : str
-        Id of a provider fed by files (``ProviderDescriptor.id``).
+    provider_file : str or os.PathLike
+        The provider file of the provider fed by files: one of the files
+        ``[obserwator] provider_files`` lists, ``~`` expanded and a relative path
+        relative to the directory of ``nogat.toml``, as there.
     on_progress : ProgressHook or None, optional
         Called after each file kept (``unit`` ``file``) and by the builds.
     on_notice : NoticeHook or None, optional
@@ -382,8 +384,9 @@ def import_files(
     ------
     ObserwatorValidationError
         Before anything is written: a provider file of ``nogat.toml`` with a problem
-        (its own ``details.option`` and ``details.path``); ``provider`` naming no
-        provider fed by files (``details.reason`` ``not_fed_by_files``); a missing
+        (its own ``details.option`` and ``details.path``); ``provider_file`` naming no
+        file ``provider_files`` lists (``details.option`` ``provider_file``,
+        ``details.reason`` ``not_listed``); a missing
         station file or dataset directory, a file in such a directory that is not
         ``<station code>.csv`` or ``.parquet`` of the provider's codes, a station given
         twice, a station file or series file that cannot be read as documented, a
@@ -399,7 +402,7 @@ def import_files(
         If a build cannot read what the raw root holds; ``io_error`` if a file cannot
         be read.
     """
-    owner, found = _provider(provider)
+    owner, found = _provider(provider_file)
     refuse_root(root, kind="data")
     lenient_store(root, kind="data")
     raw = refuse_root(raw_root, kind="raw")
@@ -506,7 +509,7 @@ def check_import(
     /,
     *,
     raw_root: RootArg,
-    provider: str,
+    provider_file: PathArg,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -523,8 +526,8 @@ def check_import(
         The data root; it need not exist.
     raw_root : str, os.PathLike or StoreHandle
         The raw root; it need not exist.
-    provider : str
-        Id of a provider fed by files.
+    provider_file : str or os.PathLike
+        The provider file, as `import_files` takes it.
     on_progress : ProgressHook or None, optional
         Called once with the overall status.
     on_notice : NoticeHook or None, optional
@@ -552,7 +555,7 @@ def check_import(
     ObserwatorStoreError
         If a root is one of the other kind or has a layout without its marker.
     """
-    owner, found = _provider(provider)
+    owner, found = _provider(provider_file)
     for value, kind in ((root, "data"), (raw_root, "raw")):
         refused = root_conflict_plan(
             "store import", value, kind="data" if kind == "data" else "raw"

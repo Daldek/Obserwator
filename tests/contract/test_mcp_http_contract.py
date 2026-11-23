@@ -22,6 +22,7 @@ from obserwator import ERROR_CODES, __version__
 from tests.contract.support import input_schema, rest_request
 from tests.contract.test_interface_contract import (
     CASES,
+    IN_PROCESS,
     ROUTES,
     SCENARIOS,
     WRITTEN,
@@ -105,7 +106,7 @@ def assert_same(answered, result, command: str, options: dict[str, object]) -> N
     }
 
 
-@pytest.mark.parametrize("command", list(ROUTES))
+@pytest.mark.parametrize("command", IN_PROCESS)
 async def test_every_rest_case_is_the_answer_of_its_mcp_tool(
     command,
     rest,

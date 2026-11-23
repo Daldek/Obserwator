@@ -445,10 +445,10 @@ MESSAGES = {
         "Strona do odczytu: page.next_cursor poprzedniej strony (nieprzezroczysty)",
     ),
     "commands_guide_description": Text(
-        "Generate AGENTS.md or llms.txt for AI agents, in Polish or English. It is "
-        "rendered from the command catalog and the registries.",
-        "Wygeneruj AGENTS.md albo llms.txt dla agentów AI, po polsku albo angielsku. "
-        "Powstaje z katalogu komend i rejestrów.",
+        "Generate AGENTS.md or llms.txt for AI agents. It is rendered in Polish or "
+        "English from the command catalog and the registries.",
+        "Wygeneruj AGENTS.md albo llms.txt dla agentów AI. Powstaje po polsku albo "
+        "angielsku z katalogu komend i rejestrów.",
     ),
     "datasets_list_description": Text(
         "List the datasets of the registry. Each gives its key, provider, variables "
@@ -477,8 +477,10 @@ MESSAGES = {
         "i zbiory.",
     ),
     "stations_find_description": Text(
-        "Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.",
-        "Znajdź stacje IMGW-PIB i ČHMÚ po nazwie, rzece, prefiksie kodu albo obszarze.",
+        "Find stations by name, river, code prefix or area. It searches the stations "
+        "of IMGW-PIB, of ČHMÚ and of the providers fed by files.",
+        "Znajdź stacje po nazwie, rzece, prefiksie kodu albo obszarze. Przeszukuje "
+        "stacje IMGW-PIB, ČHMÚ i dostawców zasilanych plikami.",
     ),
     "stations_export_description": Text(
         "Export the stations of the current catalogs as GeoJSON or CSV. Each "
@@ -705,6 +707,14 @@ MESSAGES = {
         "metadanych stacji zapisanych przez store sync w katalogu surowym; katalog "
         "trafia do katalogu danych.",
     ),
+    "store_import_description": Text(
+        "Import the files of a provider fed by files. Offline: each file its provider "
+        "file names goes into the raw root as it came, then its series and its catalog "
+        "are built into the data root.",
+        "Zaimportuj pliki dostawcy zasilanego plikami. Offline: każdy plik wskazany w "
+        "jego pliku dostawcy trafia do katalogu surowego taki, jaki przyszedł, a potem "
+        "jego szeregi i katalog stacji są budowane w katalogu danych.",
+    ),
     "store_export_description": Text(
         "Export the records of one archive version as CSV or JSONL. Offline, SHA-256 "
         "verified.",
@@ -836,10 +846,10 @@ MESSAGES = {
         "kod stacji wskazuje dostawcę: 9 cyfr IMGW-PIB, identyfikator WIGOS ČHMÚ",
     ),
     "commands_list_description": Text(
-        "List the catalog commands: tool names, effects and routes. Start here, then "
-        "get the options of one command with commands schema.",
-        "Wypisz komendy katalogu: nazwy narzędzi, skutki i trasy. Zacznij tutaj, a "
-        "opcje jednej komendy pobierz przez commands schema.",
+        "List the catalog commands. Each gives its tool name, effects and routes; start "
+        "here, then get the options of one command with commands schema.",
+        "Wypisz komendy katalogu. Każda podaje nazwę narzędzia, skutki i trasy; zacznij "
+        "tutaj, a opcje jednej komendy pobierz przez commands schema.",
     ),
     "commands_schema_description": Text(
         "Describe a command or the whole catalog as obserwator-commands/1. Each "
@@ -946,6 +956,21 @@ MESSAGES = {
         "Dostawca katalogu: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); jedna wersja katalogu "
         "jednego dostawcy na wywołanie",
     ),
+    "store_import_provider_file_help": Text(
+        "Provider file of a provider fed by files: one of the files [obserwator] "
+        "provider_files of nogat.toml lists; a relative path lies in the directory of "
+        "nogat.toml",
+        "Plik dostawcy zasilanego plikami: jeden z plików, które wymienia [obserwator] "
+        "provider_files w nogat.toml; ścieżka względna leży w katalogu nogat.toml",
+    ),
+    "store_import_rule": Text(
+        "every file is read and checked before anything is written; a provider file "
+        "that nogat.toml does not list or that has a problem, a missing file or a file "
+        "not of the documented form is refused (validation_error)",
+        "każdy plik jest czytany i sprawdzany, zanim cokolwiek zostanie zapisane; plik "
+        "dostawcy, którego nogat.toml nie wymienia albo który ma problem, brakujący plik "
+        "albo plik w nieopisanej postaci są odrzucane (validation_error)",
+    ),
     "store_catalog_user_locations_help": Text(
         "User's UTF-8 CSV file with the columns "
         "station_code,latitude,longitude[,source]",
@@ -1027,9 +1052,10 @@ MESSAGES = {
         "Nazwa komendy katalogu; brak = cały katalog obserwator-commands/1",
     ),
     "pattern_station": Text(
-        "station code of 9 digits (IMGW-PIB) or a WIGOS identifier, e.g. "
-        "0-203-1-001000",
-        "kod stacji z 9 cyfr (IMGW-PIB) albo identyfikator WIGOS, np. 0-203-1-001000",
+        "station code of 9 digits (IMGW-PIB), a WIGOS identifier, e.g. 0-203-1-001000, "
+        "or <ID>-<code> of a provider fed by files",
+        "kod stacji z 9 cyfr (IMGW-PIB), identyfikator WIGOS, np. 0-203-1-001000, "
+        "albo <ID>-<kod> dostawcy zasilanego plikami",
     ),
     "pattern_imgw_station": Text(
         "IMGW-PIB station code of 9 digits",
@@ -1265,6 +1291,16 @@ MESSAGES = {
         "Nie można odtworzyć komendy wersji {version}: to zapis odpowiedzi zbioru "
         "{dataset}, czyli tego, co źródło podało w ciągu jednej doby UTC, a żadne "
         "zapytanie nie poda tego ponownie. Przypnij ją jako dane lokalne",
+    ),
+    "version_command_fed_by_files": Text(
+        "The command of {version} cannot be rebuilt: it is a file of {provider}, a "
+        "provider fed by files, which its operator delivers. Pin it as local data; "
+        "obserwator store import --provider-file with the provider file of {provider} "
+        "keeps the files it names now",
+        "Nie można odtworzyć komendy wersji {version}: to plik dostawcy {provider} "
+        "zasilanego plikami, który dostarcza jego operator. Przypnij ją jako dane "
+        "lokalne; obserwator store import --provider-file z plikiem dostawcy {provider} "
+        "zachowuje pliki, które ten plik wskazuje teraz",
     ),
     # Meanings of the enumeration values of the catalog (``enum`` of an option).
     "meaning_kind_hydro": Text(

@@ -267,6 +267,7 @@ def test_rest_routes_cover_exactly_the_non_local_commands():
         "pmaxtp sync",
         "store sync",
         "store catalog",
+        "store import",
         "series build",
         "analyses build",
     ]

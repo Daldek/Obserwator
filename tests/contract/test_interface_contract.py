@@ -2,9 +2,11 @@
 
 Spec §13 (ADR-002), plan U14. Every catalog command with a REST route runs on the
 fixture roots against recorded IMGW answers through ``run_command``, the ``obserwator``
-CLI and the REST API. A command works on the root of its kind (ADR-017 D4): the raw
-root (``OBSERWATOR_RAW_ROOT``) or the data root (``OBSERWATOR_ROOT``); ``series build``
-and ``store catalog`` also read the raw root as ``raw_root``. The CLI prints
+CLI and the REST API (``store import``, which needs a provider fed by files, in
+tests/contract/test_file_provider.py). A command works on the root of its kind
+(ADR-017 D4): the raw root (``OBSERWATOR_RAW_ROOT``) or the data root
+(``OBSERWATOR_ROOT``); ``series build`` and ``store catalog`` also read the raw root
+as ``raw_root``. The CLI prints
 ``CommandResult.to_json(root)`` and REST answers ``to_json(root, server=True)`` (the
 root as ``"."``), so the three documents are equal after a canonical JSON dump;
 writes leave identical trees after identical requests. Every registered error code
@@ -75,8 +77,12 @@ ROUTES = {
     for schema in input_schemas()
     if schema["x-obserwator"]["rest"] is not None
 }
+# ``store import`` needs a provider fed by files, which the registry reads from
+# ``nogat.toml`` as it is imported (ADR-033): its interfaces answer alike in processes
+# of their own (tests/contract/test_file_provider.py), every other route here.
+IN_PROCESS = [name for name in ROUTES if name != "store import"]
 POST_COMMANDS = [
-    name for name, meta in ROUTES.items() if meta["rest"]["method"] == "POST"
+    name for name in IN_PROCESS if ROUTES[name]["rest"]["method"] == "POST"
 ]
 INTERFACES = ("python", "cli", "rest")
 # Notice labels of the CLI stderr (spec §13.10); its lines are for a person, so they
@@ -459,7 +465,7 @@ def assert_alike(command, python, printed, answered, root, *, raw_root=None):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", list(ROUTES))
+@pytest.mark.parametrize("command", IN_PROCESS)
 def test_every_rest_command_answers_alike_in_python_cli_and_rest(
     command,
     cli,
