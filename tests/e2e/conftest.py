@@ -362,15 +362,10 @@ def groundwater_url(tmp_path_factory) -> Iterator[str]:
     """
     The GUI on a read-only data root of the variant ``groundwater``, not public.
 
-    ``complete_pl_cz`` and ČHMÚ's groundwater objects (ADR-032); skipped while
-    `build_fixture_store` has no such variant.
+    ``complete_pl_cz`` and ČHMÚ's groundwater objects (ADR-032).
     """
-    from typing import get_args
+    from obserwator.testing import build_fixture_store
 
-    from obserwator.testing import FixtureVariant, build_fixture_store
-
-    if "groundwater" not in get_args(FixtureVariant):
-        pytest.skip('needs build_fixture_store(..., variant="groundwater")')
     base = tmp_path_factory.mktemp("gui-groundwater")
     roots = build_fixture_store(
         base / "raw", data_root=base / "data", variant="groundwater"

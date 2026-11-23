@@ -138,17 +138,9 @@ def imgw_root(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def groundwater_root(tmp_path_factory):
-    """
-    The data root of the variant ``groundwater`` (``complete_pl_cz`` and ČHMÚ's groundwater).
+    """The data root of the variant ``groundwater`` (``complete_pl_cz`` and ČHMÚ's groundwater)."""
+    from obserwator.testing import build_fixture_store
 
-    The tests using it are skipped while `build_fixture_store` has no such variant.
-    """
-    from typing import get_args
-
-    from obserwator.testing import FixtureVariant, build_fixture_store
-
-    if "groundwater" not in get_args(FixtureVariant):
-        pytest.skip('needs build_fixture_store(..., variant="groundwater")')
     base = tmp_path_factory.mktemp("gui-root-groundwater")
     roots = build_fixture_store(
         base / "raw", data_root=base / "data", variant="groundwater"

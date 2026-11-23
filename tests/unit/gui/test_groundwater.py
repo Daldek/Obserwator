@@ -3,8 +3,7 @@
 
 On the data root of the fixture variant ``groundwater`` (`groundwater_root`):
 ``complete_pl_cz`` with ČHMÚ's bore `BORE` and spring `SPRING`, their daily and weekly
-series and the lists of ČHMÚ's groundwater objects. Skipped while the variant does not
-exist.
+series and the lists of ČHMÚ's groundwater objects.
 """
 
 from __future__ import annotations

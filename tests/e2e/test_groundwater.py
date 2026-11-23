@@ -5,7 +5,7 @@ The map and the list draw them as the GUI's own brown diamond, the kind switch o
 „Podziemne” two by two with the other choices and keeps only them, and the panel of an
 object names it a bore („otwór obserwacyjny”) or a spring („źródło”), has no „Pomiary
 bieżące” and shows first the bore's level H_asl or the spring's yield; a weekly series
-counts its rows as readings. Skipped while the variant does not exist (``groundwater_url``).
+counts its rows as readings (``groundwater_url``).
 """
 
 from __future__ import annotations
