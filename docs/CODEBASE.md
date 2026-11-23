@@ -561,6 +561,7 @@ The table `capture` of `[obserwator]` (ADR-030 D5; `obserwator.captures`) sets w
 
 <data root>/obserwator-data.json                        # obserwator-data/1 marker: the same fields (ADR-017)
   series/versions/<slug>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet  # <slug> imgw_* or chmu_* (ADR-028)
+  series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet  # a month of a sub-daily series (ADR-031)
   stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json  # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json  # ČHMÚ catalog
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
@@ -606,7 +607,7 @@ src/obserwator/
 ├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, captures, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
-├── datasets.py   # Registry of providers and 47 datasets (pl.imgw.*, cz.chmu.*), archive file generator
+├── datasets.py   # Registry of providers and 49 datasets (pl.imgw.*, cz.chmu.*; two hourly series built from their inputs, ADR-031), archive file generator
 ├── commands.py   # Catalog of 36 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads

@@ -113,14 +113,13 @@ MESSAGES = {
         "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
         "commands schema --command … --json`; REST `GET /api/v1/commands/list` and "
         "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
-        "Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules "
-        "they do not express are in `rules`, effects in `effects` (`writes`, `network`, "
-        "`idempotent`).",
+        "Options are in `options`; rules they do not express are in `rules`, effects in "
+        "`effects` (`writes`, `network`, `idempotent`).",
         "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
         "commands schema --command … --json`; REST `GET /api/v1/commands/list` i `/schema`; "
         "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
-        "`options` (`name`, `type`, `required`, `flags`, `enum`); reguły, których nie "
-        "wyrażają, są w `rules`, skutki w `effects` (`writes`, `network`, `idempotent`).",
+        "`options`; reguły, których nie wyrażają, są w `rules`, skutki w `effects` "
+        "(`writes`, `network`, `idempotent`).",
     ),
     "rule_check_first": Text(
         "**Check without writing:** `--check` (CLI), `?check=true` (REST, POST), "

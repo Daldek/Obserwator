@@ -39,7 +39,7 @@ An error has a code from a closed registry, the same in Python, the CLI, REST (p
 
 ## Datasets
 
-A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`) are accepted on input only. Datasets of the store:
 
 <!-- obserwator:datasets -->
 
@@ -58,7 +58,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 ## Typical flows
 
-Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of earlier steps.
+Replace `STATION_CODE` and `WIGOS_ID` with the values of earlier steps.
 
 <!-- obserwator:flows -->
 
