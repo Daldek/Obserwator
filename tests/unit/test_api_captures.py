@@ -168,3 +168,27 @@ def test_the_operator_decides_per_request_in_nogat_toml(server):
 
     assert opened.status_code == 200
     assert_private(closed, PUBLIC, "datasets")
+
+
+def test_a_private_telemetry_is_not_found_by_its_dataset_or_a_version_path(server):
+    # IMGW-PIB's telemetry is no capture: its versions lie below its server
+    # directory, Arch/Telemetria/Hydro/<YYYY>/Hydro_<YYYY-MM>.
+    telemetry = "pl.imgw.hydro_telemetry"
+    server.config.write_text(
+        f'[obserwator.capture]\n"{telemetry}" = "private"\n', encoding="utf-8"
+    )
+    version = (
+        "archives/versions/Arch/Telemetria/Hydro/2026/Hydro_2026-10/"
+        "2026-11-23_0123abcd/Hydro_2026-10.zip"
+    )
+
+    checked = server.client.get(
+        "/api/v1/store/check",
+        params={"datasets": telemetry, "years": "2026", "months": "10"},
+    )
+    exported = server.client.get(
+        "/api/v1/store/export", params={"version": version, "format": "jsonl"}
+    )
+
+    assert_private(checked, telemetry, "datasets")
+    assert_private(exported, telemetry, "version")
