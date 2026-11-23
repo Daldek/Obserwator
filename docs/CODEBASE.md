@@ -43,7 +43,7 @@ src/obserwator/
 │   ├── content.py        # Canonical content forms (chmu-json/1), content_sha256
 │   ├── sync.py           # check_store, sync_store (IMGW-PIB: listing + HEAD; ČHMÚ: directory listing)
 │   ├── series.py         # check_series, build_series (Parquet in the data root, from the archives of the raw root)
-│   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider in the data root, from the station sources of the raw root)
+│   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider in the data root, from the station sources of the raw root); each provider's builder is in its adapter (providers/, ADR-029)
 │   ├── pmaxtp.py         # check_pmaxtp, sync_pmaxtp, read_pmaxtp
 │   ├── reader.py         # store_info, iter_store, current_version, read_*, select/summarize_series
 │   ├── export.py         # export_archive, export_series (CSV/JSON/Parquet), export_stations (GeoJSON/CSV); ADR-014
