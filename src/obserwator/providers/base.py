@@ -31,6 +31,7 @@ from obserwator.datasets import Kind
 if TYPE_CHECKING:
     import httpx
 
+    from obserwator._provider_files import ProviderFile
     from obserwator.attribution import Origin
     from obserwator.datasets import (
         ArchiveFile,
@@ -195,6 +196,16 @@ class ProviderAdapter(Protocol):
         Whether the sidecars of its archives name the station and the parameter
         (``request.station_code``, ``request.param``, ``extra.period.station_code``);
         IMGW-PIB's keep the layout of 3.0.0 without them.
+    source_class : {"nmhs", "other"}
+        Who operates its network (Nogat plan 2026-11-20, P11): ``nmhs``, a national
+        meteorological and hydrological service of a WMO member (the default:
+        IMGW-PIB, ČHMÚ), or ``other`` (an office, a company, a university, an
+        operator's own network). A label of the operator, never a claim of WMO
+        compliance.
+    provider_file : ProviderFile or None
+        The provider file of a provider fed by files (ADR-033): its data come from the
+        files it names, imported by ``store import``, never from a server; None for a
+        provider with a server (the default).
     """
 
     provider_id: str
@@ -212,6 +223,8 @@ class ProviderAdapter(Protocol):
     kinds: tuple[Kind, ...] = ("hydro", "meteo")
     archive_suffixes: tuple[str, ...]
     sidecar_station: bool
+    source_class: Literal["nmhs", "other"] = "nmhs"
+    provider_file: ProviderFile | None = None
 
     @property
     def provider(self) -> ProviderDescriptor:
