@@ -317,7 +317,8 @@ def read_station_file(
         raise _broken(filename, message("parsing.station_file_not_collection"))
     crs = document.get("crs")
     if crs is not None:
-        name = crs.get("properties", {}).get("name") if isinstance(crs, dict) else None
+        properties = crs.get("properties") if isinstance(crs, dict) else None
+        name = properties.get("name") if isinstance(properties, dict) else None
         if name not in _WGS84:
             raise _broken(
                 filename,
@@ -550,7 +551,7 @@ def _csv_rows(
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise _broken(filename, message("parsing.series_not_utf8")) from exc
-    reader = csv.reader(io.StringIO(text, newline=""))
+    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
     try:
         header = next(reader)
     except StopIteration:
