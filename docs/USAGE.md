@@ -377,7 +377,7 @@ call = command_for_version("series/versions/imgw_hydro_daily/2026-10-19_b85f50c3
 | PMAXTP cell | `pmaxtp sync --latitude --longitude --method --ind-x --ind-y` |
 | analyses version (or one of its station files) | `analyses build` |
 
-The command is the narrowest one that selects the version's file; it may cover neighboring files (half-year `H`, `Q` and `T`, all elements of a ČHMÚ meteo station, the analyses of every provider). A version whose metadata do not rebuild the call is an `unsupported` error with `details.reason="command_not_rebuildable"` (a catalog built from a user coordinates file, a sidecar without a required field, a file that `store sync` does not select, a capture of current data: what its source answered on one UTC day, which no request gives again); a missing version is `not_found`, a bad sidecar is `data_error`, a root of the other kind than the version's is `store_unavailable` (`details.reason="wrong_root"`) and a version in no root is `validation_error`.
+The command is the narrowest one that selects the version's file; it may cover neighboring files (half-year `H`, `Q` and `T`, all elements of a ČHMÚ meteo station, the analyses of every provider). A version whose metadata do not rebuild the call is an `unsupported` error with `details.reason="command_not_rebuildable"` (a catalog built from a user coordinates file, a sidecar without a required field, a file that `store sync` does not select, a capture of current data: what its source answered on one UTC day, which no request gives again; a file of a provider fed by files, which its operator delivers and `store import` keeps as its provider file names it now); a missing version is `not_found`, a bad sidecar is `data_error`, a root of the other kind than the version's is `store_unavailable` (`details.reason="wrong_root"`) and a version in no root is `validation_error`.
 
 ### Async version
 
@@ -682,6 +682,8 @@ Store routes work only on the server-side, absolute roots (ADR-017; the client p
 
 A source of a tier other than `verified` (a capture, the telemetry, `cz.chmu.groundwater_recent`) set `private` (`[obserwator.capture]`, read on every request; section [Captures of current data](#captures-of-current-data)) is not served: every request, `?check=true` included, whose `dataset` or `datasets` option or `store sync` plan item names it, or whose `version` lies under its slots, answers 404 `not_found` with `details.reason="private"` before any request to a source. `store sync`'s `pace_until` is no REST parameter (a local option).
 
+`store import` (`POST /api/v1/store/import`, body `{"provider_file": "siec.toml"}`) keeps the files of a provider fed by files in `OBSERWATOR_RAW_ROOT` and builds its series and catalog in `OBSERWATOR_ROOT`, so it needs both, and it writes only with the write token like every POST; its `provider_file` must be one of the files `[obserwator] provider_files` lists (section [A provider fed by files](#a-provider-fed-by-files)). Answers and errors show no server directory: every path below `OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_USER_LOCATIONS_DIR`, `OBSERWATOR_REFERENCE_DIR`, `OBSERWATOR_DATA_DIR`, `OBSERWATOR_CACHE_DIR`, the temporary directory, the directory of `nogat.toml` (where the provider files lie) or the working directory is given relative to it, and the directory itself as `.`.
+
 The server prints nothing but its lifecycle records on stderr (the record `start` names `host` and `port`) and writes its access, application and lifecycle logs to `<state_dir>/obserwator/logs`: section [Server logs](#server-logs).
 
 ## GUI
@@ -928,6 +930,7 @@ Every provider's stations are drawn alike, by kind only (a triangle hydrological
 | `pmaxtp fetch`, `url`, `check`, `sync`, `read` | `pmaxtp = "off"` → 404 before any request; with `clip` a point (or a read cell) outside the area → 404 |
 | `store info`, `store scan` | providers and entries of the served providers only |
 | `store check`, `store sync`, `store catalog` | a dataset, provider or station not served → 404 before any request; with `clip` a per-station dataset without stations → 403 |
+| `store import` | the provider file of a provider `off` → 404 (`not_served`) before anything is read |
 | `store export` | a version of an `off` provider → 404; with `clip` → 403 for every archive |
 | `series build`, `select`, `read`, `summary`, `export` | a dataset or version of an `off` provider → 404; a station not served → 404; summaries without stations drop the stations not served |
 | `analyses build`, `list`, `read`, `export` | a station or version not served → 404; `build` → 403 while the root holds data of an `off` provider |
@@ -938,6 +941,72 @@ Every provider's stations are drawn alike, by kind only (a triangle hydrological
 **The edge.** Both servers listen on `127.0.0.1` (`obserwator gui serve --port 8060`, `obserwator server --host 127.0.0.1 --port 8000`) behind the operator's reverse proxy with TLS; set `FORWARDED_ALLOW_IPS` to the proxy's address. A rule of the edge (SSO, Cloudflare Access or an IP list) guards `/admin`, `/admin/*` and `/api/admin/*` on every instance, and everything when the data are private: Obserwator has no accounts (SECURITY.md, threat model).
 
 **Backup and move.** Copy the two roots (`rsync -aH`, hard links kept), `state_dir` (logs) and the configuration directory; on the new host install the same tag and point `NOGAT_CONFIG` at the copy. A server refuses a data root of a layout its version does not read, with a hint, so an older release never serves a newer root.
+
+### A provider fed by files
+
+An operator's own measurement network (a catchment authority's gauges, a municipal company's rain gauges) joins an instance as data, not as code (ADR-033; Nogat plan `2026-11-21-obserwator-instance.md`, decision I13): a provider file beside `nogat.toml` declares the provider, `store import` keeps its files in the raw root and builds its series and catalog in the data root, and from then on it is a provider like IMGW-PIB and ČHMÚ in `datasets list|providers`, `stations find|export`, `series *`, `store scan`, the REST API, MCP and the GUI.
+
+```toml
+# nogat.toml
+[obserwator]
+provider_files = ["siec.toml"]          # paths relative to the directory of nogat.toml (~ expanded)
+```
+
+```toml
+# siec.toml: paths relative to this file
+id = "SIEC"                             # A-Z and digits, 2 to 16, a letter first; no id of the registry
+short_name = "Sieć Testowa"             # its name in texts (at most 40 characters)
+name = "Sieć Testowa Operatora sp. z o.o."   # its full name
+country = "PL"                          # PL or CZ: the border its stations are checked against
+source_class = "other"                  # no national service (hydromet P11)
+tier = "operational"                    # verified | telemetry | operational (default)
+publication = "public"                  # public | private (default); not with tier verified
+stations = "siec/stations.geojson"
+
+[license]
+id = "CC-BY-4.0"
+url = "https://creativecommons.org/licenses/by/4.0/"
+# terms_url = "https://example.org/terms"   # optional
+
+[attribution]
+line = "Źródło danych: Sieć Testowa Operatora sp. z o.o., licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
+processed = "Dane Sieci Testowej Operatora zostały przetworzone"   # optional: the processed-data line
+short = "Źródło: Sieć Testowa, CC BY 4.0"   # optional: the line as the GUI's strip shows it
+links = [["Sieć Testowa", "https://example.org/siec"], ["CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"]]   # optional: words of the shown line and their links
+
+[datasets.hydro_daily]                  # hydro_daily, meteo_daily or groundwater_daily
+directory = "siec/hydro"                # <code>.csv or <code>.parquet, one per station
+variables = { H = "cm", Q = "m3/s" }    # the registry's daily variables of the kind, with their units
+year_type = "hydrological"              # optional: calendar (default) | hydrological
+
+[datasets.meteo_daily]
+directory = "siec/meteo"
+variables = { P = "mm", Tmean = "degC" }
+```
+
+**The files.** The station file is a GeoJSON FeatureCollection, one Point in WGS84 (or null) per station, with the properties `station_code`, `kind` and `name` (required) and `river`, `hydrographic_code`, `active`, `elevation_m`, `gauge_zero_m`, `gauge_zero_datum`, `river_km`, `catchment_area_km2`, `established_year`, `groundwater_kind`. A station code is the operator's own code (`[A-Za-z0-9][A-Za-z0-9_-]{0,31}`) after the id and a hyphen, `SIEC-01`, so it is never a code of IMGW-PIB, ČHMÚ or another operator. A series file holds one station's daily series in the form `series export` writes (`obserwator-series-csv`: `date`, `year`, `<V> [<unit>]`, `<V>_flag` with `value`, `missing`, `no_phenomenon` or `accumulated`, …, `attribution`, `terms_notice`) or its Parquet. Both are read strictly: anything else is a `validation_error` naming the file and the place, and nothing is written.
+
+**The provider's names.** The acronym is the id in lower case: the datasets `pl.siec.station_list`, `pl.siec.hydro_daily` and `pl.siec.meteo_daily` (`<cc>.<acronym>.<name>`; slugs `siec_hydro_daily`, …), the catalog `stations/versions/siec_stations` (slot `catalog:pl.siec.stations`) and `--provider SIEC`. Its datasets are titled „Sieć Testowa — daily hydrological data: operational data, unverified” for a tier other than `verified`. `datasets files|download` and `store check|sync` do not offer them: only `store import` brings their files.
+
+**Importing.** `store import` takes the provider file by its path: one of the files `provider_files` lists, a relative path lying in the directory of `nogat.toml` as there; any other path is `validation_error` (`details.option` `provider_file`, `details.reason` `not_listed`) before anything is read.
+
+```bash
+obserwator config show                  # "Pliki dostawców": each file with the provider it adds, or its problem
+obserwator store import --root /srv/obserwator --raw-root /srv/obserwator-raw --provider-file siec.toml --check   # the plan: one action per file, per series and for the catalog
+obserwator store import --root /srv/obserwator --raw-root /srv/obserwator-raw --provider-file siec.toml
+obserwator series read --root /srv/obserwator --dataset pl.siec.hydro_daily --station SIEC-01
+obserwator stations find --root /srv/obserwator --source store --provider SIEC
+```
+
+The import reads and checks every file before it writes, keeps each in the raw root as it came (`archives/versions/files/siec/hydro_daily/SIEC-01/<YYYY-MM-DD>_<sha8>/SIEC-01.csv`, slot `archive:pl.siec.hydro_daily:SIEC-01.csv`; the station file under `files/siec/station_list/stations/`), then builds the provider's series and its catalog into the data root, offline (the catalog's points are checked against the country's border, a point outside dropped with a warning). The report (`ImportReport`; `import_files` and `check_import` in Python) gives the files (`items`), the series and the catalog, each `new` or `unchanged`: run it again after the operator changes a file, and an unchanged file or series is `unchanged`. A build that fails after the files were kept makes the envelope `partial`. Every product with the provider's data carries its `attribution.line` (and `processed` where the data were processed) after the standard's lines, and its `[license]` gives the terms notice.
+
+**Tier and publication (P15).** A dataset of a tier other than `verified` is a source of `[obserwator.capture]`: its state defaults to the file's `publication` (`private` when the file says nothing) and the section overrides it, `"pl.siec.hydro_daily" = "private"`. While it is `private`, the GUI serves none of its series and REST refuses a `dataset` naming it and a `version` under `series/versions/siec_hydro_daily/` (`not_found`, `details.reason` `private`); the raw files and the series are stored all the same, with `tier` and `publication` in their sidecars. A `verified` provider file has no publication: its series are served like IMGW-PIB's archive.
+
+**A file with a problem stops the instance.** It registers nothing; `config show` lists it with `provider` null and the problem `invalid_provider_file` (`option` `provider_file.<field>`, `path`, `message`); `obserwator server` and `obserwator gui serve` refuse to start; `store import` answers `validation_error` before any root exists. `[obserwator.instance.providers]` applies to it as to any provider: `SIEC = "off"` takes it out of both servers, and REST refuses `store import` of its file (`not_served`).
+
+**In the GUI** its stations are on the map and the list like any other, its series in „Dane pomiarowo-obserwacyjne” and its line in the sources strip (Nogat kit 1.2.0's `screen-lines`: the `short` form where the file gives one, the full line in „Źródła i warunki”). The panel of its station shows the chip „Inne źródło” and the note „Dane tej stacji nie pochodzą od państwowej służby hydrologiczno-meteorologicznej.”, and a dataset of a tier other than `verified` is labelled „dane operacyjne, niezweryfikowane” in the record and by its series. „Pomiary bieżące” says that its current data are not provided, and its series have no hand-off to Hydrolog (IMGW-PIB's and ČHMÚ's only).
+
+Not yet: sub-daily datasets of a provider file; the note „not from a national service” outside the GUI (files and REST carry the provider's line only).
 
 ### Timers
 
@@ -1055,7 +1124,7 @@ rsync -aH /mnt/nas/backup/obserwator/weekly/2026-11-29/raw/ /srv/obserwator-raw/
 
 Tool result: `structuredContent` = the `obserwator-result/1` envelope (the same bytes as CLI stdout with `--json`, also as text), `isError=false` also for `partial` and `failed`. Error: `isError=true` and the `obserwator-error/1` document of the CLI error line (with the tool's `command`, in English) as `structuredContent` and as text. List commands without `limit` return a page of 50 items (at most `OBSERWATOR_API_MAX_LIMIT`; next pages with `cursor` = `page.next_cursor`); streams (`store export`, `series export`, `analyses export`, `commands guide` without `output`) — text up to 256 KiB with the envelope `result={schema: "obserwator-stream/1", format, bytes, lines}`, larger → `validation_error` (narrow the selection, read page by page with `series read` or write a file with the `output` option; writing requires `--allow-writes` and an `--allow-dir` directory). Progress is sent as `notifications/progress`; cancelling the request stops work between files. The list of 36 tools with descriptions is about 60 KB of schemas (read-only mode).
 
-**MCP over HTTP.** `obserwator server` exposes `/mcp` (Streamable HTTP) with `OBSERWATOR_MCP_ENABLED=true`: the tools correspond to the 33 REST routes and are called as REST requests in the same process (with `Accept-Language: en`), so the server rules apply (the roots from `OBSERWATOR_ROOT` and `OBSERWATOR_RAW_ROOT`, `version` relative to the command's root, `OBSERWATOR_API_MAX_LIMIT`, hiding server directories); POST always with `?check=true` — over HTTP only reading and planning. The tools are in English, as in `obserwator mcp`; `OBSERWATOR_LANG` does not affect them. Allowed `Host` headers are listed in `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`); behind `nginx` add the public host name.
+**MCP over HTTP.** `obserwator server` exposes `/mcp` (Streamable HTTP) with `OBSERWATOR_MCP_ENABLED=true`: the tools correspond to the 34 REST routes and are called as REST requests in the same process (with `Accept-Language: en`), so the server rules apply (the roots from `OBSERWATOR_ROOT` and `OBSERWATOR_RAW_ROOT`, `version` relative to the command's root, `OBSERWATOR_API_MAX_LIMIT`, hiding server directories); POST always with `?check=true` — over HTTP only reading and planning. The tools are in English, as in `obserwator mcp`; `OBSERWATOR_LANG` does not affect them. Allowed `Host` headers are listed in `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`); behind `nginx` add the public host name.
 
 ```bash
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_ROOT=/srv/obserwator OBSERWATOR_RAW_ROOT=/srv/obserwator-raw obserwator server  # → http://127.0.0.1:8000/mcp
@@ -1199,7 +1268,11 @@ api_max_limit = 500
 
 `[obserwator.capture]` (whether a server shows the captures of each source, ADR-030 D5) is a table of `[obserwator]` in `nogat.toml` only; section [Captures of current data](#captures-of-current-data).
 
+`provider_files` (the provider files of an operator's own networks, ADR-033) is a key of `[obserwator]` in `nogat.toml` only, a list of paths relative to its directory; section [A provider fed by files](#a-provider-fed-by-files).
+
 `obserwator config show --json` prints one `obserwator-config/1` document: every key with its value and source (`default`, `env`, `dotenv`, `file` and the variable or table name), every credential variable as `present` or `missing` (without the value) and both roots, `store` the data root and `raw_store` the raw root, each with its source, whether it exists and its size (hard-linked files counted once), `instance` (the resolved `[obserwator.instance]`, null without it), `capture` (the capture spool's directory and each source's publication `state`, `tier` and `source`, `default` or `file`) and `problems`, each with `code`, `option` and `message`: `invalid_instance`, `invalid_capture` (an invalid `[obserwator.capture]`, whose defaults then apply), `capture_spool` (a capture spool that cannot be written, or whose last write failed), `short_secret` (a key or token shorter than 32 bytes), `secret_file_mode` (a key file group or others may access; POSIX only), `secret_file_encoding` (a key file that is not UTF-8) and `deprecated_api_keys` (a leftover `api_keys.json`); without `--json` the same description as text (the lines "Data root" and "Raw root", then "Instance", "Captures" and "Problems").
+
+The document also has `provider_files`: each file of `[obserwator] provider_files` as `{path, provider}`, `provider` the id it adds or null for a file with a problem, which `problems` then lists as `invalid_provider_file` with `option` (`provider_file.<field>`), `path` and `message`; `obserwator config show` prints them under „Pliki dostawców”.
 
 **Store backup.** The raw root is the only place holding archive versions that IMGW-PIB or ČHMÚ have removed from their server, so they cannot be downloaded again. A backup of a root must preserve hard links (`rsync -aH`; on Windows a tool that preserves links, not Explorer or `robocopy`) or use an export (`obserwator store export`, `obserwator series export`); a copy without links multiplies the size of the root. The deployment's weekly and monthly snapshots with their restore test: [Backups](#backups).
 
@@ -1213,6 +1286,7 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
 <raw root>/obserwator-store.json                        # obserwator-store/1 marker
   archives/versions/<server path>/<stem>/<label>_<sha8>/<file>[.meta.json]
   archives/versions/<server path>/<YYYY-MM-DD>/<YYYY-MM-DD>_<sha8>/<YYYY-MM-DD>.jsonl.gz[.meta.json]   # a capture of one UTC day (section "Captures of current data")
+  archives/versions/files/<acronym>/<dataset>/<stem>/<label>_<sha8>/<file>[.meta.json]   # a file of a provider fed by files (section "A provider fed by files")
   archives/versions/<server path>/<stem>/observations/<date>_<sha8>.json   # observation register (ČHMÚ)
   pmaxtp/versions/<POT|AMP>/<indX>_<indY>/<label>_<sha8>/cell.json[.meta.json]
   .incoming/                                            # staging; never a version
@@ -1222,6 +1296,7 @@ The store is two plain directories, each with a marker of its own (ADR-017). The
   series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/series.json[.meta.json] + stations/<code>.parquet   # a month of a sub-daily series (section "Hourly series")
   stations/versions/imgw_stations/<label>_<sha8>/stations.geojson[.meta.json]   # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson[.meta.json]   # ČHMÚ catalog
+  stations/versions/<acronym>_stations/<label>_<sha8>/stations.geojson[.meta.json]   # the catalog of a provider fed by files
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json[.meta.json] + stations/<code>.json + stations/<code>/<id>.json   # Hydrolog's analyses (ADR-016)
   .incoming/                                            # staging; never a version
 ```

@@ -4,7 +4,7 @@ Instructions for Claude Code (claude.ai/code) working in this repository. Refere
 
 ## 1. Project
 
-Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.2.0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog`, `_borders`, `_http_headers` and `_file_names` for settings, JSON, Hydrolog's program, the packaged borders, and the security headers and download names (Nogat DEV-19.21) shared with the REST server). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.3.0.dev0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), and of an operator's own networks declared in provider files beside `nogat.toml` (ADR-033), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog`, `_borders`, `_http_headers` and `_file_names` for settings, JSON, Hydrolog's program, the packaged borders, and the security headers and download names (Nogat DEV-19.21) shared with the REST server). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 2. Critical rules
 
@@ -44,17 +44,18 @@ Extras: `obserwator[cli|api|store|mcp|gui|pandas|full]` (install lines in the RE
 ```
 src/obserwator/
 ├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
-├── commands.py           # command catalog (36 commands), run_command, command_schema
+├── commands.py           # command catalog (37 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
 ├── coverage.py, exceptions.py (ERROR_CODES), error_report.py, output.py, testing.py, config.py, reference_data.py
 ├── captures.py           # captures of current data (ADR-030): the spool in state_dir, [obserwator.capture], current poll
 ├── nogat_logging.py      # Nogat's server logs: reference module, byte copy, never edited (ADR-019)
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
-├── providers/            # one adapter per provider behind the ProviderAdapter protocol (ADR-029): pl/imgw.py, cz/chmu.py
+├── providers/            # one adapter per provider behind the ProviderAdapter protocol (ADR-029): pl/imgw.py, cz/chmu.py, files.py (every provider fed by files, ADR-033)
+├── _provider_files.py    # provider files of [obserwator] provider_files in nogat.toml (ADR-033): load_provider_files, ProviderFile
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006); gui/ = the GUI's texts
-├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
+├── _parsing/             # IMGW-PIB and ČHMÚ file parsers; files.py: the station and series files of a provider fed by files
 ├── _data/                # borders, agents/ templates, packaged fixtures
-├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, captures (sealing the spool, ADR-030), series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
+├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, captures (sealing the spool, ADR-030), files (store import, ADR-033), series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
@@ -74,7 +75,7 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..032) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..033) | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
