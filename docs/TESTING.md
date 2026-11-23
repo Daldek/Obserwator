@@ -82,7 +82,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/contract/test_chmu_contract.py`|69|IMGW-15..19 on `complete_pl_cz`; Python = CLI = REST = MCP for ČHMÚ runs|
 |`tests/contract/test_mcp_contract.py`, `test_mcp_http_contract.py`|100|MCP (stdio, `/mcp`) = Python = CLI = REST for every contract case and error code|
 |`tests/contract/` other files|155|Store contract (sidecar core of every kind of version), CLI = API parity, `obserwator-commands/1` against Nogat's `commands-1`, the vendored Nogat error registry, REST's attachment names (Nogat DEV-19.21)|
-|`tests/live/test_interfaces_live.py`|50|Live IMGW-PIB: 35 commands × Python/`obserwator`/REST (the analyses with the recorded Hydrolog), 6 live errors, MCP leg (`-k obserwator_mcp`, 8 commands); marker `live`|
+|`tests/live/test_interfaces_live.py`|51|Live IMGW-PIB: 36 commands × Python/`obserwator`/REST (the analyses with the recorded Hydrolog; `current poll` compared by status and keys only), 6 live errors, MCP leg (`-k obserwator_mcp`, 8 commands); marker `live`|
 |`tests/live/test_chmu_live.py`|22|Live ČHMÚ (opendata.chmi.cz) through Python/CLI/REST/MCP with a request log; marker `live`|
 
 **Total: 3840 tests** (`pytest --collect-only -q -m ''`, 2026-11-23): 3768 offline (181 of them in `tests/e2e`, skipped without Chromium), 72 live (`uv run pytest tests/live -m live`; JSON report via `OBSERWATOR_LIVE_REPORT=<file>`). The counts of the rows above were recounted the same day with `pytest --collect-only -q` and add up to that total, the GUI's rows included. The contract suite and the analyses tests run the recorded Hydrolog (`OBSERWATOR_HYDROLOG_COMMAND` set by their fixtures); no offline test needs the real program. Fixtures: `fixture_roots` (`FixtureRoots`), `fixture_root` (the data root) and `fixture_raw_root` (the raw root) in `tests/conftest.py`; `served_root`, `served_raw_root` and `served` (both server settings) in `tests/contract/conftest.py`.
@@ -132,13 +132,13 @@ tests/
 │   └── test_public_store_api.py                        # public exports contract
 ├── contract/                # store contract, Python = CLI = REST = MCP, ČHMÚ (IMGW-15..19), the GUI's page files
 ├── e2e/                     # the GUI in Chromium (Playwright; markers e2e and hydrolog)
-└── live/                    # live regression (marker `live`, outside the gate): IMGW-PIB 35 commands × Python/CLI/REST + MCP; ČHMÚ
+└── live/                    # live regression (marker `live`, outside the gate): IMGW-PIB 36 commands × Python/CLI/REST + MCP; ČHMÚ
 ```
 
 **Total: 3840 tests** (`pytest --collect-only`, 2026-11-23): 3768 offline and 72 live (marker `live`, run explicitly with `-m live`):
 
 ```bash
-uv run pytest tests/live/test_interfaces_live.py -m live   # IMGW-PIB: 50 tests
+uv run pytest tests/live/test_interfaces_live.py -m live   # IMGW-PIB: 51 tests
 uv run pytest tests/live -m live -k obserwator_mcp         # the MCP leg only (obserwator mcp)
 uv run pytest tests/live/test_chmu_live.py -m live         # ČHMÚ: 22 tests, approx. 31 MB
 ```
