@@ -651,7 +651,11 @@ class SeriesReport:
     files : tuple of FileResult, optional
         The version of ``version`` as ``files[]`` (DEV-19.19): its size and
         SHA-256 from the sidecar and the status of the report; empty when
-        nothing was built.
+        nothing was built. A sub-daily series has one per month built.
+    months : tuple of SeriesReport or None, optional
+        The report of each month of a sub-daily series (ADR-031), in month order:
+        its status, its version ``series/versions/<slug>/<YYYY-MM>/…`` and its
+        inputs; None for every other series (written only when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-series-report/1"
@@ -662,6 +666,9 @@ class SeriesReport:
     source_files: tuple[Path, ...]
     problems: tuple[str, ...]
     files: tuple[FileResult, ...] = ()
+    months: tuple[SeriesReport, ...] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 @dataclass(frozen=True)
@@ -1200,6 +1207,13 @@ class SeriesIndex:
     subset : SeriesSubset or None, optional
         The stations and years of a subset version (ADR-026); None for the
         series of every station and year of the archives.
+    month : str or None, optional
+        The calendar month ``YYYY-MM`` of a version of a sub-daily series
+        (ADR-031); None for every other series.
+    tiers : tuple of {"verified", "telemetry", "operational"} or None, optional
+        The tiers of the values of a version of a sub-daily series, highest
+        first; its station files carry ``<V>_tier`` columns only when there are
+        several (ADR-031). None for every other series (verified).
     """
 
     schema: Literal["obserwator-series/1"]
@@ -1208,6 +1222,8 @@ class SeriesIndex:
     periods: tuple[tuple[date, date], ...]
     stations: Mapping[str, StationSeriesIndex]
     subset: SeriesSubset | None = None
+    month: str | None = None
+    tiers: tuple[Literal["verified", "telemetry", "operational"], ...] | None = None
 
 
 @dataclass(frozen=True)

@@ -49,10 +49,11 @@ CHMU_KEYS = [
     "cz.chmu.meteo_now",
     *GROUNDWATER_KEYS,
     # The operational day files, the live tail's now files and the validated hourly
-    # set (ADR-030, O2).
+    # set (ADR-030, O2), then the hourly series built per month from them (ADR-031).
     "cz.chmu.hydro_recent",
     "cz.chmu.hydro_current",
     "cz.chmu.hydro_hourly",
+    "cz.chmu.hydro_subdaily",
 ]
 
 

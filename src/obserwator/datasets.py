@@ -95,12 +95,14 @@ Ending of the file of a capture version, ``<YYYY-MM-DD>.jsonl.gz`` (ADR-030 D3).
 The day's answers as gzip-compressed JSON Lines; the slot directory of the file is
 ``<server_dir>/<YYYY-MM-DD>`` (the name without the ending).
 """
-SERIES_TIME_UNITS = ("day", "week", "month", "half_year")
+SERIES_TIME_UNITS = ("day", "week", "month", "half_year", "hour")
 """
 Time units of the datasets ``series build`` builds (``DatasetDescriptor.time_unit``).
 
 A day, a weekly reading (ČHMÚ's groundwater, at its own date, ADR-032), a month or a
-half-year; a dataset of one of them with a parser is a series dataset.
+half-year; a dataset of one of them with a parser is a series dataset. An hour is the
+unit of the sub-daily series built from the datasets of their ``inputs`` (ADR-031),
+one version per calendar month (`monthly_series`).
 """
 Kind = Literal["hydro", "meteo", "groundwater"]
 """A station family, the ``kind`` of a dataset, a station list and a catalog station."""
@@ -384,7 +386,14 @@ class DatasetDescriptor:
         (ADR-030, Nogat ECO-084): ``"verified"`` a published archive or a
         validated set (the default, every dataset of 3.1.0), ``"telemetry"``
         IMGW-PIB's monthly telemetry, ``"operational"`` what a source gives as
-        current or unverified data.
+        current or unverified data. A sub-daily series has the lowest tier of its
+        ``inputs`` (ADR-031): it may hold operational hours, and each of its
+        points carries its own tier.
+    inputs : tuple of str or None, optional
+        The datasets a sub-daily series is built from (ADR-031), highest tier
+        first: a point of one replaces that of a later one; None for every other
+        dataset (an optional field of ``obserwator-dataset/1``, written only when
+        set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -431,6 +440,7 @@ class DatasetDescriptor:
     base_url: str | None = None
     kept_fields: tuple[str, ...] = ()
     tier: Literal["verified", "telemetry", "operational"] = "verified"
+    inputs: tuple[str, ...] | None = field(default=None, metadata={"omit_none": True})
 
 
 @dataclass(frozen=True)
@@ -1116,6 +1126,27 @@ _DATASETS = (
         base_url=_IMGW_DATASTORE,
         tier="telemetry",
     ),
+    # The hourly series of the tiers (ADR-031): the telemetry's full-hour records over
+    # the full hours hydro-back gave for each closed UTC day (the plan's D9), one
+    # version per calendar month; no files of its own.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_subdaily",
+        slug="imgw_hydro_subdaily",
+        kind="hydro",
+        title=message("datasets.title_hydro_subdaily"),
+        server_dir=None,
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=2008,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        tier="operational",
+        inputs=("pl.imgw.hydro_telemetry", "pl.imgw.hydro_operational"),
+    ),
     DatasetDescriptor(
         key="pl.imgw.hydro_phenomena",
         slug="imgw_hydro_phenomena",
@@ -1600,6 +1631,27 @@ _DATASETS = (
         volatile_fields=_CHMU_VOLATILE,
         tier="verified",
     ),
+    # The hourly series of the tiers (ADR-031): the validated hours over the full
+    # hours of the ``recent`` day files, one version per calendar month.
+    DatasetDescriptor(
+        key="cz.chmu.hydro_subdaily",
+        slug="chmu_hydro_subdaily",
+        kind="hydro",
+        title=message("datasets.title_chmu_hydro_subdaily"),
+        server_dir=None,
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=1905,
+        update_signal="none",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        tier="operational",
+        inputs=("cz.chmu.hydro_hourly", "cz.chmu.hydro_recent"),
+    ),
 )
 # Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
@@ -1805,16 +1857,36 @@ def builds_series(descriptor: DatasetDescriptor, /) -> bool:
     -------
     bool
         True for a dataset of the store with a parser and a time unit of
-        `SERIES_TIME_UNITS`; False for station sources, download-only datasets
-        and the stored files no series reads (``cz.chmu.groundwater_recent``,
-        operational data, ADR-030 D1, and the statistics of
+        `SERIES_TIME_UNITS`, and for a sub-daily series built from its ``inputs``
+        (ADR-031); False for station sources, download-only datasets and the
+        stored files no series of their own reads (``cz.chmu.groundwater_recent``,
+        the operational data and the telemetry, ADR-030 D1, and the statistics of
         ``cz.chmu.groundwater_characteristic``, ADR-032).
     """
     return (
         descriptor.in_store
         and descriptor.time_unit in SERIES_TIME_UNITS
-        and descriptor.parser is not None
+        and (descriptor.parser is not None or descriptor.inputs is not None)
     )
+
+
+def monthly_series(descriptor: DatasetDescriptor, /) -> bool:
+    """
+    Whether a series dataset is built as one version per calendar month (ADR-031).
+
+    Parameters
+    ----------
+    descriptor : DatasetDescriptor
+        A registry entry.
+
+    Returns
+    -------
+    bool
+        True for the sub-daily series (``time_unit`` ``hour``, built from their
+        ``inputs``): their slots are ``series:<key>:<YYYY-MM>`` and their versions lie
+        in ``series/versions/<slug>/<YYYY-MM>/``; False for every other dataset.
+    """
+    return builds_series(descriptor) and descriptor.time_unit == "hour"
 
 
 def keeps_archives(descriptor: DatasetDescriptor, /) -> bool:

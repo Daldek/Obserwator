@@ -19,6 +19,8 @@ from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 
 Flag = Literal["value", "missing", "no_phenomenon", "accumulated"]
+Tier = Literal["verified", "telemetry", "operational"]
+"""What a point of a sub-daily series is (ADR-030 D1, ADR-031): the tier of its input."""
 
 
 @dataclass(frozen=True)
@@ -43,12 +45,18 @@ class Measurement:
         ČHMÚ ``FLAG`` verbatim, also codes outside the ČHMÚ dictionary (e.g.
         ``"T"`` unmeasurable trace of precipitation, ``"M"`` manual gauge);
         None when absent.
+    tier : {"verified", "telemetry", "operational"} or None, optional
+        The tier of the input a value of a sub-daily series came from (ADR-031):
+        a higher tier replaces a lower one per station, variable and hour; None
+        without a value and for every other series (an optional field of
+        ``obserwator-record/1``, written only when set).
     """
 
     value: float | None
     flag: Flag
     quality: int | None = None
     source_flag: str | None = None
+    tier: Tier | None = field(default=None, metadata={"omit_none": True})
 
 
 @dataclass(frozen=True)
@@ -66,7 +74,7 @@ class NormalizedRecord:
         ``"cz.chmu.hydro_daily"``.
     date : date
         Calendar start of the time unit (day, first day of the month or
-        start of the half-year period).
+        start of the half-year period); the UTC day of an hour.
     hydro_year : int
         Hydrological year (November-October) of the unit.
     period : {"winter", "summer", "annual"} or None
@@ -83,6 +91,10 @@ class NormalizedRecord:
     extrema_occurrences : Mapping of str to int, optional
         Number of IMGW rows (occurrences of the extremum) merged into the
         value of a semi-annual column, keyed like ``extrema_dates``.
+    time : datetime or None, optional
+        The start of the hour of a sub-daily series (UTC, ADR-031); None for
+        every other unit (an optional field of ``obserwator-record/1``,
+        written only when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-record/1"
@@ -98,6 +110,7 @@ class NormalizedRecord:
         default_factory=dict
     )
     extrema_occurrences: Mapping[str, int] = field(default_factory=dict)
+    time: datetime | None = field(default=None, metadata={"omit_none": True})
 
 
 # The 27 probabilities [%] of every PMAXTP table, the same for each duration (measured

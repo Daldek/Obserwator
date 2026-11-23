@@ -59,6 +59,7 @@ __all__ = [
     "border_origin",
     "carried",
     "dataset_origin",
+    "dataset_origins",
     "provider_origin",
 ]
 
@@ -363,6 +364,40 @@ def dataset_origin(key: str, /) -> Origin:
         if provider.key_prefix == prefix:
             return provider.adapter.dataset_origin(key)
     raise ValueError(f"No attribution for the dataset {key!r}")
+
+
+def dataset_origins(key: str, /) -> tuple[Origin, ...]:
+    """
+    Origins of the data of a dataset: those of its inputs for a sub-daily series.
+
+    A sub-daily series (``DatasetDescriptor.inputs``, ADR-031) holds the data of
+    every dataset it is built from, so its lines are theirs: ``pl.imgw.hydro_subdaily``
+    has IMGW-PIB's telemetry (``imgw``) and hydro.imgw.pl's hours (``imgw_hydro``).
+
+    Parameters
+    ----------
+    key : str
+        Full dataset key, e.g. ``"pl.imgw.hydro_subdaily"``.
+
+    Returns
+    -------
+    tuple of Origin
+        The origins of the inputs once each, in the order of `ORIGINS`; for any
+        other dataset its one `dataset_origin`.
+
+    Raises
+    ------
+    ValueError
+        If the key belongs to no known provider (a program error: keys come
+        from the registry).
+    """
+    from obserwator.datasets import datasets
+
+    descriptor = next((item for item in datasets() if item.key == key), None)
+    if descriptor is None or descriptor.inputs is None:
+        return (dataset_origin(key),)
+    found = {dataset_origin(item) for item in descriptor.inputs}
+    return tuple(origin for origin in ORIGINS if origin in found)
 
 
 def provider_origin(provider: str, /) -> Origin:
