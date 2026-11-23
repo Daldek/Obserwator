@@ -1,0 +1,32 @@
+# A provider fed by files for the tests (ADR-033): an operator's own network around
+# Wrocław. Every value is invented; the paths are relative to this file.
+id = "SIEC"
+short_name = "Sieć Testowa"
+name = "Sieć Testowa Operatora sp. z o.o."
+country = "PL"
+source_class = "other"
+tier = "operational"
+publication = "public"
+stations = "siec/stations.geojson"
+
+[license]
+id = "CC-BY-4.0"
+url = "https://creativecommons.org/licenses/by/4.0/"
+
+[attribution]
+line = "Źródło danych: Sieć Testowa Operatora sp. z o.o., licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
+processed = "Dane Sieci Testowej Operatora zostały przetworzone"
+short = "Źródło: Sieć Testowa, CC BY 4.0"
+links = [
+    ["Sieć Testowa", "https://example.org/siec"],
+    ["CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"],
+]
+
+[datasets.hydro_daily]
+directory = "siec/hydro"
+variables = { H = "cm", Q = "m3/s" }
+year_type = "hydrological"
+
+[datasets.meteo_daily]
+directory = "siec/meteo"
+variables = { P = "mm", Tmean = "degC" }
