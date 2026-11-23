@@ -34,6 +34,7 @@ from obserwator.exceptions import (
 )
 from obserwator.fetch import download_hydro_data, download_meteo_data
 from obserwator.messages import message
+from obserwator.providers.pl import imgw as _imgw
 from obserwator.store import (
     build_catalog,
     build_series,
@@ -41,7 +42,6 @@ from obserwator.store import (
     sync_store,
     write_archive,
 )
-from obserwator.store import catalog as _store_catalog
 from obserwator.store.types import PathArg, StoreHandle
 from obserwator.store.writer import _canonical
 
@@ -258,12 +258,12 @@ def _without_reference_data() -> Iterator[None]:
     Fixture stores must not depend on reference data a user fetched with
     ``python -m obserwator.reference_data``. Process-global: call under ``_HTTP_LOCK``.
     """
-    original = _store_catalog._static_file
-    _store_catalog._static_file = lambda: (Path(_store_catalog.STATIC_LOCATIONS), None)
+    original = _imgw._static_file
+    _imgw._static_file = lambda: (Path(_imgw.STATIC_LOCATIONS), None)
     try:
         yield
     finally:
-        _store_catalog._static_file = original
+        _imgw._static_file = original
 
 
 def _add_unknown_version(root: Path) -> None:

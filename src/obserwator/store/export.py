@@ -42,7 +42,7 @@ from obserwator.exceptions import (
 from obserwator.messages import message
 from obserwator.models import Measurement, NormalizedRecord
 from obserwator.output import OutputReport, Staging, plan_plain, refuse
-from obserwator.store.catalog import DETAILS_SOURCE, RootArg, _catalog_lines
+from obserwator.store.catalog import RootArg, _catalog_lines
 from obserwator.store.reader import (
     _archive_main,
     _open,
@@ -1400,6 +1400,8 @@ def _catalogs(
         Code ``not_found`` when an explicit ``provider`` has no catalog, or
         none of the providers has one.
     """
+    from obserwator.providers.pl.imgw import DETAILS_SOURCE
+
     owners = providers() if provider is None else (get_provider(provider),)
     found: list[_Catalog] = []
     for owner in owners:
