@@ -10,15 +10,18 @@
 #   night      02:30 local: the harvest of pl.imgw.hydro_operational until 05:00,
 #              then of cz.chmu.hydro_recent until 06:30, each for the UTC days
 #              since its last whole harvest, then the sealing of every other
-#              capture dataset's closed UTC days.
+#              capture dataset's closed UTC days, then the build of the hourly
+#              series of the months those harvests asked for (ADR-031).
 #   telemetry  06:45 local: IMGW-PIB's monthly telemetry of the current year (and
-#              of the year before in January) and the listing check of ČHMÚ's
-#              validated hourly year.
+#              of the year before in January), the hourly series of each month
+#              whose zip it stored, and the listing check of ČHMÚ's validated
+#              hourly year.
 #   current    hourly at :15: `obserwator current poll`.
 #   --start    night only: the first UTC day of both harvests (at most 40 days
 #              back), in place of the day after the last whole harvest.
 #   --check    pass --check to every command: plans only, nothing written, no
-#              harvest recorded.
+#              harvest recorded (the telemetry's months are built only after a
+#              sync that stored their zips).
 #
 # Environment:
 #   OBSERWATOR            the program (default: obserwator on PATH)
@@ -38,10 +41,11 @@ set -uo pipefail
 
 # --- the night's datasets (ADR-030): the served capture datasets of the registry,
 # the declared ones left out; tests/unit/test_deploy_jobs.py keeps them equal ---
-# Each harvest: dataset and the local time its requests are spread to.
+# Each harvest: dataset, the local time its requests are spread to, and the hourly
+# series built of its days after the sealing (ADR-031).
 HARVESTS=(
-  "pl.imgw.hydro_operational 05:00"
-  "cz.chmu.hydro_recent 06:30"
+  "pl.imgw.hydro_operational 05:00 pl.imgw.hydro_subdaily"
+  "cz.chmu.hydro_recent 06:30 cz.chmu.hydro_subdaily"
 )
 # The other capture datasets: their closed UTC days are sealed after the
 # harvests (the polled sources of `current poll` and the GUI's live fetches).
@@ -81,12 +85,13 @@ state_dir() {
 }
 
 night() {
-  local override=$1 stamps end earliest entry dataset until stamp start
+  local override=$1 stamps end earliest entry dataset until series stamp start build
+  local builds=()
   stamps="$(state_dir)/obserwator/timers" || { say "state_dir unknown"; return 1; }
   end=$(date -u -d yesterday +%F)
   earliest=$(date -u -d "-$HARVEST_DAYS days" +%F)
   for entry in "${HARVESTS[@]}"; do
-    read -r dataset until <<<"$entry"
+    read -r dataset until series <<<"$entry"
     stamp=$stamps/$dataset.harvested
     if [[ -n $override ]]; then
       start=$override
@@ -103,23 +108,59 @@ night() {
       say "$dataset: the days before $earliest are beyond the source's reach"
       start=$earliest
     fi
+    # A harvest that ran, whole or partial, sealed what it got: its months are built.
+    builds+=("$series $start")
     if step "$OBSERWATOR" store sync --datasets "$dataset" --pace-until "$until" \
       --start "$start" --end "$end" "${check[@]}" && ((${#check[@]} == 0)); then
       mkdir -p "$stamps" && printf '%s\n' "$end" >"$stamp.tmp" && mv -f "$stamp.tmp" "$stamp"
     fi
   done
   step "$OBSERWATOR" store sync --datasets "$SEALED" "${check[@]}"
-  # O4 (hourly series) adds here: series build of the months the night touched.
+  # The hourly series (ADR-031): the months of the days each harvest asked for.
+  for build in "${builds[@]}"; do
+    read -r series start <<<"$build"
+    step "$OBSERWATOR" series build --dataset "$series" --start "$start" --end "$end" \
+      "${check[@]}"
+  done
+}
+
+# The months (YYYY-MM) of the telemetry zips a `store sync --json` stored.
+stored_months() {
+  python3 -c '
+import json, re, sys
+
+lines = [line for line in sys.stdin if line.startswith("{")]
+try:
+    result = json.loads(lines[-1]).get("result") or {}
+except (IndexError, ValueError, AttributeError):
+    sys.exit(0)
+for item in result.get("items") or ():
+    found = re.search(r"Hydro_([0-9]{4}-[0-9]{2})\.zip$", str(item.get("slot") or ""))
+    if found and item.get("status") in ("new", "relabeled"):
+        print(found.group(1))
+'
 }
 
 telemetry() {
-  local year month years
+  local year month years out stored
   year=$(date +%Y)
   month=$(date +%m)
   years=$year
   # December's zip is published about 12 January, in the folder of its year.
   [[ $month == 01 ]] && years="$((year - 1)),$year"
-  step "$OBSERWATOR" store sync --datasets pl.imgw.hydro_telemetry --years "$years" "${check[@]}"
+  out=$(mktemp) || { say "no temporary file"; return 1; }
+  step "$OBSERWATOR" store sync --datasets pl.imgw.hydro_telemetry --years "$years" \
+    --json "${check[@]}" >"$out"
+  cat "$out"
+  # The hourly series of each month whose zip was stored (ADR-031): its telemetry
+  # replaces hydro-back's hours of the month.
+  if ((${#check[@]} == 0)); then
+    while read -r stored; do
+      step "$OBSERWATOR" series build --dataset pl.imgw.hydro_subdaily \
+        --start "$stored-01" --end "$(date -u -d "$stored-01 + 1 month - 1 day" +%F)"
+    done < <(stored_months <"$out")
+  fi
+  rm -f "$out"
   if [[ -n ${CHMU_HOURLY_STATIONS:-} ]]; then
     # One listing of historical/data/hourly/: is last year's validated hourly
     # year published (about May)? Nothing is downloaded.
