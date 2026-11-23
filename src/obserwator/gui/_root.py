@@ -3,42 +3,55 @@ Obserwator's data root as the GUI reads it: catalogs, series, stored analyses' v
 
 The GUI never writes under the root (GUI plan D7). It reads it only through the public
 readers of `obserwator.store` (`read_catalog`, `read_series_index`, `read_series`,
-`current_version`, `export_stations`) and asks again at most once a minute whether a
-current version changed, so a new ``series build``, catalog or ``analyses build`` shows
-without a restart; that read runs in the background, the requests taking the last
-snapshot meanwhile. In memory: the station layer of the current versions, what the GUI
-shows of each series index (its ranges without a value counted, not kept), the most
-recent series documents (at most 32 and 2 million cells) and the 4 most recent files of
-the stations.
+`current_version`, `series_months`, `export_stations`) and asks again at most once a
+minute whether a current version changed, so a new ``series build``, catalog or
+``analyses build`` shows without a restart; that read runs in the background, the
+requests taking the last snapshot meanwhile. In memory: the station layer of the
+current versions, what the GUI shows of each series index (its ranges without a value
+counted, not kept), the most recent series documents (at most 32 and 2 million cells)
+and the 4 most recent files of the stations. An hourly series (ADR-031) is held as the
+current version of each of its months, one series to the GUI.
 """
 
 from __future__ import annotations
 
 import contextlib
 import gc
+import hashlib
 import importlib
 import pickle
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from obserwator.datasets import Kind, builds_series, datasets, get_dataset, providers
+from obserwator.captures import publication
+from obserwator.datasets import (
+    Kind,
+    builds_series,
+    datasets,
+    get_dataset,
+    monthly_series,
+    providers,
+)
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
 from obserwator.instance import Instance
+from obserwator.models import NormalizedRecord
 from obserwator.store import (
     StationFeature,
     StationSeriesIndex,
+    StoreEntry,
     current_version,
     export_stations,
     read_catalog,
     read_series,
     read_series_index,
+    series_months,
 )
 
 RELOAD_AFTER_S = 60.0
@@ -70,9 +83,19 @@ def in_thread(job: Callable[[], None]) -> None:
 
 
 def series_datasets() -> tuple[str, ...]:
-    """The datasets whose station series a data root may hold, in registry order."""
+    """
+    The datasets whose station series the GUI serves from a data root, in registry order.
+
+    A sub-daily series built from a private capture (`captures.publication` says
+    ``private``) is left out, as every product of a private capture is left out of
+    the public surfaces (P15, ADR-030 D5); asked on every read of the root, so a
+    change of ``[obserwator.capture]`` shows within a minute.
+    """
     return tuple(
-        descriptor.key for descriptor in datasets() if builds_series(descriptor)
+        descriptor.key
+        for descriptor in datasets()
+        if builds_series(descriptor)
+        and (descriptor.inputs is None or publication(descriptor.key) == "public")
     )
 
 
@@ -95,14 +118,15 @@ def series_cells(document: Mapping[str, Any]) -> int:
     The size of a series document (`DataRoot.series_document`) in cells.
 
     Its rows times its columns (the date, the hydrological year, each variable's
-    values and, of half-years, the period and each variable's dates of extremes) and
-    its flags.
+    values and, of half-years, the period and each variable's dates of extremes), its
+    flags and, of hourly series, each run of a tier (three cells).
     """
     columns = 2 + len(document["values"]) + len(document.get("extremes", ()))
     if "period" in document:
         columns += 1
     flags = sum(len(rows) for rows in document["flags"].values())
-    return len(document["dates"]) * columns + flags
+    tiers = sum(len(runs) for runs in document.get("tiers", {}).values())
+    return len(document["dates"]) * columns + flags + 3 * tiers
 
 
 @dataclass(frozen=True)
@@ -113,14 +137,17 @@ class Version:
     Attributes
     ----------
     slot : str
-        ``catalog:<key>``, ``series:<key>`` or ``analyses:<key>``.
+        ``catalog:<key>``, ``series:<key>``, ``series:<key>:<YYYY-MM>`` (a month of an
+        hourly series, ADR-031) or ``analyses:<key>``.
     path : Path
         The version's main file (``stations.geojson``, ``series.json``,
         ``analyses.json``).
     label : str
-        The version directory's name, as the panel shows it (``2026-09-21_2a6443c3``).
+        The version directory's name, as the panel shows it (``2026-09-21_2a6443c3``);
+        of a month, with the month's directory (``2026-10/2026-11-23_2a6443c3``).
     sha256 : str
-        SHA-256 of the main file, from its sidecar.
+        SHA-256 of the main file, from its sidecar; of an hourly series, of the
+        months' slots and SHA-256 (`read_months`).
     downloaded_at : str or None
         When the version was made, ISO 8601 UTC.
     hydrolog : str or None
@@ -155,11 +182,13 @@ class Coverage(NamedTuple):
     period : str or None
         The half-year period of semi-annual data, None otherwise.
     first, last : str or None
-        The first and the last unit with a value, ``YYYY-MM-DD``.
+        The first and the last unit with a value, ``YYYY-MM-DD``; of an hourly series
+        the hour, ``YYYY-MM-DDTHH:MM:SSZ``.
     with_value, accumulated : int
         The units with a value and those flagged ``accumulated``.
     gaps : int
-        How many ranges without a value the index lists between ``first`` and ``last``.
+        How many ranges without a value the index lists between ``first`` and ``last``
+        (of an hourly series, those of each month).
     """
 
     unit: str
@@ -206,6 +235,44 @@ def _held(entry: StationSeriesIndex) -> Held:
     )
 
 
+def _joined(earlier: Held, later: Held) -> Held:
+    """A station's coverage of two consecutive months of an hourly series as one."""
+    variables = dict(earlier.variables)
+    for name, coverage in later.variables.items():
+        known = variables.get(name)
+        variables[name] = (
+            coverage
+            if known is None
+            else known._replace(
+                last=coverage.last,
+                with_value=known.with_value + coverage.with_value,
+                accumulated=known.accumulated + coverage.accumulated,
+                gaps=known.gaps + coverage.gaps,
+            )
+        )
+    return Held(earlier.rows + later.rows, variables)
+
+
+class Month(NamedTuple):
+    """
+    The current version of one month of an hourly series (ADR-031).
+
+    Attributes
+    ----------
+    month : str
+        ``YYYY-MM``.
+    version : Version
+        Its current version (slot ``series:<key>:<YYYY-MM>``).
+    stations : frozenset of str
+        The stations of its index (a station without a value in the month is left
+        out of it).
+    """
+
+    month: str
+    version: Version
+    stations: frozenset[str]
+
+
 @dataclass(frozen=True)
 class Series:
     """
@@ -216,17 +283,23 @@ class Series:
     dataset : str
         The dataset.
     version : Version
-        Its current series version.
+        Its current series version; of an hourly series one made of its months'
+        (`read_months`).
     year_type : str
         ``hydrological`` or ``calendar``: the year numbering of the index.
     stations : Mapping of str to Held
-        Every station of the index, its gap ranges counted (`read_held`).
+        Every station of the index, its gap ranges counted (`read_held`); of an hourly
+        series, of every month.
+    months : tuple of Month, optional
+        Of an hourly series, the current version of each month, ascending; empty for
+        every other series.
     """
 
     dataset: str
     version: Version
     year_type: str
     stations: Mapping[str, Held]
+    months: tuple[Month, ...] = ()
 
 
 def compact[T](make: Callable[[], T]) -> T:
@@ -293,6 +366,70 @@ def read_held(dataset: str, version: Version) -> Series:
     return Series(dataset, version, year_type, stations)
 
 
+def read_months(dataset: str, months: Sequence[Version]) -> Series:
+    """
+    An hourly series (ADR-031) as one series: the current version of each month.
+
+    Each station's coverage spans its months (`Held`): the first value of its first
+    month, the last of its last, the values, flags and gap ranges of every month
+    counted. The series' version is the last month's, its label and path; its SHA-256
+    is that of every month's slot and SHA-256, so a new version of any month changes
+    the ETags.
+
+    Parameters
+    ----------
+    dataset : str
+        A dataset whose series is kept by month (`monthly_series`).
+    months : sequence of Version
+        The current version of each month, ascending; at least one.
+
+    Returns
+    -------
+    Series
+        The joined version, the year type, every station of any month and the months.
+
+    Raises
+    ------
+    ObserwatorError
+        When the index of a month cannot be read (`read_series_index`).
+    """
+
+    def summary() -> tuple[str, dict[str, Held], list[frozenset[str]]]:
+        year_type = "calendar"
+        stations: dict[str, Held] = {}
+        held: list[frozenset[str]] = []
+        for version in months:
+            index = read_series_index(version.path)
+            year_type = index.year_type
+            held.append(frozenset(index.stations))
+            for code, entry in index.stations.items():
+                known = stations.get(code)
+                stations[code] = (
+                    _held(entry) if known is None else _joined(known, _held(entry))
+                )
+        return year_type, stations, held
+
+    year_type, stations, held = compact(summary)
+    last = months[-1]
+    digest = hashlib.sha256(
+        "\n".join(f"{v.slot}={v.sha256}" for v in months).encode("utf-8")
+    ).hexdigest()
+    made = [v.downloaded_at for v in months if v.downloaded_at is not None]
+    version = Version(
+        f"series:{dataset}", last.path, last.label, digest, max(made, default=None)
+    )
+    return Series(
+        dataset,
+        version,
+        year_type,
+        stations,
+        tuple(
+            Month(v.slot.rpartition(":")[2], v, codes)
+            for v, codes in zip(months, held, strict=True)
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class Snapshot:
     """
@@ -355,8 +492,10 @@ class Snapshot:
         return found
 
 
-def _version(slot: str, root: Path) -> Version | None:
-    entry = current_version(root, slot=slot)
+def _of_entry(
+    slot: str, entry: StoreEntry | None, label: str | None = None
+) -> Version | None:
+    """The version of a store entry, None when the entry holds no valid version."""
     if entry is None or entry.version is None or entry.meta is None:
         return None
     path = Path(entry.version)
@@ -364,11 +503,41 @@ def _version(slot: str, root: Path) -> Version | None:
     return Version(
         slot,
         path,
-        path.parent.name,
+        path.parent.name if label is None else label,
         entry.meta.sha256,
         _iso(entry.meta.downloaded_at),
         hydrolog if isinstance(hydrolog, str) else None,
     )
+
+
+def _version(slot: str, root: Path) -> Version | None:
+    return _of_entry(slot, current_version(root, slot=slot))
+
+
+def _month_versions(dataset: str, root: Path) -> list[Version]:
+    """The current version of each month of an hourly series (`series_months`)."""
+    found = []
+    for entry in series_months(root, dataset=dataset):
+        path = Path(entry.version) if entry.version is not None else None
+        label = (
+            None if path is None else f"{path.parent.parent.name}/{path.parent.name}"
+        )
+        version = _of_entry(entry.slot or "", entry, label)
+        if version is not None:
+            found.append(version)
+    return found
+
+
+def _series_versions(dataset: str, root: Path) -> list[Version]:
+    """
+    The current versions of a dataset's series: of an hourly one, each month's.
+
+    Empty when the root holds none.
+    """
+    if monthly_series(get_dataset(dataset)):
+        return _month_versions(dataset, root)
+    version = _version(f"series:{dataset}", root)
+    return [] if version is None else [version]
 
 
 def record_years(held: list[dict[str, Any]]) -> dict[str, str | None]:
@@ -415,8 +584,29 @@ def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
     }
 
 
+def _months_of(code: str, series: Series) -> list[Month]:
+    """The months of an hourly series that hold a station, ascending."""
+    return [month for month in series.months if code in month.stations]
+
+
+def _records(code: str, series: Series) -> Iterator[NormalizedRecord]:
+    """A station's records of a series in time order: of an hourly one, month by month."""
+    if not series.months:
+        yield from read_series(series.version.path, station=code)
+        return
+    for month in _months_of(code, series):
+        yield from read_series(month.version.path, station=code)
+
+
 def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
-    """A station's whole series of a dataset as one columnar document (`read_series`)."""
+    """
+    A station's whole series of a dataset as one columnar document (`read_series`).
+
+    Of an hourly series (ADR-031), every month holding the station, each row an hour
+    (``dates`` the UTC times, ``YYYY-MM-DDTHH:MM:SSZ``), with each variable's tiers as
+    runs ``[first_row, last_row, tier]``: every row of a run that has a value has
+    that tier, rows without a value have none and lie inside or between runs.
+    """
     descriptor = get_dataset(dataset)
     names = tuple(descriptor.variables)
     dates: list[str] = []
@@ -424,14 +614,21 @@ def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
     period: list[str | None] = []
     values: dict[str, list[float | None]] = {name: [] for name in names}
     flags: dict[str, list[list[Any]]] = {name: [] for name in names}
+    tiers: dict[str, list[list[Any]]] = {name: [] for name in names}
     extremes: dict[str, list[str | None]] = {}
     half_year = descriptor.time_unit == "half_year"
+    hourly = bool(series.months)
     if half_year:
         for name in names:
             extremes[f"{name}_start"] = []
             extremes[f"{name}_end"] = []
-    for row, record in enumerate(read_series(series.version.path, station=code)):
-        dates.append(record.date.isoformat())
+    for row, record in enumerate(_records(code, series)):
+        time = record.time
+        dates.append(
+            record.date.isoformat()
+            if time is None
+            else time.isoformat().replace("+00:00", "Z")
+        )
         hydro_year.append(record.hydro_year)
         if half_year:
             period.append(record.period)
@@ -446,6 +643,12 @@ def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
                 start, end = record.extrema_dates.get(name, (None, None))
                 extremes[f"{name}_start"].append(_day(start))
                 extremes[f"{name}_end"].append(_day(end))
+            if hourly and measurement.value is not None and measurement.tier:
+                runs = tiers[name]
+                if runs and runs[-1][2] == measurement.tier:
+                    runs[-1][1] = row
+                else:
+                    runs.append([row, row, measurement.tier])
     document: dict[str, Any] = {
         "dataset": dataset,
         "station": code,
@@ -462,6 +665,9 @@ def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
     if half_year:
         document["period"] = period
         document["extremes"] = extremes
+    if hourly:
+        document["tiers"] = tiers
+        document["versions"] = [m.version.label for m in _months_of(code, series)]
     return document
 
 
@@ -537,15 +743,18 @@ class DataRoot:
         self._export_lock = threading.Lock()
 
     def _current(self) -> tuple[tuple[str, str], ...]:
-        """The slot and SHA-256 of every current catalog and series (the pointers only)."""
+        """
+        The slot and SHA-256 of every current catalog and series (the pointers only).
+
+        Of an hourly series, of each month's version.
+        """
         found = []
-        for slot in (
-            *CATALOG_SLOTS.values(),
-            *(f"series:{k}" for k in series_datasets()),
-        ):
+        for slot in CATALOG_SLOTS.values():
             version = _version(slot, self.path)
             if version is not None:
                 found.append((slot, version.sha256))
+        for key in series_datasets():
+            found.extend((v.slot, v.sha256) for v in _series_versions(key, self.path))
         return tuple(found)
 
     def _analyses(self) -> dict[str, Version]:
@@ -640,9 +849,11 @@ class DataRoot:
                     )
             series: dict[str, Series] = {}
             for key in series_datasets():
-                version = _version(f"series:{key}", self.path)
-                if version is not None:
-                    series[key] = read_held(key, version)
+                versions = _series_versions(key, self.path)
+                if monthly_series(get_dataset(key)) and versions:
+                    series[key] = read_months(key, versions)
+                elif versions:
+                    series[key] = read_held(key, versions[0])
         except ObserwatorError as exc:
             return Snapshot(error=exc)
         if self._scope is not None:
@@ -673,10 +884,13 @@ class DataRoot:
         Returns
         -------
         tuple of (dict, str)
-            ``dates``, ``hydro_year``, ``period`` (half-years), ``units``,
-            ``values`` (null = no value), ``flags`` (``[[row, flag], …]`` of the
-            flags other than ``value`` and ``missing``), ``extremes`` (half-years:
-            ``<V>_start``, ``<V>_end``) and the version; and its ETag base.
+            ``dates`` (of an hourly series the UTC hours), ``hydro_year``,
+            ``period`` (half-years), ``units``, ``values`` (null = no value),
+            ``flags`` (``[[row, flag], …]`` of the flags other than ``value`` and
+            ``missing``), ``extremes`` (half-years: ``<V>_start``, ``<V>_end``),
+            ``tiers`` and ``versions`` (hourly series: each variable's runs
+            ``[first_row, last_row, tier]`` and the months' versions read) and the
+            version; and its ETag base.
 
         Raises
         ------

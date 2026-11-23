@@ -42,6 +42,11 @@ MESSAGES: dict[str, Text] = {
         "Daily synoptic data (IMGW-PIB)", "Dane synoptyczne dobowe (IMGW-PIB)"
     ),
     "words.dataset.pl_imgw_meteo_synop_daily.short": Text("Synoptic", "Synoptyczne"),
+    # The hourly series built from the tiers (ADR-031)
+    "words.dataset.pl_imgw_hydro_subdaily.title": Text(
+        "Hourly hydrological data (IMGW-PIB)", "Dane hydrologiczne godzinowe (IMGW-PIB)"
+    ),
+    "words.dataset.pl_imgw_hydro_subdaily.short": Text("Hourly", "Godzinowe"),
     "words.dataset.cz_chmu_hydro_daily.title": Text(
         "Daily hydrological data (ČHMÚ)", "Dane hydrologiczne dobowe (ČHMÚ)"
     ),
@@ -58,6 +63,10 @@ MESSAGES: dict[str, Text] = {
         "Weekly groundwater data (ČHMÚ)", "Dane tygodniowe wód podziemnych (ČHMÚ)"
     ),
     "words.dataset.cz_chmu_groundwater_weekly.short": Text("Weekly", "Tygodniowe"),
+    "words.dataset.cz_chmu_hydro_subdaily.title": Text(
+        "Hourly hydrological data (ČHMÚ)", "Dane hydrologiczne godzinowe (ČHMÚ)"
+    ),
+    "words.dataset.cz_chmu_hydro_subdaily.short": Text("Hourly", "Godzinowe"),
     "words.variable.h": Text("water level", "stan wody"),
     "words.variable.q": Text("discharge", "przepływ"),
     "words.variable.t": Text("water temperature", "temperatura wody"),

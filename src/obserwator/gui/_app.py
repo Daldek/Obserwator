@@ -55,7 +55,7 @@ from obserwator.attribution import (
     Origin,
     attribution,
     border_origin,
-    dataset_origin,
+    dataset_origins,
     provider_origin,
 )
 from obserwator.config import check_credentials
@@ -572,7 +572,7 @@ async def station(request: Request) -> Response:
     catalog = _station_origins(feature.provider, props, location=True, details=True)
     series_lines = Attribution()
     for entry in held:
-        series_lines = series_lines | attribution(dataset_origin(entry["dataset"]))
+        series_lines = series_lines | attribution(*dataset_origins(entry["dataset"]))
     document = {
         "code": code,
         "provider": feature.provider,
@@ -600,25 +600,33 @@ def _slice(
     start: date | None,
     end: date | None,
 ) -> dict[str, Any]:
-    """The rows of a series document between two dates, of some variables."""
+    """
+    The rows of a series document between two dates, of some variables.
+
+    The rows of an hourly series are its hours: those of the UTC days ``start`` to
+    ``end``, each variable's runs of a tier cut to them.
+    """
     dates: list[str] = document["dates"]
     first = (
         0
         if start is None
         else next(
-            (i for i, d in enumerate(dates) if d >= start.isoformat()), len(dates)
+            (i for i, d in enumerate(dates) if d[:10] >= start.isoformat()), len(dates)
         )
     )
     last = (
         len(dates)
         if end is None
-        else next((i for i, d in enumerate(dates) if d > end.isoformat()), len(dates))
+        else next(
+            (i for i, d in enumerate(dates) if d[:10] > end.isoformat()), len(dates)
+        )
     )
     names = variables or tuple(document["values"])
     out = {
         key: value
         for key, value in document.items()
-        if key not in ("dates", "hydro_year", "values", "flags", "period", "extremes")
+        if key
+        not in ("dates", "hydro_year", "values", "flags", "period", "extremes", "tiers")
     }
     out["dates"] = dates[first:last]
     out["hydro_year"] = document["hydro_year"][first:last]
@@ -638,6 +646,15 @@ def _slice(
             key: values[first:last]
             for key, values in document["extremes"].items()
             if key.rsplit("_", 1)[0] in names
+        }
+    if "tiers" in document:
+        out["tiers"] = {
+            name: [
+                [max(low, first) - first, min(high, last - 1) - first, tier]
+                for low, high, tier in document["tiers"][name]
+                if low < last and high >= first
+            ]
+            for name in names
         }
     return out
 
@@ -665,7 +682,7 @@ async def series(request: Request) -> Response:
     )
     body = {
         **_slice(document, variables, start, end),
-        **attribution(dataset_origin(dataset)).fields(),
+        **attribution(*dataset_origins(dataset)).fields(),
     }
     return json_response(
         request, body, etag=_etag(request, base, variables, start, end)
@@ -1087,7 +1104,7 @@ async def downloads(request: Request) -> Response:
                     "url": descriptor.license.url,
                     "terms_url": descriptor.license.terms_url,
                 },
-                **attribution(dataset_origin(dataset)).fields(),
+                **attribution(*dataset_origins(dataset)).fields(),
             }
         )
     stored = await _thread(lambda: state.analyses.list(code))
@@ -1380,7 +1397,7 @@ async def handoff(request: Request) -> Response:
                 document["values"][variable][i] if i in kept else None for i in rows
             ],
         }
-        lines = attribution(dataset_origin(dataset))
+        lines = attribution(*dataset_origins(dataset))
         provenance = {
             "series": {
                 "source": feature.provider.lower(),

@@ -5,7 +5,9 @@
  * (`invert`). Linear and log scales map values; the time scale is linear in
  * minutes with ticks on whole hours; the date scale (Obserwator's mockup) is linear
  * in day numbers (days since 1970-01-01) with ticks on whole years, months or days;
- * the Gumbel scale maps an exceedance
+ * the datetime scale is linear in fractional day numbers of UTC instants (hours of an
+ * hourly series) with ticks on the reader's whole hours and days, or the date
+ * scale's months and years; the Gumbel scale maps an exceedance
  * probability in percent through the reduced variate u = −ln(−ln(1 − p/100)),
  * so a Gumbel distribution is a straight line (probability paper). Tick labels
  * are numbers and dates of the page's language (`lang()` of i18n.js, through `Intl`):
@@ -405,6 +407,98 @@ export function dateDomain(values, options = {}) {
   let max = options.max ?? (range ? range[1] : today);
   if (max <= min) max = min + 1;
   return { min, max, ...dateTicks(min, max, options.count) };
+}
+
+/** Milliseconds of an hour. */
+const HOUR_MS = 3600000;
+
+/** Steps of a datetime axis in hours and in days, finest first. */
+const HOUR_STEPS = [1, 2, 3, 6, 12];
+const DAY_STEPS = [1, 2, 7, 14];
+
+/**
+ * A fractional day number (a UTC instant) as the reader's local date and time, "HH:MM"
+ * with the date (the readout of a datetime axis).
+ *
+ * @param {number} day days since 1970-01-01 00:00 UTC, fractional
+ * @returns {string} e.g. "01.10.2026, 02:00" (Polish, in the reader's time zone)
+ */
+export function formatDateTime(day) {
+  const format = cached("dt", () =>
+    new Intl.DateTimeFormat(locale(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+  );
+  return format.format(new Date(Math.round(day * DAY_MS)));
+}
+
+/** A local time "HH:MM" of an instant. */
+function localHour(when) {
+  const format = cached("hm", () => new Intl.DateTimeFormat(locale(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }));
+  return format.format(when);
+}
+
+/** A local day and month "12.03" of an instant, with the year when asked. */
+function localDay(when, withYear) {
+  const format = cached(withYear ? "ldmy" : "ldm", () =>
+    new Intl.DateTimeFormat(locale(), { day: "2-digit", month: "2-digit", ...(withYear ? { year: "numeric" } : {}) }),
+  );
+  return format.format(when);
+}
+
+/**
+ * Return the ticks of a datetime domain: the reader's whole hours (every 1, 2, 3, 6 or
+ * 12 h, a local midnight labelled by its day and month, the others "HH:MM"), local
+ * midnights (every 1 or 2 days, Mondays every 1 or 2 weeks; the first tick with its
+ * year), or the months and years of `dateTicks`: the finest step that keeps at most
+ * `count` ticks.
+ *
+ * @param {number} min the first fractional day number
+ * @param {number} max the last fractional day number
+ * @param {number} [count=8] the most ticks
+ * @returns {{step: [string, number], ticks: {value: number, label: string}[]}}
+ */
+export function datetimeTicks(min, max, count = 8) {
+  const span = Math.max(max - min, 1 / 24);
+  const most = Math.max(2, count);
+  const hours = HOUR_STEPS.find((step) => (span * 24) / step <= most - 1);
+  const ticks = [];
+  if (hours !== undefined) {
+    // Whole UTC hours are whole local hours in every time zone of the providers
+    for (let at = Math.ceil((min * DAY_MS) / HOUR_MS) * HOUR_MS; at <= max * DAY_MS; at += HOUR_MS) {
+      const when = new Date(at);
+      if (when.getHours() % hours !== 0) continue;
+      ticks.push({ value: at / DAY_MS, label: when.getHours() === 0 ? localDay(when, false) : localHour(when) });
+    }
+    return { step: ["hour", hours], ticks };
+  }
+  const days = DAY_STEPS.find((step) => span / step <= most - 1);
+  if (days === undefined) return dateTicks(min, max, count);
+  const start = new Date(min * DAY_MS);
+  // The local calendar days, aligned as `dateTicks` aligns them: weeks start on Mondays
+  // (day 4, 1970-01-05, was one)
+  const offset = days % 7 === 0 ? 4 : 0;
+  for (let when = new Date(start.getFullYear(), start.getMonth(), start.getDate()); when.getTime() <= max * DAY_MS; when = new Date(when.getFullYear(), when.getMonth(), when.getDate() + 1)) {
+    const day = Math.round(Date.UTC(when.getFullYear(), when.getMonth(), when.getDate()) / DAY_MS);
+    if (when.getTime() < min * DAY_MS || (day - offset) % days !== 0) continue;
+    ticks.push({ value: when.getTime() / DAY_MS, label: localDay(when, !ticks.length) });
+  }
+  return { step: ["day", days], ticks };
+}
+
+/**
+ * A datetime domain in fractional day numbers: the first and the last value (or the
+ * fixed ends), not rounded, with the ticks of `datetimeTicks`.
+ *
+ * @param {number[]} values fractional day numbers
+ * @param {{min?: number, max?: number, count?: number}} [options] fixed ends and the most ticks
+ * @returns {{min: number, max: number, step: [string, number], ticks: {value: number, label: string}[]}}
+ */
+export function datetimeDomain(values, options = {}) {
+  const range = extent(values);
+  const now = Date.now() / DAY_MS;
+  const min = options.min ?? (range ? range[0] : now - 7);
+  let max = options.max ?? (range ? range[1] : now);
+  if (max <= min) max = min + 1 / 24;
+  return { min, max, ...datetimeTicks(min, max, options.count) };
 }
 
 /**

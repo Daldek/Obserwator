@@ -11,6 +11,7 @@
 import { PROBABILITY_LABEL, returnPeriodLabel } from "./labels.js";
 import {
   dateDomain,
+  datetimeDomain,
   gumbelDomain,
   gumbelScale,
   gumbelTicks,
@@ -169,6 +170,12 @@ function xAxis(axisSpec, values, range, small) {
     // Day numbers; a label takes about 54 viewBox units (≈ CSS px of a fitted chart)
     const count = Math.max(2, Math.floor(Math.abs(range[1] - range[0]) / (small ? 50 : 58)));
     const domain = dateDomain(values, { min: options.min, max: options.max, count });
+    return withTicks(options, { ...domain, scale: linearScale([domain.min, domain.max], range) });
+  }
+  if (kind === "datetime") {
+    // Fractional day numbers of UTC instants, ticks in the reader's time zone
+    const count = Math.max(2, Math.floor(Math.abs(range[1] - range[0]) / (small ? 50 : 58)));
+    const domain = datetimeDomain(values, { min: options.min, max: options.max, count });
     return withTicks(options, { ...domain, scale: linearScale([domain.min, domain.max], range) });
   }
   if (kind === "gumbel") {
