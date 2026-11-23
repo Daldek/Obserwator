@@ -21,7 +21,9 @@ stays only where every higher one has no value. The input versions holding a rec
 of M (a value or none) are the inputs of its version (``source_files``): the same
 inputs and lines as the month's current version give ``unchanged``, nothing written.
 `obserwator.store.series.build_series` and `obserwator.store.series.check_series`
-hand a sub-daily series to `build_months` and `check_months`.
+hand a sub-daily series to `build_months` and `check_months`. `tail_hours` reads the
+answers of a station's live tail as a month reads their captures, every full hour of
+them, today's included (the GUI's chart of „teraz”, O6).
 """
 
 from __future__ import annotations
@@ -68,6 +70,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import message, reason
 from obserwator.models import Tier
+from obserwator.providers.base import Answer
 from obserwator.providers.pl.imgw import _SERIES as _HYDRO_BACK_SERIES
 from obserwator.store.series import (
     _FLAGS,
@@ -146,6 +149,8 @@ _RECENT_SERIES: Final[Mapping[str, str]] = MappingProxyType(
 )
 _RECENT_FILE: Final = re.compile(r"[0-9]{8}_(.+)\.json")
 _HOURLY_SERIES: Final[Mapping[str, str]] = MappingProxyType({"HH": "H", "QH": "Q"})
+_Points = tuple[str, str, list[tuple[object, object]]]
+"""A station, a variable and its ``(time, value)`` points, as one answer gives them."""
 _TIME: Final = "%Y-%m-%dT%H:%M:%SZ"
 _ACTION_STATUS: Final[Mapping[SeriesState, Literal["current", "newer", "missing"]]] = (
     MappingProxyType({"current": "current", "outdated": "newer", "missing": "missing"})
@@ -383,6 +388,32 @@ def _put_points(
     return held
 
 
+def _hydro_back_points(address: str, content: bytes, base: str) -> _Points | None:
+    """
+    The station, the variable and the ``(time, value)`` points of a hydro-back answer.
+
+    The variable is the series below ``base`` (the dataset's address) that the address
+    names, the station the ``id`` of its query; of the body only ``operational``. None
+    for an answer of another address or form.
+    """
+    head, _, query = address.partition("?")
+    prefix = f"{base}/"
+    variable = _HYDRO_BACK.get(head[len(prefix) :]) if head.startswith(prefix) else None
+    codes = parse_qs(query).get("id", [])
+    if variable is None or len(codes) != 1:
+        return None
+    body = _json(content)
+    entries = body.get("operational") if isinstance(body, dict) else None
+    if not isinstance(entries, list):
+        return None
+    points = [
+        (entry.get("date"), entry.get("value"))
+        for entry in entries
+        if isinstance(entry, dict)
+    ]
+    return codes[0], variable, points
+
+
 def _hydro_back(answer: Spooled, reading: _Reading, tier: _Tier) -> bool:
     """
     hydro-back's H, Q or T of one station (``status/data``, ``discharge``, ``water-temperature``).
@@ -390,28 +421,49 @@ def _hydro_back(answer: Spooled, reading: _Reading, tier: _Tier) -> bool:
     The station is the ``id`` of the address; of the body only ``operational``:
     its entries at full hours of the days before the answer's UTC day.
     """
-    base, _, query = answer.address.partition("?")
-    prefix = f"{reading.address}/"
-    variable = _HYDRO_BACK.get(base[len(prefix) :]) if base.startswith(prefix) else None
-    codes = parse_qs(query).get("id", [])
-    if variable is None or len(codes) != 1 or not reading.code.fullmatch(codes[0]):
+    found = _hydro_back_points(answer.address, answer.content, reading.address)
+    if found is None or not reading.code.fullmatch(found[0]):
         return False
-    body = _json(answer.content)
-    entries = body.get("operational") if isinstance(body, dict) else None
-    if not isinstance(entries, list):
-        return False
+    station, variable, points = found
     return _put_points(
         tier,
-        codes[0],
+        station,
         variable,
-        (
-            (entry.get("date"), entry.get("value"))
-            for entry in entries
-            if isinstance(entry, dict)
-        ),
+        points,
         reading,
         before=_instant(answer.time).date(),
     )
+
+
+def _chmu_points(
+    content: bytes, station: str
+) -> Iterator[tuple[str, list[tuple[object, object]]]]:
+    """
+    The series ``H``, ``Q`` and ``TH`` of a station's object in a ČHMÚ day file.
+
+    A file of ``recent`` or ``now``: each variable with its ``(time, value)`` points.
+    """
+    body = _json(content)
+    objects = body.get("objList") if isinstance(body, dict) else None
+    for item in objects if isinstance(objects, list) else ():
+        if not isinstance(item, dict) or item.get("objID") != station:
+            continue
+        series = item.get("tsList")
+        for entry in series if isinstance(series, list) else ():
+            if not isinstance(entry, dict):
+                continue
+            con, points = entry.get("tsConID"), entry.get("tsData")
+            variable = _RECENT_SERIES.get(con) if isinstance(con, str) else None
+            if variable is None or not isinstance(points, list):
+                continue
+            yield (
+                variable,
+                [
+                    (point.get("dt"), point.get("value"))
+                    for point in points
+                    if isinstance(point, dict)
+                ],
+            )
 
 
 def _chmu_recent(answer: Spooled, reading: _Reading, tier: _Tier) -> bool:
@@ -426,28 +478,11 @@ def _chmu_recent(answer: Spooled, reading: _Reading, tier: _Tier) -> bool:
     if head != reading.address or match is None or not reading.code.fullmatch(match[1]):
         return False
     station = match[1]
-    body = _json(answer.content)
-    objects = body.get("objList") if isinstance(body, dict) else None
     before = _instant(answer.time).date()
     held = False
-    for item in objects if isinstance(objects, list) else ():
-        if not isinstance(item, dict) or item.get("objID") != station:
-            continue
-        series = item.get("tsList")
-        for entry in series if isinstance(series, list) else ():
-            if not isinstance(entry, dict):
-                continue
-            con, points = entry.get("tsConID"), entry.get("tsData")
-            variable = _RECENT_SERIES.get(con) if isinstance(con, str) else None
-            if variable is None or not isinstance(points, list):
-                continue
-            pairs = (
-                (point.get("dt"), point.get("value"))
-                for point in points
-                if isinstance(point, dict)
-            )
-            if _put_points(tier, station, variable, pairs, reading, before=before):
-                held = True
+    for variable, points in _chmu_points(answer.content, station):
+        if _put_points(tier, station, variable, points, reading, before=before):
+            held = True
     return held
 
 
@@ -592,6 +627,82 @@ _FILE_PARSERS: Final[Mapping[str, Callable[[_Input, bytes, _Reading, _Tier], boo
         {"pl.imgw.hydro_telemetry": _telemetry, "cz.chmu.hydro_hourly": _chmu_hourly}
     )
 )
+
+
+def _hydro_back_tail(answer: Answer, base: str) -> Iterator[_Points]:
+    """A hydro-back answer of a live tail: its station, variable and points."""
+    found = _hydro_back_points(answer.url, answer.content, base)
+    if found is not None:
+        yield found
+
+
+def _chmu_now_tail(answer: Answer, base: str) -> Iterator[_Points]:
+    """ČHMÚ's ``now`` file of one station, ``<WIGOS>.json``: each variable's points."""
+    head, _, name = answer.url.partition("?")[0].rpartition("/")
+    if head != base or not name.endswith(".json"):
+        return
+    station = name.removesuffix(".json")
+    for variable, points in _chmu_points(answer.content, station):
+        yield station, variable, points
+
+
+# The readers of the answers of a live tail (`ProviderAdapter.live_tail`), by dataset.
+_TAIL_PARSERS: Final[Mapping[str, Callable[[Answer, str], Iterator[_Points]]]] = (
+    MappingProxyType(
+        {
+            "pl.imgw.hydro_operational": _hydro_back_tail,
+            "cz.chmu.hydro_current": _chmu_now_tail,
+        }
+    )
+)
+
+
+def tail_hours(
+    answers: Iterable[Answer], code: str, /
+) -> dict[str, dict[datetime, float]]:
+    """
+    The full hours of one station in the answers of its live tail (the GUI's chart, O6).
+
+    The answers of `ProviderAdapter.live_tail`: hydro-back's ``status/data``,
+    ``discharge`` and ``water-temperature`` (``pl.imgw.hydro_operational``) and ČHMÚ's
+    ``now`` file (``cz.chmu.hydro_current``), read as a month reads their captures (D3)
+    but every full hour, those of the answer's own UTC day included: the hours no
+    closed day holds yet. The 10-minute points and the forecasts stay out, and so does
+    an answer whose status is not 200 or that names another station; an hour without a
+    value is left out. A later answer's value of an hour replaces an earlier one.
+
+    Parameters
+    ----------
+    answers : iterable of Answer
+        The answers as they came, in order.
+    code : str
+        The station asked.
+
+    Returns
+    -------
+    dict of str to dict of datetime to float
+        Per variable (``H``, ``Q``, ``T``) with a value, the value of each full hour
+        (UTC, the start of the hour), in time order.
+    """
+    found: dict[str, dict[datetime, float]] = {}
+    for answer in answers:
+        key = answer.dataset or ""
+        parse = _TAIL_PARSERS.get(key)
+        if parse is None or answer.status != 200:
+            continue
+        for station, variable, points in parse(
+            answer, _source_address(get_dataset(key))
+        ):
+            if station != code:
+                continue
+            hours = found.setdefault(variable, {})
+            for when, raw in points:
+                moment = _full_hour(when)
+                value = _value(raw)
+                if moment is None or value is None or value is False:
+                    continue
+                hours[moment] = value
+    return {name: dict(sorted(hours.items())) for name, hours in found.items() if hours}
 
 
 def _answers(item: _Input, data: bytes) -> Iterator[Spooled]:

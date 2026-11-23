@@ -10,7 +10,8 @@ requests taking the last snapshot meanwhile. In memory: the station layer of the
 current versions, what the GUI shows of each series index (its ranges without a value
 counted, not kept), the most recent series documents (at most 32 and 2 million cells)
 and the 4 most recent files of the stations. An hourly series (ADR-031) is held as the
-current version of each of its months, one series to the GUI.
+current version of each of its months, one series to the GUI; the chart of „teraz”
+reads a station's months from the first of its range on (O6), a document of its own.
 """
 
 from __future__ import annotations
@@ -584,28 +585,37 @@ def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
     }
 
 
-def _months_of(code: str, series: Series) -> list[Month]:
-    """The months of an hourly series that hold a station, ascending."""
-    return [month for month in series.months if code in month.stations]
+def _months_of(code: str, series: Series, since: str | None = None) -> list[Month]:
+    """The months of an hourly series that hold a station, ascending; from ``since`` on."""
+    return [
+        month
+        for month in series.months
+        if code in month.stations and (since is None or month.month >= since)
+    ]
 
 
-def _records(code: str, series: Series) -> Iterator[NormalizedRecord]:
+def _records(
+    code: str, series: Series, since: str | None = None
+) -> Iterator[NormalizedRecord]:
     """A station's records of a series in time order: of an hourly one, month by month."""
     if not series.months:
         yield from read_series(series.version.path, station=code)
         return
-    for month in _months_of(code, series):
+    for month in _months_of(code, series, since):
         yield from read_series(month.version.path, station=code)
 
 
-def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
+def _series_document(
+    dataset: str, code: str, series: Series, since: str | None = None
+) -> dict[str, Any]:
     """
     A station's whole series of a dataset as one columnar document (`read_series`).
 
-    Of an hourly series (ADR-031), every month holding the station, each row an hour
-    (``dates`` the UTC times, ``YYYY-MM-DDTHH:MM:SSZ``), with each variable's tiers as
-    runs ``[first_row, last_row, tier]``: every row of a run that has a value has
-    that tier, rows without a value have none and lie inside or between runs.
+    Of an hourly series (ADR-031), every month holding the station (from the month
+    ``since``, ``YYYY-MM``, on when given), each row an hour (``dates`` the UTC times,
+    ``YYYY-MM-DDTHH:MM:SSZ``), with each variable's tiers as runs ``[first_row,
+    last_row, tier]``: every row of a run that has a value has that tier, rows without
+    a value have none and lie inside or between runs.
     """
     descriptor = get_dataset(dataset)
     names = tuple(descriptor.variables)
@@ -622,7 +632,7 @@ def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
         for name in names:
             extremes[f"{name}_start"] = []
             extremes[f"{name}_end"] = []
-    for row, record in enumerate(_records(code, series)):
+    for row, record in enumerate(_records(code, series, since)):
         time = record.time
         dates.append(
             record.date.isoformat()
@@ -667,7 +677,9 @@ def _series_document(dataset: str, code: str, series: Series) -> dict[str, Any]:
         document["extremes"] = extremes
     if hourly:
         document["tiers"] = tiers
-        document["versions"] = [m.version.label for m in _months_of(code, series)]
+        document["versions"] = [
+            m.version.label for m in _months_of(code, series, since)
+        ]
     return document
 
 
@@ -870,7 +882,9 @@ class DataRoot:
             etag_of("stations", snapshot.key, *scope),
         )
 
-    def series_document(self, dataset: str, code: str) -> tuple[dict[str, Any], str]:
+    def series_document(
+        self, dataset: str, code: str, *, since: str | None = None
+    ) -> tuple[dict[str, Any], str]:
         """
         A station's whole series of a dataset as one columnar document.
 
@@ -880,6 +894,10 @@ class DataRoot:
             A dataset the snapshot holds.
         code : str
             A station of its index.
+        since : str or None, optional
+            Of an hourly series, the first month read (``YYYY-MM``): a range of a long
+            record reads and keeps only its months (the chart of „teraz”, O6); None
+            reads every month. Ignored for any other series.
 
         Returns
         -------
@@ -901,13 +919,16 @@ class DataRoot:
         series = snapshot.series[dataset]
         if code not in series.stations:
             raise KeyError(code)
-        key = (dataset, series.version.sha256, code)
+        since = since if series.months else None
+        key: tuple[str, ...] = (dataset, series.version.sha256, code)
+        if since is not None:
+            key += (since,)
         with self._docs_lock:
             hit = self._series_docs.get(key)
             if hit is not None:
                 self._series_docs.move_to_end(key)
                 return hit[0], etag_of("series", key)
-        document = compact(lambda: _series_document(dataset, code, series))
+        document = compact(lambda: _series_document(dataset, code, series, since))
         size = series_cells(document)
         with self._docs_lock:
             made = self._series_docs.pop(key, None)

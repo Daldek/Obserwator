@@ -184,6 +184,7 @@ def test_the_station_layer_holds_only_what_the_instance_serves(
         "/api/prototype/stripes/{code}",
         "/api/series/cz.chmu.hydro_daily/{code}",
         "/api/files/series/cz.chmu.hydro_daily/{code}",
+        "/api/station/{code}/subdaily",
     ],
 )
 def test_a_station_outside_answers_as_one_that_does_not_exist(

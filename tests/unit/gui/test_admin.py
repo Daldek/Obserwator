@@ -439,7 +439,7 @@ def stats_client(read_only_root, live, state_dir, key):
     """The GUI at noon UTC of 2026-11-13 with lines in ``stats.jsonl``."""
     from obserwator.gui._analyses import Analyses
     from obserwator.gui._app import build_app
-    from obserwator.gui._live import CurrentData, Pmaxtp
+    from obserwator.gui._live import CurrentData, LiveTail, Pmaxtp
     from obserwator.gui._root import DataRoot
     from obserwator.gui._state import GuiState
     from obserwator.gui._traffic import TrafficState
@@ -468,6 +468,7 @@ def stats_client(read_only_root, live, state_dir, key):
         analyses=Analyses(read_only_root),
         current=CurrentData(sources=live.sources()),
         pmaxtp=Pmaxtp(fetch=live.fetch),
+        tail=LiveTail(fetch=live.tail),
         traffic=TrafficState(
             limit=1000, window=60, directory=state_dir, clock=lambda: NOON
         ),

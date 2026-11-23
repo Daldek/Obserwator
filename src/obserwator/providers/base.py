@@ -134,12 +134,13 @@ class ProviderAdapter(Protocol):
     `ProviderDescriptor.adapter` gives it. The attributes are the provider's facts the
     code acts on; the methods are its behaviour. Adapters subclass this protocol to
     inherit the defaults of the optional members: `current` (no live current data),
-    `polled` (no source of the hourly poll), `harvested` (no harvest), `credential`
-    (none), `capture` (the capture spool), `publication_default` (``private``),
-    `server_name`, `groups`, `identifies`, `optional_sources`, `dataset_origin`,
-    `station_origins`, `indexed`, `index_files`, `station_key`, `archive_station`,
-    `download`, `folders`, `listed_station`, `listing`, `station_file`,
-    `optional_action`, `location_files`, `harvest_requests` and `live_tail`.
+    `polled` (no source of the hourly poll), `harvested` (no harvest), `live_source`
+    (no live tail), `credential` (none), `capture` (the capture spool),
+    `publication_default` (``private``), `server_name`, `groups`, `identifies`,
+    `optional_sources`, `dataset_origin`, `station_origins`, `indexed`, `index_files`,
+    `station_key`, `archive_station`, `download`, `folders`, `listed_station`,
+    `listing`, `station_file`, `optional_action`, `location_files`, `harvest_requests`
+    and `live_tail`.
 
     Attributes
     ----------
@@ -172,6 +173,11 @@ class ProviderAdapter(Protocol):
     harvested : frozenset of str
         Capture datasets whose answers ``store sync`` asks for before it seals them:
         the night's harvest (ADR-030 D9, `harvest_requests`); empty without any.
+    live_source : str or None
+        The capture dataset of the answers of `live_tail` (the GUI's live tail of a
+        station's chart in „teraz”, O6), whose publication state
+        (`obserwator.captures.publication`) the GUI honours before it asks; None
+        without a live tail.
     station_sources : tuple of str
         Keys of its station-source datasets (ADR-015): the hydro and meteo station
         lists, then the hydro and meteo station metadata.
@@ -200,6 +206,7 @@ class ProviderAdapter(Protocol):
     current: Mapping[str, Callable[[], Any]] = MappingProxyType({})
     polled: tuple[PolledSource, ...] = ()
     harvested: frozenset[str] = frozenset()
+    live_source: str | None = None
     station_sources: tuple[str, str, str, str]
     optional_sources: tuple[str, ...] = ()
     kinds: tuple[Kind, ...] = ("hydro", "meteo")
@@ -942,8 +949,9 @@ class ProviderAdapter(Protocol):
         """
         The operational answers of one station asked live (the GUI's live tail, O6).
 
-        Every answer goes to the capture spool as the library's requests keep them
-        (P14); the answers are returned whatever their status.
+        Every answer belongs to `live_source` and goes to the capture spool as the
+        library's requests keep them (P14); the answers are returned whatever their
+        status. `obserwator.store.subdaily.tail_hours` reads their full hours.
 
         Parameters
         ----------

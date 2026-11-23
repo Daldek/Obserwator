@@ -116,6 +116,10 @@ class Live:
         """`fetch_pmaxtp` answering the recorded point."""
         return self.pmaxtp[method]
 
+    def tail(self, provider: str, code: str, hours: int) -> Any:
+        """A live tail (`LiveTail`) a test gave no answers for: the test fails."""
+        raise AssertionError(f"no live tail is recorded for {provider} {code}")
+
 
 def read_only(path: Path, *, writable: bool = False) -> None:
     """Make a tree read-only, or writable again so that it can be removed."""
@@ -241,15 +245,16 @@ def make_client(
     """
     Open a client of the app, its lifespan running, until the test ends.
 
-    ``make_client(root=None, *, hydrolog=None, live=…, headers=…, log=None,
+    ``make_client(root=None, *, hydrolog=None, live=…, tail=None, headers=…, log=None,
     address="testclient", **config)``: the app on ``root`` (the read-only root by
     default) with Hydrolog's program ``hydrolog`` (a command line's words; none by
     default), the settings changed by ``config``, the live sources of ``live``
-    (`Live.sources` names; recorded by default), the access and app log of ``log`` (a
+    (`Live.sources` names; recorded by default), the `LiveTail` ``tail`` (by default
+    one that fails the test when asked), the access and app log of ``log`` (a
     ``ServerLog``; none by default) and requests from the client address ``address``.
     """
     from obserwator.gui._app import build_app
-    from obserwator.gui._live import CurrentData, Pmaxtp
+    from obserwator.gui._live import CurrentData, LiveTail, Pmaxtp
 
     opened: list[TestClient] = []
 
@@ -259,6 +264,7 @@ def make_client(
         hydrolog: tuple[str, ...] | None = None,
         sources: dict[str, Callable[[], Any]] | None = None,
         fetch: Callable[..., Any] | None = None,
+        tail: Any = None,
         headers: dict[str, str] | None = None,
         log: Any = None,
         address: str = "testclient",
@@ -273,6 +279,7 @@ def make_client(
         app = build_app(config, log=log)
         app.state.gui.current = CurrentData(sources=sources or live.sources(), log=log)
         app.state.gui.pmaxtp = Pmaxtp(fetch=fetch or live.fetch, log=log)
+        app.state.gui.tail = tail or LiveTail(fetch=live.tail, log=log)
         client = TestClient(app, headers=headers, client=(address, 50000))
         client.__enter__()
         opened.append(client)

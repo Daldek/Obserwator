@@ -450,6 +450,9 @@ pre.code .arg { display: inline-block; max-width: 100%; vertical-align: top; }
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-xs); }
 .data-foot { margin: var(--space-3) 0 0; padding: var(--space-2) 0 0; border-top: 1px solid var(--line); font-size: var(--text-xs); color: var(--text-3); line-height: 1.45; }
 .data-foot p { margin: 0 0 4px; }
+/* The chart of „teraz” (O6): the figure and its caption, „dane operacyjne, niezweryfikowane” */
+.now-figure { margin: 0; }
+.now-figure .data-chart { margin-bottom: var(--space-1); }
 
 /* ---------- The foot of the view across its width, under the map and both panels (after
    Hydrograf's #view-foot): the view's one strip of provider lines, the kit's <nogat-sources>

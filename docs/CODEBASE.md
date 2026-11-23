@@ -38,7 +38,7 @@ src/obserwator/
 ├── _hydrolog.py          # Hydrolog's program (setting hydrolog_command): open_hydrolog, Hydrolog.batch (`commands batch` in a separate process; ADR-016)
 ├── _data/                # Poland/Czechia borders (PRG, RÚIAN; ADR-018), agents/ guide templates, packaged fixtures
 ├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files incl. groundwater, listings, metadata)
-├── providers/            # One adapter per provider behind the ProviderAdapter protocol (ADR-029): base.py (the protocol; Answer and PolledSource of the captures; harvested, harvest_requests, live_tail, check_scope, listing), pl/imgw.py, cz/chmu.py
+├── providers/            # One adapter per provider behind the ProviderAdapter protocol (ADR-029): base.py (the protocol; Answer and PolledSource of the captures; harvested, harvest_requests, live_tail and its capture dataset live_source, check_scope, listing), pl/imgw.py, cz/chmu.py
 ├── store/                # Versioned store in two roots, raw and data (ADR-017) [Parquet: obserwator[store]]
 │   ├── types.py          # Dataclasses: StorePlan, CommandResult, Page, StoreEntry, StoreHandle, ...; RootKind
 │   ├── writer.py         # init_store (raw or data root), open_store, write_archive (atomic, append-only, content_unchanged + observations), write_capture
@@ -46,6 +46,7 @@ src/obserwator/
 │   ├── sync.py           # check_store, sync_store (IMGW-PIB: listing + HEAD, the telemetry by the datastore's listing alone; ČHMÚ: directory listing; captures: the spool, start/end its days, with pace_until a harvest first); sync_lock_path, LOCK_WAIT: the lock of a sync that seals captures (ADR-030 D10)
 │   ├── captures.py       # check_captures, seal_day: each closed UTC day of the capture spool (and today's after a harvest) sealed into one archive version (encode, decode; ADR-030 D3)
 │   ├── series.py         # check_series, build_series (Parquet in the data root, from the archives of the raw root)
+│   ├── subdaily.py       # build_months, check_months: the hourly series of the tiers, one version per month (ADR-031); tail_hours: the full hours of a live tail's answers, today's included (the GUI's chart of „teraz”, O6)
 │   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider in the data root, from the station sources of the raw root); each provider's builder is in its adapter (providers/, ADR-029)
 │   ├── pmaxtp.py         # check_pmaxtp, sync_pmaxtp, read_pmaxtp
 │   ├── reader.py         # store_info, iter_store, current_version, read_*, select/summarize_series
@@ -81,8 +82,8 @@ src/obserwator/
     ├── _params.py        # Checks of every query and path parameter before the root or Hydrolog is touched
     ├── _state.py         # GuiState: the parts of a running app
     ├── _page.py          # Site (index.html rendered: v/<build>/ addresses, modulepreload of the start's modules, vendor versions) and WebFiles (a year's cache of versioned addresses)
-    ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute; each read reduced by the instance (Instance.reduce, ADR-025)
-    ├── _live.py          # IMGW-PIB snapshots (10 min) and PMAXTP points (24 h), in memory only; every answer of the current data also in the capture spool (ADR-030 D7)
+    ├── _root.py          # DataRoot: the data root read-only, current versions asked again at most once a minute; each read reduced by the instance (Instance.reduce, ADR-025); series_document(since=…): an hourly series from the month of a range on (the chart of „teraz”)
+    ├── _live.py          # IMGW-PIB snapshots (10 min), PMAXTP points (24 h) and LiveTail, the live tails of the chart of „teraz” (10 min, 500 stations; O6), in memory only; every answer of the current data and of the tails also in the capture spool (ADR-030 D7)
     ├── _analyses.py      # Analyses: Hydrolog's stored results (list_analyses, read_analysis); a person's choices by compute_analysis (program looked for once at the start, 2 processes, 30 s, 500 results)
     ├── _stripes.py       # Climate stripes (M15): the prototype of their colour scale
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
@@ -303,7 +304,7 @@ The command catalog is the single source of options, validation, help texts and 
 - **Groundwater** (ADR-032; bores and springs, kind `groundwater`): `hydrology/groundwater/historical/data/H_<WIGOS>_D_<year>.json` (`cz.chmu.groundwater_daily`, from 1960) and `…_W_<year>.json` (`cz.chmu.groundwater_weekly`, from 1933) — one JSON per object and calendar year in one directory, `HD`/`HT` → `H_asl` [m a.s.l.], `YD`/`YT` → `spring_yield` [l/s], `TD`/`TT` → T [°C], the date of a row the date part of `DT`, no content form (about 17 % of the files carry ČHMÚ's stray `]}}}`); `recent/data/<WIGOS>_D_<YYYYMM>.json` (`cz.chmu.groundwater_recent`, from 2025-01, tier `operational`, stored, no series); `characteristic/data/GCHAR_<WIGOS>.json` (`cz.chmu.groundwater_characteristic`, the 5–95 % quantiles per week or month of the year, one file per object, no `years`); `now/data/` declared only (`cz.chmu.groundwater_current`). Optional catalog sources: `historical/metadata/meta1.json` (`cz.chmu.groundwater_stations`, `objID`, `OBJECT_NAME`, `OBJECT_TYPE` `bore`/`spring`, `GEOGR1` = latitude, `GEOGR2` = longitude, `ALTITUDE`) and `now/metadata/meta1.json` (`cz.chmu.groundwater_now`, the operational network: `active`); a groundwater feature carries `groundwater_kind`, `elevation_m` (`ALTITUDE`) and `location_source` `cz.chmu.groundwater_now` or `cz.chmu.groundwater_stations`
 - **Inventory and freshness**: nginx directory listings (name, mtime to the minute, size): one GET instead of a HEAD per file; requests are sequential with `User-Agent: obserwator/<version>`; license CC BY 4.0 (attribution from the registry)
 - **Hourly hydro** (`cz.chmu.hydro_hourly`, verified): `hydrology/historical/data/hourly/H_<WIGOS>_HQ_<year>.json` — one JSON per station and year (from 1905), `HH`, `QH`; the station-year grammar of the daily files (listing, HEAD, GET), content form `chmu-json/1`
-- **Operational hydro** (captures, ADR-030): `hydrology/recent/data/<YYYYMMDD>_<WIGOS>.json` (`cz.chmu.hydro_recent`: a station's UTC day every 10 minutes, asked by `store sync --pace-until` for every station of `hydrology/now/metadata/meta1.json`, a 404 kept as an answer) and `hydrology/now/data/<WIGOS>.json` (`cz.chmu.hydro_current`: the current UTC day; `ProviderAdapter.live_tail`, no surface yet)
+- **Operational hydro** (captures, ADR-030): `hydrology/recent/data/<YYYYMMDD>_<WIGOS>.json` (`cz.chmu.hydro_recent`: a station's UTC day every 10 minutes, asked by `store sync --pace-until` for every station of `hydrology/now/metadata/meta1.json`, a 404 kept as an answer) and `hydrology/now/data/<WIGOS>.json` (`cz.chmu.hydro_current`: the current UTC day; `ProviderAdapter.live_tail`, asked by the GUI's chart of „teraz” for the hours after the stored ones, O6)
 - Out of scope: 10-minute meteorological data, CAP warnings, PMAXTP
 
 ## Command Catalog (CLI, REST and MCP)
