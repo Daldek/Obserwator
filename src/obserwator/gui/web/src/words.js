@@ -61,10 +61,12 @@ export const SERIES_DATASETS = {
   "pl.imgw.meteo_climate_daily": { step: "day", kind: "meteo" },
   "pl.imgw.meteo_precip_daily": { step: "day", kind: "meteo" },
   "pl.imgw.meteo_synop_daily": { step: "day", kind: "meteo" },
+  "pl.imgw.hydro_subdaily": { step: "hour", kind: "hydro" },
   "cz.chmu.hydro_daily": { step: "day", kind: "hydro" },
   "cz.chmu.meteo_daily": { step: "day", kind: "meteo" },
   "cz.chmu.groundwater_daily": { step: "day", kind: "groundwater" },
   "cz.chmu.groundwater_weekly": { step: "week", kind: "groundwater" },
+  "cz.chmu.hydro_subdaily": { step: "hour", kind: "hydro" },
 };
 
 /** The title of a dataset ("Daily hydrological data (IMGW-PIB)"), its key when unknown. */

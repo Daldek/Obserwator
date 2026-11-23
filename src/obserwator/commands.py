@@ -29,7 +29,7 @@ import shlex
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
@@ -43,7 +43,7 @@ from obserwator.attribution import (
     attribution,
     border_origin,
     carried,
-    dataset_origin,
+    dataset_origins,
     provider_origin,
 )
 from obserwator.config import store_root
@@ -64,6 +64,7 @@ from obserwator.datasets import (
     get_dataset,
     get_provider,
     keeps_archives,
+    monthly_series,
     parse_months,
     parse_years,
     providers,
@@ -1166,6 +1167,8 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             replace(_SERIES_DATASET, required=True),
             replace(_STATIONS, help=message("commands.series_build_stations_help")),
             replace(_YEARS, help=message("commands.series_build_years_help")),
+            replace(_START, help=message("commands.series_build_start_help")),
+            replace(_END, help=message("commands.series_build_end_help")),
         ),
         function="build_series",
         result_type="SeriesReport",
@@ -1173,7 +1176,10 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         store_only=True,
         check="check_series",
         method="POST",
-        rules=(message("commands.series_build_rule_subset"),),
+        rules=(
+            message("commands.series_build_rule_subset"),
+            message("commands.series_build_rule_months"),
+        ),
         writes="add",
     ),
     _command(
@@ -1943,13 +1949,23 @@ def _rules_series_select(options: Options) -> None:
 
 
 def _rules_series_build(options: Options) -> None:
-    # A subset (ADR-026): codes in the grammar of the dataset's provider, as the
-    # library refuses them.
-    _series._subset(
-        get_dataset(options["dataset"]),
-        cast("tuple[str, ...] | None", options.get("stations")),
-        cast("tuple[int, ...] | None", options.get("years")),
+    descriptor = get_dataset(options["dataset"])
+    # A sub-daily series is built per month, every other whole or as a subset
+    # (ADR-031, ADR-026), as the library refuses them.
+    _series._build_options(
+        descriptor,
+        stations=options.get("stations"),
+        years=options.get("years"),
+        start=options.get("start"),
+        end=options.get("end"),
     )
+    if not monthly_series(descriptor):
+        # A subset: codes in the grammar of the dataset's provider.
+        _series._subset(
+            descriptor,
+            cast("tuple[str, ...] | None", options.get("stations")),
+            cast("tuple[int, ...] | None", options.get("years")),
+        )
 
 
 def _rules_series(options: Options) -> None:
@@ -2656,12 +2672,18 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     attachment (the PMAXTP ``response.json``) or a station file of a series
     version (``stations/<code>.parquet``) or of an analyses version
     (``stations/<code>.json``, ``stations/<code>/<analysis>.json``); only the
-    layout of the store places it, the data file itself need not exist.
+    layout of the store places it, the data file itself need not exist. A
+    version of a sub-daily series lies in the directory of its month (ADR-031),
+    slot ``series:<key>:<YYYY-MM>``.
     """
     parts = PurePosixPath(relative).parts
-    station_file = parts[4:5] == ("stations",) and (
-        (parts[:2] == ("series", "versions") and len(parts) == 6)
-        or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
+    monthly_file = parts[:2] == ("series", "versions") and parts[5:6] == ("stations",)
+    station_file = (monthly_file and len(parts) == 7) or (
+        parts[4:5] == ("stations",)
+        and (
+            (parts[:2] == ("series", "versions") and len(parts) == 6)
+            or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
+        )
     )
     given: str | None = None
     if path.is_dir():
@@ -2669,7 +2691,8 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     elif path.name.endswith(_reader._SIDECAR):
         directory, given = path.parent, path.name.removesuffix(_reader._SIDECAR)
     elif station_file:
-        directory = path.parents[len(parts) - 5]
+        # The version directory holds ``stations/``.
+        directory = path.parents[len(parts) - (6 if monthly_file else 5)]
     else:
         directory, given = path.parent, path.name
     if not directory.is_dir() or not _reader._VERSION_DIR.match(directory.name):
@@ -2684,8 +2707,21 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
         if found is None:
             _not_a_version(relative)
         slot, name = found[0], PurePosixPath(found[1]).name
-    elif where[:2] == ("series", "versions") and len(where) == 4 and where[2] in series:
+    elif (
+        where[:2] == ("series", "versions")
+        and len(where) == 4
+        and where[2] in series
+        and not monthly_series(series[where[2]])
+    ):
         slot, name = f"series:{series[where[2]].key}", _reader.SERIES_FILE
+    elif (
+        where[:2] == ("series", "versions")
+        and len(where) == 5
+        and where[2] in series
+        and monthly_series(series[where[2]])
+        and _reader._MONTH.fullmatch(where[3])
+    ):
+        slot, name = f"series:{series[where[2]].key}:{where[3]}", _reader.SERIES_FILE
     elif (
         where[:2] == ("stations", "versions")
         and len(where) == 4
@@ -2871,6 +2907,9 @@ def command_for_version(
     series version (or its station file)    ``series build --raw-root <raw>
                                             --dataset <key>`` (``--stations``
                                             and ``--years`` of a subset)
+    month of a sub-daily series             ``series build --raw-root <raw>
+                                            --dataset <key> --start <first day>
+                                            --end <last day>``
     analyses version (or a station file)    ``analyses build``
     ======================================  ========================================
 
@@ -2946,13 +2985,23 @@ def command_for_version(
     elif kind == "series":
         if meta.request.get("dataset", key) != key:
             _mismatch(relative, "request.dataset", meta.request["dataset"], key)
-        # A subset (ADR-026) is built again with its stations and years.
-        subset = {
-            name: meta.request[name]
-            for name in ("stations", "years")
-            if name in meta.request
-        }
-        command, options = "series build", {"dataset": key, **subset}
+        month = slot.split(":", 2)[2] if slot.count(":") == 2 else None
+        if month is not None:
+            # A month of a sub-daily series (ADR-031) is built again by its days.
+            if meta.request.get("month", month) != month:
+                _mismatch(relative, "request.month", meta.request["month"], month)
+            first = date.fromisoformat(f"{month}-01")
+            last = _series._next_month(first) - timedelta(days=1)
+            options = {"dataset": key, "start": first, "end": last}
+        else:
+            # A subset (ADR-026) is built again with its stations and years.
+            subset = {
+                name: meta.request[name]
+                for name in ("stations", "years")
+                if name in meta.request
+            }
+            options = {"dataset": key, **subset}
+        command = "series build"
     elif kind == "catalog":
         command, options = _catalog_call(relative, meta, key)
     elif kind == "analyses":
@@ -3046,6 +3095,14 @@ def _status(result: object) -> Status:
             statuses.count("failed"),
             statuses.count("downloaded") + statuses.count("not_published"),
         )
+    if isinstance(result, SeriesReport) and result.months:
+        # A build of months (ADR-031): partial when some months failed, others not.
+        months = [month.status for month in result.months]
+        return _outcome(
+            result.status == "cancelled",
+            months.count("failed"),
+            sum(status in _DONE for status in months),
+        )
     if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
         return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
     if isinstance(result, _analyses.AnalysesReport):
@@ -3081,9 +3138,15 @@ def _page(options: Options) -> tuple[int | None, int]:
 
 
 def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
-    """Lines of the data of the given datasets (keys, slugs or legacy aliases)."""
+    """
+    Lines of the data of the given datasets (keys, slugs or legacy aliases).
+
+    A sub-daily series has the lines of the datasets it is built from (ADR-031).
+    """
     return attribution(
-        *dict.fromkeys(dataset_origin(get_dataset(key).key) for key in keys),
+        *dict.fromkeys(
+            origin for key in keys for origin in dataset_origins(get_dataset(key).key)
+        ),
         processed=processed,
     )
 
@@ -3793,14 +3856,28 @@ def _check_select(options: Options, hooks: Hooks) -> StorePlan:
 def _check_series(command: str) -> Checker:
     def check(options: Options, hooks: Hooks) -> StorePlan:
         root = options.get("root")
+        codes = (options["station"],) if "station" in options else ()
         try:
-            path = _reader._series_path(
-                options.get("version"), root=root, dataset=options.get("dataset")
+            # A sub-daily series is read from the version of each month (ADR-031).
+            monthly, paths = _reader._series_paths(
+                options.get("version"),
+                root=root,
+                dataset=options.get("dataset"),
+                start=options.get("start"),
+                end=options.get("end"),
             )
-            index = _store.read_series_index(path)
-            descriptor = get_dataset(index.dataset)
-            codes = (options["station"],) if "station" in options else ()
-            _reader._outside(options.get("stations", codes), index)
+            if monthly is None:
+                index = _store.read_series_index(paths[0])
+                descriptor = get_dataset(index.dataset)
+                _reader._outside(options.get("stations", codes), index)
+            else:
+                descriptor = monthly
+                held = {
+                    code
+                    for path in paths
+                    for code in _store.read_series_index(path).stations
+                }
+                _reader._absent(options.get("stations", codes), held, descriptor.key)
             _reader._variables(options.get("variables"), descriptor)
             _half_year(descriptor, options.get("year_type"))
         except ObserwatorError as exc:
@@ -3811,6 +3888,7 @@ def _check_series(command: str) -> Checker:
                 )
             ]
         else:
+            path: object = paths[0] if monthly is None else ", ".join(map(str, paths))
             actions = (
                 _export_actions(
                     command,

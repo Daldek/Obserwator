@@ -1,10 +1,13 @@
 """The deployment's timers (Nogat plan 2026-11-16-operational-series, step A2).
 
 ``deploy/obserwator-jobs.sh`` runs the night, the telemetry and the hourly poll of
-the units in ``deploy/systemd/``. The night is run with a stub of the program: its
-catch-up decides the days each harvest asks for.
+the units in ``deploy/systemd/``. The jobs run with a stub of the program: the
+night's catch-up decides the days each harvest asks for and the hourly series it
+builds (ADR-031), and the telemetry builds the months whose zips the stub's
+envelope says it stored.
 """
 
+import json
 import os
 import re
 import shutil
@@ -28,6 +31,9 @@ posix_tools = pytest.mark.skipif(
 STUB = """\
 #!/bin/sh
 printf '%s\\n' "$*" >> "$STUB_LOG"
+if [ -n "$STUB_OUT" ]; then
+  case "$*" in "store sync --datasets pl.imgw.hydro_telemetry"*) cat "$STUB_OUT" ;; esac
+fi
 if [ -n "$STUB_FAIL" ]; then
   case "$*" in *"$STUB_FAIL"*) exit "$STUB_CODE" ;; esac
 fi
@@ -66,7 +72,7 @@ def test_the_night_seals_every_served_capture_dataset_once():
     assert set(harvested) | set(sealed) == served
 
 
-def _night(tmp_path, *args, fail="", code=10):
+def _job(tmp_path, job, *args, fail="", code=10, out=""):
     stub = tmp_path / "obserwator"
     if not stub.exists():
         stub.write_text(STUB, "utf-8")
@@ -80,9 +86,10 @@ def _night(tmp_path, *args, fail="", code=10):
         "STUB_LOG": str(log),
         "STUB_FAIL": fail,
         "STUB_CODE": str(code),
+        "STUB_OUT": out,
     }
     done = subprocess.run(
-        ["bash", str(JOBS), "night", *args],
+        ["bash", str(JOBS), job, *args],
         env=env,
         capture_output=True,
         text=True,
@@ -90,6 +97,10 @@ def _night(tmp_path, *args, fail="", code=10):
     )
     calls = log.read_text("utf-8").splitlines() if log.exists() else []
     return done, calls
+
+
+def _night(tmp_path, *args, fail="", code=10):
+    return _job(tmp_path, "night", *args, fail=fail, code=code)
 
 
 def _stamp(tmp_path, dataset):
@@ -119,6 +130,11 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
     assert _stamp(tmp_path, "cz.chmu.hydro_recent").read_text().strip() == str(
         yesterday
     )
+    # After the sealing, the hourly series of the months of each harvest's days.
+    assert calls[3:] == [
+        f"series build --dataset {series} --start {yesterday} --end {yesterday}"
+        for series in ("pl.imgw.hydro_subdaily", "cz.chmu.hydro_subdaily")
+    ]
 
     # Missed nights: from the day after the stamp; a stamp beyond the source's
     # reach starts at the earliest day it still answers for.
@@ -137,8 +153,15 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
         str(yesterday),
     )
     assert "beyond the source's reach" in done.stdout
+    assert calls[3:] == [
+        "series build --dataset pl.imgw.hydro_subdaily"
+        f" --start {yesterday - timedelta(days=2)} --end {yesterday}",
+        "series build --dataset cz.chmu.hydro_subdaily"
+        f" --start {_utc_today() - timedelta(days=40)} --end {yesterday}",
+    ]
 
-    # Harvested already (a catch-up after a run by hand): no request, the sealing runs.
+    # Harvested already (a catch-up after a run by hand): no request and no build,
+    # the sealing runs.
     done, calls = _night(tmp_path)
     assert done.returncode == 0
     assert len(calls) == 1 and calls[0].startswith(
@@ -155,9 +178,14 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
         _stamp(tmp_path, dataset).write_text(before + "\n")
     done, calls = _night(tmp_path, fail="pl.imgw.hydro_operational", code=10)
     # The partial harvest keeps its stamp, so the next night asks for its days
-    # again; the ČHMÚ harvest and the sealing still run; the exit is the failure's.
+    # again; the ČHMÚ harvest, the sealing and the hourly series of what it got still
+    # run; the exit is the failure's.
     assert done.returncode == 10
-    assert len(calls) == 3
+    assert len(calls) == 5
+    assert calls[3] == (
+        "series build --dataset pl.imgw.hydro_subdaily"
+        f" --start {yesterday - timedelta(days=1)} --end {yesterday}"
+    )
     assert _stamp(tmp_path, "pl.imgw.hydro_operational").read_text().strip() == before
     assert _stamp(tmp_path, "cz.chmu.hydro_recent").read_text().strip() == str(
         yesterday
@@ -168,10 +196,49 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
 def test_a_checked_night_records_no_harvest(tmp_path):
     done, calls = _night(tmp_path, "--check")
     assert done.returncode == 0
-    assert all(call.endswith("--check") for call in calls) and len(calls) == 3
+    assert all(call.endswith("--check") for call in calls) and len(calls) == 5
     assert not _stamp(tmp_path, "pl.imgw.hydro_operational").exists()
     done, calls = _night(tmp_path, "--start", "2026-13-01")
     assert done.returncode == 64 and not calls
+
+
+@posix_tools
+def test_the_telemetry_builds_the_hourly_series_of_each_month_it_stored(tmp_path):
+    # The sync's envelope names the zips it stored: those months are built again, so
+    # their telemetry replaces hydro-back's hours; an unchanged zip builds nothing.
+    items = [
+        ("2026/Hydro_2026-10.zip", "new"),
+        ("2026/Hydro_2026-09.zip", "unchanged"),
+        ("2026/Hydro_2026-02.zip", "new"),
+    ]
+    envelope = {
+        "schema": "obserwator-result/1",
+        "status": "ok",
+        "result": {
+            "schema": "obserwator-sync-report/1",
+            "items": [
+                {"slot": f"archive:pl.imgw.hydro_telemetry:{name}", "status": status}
+                for name, status in items
+            ],
+        },
+    }
+    out = tmp_path / "sync.json"
+    out.write_text(json.dumps(envelope) + "\n", "utf-8")
+    done, calls = _job(tmp_path, "telemetry", out=str(out))
+    assert done.returncode == 0, done.stdout
+    assert calls[0].startswith("store sync --datasets pl.imgw.hydro_telemetry --years")
+    assert calls[0].endswith(" --json")
+    built = [call for call in calls if call.startswith("series build")]
+    assert built == [
+        "series build --dataset pl.imgw.hydro_subdaily"
+        " --start 2026-10-01 --end 2026-10-31",
+        "series build --dataset pl.imgw.hydro_subdaily"
+        " --start 2026-02-01 --end 2026-02-28",
+    ]
+    # A checked run plans the sync only: no zip was stored.
+    done, calls = _job(tmp_path, "telemetry", "--check", out=str(out))
+    assert done.returncode == 0
+    assert not [call for call in calls if call.startswith("series build")]
 
 
 # --- the units ------------------------------------------------------------------

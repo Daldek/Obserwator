@@ -7,10 +7,13 @@
  * ```
  *
  * The spec:
- * - `x`: `{label, scale: "linear" | "log" | "time" | "date" | "gumbel", min, max, domain, digits, short,
- *   tickList}`; `time` takes minutes and labels hours; `date` (Obserwator's mockup) takes day
- *   numbers (days since 1970-01-01, `dayNumber` of lib.js) and labels years, months or days
- *   by the plot's width, its readout dd.mm.rrrr; `gumbel` takes the exceedance probability [%]
+ * - `x`: `{label, scale: "linear" | "log" | "time" | "date" | "datetime" | "gumbel", min, max,
+ *   domain, digits, short, tickList}`; `time` takes minutes and labels hours; `date`
+ *   (Obserwator's mockup) takes day numbers (days since 1970-01-01, `dayNumber` of lib.js) and
+ *   labels years, months or days by the plot's width, its readout dd.mm.rrrr; `datetime` takes
+ *   fractional day numbers of UTC instants (`hourNumber` of lib.js: the hours of an hourly
+ *   series) and labels the reader's local hours or days, or months and years, its readout the
+ *   local date and time; `gumbel` takes the exceedance probability [%]
  *   (`domain: [99, 0.1]` fixes its ends) and labels p and T = 100 / p. `tickList: [{value,
  *   label, sub}]` replaces the computed ticks (those within the domain are drawn).
  * - `y`: `{label, unit, scale: "linear" | "log" | "band", min, max, zero, pad, ticks, digits}`;

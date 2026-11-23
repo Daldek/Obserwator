@@ -714,9 +714,10 @@ MESSAGES = {
     "series_build_description": Text(
         "Build the Parquet series of a dataset from the raw root. It reads the "
         "current archives, the series go into the data root; stations or years "
-        "build a subset.",
+        "build a subset, start and end the months of an hourly series.",
         "Zbuduj szereg Parquet zbioru z katalogu surowego. Czyta bieżące archiwa, "
-        "szeregi trafiają do katalogu danych; stations albo years budują podzbiór.",
+        "szeregi trafiają do katalogu danych; stations albo years budują podzbiór, "
+        "start i end miesiące szeregu godzinowego.",
     ),
     "series_build_stations_help": Text(
         "Build only these stations: comma-separated codes of the dataset's provider "
@@ -732,6 +733,18 @@ MESSAGES = {
         "zbiorów pl.imgw.hydro_*, inaczej kalendarzowe (domyślnie wszystkie lata); "
         "podzbiór",
     ),
+    "series_build_start_help": Text(
+        "First day of the months to build of an hourly series (ISO YYYY-MM-DD; its "
+        "whole month; default: from the first month an input holds)",
+        "Pierwszy dzień miesięcy szeregu godzinowego do zbudowania (ISO RRRR-MM-DD; "
+        "cały jego miesiąc; domyślnie od pierwszego miesiąca wejść)",
+    ),
+    "series_build_end_help": Text(
+        "Last day of the months to build of an hourly series (ISO YYYY-MM-DD; its "
+        "whole month; default: to the last month an input holds)",
+        "Ostatni dzień miesięcy szeregu godzinowego do zbudowania (ISO RRRR-MM-DD; "
+        "cały jego miesiąc; domyślnie do ostatniego miesiąca wejść)",
+    ),
     "series_build_rule_subset": Text(
         "stations or years build a subset, recorded as subset in series.json and as "
         "the request of its sidecar; a data root holding the full series of the "
@@ -739,6 +752,19 @@ MESSAGES = {
         "stations albo years budują podzbiór, zapisany jako subset w series.json i "
         "jako request jego sidecara; katalog danych z pełnym szeregiem zbioru odrzuca "
         "podzbiór (conflict, full_series): zbuduj go w innym katalogu",
+    ),
+    "series_build_rule_months": Text(
+        "an hourly series (pl.imgw.hydro_subdaily, cz.chmu.hydro_subdaily) is built "
+        "per calendar month, one version each: start and end choose the months "
+        "they touch, each reported (a month whose inputs hold no value fails); "
+        "without both, every month an input holds; stations and years are refused "
+        "for it (monthly), start and end for any other dataset (not_monthly)",
+        "szereg godzinowy (pl.imgw.hydro_subdaily, cz.chmu.hydro_subdaily) buduje "
+        "się w miesiącach kalendarzowych, po jednej wersji: start i end wybierają "
+        "miesiące, których dotyczą, każdy w raporcie (miesiąc bez wartości wejść "
+        "kończy się błędem); bez obu każdy miesiąc z wejść; stations i years są "
+        "dla niego odrzucane (monthly), start i end dla innych zbiorów "
+        "(not_monthly)",
     ),
     "series_select_description": Text(
         "Select stations, variables and years of the current series. Nothing is written.",

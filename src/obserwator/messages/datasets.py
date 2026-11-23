@@ -272,6 +272,14 @@ MESSAGES = {
         "Telemetria hydrologiczna, pliki miesięczne z H, Q, T co 10 minut: dane "
         "operacyjne, niezweryfikowane",
     ),
+    # The hourly series built from the tiers (ADR-031): verified, telemetry and
+    # operational hours, each point with its tier.
+    "title_hydro_subdaily": Text(
+        "Hourly hydrological series (H, Q, T) of the telemetry and of hydro.imgw.pl: "
+        "operational data, unverified, each hour with its tier",
+        "Godzinowe serie hydrologiczne (H, Q, T) z telemetrii i z hydro.imgw.pl: dane "
+        "operacyjne, niezweryfikowane, każda godzina z poziomem danych",
+    ),
     "title_hydro_current": Text(
         "Current hydrological data (captured answers): operational data, unverified",
         "Bieżące dane hydrologiczne (zapisane odpowiedzi): dane operacyjne, "
@@ -595,6 +603,13 @@ MESSAGES = {
     "title_chmu_hydro_hourly": Text(
         "ČHMÚ — hourly hydrological data (H, Q)",
         "ČHMÚ — dane hydrologiczne godzinowe (H, Q)",
+    ),
+    "title_chmu_hydro_subdaily": Text(
+        "ČHMÚ — hourly hydrological series (H, Q, T) of the validated hours and of the "
+        "recent days: operational data where unverified, each hour with its tier",
+        "ČHMÚ — godzinowe serie hydrologiczne (H, Q, T) z godzin zweryfikowanych i z "
+        "ostatnich dni: dane operacyjne tam, gdzie niezweryfikowane, każda godzina z "
+        "poziomem danych",
     ),
     "title_chmu_groundwater_daily": Text(
         "ČHMÚ — daily groundwater data (level, spring yield, water temperature)",

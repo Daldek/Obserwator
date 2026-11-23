@@ -38,6 +38,7 @@ from obserwator.store.reader import (
     read_series_index,
     read_station_list,
     select_series,
+    series_months,
     store_info,
     summarize_series,
 )
@@ -141,6 +142,7 @@ __all__ = [
     "read_series_index",
     "read_station_list",
     "select_series",
+    "series_months",
     "store_info",
     "summarize_series",
     "sync_pmaxtp",

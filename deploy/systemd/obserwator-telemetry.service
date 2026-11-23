@@ -1,6 +1,7 @@
 # Obserwator's telemetry: IMGW-PIB's monthly telemetry zip of the current year
-# (and of the year before in January) and the listing check of ČHMÚ's validated
-# hourly year of the stations in CHMU_HOURLY_STATIONS.
+# (and of the year before in January), the hourly series of each month whose zip it
+# stored (ADR-031), and the listing check of ČHMÚ's validated hourly year of the
+# stations in CHMU_HOURLY_STATIONS.
 # A template of Obserwator's deployment guide (docs/USAGE.md "Timers"; Nogat plan
 # 2026-11-16-operational-series, step A2): replace every @NAME@ and copy it to
 # ~/.config/systemd/user/.

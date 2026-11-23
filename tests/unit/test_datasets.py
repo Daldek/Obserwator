@@ -112,6 +112,8 @@ _REGISTRY = [
     ("pl.imgw.meteo_operational", "meteo", True, "hour", "calendar", None, None),
     ("pl.imgw.meteo_states_current", "meteo", True, "snapshot", "calendar", None, None),
     ("pl.imgw.hydro_telemetry", "hydro", True, "ten_minutes", "calendar", 2008, None),
+    # The hourly series of the tiers, built per month from the two above (ADR-031).
+    ("pl.imgw.hydro_subdaily", "hydro", True, "hour", "calendar", 2008, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
         "pl.imgw.meteo_climate_monthly",
@@ -179,6 +181,7 @@ _CHMU_KEYS = [
     "cz.chmu.hydro_recent",
     "cz.chmu.hydro_current",
     "cz.chmu.hydro_hourly",
+    "cz.chmu.hydro_subdaily",
 ]
 
 
@@ -224,6 +227,7 @@ def test_datasets_kind_filter():
         "cz.chmu.hydro_recent",
         "cz.chmu.hydro_current",
         "cz.chmu.hydro_hourly",
+        "cz.chmu.hydro_subdaily",
     ]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
@@ -312,6 +316,7 @@ _DECLARED = {
 def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
     # ADR-030, ADR-032: the captures, the telemetry and ČHMÚ's groundwater months
     # (recent) are the data of other tiers served; ČHMÚ's hourly set is verified.
+    # ADR-031: an hourly series of the tiers has the lowest tier of its inputs.
     served = datasets()
     assert {
         d.key: (d.tier, d.time_unit, d.archive_scope)
@@ -320,7 +325,9 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
     } == {
         **_CAPTURES,
         "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
+        "pl.imgw.hydro_subdaily": ("operational", "hour", "country"),
         "cz.chmu.groundwater_recent": ("operational", "day", "station_month"),
+        "cz.chmu.hydro_subdaily": ("operational", "hour", "country"),
     }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
     assert [(item["key"], item["tier"]) for item in listed["result"]] == [

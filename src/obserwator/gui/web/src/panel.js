@@ -334,9 +334,10 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
   const series = Object.entries(held);
   const providers = scopeOf(session).providers;
   // A dataset the root may hold but does not, of a served provider and of a kind offered
-  // for its stations: a groundwater dataset only where its catalog has a groundwater object
+  // for its stations: a groundwater dataset only where its catalog has a groundwater object;
+  // never an hourly series (ADR-031), built from the captures and not served while private
   const offered = Object.fromEntries(providers.map((id) => [id, shownKinds(stations.filter((s) => s.provider === id))]));
-  const missing = Object.keys(SERIES_DATASETS).filter((key) => !held[key] && providers.some((id) => key.startsWith(DATASET_PREFIX[id]) && offered[id].includes(SERIES_DATASETS[key].kind)));
+  const missing = Object.keys(SERIES_DATASETS).filter((key) => !held[key] && SERIES_DATASETS[key].step !== "hour" && providers.some((id) => key.startsWith(DATASET_PREFIX[id]) && offered[id].includes(SERIES_DATASETS[key].kind)));
   return html`<div class="no-station">
     <p class="hint-box">${t("station.none.hint")}</p>
     ${root && root.error ? html`<p class="ana-error" role="alert">${t("station.none.root_error", { message: root.error.message })}</p>` : null}

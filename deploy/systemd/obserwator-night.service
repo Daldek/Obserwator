@@ -1,7 +1,7 @@
 # Obserwator's night: the harvest of hydro.imgw.pl's hourly series until 05:00,
 # then of ČHMÚ's recent day files until 06:30, each from the day after its last
 # whole harvest (at most 40 days back), then the sealing of every other capture
-# dataset's closed UTC days. O4 adds the series build of the months touched.
+# dataset's closed UTC days, then the hourly series of the months harvested (ADR-031).
 # A template of Obserwator's deployment guide (docs/USAGE.md "Timers"; Nogat plan
 # 2026-11-16-operational-series, step A2): replace every @NAME@ and copy it to
 # ~/.config/systemd/user/.

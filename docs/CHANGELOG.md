@@ -203,6 +203,29 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
   sidecar fields `tier` and `publication`, the GUI's spool in `state_dir`, the polling and the
   lock of the raw root, and amends ADR-003 D4, ADR-013 D5 and D6 and ADR-015 D5.
+- **Hourly series of the tiers (ADR-031; step O4 with P5 and step 4 of the providers plan).**
+  `pl.imgw.hydro_subdaily` (from `pl.imgw.hydro_telemetry` and `pl.imgw.hydro_operational`)
+  and `cz.chmu.hydro_subdaily` (from `cz.chmu.hydro_hourly` and `cz.chmu.hydro_recent`):
+  `time_unit` `hour`, H, Q and T, tier `operational` (the lowest of their `inputs`, a new
+  optional field of `datasets list`), one version per calendar month (slot
+  `series:<key>:<YYYY-MM>`, `series/versions/<slug>/<YYYY-MM>/…`). A month takes the full
+  hours of the UTC days closed before each captured answer (the 10-minute tail, the answer's
+  own day and the forecasts stay in the capture), the telemetry's full-hour records (`999`
+  none) and the validated hours as published; per station, variable and hour the highest
+  tier with a value wins and labels the point. A station file has `time` (UTC,
+  `timestamp[us, tz=UTC]`) in place of `date` and `<V>_tier` only in a month of several
+  tiers; `series.json` adds `month` and `tiers`; a record adds `time` and each value's
+  `tier`; the report adds `months`. `series build --start/--end` builds the months a range
+  touches (`--stations`/`--years` refused for them, `--start`/`--end` for every other
+  dataset); `series read|summary|export --dataset` join the months (exports always with
+  `<V>_tier` and the JSON head's `series_versions`); `series select` refuses them. New:
+  `series_months` (`obserwator.store`, `obserwator`), `attribution.dataset_origins`. The
+  series of a private source is private (REST `not_found`, not in the GUI): IMGW-PIB's by
+  default. The GUI's series chart draws hours with a line style per tier. The timers: the
+  night builds the months of its harvests, the telemetry job those of the zips it stored.
+  Tested on answers recorded on 2026-11-23 (`tests/fixtures/operational/october/`): 744 of
+  744 operational hours equal to the telemetry's for H and Q of 151160060 and 150160180, 22
+  of 22 of Głogów's T. ČHMÚ groundwater's `recent` stays without a series (ADR-032 erratum).
 - **ČHMÚ groundwater (ADR-032; Nogat plans `2026-11-16-operational-series.md` row H5a and
   `2026-11-20-hydromet-providers.md` P7, step 5a).** ČHMÚ's bores and springs of
   `opendata.chmi.cz/hydrology/groundwater/` (CC BY 4.0, attribution lines C and CP as before):
@@ -307,7 +330,10 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   command descriptions (`datasets list`, `providers`, `download`, `pmaxtp sync`, `store
   sync`, `series build`, `summary`, `export`) moves from their first sentence, which the guide
   prints, to the second. In step O3 the captures' line names `start`/`end` and the harvest's
-  default day, and principle 4 drops „ — without downloading again”.
+  default day, and principle 4 drops „ — without downloading again”. In step O4 the table
+  gains the two hourly series; the rule on `commands schema` no longer lists the fields of
+  `options`, the dataset key's sentence no longer points to `datasets list` and the flows'
+  sentence on symbols is shorter.
 - **REST hides every private source, not only the captures (ADR-030 D5 erratum; step O2).**
   Every dataset of a tier other than `verified` set `private` in `[obserwator.capture]` (the
   telemetry, `cz.chmu.groundwater_recent` included) is `not_found` (`details.reason`

@@ -487,6 +487,45 @@ MESSAGES: dict[str, Text] = {
     "station.data.readings.few": Text("{n} readings", "{n} odczyty"),
     "station.data.readings.many": Text("{n} readings", "{n} odczytów"),
     "station.data.readings.other": Text("{n} readings", "{n} odczytu"),
+    # The rows of an hourly series are its hours (ADR-031)
+    "station.data.hours.one": Text("{n} hour", "{n} godzina"),
+    "station.data.hours.few": Text("{n} hours", "{n} godziny"),
+    "station.data.hours.many": Text("{n} hours", "{n} godzin"),
+    "station.data.hours.other": Text("{n} hours", "{n} godziny"),
+    "station.data.time": Text("Time", "Czas"),
+    "station.data.flag_def.missing_hour": Text(
+        "no value in the hour: the line of the chart breaks",
+        "godzina bez wartości: linia wykresu się przerywa",
+    ),
+    # The tier of each hour of an hourly series (ADR-031); the words „dane operacyjne,
+    # niezweryfikowane” of Nogat DEV-20.8 wherever operational data meet a person
+    "station.data.tier.verified": Text("verified data", "dane zweryfikowane"),
+    "station.data.tier.telemetry": Text(
+        "telemetry: operational data, unverified",
+        "telemetria: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier.operational": Text(
+        "captured answers: operational data, unverified",
+        "zapisane odpowiedzi: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier_short.telemetry": Text("telemetry", "telemetria"),
+    "station.data.tier_short.operational": Text("captured", "zapisane"),
+    "station.data.tier_def.telemetry": Text(
+        "values of the provider's telemetry files: operational data, unverified",
+        "wartości z plików telemetrii dostawcy: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier_def.operational": Text(
+        "values of answers captured from the provider's current data: operational "
+        "data, unverified",
+        "wartości z odpowiedzi zapisanych z bieżących danych dostawcy: dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "station.data.tiers_def": Text(
+        "Each hour has the value of the highest tier that has one: verified data "
+        "before telemetry, telemetry before captured answers.",
+        "Każda godzina ma wartość najwyższego poziomu danych, który ją ma: dane "
+        "zweryfikowane przed telemetrią, telemetria przed zapisanymi odpowiedziami.",
+    ),
     "station.data.no_characteristics": Text(
         "The characteristics of this station have no values.",
         "Charakterystyki tej stacji nie mają wartości.",
@@ -537,6 +576,12 @@ MESSAGES: dict[str, Text] = {
         "across a calendar week (Monday to Sunday) without a reading.",
         "Odczyty tygodniowe stoją w dniach pomiaru, zwykle w środy; linia przerywa się "
         "w tygodniu kalendarzowym (od poniedziałku do niedzieli) bez odczytu.",
+    ),
+    "station.data.hourly_def": Text(
+        "Hourly values stand at full hours (UTC), shown in the time zone of your "
+        "browser; the line breaks at an hour without a value.",
+        "Wartości godzinowe stoją o pełnych godzinach (UTC), pokazanych w strefie "
+        "czasowej przeglądarki; linia przerywa się w godzinie bez wartości.",
     ),
     "station.data.stored_hydrological": Text(
         "hydrological year XI–X in the data root",

@@ -8,7 +8,8 @@ import re
 import time
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
+from itertools import chain
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
@@ -29,6 +30,7 @@ from obserwator.datasets import (
     datasets,
     get_dataset,
     get_provider,
+    monthly_series,
     parse_years,
     providers,
     resolve_dataset_key,
@@ -41,7 +43,7 @@ from obserwator.exceptions import (
     io_error,
 )
 from obserwator.messages import message, reason
-from obserwator.models import Measurement, NormalizedRecord, StationListEntry
+from obserwator.models import Measurement, NormalizedRecord, StationListEntry, Tier
 from obserwator.output import DATA_MARKER, STORE_MARKER
 from obserwator.store.catalog import (
     _CATALOG_DIRS,
@@ -149,6 +151,14 @@ _SAME_CONTENT = re.compile(r"^[^/]+_[0-9a-f]{8}$")
 _LABEL_SOURCES = ("last_modified", "downloaded", "inputs")
 _PERIODS = ("winter", "summer", "annual")
 _SCALARS = (str, int, float, bool, type(None))
+# The calendar month of a version of a sub-daily series: the directory of its versions
+# and the selector of its slot, ``series:<key>:<YYYY-MM>`` (ADR-031).
+_MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+# A time of the index of a sub-daily series: the start of an hour in UTC.
+_HOUR_TEXT = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$")
+_HOUR = timedelta(hours=1)
+# The tiers of the points of a sub-daily series, highest first (ADR-030 D1).
+_SERIES_TIERS: tuple[Tier, ...] = ("verified", "telemetry", "operational")
 # Versions a caller knows (``iter_store(skip_versions=...)``): the path of a version
 # directory relative to the root, with ``/``, and the names of its data files.
 _Known = Mapping[str, Collection[str]]
@@ -1058,6 +1068,7 @@ def _scan_register(
 
 _SLOT_GRAMMAR = message(
     "reader.archive_key_path_series_key",
+    monthly=", ".join(item.key for item in datasets() if monthly_series(item)),
     values=", ".join(_CATALOG_DATASETS.values()),
     analyses=", ".join(f"{owner.key_prefix}.analyses" for owner in providers()),
 )
@@ -1297,6 +1308,44 @@ def _scan_catalogs(root: Path, versions: Path, known: _Known) -> Iterator[StoreE
             yield _unknown(root, child)
 
 
+def _scan_series(
+    root: Path, slug: Path, descriptor: DatasetDescriptor, known: _Known
+) -> Iterator[StoreEntry]:
+    """
+    Series versions and problems of one dataset below ``series/versions/<slug>/``.
+
+    A sub-daily series (`monthly_series`, ADR-031) keeps the versions of each
+    calendar month in ``<YYYY-MM>/``, slot ``series:<key>:<YYYY-MM>``; any other
+    element beside its months is unknown.
+    """
+    if not monthly_series(descriptor):
+        for version in _directories(root, slug):
+            yield _derived_entry(
+                root,
+                version,
+                "series",
+                f"series:{descriptor.key}",
+                SERIES_FILE,
+                known,
+                subdirs=("stations",),
+            )
+        return
+    for month in _directories(root, slug):
+        if isinstance(month, StoreEntry) or not _MONTH.fullmatch(month.name):
+            yield month if isinstance(month, StoreEntry) else _unknown(root, month)
+            continue
+        for version in _directories(root, month):
+            yield _derived_entry(
+                root,
+                version,
+                "series",
+                f"series:{descriptor.key}:{month.name}",
+                SERIES_FILE,
+                known,
+                subdirs=("stations",),
+            )
+
+
 def _scan_kind(root: Path, top: Path, known: _Known) -> Iterator[StoreEntry]:
     for versions in _versions_dir(root, top):
         if isinstance(versions, StoreEntry):
@@ -1311,16 +1360,7 @@ def _scan_kind(root: Path, top: Path, known: _Known) -> Iterator[StoreEntry]:
                 if isinstance(slug, StoreEntry) or slug.name not in series:
                     yield slug if isinstance(slug, StoreEntry) else _unknown(root, slug)
                     continue
-                for version in _directories(root, slug):
-                    yield _derived_entry(
-                        root,
-                        version,
-                        "series",
-                        f"series:{series[slug.name].key}",
-                        SERIES_FILE,
-                        known,
-                        subdirs=("stations",),
-                    )
+                yield from _scan_series(root, slug, series[slug.name], known)
         elif top.name == "analyses":
             yield from _scan_analyses(root, versions, known)
         else:
@@ -1484,6 +1524,10 @@ def iter_store(
     ``StoreEntry(kind="observation")`` (never a version); a broken one is a
     problem with the slot. Every entry names the provider of its slot's
     dataset in ``StoreEntry.provider`` (None for a problem without a slot).
+    The versions of a sub-daily series (ADR-031) lie in a directory per
+    calendar month, ``series/versions/<slug>/<YYYY-MM>/``, and have its slot
+    ``series:<key>:<YYYY-MM>``; any other element beside the months is an
+    ``unknown_entry`` problem.
 
     Every scan reads the sidecar of every version. A consumer that keeps what
     it has read passes the versions it knows in ``skip_versions`` (an
@@ -1502,7 +1546,9 @@ def iter_store(
     skip_versions : mapping of str to collection of str or None, optional
         The versions the caller already knows: the path of a version
         directory relative to the root, with ``/`` (``archives/versions/<server
-        dir>/<stem>/<label>_<sha8>``, ``series/versions/<slug>/<label>_<sha8>``,
+        dir>/<stem>/<label>_<sha8>``, ``series/versions/<slug>/<label>_<sha8>``
+        (``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>`` of a sub-daily
+        series),
         ``stations/versions/<provider catalog>/<label>_<sha8>``,
         ``pmaxtp/versions/<method>/<cell>/<label>_<sha8>`` or
         ``analyses/versions/<key prefix>/<label>_<sha8>``), mapped to the
@@ -1591,6 +1637,19 @@ def _slot_location(
         directory = _validate_slot(root, _archive_slot_dir(server_path))
         name = PurePosixPath(server_path).name
         return "archive", directory, name, {"server_path": server_path}
+    series = {item.key: item for item in _series_datasets().values()}
+    if kind == "series" and key in series and monthly_series(series[key]):
+        # A sub-daily series has a slot per calendar month only (ADR-031).
+        if not has_selector or not _MONTH.fullmatch(selector):
+            raise _invalid_slot(
+                slot, message("reader.monthly_slot_needs_month", key=key)
+            )
+        return (
+            "series",
+            _validate_slot(root, f"series/versions/{series[key].slug}/{selector}"),
+            SERIES_FILE,
+            {"subdirs": ("stations",)},
+        )
     if has_selector:
         cell = re.fullmatch(r"(POT|AMP)/([0-9]+_[0-9]+)", selector)
         if kind != "pmaxtp" or key != _PMAXTP_KEY or cell is None:
@@ -1601,7 +1660,6 @@ def _slot_location(
             CELL_FILE,
             {"attachments": (RESPONSE_FILE,)},
         )
-    series = {item.key: item for item in _series_datasets().values()}
     if kind == "series" and key in series:
         return (
             "series",
@@ -1653,13 +1711,16 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         Slot in the §13.7 grammar: ``archive:<key>:<server path without the
         dataset server directory>`` (e.g.
         ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``),
-        ``series:<key>``, ``catalog:<catalog key>`` (``catalog:pl.imgw.stations``,
-        ``catalog:cz.chmu.stations``),
+        ``series:<key>``, of a sub-daily series ``series:<key>:<YYYY-MM>``
+        (one slot per calendar month, ADR-031; e.g.
+        ``series:pl.imgw.hydro_subdaily:2026-10``), ``catalog:<catalog key>``
+        (``catalog:pl.imgw.stations``, ``catalog:cz.chmu.stations``),
         ``pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY>`` or
         ``analyses:<provider key prefix>.analyses``
         (``analyses:pl.imgw.analyses``, ``analyses:cz.chmu.analyses``). Station
         selectors of series slots (``series:<key>:<station_code>``) are
-        rejected.
+        rejected, so is the bare ``series:<key>`` of a sub-daily series (the
+        message names its month form).
 
     Returns
     -------
@@ -1686,7 +1747,11 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
         (``details.path``) if the system cannot read one.
     """
     word = slot.partition(":")[0] if isinstance(slot, str) else ""
-    path = _open(root, kind=_SLOT_ROOTS.get(word))
+    return _current(_open(root, kind=_SLOT_ROOTS.get(word)), slot)
+
+
+def _current(path: Path, slot: str) -> StoreEntry | None:
+    """`current_version` of a slot in an opened root."""
     kind, directory, name, options = _slot_location(path, slot)
     if not directory.is_dir():
         return None
@@ -1727,6 +1792,113 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     else:
         current = _newest_downloaded(versions)
     return entries[current[0]] if current is not None else None
+
+
+def _month_span(month: str) -> tuple[date, date]:
+    """The first and the last day of a calendar month ``YYYY-MM``."""
+    year, number = int(month[:4]), int(month[5:7])
+    following = date(year + number // 12, number % 12 + 1, 1)
+    return date(year, number, 1), following - timedelta(days=1)
+
+
+def _check_bounds(start: date | None, end: date | None) -> None:
+    """A range of days: each bound a ``date`` (no ``datetime``) or None, in order."""
+    for bound in (start, end):
+        if bound is not None and (
+            not isinstance(bound, date) or isinstance(bound, datetime)
+        ):
+            raise ObserwatorValidationError(
+                message("reader.range_bound_must_date", bound=bound)
+            )
+    if start is not None and end is not None and start > end:
+        raise ObserwatorValidationError(
+            message("reader.start_range_later_than_end", start=start, end=end)
+        )
+
+
+def series_months(
+    root: RootArg,
+    /,
+    *,
+    dataset: str,
+    start: date | None = None,
+    end: date | None = None,
+) -> tuple[StoreEntry, ...]:
+    """
+    Current version of every month of a sub-daily series, in month order (ADR-031).
+
+    A sub-daily series (``pl.imgw.hydro_subdaily``, ``cz.chmu.hydro_subdaily``)
+    has one slot per calendar month, ``series:<key>:<YYYY-MM>``, whose versions lie
+    in ``series/versions/<slug>/<YYYY-MM>/``; the current version of a month is
+    chosen as `current_version` chooses it (newest ``downloaded_at``, then path).
+    A month without a version is left out, and so is any element beside the
+    months (`iter_store` reports it). Nothing is written and no Parquet is read.
+
+    Parameters
+    ----------
+    root : str, os.PathLike or StoreHandle
+        Data root directory (ADR-017) or an open handle of one.
+    dataset : str
+        Sub-daily series dataset (key, slug or legacy alias).
+    start : datetime.date or None, optional
+        Keep only the months whose last day is ``start`` or later; ``None``
+        means no lower bound.
+    end : datetime.date or None, optional
+        Keep only the months whose first day is ``end`` or earlier; ``None``
+        means no upper bound.
+
+    Returns
+    -------
+    tuple of StoreEntry
+        The entry of the current version of each month (``kind`` ``"series"``,
+        ``slot`` ``series:<key>:<YYYY-MM>``, ``version`` its ``series.json``,
+        ``meta`` its sidecar), months ascending; empty when the root holds no
+        month of the series (within the range).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the dataset builds no series or its series has no version per month
+        (``details.option`` ``dataset``, ``details.reason`` ``not_monthly``), a
+        bound is not a ``date`` or ``start`` is later than ``end``; also if the
+        root path contains ``..``.
+    ObserwatorStoreError
+        If the root is not a supported data root (code ``store_unavailable``;
+        ``details.reason`` ``wrong_root`` for a raw root) or a path component is
+        a symbolic link (code ``validation_error``).
+    ObserwatorDataError
+        If a version of a month in the range is broken (as in
+        `current_version`); with code ``io_error`` (``details.path``) if the
+        system cannot read one.
+    """
+    descriptor = _series_descriptor(dataset)
+    if not monthly_series(descriptor):
+        raise ObserwatorValidationError(
+            message(
+                "reader.series_not_monthly",
+                key=descriptor.key,
+                monthly=", ".join(
+                    item.key for item in datasets() if monthly_series(item)
+                ),
+            ),
+            details={"option": "dataset", "value": dataset, "reason": "not_monthly"},
+        )
+    _check_bounds(start, end)
+    path = _open(root, kind="data")
+    directory = _validate_slot(path, f"series/versions/{descriptor.slug}")
+    if not directory.is_dir():
+        return ()
+    found: list[StoreEntry] = []
+    for month in sorted(child.name for child in directory.iterdir()):
+        if not _MONTH.fullmatch(month):
+            continue
+        first, last = _month_span(month)
+        if (start is not None and last < start) or (end is not None and first > end):
+            continue
+        entry = _current(path, f"series:{descriptor.key}:{month}")
+        if entry is not None:
+            found.append(entry)
+    return tuple(found)
 
 
 @dataclass(frozen=True)
@@ -2321,21 +2493,48 @@ def _span(value: object) -> tuple[date, date]:
     return start, end
 
 
+def _hour(value: object) -> datetime:
+    """A time of a sub-daily series' index: the start of an hour, UTC, with ``Z``."""
+    if not isinstance(value, str) or not _HOUR_TEXT.fullmatch(value):
+        raise ValueError(message("reader.time_must_hour_text", value=value))
+    return datetime.fromisoformat(value).astimezone(UTC)
+
+
+def _hour_span(value: object) -> tuple[datetime, datetime]:
+    """A gap of a sub-daily series: its first and last hour without a value."""
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError(message("reader.range_must_pair_hours"))
+    start, end = _hour(value[0]), _hour(value[1])
+    if start > end:
+        raise ValueError(message("reader.range_reversed", start=start, end=end))
+    return start, end
+
+
 def _count(value: object, name: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise ValueError(message("reader.must_integer", name=name, minimum=minimum))
     return value
 
 
-def _coverage(code: str, key: str, value: Any) -> StationCoverage:
+def _coverage(
+    code: str, key: str, value: Any, *, hourly: bool = False
+) -> StationCoverage:
+    """
+    Coverage of one variable of a station's index entry.
+
+    Days of a daily (or coarser) series; ``hourly`` (a sub-daily series, ADR-031)
+    gives the times of hours as aware UTC datetimes.
+    """
     variable, _, period = key.partition("@")
     if period and period not in _PERIODS:
         raise ValueError(message("reader.unknown_period_variable", key=key))
     unit = value["unit"]
     if not isinstance(unit, str):
         raise ValueError(message("reader.unit_variable_must_text", key=key))
-    first = None if value["first"] is None else _date(value["first"])
-    last = None if value["last"] is None else _date(value["last"])
+    moment: Callable[[object], date] = _hour if hourly else _date
+    span: Callable[[object], tuple[date, date]] = _hour_span if hourly else _span
+    first = None if value["first"] is None else moment(value["first"])
+    last = None if value["last"] is None else moment(value["last"])
     gaps = value["gaps"]
     if not isinstance(gaps, list):
         raise ValueError(message("reader.gaps_variable_must_list", key=key))
@@ -2348,8 +2547,38 @@ def _coverage(code: str, key: str, value: Any) -> StationCoverage:
         last,
         _count(value["with_value"], "with_value"),
         _count(value["accumulated"], "accumulated"),
-        tuple(_span(gap) for gap in gaps),
+        tuple(span(gap) for gap in gaps),
     )
+
+
+def _index_month(value: object, periods: tuple[tuple[date, date], ...]) -> str:
+    """The ``month`` of the index of a sub-daily series; its ``periods`` lie in it."""
+    if not isinstance(value, str) or not _MONTH.fullmatch(value):
+        raise ValueError(message("reader.month_must_text", value=value))
+    first, last = _month_span(value)
+    for start, end in periods:
+        if start < first or end > last:
+            raise ValueError(
+                message(
+                    "reader.period_outside_month", start=start, end=end, month=value
+                )
+            )
+    return value
+
+
+def _index_tiers(value: object) -> tuple[Tier, ...]:
+    """The ``tiers`` of the index of a sub-daily series: distinct, highest first, some."""
+    if (
+        not isinstance(value, list)
+        or not value
+        or [tier for tier in _SERIES_TIERS if tier in value] != value
+    ):
+        raise ValueError(
+            message(
+                "reader.tiers_must_list", tiers=", ".join(_SERIES_TIERS), value=value
+            )
+        )
+    return tuple(cast("list[Tier]", value))
 
 
 def _station_periods(code: str, value: object) -> tuple[tuple[date, date], ...] | None:
@@ -2377,7 +2606,10 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     datasets of per-station files, ADR-003 D10) must be ascending,
     non-overlapping date ranges when present, and the ``subset`` of a version
     built for chosen stations or years (ADR-026) sorted, distinct and not
-    empty.
+    empty. A version of a sub-daily series (ADR-031) has its calendar month
+    ``month`` (holding every day of ``periods``) and the ``tiers`` of its values
+    (distinct, highest first, at least one), and its coverage gives hours
+    (``YYYY-MM-DDTHH:00:00Z``) instead of days.
 
     Parameters
     ----------
@@ -2389,7 +2621,10 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
     SeriesIndex
         Dataset, year type, periods and per-station Parquet index (with the
         station periods, or None when the index has none), and the subset of
-        a version built for chosen stations or years (None for a full series).
+        a version built for chosen stations or years (None for a full series);
+        of a version of a sub-daily series also ``month`` and ``tiers``, and
+        ``first``, ``last`` and the gaps of its coverage as aware UTC
+        datetimes of hours.
 
     Raises
     ------
@@ -2423,6 +2658,11 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
         if year_type not in ("hydrological", "calendar"):
             raise ValueError(message("reader.unknown_year_type", year_type=year_type))
         periods = tuple(_span(item) for item in document["periods"])
+        month: str | None = None
+        tiers: tuple[Tier, ...] | None = None
+        if monthly_series(descriptor):
+            month = _index_month(document.get("month"), periods)
+            tiers = _index_tiers(document.get("tiers"))
         raw_stations = document["stations"]
         if not isinstance(raw_stations, dict):
             raise ValueError(message("reader.stations_must_object"))
@@ -2451,7 +2691,10 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
                 Path(file),
                 sha,
                 _count(entry["rows"], "rows", minimum=1),
-                {key: _coverage(code, key, value) for key, value in variables.items()},
+                {
+                    key: _coverage(code, key, value, hourly=month is not None)
+                    for key, value in variables.items()
+                },
                 _station_periods(code, entry.get("periods")),
             )
         subset = _document_subset(document.get("subset"))
@@ -2459,7 +2702,9 @@ def read_series_index(version: PathArg, /) -> SeriesIndex:
         raise ObserwatorDataError(
             message("reader.invalid_series_index", path=path, exc=reason(exc))
         ) from exc
-    return SeriesIndex(SERIES_SCHEMA, dataset, year_type, periods, stations, subset)
+    return SeriesIndex(
+        SERIES_SCHEMA, dataset, year_type, periods, stations, subset, month, tiers
+    )
 
 
 def _series_path(
@@ -2491,12 +2736,56 @@ def _series_path(
     descriptor = _series_descriptor(str(dataset))
     entry = current_version(root, slot=f"series:{descriptor.key}")
     if entry is None or entry.version is None:
-        raise ObserwatorStoreError(
-            message("reader.store_has_no_series_run", key=descriptor.key),
-            code="not_found",
-            hint=message("errors.hint_series_build", dataset=descriptor.key),
-        )
+        raise _no_series(descriptor)
     return entry.version
+
+
+def _no_series(descriptor: DatasetDescriptor) -> ObserwatorStoreError:
+    """The store holds no version of a dataset's series: build it first."""
+    return ObserwatorStoreError(
+        message("reader.store_has_no_series_run", key=descriptor.key),
+        code="not_found",
+        hint=message("errors.hint_series_build", dataset=descriptor.key),
+    )
+
+
+def _series_paths(
+    version: PathArg | None,
+    *,
+    root: RootArg | None,
+    dataset: str | None,
+    start: date | None = None,
+    end: date | None = None,
+) -> tuple[DatasetDescriptor | None, tuple[Path, ...]]:
+    """
+    ``series.json`` of every version a series reader reads, in time order.
+
+    The one version of `_series_path` (given, or the current one of the
+    dataset), and None; for a sub-daily series (`monthly_series`, ADR-031)
+    given by ``root`` and ``dataset``, its descriptor and the current version
+    of each of its months touching ``start``–``end`` (`series_months`; every
+    month without them), possibly none.
+
+    Raises
+    ------
+    ObserwatorStoreError
+        Code ``not_found`` if the sub-daily series has no month at all, as a
+        series without a version.
+    """
+    if version is None and dataset is not None and root is not None:
+        descriptor = _series_descriptor(str(dataset))
+        if monthly_series(descriptor):
+            _check_bounds(start, end)
+            months = series_months(root, dataset=descriptor.key, start=start, end=end)
+            if not months and (
+                (start is None and end is None)
+                or not series_months(root, dataset=descriptor.key)
+            ):
+                raise _no_series(descriptor)
+            return descriptor, tuple(
+                entry.version for entry in months if entry.version is not None
+            )
+    return None, (_series_path(version, root=root, dataset=dataset),)
 
 
 def _variables(
@@ -2549,12 +2838,17 @@ def _stations(stations: Iterable[str]) -> tuple[str, ...]:
 
 
 def _outside(codes: Iterable[str], index: SeriesIndex) -> None:
-    missing = [code for code in codes if code not in index.stations]
+    _absent(codes, index.stations, index.dataset)
+
+
+def _absent(codes: Iterable[str], held: Collection[str], dataset: str) -> None:
+    """Refuse the station codes a series (all its months) does not hold."""
+    missing = [code for code in codes if code not in held]
     if missing:
         raise ObserwatorValidationError(
             message(
                 "reader.stations_outside_series",
-                dataset=index.dataset,
+                dataset=dataset,
                 missing=", ".join(missing),
             ),
             details={"option": "stations", "value": missing},
@@ -2585,6 +2879,17 @@ def read_series(
     ``quality`` and ``source_flag`` from the ``<V>_quality`` and
     ``<V>_source_flag`` columns; elsewhere both are None.
 
+    A sub-daily series (``pl.imgw.hydro_subdaily``, ``cz.chmu.hydro_subdaily``,
+    ADR-031) has a version per calendar month: ``root`` with ``dataset`` reads
+    the current version of every month (`series_months`) touching
+    ``start``–``end`` and joins them in time order, ``version`` reads that
+    month. Its records have ``time`` (the start of the hour, an aware UTC
+    datetime) and ``date`` its UTC day, and each measurement the ``tier`` of its
+    value (the ``<V>_tier`` cell, else the one tier of the version; None
+    without a value); ``start`` and ``end`` select the hours from 00:00 of
+    ``start`` to 23:00 of ``end`` (UTC). The station must be in a month of the
+    series; a month without it is skipped.
+
     Parameters
     ----------
     version : str, os.PathLike or None, optional
@@ -2604,14 +2909,17 @@ def read_series(
         empty collection is rejected. ``None`` (default) means every variable
         of the dataset.
     start : datetime.date or None, optional
-        First period start date to include; ``None`` means no lower bound.
+        First period start date (UTC day of an hour) to include; ``None``
+        means no lower bound.
     end : datetime.date or None, optional
-        Last period start date to include; ``None`` means no upper bound.
+        Last period start date (UTC day of an hour) to include; ``None``
+        means no upper bound.
 
     Returns
     -------
     Iterator[NormalizedRecord]
-        Records of the station in Parquet row order.
+        Records of the station in Parquet row order (of a sub-daily series
+        read by ``dataset``: month by month).
 
     Raises
     ------
@@ -2632,28 +2940,106 @@ def read_series(
         checksum or metadata; with code ``io_error`` (``details.path``) if
         the system cannot read it.
     """
-    path = _series_path(version, root=root, dataset=dataset)
+    monthly, paths = _series_paths(
+        version, root=root, dataset=dataset, start=start, end=end
+    )
+    if monthly is not None:
+        assert root is not None  # the months of a dataset are those of a root
+        parts = _month_parts(
+            paths,
+            root=root,
+            descriptor=monthly,
+            station=station,
+            variables=variables,
+            start=start,
+            end=end,
+        )
+        return chain.from_iterable(records for _, records in parts)
+    (path,) = paths
     index = read_series_index(path)
     if station not in index.stations:
-        raise ObserwatorValidationError(
-            message(
-                "reader.station_not_series", station=station, dataset=index.dataset
-            ),
-            details={"option": "station", "value": station},
-        )
+        raise _station_absent(station, index.dataset)
     descriptor = get_dataset(index.dataset)
     names = _variables(variables, descriptor)
-    for bound in (start, end):
-        if bound is not None and (
-            not isinstance(bound, date) or isinstance(bound, datetime)
-        ):
-            raise ObserwatorValidationError(
-                message("reader.range_bound_must_date", bound=bound)
-            )
-    if start is not None and end is not None and start > end:
-        raise ObserwatorValidationError(
-            message("reader.start_range_later_than_end", start=start, end=end)
+    _check_bounds(start, end)
+    return _version_records(
+        path, index, descriptor, station=station, names=names, start=start, end=end
+    )
+
+
+def _station_absent(station: str, dataset: str) -> ObserwatorValidationError:
+    return ObserwatorValidationError(
+        message("reader.station_not_series", station=station, dataset=dataset),
+        details={"option": "station", "value": station},
+    )
+
+
+def _month_parts(
+    paths: tuple[Path, ...],
+    *,
+    root: RootArg,
+    descriptor: DatasetDescriptor,
+    station: str,
+    variables: Iterable[str] | None,
+    start: date | None,
+    end: date | None,
+) -> list[tuple[Path, Iterator[NormalizedRecord]]]:
+    """
+    The records of a station in each month of a sub-daily series it is in.
+
+    ``paths`` are the months within ``start``–``end`` (`_series_paths`), each
+    validated with its station file before anything is returned. The station
+    must be in one of the series' months: when none of ``paths`` holds it, the
+    months outside the range are asked, and a station held only there has no
+    records in the range.
+    """
+    indexes = [(path, read_series_index(path)) for path in paths]
+    holding = [(path, index) for path, index in indexes if station in index.stations]
+    if not holding and (
+        (start is None and end is None)
+        or not any(
+            station in read_series_index(entry.version).stations
+            for entry in series_months(root, dataset=descriptor.key)
+            if entry.version is not None and entry.version not in paths
         )
+    ):
+        raise _station_absent(station, descriptor.key)
+    names = _variables(variables, descriptor)
+    return [
+        (
+            path,
+            _version_records(
+                path,
+                index,
+                descriptor,
+                station=station,
+                names=names,
+                start=start,
+                end=end,
+            ),
+        )
+        for path, index in holding
+    ]
+
+
+def _version_records(
+    path: Path,
+    index: SeriesIndex,
+    descriptor: DatasetDescriptor,
+    *,
+    station: str,
+    names: tuple[str, ...],
+    start: date | None,
+    end: date | None,
+) -> Iterator[NormalizedRecord]:
+    """
+    The records of a station in one series version, its Parquet file verified.
+
+    The file is read and checked against the index (SHA-256, metadata, rows)
+    now; its rows become records while the iterator is consumed. A version of
+    a sub-daily series (``index.month``) has ``time`` instead of ``date`` and,
+    when its values have several tiers, a ``<V>_tier`` column of every variable.
+    """
     pa, pq = _pyarrow()
     entry = index.stations[station]
     parquet = path.parent / entry.file
@@ -2677,14 +3063,22 @@ def read_series(
                 parquet=parquet,
             )
         )
+    hourly = index.tiers is not None
     half_year = descriptor.time_unit == "half_year"
-    columns = ["date", "hydro_year", *(["period"] if half_year else [])]
+    columns = [
+        "time" if hourly else "date",
+        "hydro_year",
+        *(["period"] if half_year else []),
+    ]
     try:
         # ``<V>_occurrences`` is an additive obserwator-series/1 column; older files lack it.
         present = set(pq.read_schema(pa.BufferReader(data)).names)
         for name in names:
             columns += [f"{name}_value", f"{name}_flag"]
             columns += [f"{name}_{field}" for field in descriptor.measurement_fields]
+            # A month of several tiers has the tier of every value (ADR-031).
+            if hourly and (len(index.tiers or ()) > 1 or f"{name}_tier" in present):
+                columns.append(f"{name}_tier")
             if half_year:
                 columns += [f"{name}_start", f"{name}_end"]
                 if f"{name}_occurrences" in present:
@@ -2696,6 +3090,8 @@ def read_series(
             or metadata.get(b"dataset") != index.dataset.encode()
         ):
             raise ValueError(message("reader.parquet_metadata_do_not_match"))
+        if hourly and getattr(table.schema.field("time").type, "tz", None) is None:
+            raise ValueError(message("reader.time_column_without_zone"))
         if table.num_rows != entry.rows:
             raise ValueError(
                 message(
@@ -2723,6 +3119,7 @@ def read_series(
         half_year=half_year,
         start=start,
         end=end,
+        tiers=index.tiers,
     )
 
 
@@ -2736,10 +3133,19 @@ def _records(
     half_year: bool,
     start: date | None,
     end: date | None,
+    tiers: tuple[Tier, ...] | None = None,
 ) -> Iterator[NormalizedRecord]:
+    """
+    Records of the rows of a station file, within ``start``–``end``.
+
+    ``tiers`` (of a version of a sub-daily series, ADR-031) reads ``time``: the
+    record's ``date`` is its UTC day, and a value's tier is its ``<V>_tier``
+    cell, else the one tier of the version; a point without a value has none.
+    """
     with_quality, with_source_flag = "quality" in fields, "source_flag" in fields
     for row in rows:
-        day = row["date"]
+        moment = None if tiers is None else cast(datetime, row["time"]).astimezone(UTC)
+        day = row["date"] if moment is None else moment.date()
         if (start is not None and day < start) or (end is not None and day > end):
             continue
         measurements: dict[str, Measurement] = {}
@@ -2752,7 +3158,7 @@ def _records(
                         flag=flag,
                         name=name,
                         station=station,
-                        day=day,
+                        day=moment or day,
                     )
                 )
             quality = row[f"{name}_quality"] if with_quality else None
@@ -2765,10 +3171,25 @@ def _records(
                         "reader.invalid_quality_source_flag_variable",
                         name=name,
                         station=station,
-                        day=day,
+                        day=moment or day,
                     )
                 )
-            measurements[name] = Measurement(value, flag, quality, source_flag)
+            tier: Tier | None = None
+            if tiers is not None:
+                tier = row.get(f"{name}_tier", tiers[0] if value is not None else None)
+                if (tier is None) != (value is None) or (
+                    tier is not None and tier not in tiers
+                ):
+                    raise ObserwatorDataError(
+                        message(
+                            "reader.inconsistent_tier_variable_station",
+                            tier=tier,
+                            name=name,
+                            station=station,
+                            time=moment,
+                        )
+                    )
+            measurements[name] = Measurement(value, flag, quality, source_flag, tier)
         extrema = (
             {name: (row[f"{name}_start"], row[f"{name}_end"]) for name in names}
             if half_year
@@ -2788,6 +3209,7 @@ def _records(
             measurements,
             extrema_dates=extrema,
             extrema_occurrences=occurrences,
+            time=moment,
         )
 
 
@@ -2805,6 +3227,16 @@ def summarize_series(
 
     The index bytes are verified against the sidecar and every station
     Parquet file must exist, but Parquet contents are not read.
+
+    A sub-daily series (ADR-031) gives hours (aware UTC datetimes) in
+    ``first``, ``last`` and the gaps. With ``root`` and ``dataset`` its months
+    (`series_months`) are joined per station and variable: the first and the
+    last hour with a value of all months, the sums of ``with_value`` and
+    ``accumulated``, and the gaps of every month with the hours between two
+    months: those inside the months' ``periods`` (hours outside are unknown,
+    never gaps) without a value from the last value of a month to the first of
+    the next month with one; gaps that touch are merged. ``version`` summarizes
+    that month.
 
     Parameters
     ----------
@@ -2829,7 +3261,8 @@ def summarize_series(
     tuple of StationCoverage
         One row per station × variable (× half-year period) ordered by
         station code, then variable in dataset order, then period
-        (``winter``, ``summer``, ``annual``).
+        (``winter``, ``summer``, ``annual``); of a sub-daily series read by
+        ``dataset``, every station of any month.
 
     Raises
     ------
@@ -2847,14 +3280,23 @@ def summarize_series(
         ``obserwator-series/1`` index; with code ``io_error`` (``details.path``)
         if the system cannot read it.
     """
-    index = read_series_index(_series_path(version, root=root, dataset=dataset))
-    descriptor = get_dataset(index.dataset)
+    monthly, paths = _series_paths(version, root=root, dataset=dataset)
+    held: Mapping[str, Collection[StationCoverage]]
+    if monthly is None:
+        index = read_series_index(paths[0])
+        descriptor, key = get_dataset(index.dataset), index.dataset
+        held = {
+            code: entry.variables.values() for code, entry in index.stations.items()
+        }
+    else:
+        descriptor, key = monthly, monthly.key
+        held = _joined_coverage([read_series_index(path) for path in paths])
     names = set(_variables(variables, descriptor))
     if stations is None:
-        codes = tuple(sorted(index.stations))
+        codes = tuple(sorted(held))
     else:
         codes = tuple(sorted(_stations(stations)))
-        _outside(codes, index)
+        _absent(codes, held, key)
     order = {
         name: number
         for number, name in enumerate(descriptor.variables)
@@ -2868,14 +3310,79 @@ def summarize_series(
         coverage
         for code in codes
         for coverage in sorted(
-            (
-                item
-                for item in index.stations[code].variables.values()
-                if item.variable in order
-            ),
+            (item for item in held[code] if item.variable in order),
             key=lambda item: (order[item.variable], periods[item.period]),
         )
     )
+
+
+def _joined_coverage(
+    indexes: Iterable[SeriesIndex],
+) -> dict[str, Collection[StationCoverage]]:
+    """
+    Coverage of a sub-daily series over its months, in month order, per station.
+
+    See `summarize_series`: the hours known between two months are those of the
+    days of the months' ``periods``, which a month version gives every station.
+    """
+    months = list(indexes)
+    known = _merged_days(span for index in months for span in index.periods)
+    found: dict[str, dict[str, list[StationCoverage]]] = {}
+    for index in months:
+        for code, entry in index.stations.items():
+            for key, coverage in entry.variables.items():
+                found.setdefault(code, {}).setdefault(key, []).append(coverage)
+    return {
+        code: [_joined(items, known) for items in variables.values()]
+        for code, variables in found.items()
+    }
+
+
+def _joined(
+    months: list[StationCoverage], known: list[tuple[date, date]]
+) -> StationCoverage:
+    """One variable of a station over its months (`_joined_coverage`)."""
+    valued = [item for item in months if item.first is not None]
+    gaps = [gap for item in months for gap in item.gaps]
+    for previous, following in zip(valued, valued[1:], strict=False):
+        lower = cast(datetime, previous.last) + _HOUR
+        upper = cast(datetime, following.first) - _HOUR
+        for first_day, last_day in known:
+            start = max(lower, datetime.combine(first_day, datetime.min.time(), UTC))
+            end = min(
+                upper, datetime.combine(last_day, datetime.min.time(), UTC) + 23 * _HOUR
+            )
+            if start <= end:
+                gaps.append((start, end))
+    merged: list[tuple[date, date]] = []
+    for low, high in sorted(gaps):
+        if merged and low <= cast(datetime, merged[-1][1]) + _HOUR:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], high))
+        else:
+            merged.append((low, high))
+    head = months[0]
+    return StationCoverage(
+        head.station_code,
+        head.variable,
+        head.unit,
+        head.period,
+        min((item.first for item in valued if item.first), default=None),
+        max((item.last for item in valued if item.last), default=None),
+        sum(item.with_value for item in months),
+        sum(item.accumulated for item in months),
+        tuple(merged),
+    )
+
+
+def _merged_days(spans: Iterable[tuple[date, date]]) -> list[tuple[date, date]]:
+    """Ranges of days, ascending, those that overlap or touch merged."""
+    merged: list[tuple[date, date]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1] + timedelta(days=1):
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def _period_years(periods: Iterable[tuple[date, date]], year_type: str) -> set[int]:
@@ -2907,7 +3414,9 @@ def select_series(
     Validate a selection of stations, variables and years from the current series.
 
     Nothing is written. The current series version of ``dataset`` in
-    ``root`` must contain every selected station and every selected year.
+    ``root`` must contain every selected station and every selected year. A
+    selection hands daily series to the analyses, so a sub-daily series
+    (ADR-031) is refused.
 
     Parameters
     ----------
@@ -2936,10 +3445,11 @@ def select_series(
     Raises
     ------
     ObserwatorValidationError
-        If the dataset does not produce series, a station code is malformed
-        or not in the series, a variable is unknown, ``years`` is invalid or
-        outside the series, or ``year_type`` is unknown or ``"calendar"`` for
-        a half-year series.
+        If the dataset does not produce series or is a sub-daily series
+        (``details.option`` ``dataset``, ``details.reason`` ``monthly``), a
+        station code is malformed or not in the series, a variable is unknown,
+        ``years`` is invalid or outside the series, or ``year_type`` is unknown
+        or ``"calendar"`` for a half-year series.
     ObserwatorStoreError
         If the dataset has no series in the store (code ``not_found``) or the
         root is not a supported store (code ``store_unavailable``).
@@ -2947,6 +3457,11 @@ def select_series(
         If the current series index is broken.
     """
     descriptor = _series_descriptor(dataset)
+    if monthly_series(descriptor):
+        raise ObserwatorValidationError(
+            message("reader.selection_refuses_monthly", key=descriptor.key),
+            details={"option": "dataset", "value": dataset, "reason": "monthly"},
+        )
     codes = _stations(stations)
     names = _variables(variables, descriptor)
     if year_type is not None and year_type not in ("hydrological", "calendar"):

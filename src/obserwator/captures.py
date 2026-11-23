@@ -202,13 +202,18 @@ def publication_sources() -> tuple[DatasetDescriptor, ...]:
     """
     Every source with a publication state: a dataset whose tier is not ``verified`` (D5).
 
+    A sub-daily series (``DatasetDescriptor.inputs``, ADR-031) is no source: its
+    state follows its sources' (`publication`).
+
     Returns
     -------
     tuple of DatasetDescriptor
         The operational and telemetry datasets, the declared ones included, in
         registry order.
     """
-    return tuple(d for d in datasets(pending=True) if d.tier != "verified")
+    return tuple(
+        d for d in datasets(pending=True) if d.tier != "verified" and d.inputs is None
+    )
 
 
 def _capture_descriptor(key: str | None) -> DatasetDescriptor | None:
@@ -874,6 +879,10 @@ def publication(key: str, /) -> Publication:
     """
     The publication state in force of one source; the defaults while the section is invalid.
 
+    A sub-daily series built from the datasets of its ``inputs`` (ADR-031) is
+    ``private`` when one of its sources is (P15: every series built from a private
+    capture is left out of the public surfaces), ``public`` otherwise.
+
     Parameters
     ----------
     key : str
@@ -884,6 +893,11 @@ def publication(key: str, /) -> Publication:
     {"public", "private"}
         The state ``[obserwator.capture]`` sets, else the source's default.
     """
+    derived = next((d for d in datasets() if d.key == key and d.inputs), None)
+    if derived is not None:
+        sources = {d.key for d in publication_sources()}
+        states = [publication(item) for item in derived.inputs or () if item in sources]
+        return "private" if "private" in states else "public"
     try:
         given = _given()
     except ObserwatorValidationError:
