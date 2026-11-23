@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [Unreleased]
+
+Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, captures of every answer, provider credentials, hourly series, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, ČHMÚ's groundwater and the chart of the current readings. `develop` carries `3.2.0.dev0` (Nogat REL-1.1).
+
 ## [3.1.0] - 2026-11-22
 
 Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
