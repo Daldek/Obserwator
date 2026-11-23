@@ -45,6 +45,25 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   them (`archive_files` refuses one, `details.reason` `capture`), and `command_for_version`
   refuses a capture version (`unsupported`, `command_not_rebuildable`): no request gives a past
   day's answers again.
+- **`store check|sync --start/--end`: the days of the captures (ADR-030 D9, D10 and its erratum
+  of 2026-11-23, step O3).** Both commands (`check_store`, `sync_store`: `start`, `end` as
+  `datetime.date`; CLI ISO dates; REST and MCP parameters; store mode only) choose UTC days of
+  a capture dataset. Without `--pace-until` they narrow the closed spool days a run checks or
+  seals (none: every closed day, as before). With it they are the harvest's days: `--end`
+  defaults to the last closed UTC day, `--start` to `--end`, and `--start` reaches at most
+  `captures.HARVEST_DAYS` (40) days before today, so a missed night or a month is caught up in
+  one run; the run seals the closed days inside the range and today. Refused with
+  `validation_error` before any request, each with a hint: a day not over yet
+  (`day_not_closed`, `details.last`), `--end` before `--start`, a harvest reaching further
+  (`harvest_reach`, `details.earliest`), the options for a dataset that is no capture
+  (`not_capture`), and with `--plan` or `--output-dir` (`store_only_option`).
+- **One `store sync` seals captures at a time (ADR-030 D10, step O3).** A store-mode
+  `store sync` that seals captures (a capture dataset, a harvest, or a plan holding capture
+  days) takes `flock` on `<state_dir>/obserwator/store-sync.lock` (`store.sync.sync_lock_path()`)
+  for the whole run, the harvest included. A run finding it held retries every second for
+  `store.sync.LOCK_WAIT` (600 s), then fails with `conflict` (exit 4, HTTP 409),
+  `details.reason` `sync_locked` with `path` and `waited`, and a hint. Syncs of archives,
+  station sources and catalogs, every check, plain writes and Windows take no lock.
 - **`current poll`: the hourly poll (ADR-030 D9, P16; step H2a).** The 36th catalog command
   (`poll_current`, public with `PollReport` and `PolledAnswer`; `obserwator current poll
   [--check]`, MCP `obserwator_current_poll` on stdio, no REST route) asks once each source an
@@ -254,7 +273,8 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   `cz.chmu.hydro_{current,recent}`) with what `pace_until` does, and the detail of eight
   command descriptions (`datasets list`, `providers`, `download`, `pmaxtp sync`, `store
   sync`, `series build`, `summary`, `export`) moves from their first sentence, which the guide
-  prints, to the second.
+  prints, to the second. In step O3 the captures' line names `start`/`end` and the harvest's
+  default day, and principle 4 drops „ — without downloading again”.
 - **REST hides every private source, not only the captures (ADR-030 D5 erratum; step O2).**
   Every dataset of a tier other than `verified` set `private` in `[obserwator.capture]` (the
   telemetry, `cz.chmu.groundwater_recent` included) is `not_found` (`details.reason`
