@@ -1,0 +1,15 @@
+# Starts obserwator-night.service (docs/USAGE.md "Timers"; Nogat plan
+# 2026-11-16-operational-series, step A2). Persistent=true: a run missed while
+# the machine was off happens at the next boot; obserwator-jobs.sh then asks for
+# every UTC day since the last whole harvest.
+
+[Unit]
+Description=Obserwator night at 02:30 local time
+Documentation=https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#timers
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

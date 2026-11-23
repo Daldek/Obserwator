@@ -463,7 +463,8 @@ Obserwator/
 │       ├── _app.py       # Starlette app: private API, headers; _page, _root, _live, _analyses, _stripes, _traffic, _feedback, _admin, _terms, _http, _params, _config, _state, _serving, _extra
 │       └── web/          # the page: Preact + htm modules, charts, MapLibre, Nogat's kit and tokens, instrukcja/, admin/
 ├── AGENTS.md, llms.txt   # Agent guide — derived from the catalog (obserwator commands guide)
-├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp], compose with the logs volume, nginx with /mcp)
+├── deploy/               # user systemd timers (night, telemetry, current poll) and the backup script with its timer (USAGE.md "Timers", "Backups")
+├── docker/               # Docker configuration (Python 3.12 image with .[api,mcp,store], compose with the logs volume, nginx with /mcp, the jobs service of the timers)
 ├── tests/                # Tests (unit, contract, e2e, live; fixtures/store with synthetic IMGW-PIB and ČHMÚ archives, recordings; fixtures/export_golden)
 └── pyproject.toml        # Project configuration
 ```
