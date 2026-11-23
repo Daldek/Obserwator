@@ -145,6 +145,7 @@ from obserwator.output import FileResult, OutputReport
 from obserwator.parsers import (
     IMGW_ENCODING,
     normalize_archive,
+    parse_chmu_groundwater,
     parse_chmu_hydro_daily,
     parse_chmu_meteo_daily,
     parse_chmu_stations,
@@ -342,6 +343,7 @@ __all__ = [
     "normalize_archive",
     "IMGW_ENCODING",
     "parse_chmu_hydro_daily",
+    "parse_chmu_groundwater",
     "parse_chmu_meteo_daily",
     "parse_chmu_stations",
     # Dataset registry

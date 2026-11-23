@@ -27,7 +27,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from obserwator.datasets import datasets, get_dataset, providers
+from obserwator.datasets import Kind, builds_series, datasets, get_dataset, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
 from obserwator.instance import Instance
@@ -72,9 +72,7 @@ def in_thread(job: Callable[[], None]) -> None:
 def series_datasets() -> tuple[str, ...]:
     """The datasets whose station series a data root may hold, in registry order."""
     return tuple(
-        descriptor.key
-        for descriptor in datasets()
-        if descriptor.in_store and descriptor.time_unit in ("day", "month", "half_year")
+        descriptor.key for descriptor in datasets() if builds_series(descriptor)
     )
 
 
@@ -390,10 +388,16 @@ def record_years(held: list[dict[str, Any]]) -> dict[str, str | None]:
 
 
 def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
-    """One point of the station layer: what the map, the list and the filters need."""
+    """
+    One point of the station layer: what the map, the list and the filters need.
+
+    ``groundwater_kind`` (``bore`` or ``spring``) only of a groundwater object, the one
+    kind whose catalog entries carry it.
+    """
     props = feature.properties
     held = snapshot.datasets_of(feature.station_code)
     lon, lat = feature.geometry if feature.geometry else (None, None)
+    groundwater = props.get("groundwater_kind")
     return {
         "code": feature.station_code,
         "name": props.get("name"),
@@ -401,6 +405,7 @@ def _layer_entry(feature: StationFeature, snapshot: Snapshot) -> dict[str, Any]:
         "provider": feature.provider,
         "kind": props.get("kind"),
         "meteo_kind": props.get("meteo_kind"),
+        **({} if groundwater is None else {"groundwater_kind": groundwater}),
         "active": props.get("active"),
         "location_source": props.get("location_source"),
         "lon": lon,
@@ -706,7 +711,7 @@ class DataRoot:
         self,
         fmt: StationsFormat,
         provider: str | None,
-        kind: Literal["hydro", "meteo"] | None,
+        kind: Kind | None,
     ) -> bytes:
         """
         The stations of the current catalogs as `export_stations` writes them.
@@ -720,8 +725,8 @@ class DataRoot:
             The format.
         provider : str or None
             The provider's stations only; None for every one.
-        kind : {"hydro", "meteo"} or None
-            The stations of this kind only; None for both.
+        kind : {"hydro", "meteo", "groundwater"} or None
+            The stations of this kind only; None for every kind.
 
         Returns
         -------

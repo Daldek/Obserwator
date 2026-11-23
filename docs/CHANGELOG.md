@@ -120,6 +120,50 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
   sidecar fields `tier` and `publication`, the GUI's spool in `state_dir`, the polling and the
   lock of the raw root, and amends ADR-003 D4, ADR-013 D5 and D6 and ADR-015 D5.
+- **ČHMÚ groundwater (ADR-032; Nogat plans `2026-11-16-operational-series.md` row H5a and
+  `2026-11-20-hydromet-providers.md` P7, step 5a).** ČHMÚ's bores and springs of
+  `opendata.chmi.cz/hydrology/groundwater/` (CC BY 4.0, attribution lines C and CP as before):
+  - Datasets: `cz.chmu.groundwater_daily` (from 1960) and `cz.chmu.groundwater_weekly` (from
+    1933), one file `H_<WIGOS>_{D|W}_<YYYY>.json` per object and calendar year of
+    `historical/data`, stored, built into the series `chmu_groundwater_daily` and
+    `chmu_groundwater_weekly`; `cz.chmu.groundwater_recent` (`recent/data`, one file per
+    object and month from 2025-01), tier `operational` (its sidecars carry `tier` and
+    `publication`, ADR-030 D6), stored as archive versions and built into no series until
+    O4; `cz.chmu.groundwater_characteristic`
+    (`characteristic/data/GCHAR_<WIGOS>.json`, the 5–95 % quantiles of an object's level or
+    yield per week or month of the year), stored and read by the store readers;
+    `cz.chmu.groundwater_stations` and `cz.chmu.groundwater_now`, the object list and the
+    operational network, optional sources of the ČHMÚ catalog; `cz.chmu.groundwater_current`
+    (`now/data`) declared only (`datasets(pending=True)`, ADR-030 D8). The four file datasets
+    need `stations`, as every per-station ČHMÚ dataset; `store sync` without `years` takes the
+    years (of `recent`: the months) the listing publishes, and refuses `years` for the
+    characteristics. New values: `time_unit` `week` and `statistics`, `archive_scope`
+    `station_month` and `station`.
+  - Station kind `groundwater` (`obserwator.datasets.KINDS`, type `Kind`): a catalog feature
+    of a groundwater object has `kind: "groundwater"`, the new property `groundwater_kind`
+    (`bore` or `spring`), `elevation_m` from ČHMÚ's `ALTITUDE` and `location_source`
+    `cz.chmu.groundwater_now` or `cz.chmu.groundwater_stations`; `stations find --kind
+    groundwater` and `stations export --kind groundwater` give them, and
+    `obserwator-station/1` gains the optional `groundwater_kind` (left out when null).
+  - Variables `H_asl` [m] (the level of a bore above sea level, never `H`), `spring_yield`
+    [l/s] and `T` [degC]; the date of a row is the date part of ČHMÚ's `DT`.
+  - Weekly series: a weekly reading keeps its own date, so `chmu_groundwater_weekly` has rows
+    only at reading dates; its coverage counts calendar weeks, Monday to Sunday, and a week
+    of a known year without a reading is a gap named by its Monday (`series.json`,
+    `series summary`); `week` is a `time_unit` of `obserwator-series-export/1` too.
+  - Parser `parse_chmu_groundwater` (`obserwator.parsers` and the package root): it reads
+    the files ČHMÚ published with the stray closing brackets of a left-out series (about
+    17 % of them) and refuses any other malformation; the groundwater data files have no
+    content form, so their bytes are compared as published.
+  - GUI: groundwater objects on the map and in the legend with a symbol of their own (a brown
+    rounded diamond), a third choice in the kind filter where a catalog holds one, and in the
+    station's row and panel what the object is (a bore or a spring) and its series.
+  - Fixture variant `groundwater` of `obserwator.testing.build_fixture_store` (ADR-032 D9):
+    `complete_pl_cz` plus ČHMÚ's real bore `0-203-1-VP0624` „Rakousy” and spring
+    `0-203-1-PP0744` „Želechy” (files and server headers recorded on 2026-11-23, the
+    listings and object lists cut to their rows; `chmu_groundwater_recordings.json`): their
+    daily, weekly, recent and characteristic files, the object list and `now` metadata,
+    both series and one ČHMÚ catalog. `complete` and `complete_pl_cz` are unchanged.
 
 ### Changed
 
@@ -133,11 +177,23 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   doing nothing, and the protocol gains `publication_default` and `polled` (ADR-029 erratum of
   2026-11-23). `obserwator.testing`'s recorded answers never reach the spool, so
   `build_fixture_store` leaves a real one alone.
-- **`AGENTS.md` and `llms.txt` follow the catalog (step H2a):** they are regenerated with
-  `current poll` and the six capture datasets. To keep `AGENTS.md` within 16 KiB (DOC-1.7),
-  the station sources and the captures are each one line of folded keys below the table of
-  the datasets, and the line on CLI output no longer repeats the envelope section's rule
-  for streams.
+- **`AGENTS.md` and `llms.txt` follow the catalog (steps H2a, H5a):** they are regenerated with
+  `current poll`, the six capture datasets and the groundwater datasets. To keep `AGENTS.md`
+  within 16 KiB (DOC-1.7), the station sources (`*_stations`, `*_now`,
+  `pl.imgw.hydro_details`) and the captures (`pl.imgw.*_current`) are each one line naming
+  their keys by pattern below the table of the datasets; the line on CLI output no longer
+  repeats the envelope section's rule for streams, the first rule no longer offers
+  `<group> <command> --schema` beside `commands schema` (also in the MCP instructions), and
+  the check rule, the example years and the first sentences of `datasets list` and
+  `datasets providers` are shorter.
+- **The ČHMÚ catalog with groundwater objects (ADR-032 D8).** `store catalog --provider
+  CHMU` reads `cz.chmu.groundwater_stations` and `cz.chmu.groundwater_now` when the raw root
+  holds them; without them it builds the same catalog as before and, when the data root
+  holds a groundwater series, an `info` notice names the `store sync` that stores them. Its
+  check lists the two optional sources as actions of their own.
+- **`datasets list`** lists the six served groundwater datasets after the other ČHMÚ ones;
+  `datasets(kind=…)` and `--kind` accept `groundwater`. No existing document, archive,
+  series or catalog changes: nothing breaks.
 
 - Provider adapters (ADR-029; Nogat plan `2026-11-20-hydromet-providers.md` P1, P2): `obserwator.providers` with one adapter per provider (`pl.imgw`, `cz.chmu`) behind the protocol `ProviderAdapter`; `ProviderDescriptor.adapter` and `ProviderDescriptor.acronym`. The archive enumeration, downloads, store checks, live station search, station catalog, parsers, attribution origins, command groups and the GUI's provider logic dispatch through it; the catalog keys, catalog directories and GUI slots are derived from the registry. Each provider's catalog builder lives in its adapter's module, `store/catalog.py` keeps the shared parts (location files, series codes, notices, lines, publication); the internal constants `STATIC_LOCATIONS` and `DETAILS_SOURCE` moved from `obserwator.store.catalog` to `obserwator.providers.pl.imgw`. No output changes: archives, sidecars, series, catalogs, envelopes, `AGENTS.md` and `llms.txt` keep their bytes. `_borders.PROVIDERS` is gone (`BORDERS` lists the packaged borders).
 

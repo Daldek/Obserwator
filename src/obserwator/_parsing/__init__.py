@@ -21,10 +21,11 @@ def normalize_archive(
     IMGW-PIB hydrological datasets (``pl.imgw.hydro_daily``,
     ``pl.imgw.hydro_monthly``, ``pl.imgw.hydro_semiannual``), IMGW-PIB daily
     meteorological datasets (``pl.imgw.meteo_climate_daily``,
-    ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``) and the
-    ČHMÚ daily datasets (``cz.chmu.hydro_daily``, ``cz.chmu.meteo_daily``)
-    are supported. Parsing is strict: malformed rows raise instead of being
-    skipped.
+    ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``), the
+    ČHMÚ daily datasets (``cz.chmu.hydro_daily``, ``cz.chmu.meteo_daily``) and
+    ČHMÚ's groundwater (``cz.chmu.groundwater_daily``,
+    ``cz.chmu.groundwater_weekly``) are supported. Parsing is strict: malformed
+    rows raise instead of being skipped.
 
     Parameters
     ----------
@@ -43,8 +44,9 @@ def normalize_archive(
     NormalizedRecord
         Normalized measurements with value/flag pairs; see
         ``normalize_hydro_archive``, ``normalize_meteo_archive``,
-        ``normalize_synop_archive``, ``parse_chmu_hydro_daily`` and
-        ``parse_chmu_meteo_daily`` for the per-dataset record layout.
+        ``normalize_synop_archive``, ``parse_chmu_hydro_daily``,
+        ``parse_chmu_meteo_daily`` and ``parse_chmu_groundwater`` for the
+        per-dataset record layout.
 
     Raises
     ------

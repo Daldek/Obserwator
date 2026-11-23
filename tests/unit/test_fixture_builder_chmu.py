@@ -202,11 +202,72 @@ def test_imgw_part_equals_the_complete_fixture_and_builds_are_identical(
     assert all(name.startswith(chmu) for name in set(first) - set(complete))
 
 
-def test_builder_recordings_follow_the_nginx_signals_of_the_source():
-    """ETag = "<hex mtime>-<hex size>" of Last-Modified and Content-Length (§13.1)."""
-    document = json.loads(
-        fixture_files().joinpath("chmu_builder_recordings.json").read_text("utf-8")
+def test_the_groundwater_variant_adds_the_groundwater_files_to_complete_pl_cz(
+    tmp_path, monkeypatch
+):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 20, 9, 0, tzinfo=UTC).astimezone(tz)
+
+    for module in (writer, series, catalog):
+        monkeypatch.setattr(module, "datetime", Frozen)
+    pl_cz = tree(
+        build_fixture_store(
+            tmp_path / "a", data_root=tmp_path / "a-data", variant="complete_pl_cz"
+        )
     )
+    first = tree(
+        build_fixture_store(
+            tmp_path / "b", data_root=tmp_path / "b-data", variant="groundwater"
+        )
+    )
+    second = tree(
+        build_fixture_store(
+            tmp_path / "c", data_root=tmp_path / "c-data", variant="groundwater"
+        )
+    )
+
+    assert first == second
+    # One ČHMÚ catalog, which also holds the groundwater objects (ADR-032 D9).
+    catalogs = "data/stations/versions/chmu_stations/"
+    assert {name: first[name] for name in pl_cz if not name.startswith(catalogs)} == {
+        name: digest for name, digest in pl_cz.items() if not name.startswith(catalogs)
+    }
+    assert len([name for name in first if name.startswith(catalogs)]) == len(
+        [name for name in pl_cz if name.startswith(catalogs)]
+    )
+    added = {
+        name.split("/")[5 if name.startswith("raw/") else 3]
+        for name in set(first) - set(pl_cz)
+        if not name.startswith(catalogs)
+    }
+    assert added == {
+        "historical",
+        "recent",
+        "characteristic",
+        "now",
+        "chmu_groundwater_daily",
+        "chmu_groundwater_weekly",
+    }
+    assert all(
+        name.startswith(
+            (
+                "raw/archives/versions/hydrology/groundwater/",
+                "data/series/versions/chmu_groundwater_",
+                catalogs,
+            )
+        )
+        for name in set(first) - set(pl_cz)
+    )
+
+
+@pytest.mark.parametrize(
+    "recordings", ["chmu_builder_recordings.json", "chmu_groundwater_recordings.json"]
+)
+def test_builder_recordings_follow_the_nginx_signals_of_the_source(recordings):
+    """ETag = "<hex mtime>-<hex size>" of Last-Modified and Content-Length (§13.1)."""
+    document = json.loads(fixture_files().joinpath(recordings).read_text("utf-8"))
     signals = [
         entry for entry in document["interactions"] if "ETag" in entry["headers"]
     ]

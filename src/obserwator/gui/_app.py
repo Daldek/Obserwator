@@ -28,7 +28,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import date
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlencode
 
 from anyio import CapacityLimiter, to_thread
@@ -59,7 +59,7 @@ from obserwator.attribution import (
     provider_origin,
 )
 from obserwator.config import check_credentials
-from obserwator.datasets import get_dataset, get_provider, providers
+from obserwator.datasets import KINDS, Kind, get_dataset, get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
 from obserwator.gui._admin import (
@@ -133,7 +133,6 @@ STATIONS_FORMATS: tuple[str, ...] = ("geojson", "csv")
 """The formats of the stations file (`export_stations`, ADR-014)."""
 ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 """The formats of a station's stored analyses (`export_analyses`, ADR-016)."""
-KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
@@ -159,7 +158,6 @@ page's files, the admin page's script, the packaged borders, the guide and the r
 the same for every client, are logged only when answered with 400 or more."""
 
 Handler = Callable[[Request], Awaitable[Response]]
-StationKind = Literal["hydro", "meteo"]
 
 
 def _gui(request: Request) -> GuiState:
@@ -842,6 +840,16 @@ async def current_station(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     feature = snapshot.features[code]
+    kind = feature.properties.get("kind")
+    if kind not in ("hydro", "meteo"):
+        # Current data are of hydrological and meteorological stations only: a groundwater
+        # object (ADR-032) is refused as such, whoever provides it, and never taken for a
+        # meteorological station
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_current_kind"),
+            details={"reason": "kind"},
+        )
     if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
@@ -849,7 +857,6 @@ async def current_station(request: Request) -> Response:
             details={"reason": "provider"},
         )
     live = _gui(request).current
-    kind = feature.properties.get("kind")
     indices = synop_indices(snapshot.features)
     names = (
         ("hydro", "states")
@@ -1174,15 +1181,16 @@ async def series_file(request: Request) -> Response:
 
 def _stations_query(
     query: Mapping[str, str],
-) -> tuple[str | None, StationKind | None]:
+) -> tuple[str | None, Kind | None]:
     """The provider and the kind of a stations file; None for every one."""
     provider = query.get("provider") or None
     if provider is not None:
         params.choice(provider, "provider", tuple(item.id for item in providers()))
-    kind = query.get("kind") or None
-    if kind is not None:
-        params.choice(kind, "kind", KINDS)
-    return provider, ("hydro" if kind == "hydro" else "meteo" if kind else None)
+    chosen = query.get("kind") or None
+    if chosen is None:
+        return provider, None
+    params.choice(chosen, "kind", KINDS)
+    return provider, next(kind for kind in KINDS if kind == chosen)
 
 
 def _stations_of(

@@ -12,6 +12,11 @@ MESSAGES: dict[str, Text] = {
     ),
     "words.kind.hydro": Text("hydrological", "hydrologiczna"),
     "words.kind.meteo": Text("meteorological", "meteorologiczna"),
+    # ČHMÚ's groundwater objects (ADR-032): their family, and what an object is
+    # (``groundwater_kind`` of the catalog, ČHMÚ's OBJECT_TYPE)
+    "words.kind.groundwater": Text("groundwater", "wód podziemnych"),
+    "words.groundwater_kind.bore": Text("borehole", "otwór obserwacyjny"),
+    "words.groundwater_kind.spring": Text("spring", "źródło"),
     "words.dataset.pl_imgw_hydro_daily.title": Text(
         "Daily hydrological data (IMGW-PIB)", "Dane hydrologiczne dobowe (IMGW-PIB)"
     ),
@@ -45,9 +50,21 @@ MESSAGES: dict[str, Text] = {
         "Daily meteorological data (ČHMÚ)", "Dane meteorologiczne dobowe (ČHMÚ)"
     ),
     "words.dataset.cz_chmu_meteo_daily.short": Text("Daily", "Dobowe"),
+    "words.dataset.cz_chmu_groundwater_daily.title": Text(
+        "Daily groundwater data (ČHMÚ)", "Dane dobowe wód podziemnych (ČHMÚ)"
+    ),
+    "words.dataset.cz_chmu_groundwater_daily.short": Text("Daily", "Dobowe"),
+    "words.dataset.cz_chmu_groundwater_weekly.title": Text(
+        "Weekly groundwater data (ČHMÚ)", "Dane tygodniowe wód podziemnych (ČHMÚ)"
+    ),
+    "words.dataset.cz_chmu_groundwater_weekly.short": Text("Weekly", "Tygodniowe"),
     "words.variable.h": Text("water level", "stan wody"),
     "words.variable.q": Text("discharge", "przepływ"),
     "words.variable.t": Text("water temperature", "temperatura wody"),
+    "words.variable.h_asl": Text(
+        "groundwater level above sea level", "rzędna zwierciadła wody"
+    ),
+    "words.variable.spring_yield": Text("spring yield", "wydajność źródła"),
     "words.variable.tmax": Text("maximum temperature", "temperatura maksymalna"),
     "words.variable.tmin": Text("minimum temperature", "temperatura minimalna"),
     "words.variable.tmean": Text("mean temperature", "temperatura średnia"),

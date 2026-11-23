@@ -1,0 +1,270 @@
+{
+  "recorded_at": "2026-11-23T12:02:00Z",
+  "base_url": "https://opendata.chmi.cz/",
+  "description": "Odpowiedzi opendata.chmi.cz dla wód podziemnych ČHMÚ (ADR-032): otwór 0-203-1-VP0624 Rakousy i źródło 0-203-1-PP0744 Želechy, prawdziwe pliki i nagłówki serwera z 2026-11-23. Wariant groundwater (obserwator.testing.build_fixture_store) odtwarza listing historical/data, pliki dzienne 2024 obu obiektów, tygodniowe 2012 otworu i 2014 źródła, listę obiektów (historical/metadata/meta1.json) i metadane now; miesiąc recent 2026-10 otworu i characteristic obu obiektów. Listingi i pliki meta1 przycięte do prawdziwych wierszy tych plików i obiektów; Content-Length i rozmiar w ETag = \"<hex mtime>-<hex rozmiar>\" odpowiadają przyciętym bajtom. Treść: archive względem archives/, listing względem katalogu fixtur.",
+  "interactions": [
+    {
+      "case": "gw_historical_listing",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/data/",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "listing": "listings/hydrology/groundwater/historical/data/index.html"
+    },
+    {
+      "case": "gw_vp0624_d_2024_head",
+      "scenario": "variant",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_D_2024.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "11792",
+        "Last-Modified": "Wed, 17 Sep 2025 11:40:02 GMT",
+        "ETag": "\"68ca9e12-2e10\""
+      }
+    },
+    {
+      "case": "gw_vp0624_d_2024_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_D_2024.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "11792",
+        "Last-Modified": "Wed, 17 Sep 2025 11:40:02 GMT",
+        "ETag": "\"68ca9e12-2e10\""
+      },
+      "archive": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_D_2024.json"
+    },
+    {
+      "case": "gw_pp0744_d_2024_head",
+      "scenario": "variant",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_D_2024.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "11350",
+        "Last-Modified": "Wed, 17 Sep 2025 10:04:03 GMT",
+        "ETag": "\"68ca8793-2c56\""
+      }
+    },
+    {
+      "case": "gw_pp0744_d_2024_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_D_2024.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "11350",
+        "Last-Modified": "Wed, 17 Sep 2025 10:04:03 GMT",
+        "ETag": "\"68ca8793-2c56\""
+      },
+      "archive": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_D_2024.json"
+    },
+    {
+      "case": "gw_vp0624_w_2012_head",
+      "scenario": "variant",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_W_2012.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "1799",
+        "Last-Modified": "Wed, 17 Sep 2025 17:41:07 GMT",
+        "ETag": "\"68caf2b3-707\""
+      }
+    },
+    {
+      "case": "gw_vp0624_w_2012_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_W_2012.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "1799",
+        "Last-Modified": "Wed, 17 Sep 2025 17:41:07 GMT",
+        "ETag": "\"68caf2b3-707\""
+      },
+      "archive": "hydrology/groundwater/historical/data/H_0-203-1-VP0624_W_2012.json"
+    },
+    {
+      "case": "gw_pp0744_w_2014_head",
+      "scenario": "variant",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_W_2014.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "3062",
+        "Last-Modified": "Wed, 17 Sep 2025 15:58:06 GMT",
+        "ETag": "\"68cada8e-bf6\""
+      }
+    },
+    {
+      "case": "gw_pp0744_w_2014_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_W_2014.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "3062",
+        "Last-Modified": "Wed, 17 Sep 2025 15:58:06 GMT",
+        "ETag": "\"68cada8e-bf6\""
+      },
+      "archive": "hydrology/groundwater/historical/data/H_0-203-1-PP0744_W_2014.json"
+    },
+    {
+      "case": "gw_stations_head",
+      "scenario": "variant",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/historical/metadata/meta1.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "440",
+        "Last-Modified": "Fri, 14 Feb 2025 07:58:05 GMT",
+        "ETag": "\"67aef78d-1b8\""
+      }
+    },
+    {
+      "case": "gw_stations_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/historical/metadata/meta1.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "440",
+        "Last-Modified": "Fri, 14 Feb 2025 07:58:05 GMT",
+        "ETag": "\"67aef78d-1b8\""
+      },
+      "archive": "hydrology/groundwater/historical/metadata/meta1.json"
+    },
+    {
+      "case": "gw_now_get",
+      "scenario": "variant",
+      "method": "GET",
+      "path": "hydrology/groundwater/now/metadata/meta1.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "437",
+        "Last-Modified": "Mon, 23 Nov 2026 12:01:01 GMT",
+        "ETag": "\"6b042afd-1b5\""
+      },
+      "archive": "hydrology/groundwater/now/metadata/meta1.json"
+    },
+    {
+      "case": "gw_recent_listing",
+      "scenario": "recent",
+      "method": "GET",
+      "path": "hydrology/groundwater/recent/data/",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "listing": "listings/hydrology/groundwater/recent/data/index.html"
+    },
+    {
+      "case": "gw_recent_vp0624_d_202610_head",
+      "scenario": "recent",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/recent/data/0-203-1-VP0624_D_202610.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "1487",
+        "Last-Modified": "Mon, 23 Nov 2026 03:02:03 GMT",
+        "ETag": "\"6b03acab-5cf\""
+      }
+    },
+    {
+      "case": "gw_recent_vp0624_d_202610_get",
+      "scenario": "recent",
+      "method": "GET",
+      "path": "hydrology/groundwater/recent/data/0-203-1-VP0624_D_202610.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "1487",
+        "Last-Modified": "Mon, 23 Nov 2026 03:02:03 GMT",
+        "ETag": "\"6b03acab-5cf\""
+      },
+      "archive": "hydrology/groundwater/recent/data/0-203-1-VP0624_D_202610.json"
+    },
+    {
+      "case": "gw_characteristic_listing",
+      "scenario": "characteristic",
+      "method": "GET",
+      "path": "hydrology/groundwater/characteristic/data/",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "listing": "listings/hydrology/groundwater/characteristic/data/index.html"
+    },
+    {
+      "case": "gw_characteristic_vp0624_head",
+      "scenario": "characteristic",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-VP0624.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "5740",
+        "Last-Modified": "Fri, 14 Feb 2025 14:05:07 GMT",
+        "ETag": "\"67af4d93-166c\""
+      }
+    },
+    {
+      "case": "gw_characteristic_vp0624_get",
+      "scenario": "characteristic",
+      "method": "GET",
+      "path": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-VP0624.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "5740",
+        "Last-Modified": "Fri, 14 Feb 2025 14:05:07 GMT",
+        "ETag": "\"67af4d93-166c\""
+      },
+      "archive": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-VP0624.json"
+    },
+    {
+      "case": "gw_characteristic_pp0744_head",
+      "scenario": "characteristic",
+      "method": "HEAD",
+      "path": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-PP0744.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "5034",
+        "Last-Modified": "Fri, 14 Feb 2025 13:59:09 GMT",
+        "ETag": "\"67af4c2d-13aa\""
+      }
+    },
+    {
+      "case": "gw_characteristic_pp0744_get",
+      "scenario": "characteristic",
+      "method": "GET",
+      "path": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-PP0744.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Length": "5034",
+        "Last-Modified": "Fri, 14 Feb 2025 13:59:09 GMT",
+        "ETag": "\"67af4c2d-13aa\""
+      },
+      "archive": "hydrology/groundwater/characteristic/data/GCHAR_0-203-1-PP0744.json"
+    }
+  ]
+}

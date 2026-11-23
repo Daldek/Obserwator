@@ -290,8 +290,8 @@ MESSAGES = {
         "(*_stations, *_now, pl.imgw.hydro_details) osobno",
     ),
     "family_help": Text(
-        "Kind: hydro or meteo; none = both families",
-        "Rodzaj: hydro albo meteo; brak = obie rodziny",
+        "Kind: hydro, meteo or groundwater; none = every family",
+        "Rodzaj: hydro, meteo albo groundwater; brak = każda rodzina",
     ),
     "years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022",
@@ -299,17 +299,22 @@ MESSAGES = {
     ),
     "archive_years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022; required except for "
-        "cz.chmu.meteo_daily (not allowed there)",
+        "cz.chmu.meteo_daily and cz.chmu.groundwater_characteristic (not allowed "
+        "there)",
         "Roczniki: liczby lub zakresy, np. 2023-2025 albo 2020,2022; wymagane poza "
-        "cz.chmu.meteo_daily (tam niedozwolone)",
+        "cz.chmu.meteo_daily i cz.chmu.groundwater_characteristic (tam niedozwolone)",
     ),
     "store_years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022; required for "
-        "pl.imgw.*, optional for cz.chmu.hydro_daily (none = the published years), "
-        "not allowed for cz.chmu.meteo_daily",
+        "pl.imgw.*, optional for the ČHMÚ files of a year or month "
+        "(cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly, _recent; none = "
+        "the published years), not allowed for cz.chmu.meteo_daily and "
+        "cz.chmu.groundwater_characteristic",
         "Roczniki: liczby lub zakresy, np. 2023-2025 albo 2020,2022; wymagane dla "
-        "pl.imgw.*, opcjonalne dla cz.chmu.hydro_daily (brak = lata opublikowane), "
-        "niedozwolone dla cz.chmu.meteo_daily",
+        "pl.imgw.*, opcjonalne dla plików ČHMÚ roku albo miesiąca "
+        "(cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly, _recent; brak = "
+        "lata opublikowane), niedozwolone dla cz.chmu.meteo_daily i "
+        "cz.chmu.groundwater_characteristic",
     ),
     "months_help": Text(
         "Comma-separated months 1–12 (default: all); pl.imgw.* datasets only",
@@ -442,10 +447,8 @@ MESSAGES = {
         "Powstaje z katalogu komend i rejestrów.",
     ),
     "datasets_list_description": Text(
-        "List the datasets of the registry: keys, providers, legacy aliases, "
-        "variables and first year.",
-        "Wypisz zbiory z rejestru: klucze, dostawców, aliasy legacy, zmienne i "
-        "pierwszy rocznik.",
+        "List the datasets of the registry: keys, providers, variables and first year.",
+        "Wypisz zbiory z rejestru: klucze, dostawców, zmienne i pierwszy rocznik.",
     ),
     "datasets_files_description": Text(
         "List the source files of a dataset for given years or stations. Offline, no "
@@ -462,10 +465,9 @@ MESSAGES = {
         "istniejący plik wymaga --force.",
     ),
     "datasets_providers_description": Text(
-        "List the data providers: identifiers, countries, licenses, station code "
-        "patterns, datasets.",
-        "Wypisz dostawców danych: identyfikatory, kraje, licencje, wzorce kodów stacji "
-        "i zbiory.",
+        "List the data providers: countries, licenses, station code patterns, "
+        "datasets.",
+        "Wypisz dostawców danych: kraje, licencje, wzorce kodów stacji i zbiory.",
     ),
     "stations_find_description": Text(
         "Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.",
@@ -743,16 +745,16 @@ MESSAGES = {
         "Format przewodnika: agents (AGENTS.md) albo llms (llms.txt)",
     ),
     "datasets_list_family_help": Text(
-        "Dataset family: hydro or meteo; none = all",
-        "Rodzina zbiorów: hydro albo meteo; brak = wszystkie",
+        "Dataset family: hydro, meteo or groundwater; none = all",
+        "Rodzina zbiorów: hydro, meteo albo groundwater; brak = wszystkie",
     ),
     "datasets_list_provider_help": Text(
         "Dataset provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
         "Dostawca zbiorów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
     ),
     "stations_find_family_help": Text(
-        "Station kind; none = both families",
-        "Rodzaj stacji; brak = obie rodziny",
+        "Station kind; none = every kind",
+        "Rodzaj stacji; brak = każdy rodzaj",
     ),
     "stations_find_query_help": Text(
         "Fragment of the name or river, or a code prefix",
@@ -1001,10 +1003,11 @@ MESSAGES = {
         "roczniki nie wcześniejsze niż pierwszy rocznik zbioru (first_year)",
     ),
     "archive_rule_2": Text(
-        "years required except for cz.chmu.meteo_daily, whose files cover the whole "
-        "history of a station (years not allowed there)",
-        "years wymagane poza cz.chmu.meteo_daily, którego pliki obejmują całą "
-        "historię stacji (tam years niedozwolone)",
+        "years required except for cz.chmu.meteo_daily and "
+        "cz.chmu.groundwater_characteristic, whose files cover the whole history of "
+        "a station (years not allowed there)",
+        "years wymagane poza cz.chmu.meteo_daily i cz.chmu.groundwater_characteristic, "
+        "których pliki obejmują całą historię stacji (tam years niedozwolone)",
     ),
     "archive_rule_3": Text(
         "params only for pl.imgw.hydro_semiannual",
@@ -1021,12 +1024,14 @@ MESSAGES = {
         "roczniki nie wcześniejsze niż pierwszy rocznik każdego zbioru",
     ),
     "store_rule_3": Text(
-        "years required for pl.imgw.* datasets, optional for cz.chmu.hydro_daily "
-        "(none = the years published in the station listing) and not allowed for "
-        "cz.chmu.meteo_daily",
-        "years wymagane dla zbiorów pl.imgw.*, opcjonalne dla cz.chmu.hydro_daily "
+        "years required for pl.imgw.* datasets, optional for the ČHMÚ files of a year "
+        "or month: cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly and "
+        "_recent (none = the years published in the station listing), and not "
+        "allowed for cz.chmu.meteo_daily and cz.chmu.groundwater_characteristic",
+        "years wymagane dla zbiorów pl.imgw.*, opcjonalne dla plików ČHMÚ roku albo "
+        "miesiąca: cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly i _recent "
         "(brak = lata opublikowane w listingu stacji) i niedozwolone dla "
-        "cz.chmu.meteo_daily",
+        "cz.chmu.meteo_daily i cz.chmu.groundwater_characteristic",
     ),
     "series_rule_1": Text(
         "exactly one of: version or root+dataset (the current series version of the "
@@ -1156,6 +1161,12 @@ MESSAGES = {
     "meaning_kind_meteo": Text(
         "Meteorological data: climate, precipitation, synoptic",
         "Dane meteorologiczne: klimatyczne, opadowe, synoptyczne",
+    ),
+    "meaning_kind_groundwater": Text(
+        "Groundwater: levels of boreholes, yields of springs, water temperatures "
+        "(ČHMÚ)",
+        "Wody podziemne: poziomy w otworach, wydajności źródeł, temperatury wody "
+        "(ČHMÚ)",
     ),
     "meaning_kind_archive": Text(
         "Stored version of a source archive", "Zapisana wersja archiwum źródłowego"

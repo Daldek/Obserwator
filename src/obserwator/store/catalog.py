@@ -35,11 +35,13 @@ from obserwator.attribution import (
 )
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    KINDS,
     STATION_CODE_PATTERN,
     ArchiveFile,
     License,
     ProviderDescriptor,
     _license_document,
+    builds_series,
     datasets,
     get_provider,
     providers,
@@ -642,15 +644,11 @@ def _series_codes(
     from obserwator.providers.pl.imgw import _KIND_RANKS, _METEO_KINDS
 
     pattern = re.compile(provider.station_code_pattern)
-    codes: dict[str, set[str]] = {"hydro": set(), "meteo": set()}
+    codes: dict[str, set[str]] = {kind: set() for kind in KINDS}
     kinds: dict[str, MeteoKind] = {}
     sources: list[dict[str, Any]] = []
     for descriptor in datasets(provider=provider.id):
-        if (
-            not descriptor.in_store
-            or descriptor.kind is None
-            or descriptor.time_unit not in ("day", "month", "half_year")
-        ):
+        if descriptor.kind is None or not builds_series(descriptor):
             continue
         current = _current_series(_series_versions(root, descriptor))
         if current is None:
@@ -1066,7 +1064,7 @@ def check_catalog(
             )
         )
     series, _, meteo_kinds = _series_codes(base, [], provider=owner)
-    series_codes = series["hydro"] | series["meteo"]
+    series_codes = {code for family in series.values() for code in family}
     if catalog is None:
         series_status: Literal["current", "newer", "missing"] = "missing"
         series_detail = message("catalog.codes_stations", count=len(series_codes))

@@ -164,6 +164,12 @@ _CHMU_KEYS = [
     "cz.chmu.meteo_stations",
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
+    "cz.chmu.groundwater_daily",
+    "cz.chmu.groundwater_weekly",
+    "cz.chmu.groundwater_recent",
+    "cz.chmu.groundwater_characteristic",
+    "cz.chmu.groundwater_stations",
+    "cz.chmu.groundwater_now",
 ]
 
 
@@ -264,7 +270,7 @@ def test_aliases_without_descriptor_explain_reason(alias, reason):
 
 
 # ADR-030: the captures of current data (H2a), served with their (tier, time_unit,
-# archive_scope); every other served dataset is verified.
+# archive_scope); every other served dataset but ČHMÚ's groundwater months is verified.
 _CAPTURES = {
     "pl.imgw.hydro_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.meteo_current": ("operational", "snapshot", "country_day"),
@@ -281,16 +287,22 @@ _DECLARED = {
     "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_hourly": ("verified", "hour", "station_year"),
+    "cz.chmu.groundwater_current": ("operational", "day", "country_day"),
 }
 
 
-def test_every_served_dataset_but_the_captures_is_verified_and_its_document_says_so():
+def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
+    # ADR-030, ADR-032: the captures of current data and ČHMÚ's groundwater months
+    # (recent) are the operational data served.
     served = datasets()
     assert {
         d.key: (d.tier, d.time_unit, d.archive_scope)
         for d in served
         if d.tier != "verified"
-    } == _CAPTURES
+    } == {
+        **_CAPTURES,
+        "cz.chmu.groundwater_recent": ("operational", "day", "station_month"),
+    }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
     assert [(item["key"], item["tier"]) for item in listed["result"]] == [
         (d.key, d.tier) for d in served

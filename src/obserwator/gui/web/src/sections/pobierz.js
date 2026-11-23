@@ -2,9 +2,10 @@
 // (api/downloads/{code}): each series in each format (`export_series`: CSV, JSON, Parquet)
 // and the stored analyses (`export_analyses`: JSON, CSV; each analysis also as its JSON
 // document `obserwator-analysis/1`, api/files/analysis), each with the equivalent command
-// line to copy and the provider's licence; for a hydrological station the hand-off of Q or
-// H to Hydrolog (D13). Every file and hand-off carries the provider's lines and terms
-// (Nogat DEV §20), the same the panel draws under the card (part "series").
+// line to copy and the provider's licence; a groundwater object has its series only, no
+// analysis applying to one (ADR-032); for a hydrological station the hand-off of Q or H to
+// Hydrolog (D13). Every file and hand-off carries the provider's lines and terms (Nogat DEV
+// §20), the same the panel draws under the card (part "series").
 
 import { copyText } from "../../nogat/nogat-handoff.js";
 import { api } from "../api.js";
@@ -180,7 +181,7 @@ function Pobierz({ station, session, analyses }) {
     ${state.error ? html`<p class="ana-error" role="alert">${state.error.message}</p>` : null}
     ${!doc && !state.error ? html`<p class="muted" role="status">${t("station.files.loading")}</p>` : null}
     ${doc ? doc.series.map((entry) => html`<${SeriesFiles} key=${entry.dataset} entry=${entry} />`) : null}
-    <${ResultFiles} code=${station.code} analyses=${analyses} stored=${doc ? doc.analyses : null} />
+    ${station.properties.kind === "groundwater" ? null : html`<${ResultFiles} code=${station.code} analyses=${analyses} stored=${doc ? doc.analyses : null} />`}
     ${station.properties.kind === "hydro" ? html`<${Handoff} station=${station} session=${session} analyses=${analyses} />` : null}
   `;
 }

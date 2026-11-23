@@ -26,7 +26,9 @@ from obserwator.attribution import Attribution
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    KINDS,
     DatasetDescriptor,
+    Kind,
     License,
     ProviderDescriptor,
     get_dataset,
@@ -81,7 +83,6 @@ _ARCHIVE_FORMATS = ("csv", "jsonl")
 # Formats that are no text lines: one file, so they need output (REST attaches it).
 _BINARY_FORMATS = ("parquet",)
 _YEAR_TYPES = ("hydrological", "calendar")
-_KINDS = ("hydro", "meteo")
 _PROGRESS_ROWS = 256
 _CANCELLED = message("export.cancelled")
 # The trailing columns of the CSV of a series or of the stations: the lines of
@@ -1679,7 +1680,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: None = None,
@@ -1697,7 +1698,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: PathArg,
@@ -1714,7 +1715,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: PathArg | None = None,
@@ -1749,9 +1750,11 @@ def export_stations(
     first and last date with a value, the variables with values).
 
     CSV (UTF-8, comma, dot decimal, CRLF rows) has one row per station:
-    ``station_code,name,kind,provider``, the other catalog properties sorted
-    by name (an object such as the ČHMÚ ``thresholds`` as JSON, booleans
-    ``true``/``false``), ``latitude,longitude`` (empty without a location),
+    ``station_code,name,kind,provider``, the other catalog properties of the
+    exported stations sorted by name (``groundwater_kind`` only with a
+    groundwater object, ADR-032; an object such as the ČHMÚ ``thresholds`` as
+    JSON, booleans ``true``/``false``), ``latitude,longitude`` (empty without a
+    location),
     with ``series`` ``datasets`` (keys joined with ``;``), then the columns
     ``attribution,terms_notice`` of `export_series`. The rows of each
     provider form a block that starts with the provider's lines.
@@ -1764,9 +1767,9 @@ def export_stations(
     provider : str or None, optional
         Provider identifier or key prefix (``"IMGW"``, ``"CHMU"``,
         ``"cz.chmu"``); None exports every provider with a catalog.
-    kind : {"hydro", "meteo"} or None, optional
+    kind : {"hydro", "meteo", "groundwater"} or None, optional
         Only the stations of this kind (and the series of its datasets);
-        None exports both.
+        None exports every kind.
     series : bool, optional
         Name the current series that hold each station (default); False
         reads no series.
@@ -1822,10 +1825,10 @@ def export_stations(
         If the target cannot be written; the target stays untouched.
     """
     _format(format, _STATIONS_FORMATS)
-    if kind is not None and kind not in _KINDS:
+    if kind is not None and kind not in KINDS:
         raise ObserwatorValidationError(
-            message("export.unknown_kind_allowed", kind=kind, kinds=", ".join(_KINDS)),
-            details={"option": "kind", "value": str(kind), "allowed": list(_KINDS)},
+            message("export.unknown_kind_allowed", kind=kind, kinds=", ".join(KINDS)),
+            details={"option": "kind", "value": str(kind), "allowed": list(KINDS)},
         )
     chosen = None if provider is None else get_provider(provider).id
     base = _data_root(root)
@@ -1836,7 +1839,7 @@ def export_stations(
         raise ObserwatorDataError(
             message(
                 "export.no_station_of_kind",
-                kind=kind or ", ".join(_KINDS),
+                kind=kind or ", ".join(KINDS),
                 providers=", ".join(catalog.owner.id for catalog in catalogs),
             )
         )

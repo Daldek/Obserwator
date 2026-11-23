@@ -25,6 +25,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+# A station family is the registry's (``groundwater`` since ADR-032).
+from obserwator.datasets import Kind
+
 if TYPE_CHECKING:
     import httpx
 
@@ -51,9 +54,6 @@ __all__ = [
     "ProviderAdapter",
     "SourceAction",
 ]
-
-Kind = Literal["hydro", "meteo"]
-"""A station family."""
 
 CheckScope = Literal["country", "folders", "stations"]
 """
@@ -171,7 +171,12 @@ class ProviderAdapter(Protocol):
         lists, then the hydro and meteo station metadata.
     optional_sources : tuple of str
         Keys of station sources its catalog reads when the raw root holds them
-        (IMGW-PIB: hydro.imgw.pl's station details, ADR-021).
+        (IMGW-PIB: hydro.imgw.pl's station details, ADR-021; ČHMÚ: the list and the
+        current metadata of its groundwater objects, ADR-032).
+    kinds : tuple of str
+        The station families it publishes, in `obserwator.datasets.KINDS` order: a
+        live search of another family asks it nothing (``hydro`` and ``meteo`` by
+        default; ČHMÚ also ``groundwater``).
     archive_suffixes : tuple of str
         File types it publishes as archives (lower case, with the dot).
     sidecar_station : bool
@@ -190,6 +195,7 @@ class ProviderAdapter(Protocol):
     polled: tuple[PolledSource, ...] = ()
     station_sources: tuple[str, str, str, str]
     optional_sources: tuple[str, ...] = ()
+    kinds: tuple[Kind, ...] = ("hydro", "meteo")
     archive_suffixes: tuple[str, ...]
     sidecar_station: bool
 

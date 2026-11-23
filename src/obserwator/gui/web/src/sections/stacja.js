@@ -1,14 +1,15 @@
-// „Informacje o stacji” (GUI plan D11): the catalog's properties of the station (its
-// location with the source and the uncertainty, elevation, gauge zero with its datum, river
-// kilometre, catchment area, voivodeship and county, hydrographic code, year established),
-// IMGW-PIB's warning and alarm levels and absolute extremes of a hydrological station
-// (hydro.imgw.pl, ADR-021), ČHMÚ's thresholds of a hydrological station and the coverage of
-// each dataset and variable in the data root. The panel draws the catalog's lines under the
-// card (part "catalog").
+// „Informacje o stacji” (GUI plan D11): the catalog's properties of the station (its kind
+// and, of a groundwater object, whether a bore or a spring, its location with the source
+// and the uncertainty, elevation, gauge zero with its datum, river kilometre, catchment
+// area, voivodeship and county, hydrographic code, year established), IMGW-PIB's warning
+// and alarm levels and absolute extremes of a hydrological station (hydro.imgw.pl,
+// ADR-021), ČHMÚ's thresholds of a hydrological station and the coverage of each dataset
+// and variable in the data root. The panel draws the catalog's lines under the card (part
+// "catalog").
 
 import { has } from "../i18n.js";
 import { fmt, fmtDate, fmtDateTime, html, t, unit } from "../lib.js";
-import { datasetTitle, kindName, periodName, providerFullName, providerName, variableInfo } from "../words.js";
+import { datasetTitle, groundwaterKindName, kindName, periodName, providerFullName, providerName, variableInfo } from "../words.js";
 import { Section, Table } from "./common.js";
 
 /** ČHMÚ's thresholds of a hydrological station, in their order. */
@@ -75,6 +76,7 @@ function Catalog({ station }) {
         <${Row} label=${t("station.info.provider")} value=${providerName(station.provider)} sub=${providerFullName(station.provider)} />
         <${Row} label=${t("station.info.kind")} value=${kindName(p.kind)} />
         ${p.meteo_kind ? html`<${Row} label=${t("station.info.meteo_station")} value=${meteoKind(p.meteo_kind)} />` : null}
+        ${p.groundwater_kind ? html`<${Row} label=${t("station.info.groundwater_kind")} value=${groundwaterKindName(p.groundwater_kind)} />` : null}
         <${Row} label=${t("station.info.active")} value=${p.active ? t("station.info.yes") : t("station.info.no")} />
         <${Row}
           label=${t("station.info.location")}

@@ -91,6 +91,22 @@ Ending of the file of a capture version, ``<YYYY-MM-DD>.jsonl.gz`` (ADR-030 D3).
 The day's answers as gzip-compressed JSON Lines; the slot directory of the file is
 ``<server_dir>/<YYYY-MM-DD>`` (the name without the ending).
 """
+SERIES_TIME_UNITS = ("day", "week", "month", "half_year")
+"""
+Time units of the datasets ``series build`` builds (``DatasetDescriptor.time_unit``).
+
+A day, a weekly reading (ČHMÚ's groundwater, at its own date, ADR-032), a month or a
+half-year; a dataset of one of them with a parser is a series dataset.
+"""
+Kind = Literal["hydro", "meteo", "groundwater"]
+"""A station family, the ``kind`` of a dataset, a station list and a catalog station."""
+KINDS: tuple[Kind, ...] = ("hydro", "meteo", "groundwater")
+"""
+The station families in their order: hydrological, meteorological and groundwater.
+
+ČHMÚ's bores and springs are ``groundwater`` (ADR-032); searches, lists and catalogs
+give the families in this order.
+"""
 
 
 @dataclass(frozen=True)
@@ -290,8 +306,9 @@ class DatasetDescriptor:
     slug : str
         Short name used only in store directory names: the provider's acronym and
         the last part of the key, e.g. ``"imgw_hydro_daily"`` (ADR-028).
-    kind : {"hydro", "meteo"} or None
-        Data family; None for PMAXTP.
+    kind : {"hydro", "meteo", "groundwater"} or None
+        Data family (``groundwater``: ČHMÚ's bores and springs, ADR-032); None for
+        PMAXTP.
     title : str
         English title of the dataset (a catalog message), e.g. ``"Daily
         hydrological data"``; ``localize(title, "pl")`` is the Polish title.
@@ -305,11 +322,13 @@ class DatasetDescriptor:
         Variable codes mapped to their units, e.g. ``{"H": "cm"}``; empty for
         station lists and download-only datasets.
     time_unit : str
-        Time resolution of a record: ``"day"``, ``"month"``, ``"half_year"``,
-        ``"term"`` (the observation times), ``"hour"`` or ``"ten_minutes"``; or
-        the auxiliary source type: ``"station_list"``, ``"cell"`` (PMAXTP) or
-        ``"snapshot"`` (an answer of current data that gives every station's
-        latest values at their own times, ADR-030).
+        Time resolution of a record: ``"day"``, ``"week"`` (a weekly reading at its
+        own date, ADR-032), ``"month"``, ``"half_year"``, ``"term"`` (the
+        observation times), ``"hour"`` or ``"ten_minutes"``; or the auxiliary
+        source type: ``"station_list"``, ``"cell"`` (PMAXTP), ``"snapshot"`` (an
+        answer of current data that gives every station's latest values at their
+        own times, ADR-030) or ``"statistics"`` (a station's published statistics
+        by period of the year, ADR-032).
     year_type : {"hydrological", "calendar", "none"}
         Year numbering of the archives.
     first_year : int or None
@@ -329,9 +348,10 @@ class DatasetDescriptor:
         ``ProviderDescriptor.id`` of the dataset's provider.
     archive_scope : str, optional
         What one source file covers: ``"country"`` the whole country,
-        ``"station_year"`` one station and year, ``"station_element"`` the whole
-        history of one station and element, ``"country_day"`` the answers of one
-        UTC day for the whole network (a capture version, ADR-030).
+        ``"station_year"`` one station and year, ``"station_month"`` one station and
+        calendar month, ``"station"`` one station (ADR-032), ``"station_element"``
+        the whole history of one station and element, ``"country_day"`` the answers
+        of one UTC day for the whole network (a capture version, ADR-030).
     variable_notes : Mapping of str to str, optional
         Convention of each variable (English catalog messages), e.g. the day of
         a sum; the series metadata keeps the English text.
@@ -367,13 +387,14 @@ class DatasetDescriptor:
 
     key: str
     slug: str
-    kind: Literal["hydro", "meteo"] | None
+    kind: Kind | None
     title: str
     server_dir: str | None
     parser: str | None
     variables: Mapping[str, str]
     time_unit: Literal[
         "day",
+        "week",
         "month",
         "half_year",
         "term",
@@ -382,6 +403,7 @@ class DatasetDescriptor:
         "station_list",
         "cell",
         "snapshot",
+        "statistics",
     ]
     year_type: Literal["hydrological", "calendar", "none"]
     first_year: int | None
@@ -391,7 +413,12 @@ class DatasetDescriptor:
     in_store: bool
     provider: str = "IMGW"
     archive_scope: Literal[
-        "country", "station_year", "station_element", "country_day"
+        "country",
+        "station_year",
+        "station_month",
+        "station",
+        "station_element",
+        "country_day",
     ] = "country"
     variable_notes: Mapping[str, str] = field(default_factory=dict)
     measurement_fields: tuple[Literal["quality", "source_flag"], ...] = ()
@@ -481,6 +508,10 @@ _CHMU_LICENSE = License(
 # publication); equal to obserwator.store.content.CONTENT_FORMS["chmu-json/1"].
 _CHMU_JSON = "chmu-json/1"
 _CHMU_VOLATILE = ("zaznamID", "datumVytvoreni")
+# Variables of ČHMÚ's groundwater series (ADR-032): the level of a bore in metres above
+# sea level (plan P7: never H, the stage above a gauge zero in cm), the yield of a
+# spring and the water temperature.
+_GROUNDWATER_VARIABLES = {"H_asl": "m", "spring_yield": "l/s", "T": "degC"}
 
 _HYDRO_STATS = {
     f"{v}_{stat}": unit
@@ -1263,6 +1294,137 @@ _DATASETS = (
         content_form=_CHMU_JSON,
         volatile_fields=_CHMU_VOLATILE,
     ),
+    # ČHMÚ's groundwater (ADR-032): the bores and springs of ``hydrology/groundwater/``,
+    # one file per object and year of its daily and of its weekly readings (the two
+    # series of ``historical/data``), its operational month files (``recent``), its
+    # published statistics (``characteristic``) and the lists of the objects.
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_daily",
+        slug="chmu_groundwater_daily",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_daily"),
+        server_dir="hydrology/groundwater/historical/data",
+        parser="parse_chmu_groundwater",
+        variables=_GROUNDWATER_VARIABLES,
+        time_unit="day",
+        year_type="calendar",
+        first_year=1960,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="station_year",
+        variable_notes={
+            "H_asl": message("datasets.note_chmu_groundwater_daily_h_asl"),
+            "spring_yield": message("datasets.note_chmu_groundwater_daily_yield"),
+            "T": message("datasets.note_chmu_groundwater_daily_t"),
+        },
+    ),
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_weekly",
+        slug="chmu_groundwater_weekly",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_weekly"),
+        server_dir="hydrology/groundwater/historical/data",
+        parser="parse_chmu_groundwater",
+        variables=_GROUNDWATER_VARIABLES,
+        time_unit="week",
+        year_type="calendar",
+        first_year=1933,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="station_year",
+        variable_notes={
+            "H_asl": message("datasets.note_chmu_groundwater_weekly_h_asl"),
+            "spring_yield": message("datasets.note_chmu_groundwater_weekly_yield"),
+            "T": message("datasets.note_chmu_groundwater_weekly_t"),
+        },
+    ),
+    # One file per object and calendar month from 2025-01, rewritten every night until
+    # the end of the next month: operational data (ADR-030 D1), stored as archive
+    # versions and built into no series.
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_recent",
+        slug="chmu_groundwater_recent",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_recent"),
+        server_dir="hydrology/groundwater/recent/data",
+        parser=None,
+        variables={"H_asl": "m", "spring_yield": "l/s"},
+        time_unit="day",
+        year_type="calendar",
+        first_year=2025,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="station_month",
+        tier="operational",
+    ),
+    # The quantiles 5-95 % of an object's level or yield per week or month of the year.
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_characteristic",
+        slug="chmu_groundwater_characteristic",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_characteristic"),
+        server_dir="hydrology/groundwater/characteristic/data",
+        parser=None,
+        variables={},
+        time_unit="statistics",
+        year_type="none",
+        first_year=None,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="station",
+    ),
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_stations",
+        slug="chmu_groundwater_stations",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_stations"),
+        server_dir="hydrology/groundwater/historical/metadata",
+        parser="parse_chmu_stations",
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="http",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
+    ),
+    # The objects of the operational network, regenerated every hour like the hydro
+    # ``now`` metadata (no stable HTTP signal).
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_now",
+        slug="chmu_groundwater_now",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_now"),
+        server_dir="hydrology/groundwater/now/metadata",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
+    ),
 )
 # Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
@@ -1347,6 +1509,28 @@ _PENDING = (
         parser=None,
         variables={"H": "cm", "Q": "m3/s", "T": "degC"},
         time_unit="ten_minutes",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="country_day",
+        tier="operational",
+    ),
+    # ČHMÚ's groundwater ``now`` files, an object's latest daily value rewritten every
+    # hour (ADR-032): captured when they are asked for, like the hydro ``now`` files;
+    # the same values come in `cz.chmu.groundwater_recent` the next night.
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_current",
+        slug="chmu_groundwater_current",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_current"),
+        server_dir="hydrology/groundwater/now/data",
+        parser=None,
+        variables={"H_asl": "m", "spring_yield": "l/s"},
+        time_unit="day",
         year_type="calendar",
         first_year=None,
         update_signal="none",
@@ -1492,7 +1676,7 @@ def get_provider(provider: str, /) -> ProviderDescriptor:
 
 def datasets(
     *,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     provider: str | None = None,
     pending: bool = False,
 ) -> tuple[DatasetDescriptor, ...]:
@@ -1501,7 +1685,7 @@ def datasets(
 
     Parameters
     ----------
-    kind : {"hydro", "meteo"} or None, optional
+    kind : {"hydro", "meteo", "groundwater"} or None, optional
         Data family to keep; None keeps every family (PMAXTP has no family
         and is returned only then).
     provider : str or None, optional
@@ -1516,19 +1700,19 @@ def datasets(
     -------
     tuple of DatasetDescriptor
         Descriptors in registry order: the IMGW-PIB datasets (those of the
-        store, then the download-only ones), then the six ČHMÚ datasets; with
+        store, then the download-only ones), then the ČHMÚ datasets; with
         ``pending``, then the declared ones.
 
     Raises
     ------
     ObserwatorValidationError
-        If ``kind`` is not ``"hydro"``, ``"meteo"`` or None, or ``provider``
-        names no provider.
+        If ``kind`` is not one of `KINDS` or None, or ``provider`` names no
+        provider.
     """
-    if kind is not None and kind not in ("hydro", "meteo"):
+    if kind is not None and kind not in KINDS:
         raise ObserwatorValidationError(
             message("datasets.invalid_kind_dataset_allowed_hydro", kind=kind),
-            details={"option": "kind", "value": kind, "allowed": ["hydro", "meteo"]},
+            details={"option": "kind", "value": kind, "allowed": list(KINDS)},
         )
     owner = None if provider is None else get_provider(provider).id
     registry = _REGISTRY if pending else _DATASETS
@@ -1539,6 +1723,58 @@ def datasets(
         for descriptor in registry
         if (kind is None or descriptor.kind == kind)
         and (owner is None or descriptor.provider == owner)
+    )
+
+
+def builds_series(descriptor: DatasetDescriptor, /) -> bool:
+    """
+    Whether ``series build`` builds a series of a dataset.
+
+    Parameters
+    ----------
+    descriptor : DatasetDescriptor
+        A registry entry.
+
+    Returns
+    -------
+    bool
+        True for a dataset of the store with a parser and a time unit of
+        `SERIES_TIME_UNITS`; False for station sources, download-only datasets
+        and the stored files no series reads (``cz.chmu.groundwater_recent``,
+        operational data, ADR-030 D1, and the statistics of
+        ``cz.chmu.groundwater_characteristic``, ADR-032).
+    """
+    return (
+        descriptor.in_store
+        and descriptor.time_unit in SERIES_TIME_UNITS
+        and descriptor.parser is not None
+    )
+
+
+def keeps_archives(descriptor: DatasetDescriptor, /) -> bool:
+    """
+    Whether ``store sync`` keeps a dataset's source files as archive versions.
+
+    Parameters
+    ----------
+    descriptor : DatasetDescriptor
+        A registry entry.
+
+    Returns
+    -------
+    bool
+        True for a dataset of the store with files on its provider's server
+        other than the station sources: every series dataset (`builds_series`)
+        and the stored files no series reads (``cz.chmu.groundwater_recent``,
+        ``cz.chmu.groundwater_characteristic``, ADR-032); False for station
+        lists and metadata, the captures of current data (sealed from the
+        spool, ADR-030 D3), PMAXTP and the download-only datasets.
+    """
+    return (
+        descriptor.in_store
+        and descriptor.server_dir is not None
+        and descriptor.time_unit != "station_list"
+        and descriptor.archive_scope != CAPTURE_SCOPE
     )
 
 
@@ -1998,6 +2234,8 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.meteo_stations": ("meta1.json",),
         "cz.chmu.hydro_now": ("meta1.json", "meta3.json"),
         "cz.chmu.meteo_now": (),
+        "cz.chmu.groundwater_stations": ("meta1.json",),
+        "cz.chmu.groundwater_now": ("meta1.json",),
     }
 )
 

@@ -12,8 +12,8 @@ MESSAGES = {
         "Nieznany dostawca danych: {provider!r}; dozwolone: {allowed}",
     ),
     "invalid_kind_dataset_allowed_hydro": Text(
-        "Invalid kind of dataset: {kind!r}; allowed: hydro, meteo",
-        "Nieprawidłowy rodzaj zbioru: {kind!r}; dozwolone: hydro, meteo",
+        "Invalid kind of dataset: {kind!r}; allowed: hydro, meteo, groundwater",
+        "Nieprawidłowy rodzaj zbioru: {kind!r}; dozwolone: hydro, meteo, groundwater",
     ),
     "unknown_imgw_dataset_allowed_keys": Text(
         "Unknown IMGW dataset: {dataset!r}; allowed keys: {allowed}",
@@ -123,6 +123,12 @@ MESSAGES = {
         "The option months does not apply to the dataset {key}: the {short_name} "
         "files are not monthly",
         "Opcja months nie dotyczy zbioru {key}: pliki {short_name} nie są miesięczne",
+    ),
+    "option_months_station_month": Text(
+        "The option months does not apply to the dataset {key}: years chooses its "
+        "{short_name} month files, every month of each year",
+        "Opcja months nie dotyczy zbioru {key}: years wybiera jego pliki miesięczne "
+        "{short_name}, każdy miesiąc każdego roku",
     ),
     "dataset_needs_option_stations_station": Text(
         "The dataset {key} needs the option stations: {short_name} station codes "
@@ -573,5 +579,83 @@ MESSAGES = {
     "title_chmu_hydro_hourly": Text(
         "ČHMÚ — hourly hydrological data (H, Q)",
         "ČHMÚ — dane hydrologiczne godzinowe (H, Q)",
+    ),
+    "title_chmu_groundwater_daily": Text(
+        "ČHMÚ — daily groundwater data (level, spring yield, water temperature)",
+        "ČHMÚ — dane o wodach podziemnych dobowe (poziom zwierciadła, wydajność "
+        "źródeł, temperatura wody)",
+    ),
+    "note_chmu_groundwater_daily_h_asl": Text(
+        "Groundwater level of a borehole in metres above sea level (HD, „Hladiny – "
+        "denní”, MNM), the daily value; date = the day of DT (…T00:00Z, …T06:00Z or "
+        "…T07:00Z)",
+        "Poziom zwierciadła wody podziemnej w otworze w metrach n.p.m. (HD, „Hladiny "
+        "– denní”, MNM), wartość dobowa; data = dzień z DT (…T00:00Z, …T06:00Z albo "
+        "…T07:00Z)",
+    ),
+    "note_chmu_groundwater_daily_yield": Text(
+        "Yield of a spring in litres per second (YD, „Vydatnost – denní”, L_S), the "
+        "daily value; date = the day of DT",
+        "Wydajność źródła w litrach na sekundę (YD, „Vydatnost – denní”, L_S), "
+        "wartość dobowa; data = dzień z DT",
+    ),
+    "note_chmu_groundwater_daily_t": Text(
+        "Water temperature (TD, „Teploty vody – denní”, 0C), the daily value; date = "
+        "the day of DT",
+        "Temperatura wody (TD, „Teploty vody – denní”, 0C), wartość dobowa; data = "
+        "dzień z DT",
+    ),
+    "title_chmu_groundwater_weekly": Text(
+        "ČHMÚ — weekly groundwater data (level, spring yield, water temperature)",
+        "ČHMÚ — dane o wodach podziemnych tygodniowe (poziom zwierciadła, wydajność "
+        "źródeł, temperatura wody)",
+    ),
+    "note_chmu_groundwater_weekly_h_asl": Text(
+        "Groundwater level of a borehole in metres above sea level (HT, „Hladiny – "
+        "týdenní”, MNM), one reading a week (mostly on Wednesday) at its date, the "
+        "day of DT; no row between two readings",
+        "Poziom zwierciadła wody podziemnej w otworze w metrach n.p.m. (HT, „Hladiny "
+        "– týdenní”, MNM), jeden odczyt w tygodniu (zwykle w środę) z jego datą, "
+        "dniem z DT; bez wierszy między odczytami",
+    ),
+    "note_chmu_groundwater_weekly_yield": Text(
+        "Yield of a spring in litres per second (YT, „Vydatnost – týdenní”, L_S), one "
+        "reading a week (mostly on Wednesday) at its date, the day of DT; no row "
+        "between two readings",
+        "Wydajność źródła w litrach na sekundę (YT, „Vydatnost – týdenní”, L_S), "
+        "jeden odczyt w tygodniu (zwykle w środę) z jego datą, dniem z DT; bez "
+        "wierszy między odczytami",
+    ),
+    "note_chmu_groundwater_weekly_t": Text(
+        "Water temperature (TT, „Teploty vody – týdenní”, 0C), one reading a week "
+        "(mostly on Wednesday) at its date, the day of DT; no row between two readings",
+        "Temperatura wody (TT, „Teploty vody – týdenní”, 0C), jeden odczyt w tygodniu "
+        "(zwykle w środę) z jego datą, dniem z DT; bez wierszy między odczytami",
+    ),
+    "title_chmu_groundwater_recent": Text(
+        "ČHMÚ — daily groundwater data of the last months (level, spring yield): "
+        "operational data, unverified",
+        "ČHMÚ — dane o wodach podziemnych dobowe z ostatnich miesięcy (poziom "
+        "zwierciadła, wydajność źródeł): dane operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_groundwater_current": Text(
+        "ČHMÚ — current daily groundwater data (level, spring yield): operational "
+        "data, unverified",
+        "ČHMÚ — bieżące dane o wodach podziemnych, dobowe (poziom zwierciadła, "
+        "wydajność źródeł): dane operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_groundwater_characteristic": Text(
+        "ČHMÚ — characteristics of groundwater objects (quantiles of the level or the "
+        "yield per week or month of the year)",
+        "ČHMÚ — charakterystyki obiektów wód podziemnych (kwantyle poziomu "
+        "zwierciadła albo wydajności w tygodniach lub miesiącach roku)",
+    ),
+    "title_chmu_groundwater_stations": Text(
+        "ČHMÚ — list of groundwater objects (boreholes and springs)",
+        "ČHMÚ — wykaz obiektów wód podziemnych (otwory obserwacyjne i źródła)",
+    ),
+    "title_chmu_groundwater_now": Text(
+        "ČHMÚ — current metadata of groundwater objects",
+        "ČHMÚ — bieżące metadane obiektów wód podziemnych",
     ),
 }

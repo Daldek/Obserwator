@@ -5,16 +5,21 @@
 // remembered), the counts „na mapie N · bez współrzędnych M”
 // and the list, which keeps the stations without coordinates, marked; a click selects the
 // station and the map flies to it when it has a location. The filters choose the map's
-// stations too (`onMap`); the search is the list's. On an operator's instance (ADR-025,
-// instance.js) the switch and the chips name only the providers served, the featured one
-// first, whose stations lead the list (`featuredFirst`); „Pokaż inne źródła” (off on every
-// visit) puts a hidden provider's stations back, which also choosing it in the switch does.
+// stations too (`onMap`); the search is the list's. The kind switch offers groundwater
+// objects (ČHMÚ's bores and springs) only where the catalogs hold one (words.js
+// `shownKinds`). On an operator's instance (ADR-025, instance.js) the switch and the chips
+// name only the providers served, the featured one first, whose stations lead the list
+// (`featuredFirst`); „Pokaż inne źródła” (off on every visit) puts a hidden provider's
+// stations back, which also choosing it in the switch does.
 
 import { leftOut } from "./instance.js";
 import { fmt, html, t, tn, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { StationSymbol } from "./symbols.js";
 import { Seg } from "./ui/seg.js";
-import { DATASET_STEPS, datasetShort, datasetTitle, kindName, providerName } from "./words.js";
+import { SERIES_DATASETS, datasetShort, datasetTitle, groundwaterKindName, kindName, providerName } from "./words.js";
+
+/** The words of each kind in the switch „Rodzaj stacji”: catalog keys. */
+const KIND_LABELS = { hydro: "stations.list.kind_hydro", meteo: "stations.list.kind_meteo", groundwater: "stations.list.kind_groundwater" };
 
 /** The filters of „Wyczyść filtry”, which keeps „Pokaż inne źródła” as it is: every station of the catalogs. */
 export const NO_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false, others: false });
@@ -131,7 +136,7 @@ function datasetsOf(stations) {
       if (!found.has(key)) found.set(key, { key, provider: station.provider, kind: station.kind });
     }
   }
-  const order = Object.keys(DATASET_STEPS);
+  const order = Object.keys(SERIES_DATASETS);
   const rank = (key) => (order.includes(key) ? order.indexOf(key) : order.length);
   return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
 }
@@ -191,15 +196,17 @@ function DatasetChips({ entries, filters, scope, onToggle }) {
 }
 
 /**
- * The second line of a station's row: river (or kind), provider and years of its series,
- * shortened when long, then what never is: inactive, no coordinates.
+ * The second line of a station's row: river (or kind, with what a groundwater object is),
+ * provider and years of its series, shortened when long, then what never is: inactive, no
+ * coordinates.
  */
 function StationSub({ station }) {
   const facts = [
     station.river || kindName(station.kind),
+    groundwaterKindName(station.groundwater_kind),
     providerName(station.provider),
     station.first ? `${station.first}–${station.last}` : t("stations.catalog_only"),
-  ];
+  ].filter(Boolean);
   return html`<span class="st-sub">
     <span class="st-facts">${facts.join(" · ")}</span>
     ${station.active ? null : html`<span class="st-flag">· ${t("stations.inactive")}</span>`}
@@ -210,14 +217,14 @@ function StationSub({ station }) {
 /**
  * The panel's body.
  *
- * @param {{stations: object[], filters: object, scope: object, onFilters: (next: object) =>
- *   void, selected: string|null, onSelect: (code: string, options: {fly: boolean}) => void}}
- *   props the stations of prepareStations, the filters (NO_FILTERS' fields), what the
- *   deployment shows (instance.js `scopeOf`), the filters' handler, the selected station and
- *   the selection's handler
+ * @param {{stations: object[], kinds: string[], filters: object, scope: object, onFilters:
+ *   (next: object) => void, selected: string|null, onSelect: (code: string, options: {fly:
+ *   boolean}) => void}} props the stations of prepareStations, the kinds offered (words.js
+ *   `shownKinds`), the filters (NO_FILTERS' fields), what the deployment shows (instance.js
+ *   `scopeOf`), the filters' handler, the selected station and the selection's handler
  * @returns {object}
  */
-export function StationList({ stations, filters, scope, onFilters, selected, onSelect }) {
+export function StationList({ stations, kinds, filters, scope, onFilters, selected, onSelect }) {
   const [shown, setShown] = useState(PAGE);
   const list = useRef(null);
   const needle = fold(filters.query.trim());
@@ -275,15 +282,11 @@ export function StationList({ stations, filters, scope, onFilters, selected, onS
       <${Seg}
         full
         tiny
-        className="kinds"
+        className=${kinds.length > 2 ? "kinds three" : "kinds"}
         label=${t("stations.list.kind")}
         value=${filters.kind}
         onChange=${set("kind")}
-        items=${[
-          { value: "hydro", label: t("stations.list.kind_hydro") },
-          { value: "meteo", label: t("stations.list.kind_meteo") },
-          { value: "all", label: t("stations.list.kind_all") },
-        ]}
+        items=${[...kinds.map((kind) => ({ value: kind, label: t(KIND_LABELS[kind]) })), { value: "all", label: t("stations.list.kind_all") }]}
       />
       <${DatasetChips} entries=${datasets} filters=${filters} scope=${scope} onToggle=${toggle} />
       <div class="check-row">

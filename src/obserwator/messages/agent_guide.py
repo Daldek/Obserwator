@@ -44,12 +44,16 @@ MESSAGES = {
         "lokalna",
     ),
     "station_sources": Text(
-        "Station sources (`store sync`):",
-        "Źródła stacji (`store sync`):",
+        "Station sources (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store "
+        "sync` alone.",
+        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store sync` "
+        "osobno.",
     ),
     "captures": Text(
-        "Captures (unverified, one version a UTC day):",
-        "Zapisy (niezweryfikowane, wersja na dobę UTC):",
+        "Captures (`pl.imgw.*_current`, unverified, one version a UTC day): `store "
+        "sync` alone.",
+        "Zapisy (`pl.imgw.*_current`, niezweryfikowane, wersja na dobę UTC): `store "
+        "sync` osobno.",
     ),
     "outside_store": Text(
         "Download only (`datasets download`):",
@@ -100,15 +104,13 @@ MESSAGES = {
     ),
     "rule_learn_commands": Text(
         "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
-        "commands schema --command … --json` or `obserwator "
-        "<group> <command> --schema --json`; REST `GET /api/v1/commands/list` and "
+        "commands schema --command … --json`; REST `GET /api/v1/commands/list` and "
         "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
         "Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules "
         "they do not express are in `rules`, effects in `effects` (`writes`, `network`, "
         "`idempotent`).",
         "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
-        "commands schema --command … --json` albo `obserwator "
-        "<grupa> <komenda> --schema --json`; REST `GET /api/v1/commands/list` i `/schema`; "
+        "commands schema --command … --json`; REST `GET /api/v1/commands/list` i `/schema`; "
         "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
         "`options` (`name`, `type`, `required`, `flags`, `enum`); reguły, których nie "
         "wyrażają, są w `rules`, skutki w `effects` (`writes`, `network`, `idempotent`).",
@@ -116,11 +118,11 @@ MESSAGES = {
     "rule_check_first": Text(
         "**Check without writing:** `--check` (CLI), `?check=true` (REST, POST), "
         "`check: true` (MCP; the default of writing commands), `check_command()` "
-        "(Python) → an `obserwator-plan/1` plan without writing and without downloading "
-        "content. `store check` is a check itself. Ask the user about a large plan.",
+        "(Python) → an `obserwator-plan/1` plan, nothing written or downloaded. "
+        "`store check` is a check itself. Ask the user about a large plan.",
         "**Sprawdź bez zapisu:** `--check` (CLI), `?check=true` (REST, POST), "
         "`check: true` (MCP; domyślne dla komend zapisujących), `check_command()` "
-        "(Python) → plan `obserwator-plan/1` bez zapisu i bez pobierania treści. `store "
+        "(Python) → plan `obserwator-plan/1` bez zapisu i pobierania. `store "
         "check` sam jest sprawdzeniem. Przy dużym planie zapytaj użytkownika.",
     ),
     "rule_run": Text(
@@ -220,10 +222,10 @@ MESSAGES = {
     ),
     "flags_lists": Text(
         "- Lists ({lists}): comma-separated values (`--months 1,2`) or a repeated "
-        "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023`, `2020,2022` or "
+        "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023` or "
         "`2018,2020-2023`. Dates ({dates}): ISO `YYYY-MM-DD`.",
         "- Listy ({lists}): wartości po przecinku (`--months 1,2`) albo powtórzona "
-        "flaga (`-s A -s B`). Roczniki ({years}): `2024`, `2020-2023`, `2020,2022` "
+        "flaga (`-s A -s B`). Roczniki ({years}): `2024`, `2020-2023` "
         "albo `2018,2020-2023`. Daty ({dates}): ISO `RRRR-MM-DD`.",
     ),
     "flags_switches": Text(

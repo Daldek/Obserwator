@@ -50,6 +50,7 @@ from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     CAPTURE_SCOPE,
+    KINDS,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -58,9 +59,11 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     archive_files,
+    builds_series,
     datasets,
     get_dataset,
     get_provider,
+    keeps_archives,
     parse_months,
     parse_years,
     providers,
@@ -157,7 +160,8 @@ _PATTERN_TEXT = {
 _INTEGER = re.compile(r"-?[0-9]+")
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
-_KINDS = ("hydro", "meteo")
+# IMGW-PIB's warnings are of hydrological and meteorological stations only.
+_WARNING_KINDS = ("hydro", "meteo")
 _YEAR_TYPES = ("hydrological", "calendar")
 # Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
 # station lists, PMAXTP and the captures (sealed from the spool, ADR-030 D3) have none.
@@ -168,16 +172,13 @@ _ARCHIVE_DATASETS = tuple(
     and d.time_unit != "station_list"
     and d.archive_scope != CAPTURE_SCOPE
 )
-_SERIES_DATASETS = tuple(
-    d.key
-    for d in datasets()
-    if d.in_store and d.time_unit in ("day", "month", "half_year")
-)
-# What ``store check`` and ``store sync`` download or seal: the measurement archives,
-# the station sources of the catalogs (station lists and metadata, ADR-015) and the
-# captures of current data, sealed from the spool per UTC day (ADR-030 D3).
+_SERIES_DATASETS = tuple(d.key for d in datasets() if builds_series(d))
+# What ``store check`` and ``store sync`` download or seal: the measurement archives
+# (also those no series reads, ADR-032), the station sources of the catalogs (station
+# lists and metadata, ADR-015) and the captures of current data, sealed from the
+# spool per UTC day (ADR-030 D3).
 _SYNC_DATASETS = (
-    _SERIES_DATASETS
+    tuple(d.key for d in datasets() if keeps_archives(d))
     + tuple(d.key for d in datasets() if d.in_store and d.time_unit == "station_list")
     + tuple(d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE)
 )
@@ -400,7 +401,7 @@ _FAMILY = _option(
     "kind",
     "choice",
     message("commands.family_help"),
-    choices=_KINDS,
+    choices=KINDS,
     aliases=("-k",),
 )
 _YEARS = _option(
@@ -831,6 +832,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         (
             replace(
                 _FAMILY,
+                choices=_WARNING_KINDS,
                 help=message("commands.current_warnings_family_help"),
             ),
         ),
@@ -2737,7 +2739,7 @@ def _archive_call(
             options["months"] = [archive.month]
     else:
         options["stations"] = [archive.station_code]
-        if descriptor.archive_scope == "station_year":
+        if descriptor.archive_scope in ("station_year", "station_month"):
             options["years"] = [archive.year]
     try:
         _, _, candidates, archives = _sync._selection(
@@ -4142,6 +4144,7 @@ _WRITES_ORDER: tuple[Writes, ...] = ("none", "add", "replace")
 _MEANINGS = {
     ("kind", "hydro"): message("commands.meaning_kind_hydro"),
     ("kind", "meteo"): message("commands.meaning_kind_meteo"),
+    ("kind", "groundwater"): message("commands.meaning_kind_groundwater"),
     ("kind", "raw"): message("commands.meaning_kind_raw"),
     ("kind", "data"): message("commands.meaning_kind_data"),
     ("kind", "archive"): message("commands.meaning_kind_archive"),

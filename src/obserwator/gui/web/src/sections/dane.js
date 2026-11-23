@@ -8,7 +8,10 @@
 // series for drawing within the range shown, so a ČHMÚ series since 1775 draws and zooms
 // at once; the table and the downloads keep every value. IMGW-PIB's monthly and half-year
 // characteristics are drawn as the band of the lowest and the highest value with the mean,
-// the half-years' with the dates of their extremes in the table.
+// the half-years' with the dates of their extremes in the table. ČHMÚ's weekly
+// groundwater readings (ADR-032) stand at their own dates and are drawn as a daily series
+// whose line breaks only across a calendar week (Monday to Sunday) without a reading; their
+// table counts readings.
 
 import { api } from "../api.js";
 import { Chart, dayNumber, fmt, fmtDate, html, isoOfDay, lang, t, tn, unit, useEffect, useMemo, useState } from "../lib.js";
@@ -80,16 +83,22 @@ function prepare(data) {
   return { days, values, flags };
 }
 
-/** The variables shown first. */
-function defaultVariables(names, kind) {
-  const wanted = kind === "hydro" ? ["H", "Q"] : ["Tmean", "P"];
+/** The variables shown first: a groundwater object's level (a bore) or yield (a spring). */
+function defaultVariables(names, properties) {
+  const kind = properties.kind;
+  const wanted = kind === "hydro" ? ["H", "Q"] : kind === "groundwater" ? [properties.groundwater_kind === "spring" ? "spring_yield" : "H_asl"] : ["Tmean", "P"];
   const chosen = wanted.filter((name) => names.includes(name));
   return chosen.length ? chosen : names.slice(0, 1);
 }
 
 /** Whether a variable's axis starts at zero (a quantity that is never negative). */
 function fromZero(name) {
-  return ["Q", "P", "snow_cover", "fresh_snow"].includes(name);
+  return ["Q", "P", "snow_cover", "fresh_snow", "spring_yield"].includes(name);
+}
+
+/** The calendar week (Monday to Sunday, ISO 8601) of a day: day 0, 1 January 1970, was a Thursday. */
+function weekOf(day) {
+  return Math.floor((day + 3) / 7);
 }
 
 /** "H — water level". */
@@ -97,8 +106,12 @@ function variableLabel(name) {
   return `${name} — ${variableInfo(name).label}`;
 }
 
-/** The chart of the chosen variables of one unit within a window, every day of it. */
-function dailySpec({ names, units, prepared, window, title }) {
+/**
+ * The chart of the chosen variables of one unit within a window, every day of it; of a
+ * weekly series (`weekly`) every reading, the line broken only across a calendar week
+ * without one.
+ */
+function dailySpec({ names, units, prepared, window, title, weekly }) {
   const [lo, hi] = window;
   const first = lowerBound(prepared.days, lo);
   const last = lowerBound(prepared.days, hi + 1) - 1;
@@ -109,8 +122,13 @@ function dailySpec({ names, units, prepared, window, title }) {
     const values = prepared.values[name];
     const points = [];
     for (let i = first; i <= last; i += 1) {
-      // A skipped day breaks the line as a missing value does
-      if (i > first && prepared.days[i] - prepared.days[i - 1] > 1) points.push({ x: prepared.days[i - 1] + 1, y: NaN });
+      // A skipped day breaks the line as a missing value does; of a weekly series only a
+      // skipped calendar week, the break at its Monday
+      if (i > first) {
+        const before = prepared.days[i - 1];
+        if (!weekly && prepared.days[i] - before > 1) points.push({ x: before + 1, y: NaN });
+        if (weekly && weekOf(prepared.days[i]) - weekOf(before) > 1) points.push({ x: (weekOf(before) + 1) * 7 - 3, y: NaN });
+      }
       points.push({ x: prepared.days[i], y: values[i] });
     }
     const info = variableInfo(name);
@@ -141,8 +159,8 @@ function flagMark(flag) {
   return flag && flag !== "value" ? html` <span class="flag">${flagName(flag)}</span>` : null;
 }
 
-/** The paged table of the window, newest first, each value with its flag. */
-function DailyTable({ prepared, names, units, window, yearType }) {
+/** The paged table of the window, newest first, each value with its flag; a weekly series' rows counted as readings. */
+function DailyTable({ prepared, names, units, window, yearType, weekly }) {
   const [page, setPage] = useState(0);
   const first = lowerBound(prepared.days, window[0]);
   const last = lowerBound(prepared.days, window[1] + 1) - 1;
@@ -174,7 +192,7 @@ function DailyTable({ prepared, names, units, window, yearType }) {
     <div class="pager">
       <button type="button" class="btn sm" disabled=${page === 0} onClick=${() => setPage(0)} aria-label=${t("station.data.newest")} title=${t("station.data.newest")}>«</button>
       <button type="button" class="btn sm" disabled=${page === 0} onClick=${() => setPage(page - 1)}>${t("station.data.newer")}</button>
-      <span class="muted">${t("station.data.page", { page: fmt(page + 1), pages: fmt(pages), days: tn("station.data.days", count) })}</span>
+      <span class="muted">${t("station.data.page", { page: fmt(page + 1), pages: fmt(pages), days: weekly ? tn("station.data.readings", count) : tn("station.data.days", count) })}</span>
       <button type="button" class="btn sm" disabled=${page >= pages - 1} onClick=${() => setPage(page + 1)}>${t("station.data.older")}</button>
       <button type="button" class="btn sm" disabled=${page >= pages - 1} onClick=${() => setPage(pages - 1)} aria-label=${t("station.data.oldest")} title=${t("station.data.oldest")}>»</button>
     </div>
@@ -196,12 +214,12 @@ function FlagNotes({ entry, data, prepared, names }) {
   </p>`;
 }
 
-/** A daily series: variables, years, charts and the table. */
+/** A daily series, or the readings of a weekly one: variables, years, charts and the table. */
 function Daily({ station, entry, data }) {
-  const kind = station.properties.kind;
+  const weekly = data.time_unit === "week";
   const prepared = useMemo(() => prepare(data), [data]);
   const names = Object.keys(data.units).filter((name) => entry.variables[name] && prepared.values[name]);
-  const [chosen, setChosen] = useState(() => defaultVariables(names, kind));
+  const [chosen, setChosen] = useState(() => defaultVariables(names, station.properties));
   const [yearType, setYearType] = useState(data.year_type === "calendar" ? "calendar" : "hydrological");
   const [range, setRange] = useState(null);
   const [table, setTable] = useState(false);
@@ -221,7 +239,7 @@ function Daily({ station, entry, data }) {
     }
     return groups.map((group) => ({
       key: group.names.join(),
-      spec: dailySpec({ names: group.names, units: data.units, prepared, window, title: `${label}: ${group.names.join(", ")}` }),
+      spec: dailySpec({ names: group.names, units: data.units, prepared, window, title: `${label}: ${group.names.join(", ")}`, weekly }),
     }));
   }, [prepared, shown.join(), window[0], window[1], lang()]);
   if (!days.length) return html`<p class="note-box">${t("station.data.empty")}</p>`;
@@ -257,7 +275,7 @@ function Daily({ station, entry, data }) {
       <button type="button" class=${table ? "btn sm is-on" : "btn sm"} aria-pressed=${table} onClick=${() => setTable(!table)}>${t("station.data.table")}</button>
       <span class="muted small">${fmtDate(isoOfDay(Math.max(window[0], days[0])))} – ${fmtDate(isoOfDay(Math.min(window[1], days[days.length - 1])))}</span>
     </div>
-    ${table && shown.length ? html`<${DailyTable} prepared=${prepared} names=${shown} units=${data.units} window=${window} yearType=${yearType} />` : null}
+    ${table && shown.length ? html`<${DailyTable} prepared=${prepared} names=${shown} units=${data.units} window=${window} yearType=${yearType} weekly=${weekly} />` : null}
   `;
 }
 
@@ -419,7 +437,9 @@ function Dane({ station }) {
   const series = useSeries(station.code, key);
   if (!entry) return html`<p class="muted">${t("station.data.none")}</p>`;
   const data = series.data && series.data.dataset === key ? series.data : null;
-  const daily = entry.time_unit === "day";
+  // A weekly series (ČHMÚ's groundwater readings, ADR-032) is drawn as a daily one
+  const weekly = entry.time_unit === "week";
+  const daily = entry.time_unit === "day" || weekly;
   return html`<div>
     <div class="data-controls">
       ${datasets.length > 1
@@ -438,6 +458,7 @@ function Dane({ station }) {
       ? html`<footer class="data-foot">
           <p>${t("station.data.units", { units: unitsText(entry) })}</p>
           ${data.year_type === "hydrological" ? html`<p>${t("station.data.hydrological_def")}</p>` : daily ? html`<p>${t("station.data.calendar_def")}</p>` : null}
+          ${weekly ? html`<p>${t("station.data.weekly_def")}</p>` : null}
           <div class="ana-prov">
             <span class="prov">${t("sections.series_version", { version: data.version })}</span>
             <span class="prov">${data.year_type === "hydrological" ? t("station.data.stored_hydrological") : t("station.data.stored_calendar")}</span>

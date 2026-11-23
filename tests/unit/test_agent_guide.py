@@ -138,9 +138,10 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "Envelope, statuses and errors" if lang == "en" else "Koperta, statusy i błędy",
     )
 
-    # The table holds the measurements; the station sources (ADR-015), the captures
-    # of current data (ADR-030) and the datasets outside the store are folded keys
-    # on one line each: `pl.imgw.{a,b}`, `pl.imgw.{a,b}_current`.
+    # The table holds the measurements; the station sources (ADR-015, ADR-032) and the
+    # captures of current data (ADR-030) are one line each, naming their keys by
+    # pattern (`*_stations`, `pl.imgw.*_current`), the datasets outside the store one
+    # line of keys folded by prefix (`pl.imgw.{a,b}`).
     table: list[str] = []
     lines: dict[str, list[str]] = {
         "station_sources": [],
@@ -166,18 +167,22 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "pl.imgw.warnings_meteo_current",
         "pl.imgw.hydro_states_current",
     ]
+    served = [descriptor.key for descriptor in datasets()]
     for name, wanted in lines.items():
-        label = message(f"agent_guide.{name}", lang=lang)
+        label = message(f"agent_guide.{name}", lang=lang).split(" (")[0]
         line = next(line for line in held.splitlines() if line.startswith(label))
-        folded = {
-            f"{prefix}.{stem}{ending}"
-            for prefix, stems, ending in re.findall(
-                r"`([a-z]{2}\.[a-z0-9]+)\.\{([a-z0-9_,]+)\}([a-z0-9_]*)`", line
+        # A code span as a pattern: `*` any text, `{a,b}` one of the names.
+        patterns = [
+            re.sub(
+                r"\\\{([a-z0-9_,]+)\\\}",
+                lambda names: f"(?:{'|'.join(names[1].split(','))})",
+                re.escape(span).replace(r"\*", ".*"),
             )
-            for stem in stems.split(",")
-        }
-        whole = set(re.findall(r"`([a-z]{2}\.[a-z0-9]+\.[a-z0-9_]+)`", line))
-        assert folded | whole == set(wanted), name
+            for span in re.findall(r"`([^`]+)`", line)
+        ]
+        named = {key for key in served if any(re.fullmatch(p, key) for p in patterns)}
+        # Each line names exactly its own keys, none of another family.
+        assert named == set(wanted), name
     statuses = {
         tuple(cells[:2]) for cells in rows(envelope) if cells[0].startswith("`")
     }

@@ -760,7 +760,10 @@ def _catalog_bytes(
     if shared:
         raise ObserwatorDataError(
             message(
-                "catalog.station_codes_appear_both_hydro", shared=", ".join(shared[:10])
+                "catalog.station_codes_appear_both_hydro",
+                first="hydro",
+                second="meteo",
+                shared=", ".join(shared[:10]),
             )
         )
     # The static file holds IMGW-PIB hydrological gauge coordinates, so a code known
@@ -1312,7 +1315,9 @@ class ImgwAdapter(ProviderAdapter):
     def parse_station_list(
         self, content: bytes, /, *, kind: Kind, filename: str
     ) -> list[StationListEntry]:
-        """The station list CSV of a family."""
+        """The station list CSV of a family (IMGW-PIB publishes no groundwater list)."""
+        if kind == "groundwater":
+            raise ValueError(f"{self.provider_id} publishes no {kind} station list")
         return list(parse_stations_csv(content, kind=kind))
 
     def _live(self, kind: Kind) -> tuple[str, str]:
