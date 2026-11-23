@@ -1744,13 +1744,7 @@ def _daily_variables() -> dict[str, dict[str, str]]:
 
 def _file_title(provider: ProviderFile, dataset: FileDataset) -> Message:
     """The title of a dataset of a provider fed by files, with its tier when unverified."""
-    name = provider.short_name
-    if dataset.kind == "hydro":
-        title = message("provider_files.title_hydro_daily", provider=name)
-    elif dataset.kind == "meteo":
-        title = message("provider_files.title_meteo_daily", provider=name)
-    else:
-        title = message("provider_files.title_groundwater_daily", provider=name)
+    title = provider.dataset_title(dataset.kind)
     if provider.tier == "verified":
         return title
     return message("provider_files.title_unverified", title=title)

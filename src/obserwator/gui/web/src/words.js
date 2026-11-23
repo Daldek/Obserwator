@@ -2,11 +2,39 @@
 // kinds (and what a groundwater object is), datasets, variables, flags and IMGW-PIB's
 // half-years. Every word is an entry of the catalog (`gui.words.*`); providers' short names
 // stay as they publish them. Call these at render time: the texts change with the language.
+// The providers and their series datasets are the session's (api/session `providers` and
+// `datasets`, in the order of the registry), which main.js hands over with `setRegistry`
+// once it answers: a provider's names, the class of its source and the origins of its
+// lines; a dataset's provider, kind, time step, tier and, where the catalog has no words of
+// its own (a provider fed by files), its title and short label in the page's language.
 
 import { has, t } from "./i18n.js";
 
-/** Providers' short names by their catalog id: names, the same in every language. */
-const SHORT = { IMGW: "IMGW-PIB", CHMU: "ČHMÚ" };
+/** The session's providers by id and series datasets by key; none until it answers. */
+let registry = { providers: {}, datasets: {} };
+
+/**
+ * Hand over the providers and the series datasets of the session (main.js, when api/session
+ * answers, before the page draws with them).
+ *
+ * @param {{providers: object, datasets: object}} session api/session
+ */
+export function setRegistry(session) {
+  registry = { providers: session.providers || {}, datasets: session.datasets || {} };
+}
+
+/**
+ * A provider as the session describes it.
+ *
+ * @param {string} id e.g. "IMGW"
+ * @returns {{short_name: string, name: string, key_prefix: string, origin: string, border:
+ *   string, source_class: string}|null} its short and full name, the prefix of its dataset
+ *   keys, the origin of its lines, the origin of the border its stations were checked
+ *   against and the class of its source; null while the session does not name it
+ */
+export function providerOf(id) {
+  return Object.hasOwn(registry.providers, id) ? registry.providers[id] : null;
+}
 
 /** The catalog's form of a store key: "pl.imgw.hydro_daily" → "pl_imgw_hydro_daily". */
 function slug(key) {
@@ -18,14 +46,28 @@ function word(key, fallback) {
   return has(key) ? t(key) : fallback;
 }
 
-/** The short name of a provider ("ČHMÚ" for "CHMU"), "–" for none. */
+/** The short name of a provider ("ČHMÚ" for "CHMU"), its id until the session names it, "–" for none. */
 export function providerName(id) {
-  return SHORT[id] || id || "–";
+  const provider = providerOf(id);
+  return provider ? provider.short_name : id || "–";
 }
 
-/** The full name of a provider in the page's language. */
+/** The full name of a provider in the page's language: the catalog's, else the one it publishes. */
 export function providerFullName(id) {
-  return word(`words.provider.${slug(id)}`, providerName(id));
+  const provider = providerOf(id);
+  return word(`words.provider.${slug(id)}`, provider ? provider.name : providerName(id));
+}
+
+/**
+ * The class of a provider's source (hydromet P11): "nmhs", a national meteorological and
+ * hydrological service (IMGW-PIB, ČHMÚ), or "other" (a provider fed by files among them).
+ *
+ * @param {string} id
+ * @returns {string|null} null until the session names the provider
+ */
+export function sourceClass(id) {
+  const provider = providerOf(id);
+  return provider ? provider.source_class : null;
 }
 
 /** The station kinds in their order (`obserwator.datasets.KINDS`). */
@@ -53,30 +95,50 @@ export function groundwaterKindName(kind) {
   return kind ? word(`words.groundwater_kind.${kind}`, kind) : null;
 }
 
-/** Each dataset whose station series the root may hold, in the order of the registry: its time step and the kind of its stations. */
-export const SERIES_DATASETS = {
-  "pl.imgw.hydro_daily": { step: "day", kind: "hydro" },
-  "pl.imgw.hydro_monthly": { step: "month", kind: "hydro" },
-  "pl.imgw.hydro_semiannual": { step: "half_year", kind: "hydro" },
-  "pl.imgw.meteo_climate_daily": { step: "day", kind: "meteo" },
-  "pl.imgw.meteo_precip_daily": { step: "day", kind: "meteo" },
-  "pl.imgw.meteo_synop_daily": { step: "day", kind: "meteo" },
-  "pl.imgw.hydro_subdaily": { step: "hour", kind: "hydro" },
-  "cz.chmu.hydro_daily": { step: "day", kind: "hydro" },
-  "cz.chmu.meteo_daily": { step: "day", kind: "meteo" },
-  "cz.chmu.groundwater_daily": { step: "day", kind: "groundwater" },
-  "cz.chmu.groundwater_weekly": { step: "week", kind: "groundwater" },
-  "cz.chmu.hydro_subdaily": { step: "hour", kind: "hydro" },
-};
-
-/** The title of a dataset ("Daily hydrological data (IMGW-PIB)"), its key when unknown. */
-export function datasetTitle(key) {
-  return word(`words.dataset.${slug(key)}.title`, key);
+/**
+ * Each dataset whose station series the root may hold, of the providers served, in the
+ * order of the registry; none until the session answers.
+ *
+ * @returns {Record<string, {provider: string, kind: string, step: string, tier: string,
+ *   title: string, short: string}>} by key: its provider, the kind of its stations, its time
+ *   step ("day", "week", "month", "half_year", "hour"), its tier ("verified", "telemetry",
+ *   "operational") and its title and short label in the page's language
+ */
+export function seriesDatasets() {
+  return registry.datasets;
 }
 
-/** The short label of a dataset ("Daily"), its key when unknown. */
+/** A series dataset of the session, null while it names none of this key. */
+function datasetOf(key) {
+  return Object.hasOwn(registry.datasets, key) ? registry.datasets[key] : null;
+}
+
+/** The title of a dataset ("Daily hydrological data (IMGW-PIB)"): the catalog's, else the session's, else its key. */
+export function datasetTitle(key) {
+  const dataset = datasetOf(key);
+  return word(`words.dataset.${slug(key)}.title`, dataset ? dataset.title : key);
+}
+
+/** The short label of a dataset ("Daily"): the catalog's, else the session's, else its key. */
 export function datasetShort(key) {
-  return word(`words.dataset.${slug(key)}.short`, key);
+  const dataset = datasetOf(key);
+  return word(`words.dataset.${slug(key)}.short`, dataset ? dataset.short : key);
+}
+
+/**
+ * Whether a dataset's series are operational data, unverified, as a whole (hydromet P11,
+ * Nogat DEV-20.8): its tier is not "verified". An hourly series is not: each of its hours
+ * carries its own tier, which its chart and table name (ADR-031).
+ */
+export function unverified(key) {
+  const dataset = datasetOf(key);
+  return dataset !== null && dataset.tier !== "verified" && dataset.step !== "hour";
+}
+
+/** Whether a dataset holds daily hydrological series: a provider's `<key prefix>.hydro_daily`. */
+export function hydroDaily(key) {
+  const dataset = datasetOf(key);
+  return dataset !== null && dataset.kind === "hydro" && dataset.step === "day";
 }
 
 /** The decimals shown of each variable of the store; the synoptic durations [h] have one. */

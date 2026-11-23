@@ -3,14 +3,16 @@
 // and the stored analyses (`export_analyses`: JSON, CSV; each analysis also as its JSON
 // document `obserwator-analysis/1`, api/files/analysis), each with the equivalent command
 // line to copy and the provider's licence; a groundwater object has its series only, no
-// analysis applying to one (ADR-032); for a hydrological station the hand-off of Q or H to
-// Hydrolog (D13). Every file and hand-off carries the provider's lines and terms (Nogat DEV
-// §20), the same the panel draws under the card (part "series").
+// analysis applying to one (ADR-032); for a hydrological station of a national service the
+// hand-off of Q or H to Hydrolog (D13), whose provenance names the provider by Nogat's
+// registry, which has none of the providers fed by files. Every file and hand-off carries
+// the provider's lines and terms (Nogat DEV §20), the same the panel draws under the card
+// (part "series").
 
 import { copyText } from "../../nogat/nogat-handoff.js";
 import { api } from "../api.js";
 import { fmtDateTime, html, t, tn, useEffect, useRef, useState } from "../lib.js";
-import { datasetTitle } from "../words.js";
+import { datasetTitle, hydroDaily, sourceClass } from "../words.js";
 import { Section, Seg, Table } from "./common.js";
 import { HandoffButtons } from "./handoff.js";
 
@@ -18,8 +20,6 @@ import { HandoffButtons } from "./handoff.js";
 const FORMATS = { csv: "CSV", json: "JSON", parquet: "Parquet" };
 /** The names of the formats of the stored analyses. */
 const RESULT_FORMATS = { json: "JSON", csv: "CSV" };
-/** The daily hydrological datasets: the hand-off of daily values reads them. */
-const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmu.hydro_daily"];
 
 /**
  * A command line with „Kopiuj” (also the PMAXTP view's, pmaxtp/result.js).
@@ -138,9 +138,13 @@ function ResultFiles({ code, analyses, stored }) {
   </${Section}>`;
 }
 
-/** „Przekazanie do Hydrologa”: daily Q and H, else the annual maxima of the flood frequency. */
+/**
+ * „Przekazanie do Hydrologa”: daily Q and H of the station's daily hydrological dataset,
+ * else the annual maxima of the flood frequency; only of a national service's station.
+ */
 function Handoff({ station, session, analyses }) {
-  const daily = station.datasets.find((entry) => HYDRO_DAILY.includes(entry.dataset));
+  if (sourceClass(station.provider) !== "nmhs") return null;
+  const daily = station.datasets.find((entry) => hydroDaily(entry.dataset));
   const ids = new Set((analyses || []).map((item) => item.analysis));
   const variables = daily ? ["Q", "H"].filter((name) => daily.variables[name]) : ids.has("flood_frequency.Q") ? ["Q"] : [];
   if (!variables.length) return null;

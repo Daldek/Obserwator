@@ -16,7 +16,7 @@ import { leftOut } from "./instance.js";
 import { fmt, html, t, tn, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { StationSymbol } from "./symbols.js";
 import { Seg } from "./ui/seg.js";
-import { SERIES_DATASETS, datasetShort, datasetTitle, groundwaterKindName, kindName, providerName } from "./words.js";
+import { datasetShort, datasetTitle, groundwaterKindName, kindName, providerName, seriesDatasets } from "./words.js";
 
 /** The words of each kind in the switch „Rodzaj stacji”: catalog keys. */
 const KIND_LABELS = { hydro: "stations.list.kind_hydro", meteo: "stations.list.kind_meteo", groundwater: "stations.list.kind_groundwater" };
@@ -124,7 +124,7 @@ function matches(station, filters, needle, scope) {
 
 /**
  * The datasets of the stations, each with the provider and kind of the stations it holds,
- * in the order of the registry (words.js), unknown ones last.
+ * in the order of the registry (the session's, words.js), unknown ones last.
  *
  * @param {object[]} stations
  * @returns {Array<{key: string, provider: string, kind: string}>}
@@ -136,7 +136,7 @@ function datasetsOf(stations) {
       if (!found.has(key)) found.set(key, { key, provider: station.provider, kind: station.kind });
     }
   }
-  const order = Object.keys(SERIES_DATASETS);
+  const order = Object.keys(seriesDatasets());
   const rank = (key) => (order.includes(key) ? order.indexOf(key) : order.length);
   return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
 }

@@ -1,15 +1,18 @@
 // The right panel „Stacja” (GUI plan D11): the station's header (name, river, code, provider,
-// kind and, of a groundwater object, whether a bore or a spring, active or not), then its
-// sections as an accordion in the author's order: „Informacje o stacji”, „Pomiary bieżące”
-// (not of a groundwater object: no current data are served for one, ADR-032), „Dane
-// pomiarowo-obserwacyjne”, the hydrological (HYDRO_SECTIONS) or meteorological
-// (METEO_SECTIONS) analyses that apply to the station, then „Pobierz”. A registry entry is
-// `{id, title, component, available?, part?}`: `title` is a key of the catalog, drawn as
-// the card's header; the open card draws `component({station, session, analyses})`, where
-// `analyses` is the list of api/analyses/{code}, fetched here once; `available(station,
-// ids)`, given the Set of the list's ids, leaves out a section no analysis of which
-// applies. A station without series shows its catalog data and says the data root holds
-// none. A section that throws shows its error in its card; the others go on.
+// kind and, of a groundwater object, whether a bore or a spring, active or not; of a
+// provider that is no national meteorological and hydrological service, hydromet P11, the
+// chip „Inne źródło” and the note that its data do not come from one; the record of its
+// series, a dataset's unverified data labelled), then its sections as an accordion in the
+// author's order: „Informacje o stacji”, „Pomiary bieżące” (not of a groundwater object: no
+// current data are served for one, ADR-032), „Dane pomiarowo-obserwacyjne”, the
+// hydrological (HYDRO_SECTIONS) or meteorological (METEO_SECTIONS) analyses that apply to
+// the station, then „Pobierz”. A registry entry is `{id, title, component, available?,
+// part?}`: `title` is a key of the catalog, drawn as the card's header; the open card draws
+// `component({station, session, analyses})`, where `analyses` is the list of
+// api/analyses/{code}, fetched here once; `available(station, ids)`, given the Set of the
+// list's ids, leaves out a section no analysis of which applies. A station without series
+// shows its catalog data and says the data root holds none. A section that throws shows its
+// error in its card; the others go on.
 //
 // The panel hands the lines and terms of what it shows (Nogat DEV §20, DEV-20.5) to the
 // view's one strip (`onLines`, main.js): the station's catalog lines of its header,
@@ -23,17 +26,15 @@ import { api } from "./api.js";
 import { catalogSources, compose, merge, useTexts } from "./attribution.js";
 import { scopeOf } from "./instance.js";
 import { fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
-import { ResultLines, Section } from "./sections/common.js";
+import { ResultLines, Section, UnverifiedFlag } from "./sections/common.js";
 import { DANE } from "./sections/dane.js";
 import { HYDRO_SECTIONS } from "./sections/hydro/index.js";
 import { METEO_SECTIONS } from "./sections/meteo/index.js";
 import { Command, Licence, POBIERZ } from "./sections/pobierz.js";
 import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
-import { SERIES_DATASETS, datasetShort, datasetTitle, groundwaterKindName, kindName, providerFullName, providerName, shownKinds } from "./words.js";
+import { datasetShort, datasetTitle, groundwaterKindName, kindName, providerFullName, providerName, seriesDatasets, shownKinds, sourceClass } from "./words.js";
 
-/** The start of the keys of each provider's datasets (the registry's). */
-const DATASET_PREFIX = { IMGW: "pl.imgw.", CHMU: "cz.chmu." };
 /** The names of the formats of a stations file. */
 const STATIONS_FORMATS = { geojson: "GeoJSON", csv: "CSV" };
 
@@ -115,20 +116,26 @@ function datasetYears(entry) {
   return { first: +spans.map((v) => v.first).sort()[0].slice(0, 4), last: +spans.map((v) => v.last).sort().at(-1).slice(0, 4) };
 }
 
-/** The station's record (ADR-022): its years over every series, and the dataset of each part. */
+/**
+ * The station's record (ADR-022): its years over every series, and the dataset of each
+ * part, labelled where its series are unverified.
+ */
 function Record({ station }) {
   const parts = station.datasets.map((entry) => ({ key: entry.dataset, years: datasetYears(entry) })).filter((part) => part.years);
   if (!station.first || !parts.length) return null;
   parts.sort((a, b) => a.years.first - b.years.first);
   return html`<p class="station-record small">
     ${t("station.record", { years: `${station.first}–${station.last}` })}${" "}
-    ${parts.map((part, at) => html`${at ? " · " : ""}<span title=${datasetTitle(part.key)}>${datasetShort(part.key)} ${part.years.first}–${part.years.last}</span>`)}
+    ${parts.map(
+      (part, at) => html`${at ? " · " : ""}<span title=${datasetTitle(part.key)}>${datasetShort(part.key)} ${part.years.first}–${part.years.last}<${UnverifiedFlag} dataset=${part.key} /></span>`,
+    )}
   </p>`;
 }
 
-/** The header of the station. */
+/** The header of the station; of a provider of the class "other" (hydromet P11) with its class and its note. */
 function StationHead({ station }) {
   const p = station.properties;
+  const other = sourceClass(station.provider) === "other";
   return html`<div class="station-head">
     <div class="station-title">
       <h3>${p.name || station.code}</h3>
@@ -137,12 +144,14 @@ function StationHead({ station }) {
     <div class="station-tags">
       <code class="chip">${station.code}</code>
       <span class="chip" title=${providerFullName(station.provider)}>${providerName(station.provider)}</span>
+      ${other ? html`<span class="chip" data-part="source-class">${t("station.source_other")}</span>` : null}
       <span class=${`chip kind-${p.kind}`}>${kindName(p.kind)}</span>
       ${p.groundwater_kind ? html`<span class="chip">${groundwaterKindName(p.groundwater_kind)}</span>` : null}
       <span class=${`badge ${p.active ? "ok" : "warn"}`}>${p.active ? t("station.active") : t("station.inactive")}</span>
       ${station.lon === null ? html`<span class="badge warn">${t("station.no_location")}</span>` : null}
     </div>
     <${Record} station=${station} />
+    ${other ? html`<p class="note-box" data-part="source-note">${t("station.source_other_note")}</p>` : null}
     ${station.datasets.length ? null : html`<p class="note-box">${t("station.no_series")}</p>`}
   </div>`;
 }
@@ -337,7 +346,9 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
   // for its stations: a groundwater dataset only where its catalog has a groundwater object;
   // never an hourly series (ADR-031), built from the captures and not served while private
   const offered = Object.fromEntries(providers.map((id) => [id, shownKinds(stations.filter((s) => s.provider === id))]));
-  const missing = Object.keys(SERIES_DATASETS).filter((key) => !held[key] && SERIES_DATASETS[key].step !== "hour" && providers.some((id) => key.startsWith(DATASET_PREFIX[id]) && offered[id].includes(SERIES_DATASETS[key].kind)));
+  const missing = Object.entries(seriesDatasets())
+    .filter(([key, dataset]) => !held[key] && dataset.step !== "hour" && (offered[dataset.provider] || []).includes(dataset.kind))
+    .map(([key]) => key);
   return html`<div class="no-station">
     <p class="hint-box">${t("station.none.hint")}</p>
     ${root && root.error ? html`<p class="ana-error" role="alert">${t("station.none.root_error", { message: root.error.message })}</p>` : null}

@@ -135,6 +135,8 @@ MESSAGES = {
         "{title}: operational data, unverified",
         "{title}: dane operacyjne, niezweryfikowane",
     ),
+    # The short label of a daily dataset where a GUI names its series (api/session).
+    "short_daily": Text("Daily", "Dobowe"),
     "title_station_list": Text(
         "{provider} — station file",
         "{provider} — plik stacji",

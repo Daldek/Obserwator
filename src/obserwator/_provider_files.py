@@ -251,6 +251,29 @@ class ProviderFile:
         """The grammar of its station codes, ``^<id>-<operator's code>$``."""
         return rf"^{self.id}-{LOCAL_CODE}$"
 
+    def dataset_title(self, kind: Literal["hydro", "meteo", "groundwater"]) -> Message:
+        """
+        The title of its daily dataset of a kind of station, without its tier's words.
+
+        Parameters
+        ----------
+        kind : {"hydro", "meteo", "groundwater"}
+            The kind of the dataset's stations.
+
+        Returns
+        -------
+        Message
+            ``<short name> — daily … data``; the registry adds the words of an
+            unverified tier (`obserwator.datasets`), a GUI labels the tier itself.
+        """
+        if kind == "hydro":
+            return message("provider_files.title_hydro_daily", provider=self.short_name)
+        if kind == "meteo":
+            return message("provider_files.title_meteo_daily", provider=self.short_name)
+        return message(
+            "provider_files.title_groundwater_daily", provider=self.short_name
+        )
+
     def screen_line(self) -> dict[str, object]:
         """
         The line as Nogat kit's ``<nogat-sources screen-lines>`` declares it (kit 1.2.0).

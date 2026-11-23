@@ -7,13 +7,13 @@
 // and faded, while „Pokaż inne źródła” is off and the provider switch is on „all” (I2, I6;
 // list.js, map.js); only the views served (main.js); the map's start, the area's outline
 // and, in `clip`, its bounds (I4, I5; map.js); the operator's logo and title in the top
-// bar and the page's title (I14; ui/top-bar.js). Without an instance every provider and
-// view is shown, as before.
+// bar and the page's title (I14; ui/top-bar.js). Without an instance every provider of the
+// session (the registry's, a provider fed by files among them) and every view is shown.
 
 import { VIEWS } from "./state.js";
 
-/** The providers of the registry in its order: every one without an instance. */
-export const PROVIDERS = ["IMGW", "CHMU"];
+/** IMGW-PIB and ČHMÚ in the registry's order until the session names the providers (before it answers, or when it fails). */
+const PROVIDERS = ["IMGW", "CHMU"];
 
 /**
  * What a deployment shows.
@@ -21,13 +21,17 @@ export const PROVIDERS = ["IMGW", "CHMU"];
  * @param {object|null} session api/session; null when it did not answer
  * @returns {{instance: object|null, providers: string[], featured: string|null,
  *   hidden: string[], offersOthers: boolean, views: string[]}} the session's `instance`,
- *   the providers served in its order (the featured one first), the featured one, the
- *   hidden ones, whether „Pokaż inne źródła” changes anything (a hidden provider, or a
- *   featured one beside another) and the views of the map's bar
+ *   the providers served in its order (the featured one first; without an instance the
+ *   session's providers in the registry's order), the featured one, the hidden ones,
+ *   whether „Pokaż inne źródła” changes anything (a hidden provider, or a featured one
+ *   beside another) and the views of the map's bar
  */
 export function scopeOf(session) {
   const instance = (session && session.instance) || null;
-  if (!instance) return { instance: null, providers: PROVIDERS, featured: null, hidden: [], offersOthers: false, views: VIEWS };
+  if (!instance) {
+    const providers = session ? Object.keys(session.providers) : PROVIDERS;
+    return { instance: null, providers, featured: null, hidden: [], offersOthers: false, views: VIEWS };
+  }
   const providers = Object.keys(instance.providers);
   const hidden = providers.filter((id) => instance.providers[id] === "hidden");
   const featured = instance.featured || null;
