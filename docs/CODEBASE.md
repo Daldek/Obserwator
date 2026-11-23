@@ -11,7 +11,7 @@ src/obserwator/
 ├── fetch.py              # PUBLIC: live data (fetch_*), PMAXTP, download_archives, download_*_data
 ├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, NormalizedRecord, Measurement, ...)
 ├── stations.py           # PUBLIC: find_stations (live lists of IMGW-PIB and ČHMÚ, or the current catalogs of a data root)
-├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 27 dataset descriptors, archive_files
+├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 33 dataset descriptors, archive_files; KINDS, SERIES_TIME_UNITS, builds_series
 ├── commands.py           # PUBLIC: Command catalog (35 commands, PL + EN texts, effects), run_command, command_schema, list_commands
 ├── agent_guide.py        # PUBLIC: agent_guide (AGENTS.md / llms.txt), MCP server instructions
 ├── coverage.py           # PUBLIC: summarize_coverage (per-station periods for ČHMÚ)
@@ -36,7 +36,7 @@ src/obserwator/
 ├── nogat_logging.py      # Nogat's reference module, copied byte for byte (DEV-12.9): ServerLog, AccessLog of both servers; never edited
 ├── _hydrolog.py          # Hydrolog's program (setting hydrolog_command): open_hydrolog, Hydrolog.batch (`commands batch` in a separate process; ADR-016)
 ├── _data/                # Poland/Czechia borders (PRG, RÚIAN; ADR-018), agents/ guide templates, packaged fixtures
-├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files, listings, metadata)
+├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files incl. groundwater, listings, metadata)
 ├── store/                # Versioned store in two roots, raw and data (ADR-017) [Parquet: obserwator[store]]
 │   ├── types.py          # Dataclasses: StorePlan, CommandResult, Page, StoreEntry, StoreHandle, ...; RootKind
 │   ├── writer.py         # init_store (raw or data root), open_store, write_archive (atomic, append-only, content_unchanged + observations)
@@ -139,7 +139,7 @@ The public API is exposed via `from obserwator import ...` (one `__all__`, also 
 |`fetch_synop(*, station=None, station_name=None)`|Current synop data (`SynopData`)|
 |`fetch_warnings(*, kind=None)`|Hydro/meteo warnings (`WarningData`; `None` = both)|
 |`fetch_hydro_states(*, main_only=False)`|Hydro stations with coordinates and water state (`HydroState`)|
-|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None, bbox=None)`|Search IMGW-PIB and/or ČHMÚ station lists live (coordinates: ČHMÚ metadata; IMGW-PIB `lat`/`lon` of the current-data API `api/data/hydro` and `api/data/meteo`, None for a listed station it does not report), or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint); `bbox=(west, south, east, north)` in WGS84 degrees keeps the stations with coordinates inside it, bounds included (`StationListEntry`)|
+|`find_stations(*, kind=None, query=None, source="live", root=None, provider=None, bbox=None)`|Search IMGW-PIB and/or ČHMÚ station lists live (coordinates: ČHMÚ metadata; IMGW-PIB `lat`/`lon` of the current-data API `api/data/hydro` and `api/data/meteo`, None for a listed station it does not report), or with `source="store"` the current catalogs of the data root `root` (offline; `short_code` None; no catalog → `not_found` with the `store catalog` hint); `kind` one of `KINDS` (`hydro`, `meteo`, `groundwater`: ČHMÚ's bores and springs, ADR-032) or None; `bbox=(west, south, east, north)` in WGS84 degrees keeps the stations with coordinates inside it, bounds included (`StationListEntry`)|
 |`download_archives(dataset, /, *, years, months, params, stations, output_dir, root, force)`|Download archives as plain files named by the provider's server path (`output_dir`) or into the raw root (`root`; neither = the default raw root) (`DownloadReport`: `mode`, `output_dir`, `root`, `files[]`; ČHMÚ 404 → `not_published`)|
 |`download_hydro_data(interval, year, month, param)`|One hydro archive as `DownloadResult` (bytes in `.data`)|
 |`download_meteo_data(interval, subtype, year, month)`|One meteo archive as `DownloadResult`|
@@ -150,8 +150,10 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |Function|Description|
 |---|---|
 |`providers()`, `get_provider(id or key_prefix)`|Provider registry (`ProviderDescriptor`: `IMGW` (IMGW-PIB), `CHMU` (ČHMÚ))|
-|`datasets(*, kind=None, provider=None, pending=False)`|Dataset descriptors (`DatasetDescriptor`; 27, each with its `tier`; `pending=True` adds the 11 declared ahead of their steps, ADR-030)|
+|`datasets(*, kind=None, provider=None, pending=False)`|Dataset descriptors (`DatasetDescriptor`; 33, each with its `tier`; `pending=True` adds the 12 declared ahead of their steps, ADR-030, ADR-032); `kind` one of `KINDS` or None|
 |`get_dataset(dataset)`|Descriptor by key, slug or legacy alias|
+|`obserwator.datasets.KINDS`, `Kind`|The station families in their order, `("hydro", "meteo", "groundwater")`, and their `Literal` type: the `kind` of a dataset, a station list, a catalog feature and `StationListEntry` (`groundwater` since ADR-032); not in `obserwator.__all__`|
+|`obserwator.datasets.SERIES_TIME_UNITS`, `builds_series(descriptor)`|The time units of the series datasets, `("day", "week", "month", "half_year")`; `builds_series` is true for a dataset of the store with a parser and one of them (the 10 series datasets), false for station sources, download-only datasets, `cz.chmu.groundwater_recent` (operational, no parser) and `cz.chmu.groundwater_characteristic` (`statistics`); not in `obserwator.__all__`|
 |`archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)`|Archive files with URLs (`ArchiveFile`; `stations` required for `cz.chmu.*`)|
 |`station_source_files(*, provider="IMGW")`|The two station lists of a provider as `ArchiveFile`s (hydro, meteo): IMGW-PIB `lista_stacji_hydro.csv`, `wykaz_stacji.csv`; ČHMÚ the two `historical` `meta1.json`|
 |`build_pmaxtp_url(latitude, longitude, *, method="POT")`|PMAXTP API URL|
@@ -175,7 +177,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`export_archive`, `export_series`|CSV/JSONL export of an archive version; one station's series as CSV, JSON (`obserwator-series-export/1`) or Parquet (needs `output`); a line iterator, or with `output` (+ `force`) one plain file and its `OutputReport`|
 |`export_stations`|The stations of the current catalogs as GeoJSON (`obserwator-stations-export/1`, RFC 7946) or CSV, with the series that hold them (ADR-014; schemas in `schemas/`); `keep=` a predicate of the stations exported (a server's instance filter, no catalog option)|
 
-**Offline fixture roots** (`obserwator.testing`, outside `obserwator.__all__`; ADR-017 D9): `build_fixture_store(root, *, data_root, variant="complete") -> FixtureRoots` builds a raw root at `root` (archives, station sources) and the data root built from it at `data_root` (series, catalogs) with the public writers and recorded answers, without the network; `FixtureRoots(raw, data)` is a frozen dataclass of the two `StoreHandle`s. Variants: `complete`, `complete_pl_cz` (ČHMÚ too), `corrupt` (a sidecar of the raw root truncated) and `unknown_schema` (a series version of `/2` in the data root).
+**Offline fixture roots** (`obserwator.testing`, outside `obserwator.__all__`; ADR-017 D9): `build_fixture_store(root, *, data_root, variant="complete") -> FixtureRoots` builds a raw root at `root` (archives, station sources) and the data root built from it at `data_root` (series, catalogs) with the public writers and recorded answers, without the network; `FixtureRoots(raw, data)` is a frozen dataclass of the two `StoreHandle`s. Variants: `complete`, `complete_pl_cz` (ČHMÚ too), `corrupt` (a sidecar of the raw root truncated) and `unknown_schema` (a series version of `/2` in the data root). A variant `groundwater` with ČHMÚ's groundwater is planned (ADR-032 D9), not yet built.
 
 **Stored Analyses** (ADR-016; also in `obserwator.store`; every number is Hydrolog's, run through the setting `hydrolog_command`, else `hydrolog` on `PATH`):
 |Function|Description|
@@ -209,7 +211,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`HydroCurrentData`, `MeteoCurrentData`, `SynopData`|Current measurements (`station_code`)|
 |`WarningData`|Weather/hydro warning (`kind`, `event`, `level`, ...)|
 |`HydroState`|Station with coordinates and `water_state`|
-|`StationListEntry`|Station list row (`kind`, `station_code`, `name`, `provider`, ...)|
+|`StationListEntry`|Station list row (`kind`, `station_code`, `name`, `provider`, ...; `groundwater_kind` `bore`/`spring` of a groundwater object only, left out of `obserwator-station/1` when None, ADR-032)|
 |`NormalizedRecord`, `Measurement`|Normalized archive/series record with value flags (`Measurement.quality`, `source_flag` for ČHMÚ meteo)|
 |`ProviderDescriptor`|Data provider: id, names, country, key prefix, base URL, license, station code pattern, datasets, `credential` (a `ProviderCredential`: the API key its requests need, `OBSERWATOR_<STEM>_API_KEY[_FILE]`; None, and absent from the JSON, for IMGW-PIB and ČHMÚ)|
 |`CommandResult`, `Page`|Result envelope (`obserwator-result/1`: `tool`, `version`, `result` a document or a list of them, `notices` `{level, code, message}`, `page`) and the paging of a list command (`total`, `next_cursor`, `truncated`)|
@@ -228,7 +230,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`ObserwatorStoreDependencyError`|`missing_dependency`|pyarrow missing|
 |`ObserwatorCancelledError`|`cancelled`|Cancelled operation|
 
-**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_meteo_synop_daily` (`s_d` and `s_d_t`, ADR-022), `parse_chmu_hydro_daily`, `parse_chmu_meteo_daily`, `parse_chmu_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
+**Parsers:** `parse_zip_file(zip_data, interval)`, `parse_daily_csv`, `parse_monthly_csv`, `parse_semi_annual_csv`, `parse_stations_csv(content, /, *, kind)`, `parse_meteo_climate_daily`, `parse_meteo_precip_daily`, `parse_meteo_synop_daily` (`s_d` and `s_d_t`, ADR-022), `parse_chmu_hydro_daily`, `parse_chmu_meteo_daily`, `parse_chmu_groundwater(content, /, *, filename)` (the daily and weekly groundwater files, the stray closings `]}}}` of a left-out series accepted, any other malformation `data_error`; ADR-032 D4), `parse_chmu_stations`, `normalize_archive`, `IMGW_ENCODING` (CP1250).
 
 ## Key Module: `commands.py`
 
@@ -277,8 +279,9 @@ The command catalog is the single source of options, validation, help texts and 
 - **Meteo daily** (`cz.chmu.meteo_daily`): `meteorology/climate/historical_csv/data/daily/{precipitation,temperature,snow}/dly-<WIGOS>-{SRA,T,TMA,TMI,SCE,SNO}.csv` — six CSV files per station with the whole station history (`SCE` → `snow_cover`, `SNO` → `fresh_snow` [cm], since 3.1.0); `QUALITY` 0–5 and `FLAG` kept as `quality`/`source_flag`
 - **Station lists** (`cz.chmu.hydro_stations`, `cz.chmu.meteo_stations`): `hydrology/historical/metadata/meta1.json`, `meteorology/climate/historical/metadata/meta1.json` (JSON envelope `zaznamID`/`datumVytvoreni` changes with every regeneration → canonical form `chmu-json/1`)
 - **Catalog sources** (`cz.chmu.hydro_now`, `cz.chmu.meteo_now`, stored by `store sync --datasets`; ADR-015): `hydrology/now/metadata/meta1.json` (SPA thresholds), `meta3.json` (`HLGP4`), newest `meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json` (directory listing); meteo `GEOGR1` = longitude, hydro `GEOGR1` = latitude
+- **Groundwater** (ADR-032; bores and springs, kind `groundwater`): `hydrology/groundwater/historical/data/H_<WIGOS>_D_<year>.json` (`cz.chmu.groundwater_daily`, from 1960) and `…_W_<year>.json` (`cz.chmu.groundwater_weekly`, from 1933) — one JSON per object and calendar year in one directory, `HD`/`HT` → `H_asl` [m a.s.l.], `YD`/`YT` → `spring_yield` [l/s], `TD`/`TT` → T [°C], the date of a row the date part of `DT`, no content form (about 17 % of the files carry ČHMÚ's stray `]}}}`); `recent/data/<WIGOS>_D_<YYYYMM>.json` (`cz.chmu.groundwater_recent`, from 2025-01, tier `operational`, stored, no series); `characteristic/data/GCHAR_<WIGOS>.json` (`cz.chmu.groundwater_characteristic`, the 5–95 % quantiles per week or month of the year, one file per object, no `years`); `now/data/` declared only (`cz.chmu.groundwater_current`). Optional catalog sources: `historical/metadata/meta1.json` (`cz.chmu.groundwater_stations`, `objID`, `OBJECT_NAME`, `OBJECT_TYPE` `bore`/`spring`, `GEOGR1` = latitude, `GEOGR2` = longitude, `ALTITUDE`) and `now/metadata/meta1.json` (`cz.chmu.groundwater_now`, the operational network: `active`); a groundwater feature carries `groundwater_kind`, `elevation_m` (`ALTITUDE`) and `location_source` `cz.chmu.groundwater_now` or `cz.chmu.groundwater_stations`
 - **Inventory and freshness**: nginx directory listings (name, mtime to the minute, size): one GET instead of a HEAD per file; requests are sequential with `User-Agent: obserwator/<version>`; license CC BY 4.0 (attribution from the registry)
-- Out of scope: `now`/`recent` measurements, hourly data, CAP warnings, PMAXTP
+- Out of scope: the hydro `now`/`recent` measurements and hourly data (declared ahead of their steps, ADR-030), CAP warnings, PMAXTP
 
 ## Command Catalog (CLI, REST and MCP)
 
@@ -376,7 +379,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 
 ## Data Structure
 
-### Dataset registry (27 descriptors, 2 providers)
+### Dataset registry (33 descriptors, 2 providers)
 
 |Key|Legacy alias|Store|
 |---|---|---|
@@ -400,10 +403,16 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`cz.chmu.meteo_daily`|—|yes (6 files per station: SRA, T, TMA, TMI, SCE, SNO; no `years`)|
 |`cz.chmu.hydro_stations`, `cz.chmu.meteo_stations`|—|yes (station lists, canonical form `chmu-json/1`)|
 |`cz.chmu.hydro_now`, `cz.chmu.meteo_now`|—|yes (`now` station metadata, canonical form `chmu-json/1`)|
+|`cz.chmu.groundwater_daily`, `cz.chmu.groundwater_weekly`|—|yes (per object × calendar year, `stations` required, `years` optional; no content form; the weekly series has rows only at reading dates; ADR-032)|
+|`cz.chmu.groundwater_recent`|—|yes (per object × month from 2025-01, tier `operational`, `archive_scope` `station_month`; no series until O4)|
+|`cz.chmu.groundwater_characteristic`|—|yes (one file per object, `time_unit` `statistics`, `archive_scope` `station`; `stations` required, no `years`)|
+|`cz.chmu.groundwater_stations`, `cz.chmu.groundwater_now`|—|yes (groundwater object list and `now` metadata, optional sources of the ČHMÚ catalog, canonical form `chmu-json/1`)|
 
-`get_dataset`/`archive_files` accept the key, the slug (the provider's acronym and the last part of the key, e.g. `imgw_hydro_daily`, `chmu_hydro_daily`; a slug of 3.0.x without `imgw_` is no input, ADR-028) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+`get_dataset`/`archive_files` accept the key, the slug (the provider's acronym and the last part of the key, e.g. `imgw_hydro_daily`, `chmu_hydro_daily`; a slug of 3.0.x without `imgw_` is no input, ADR-028) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 21 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 10 series datasets, `cz.chmu.groundwater_recent` and `cz.chmu.groundwater_characteristic` and the 11 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021, ADR-032), series commands the 10 of `builds_series`. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
 
-Every descriptor has a `tier` (ADR-030, Nogat ECO-084): `verified` for the 27 above, `telemetry` or `operational` for what a source gives as current or unverified data; it is set in the registry, never inferred from values, and every `datasets list` document carries it. The registry also declares eleven datasets of 3.2.0's operational series ahead of the steps that serve them — `pl.imgw.hydro_operational`, `pl.imgw.hydro_telemetry`, the captures `pl.imgw.{hydro,meteo,meteo_synop,warnings_hydro,warnings_meteo,hydro_states}_current`, `cz.chmu.hydro_recent`, `cz.chmu.hydro_current` and `cz.chmu.hydro_hourly` — which only `datasets(pending=True)` lists: no command, MCP tool, REST route or GUI view lists or accepts them, and `get_dataset` refuses their keys, until their step moves them into the registry (ADR-030 D4 gives their tiers, time units and scopes, D8 the move).
+Every descriptor has a `tier` (ADR-030, Nogat ECO-084): `verified` for 32 of the 33 above; `telemetry` or `operational` for what a source gives as current or unverified data, among the served ones `cz.chmu.groundwater_recent` (ADR-032 D5); it is set in the registry, never inferred from values, and every `datasets list` document carries it. The registry also declares twelve datasets of 3.2.0's operational series ahead of the steps that serve them — `pl.imgw.hydro_operational`, `pl.imgw.hydro_telemetry`, the captures `pl.imgw.{hydro,meteo,meteo_synop,warnings_hydro,warnings_meteo,hydro_states}_current`, `cz.chmu.hydro_recent`, `cz.chmu.hydro_current`, `cz.chmu.groundwater_current` (ADR-032 D6) and `cz.chmu.hydro_hourly` — which only `datasets(pending=True)` lists: no command, MCP tool, REST route or GUI view lists or accepts them, and `get_dataset` refuses their keys, until their step moves them into the registry (ADR-030 D4 gives their tiers, time units and scopes, D8 the move).
+
+`time_unit` values: `day`, `week` (a weekly reading at its own date: a weekly series has rows only at reading dates, and its coverage counts calendar weeks, Monday to Sunday, a gap named by the Mondays of its first and last missing week; ADR-032 D2), `month`, `half_year`, `term`, `hour`, `ten_minutes`, and the auxiliary `station_list`, `cell`, `snapshot` and `statistics` (a station's published statistics by period of the year, ADR-032 D7). `archive_scope` values: `country`, `station_year`, `station_month` (one station and calendar month), `station` (one file per station), `station_element` and `country_day`. Station `kind`: one of `KINDS` or None (PMAXTP).
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):
@@ -558,7 +567,7 @@ src/obserwator/
 ├── _data/        # Borders of Poland and Czechia (PRG, RÚIAN; ADR-018), guide templates agents/, test fixtures
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
-├── datasets.py   # Registry of providers and 27 datasets (pl.imgw.*, cz.chmu.*), archive file generator
+├── datasets.py   # Registry of providers and 33 datasets (pl.imgw.*, cz.chmu.*), archive file generator
 ├── commands.py   # Catalog of 35 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads
