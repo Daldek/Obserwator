@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         ArchiveFile,
         DatasetDescriptor,
         MonthsArg,
+        ProviderCredential,
         ProviderDescriptor,
         YearsArg,
     )
@@ -180,20 +181,20 @@ class ProviderAdapter(Protocol):
         return self.provider.short_name
 
     @property
-    def credential(self) -> None:
+    def credential(self) -> ProviderCredential | None:
         """
         The credential the provider's requests need (P3); None without one.
 
-        No provider of ``v3.2.0`` needs one. The settings and errors of a credential
-        are step H3's; once both steps are merged this returns the registry's
-        declaration of the provider's credential.
+        The registry declares it (``ProviderDescriptor.credential``, step H3); a
+        request of the adapter reads the key with ``config.provider_key`` and a
+        rejected key is ``config.credential_error`` (``forbidden``).
 
         Returns
         -------
-        None
-            IMGW-PIB and ČHMÚ need none.
+        ProviderCredential or None
+            The registry's declaration; None for IMGW-PIB and ČHMÚ.
         """
-        return None
+        return self.provider.credential
 
     # --- attribution ---------------------------------------------------------------
 
