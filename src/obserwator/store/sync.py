@@ -6,7 +6,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
@@ -14,7 +14,10 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
+from obserwator import captures as _captures
+from obserwator import fetch as _fetch
 from obserwator._parsing.chmu import ListingEntry, parse_listing
+from obserwator.captures import _harvest, _harvested
 from obserwator.datasets import (
     CAPTURE_SCOPE,
     ArchiveFile,
@@ -49,6 +52,7 @@ from obserwator.fetch import (
     DownloadResult,
     _archive_slot,
     _download_plain,
+    pace_deadline,
 )
 from obserwator.messages import Message, message, reason
 from obserwator.messages.sync import MESSAGES
@@ -63,6 +67,7 @@ from obserwator.store.series import (
 from obserwator.store.types import (
     Cancel,
     DownloadItem,
+    HarvestReport,
     Notice,
     NoticeHook,
     OperationResult,
@@ -688,6 +693,61 @@ def _capture_descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor] | N
     return list(captures.values())
 
 
+def _harvest_codes(
+    captures: list[DatasetDescriptor],
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    stations: Iterable[str] | None,
+) -> tuple[str, ...]:
+    """
+    The station codes of a harvest (``pace_until``, ADR-030 D9); none for every station.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If the call names more than one dataset or one no adapter harvests
+        (``details.reason`` ``not_harvested``), gives ``years`` or ``months``
+        (``captures``) or a station code outside the provider's grammar.
+    """
+    keys = [descriptor.key for descriptor in captures]
+    if len(captures) > 1 or not _harvested(captures[0]):
+        raise ObserwatorValidationError(
+            message("sync.pace_until_not_harvested", keys=", ".join(keys)),
+            details={"option": "pace_until", "value": keys, "reason": "not_harvested"},
+        )
+    for name, given in (("years", years), ("months", months)):
+        if given is not None:
+            raise ObserwatorValidationError(
+                message("sync.option_not_for_captures", option=name),
+                details={"option": name, "value": None, "reason": "captures"},
+            )
+    if stations is None:
+        return ()
+    return _parse_stations(stations, get_provider(captures[0].provider))
+
+
+def _harvest_day() -> date:
+    """The UTC day a harvest covers: the last closed one, yesterday (ADR-030 D9)."""
+    return _captures._now().date() - timedelta(days=1)
+
+
+def _harvest_action(
+    descriptor: DatasetDescriptor, codes: tuple[str, ...], pace_until: str
+) -> PlanAction:
+    """The plan's ``store sync`` action of a harvest: its source is asked first."""
+    return PlanAction(
+        _SYNC,
+        "missing",
+        message(
+            "sync.harvest_planned",
+            dataset=descriptor.key,
+            day=_harvest_day().isoformat(),
+            stations=", ".join(codes) if codes else message("sync.harvest_every"),
+            until=pace_until,
+        ),
+    )
+
+
 def _country_archives(
     descriptors: list[DatasetDescriptor],
     years: YearsArg | None,
@@ -774,7 +834,9 @@ def _scope(descriptor: DatasetDescriptor) -> _Scope:
     ``country``: archives enumerated offline and checked by HEAD (IMGW-PIB's
     archives of the whole country); ``folders``: archives named in the index of
     each folder and checked by HEAD (IMGW-PIB's per-station synop archives);
-    ``stations``: station files checked by their listing (ČHMÚ).
+    ``stations``: station files checked by their listing (ČHMÚ); ``listing``:
+    archives enumerated offline and published when the provider's listing names
+    them, with no HTTP signal (IMGW-PIB's telemetry, `_check_listing`).
     """
     return get_provider(descriptor.provider).adapter.check_scope(descriptor)
 
@@ -820,6 +882,8 @@ def _selection(
     years: YearsArg | None,
     months: MonthsArg | None,
     stations: Iterable[str] | None,
+    *,
+    pace_until: str | None = None,
 ) -> tuple[
     list[DatasetDescriptor],
     tuple[str, ...],
@@ -829,8 +893,8 @@ def _selection(
     """
     Validate the selectors of a check offline, before any request.
 
-    Shared by `check_store` and the command catalog (``validate_command`` of
-    ``store check`` and ``store sync``).
+    Shared by `check_store`, `sync_store` and the command catalog
+    (``validate_command`` of ``store check`` and ``store sync``).
 
     Returns
     -------
@@ -839,16 +903,28 @@ def _selection(
         (ČHMÚ) the station codes and the candidates of each dataset (see
         `_station_request`) with no archives, for the per-station synop
         archives of IMGW-PIB the station codes and no candidates (see
-        `_folder_request`) with no archives, for country datasets (IMGW-PIB)
-        no codes, no candidates and the archives, for station sources
-        (lists and station metadata, ADR-015) no codes, no candidates and
-        their files with a fixed name, or for capture datasets (ADR-030 D3,
-        sealed from the spool) no codes, no candidates and no files.
+        `_folder_request`) with no archives, for country datasets (IMGW-PIB,
+        its telemetry included) no codes, no candidates and the archives, for
+        station sources (lists and station metadata, ADR-015) no codes, no
+        candidates and their files with a fixed name, or for capture datasets
+        (ADR-030 D3, sealed from the spool) the codes of a harvest
+        (``pace_until``, `_harvest_codes`: none for every station), no
+        candidates and no files.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If a selector is invalid for the datasets (see the callers), or
+        ``pace_until`` is no ``HH:MM`` or names no single harvest dataset.
     """
     if not isinstance(datasets, str):
         datasets = tuple(datasets)
+    if pace_until is not None:
+        pace_deadline(pace_until, now=datetime.now(UTC))
     captures = _capture_descriptors(datasets)
     if captures is not None:
+        if pace_until is not None:
+            return captures, _harvest_codes(captures, years, months, stations), {}, []
         for name, given in (
             ("years", years),
             ("months", months),
@@ -860,6 +936,12 @@ def _selection(
                     details={"option": name, "value": None, "reason": "captures"},
                 )
         return captures, (), {}, []
+    if pace_until is not None:
+        keys = [get_dataset(dataset).key for dataset in dict.fromkeys(datasets)]
+        raise ObserwatorValidationError(
+            message("sync.pace_until_not_harvested", keys=", ".join(keys)),
+            details={"option": "pace_until", "value": keys, "reason": "not_harvested"},
+        )
     sources = _source_descriptors(datasets)
     if sources is not None:
         for name, given in (
@@ -926,6 +1008,7 @@ def check_store(
     years: YearsArg | None = None,
     months: MonthsArg | None = None,
     stations: Iterable[str] | None = None,
+    pace_until: str | None = None,
     plan: PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -944,9 +1027,14 @@ def check_store(
     of each server directory listing, without any ``HEAD``: the listing's time
     (to the minute) and size are compared with the reference signal of the
     slot (the newest observation of its current version, or that version's
-    ``Last-Modified`` and size). Per-archive errors are recorded in the plan,
-    never raised. A capture dataset (ADR-030 D3) is checked without a request:
-    one item per closed UTC day of its spool (`obserwator.store.captures`).
+    ``Last-Modified`` and size). IMGW-PIB's monthly telemetry, which carries no
+    HTTP signal, is checked by one listing of the datastore per year folder: a
+    listed month is ``current`` when the store holds it, else ``missing``.
+    Per-archive errors are recorded in the plan, never raised. A capture dataset
+    (ADR-030 D3) is checked without a request: one item per closed UTC day of its
+    spool (`obserwator.store.captures`); with ``pace_until`` also today's spool
+    day, and one ``store sync`` action (``missing``) names the harvest the run
+    would ask its source for first.
 
     Parameters
     ----------
@@ -954,20 +1042,22 @@ def check_store(
         Raw root (ADR-017) or an open handle of one.
     datasets : Iterable[str]
         Dataset keys, slugs or legacy aliases of measurement datasets of one
-        kind: IMGW-PIB country archives, the IMGW-PIB synop archives or ČHMÚ
-        station files (also those no series reads: ČHMÚ's groundwater
-        ``recent`` and ``characteristic``, ADR-032); or station sources; or
-        capture datasets (no ``years``, ``months`` or ``stations``). A bare
+        kind: IMGW-PIB country archives, IMGW-PIB's telemetry, the IMGW-PIB synop
+        archives or ČHMÚ station files (also those no series reads: ČHMÚ's
+        groundwater ``recent`` and ``characteristic``, ADR-032, and its validated
+        hourly files); or station sources; or capture datasets (no ``years``,
+        ``months`` or ``stations``, except ``stations`` of a harvest). A bare
         string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
         items. Required for IMGW-PIB datasets; optional for the ČHMÚ files of
         a station and year or month (``cz.chmu.hydro_daily``,
-        ``cz.chmu.groundwater_daily``, ``cz.chmu.groundwater_weekly``,
-        ``cz.chmu.groundwater_recent``: None checks every year and month the
-        listing shows for the stations); rejected for ``cz.chmu.meteo_daily``
-        and ``cz.chmu.groundwater_characteristic``.
+        ``cz.chmu.hydro_hourly``, ``cz.chmu.groundwater_daily``,
+        ``cz.chmu.groundwater_weekly``, ``cz.chmu.groundwater_recent``: None
+        checks every year and month the listing shows for the stations);
+        rejected for ``cz.chmu.meteo_daily`` and
+        ``cz.chmu.groundwater_characteristic``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
         IMGW-PIB files only (also the running year's monthly synop files);
@@ -977,7 +1067,14 @@ def check_store(
         Station codes: ČHMÚ WIGOS identifiers, required for ČHMÚ datasets;
         nine-digit IMGW-PIB codes selecting the synop station archives whose
         number is a code's last three digits (None: every station of the
-        folder index); rejected for the other IMGW-PIB datasets.
+        folder index); rejected for the other IMGW-PIB datasets; with
+        ``pace_until`` the stations of the harvest (None: every station of the
+        provider's list).
+    pace_until : str or None, optional
+        ``HH:MM`` (local time) of a ``store sync`` that harvests one capture
+        dataset first (`sync_store`): the plan adds today's spool day and the
+        harvest's action; only for ``pl.imgw.hydro_operational`` and
+        ``cz.chmu.hydro_recent``.
     plan : str, os.PathLike or None, optional
         File to save the plan to (``obserwator-plan/1``, see `StorePlan.to_json`); it
         must lie outside the store in an existing directory.
@@ -1024,11 +1121,13 @@ def check_store(
         produce measurement series, IMGW-PIB and ČHMÚ datasets are mixed or
         ``stations`` is missing or given against the datasets (option
         ``stations``), a station code does not follow the provider's grammar,
-        the years/months are missing, invalid or rejected for the datasets, or
-        ``plan`` lies inside the store or in a missing directory.
+        the years/months are missing, invalid or rejected for the datasets,
+        ``pace_until`` is invalid or names no single harvest dataset
+        (``details.reason`` ``not_harvested``), or ``plan`` lies inside the
+        store or in a missing directory.
     """
     descriptors, codes, candidates, archives = _selection(
-        datasets, years, months, stations
+        datasets, years, months, stations, pace_until=pace_until
     )
     refused = root_conflict_plan("store sync", root, kind="raw")
     if refused is not None:
@@ -1041,6 +1140,7 @@ def check_store(
         items, cancelled = check_captures(
             path,
             descriptors,
+            today=pace_until is not None,
             on_progress=on_progress,
             on_notice=on_notice,
             cancel=cancel,
@@ -1051,6 +1151,11 @@ def check_store(
             checked_at=datetime.now(UTC),
             items=tuple(items),
             series_state={},
+            actions=(
+                ()
+                if pace_until is None
+                else (_harvest_action(descriptors[0], codes, pace_until),)
+            ),
             cancelled=cancelled,
             requests={"made": 0, "planned": 0},
         )
@@ -1105,6 +1210,16 @@ def check_store(
                 on_notice=on_notice,
                 cancel=cancel,
             )
+        elif scope == "listing":
+            items, cancelled = _check_listing(
+                client,
+                path,
+                archives,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
+            actions = []
         else:
             items, cancelled = _check_country(
                 client,
@@ -1115,6 +1230,9 @@ def check_store(
                 cancel=cancel,
             )
             actions = []
+    # Every newer or missing item is a GET, after a HEAD unless the listing is its
+    # only signal (the telemetry).
+    requests = 1 if scope == "listing" else 2
     result = StorePlan(
         schema="obserwator-plan/1",
         root=path,
@@ -1125,7 +1243,8 @@ def check_store(
         cancelled=cancelled,
         requests={
             "made": made,
-            "planned": 2 * sum(item.status in ("newer", "missing") for item in items),
+            "planned": requests
+            * sum(item.status in ("newer", "missing") for item in items),
         },
     )
     if target is not None:
@@ -1321,6 +1440,78 @@ def _check_one(
         signal=signal,
         error=NO_SIGNAL if status == "unverifiable" else None,
     )
+
+
+def _check_listing(
+    client: httpx.Client,
+    root: Path,
+    archives: list[ArchiveFile],
+    *,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[list[PlanItem], bool]:
+    """
+    Check archives that carry no HTTP signal by their directory's listing, in order.
+
+    One listing per directory (`ProviderAdapter.listing`: IMGW-PIB's telemetry asks
+    its datastore, ``POST getFilesList``, once per year folder). A listed file is
+    ``current`` when the store holds a version of its slot (published once; ``store
+    sync --force`` downloads it again and compares the bytes), else ``missing``; a
+    file the listing does not name, or a directory that is not published, is
+    ``unverifiable`` (``not published``); an unreadable listing makes its files
+    ``check_failed``. Every item has ``signal`` ``listing``.
+    """
+    listings: dict[str, set[str] | Exception | None] = {}
+    items: list[PlanItem] = []
+    cancelled = False
+    for index, archive in enumerate(archives, start=1):
+        if not cancelled and cancel is not None and cancel():
+            cancelled = True
+        if cancelled:
+            items.append(_item(archive, "unverifiable", error=CANCELLED))
+            continue
+        items.append(
+            replace(
+                _check_listed_file(client, root, archive, listings), signal="listing"
+            )
+        )
+        _announce(
+            items[-1],
+            index,
+            len(archives),
+            on_progress=on_progress,
+            on_notice=on_notice,
+        )
+    return items, cancelled
+
+
+def _check_listed_file(
+    client: httpx.Client,
+    root: Path,
+    archive: ArchiveFile,
+    listings: dict[str, set[str] | Exception | None],
+) -> PlanItem:
+    """Plan item of one file published by its listing alone (see `_check_listing`)."""
+    try:
+        local = _current_version(root, archive)
+    except ObserwatorDataError as exc:
+        return _item(archive, "check_failed", error=reason(exc))
+    descriptor = get_dataset(archive.dataset)
+    adapter = get_provider(descriptor.provider).adapter
+    directory = PurePosixPath(archive.server_path).parent.as_posix()
+    if directory not in listings:
+        try:
+            listings[directory] = adapter.listing(descriptor, directory, client=client)
+        except httpx.HTTPError as exc:
+            listings[directory] = exc
+    listing = listings[directory]
+    if isinstance(listing, Exception):
+        error = _http_error(listing, source=adapter.server_name)
+        return _item(archive, "check_failed", local=local, error=error)
+    if listing is None or PurePosixPath(archive.server_path).name not in listing:
+        return _item(archive, "unverifiable", local=local, error=UNPUBLISHED)
+    return _item(archive, "missing" if local is None else "current", local=local)
 
 
 def _check_sources(
@@ -1534,6 +1725,7 @@ def sync_store(
     years: YearsArg | None = None,
     months: MonthsArg | None = None,
     stations: Iterable[str] | None = None,
+    pace_until: str | None = None,
     plan: StorePlan | PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
@@ -1549,6 +1741,17 @@ def sync_store(
     spool is sealed into one version (`obserwator.store.captures.seal_day`),
     ``new`` or ``unchanged`` when its current version holds every answer, and
     the day's spool files are removed once the version holding them is published.
+
+    With ``pace_until`` a harvest dataset (``pl.imgw.hydro_operational``,
+    ``cz.chmu.hydro_recent``; ADR-030 D9) is first asked at its source for the last
+    closed UTC day (`obserwator.captures.harvest`): one request per station and
+    source, spread evenly until that local time and never closer than 5 s, every
+    answer into the spool; then every closed day of its spool and today's, which
+    holds the run's answers, are sealed (answers that come later today give a
+    correction version the next night). A request that fails, a station skipped
+    after the backoff, a run stopped by three connection failures in a row and a
+    station list that cannot be read are each one ``failed`` result without a slot,
+    so a partial harvest ends ``partial``; ``harvest`` reports the counts and times.
 
     Without ``plan`` the plan is built by :func:`check_store` from the given
     selectors; ``plan`` and the selectors are mutually exclusive. Before each
@@ -1596,7 +1799,13 @@ def sync_store(
         Months (1-12) filtering physically monthly IMGW-PIB files.
     stations : Iterable[str] or None, optional
         Station codes (ČHMÚ WIGOS identifiers, nine-digit codes of the IMGW-PIB
-        synop archives), as in :func:`check_store`.
+        synop archives), as in :func:`check_store`; with ``pace_until`` the
+        stations of the harvest (None: every station of the provider's list).
+    pace_until : str or None, optional
+        ``HH:MM`` (24 h, local time): harvest one dataset of
+        ``pl.imgw.hydro_operational`` and ``cz.chmu.hydro_recent`` before sealing
+        it, the requests spread to that time of the local day (one already passed
+        means the minimum spacing of 5 s). Store mode only, without ``plan``.
     plan : StorePlan, str, os.PathLike or None, optional
         Plan from :func:`check_store`, or the path of its ``obserwator-plan/1`` JSON file.
         Must refer to the same store root. Store mode only.
@@ -1605,8 +1814,9 @@ def sync_store(
         :func:`check_store`.
     on_notice : NoticeHook or None, optional
         Receives warnings and errors (``stale_plan``, ``source_unverifiable``,
-        ``archive_failed``) and notices of the writer (e.g.
-        ``content_unchanged``).
+        ``archive_failed``, a harvest's ``harvest_failed``) and notices of the
+        writer (e.g. ``content_unchanged``) and of a harvest (``harvest_done``,
+        info).
     cancel : Cancel or None, optional
         Polled before each archive; once it returns ``True`` the remaining items
         end as ``cancelled``.
@@ -1618,21 +1828,22 @@ def sync_store(
         ``unchanged``, ``failed``, ``stale_plan`` or
         ``cancelled``), then one ``failed`` result without a slot for every
         ``check_failed`` action of the plan (a ČHMÚ listing that could
-        not be read), the overall cancellation flag and ``files``: the
-        versions with their size, SHA-256 and status (store mode) or the
-        files written, ``written`` or ``replaced`` (plain mode). A plain file
-        written is an item ``new``; an unpublished ČHMÚ candidate is
-        ``unchanged``.
+        not be read) and every failure of a harvest, the overall cancellation
+        flag, ``files``: the versions with their size, SHA-256 and status (store
+        mode) or the files written, ``written`` or ``replaced`` (plain mode), and
+        ``harvest`` (`HarvestReport`) with ``pace_until``. A plain file written is
+        an item ``new``; an unpublished ČHMÚ candidate is ``unchanged``.
 
     Raises
     ------
     ObserwatorValidationError
-        If both ``plan`` and selectors are given, ``datasets`` is missing
-        without a plan, the plan refers to another store, or the selectors are
-        invalid (see :func:`check_store`); if both ``output_dir`` and ``root``
-        are given (``details["reason"]="exclusive_options"``); if ``plan`` is
-        given with ``output_dir`` (``details["reason"]="store_only_option"``)
-        or station sources are synchronized as plain files
+        If both ``plan`` and selectors (``pace_until`` included) are given,
+        ``datasets`` is missing without a plan, the plan refers to another store,
+        or the selectors are invalid (see :func:`check_store`); if both
+        ``output_dir`` and ``root`` are given (``details["reason"]=
+        "exclusive_options"``); if ``plan`` or ``pace_until`` is given with
+        ``output_dir`` (``details["reason"]="store_only_option"``) or station
+        sources or captures are synchronized as plain files
         (``details["reason"]="store_only_dataset"``).
     ObserwatorError
         ``conflict`` in plain mode before any request (``output_exists``,
@@ -1657,6 +1868,7 @@ def sync_store(
             years=years,
             months=months,
             stations=stations,
+            pace_until=pace_until,
             plan=plan,
             on_progress=on_progress,
             on_notice=on_notice,
@@ -1665,28 +1877,43 @@ def sync_store(
     refuse_root(target.path, kind="raw")
     path = lenient_store(target.path, kind="raw").root
     if plan is not None and any(
-        option is not None for option in (datasets, years, months, stations)
+        option is not None for option in (datasets, years, months, stations, pace_until)
     ):
         raise ObserwatorValidationError(
             message("sync.give_plan_selectors_datasets_years")
         )
     explicit = plan is None
+    harvest: HarvestReport | None = None
+    harvested: list[OperationResult] = []
     if plan is None:
         if datasets is None:
             raise ObserwatorValidationError(
                 message("sync.without_plan_parameter_datasets_required"),
                 details={"option": "datasets", "value": None},
             )
-        plan = check_store(
-            path,
-            datasets=datasets,
-            years=years,
-            months=months,
-            stations=stations,
-            on_progress=on_progress,
-            on_notice=on_notice,
-            cancel=cancel,
-        )
+        if pace_until is not None:
+            harvest, harvested, plan = _harvest_plan(
+                path,
+                datasets,
+                years,
+                months,
+                stations,
+                pace_until,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
+        else:
+            plan = check_store(
+                path,
+                datasets=datasets,
+                years=years,
+                months=months,
+                stations=stations,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
     elif not isinstance(plan, StorePlan):
         plan = StorePlan.from_json(plan)
     if Path(plan.root).expanduser().absolute() != path:
@@ -1753,17 +1980,79 @@ def sync_store(
         if action.command == _SYNC and action.status == "check_failed"
     ]
 
-    was_cancelled = stop or any(result.status == "cancelled" for result in results)
+    was_cancelled = (
+        stop
+        or any(result.status == "cancelled" for result in results)
+        or (harvest is not None and harvest.cancelled)
+    )
     files = tuple(
         version_file(result.version, cast(_VersionStatus, result.status))
         for result in results
         if result.version is not None and result.status in _DONE
     )
     return SyncReport(
-        items=(*results, *unchecked),
+        items=(*results, *unchecked, *harvested),
         cancelled=was_cancelled,
         files=files,
+        harvest=harvest,
     )
+
+
+def _harvest_plan(
+    root: Path,
+    datasets: Iterable[str],
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    stations: Iterable[str] | None,
+    pace_until: str,
+    *,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[HarvestReport, list[OperationResult], StorePlan]:
+    """
+    The harvest of ``store sync --pace-until``, then the plan sealing its spool days.
+
+    The selection is validated before any request; the harvest asks the last
+    closed UTC day (`obserwator.captures.harvest`, the deadline from ``pace_until``
+    on the run's clock), and the plan holds every closed spool day of the dataset
+    and today's, which the harvest's answers went to (ADR-030 erratum of
+    2026-11-23). Returns the harvest's report, its failures and the plan.
+    """
+    descriptors, codes, _, _ = _selection(
+        datasets, years, months, stations, pace_until=pace_until
+    )
+    clock = _fetch._clock()
+    day = _harvest_day()
+    report, failures = _harvest(
+        descriptors[0].key,
+        day,
+        day,
+        stations=codes or None,
+        deadline=pace_deadline(pace_until, now=clock.now()),
+        clock=clock,
+        on_progress=on_progress,
+        on_notice=on_notice,
+        cancel=cancel,
+    )
+    items, cancelled = check_captures(
+        root,
+        descriptors,
+        today=True,
+        on_progress=on_progress,
+        on_notice=on_notice,
+        cancel=cancel,
+    )
+    plan = StorePlan(
+        schema="obserwator-plan/1",
+        root=root,
+        checked_at=datetime.now(UTC),
+        items=tuple(items),
+        series_state={},
+        cancelled=cancelled,
+        requests={"made": report.requests, "planned": 0},
+    )
+    return report, failures, plan
 
 
 def _plain_archives(
@@ -1846,6 +2135,7 @@ def _sync_plain(
     years: YearsArg | None,
     months: MonthsArg | None,
     stations: Iterable[str] | None,
+    pace_until: str | None,
     plan: StorePlan | PathArg | None,
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
@@ -1857,20 +2147,22 @@ def _sync_plain(
     Raises
     ------
     ObserwatorValidationError
-        If ``plan`` is given (it acts on versions), ``datasets`` is missing,
-        the selectors are invalid or name station sources (stored only).
+        If ``plan`` or ``pace_until`` is given (they act on versions and the
+        spool), ``datasets`` is missing, the selectors are invalid or name station
+        sources or captures (stored only).
     ObserwatorError
         ``conflict`` before the first request (see ``download_archives``).
     """
-    if plan is not None:
-        raise ObserwatorValidationError(
-            message("sync.store_only_option", name="plan"),
-            details={
-                "option": "plan",
-                "value": str(plan),
-                "reason": "store_only_option",
-            },
-        )
+    for name, given in (("plan", plan), ("pace_until", pace_until)):
+        if given is not None:
+            raise ObserwatorValidationError(
+                message("sync.store_only_option", name=name),
+                details={
+                    "option": name,
+                    "value": str(given),
+                    "reason": "store_only_option",
+                },
+            )
     if datasets is None:
         raise ObserwatorValidationError(
             message("sync.without_plan_parameter_datasets_required"),
@@ -1905,10 +2197,11 @@ def _sync_one(
 ) -> OperationResult:
     local = root / item.local_path if item.local_path is not None else None
     descriptor = get_dataset(item.archive.dataset)
-    # Station metadata without an HTTP signal are compared after the download.
-    unsigned = descriptor.time_unit == "station_list" and (
-        descriptor.update_signal != "http"
-    )
+    # Station metadata without an HTTP signal are compared after the download, and
+    # a file published by its listing alone (the telemetry) has no HEAD to compare.
+    unsigned = (
+        descriptor.time_unit == "station_list" and descriptor.update_signal != "http"
+    ) or _scope(descriptor) == "listing"
     if item.status == "current" and not force:
         return _result(item, "unchanged", version=local)
     if item.status == "check_failed":

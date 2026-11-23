@@ -377,6 +377,7 @@ async def test_store_sync_of_a_server_without_writes_matches_spec_example(
         "years",
         "months",
         "stations",
+        "pace_until",
         "check",
     ]
     assert given["properties"]["root"]["description"].endswith(

@@ -48,6 +48,11 @@ CHMU_KEYS = [
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
     *GROUNDWATER_KEYS,
+    # The operational day files, the live tail's now files and the validated hourly
+    # set (ADR-030, O2).
+    "cz.chmu.hydro_recent",
+    "cz.chmu.hydro_current",
+    "cz.chmu.hydro_hourly",
 ]
 
 
@@ -148,8 +153,8 @@ def test_registry_invariants_across_providers():
         provider = by_provider[item.provider]
         assert item.key.startswith(provider.key_prefix + ".")
         # PMAXTP has the terms of its project page (ADR-012 D8), hydro.imgw.pl's
-        # station details (hydrological and meteorological) and its map of water
-        # states those of that service (ADR-021, ADR-030).
+        # station details (hydrological and meteorological), its maps and the
+        # answers of its station endpoints those of that service (ADR-021, ADR-030).
         expected = provider.license
         if item.key == "pl.imgw.pmaxtp":
             expected = License(
@@ -161,6 +166,9 @@ def test_registry_invariants_across_providers():
             "pl.imgw.hydro_details",
             "pl.imgw.meteo_details",
             "pl.imgw.hydro_states_current",
+            "pl.imgw.hydro_operational",
+            "pl.imgw.meteo_operational",
+            "pl.imgw.meteo_states_current",
         ):
             expected = License(
                 "IMGW-PIB",
@@ -182,7 +190,8 @@ def test_registry_invariants_across_providers():
     }
     # The current-data API of IMGW-PIB lies below its site, not below the archive,
     # hydro.imgw.pl's station pages and map of water states below its backend
-    # (ADR-021, ADR-030) and the warning archives below the published files (ADR-023).
+    # (ADR-021, ADR-030), the warning archives below the published files (ADR-023)
+    # and the monthly telemetry below the datastore (ADR-030).
     assert roots == {
         "IMGW": {
             "dane_hydrologiczne",
@@ -192,6 +201,7 @@ def test_registry_invariants_across_providers():
             "station",
             "map",
             "arch",
+            "Arch",
         },
         "CHMU": {"hydrology", "meteorology"},
     }
@@ -222,6 +232,7 @@ def test_content_forms_only_for_the_chmu_json_datasets():
         "cz.chmu.meteo_now",
         "cz.chmu.groundwater_stations",
         "cz.chmu.groundwater_now",
+        "cz.chmu.hydro_hourly",
     ]
 
 
@@ -472,7 +483,7 @@ def _every_file() -> list[ArchiveFile]:
             # A sealed capture of a UTC day, also the first day of a year and a leap day.
             days = (date(2026, 11, 22), date(2027, 1, 1), date(2028, 2, 29))
             files += [_capture_file(item, day) for day in days]
-        elif item.update_signal == "listing" and item.provider == "IMGW":
+        elif get_provider(item.provider).adapter.indexed(item):
             # Files named in the folder index: one in a range folder, the summary.
             files += [
                 _indexed_file(item, "Kłodzko/Źródłowe/1991-1992/Klodzko1991-1992.xls"),

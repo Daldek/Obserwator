@@ -15,7 +15,7 @@ import asyncio
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from io import BytesIO
 from pathlib import Path
@@ -38,6 +38,7 @@ from obserwator.datasets import (
     get_provider,
 )
 from obserwator.exceptions import (
+    ErrorCode,
     ObserwatorCancelledError,
     ObserwatorConnectionError,
     ObserwatorDataError,
@@ -1584,6 +1585,7 @@ _GZIP: Mapping[str, str] = MappingProxyType({"Accept-Encoding": "gzip"})
 _PACE_UNTIL = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 _TICK = 1.0
 """The longest single sleep of a paced run: a cancel is noticed within it."""
+_UNAVAILABLE: ErrorCode = "source_unavailable"
 
 
 class Clock(Protocol):
@@ -1703,6 +1705,10 @@ class PacedOutcome:
         When it was last asked (UTC); None when it was not.
     error : str or None, optional
         Why it failed, was skipped or not asked; None when answered.
+    error_code : ErrorCode or None, optional
+        The code of that error: ``source_unavailable`` (no answer, a refusal, a
+        skipped station, a stopped run), ``io_error`` (the spool did not keep the
+        answer) or ``cancelled``; None when answered.
     """
 
     request: PacedRequest
@@ -1711,6 +1717,7 @@ class PacedOutcome:
     attempts: int = 0
     asked_at: datetime | None = None
     error: str | None = None
+    error_code: ErrorCode | None = None
 
 
 class _Refused(Exception):
@@ -1789,6 +1796,8 @@ class PacedSession:
         """Requests made: the retries of the backoff included."""
         self.answers = 0
         """Answers received, whatever their status."""
+        self.stopped = False
+        """Whether `run` ended after `CONNECTION_FAILURES` connection failures in a row."""
 
     def __enter__(self) -> PacedSession:
         """Open the client of the run (gzip-compressed answers)."""
@@ -1987,11 +1996,20 @@ class PacedSession:
         ended: Literal["stopped", "cancelled"] | None = None
         for index, request in enumerate(requests):
             if ended is not None:
-                outcome = PacedOutcome(request, ended, error=self._ended_text(ended))
+                outcome = PacedOutcome(
+                    request,
+                    ended,
+                    error=self._ended_text(ended),
+                    error_code="cancelled" if ended == "cancelled" else _UNAVAILABLE,
+                )
             elif request.station in skipped:
                 before = skipped[request.station]
                 outcome = PacedOutcome(
-                    request, "skipped", before.http_status, error=before.error
+                    request,
+                    "skipped",
+                    before.http_status,
+                    error=before.error,
+                    error_code=_UNAVAILABLE,
                 )
             else:
                 outcome = self._one(request, left)
@@ -2004,16 +2022,9 @@ class PacedSession:
                 elif outcome.status == "cancelled":
                     ended = "cancelled"
                 elif outcome.status == "stopped":
-                    ended = "stopped"
-                    if ended == "stopped":
-                        # The third failure itself is a failed request.
-                        outcome = PacedOutcome(
-                            request,
-                            "failed",
-                            attempts=outcome.attempts,
-                            asked_at=outcome.asked_at,
-                            error=outcome.error,
-                        )
+                    ended, self.stopped = "stopped", True
+                    # The third failure itself is a failed request.
+                    outcome = replace(outcome, status="failed")
             outcomes.append(outcome)
             if on_progress is not None:
                 on_progress(
@@ -2044,16 +2055,31 @@ class PacedSession:
                 request.url, headers=request.headers, left=left
             )
         except ObserwatorCancelledError:
-            return PacedOutcome(request, "cancelled", error=message("common.cancelled"))
+            return PacedOutcome(
+                request,
+                "cancelled",
+                error=message("common.cancelled"),
+                error_code="cancelled",
+            )
         except _Stopped as exc:
             error = _source_error(exc.failure, request.url, source=self.source)
             return PacedOutcome(
-                request, "stopped", attempts=1, asked_at=self._last, error=error.detail
+                request,
+                "stopped",
+                attempts=1,
+                asked_at=self._last,
+                error=error.detail,
+                error_code=_UNAVAILABLE,
             )
         except httpx.RequestError as exc:
             error = _source_error(exc, request.url, source=self.source)
             return PacedOutcome(
-                request, "failed", attempts=1, asked_at=self._last, error=error.detail
+                request,
+                "failed",
+                attempts=1,
+                asked_at=self._last,
+                error=error.detail,
+                error_code=_UNAVAILABLE,
             )
         status = response.status_code
         if _backs_off(status):
@@ -2064,10 +2090,14 @@ class PacedSession:
                 url=request.url,
                 attempts=attempts,
             )
-            return PacedOutcome(request, "skipped", status, attempts, self._last, text)
+            return PacedOutcome(
+                request, "skipped", status, attempts, self._last, text, _UNAVAILABLE
+            )
         if not kept:
             text = message("fetch.paced_not_kept", url=request.url)
-            return PacedOutcome(request, "failed", status, attempts, self._last, text)
+            return PacedOutcome(
+                request, "failed", status, attempts, self._last, text, "io_error"
+            )
         if response.is_success or status in _NOT_PUBLISHED:
             return PacedOutcome(request, "answered", status, attempts, self._last)
         text = message(
@@ -2076,7 +2106,9 @@ class PacedSession:
             status=status,
             url=request.url,
         )
-        return PacedOutcome(request, "failed", status, attempts, self._last, text)
+        return PacedOutcome(
+            request, "failed", status, attempts, self._last, text, _UNAVAILABLE
+        )
 
 
 def _stamp(moment: datetime | None) -> str:

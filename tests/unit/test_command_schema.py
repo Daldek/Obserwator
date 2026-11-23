@@ -41,12 +41,16 @@ ARCHIVE_KEYS = [
     and d.time_unit != "station_list"
     and d.archive_scope != CAPTURE_SCOPE
 ]
-# Files store check/sync keep as archive versions: those of every series and ČHMÚ's
-# groundwater months and statistics, which no series reads (ADR-032).
+# Files store check/sync keep as archive versions: those of every series, ČHMÚ's
+# groundwater months and statistics (ADR-032), IMGW-PIB's telemetry and ČHMÚ's
+# validated hourly files (ADR-030), which no series reads yet.
 STORED_KEYS = [
     d.key
     for d in datasets()
-    if d.in_store and d.time_unit in ("day", "week", "month", "half_year", "statistics")
+    if d.in_store
+    and d.time_unit
+    in ("day", "week", "month", "half_year", "statistics", "ten_minutes", "hour")
+    and d.archive_scope != CAPTURE_SCOPE
 ]
 # Station lists and current-data sources: synced as data, never series (ADR-015).
 STATION_SOURCE_KEYS = [d.key for d in datasets() if d.time_unit == "station_list"]

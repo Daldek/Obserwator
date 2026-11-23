@@ -6,7 +6,7 @@
 
 Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
-Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, most ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
+Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ's climate `now` and `recent`, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
 - `IMGW` (IMGW-PIB) — Poland: keys `pl.imgw.*`, station code `^[0-9]{9}$`, license [IMGW-PIB](https://danepubliczne.imgw.pl/regulations)
 - `CHMU` (ČHMÚ) — Czechia: keys `cz.chmu.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -60,16 +60,18 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 | `pl.imgw.meteo_precip_daily` | `P`, `snow_cover`, `fresh_snow` | 1950 |
 | `pl.imgw.meteo_synop_daily` | `Tmax`, `Tmin`, `Tmean`, … (37) | 1966 |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
+| `pl.imgw.hydro_telemetry` | `H`, `Q`, `T` | 2008 |
 | `cz.chmu.hydro_daily` | `H`, `Q`, `T` | 1887 |
 | `cz.chmu.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
 | `cz.chmu.groundwater_daily` | `H_asl`, `spring_yield`, `T` | 1960 |
 | `cz.chmu.groundwater_weekly` | `H_asl`, `spring_yield`, `T` | 1933 |
 | `cz.chmu.groundwater_recent` | `H_asl`, `spring_yield` | 2025 |
 | `cz.chmu.groundwater_characteristic` | — | — |
+| `cz.chmu.hydro_hourly` | `H`, `Q` | 1905 |
 
 Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` alone.
 
-Captures (`pl.imgw.*_current`, unverified, one version a UTC day): `store sync` alone.
+Captures (`pl.imgw.*_{current,operational}`, `cz.chmu.hydro_{current,recent}`, unverified, one version a UTC day): `store sync` alone; `pace_until` first harvests the last UTC day of `pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`.
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 
@@ -82,9 +84,9 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 **Read — no network, no writes**
 
-- `datasets list` — List the datasets of the registry: keys, providers, variables and first year.
+- `datasets list` — List the datasets of the registry.
 - `datasets files` — List the source files of a dataset for given years or stations.
-- `datasets providers` — List the data providers: countries, licenses, station code patterns, datasets.
+- `datasets providers` — List the data providers.
 - `stations export` — Export the stations of the current catalogs as GeoJSON or CSV. [`output`: write; `force`: overwrite]
 - `pmaxtp url` — Build the PMAXTP API URL of a point.
 - `pmaxtp check` — Check the PMAXTP cell in the raw root without downloading data. [is a check]
@@ -94,8 +96,8 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `store export` — Export the records of one archive version as CSV or JSONL. [`output`: write; `force`: overwrite]
 - `series select` — Select stations, variables and years of the current series.
 - `series read` — Read the values and flags of one station's series from the data root.
-- `series summary` — Show the coverage of stations and variables of a series from series.json.
-- `series export` — Export one station's series as CSV, JSON or Parquet with the provider's attribution. [`output`: write; `force`: overwrite]
+- `series summary` — Show the coverage of stations and variables of a series.
+- `series export` — Export one station's series as CSV, JSON or Parquet. [`output`: write; `force`: overwrite]
 - `analyses list` — List the stored analyses of a station.
 - `analyses read` — Read one stored analysis of a station.
 - `analyses export` — Export the stored analyses of a station as JSON or CSV. [`output`: write; `force`: overwrite]
@@ -116,13 +118,13 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 **Write — new files, versions or tasks; `--check` first**
 
-- `datasets download` — Download the source files of a dataset as plain files (--output-dir) or into the raw root (--root). [`output_dir`: write; `force`: overwrite; local]
+- `datasets download` — Download the source files of a dataset as plain files or into the raw root. [`output_dir`: write; `force`: overwrite; local]
 - `current poll` — Poll the sources of current data into the capture spool. [local]
-- `pmaxtp sync` — Download the PMAXTP cell of a point into the raw root or, with --output-dir, as plain files. [`output_dir`: write; `force`: overwrite]
+- `pmaxtp sync` — Download the PMAXTP cell of a point into the raw root or as plain files. [`output_dir`: write; `force`: overwrite]
 - `store init` — Create a raw root or, with --kind data, a data root. [local]
-- `store sync` — Download new or missing archives into the raw root, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
+- `store sync` — Download new or missing archives into the raw root. [`output_dir`: write; `force`: overwrite]
 - `store catalog` — Build the station catalog stations.geojson of one provider.
-- `series build` — Build the Parquet series of a dataset from the current archives of the raw root.
+- `series build` — Build the Parquet series of a dataset from the raw root.
 - `analyses build` — Compute and store the analyses of every station with Hydrolog.
 
 ## Flags and values

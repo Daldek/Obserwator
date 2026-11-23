@@ -139,9 +139,9 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
     )
 
     # The table holds the measurements; the station sources (ADR-015, ADR-032) and the
-    # captures of current data (ADR-030) are one line each, naming their keys by
-    # pattern (`*_stations`, `pl.imgw.*_current`), the datasets outside the store one
-    # line of keys folded by prefix (`pl.imgw.{a,b}`).
+    # captures (ADR-030) are one line each, naming their keys by pattern
+    # (`*_stations`, `pl.imgw.*_{current,operational}`), the datasets outside the
+    # store one line of keys folded by prefix (`pl.imgw.{a,b}`).
     table: list[str] = []
     lines: dict[str, list[str]] = {
         "station_sources": [],
@@ -166,6 +166,11 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "pl.imgw.warnings_hydro_current",
         "pl.imgw.warnings_meteo_current",
         "pl.imgw.hydro_states_current",
+        "pl.imgw.hydro_operational",
+        "pl.imgw.meteo_operational",
+        "pl.imgw.meteo_states_current",
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
     ]
     served = [descriptor.key for descriptor in datasets()]
     for name, wanted in lines.items():

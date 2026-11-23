@@ -142,6 +142,9 @@ def test_catalog_has_36_commands_and_datasets_providers_lists_both_providers():
         METEO,
         *STATION_SOURCES,
         *GROUNDWATER,
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
+        "cz.chmu.hydro_hourly",
     ]
     assert run_command("datasets list", options={}).page.total == len(datasets())
 

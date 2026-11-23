@@ -18,7 +18,11 @@ closed UTC day of its spool (``<state_dir>/obserwator/captures/<dataset>/<YYYY-M
 - The spool files of a day are removed only after the version that holds them is
   published (or found to hold them already); a file that cannot be read stays, with a
   ``capture_unreadable`` warning.
-- The day of today (UTC) is never sealed: answers may still come.
+- The day of today (UTC) is sealed only by a harvest run (``store sync`` with
+  ``pace_until``, `check_captures` with ``today``): the run's day version holds every
+  answer of the run, and answers that come later the same day give a correction
+  version the next night (ADR-030 erratum of 2026-11-23); otherwise today is never
+  sealed, answers may still come.
 """
 
 from __future__ import annotations
@@ -168,7 +172,7 @@ def decode(data: bytes, /) -> list[Spooled]:
     return answers
 
 
-def closed_days(key: str, /) -> list[date]:
+def closed_days(key: str, /, *, today: bool = False) -> list[date]:
     """
     The UTC days of a capture dataset in the spool that are over (before today, UTC).
 
@@ -176,14 +180,16 @@ def closed_days(key: str, /) -> list[date]:
     ----------
     key : str
         A capture dataset.
+    today : bool, optional
+        Also today's day (a harvest run seals its own answers).
 
     Returns
     -------
     list of datetime.date
         The days in order.
     """
-    today = _captures._now().date()
-    return [day for day in spool_days(key) if day < today]
+    limit = _captures._now().date()
+    return [day for day in spool_days(key) if day < limit or (today and day == limit)]
 
 
 def _spooled(
@@ -258,12 +264,13 @@ def check_captures(
     descriptors: Sequence[DatasetDescriptor],
     /,
     *,
+    today: bool = False,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
 ) -> tuple[list[PlanItem], bool]:
     """
-    The plan items of ``store check`` of capture datasets: one per closed spool day.
+    The plan items of ``store check`` of capture datasets: one per spool day to seal.
 
     Nothing is written and no request is made: the spool and the raw root are read.
 
@@ -273,6 +280,9 @@ def check_captures(
         The raw root.
     descriptors : sequence of DatasetDescriptor
         Capture datasets.
+    today : bool, optional
+        Also today's spool day (UTC), which a harvest run seals with the answers
+        it asked for; else the closed days only.
     on_progress : ProgressHook or None, optional
         Called after each day with its status.
     on_notice : NoticeHook or None, optional
@@ -284,13 +294,13 @@ def check_captures(
     Returns
     -------
     tuple of (list of PlanItem, bool)
-        Per closed day of the spool: ``missing`` (no version of the day yet),
-        ``newer`` (the spool holds answers its current version does not),
-        ``current`` (every answer is in it: left over after a sealing) or
-        ``check_failed`` (no readable answer, or a broken version); and whether the
-        check was cancelled.
+        Per spool day (each closed day, and today with ``today``): ``missing`` (no
+        version of the day yet), ``newer`` (the spool holds answers its current
+        version does not), ``current`` (every answer is in it: left over after a
+        sealing) or ``check_failed`` (no readable answer, or a broken version); and
+        whether the check was cancelled.
     """
-    days = [(d, day) for d in descriptors for day in closed_days(d.key)]
+    days = [(d, day) for d in descriptors for day in closed_days(d.key, today=today)]
     items: list[PlanItem] = []
     cancelled = False
     for index, (descriptor, day) in enumerate(days, start=1):
@@ -391,7 +401,7 @@ def seal_day(
     cancel: Cancel | None = None,
 ) -> OperationResult:
     """
-    Seal one closed UTC day of a capture dataset's spool into its version (D3).
+    Seal one UTC day of a capture dataset's spool into its version (D3).
 
     The day's readable spool files and the answers of the slot's current version
     are joined (each answer once) and written as one version
@@ -405,7 +415,7 @@ def seal_day(
     descriptor : DatasetDescriptor
         A capture dataset.
     day : datetime.date
-        A closed UTC day.
+        A closed UTC day, or today in a harvest run.
     on_progress, on_notice, cancel
         As `obserwator.store.writer.write_capture`; ``on_notice`` also receives a
         ``capture_unreadable`` warning for every spool file left in the spool and an
