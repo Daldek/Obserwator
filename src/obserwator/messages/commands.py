@@ -866,8 +866,10 @@ MESSAGES = {
         "Rodzina zbiorów: hydro, meteo albo groundwater; brak = wszystkie",
     ),
     "datasets_list_provider_help": Text(
-        "Dataset provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
-        "Dostawca zbiorów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Dataset provider: IMGW (IMGW-PIB), CHMU (ČHMÚ) or the ID of a provider file; "
+        "none = all providers",
+        "Dostawca zbiorów: IMGW (IMGW-PIB), CHMU (ČHMÚ) albo identyfikator z pliku "
+        "dostawcy; brak = wszyscy dostawcy",
     ),
     "stations_find_family_help": Text(
         "Station kind; none = every kind",
@@ -889,8 +891,10 @@ MESSAGES = {
         "source=store)",
     ),
     "stations_find_provider_help": Text(
-        "Station provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
-        "Dostawca stacji: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Station provider: IMGW (IMGW-PIB), CHMU (ČHMÚ) or the ID of a provider file; "
+        "none = all providers",
+        "Dostawca stacji: IMGW (IMGW-PIB), CHMU (ČHMÚ) albo identyfikator z pliku "
+        "dostawcy; brak = wszyscy dostawcy",
     ),
     "stations_find_bbox_help": Text(
         "Area: west,south,east,north in WGS84 degrees (e.g. 16.5,51.3,17.9,51.7); "
@@ -939,10 +943,10 @@ MESSAGES = {
         "problem; brak = wszystkie",
     ),
     "store_scan_provider_help": Text(
-        "Entry provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers "
-        "(problems without a slot always)",
-        "Dostawca wpisów: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy "
-        "dostawcy (problemy bez slotu zawsze)",
+        "Entry provider: IMGW (IMGW-PIB), CHMU (ČHMÚ) or the ID of a provider file; "
+        "none = all providers (problems without a slot always)",
+        "Dostawca wpisów: IMGW (IMGW-PIB), CHMU (ČHMÚ) albo identyfikator z pliku "
+        "dostawcy; brak = wszyscy dostawcy (problemy bez slotu zawsze)",
     ),
     "store_sync_plan_help": Text(
         "obserwator-plan/1 plan file of the store check command (instead of datasets, "

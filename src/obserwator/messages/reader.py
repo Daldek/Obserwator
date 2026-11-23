@@ -690,8 +690,9 @@ MESSAGES = {
     ),
     "invalid_station_codes_expected": Text(
         "Invalid station codes {codes}; expected at least one code of 9 digits "
-        "(IMGW-PIB) or a WIGOS identifier",
+        "(IMGW-PIB), a WIGOS identifier or a code <ID>-<code> of a provider file",
         "Nieprawidłowe kody stacji {codes}; oczekiwano co najmniej jednego kodu "
-        "z 9 cyfr (IMGW-PIB) albo identyfikatora WIGOS",
+        "z 9 cyfr (IMGW-PIB), identyfikatora WIGOS albo kodu <ID>-<kod> z pliku "
+        "dostawcy",
     ),
 }
