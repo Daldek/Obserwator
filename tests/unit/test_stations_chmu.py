@@ -120,6 +120,22 @@ def test_kind_reads_only_the_list_of_its_family(router):
     assert not routes["groundwater_now_get"].called
 
 
+def test_kind_groundwater_reads_only_the_objects_and_names_bore_or_spring(router):
+    routes = serve(router, *NOW)
+
+    found = find_stations(provider="CHMU", kind="groundwater")
+
+    assert traffic(router) == [("GET", GROUNDWATER_NOW)]
+    assert not routes["hydro_now_get"].called
+    assert [
+        (s.kind, s.station_code, s.name, s.groundwater_kind, s.latitude, s.longitude)
+        for s in found
+    ] == [
+        ("groundwater", BORE, "Rakousy", "bore", 50.6259733, 15.1832503),
+        ("groundwater", SPRING, "Želechy", "spring", 50.5518065, 15.3798331),
+    ]
+
+
 @pytest.mark.parametrize(
     ("query", "codes"),
     [

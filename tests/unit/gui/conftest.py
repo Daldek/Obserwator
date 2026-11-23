@@ -137,15 +137,9 @@ def imgw_root(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def groundwater_root(tmp_path_factory):
+def groundwater_root(groundwater_roots):
     """The data root of the variant ``groundwater`` (``complete_pl_cz`` and ČHMÚ's groundwater)."""
-    from obserwator.testing import build_fixture_store
-
-    base = tmp_path_factory.mktemp("gui-root-groundwater")
-    roots = build_fixture_store(
-        base / "raw", data_root=base / "data", variant="groundwater"
-    )
-    return roots.data.root
+    return groundwater_roots.data.root
 
 
 @pytest.fixture(scope="session")
