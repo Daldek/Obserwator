@@ -24,6 +24,7 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     _station_file,
+    builds_series,
     datasets,
     get_dataset,
     get_provider,
@@ -1037,9 +1038,10 @@ def _archive_slot(server_path: str) -> str | None:
     Slot ``archive:<key>:<selector>`` of a stored server path.
 
     The owning dataset is the stored one with the longest matching server
-    directory; station-source datasets (lists and station metadata) accept
-    only their own file names, so two of them may share a directory, other
-    datasets a selector with a folder; any other path has no slot.
+    directory; station-source datasets (lists and station metadata) and
+    per-station datasets accept only their own file names, so two of them may
+    share a directory (ČHMÚ's daily and weekly groundwater files, ADR-032),
+    other datasets a selector with a folder; any other path has no slot.
     """
     for descriptor in _archive_descriptors():
         if not server_path.startswith(f"{descriptor.server_dir}/"):
@@ -1051,7 +1053,9 @@ def _archive_slot(server_path: str) -> str | None:
             valid = True
         elif descriptor.archive_scope != "country":
             # Per-station files follow the file-name grammar of the dataset.
-            valid = _archive_from_path(descriptor.key, server_path) is not None
+            if _archive_from_path(descriptor.key, server_path) is None:
+                continue
+            valid = True
         else:
             valid = "/" in selector
         if not valid or ":" in selector:
@@ -1186,11 +1190,7 @@ def _scan_archives(
 
 def _series_datasets() -> dict[str, DatasetDescriptor]:
     """Datasets with derived series, keyed by their store directory slug."""
-    return {
-        item.slug: item
-        for item in datasets()
-        if item.in_store and item.time_unit in ("day", "month", "half_year")
-    }
+    return {item.slug: item for item in datasets() if builds_series(item)}
 
 
 def _derived_entry(

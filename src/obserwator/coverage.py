@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Literal
 
-from obserwator.datasets import DatasetDescriptor, get_dataset
+from obserwator.datasets import DatasetDescriptor, builds_series, get_dataset
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.models import Measurement, NormalizedRecord
@@ -39,6 +39,11 @@ def _merge_spans(spans: Iterable[_Span]) -> tuple[_Span, ...]:
     return tuple((start, end) for start, end in merged)
 
 
+def _week(day: date) -> date:
+    """The Monday of the calendar week (ISO 8601) of a day: a weekly unit's name."""
+    return day - timedelta(days=day.weekday())
+
+
 def _gaps(missing: list[date], *, time_unit: str) -> tuple[tuple[date, date], ...]:
     """Coalesce adjacent known missing units, retaining inclusive boundaries."""
     if not missing:
@@ -48,6 +53,8 @@ def _gaps(missing: list[date], *, time_unit: str) -> tuple[tuple[date, date], ..
     for current in missing[1:]:
         if time_unit == "day":
             next_unit = end + timedelta(days=1)
+        elif time_unit == "week":
+            next_unit = end + timedelta(days=7)
         elif time_unit == "month":
             next_unit = _next_month(end)
         else:
@@ -145,15 +152,18 @@ class _KnownUnits:
 
 class _KnownSpans:
     """
-    Known days of one station of a per-station dataset (ADR-003 D10).
+    Known units of one station of a per-station dataset (ADR-003 D10).
 
     The days of the station's periods (its possessed files) are known; days
     outside them, e.g. a year whose file is not published, stay unknown and
-    are never gaps.
+    are never gaps. A weekly dataset's unit is a calendar week, Monday to
+    Sunday, named by its Monday (ADR-032): a week with a known day is known,
+    and missing when none of its readings has a value.
     """
 
-    def __init__(self, spans: Sequence[_Span]) -> None:
+    def __init__(self, spans: Sequence[_Span], time_unit: str) -> None:
         self._spans = spans
+        self._weekly = time_unit == "week"
 
     def missing(
         self,
@@ -163,9 +173,24 @@ class _KnownSpans:
         first: date,
         last: date,
     ) -> list[date]:
-        """Sorted known days between ``first`` and ``last`` without a value."""
+        """Sorted known units between ``first`` and ``last`` without a value."""
         del period, variable  # every variable of a station shares its periods
         result: list[date] = []
+        if self._weekly:
+            read = {
+                _week(day)
+                for day, measurement in values.items()
+                if measurement.value is not None
+            }
+            week = _week(first)
+            while week <= last:
+                if week not in read and any(
+                    start <= week + timedelta(days=6) and week <= end
+                    for start, end in self._spans
+                ):
+                    result.append(week)
+                week += timedelta(days=7)
+            return result
         for start, end in self._spans:
             day, stop = max(first, start), min(last, end)
             while day <= stop:
@@ -320,15 +345,18 @@ def summarize_coverage(
     every calendar year with a record of the station for station-year files
     (``cz.chmu.hydro_daily``), the range from the first to the last record of
     each variable for station-element files (``cz.chmu.meteo_daily``). A year
-    without a published file therefore stays unknown, not a gap.
+    without a published file therefore stays unknown, not a gap. A weekly
+    dataset's unit is a calendar week, Monday to Sunday (ADR-032): a week of
+    the known periods without a reading with a value is a gap, named by its
+    Monday.
 
     Parameters
     ----------
     records : Iterable[NormalizedRecord]
         Normalized records of a single dataset.
     dataset : str
-        Dataset key with a ``day``, ``month`` or ``half_year`` time unit, e.g.
-        ``"pl.imgw.hydro_daily"`` or ``"cz.chmu.hydro_daily"``.
+        Dataset key with a ``day``, ``week``, ``month`` or ``half_year`` time
+        unit, e.g. ``"pl.imgw.hydro_daily"`` or ``"cz.chmu.hydro_daily"``.
     station_periods : Mapping of str to Sequence of tuple of (date, date), optional
         Known periods of the stations of a per-station dataset as closed date
         ranges keyed by station code, e.g. ``StationSeriesIndex.periods`` of
@@ -356,11 +384,7 @@ def summarize_coverage(
         same station, variable and date.
     """
     descriptor = get_dataset(dataset)
-    if not descriptor.in_store or descriptor.time_unit not in (
-        "day",
-        "month",
-        "half_year",
-    ):
+    if not builds_series(descriptor):
         raise ObserwatorValidationError(
             message("coverage.dataset_has_no_measurement_series", dataset=dataset)
         )
@@ -418,7 +442,10 @@ def summarize_coverage(
         units: _KnownUnits | _KnownSpans = known
         if per_station:
             spans = given.get(station)
-            units = _KnownSpans(derived.periods(station) if spans is None else spans)
+            units = _KnownSpans(
+                derived.periods(station) if spans is None else spans,
+                descriptor.time_unit,
+            )
         result.extend(
             _station_coverage(
                 station, stations[station], descriptor=descriptor, known=units

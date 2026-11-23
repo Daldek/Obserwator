@@ -15,6 +15,7 @@ Examples
 
 from obserwator._parsing import normalize_archive
 from obserwator._parsing.chmu import (
+    parse_chmu_groundwater,
     parse_chmu_hydro_daily,
     parse_chmu_meteo_daily,
     parse_chmu_stations,
@@ -44,6 +45,7 @@ __all__ = [
     "parse_meteo_precip_daily",
     "parse_meteo_synop_daily",
     "parse_chmu_hydro_daily",
+    "parse_chmu_groundwater",
     "parse_chmu_meteo_daily",
     "parse_chmu_stations",
     "normalize_archive",

@@ -11,6 +11,11 @@ MESSAGES = {
         "Choose at least one dataset",
         "Wybierz co najmniej jeden zbiór",
     ),
+    "dataset_keeps_no_archives": Text(
+        "store sync keeps no source files of the dataset {dataset}; allowed: {allowed}",
+        "store sync nie zapisuje plików źródłowych zbioru {dataset}; dozwolone: "
+        "{allowed}",
+    ),
     "imgw_archives_cover_whole": Text(
         "The IMGW-PIB archives cover the whole country; the option stations applies "
         "only to station datasets (ČHMÚ, the IMGW-PIB synop archives)",
@@ -31,6 +36,12 @@ MESSAGES = {
         "The option months does not apply to the datasets {keys}: the station files "
         "are not monthly",
         "Opcja months nie dotyczy zbiorów {keys}: pliki stacji nie są miesięczne",
+    ),
+    "option_months_station_month": Text(
+        "The option months does not apply to the datasets {keys}: years chooses the "
+        "month files, every published month of each year",
+        "Opcja months nie dotyczy zbiorów {keys}: years wybiera pliki miesięczne, "
+        "każdy opublikowany miesiąc każdego roku",
     ),
     "one_call_covers_datasets_one": Text(
         "One call covers datasets of one kind: national IMGW-PIB archives (without "

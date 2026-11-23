@@ -43,6 +43,12 @@ MESSAGES = {
         "local",
         "lokalna",
     ),
+    "station_sources": Text(
+        "Station sources (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store "
+        "sync` alone.",
+        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store sync` "
+        "osobno.",
+    ),
     "outside_store": Text(
         "Download only (`datasets download`):",
         "Do pobrania (`datasets download`):",

@@ -31,6 +31,7 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     _license_document,
+    builds_series,
     datasets,
     get_dataset,
     get_provider,
@@ -144,11 +145,7 @@ def _raw(raw_root: PathArg | StoreHandle) -> Path:
 
 def _series_descriptor(dataset: str) -> DatasetDescriptor:
     descriptor = get_dataset(dataset)
-    allowed = [
-        item.key
-        for item in datasets()
-        if item.in_store and item.time_unit in ("day", "month", "half_year")
-    ]
+    allowed = [item.key for item in datasets() if builds_series(item)]
     if descriptor.key not in allowed:
         raise ObserwatorValidationError(
             message(
@@ -308,7 +305,12 @@ def _restore_archive(dataset: str, meta: Mapping[str, Any]) -> ArchiveFile:
 def _scan_inputs(
     root: Path, descriptor: DatasetDescriptor
 ) -> tuple[list[_Input], list[str]]:
-    """Current version of every archive slot of a dataset, plus unreadable slots."""
+    """
+    Current version of every archive slot of a dataset, plus unreadable slots.
+
+    The files of another stored dataset in the same server directory (ČHMÚ's daily
+    and weekly groundwater files, ADR-032) are not the dataset's slots.
+    """
     assert descriptor.server_dir is not None
     base = root / "archives" / "versions" / PurePosixPath(descriptor.server_dir)
     if not base.exists():
@@ -316,9 +318,23 @@ def _scan_inputs(
     slots: dict[Path, str] = {}
     for sidecar in base.rglob("*.meta.json"):
         slots.setdefault(sidecar.parent.parent, sidecar.name.removesuffix(".meta.json"))
+    siblings = tuple(
+        item.key
+        for item in datasets()
+        if item.in_store
+        and item.key != descriptor.key
+        and item.server_dir == descriptor.server_dir
+    )
     inputs: list[_Input] = []
     problems: list[str] = []
     for slot_dir in sorted(slots):
+        if siblings:
+            folder = slot_dir.parent.relative_to(root / "archives" / "versions")
+            server_path = f"{folder.as_posix()}/{slots[slot_dir]}"
+            if _archive_from_path(descriptor.key, server_path) is None and any(
+                _archive_from_path(key, server_path) is not None for key in siblings
+            ):
+                continue
         slot = slot_dir.relative_to(root).as_posix()
         try:
             current = _pick_current(_read_versions(root, slot, slots[slot_dir]))
@@ -1048,7 +1064,11 @@ class _Spill:
 
 
 def _row_keys(station: _Station, time_unit: str) -> list[tuple[_Key, int]]:
-    """Every unit of the continuous station calendar, with its hydrological year."""
+    """
+    Every unit of the continuous station calendar, with its hydrological year.
+
+    A weekly series has the dates of its readings only (ADR-032).
+    """
     if time_unit == "half_year":
         return [
             ((_period_start(year, period), period), year)
@@ -1056,6 +1076,9 @@ def _row_keys(station: _Station, time_unit: str) -> list[tuple[_Key, int]]:
             for period in _PERIODS
         ]
     days = sorted(day for day, _ in station.values)
+    if time_unit == "week":
+        # A weekly reading keeps its own date: no calendar is filled in (ADR-032).
+        return [((day, None), _hydro_year(day)) for day in days]
     keys: list[tuple[_Key, int]] = []
     current, last = days[0], days[-1]
     while current <= last:
@@ -1618,7 +1641,11 @@ def build_series(
                     code,
                     station.values,
                     descriptor=descriptor,
-                    known=known if periods is None else _KnownSpans(periods),
+                    known=(
+                        known
+                        if periods is None
+                        else _KnownSpans(periods, descriptor.time_unit)
+                    ),
                 )
                 built = Path(local) / f"{code}.parquet"
                 pq.write_table(table, built)

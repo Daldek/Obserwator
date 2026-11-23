@@ -1,11 +1,15 @@
 """
-ČHMÚ (opendata.chmi.cz) parsers: daily hydro JSON, daily meteo CSV and metadata.
+ČHMÚ (opendata.chmi.cz) parsers: daily hydro JSON, groundwater JSON, daily meteo CSV and metadata.
 
-Formats follow the live survey of 2026-10-18 (spec 2026-10-18 §4.1 and §5):
+Formats follow the live survey of 2026-10-18 (spec 2026-10-18 §4.1 and §5) and, for
+groundwater, that of 2026-11-23 (ADR-032):
 
 - ``hydrology/historical/data/daily/H_<WIGOS>_DQ_<YYYY>.json`` — compact JSON
   ``{"objID", "tsList": [{"tsConID", "unit", "tsData": {"data": {"header":
   "DT,VAL", "values": [[DT, VAL], ...]}}}]}`` without an envelope;
+- ``hydrology/groundwater/historical/data/H_<WIGOS>_<D|W>_<YYYY>.json`` — the same
+  JSON, about a sixth of the files with the stray closing brackets of a series left
+  out (`parse_chmu_groundwater`);
 - ``meteorology/climate/historical_csv/data/daily/<group>/dly-<WIGOS>-<EL>.csv``
   — CSV ``STATION,ELEMENT,TIMEFUNC,DT,VALUE,FLAG,QUALITY,`` (trailing comma);
 - ``.../metadata/meta1.json`` and ``meta3.json`` — envelope ``{"zaznamID",
@@ -30,19 +34,32 @@ from decimal import Decimal
 from typing import Literal, NoReturn
 from urllib.parse import unquote
 
-from obserwator.datasets import _WIGOS_CODE
+from obserwator.datasets import _WIGOS_CODE, KINDS, Kind
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import message, reason
 from obserwator.models import Measurement, NormalizedRecord, StationListEntry
 
 HYDRO_DATASET = "cz.chmu.hydro_daily"
 METEO_DATASET = "cz.chmu.meteo_daily"
+GROUNDWATER_DAILY_DATASET = "cz.chmu.groundwater_daily"
+GROUNDWATER_WEEKLY_DATASET = "cz.chmu.groundwater_weekly"
 PROVIDER = "CHMU"
 
 HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
 """Name of a daily hydro file: group 1 the station code, group 2 the year (§2.3)."""
 METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
 """Name of a daily meteo file: group 1 the station code, group 2 the element (§2.3)."""
+GROUNDWATER_FILE = re.compile(rf"^H_({_WIGOS_CODE})_([DW])_([0-9]{{4}})\.json$")
+"""
+Name of a groundwater file of ``historical`` (ADR-032): group 1 the object's code,
+group 2 ``D`` (its daily values) or ``W`` (its weekly readings), group 3 the year.
+"""
+GROUNDWATER_RECENT_FILE = re.compile(
+    rf"^({_WIGOS_CODE})_D_([0-9]{{4}})(0[1-9]|1[0-2])\.json$"
+)
+"""Name of a groundwater month file of ``recent``: the code, the year and the month."""
+GROUNDWATER_CHARACTERISTIC_FILE = re.compile(rf"^GCHAR_({_WIGOS_CODE})\.json$")
+"""Name of the characteristics of a groundwater object: group 1 its code."""
 
 ELEMENT_VARIABLES: Mapping[str, str] = {
     "SRA": "P",
@@ -63,6 +80,19 @@ _ZERO_IS_NO_PHENOMENON = frozenset({"P", "snow_cover", "fresh_snow"})
 _HYDRO_SERIES = {"HD": ("H", "CM"), "QD": ("Q", "M3_S"), "TD": ("T", "0C")}
 _HYDRO_CODES = ("HD", "QD", "TD", "PD")
 _HYDRO_VARIABLES = ("H", "Q", "T")
+# tsConID → (variable, unit required by ČHMÚ) of the groundwater files by their letter:
+# ``D`` the daily series, ``W`` the weekly ones (``historical/metadata/meta2.json``).
+# The level is in metres above sea level (``MNM``), so it is H_asl, never H (P7).
+_GROUNDWATER_SERIES: Mapping[str, Mapping[str, tuple[str, str]]] = {
+    "D": {"HD": ("H_asl", "MNM"), "YD": ("spring_yield", "L_S"), "TD": ("T", "0C")},
+    "W": {"HT": ("H_asl", "MNM"), "YT": ("spring_yield", "L_S"), "TT": ("T", "0C")},
+}
+_GROUNDWATER_VARIABLES = ("H_asl", "spring_yield", "T")
+# The closing brackets of a series ČHMÚ left out of a groundwater file (one without
+# values): written alone where that series stood (ADR-032).
+_STRAY_CLOSING = "]}}}"
+_GROUNDWATER_HEAD = re.compile(r'\{"objID":"([^"\\]*)","tsList":\[')
+_SERIES_OPENING = '{"tsConID"'
 # A daily value of SRA, TMA, TMI, SCE and SNO carries the term of its observation:
 # TIMEFUNC is that clock time and equals the time of DT. Today's terms are 06:00
 # (SRA, SCE, SNO) and 20:00 (TMA, TMI); older records carry the station's term of
@@ -275,7 +305,26 @@ def parse_chmu_hydro_daily(
     root = _load_json(_decode(content, filename), filename, decimal=False)
     if not isinstance(root, dict):
         raise _json_error(filename, "$", message("chmu.root_value_not_object"))
-    obj_id = root.get("objID")
+    series = _object_series(root.get("objID"), root.get("tsList"), code, filename)
+    by_day = _series_values(
+        filename, series, variables=_HYDRO_SERIES, codes=_HYDRO_CODES, year=year
+    )
+    for day in sorted(by_day):
+        values = by_day[day]
+        yield NormalizedRecord(
+            code,
+            HYDRO_DATASET,
+            day,
+            _hydro_year(day),
+            None,
+            {name: values[name] for name in _HYDRO_VARIABLES if name in values},
+        )
+
+
+def _object_series(
+    obj_id: object, series: object, code: str, filename: str
+) -> list[object]:
+    """The ``tsList`` of a station file after its ``objID`` matched the file's code."""
     if not isinstance(obj_id, str):
         raise _json_error(filename, "objID", message("chmu.no_station_code_text"))
     if obj_id != code:
@@ -284,29 +333,47 @@ def parse_chmu_hydro_daily(
             "objID",
             message("chmu.code_does_not_match_file", obj_id=obj_id, code=code),
         )
-    series = root.get("tsList")
     if not isinstance(series, list):
         raise _json_error(filename, "tsList", message("chmu.no_list_series"))
+    return series
+
+
+def _series_values(
+    filename: str,
+    series: list[object],
+    *,
+    variables: Mapping[str, tuple[str, str]],
+    codes: tuple[str, ...],
+    year: int,
+) -> dict[date, dict[str, Measurement]]:
+    """
+    The values by date of the ``DT,VAL`` series of a station file, checked.
+
+    ``variables`` maps each series read to its variable and to the unit ČHMÚ
+    must give; ``codes`` are every series the file may hold, and one outside
+    ``variables`` (``PD`` of the daily hydrological files) is checked
+    structurally and skipped.
+    """
     by_day: dict[date, dict[str, Measurement]] = {}
     for index, entry in enumerate(series):
         where = f"tsList[{index}]"
         if not isinstance(entry, dict):
             raise _json_error(filename, where, message("chmu.series_not_object"))
         con = entry.get("tsConID")
-        if not isinstance(con, str) or con not in _HYDRO_CODES:
+        if not isinstance(con, str) or con not in codes:
             raise _json_error(
                 filename,
                 f"{where}.tsConID",
                 message(
                     "chmu.unknown_series_allowed",
                     con=con,
-                    hydro_codes=", ".join(_HYDRO_CODES),
+                    hydro_codes=", ".join(codes),
                 ),
             )
         unit = entry.get("unit")
         variable: str | None = None
-        if con in _HYDRO_SERIES:
-            variable, expected = _HYDRO_SERIES[con]
+        if con in variables:
+            variable, expected = variables[con]
             if unit != expected:
                 raise _json_error(
                     filename,
@@ -377,15 +444,145 @@ def parse_chmu_hydro_daily(
                         variable=variable,
                     ),
                 )
+    return by_day
+
+
+# --------------------------------------------------------------------------
+# Groundwater: H_<WIGOS>_<D|W>_<YYYY>.json (ADR-032)
+# --------------------------------------------------------------------------
+
+
+def _without_stray_closings(text: str) -> tuple[str, list[object]] | None:
+    """
+    The ``objID`` and the series of a groundwater file with stray closings.
+
+    Where ČHMÚ left out a series without values, it wrote that series' closing
+    brackets ``]}}}`` alone: before the first series, between two (before the
+    comma) or after the last. The file is read series by series, each a whole
+    JSON object; between them only those closings, one comma and, last, the
+    end of the list and the document may stand. None when the text is not of
+    this form or holds no stray closing (another error, reported as it is).
+    """
+    head = _GROUNDWATER_HEAD.match(text)
+    if head is None:
+        return None
+    decoder = json.JSONDecoder(
+        object_pairs_hook=_unique_keys, parse_constant=_reject_constant
+    )
+    series: list[object] = []
+    position, strays = head.end(), 0
+
+    def skip() -> None:
+        nonlocal position, strays
+        while text.startswith(_STRAY_CLOSING, position):
+            position += len(_STRAY_CLOSING)
+            strays += 1
+
+    while True:
+        skip()
+        if text.startswith("]}", position) and not text[position + 2 :].strip():
+            break
+        if series:
+            if not text.startswith(",", position):
+                return None
+            position += 1
+            skip()
+        if not text.startswith(_SERIES_OPENING, position):
+            return None
+        try:
+            entry, position = decoder.raw_decode(text, position)
+        except (json.JSONDecodeError, _JSONContentError):
+            return None
+        series.append(entry)
+    return (head.group(1), series) if strays else None
+
+
+def parse_chmu_groundwater(
+    content: bytes | str, /, *, filename: str
+) -> Iterator[NormalizedRecord]:
+    """
+    Parse a ČHMÚ groundwater file of ``historical`` into normalized records.
+
+    The file ``H_<WIGOS>_<D|W>_<YYYY>.json`` holds one calendar year of one
+    groundwater object, a borehole or a spring (ADR-032): ``D`` its daily
+    values, ``W`` its weekly readings (mostly on Wednesdays), in the JSON of
+    the daily hydrological files (``objID``, ``tsList`` of ``DT,VAL``
+    tables). The series ``HD``/``HT`` (level in metres above sea level,
+    ``MNM``), ``YD``/``YT`` (spring yield, ``L_S``) and ``TD``/``TT`` (water
+    temperature, ``0C``) become ``H_asl`` [m], ``spring_yield`` [l/s] and
+    ``T`` [degC]; a daily file holds the daily series only, a weekly file the
+    weekly ones. The date of a row is the date part of its ``DT``
+    (``…T00:00:00Z``, ``…T06:00:00Z`` or ``…T07:00:00Z``); a numeric ``VAL``
+    is flagged ``"value"``, ``null`` ``"missing"``. Dates without a row give
+    no record.
+
+    About a sixth of the published files are not valid JSON: where ČHMÚ left
+    out a series without values, it wrote that series' closing brackets
+    ``]}}}`` alone. Such a file is read series by series, each a whole JSON
+    object, and the text between them may hold only those closings, the
+    commas and the end of the list; any other text is an error.
+
+    Parameters
+    ----------
+    content : bytes or str
+        File content; bytes are decoded as UTF-8 (a leading BOM is allowed).
+    filename : str
+        File name or server path ending with ``H_<WIGOS>_<D|W>_<YYYY>.json``;
+        it gives the object's code, the kind of file and the year, and names
+        the file in errors.
+
+    Yields
+    ------
+    NormalizedRecord
+        One record per date with at least one of ``H_asl``,
+        ``spring_yield`` and ``T``, in date order: dataset
+        ``"cz.chmu.groundwater_daily"`` (``D``) or
+        ``"cz.chmu.groundwater_weekly"`` (``W``), the hydrological year
+        (November-October) of the date, ``period=None`` and only the
+        variables present that day.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``filename`` does not end with a ČHMÚ groundwater file name.
+    ObserwatorDataError
+        If the content is neither JSON of this format nor such JSON with the
+        stray closings above, ``objID`` differs from the code of
+        ``filename``, a series is not one of the file's kind or has a unit
+        other than ``MNM``/``L_S``/``0C``, a row is not ``[DT, VAL]`` with an
+        ISO 8601 UTC time and a number or ``null``, a date lies outside the
+        year of ``filename``, or one date of a variable has two different
+        values. The message names the file and the JSON path.
+    """
+    match = _filename_match(filename, GROUNDWATER_FILE, "H_<code>_<D|W>_<year>.json")
+    code, letter, year = match.group(1), match.group(2), int(match.group(3))
+    text = _decode(content, filename)
+    try:
+        root = _load_json(text, filename, decimal=False)
+    except ObserwatorDataError:
+        repaired = _without_stray_closings(text)
+        if repaired is None:
+            raise
+        obj_id, entries = repaired
+        series = _object_series(obj_id, entries, code, filename)
+    else:
+        if not isinstance(root, dict):
+            raise _json_error(filename, "$", message("chmu.root_value_not_object"))
+        series = _object_series(root.get("objID"), root.get("tsList"), code, filename)
+    variables = _GROUNDWATER_SERIES[letter]
+    by_day = _series_values(
+        filename, series, variables=variables, codes=tuple(variables), year=year
+    )
+    dataset = GROUNDWATER_DAILY_DATASET if letter == "D" else GROUNDWATER_WEEKLY_DATASET
     for day in sorted(by_day):
         values = by_day[day]
         yield NormalizedRecord(
             code,
-            HYDRO_DATASET,
+            dataset,
             day,
             _hydro_year(day),
             None,
-            {name: values[name] for name in _HYDRO_VARIABLES if name in values},
+            {name: values[name] for name in _GROUNDWATER_VARIABLES if name in values},
         )
 
 
@@ -877,15 +1074,77 @@ class StationRows:
     duplicates: tuple[str, ...]
 
 
-def station_rows(
-    table: MetadataTable, /, *, kind: Literal["hydro", "meteo"]
-) -> StationRows:
+# The columns of each family's metadata files: the code, the name and the other
+# required ones (beside the coordinates GEOGR1 and GEOGR2).
+_FAMILY_COLUMNS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
+    "hydro": ("objID", "STATION_NAME", ("STREAM_NAME",)),
+    "meteo": ("WSI", "FULL_NAME", ()),
+    "groundwater": ("objID", "OBJECT_NAME", ("OBJECT_TYPE",)),
+}
+GroundwaterKind = Literal["bore", "spring"]
+"""The kind of a groundwater object: ČHMÚ's ``OBJECT_TYPE``."""
+GROUNDWATER_KINDS: tuple[GroundwaterKind, ...] = ("bore", "spring")
+"""The objects of ČHMÚ's groundwater network (``OBJECT_TYPE``): boreholes and springs."""
+
+
+def require_station_columns(table: MetadataTable, /, *, kind: Kind) -> None:
+    """
+    Check that a metadata table has the columns of its family's stations.
+
+    Parameters
+    ----------
+    table : MetadataTable
+        Metadata table.
+    kind : {"hydro", "meteo", "groundwater"}
+        Station family of the file: hydro ``objID``, ``STATION_NAME``,
+        ``STREAM_NAME``; meteo ``WSI``, ``FULL_NAME``; groundwater ``objID``,
+        ``OBJECT_NAME``, ``OBJECT_TYPE``; each with ``GEOGR1`` and ``GEOGR2``.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If a column is missing from the header.
+    """
+    code, name, others = _FAMILY_COLUMNS[kind]
+    table.require(code, name, *others, "GEOGR1", "GEOGR2")
+
+
+def groundwater_kind(table: MetadataTable, index: int, /) -> GroundwaterKind | None:
+    """
+    The kind of a groundwater object of a row: ``"bore"`` or ``"spring"``.
+
+    Parameters
+    ----------
+    table : MetadataTable
+        Groundwater metadata table (column ``OBJECT_TYPE``).
+    index : int
+        Row index.
+
+    Returns
+    -------
+    str or None
+        ``OBJECT_TYPE`` when it is one of `GROUNDWATER_KINDS`; None for an
+        empty cell or another value, which the catalog reports as a problem.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the column is missing or the cell is not a JSON string.
+    """
+    value = table.text(index, "OBJECT_TYPE")
+    for kind in GROUNDWATER_KINDS:
+        if value == kind:
+            return kind
+    return None
+
+
+def station_rows(table: MetadataTable, /, *, kind: Kind) -> StationRows:
     """
     Choose one row per station code.
 
-    The code column is ``objID`` (hydro) or ``WSI`` (meteo). A file with an
-    ``END_DATE`` column (meteo ``historical/metadata/meta1.json``) lists one
-    row per location period by design: the period with the latest
+    The code column is ``objID`` (hydro, groundwater) or ``WSI`` (meteo). A
+    file with an ``END_DATE`` column (meteo ``historical/metadata/meta1.json``)
+    lists one row per location period by design: the period with the latest
     ``BEGIN_DATE`` is chosen (the first such row on a tie). In any other
     file a repeated code keeps its first row and is reported in
     ``duplicates``.
@@ -894,7 +1153,7 @@ def station_rows(
     ----------
     table : MetadataTable
         Metadata table.
-    kind : {"hydro", "meteo"}
+    kind : {"hydro", "meteo", "groundwater"}
         Station family; selects the code column.
 
     Returns
@@ -908,7 +1167,7 @@ def station_rows(
         If the code column is missing or a code is empty, or a period row
         has no valid ``BEGIN_DATE``.
     """
-    column = "objID" if kind == "hydro" else "WSI"
+    column = _FAMILY_COLUMNS[kind][0]
     table.require(column)
     periods = kind == "meteo" and table.has("END_DATE")
     chosen: dict[str, int] = {}
@@ -935,13 +1194,13 @@ def station_rows(
 
 
 def station_coordinates(
-    table: MetadataTable, index: int, /, *, kind: Literal["hydro", "meteo"]
+    table: MetadataTable, index: int, /, *, kind: Kind
 ) -> tuple[Decimal | int | None, Decimal | int | None]:
     """
     Latitude and longitude of a row as published.
 
-    ``GEOGR1``/``GEOGR2`` are latitude/longitude in hydrological files and
-    longitude/latitude in meteorological files.
+    ``GEOGR1``/``GEOGR2`` are latitude/longitude in hydrological and
+    groundwater files and longitude/latitude in meteorological files.
 
     Parameters
     ----------
@@ -949,7 +1208,7 @@ def station_coordinates(
         Metadata table with ``GEOGR1`` and ``GEOGR2``.
     index : int
         Row index.
-    kind : {"hydro", "meteo"}
+    kind : {"hydro", "meteo", "groundwater"}
         Station family of the file.
 
     Returns
@@ -963,7 +1222,7 @@ def station_coordinates(
         If a column is missing or a cell is not a number.
     """
     first, second = table.number(index, "GEOGR1"), table.number(index, "GEOGR2")
-    return (first, second) if kind == "hydro" else (second, first)
+    return (second, first) if kind == "meteo" else (first, second)
 
 
 def _degrees(
@@ -984,7 +1243,7 @@ def iter_stations(
     content: bytes | str,
     /,
     *,
-    kind: Literal["hydro", "meteo"],
+    kind: Kind,
     filename: str,
 ) -> Iterator[StationListEntry]:
     """
@@ -998,7 +1257,7 @@ def iter_stations(
     content : bytes or str
         JSON content of ``meta1.json``, ``meta3.json`` or
         ``meta1-<YYYYMMDD>.json``.
-    kind : {"hydro", "meteo"}
+    kind : {"hydro", "meteo", "groundwater"}
         Station family of the file.
     filename : str
         File name or URL used in error messages.
@@ -1011,22 +1270,19 @@ def iter_stations(
     Raises
     ------
     ObserwatorValidationError
-        If ``kind`` is neither ``"hydro"`` nor ``"meteo"``.
+        If ``kind`` is none of ``"hydro"``, ``"meteo"`` and ``"groundwater"``.
     ObserwatorDataError
         If the file is malformed (see :func:`read_metadata`), a required
         column is missing or a cell has the wrong type.
     """
-    if kind not in ("hydro", "meteo"):
+    if kind not in KINDS:
         raise ObserwatorValidationError(
             message("chmu.unknown_kind_station_list_allowed", kind=kind),
-            details={"option": "kind", "value": kind, "allowed": ["hydro", "meteo"]},
+            details={"option": "kind", "value": kind, "allowed": list(KINDS)},
         )
     table = read_metadata(content, filename=filename)
-    if kind == "hydro":
-        table.require("objID", "STATION_NAME", "STREAM_NAME", "GEOGR1", "GEOGR2")
-    else:
-        table.require("WSI", "FULL_NAME", "GEOGR1", "GEOGR2")
-    name_column = "STATION_NAME" if kind == "hydro" else "FULL_NAME"
+    require_station_columns(table, kind=kind)
+    name_column = _FAMILY_COLUMNS[kind][1]
     hydrographic = kind == "hydro" and table.has("HLGP4")
     for code, index in station_rows(table, kind=kind).rows.items():
         latitude, longitude = station_coordinates(table, index, kind=kind)
@@ -1039,11 +1295,14 @@ def iter_stations(
             latitude=_degrees(table, index, latitude),
             longitude=_degrees(table, index, longitude),
             provider=PROVIDER,
+            groundwater_kind=(
+                groundwater_kind(table, index) if kind == "groundwater" else None
+            ),
         )
 
 
 def parse_chmu_stations(
-    content: bytes | str, /, *, kind: Literal["hydro", "meteo"]
+    content: bytes | str, /, *, kind: Kind
 ) -> Iterator[StationListEntry]:
     """
     Parse a ČHMÚ station metadata file into station list entries.
@@ -1051,7 +1310,9 @@ def parse_chmu_stations(
     Accepted files: hydro ``historical/metadata/meta1.json`` (dataset
     ``cz.chmu.hydro_stations``), ``now/metadata/meta1.json`` and
     ``meta3.json``; meteo ``historical/metadata/meta1.json`` (dataset
-    ``cz.chmu.meteo_stations``) and ``now/metadata/meta1-<YYYYMMDD>.json``.
+    ``cz.chmu.meteo_stations``) and ``now/metadata/meta1-<YYYYMMDD>.json``;
+    groundwater ``groundwater/historical/metadata/meta1.json`` (dataset
+    ``cz.chmu.groundwater_stations``) and ``groundwater/now/metadata/meta1.json``.
     Columns are located by name in the ``header`` of the envelope, whose
     other fields are ignored.
 
@@ -1062,6 +1323,9 @@ def parse_chmu_stations(
       latitude ``GEOGR2``; in ``historical/metadata/meta1.json`` (one row per
       location period) name and location come from the period with the
       latest ``BEGIN_DATE``.
+    - Groundwater (ADR-032): code ``objID``, name ``OBJECT_NAME``,
+      ``groundwater_kind`` = ``OBJECT_TYPE`` (``bore`` or ``spring``; None for
+      another value), latitude ``GEOGR1`` and longitude ``GEOGR2``.
 
     ``""`` and ``null`` cells are absent. A code repeated in one file
     (outside the meteo location periods) keeps its first row. Coordinates
@@ -1072,7 +1336,7 @@ def parse_chmu_stations(
     ----------
     content : bytes or str
         JSON content; bytes are decoded as UTF-8 (a leading BOM is allowed).
-    kind : {"hydro", "meteo"}
+    kind : {"hydro", "meteo", "groundwater"}
         Station family of the file.
 
     Yields
@@ -1084,7 +1348,7 @@ def parse_chmu_stations(
     Raises
     ------
     ObserwatorValidationError
-        If ``kind`` is neither ``"hydro"`` nor ``"meteo"``.
+        If ``kind`` is none of ``"hydro"``, ``"meteo"`` and ``"groundwater"``.
     ObserwatorDataError
         If the content is not UTF-8 JSON with a ``data.data`` table, a
         required column is missing, a row length differs from the header or

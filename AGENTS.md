@@ -6,7 +6,7 @@
 
 Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
-Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
+Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, most ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
 - `IMGW` (IMGW-PIB) — Poland: keys `pl.imgw.*`, station code `^[0-9]{9}$`, license [IMGW-PIB](https://danepubliczne.imgw.pl/regulations)
 - `CHMU` (ČHMÚ) — Czechia: keys `cz.chmu.*`, station code `^0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}$`, license [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -59,23 +59,20 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 | `pl.imgw.meteo_climate_daily` | `Tmax`, `Tmin`, `Tmean`, `Tground`, `P`, `snow_cover` | 1951 |
 | `pl.imgw.meteo_precip_daily` | `P`, `snow_cover`, `fresh_snow` | 1950 |
 | `pl.imgw.meteo_synop_daily` | `Tmax`, `Tmin`, `Tmean`, … (37) | 1966 |
-| `pl.imgw.hydro_stations` | — | — |
-| `pl.imgw.meteo_stations` | — | — |
-| `pl.imgw.hydro_now` | — | — |
-| `pl.imgw.meteo_now` | — | — |
-| `pl.imgw.hydro_details` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
 | `cz.chmu.hydro_daily` | `H`, `Q`, `T` | 1887 |
 | `cz.chmu.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
-| `cz.chmu.hydro_stations` | — | — |
-| `cz.chmu.meteo_stations` | — | — |
-| `cz.chmu.hydro_now` | — | — |
-| `cz.chmu.meteo_now` | — | — |
+| `cz.chmu.groundwater_daily` | `H_asl`, `spring_yield`, `T` | 1960 |
+| `cz.chmu.groundwater_weekly` | `H_asl`, `spring_yield`, `T` | 1933 |
+| `cz.chmu.groundwater_recent` | `H_asl`, `spring_yield` | 2025 |
+| `cz.chmu.groundwater_characteristic` | — | — |
+
+Station sources (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store sync` alone.
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 
 - `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` (except `cz.chmu.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.hydro_daily` (none = the published years); never for `cz.chmu.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `years`: required in `datasets files|download` and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.*` (none = the published years); never for `cz.chmu.{meteo_daily,groundwater_characteristic}`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 

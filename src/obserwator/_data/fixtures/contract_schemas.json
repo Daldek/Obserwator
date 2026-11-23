@@ -484,7 +484,8 @@
                   "kind": {
                     "enum": [
                       "hydro",
-                      "meteo"
+                      "meteo",
+                      "groundwater"
                     ]
                   },
                   "meteo_kind": {
@@ -492,6 +493,13 @@
                       "synop",
                       "climate",
                       "precipitation",
+                      null
+                    ]
+                  },
+                  "groundwater_kind": {
+                    "enum": [
+                      "bore",
+                      "spring",
                       null
                     ]
                   },
@@ -526,6 +534,8 @@
                       "cz.chmu.hydro_stations",
                       "cz.chmu.meteo_now",
                       "cz.chmu.meteo_stations",
+                      "cz.chmu.groundwater_now",
+                      "cz.chmu.groundwater_stations",
                       null
                     ]
                   },

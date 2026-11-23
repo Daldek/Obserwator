@@ -22,6 +22,8 @@ from pydantic import ValidationError
 
 from obserwator._version import __version__
 from obserwator.datasets import (
+    KINDS,
+    Kind,
     ProviderDescriptor,
     get_provider,
     providers,
@@ -53,7 +55,6 @@ HYDRO_MAP_API_URL = "https://hydro-back.imgw.pl/map/stations/hydrologic"
 _MAP_HEADERS = {
     "User-Agent": f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)",
 }
-_KINDS: tuple[Literal["hydro", "meteo"], ...] = ("hydro", "meteo")
 _SOURCES = ("live", "store")
 # Area of a search: west, south, east, north (WGS84 degrees, bounds included).
 Area = tuple[float, float, float, float]
@@ -126,12 +127,12 @@ def _search_options(
     source: str,
     root: object,
     bbox: Sequence[float] | None = None,
-) -> tuple[tuple[Literal["hydro", "meteo"], ...], str | None, Area | None]:
+) -> tuple[tuple[Kind, ...], str | None, Area | None]:
     """Validate the search options; return the families, stripped query and area."""
-    if kind is not None and kind not in _KINDS:
+    if kind is not None and kind not in KINDS:
         raise ObserwatorValidationError(
             message("stations.unknown_kind_station_allowed_hydro", kind=kind),
-            details={"option": "kind", "allowed": list(_KINDS)},
+            details={"option": "kind", "allowed": list(KINDS)},
         )
     if source not in _SOURCES:
         raise ObserwatorValidationError(
@@ -156,7 +157,7 @@ def _search_options(
                 message("stations.station_search_phrase_must_not"),
                 details={"option": "query"},
             )
-    kinds = _KINDS if kind is None else (kind,)
+    kinds = KINDS if kind is None else (kind,)
     return kinds, needle, _area(bbox)
 
 
@@ -190,7 +191,7 @@ def _matching(
     if area is not None:
         rows = [entry for entry in rows if _inside(entry, area)]
     rank = {owner.id: index for index, owner in enumerate(providers())}
-    order = {family: index for index, family in enumerate(_KINDS)}
+    order = {family: index for index, family in enumerate(KINDS)}
     return tuple(
         sorted(
             rows,
@@ -205,7 +206,7 @@ def _matching(
 
 
 def _live_urls(
-    kinds: Sequence[Literal["hydro", "meteo"]],
+    kinds: Sequence[Kind],
     owners: Iterable[ProviderDescriptor],
 ) -> list[str]:
     """URLs a live search reads, the newest file of a listing as a pattern (plans)."""
@@ -213,6 +214,7 @@ def _live_urls(
         url
         for owner in owners
         for kind in kinds
+        if kind in owner.adapter.kinds
         for url in owner.adapter.live_urls(kind)
     ]
 
@@ -226,9 +228,10 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
     """The search entry of a catalog station; None for a station of no family."""
     properties = feature.properties
     kind = properties.get("kind")
-    if kind not in _KINDS:
+    if kind not in KINDS:
         return None
     order = properties.get("river_order")
+    groundwater = properties.get("groundwater_kind")
     return StationListEntry(
         kind=kind,
         station_code=feature.station_code,
@@ -241,12 +244,19 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
         latitude=None if feature.geometry is None else feature.geometry[1],
         longitude=None if feature.geometry is None else feature.geometry[0],
         provider=feature.provider,
+        groundwater_kind=(
+            "bore"
+            if groundwater == "bore"
+            else "spring"
+            if groundwater == "spring"
+            else None
+        ),
     )
 
 
 def _stored(
     root: RootArg,
-    kinds: Sequence[Literal["hydro", "meteo"]],
+    kinds: Sequence[Kind],
     owners: Sequence[ProviderDescriptor],
     *,
     explicit: bool,
@@ -289,7 +299,7 @@ def _stored(
 
 def find_stations(
     *,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     query: str | None = None,
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
@@ -302,8 +312,9 @@ def find_stations(
 
     Parameters
     ----------
-    kind : {"hydro", "meteo"} or None, optional
-        Station family; None searches both lists.
+    kind : {"hydro", "meteo", "groundwater"} or None, optional
+        Station family; None searches every family (``groundwater``: ČHMÚ's
+        boreholes and springs, ADR-032).
     query : str or None, optional
         Text matched case- and diacritic-insensitively (``"lodz"`` finds
         ``"ŁÓDŹ"``, ``"spindleruv"`` finds ``"Špindlerův Mlýn"``) as a
@@ -313,11 +324,13 @@ def find_stations(
         ``"live"`` downloads the current lists of each provider: the
         IMGW-PIB station list CSV of each family and its current-data API
         answer (``api/data/hydro``, ``api/data/meteo``: two GETs per family)
-        and the ČHMÚ metadata ``hydrology/now/metadata/meta1.json`` and the
+        and the ČHMÚ metadata ``hydrology/now/metadata/meta1.json``, the
         newest ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
-        (its directory listing, then the file). ``"store"`` reads the
-        current station catalogs of a data root offline (ADR-017), which
-        ``store catalog`` builds from the stored lists.
+        (its directory listing, then the file) and
+        ``hydrology/groundwater/now/metadata/meta1.json``; a provider is asked
+        only for the families it publishes (IMGW-PIB: no groundwater).
+        ``"store"`` reads the current station catalogs of a data root offline
+        (ADR-017), which ``store catalog`` builds from the stored lists.
     root : str, os.PathLike or StoreHandle, optional
         Data root; required with ``source="store"`` and not allowed with
         ``source="live"``.
@@ -337,7 +350,7 @@ def find_stations(
     -------
     tuple of StationListEntry
         Matching stations ordered by provider (registry order), family
-        (hydro, meteo), normalized name and code, each with its
+        (hydro, meteo, groundwater), normalized name and code, each with its
         ``provider``; a code listed twice on the live IMGW-PIB meteo list is
         returned for each row. Live entries carry the coordinates as their
         provider publishes them, without validation against the country
@@ -349,7 +362,8 @@ def find_stations(
         With ``source="store"`` every station of a catalog is one entry with
         its code, family, name, river, hydrographic code and river order, the
         coordinates of its geometry (None for stations with ``geometry:
-        null``, validated by ``store catalog``) and ``short_code`` None.
+        null``, validated by ``store catalog``), ``short_code`` None and, of
+        a groundwater object, its ``groundwater_kind`` (``bore``, ``spring``).
 
     Raises
     ------
@@ -389,6 +403,7 @@ def find_stations(
         entry
         for owner in owners
         for family in kinds
+        if family in owner.adapter.kinds
         for entry in owner.adapter.live_stations(family, timeout=timeout)
     ]
     return _matching(entries, needle, area)
@@ -396,7 +411,7 @@ def find_stations(
 
 async def find_stations_async(
     *,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     query: str | None = None,
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
@@ -417,6 +432,8 @@ async def find_stations_async(
     entries: list[StationListEntry] = []
     for owner in owners:
         for family in kinds:
+            if family not in owner.adapter.kinds:
+                continue
             entries.extend(
                 await owner.adapter.live_stations_async(family, timeout=timeout)
             )

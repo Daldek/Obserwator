@@ -14,6 +14,7 @@ from typing import Any, ClassVar, Literal, cast
 
 from pydantic import BaseModel, Field, computed_field
 
+from obserwator.datasets import Kind
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 
@@ -701,7 +702,7 @@ def _safe_int(value: Any) -> int | None:
 @dataclass(frozen=True)
 class StationListEntry:
     """
-    One station of a provider station list (hydrological or meteorological).
+    One station of a provider station list (hydrological, meteorological or groundwater).
 
     A live search (`find_stations`) gives the rows of the providers' lists; a
     search of the store gives the stations of the current station catalogs of
@@ -709,8 +710,9 @@ class StationListEntry:
 
     Attributes
     ----------
-    kind : {"hydro", "meteo"}
-        Station family of the list the row comes from.
+    kind : {"hydro", "meteo", "groundwater"}
+        Station family of the list the row comes from (``groundwater``: ČHMÚ's
+        boreholes and springs, ADR-032).
     station_code : str
         Station code as text, kept verbatim (nine IMGW-PIB digits or a
         ČHMÚ WIGOS identifier).
@@ -743,11 +745,15 @@ class StationListEntry:
     provider : str, optional
         Provider identifier of the list: ``"IMGW"`` (default) or
         ``"CHMU"``.
+    groundwater_kind : {"bore", "spring"} or None, optional
+        Groundwater only: ČHMÚ's ``OBJECT_TYPE`` of the object, a borehole or a
+        spring; None for the other families (and left out of the
+        ``obserwator-station/1`` document then, an optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-station/1"
 
-    kind: Literal["hydro", "meteo"]
+    kind: Kind
     station_code: str
     name: str
     river: str | None = None
@@ -757,6 +763,9 @@ class StationListEntry:
     latitude: float | None = None
     longitude: float | None = None
     provider: str = "IMGW"
+    groundwater_kind: Literal["bore", "spring"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 class HydroArchiveStation(BaseModel):

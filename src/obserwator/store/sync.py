@@ -28,6 +28,7 @@ from obserwator.datasets import (
     archive_files,
     get_dataset,
     get_provider,
+    keeps_archives,
     parse_months,
     parse_years,
 )
@@ -54,7 +55,6 @@ from obserwator.output import resolve_target
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
     _current_version,
-    _series_descriptor,
     _Version,
 )
 from obserwator.store.types import (
@@ -597,10 +597,25 @@ def _check_listed(
 
 
 def _descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor]:
-    """Measurement series datasets of the request, without repetitions."""
+    """
+    Measurement datasets of the request, without repetitions.
+
+    The series datasets and the stored files no series reads (``keeps_archives``:
+    ČHMÚ's groundwater ``recent`` and ``characteristic``, ADR-032).
+    """
+    allowed = [item.key for item in registered_datasets() if keeps_archives(item)]
     found: dict[str, DatasetDescriptor] = {}
     for dataset in dict.fromkeys(datasets):
-        descriptor = _series_descriptor(dataset)
+        descriptor = get_dataset(dataset)
+        if descriptor.key not in allowed:
+            raise ObserwatorValidationError(
+                message(
+                    "sync.dataset_keeps_no_archives",
+                    dataset=dataset,
+                    allowed=", ".join(allowed),
+                ),
+                details={"option": "datasets", "value": dataset, "allowed": allowed},
+            )
         found.setdefault(descriptor.key, descriptor)
     if not found:
         raise ObserwatorValidationError(
@@ -684,7 +699,7 @@ def _station_request(
     tuple of (tuple of str, dict)
         Sorted unique station codes and, per dataset key, the candidates of
         `archive_files` or None when the years come from the listing
-        (station × year files without ``years``).
+        (station × year and station × month files without ``years``).
     """
     keys = ", ".join(descriptor.key for descriptor in descriptors)
     if stations is None:
@@ -693,9 +708,13 @@ def _station_request(
             details={"option": "stations", "value": None},
         )
     if months is not None:
+        refusal = (
+            message("sync.option_months_station_month", keys=keys)
+            if any(item.archive_scope == "station_month" for item in descriptors)
+            else message("sync.option_months_does_not_apply", keys=keys)
+        )
         raise ObserwatorValidationError(
-            message("sync.option_months_does_not_apply", keys=keys),
-            details={"option": "months", "value": None},
+            refusal, details={"option": "months", "value": None}
         )
     codes: tuple[str, ...] = ()
     provided: Iterable[str] = stations
@@ -705,7 +724,8 @@ def _station_request(
         codes = provided = _parse_stations(provided, get_provider(descriptor.provider))
         candidates[descriptor.key] = (
             None
-            if years is None and descriptor.archive_scope == "station_year"
+            if years is None
+            and descriptor.archive_scope in ("station_year", "station_month")
             else archive_files(descriptor.key, years=years, stations=codes)
         )
     return codes, candidates
@@ -885,15 +905,19 @@ def check_store(
     root : str, os.PathLike or StoreHandle
         Raw root (ADR-017) or an open handle of one.
     datasets : Iterable[str]
-        Dataset keys, slugs or legacy aliases of measurement series datasets
-        of one kind: IMGW-PIB country archives, the IMGW-PIB synop archives or
-        ČHMÚ station files. A bare string is rejected.
+        Dataset keys, slugs or legacy aliases of measurement datasets of one
+        kind: IMGW-PIB country archives, the IMGW-PIB synop archives or ČHMÚ
+        station files (also those no series reads: ČHMÚ's groundwater
+        ``recent`` and ``characteristic``, ADR-032). A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
-        items. Required for IMGW-PIB datasets; optional for
-        ``cz.chmu.hydro_daily`` (None checks every year the listing shows for
-        the stations); rejected for ``cz.chmu.meteo_daily``.
+        items. Required for IMGW-PIB datasets; optional for the ČHMÚ files of
+        a station and year or month (``cz.chmu.hydro_daily``,
+        ``cz.chmu.groundwater_daily``, ``cz.chmu.groundwater_weekly``,
+        ``cz.chmu.groundwater_recent``: None checks every year and month the
+        listing shows for the stations); rejected for ``cz.chmu.meteo_daily``
+        and ``cz.chmu.groundwater_characteristic``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
         IMGW-PIB files only (also the running year's monthly synop files);
@@ -1682,9 +1706,9 @@ def _plain_archives(
     ObserwatorValidationError
         If the selectors are invalid (see `_selection`), name station sources
         (stored only, ``details.reason`` ``store_only_dataset``), a ČHMÚ
-        dataset of station-year files has no ``years`` (the store reads them
-        from the server listing, which a plain write does not use), or the
-        synop archives have neither ``stations`` nor ``months``.
+        dataset of station-year or station-month files has no ``years`` (the
+        store reads them from the server listing, which a plain write does not
+        use), or the synop archives have neither ``stations`` nor ``months``.
     """
     descriptors, _, candidates, archives = _selection(datasets, years, months, stations)
     if descriptors[0].time_unit == "station_list":

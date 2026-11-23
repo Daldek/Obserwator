@@ -352,24 +352,13 @@ def _variables(variables: Iterable[str], lang: Lang) -> str:
     return f"{shown}, {more}"
 
 
-def _datasets(lang: Lang) -> str:
-    """The datasets of the store as a table and the others as a line of keys."""
-    rows = [
-        (
-            _code(descriptor.key),
-            _variables(descriptor.variables, lang),
-            _DASH if descriptor.first_year is None else str(descriptor.first_year),
-        )
-        for descriptor in datasets()
-        if descriptor.in_store
-    ]
-    # The keys outside the store fold by their prefix: ``pl.imgw.{a,b}``.
+def _folded(keys: Iterable[str]) -> str:
+    """Dataset keys folded by their prefix: ``pl.imgw.{a,b}``, ``cz.chmu.c``."""
     names: dict[str, list[str]] = {}
-    for descriptor in datasets():
-        if not descriptor.in_store:
-            prefix, _, name = descriptor.key.rpartition(".")
-            names.setdefault(prefix, []).append(name)
-    outside = ", ".join(
+    for key in keys:
+        prefix, _, name = key.rpartition(".")
+        names.setdefault(prefix, []).append(name)
+    return ", ".join(
         _code(
             f"{prefix}.{group[0]}"
             if len(group) == 1
@@ -377,8 +366,32 @@ def _datasets(lang: Lang) -> str:
         )
         for prefix, group in names.items()
     )
+
+
+def _datasets(lang: Lang) -> str:
+    """
+    The measurement datasets of the store as a table, the others as lines of keys.
+
+    The station sources of the catalogs (no variables, no years) are named by their
+    pattern and the datasets outside the store fold by their prefix, so the guide
+    keeps its budget (DOC-1.7).
+    """
+    rows = [
+        (
+            _code(descriptor.key),
+            _variables(descriptor.variables, lang),
+            _DASH if descriptor.first_year is None else str(descriptor.first_year),
+        )
+        for descriptor in datasets()
+        if descriptor.in_store and descriptor.time_unit != "station_list"
+    ]
+    outside = _folded(
+        descriptor.key for descriptor in datasets() if not descriptor.in_store
+    )
+    station_sources = message("agent_guide.station_sources", lang=lang)
     outside_store = message("agent_guide.outside_store", lang=lang)
-    return f"{_table(_header('datasets', lang), rows)}\n\n{outside_store} {outside}."
+    table = _table(_header("datasets", lang), rows)
+    return f"{table}\n\n{station_sources}\n\n{outside_store} {outside}."
 
 
 def _notes(schema: Mapping[str, Any], lang: Lang) -> str:
