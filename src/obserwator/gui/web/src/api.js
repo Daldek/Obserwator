@@ -115,6 +115,16 @@ export const api = {
   current: () => get("api/current", {}, { memo: false }),
   /** One station's current values (IMGW-PIB only). */
   currentStation: (code) => get(`api/current/${enc(code)}`, {}, { memo: false }),
+  /**
+   * The hours of a station's chart in „teraz” (O6): {station, provider, dataset, from, units,
+   * stored: {dates, values, flags, tiers, versions, last}, live: {dataset, tier, dates,
+   * values, hours, fetched_at, error} | null, attribution, terms_notice}; never memoised.
+   *
+   * @param {string} code
+   * @param {{from?: string, signal?: AbortSignal}} [options] `from` the first UTC day
+   *   ("YYYY-MM-DD"), none for every stored hour
+   */
+  subdaily: (code, { from, signal } = {}) => get(`api/station/${enc(code)}/subdaily`, { from }, { memo: false, signal }),
   /** PMAXTP of a point: {method, latitude, longitude, durations, probabilities, data, …}. */
   pmaxtp: ({ latitude, longitude, method }) => get("api/pmaxtp", { latitude, longitude, method }),
   /** The address of PMAXTP of a point as a CSV or JSON file. */
