@@ -1,0 +1,14 @@
+# Starts obserwator-telemetry.service (docs/USAGE.md "Timers"; Nogat plan
+# 2026-11-16-operational-series, step A2). Persistent=true: a run missed while
+# the machine was off happens at the next boot.
+
+[Unit]
+Description=Obserwator telemetry at 06:45 local time
+Documentation=https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#timers
+
+[Timer]
+OnCalendar=*-*-* 06:45:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

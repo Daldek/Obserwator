@@ -29,6 +29,7 @@ from obserwator._jsonable import jsonable
 from obserwator.api.main import app as rest_app
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
+from obserwator.datasets import CAPTURE_SCOPE
 from obserwator.store import build_catalog, init_store, sync_store
 from tests.contract.support import (
     canonical,
@@ -47,12 +48,22 @@ S1, S2 = "0-203-1-900001", "0-203-1-900002"
 FULL = "0-203-0-90001"
 ROOT = "/data/obserwator"
 HYDRO_NOW = BASE + "hydrology/now/metadata/meta1.json"
+GROUNDWATER_NOW = BASE + "hydrology/groundwater/now/metadata/meta1.json"
 # The station sources of the ČHMÚ catalog, synced before a catalog (ADR-015).
 STATION_SOURCES = [
     "cz.chmu.hydro_stations",
     "cz.chmu.meteo_stations",
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
+]
+# ČHMÚ's groundwater datasets (ADR-032), after the station sources.
+GROUNDWATER = [
+    "cz.chmu.groundwater_daily",
+    "cz.chmu.groundwater_weekly",
+    "cz.chmu.groundwater_recent",
+    "cz.chmu.groundwater_characteristic",
+    "cz.chmu.groundwater_stations",
+    "cz.chmu.groundwater_now",
 ]
 METEO_LISTING = BASE + "meteorology/climate/now/metadata/"
 FROZEN_AT = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
@@ -99,7 +110,7 @@ def frozen(monkeypatch):
 def chmu():
     """Recorded ČHMÚ: current metadata, station lists and the daily-file listings."""
     with respx.mock(assert_all_called=False) as router:
-        serve_catalog(router, *SOURCES)
+        serve_catalog(router, *SOURCES, "groundwater_now_get")
         serve_files(
             router,
             "hydro_listing",
@@ -115,8 +126,8 @@ def chmu():
 # --------------------------------------------------------------------------
 
 
-def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
-    assert len(data_commands()) == 35
+def test_catalog_has_36_commands_and_datasets_providers_lists_both_providers():
+    assert len(data_commands()) == 36
 
     listed = run_command("datasets providers", options={})
     planned = check_command("datasets providers", options={})
@@ -126,7 +137,16 @@ def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
     assert (listed.result, listed.page.total) == (providers(), 2)
     assert [action.status for action in planned.result.actions] == ["current"]
     chmu = run_command("datasets list", options={"provider": "CHMU"}).result
-    assert [descriptor.key for descriptor in chmu] == [HYDRO, METEO, *STATION_SOURCES]
+    assert [descriptor.key for descriptor in chmu] == [
+        HYDRO,
+        METEO,
+        *STATION_SOURCES,
+        *GROUNDWATER,
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
+        "cz.chmu.hydro_hourly",
+        "cz.chmu.hydro_subdaily",
+    ]
     assert run_command("datasets list", options={}).page.total == len(datasets())
 
 
@@ -160,11 +180,14 @@ def test_command_schema_publishes_provider_stations_and_their_rules():
         rules = entry["rules"]
         assert any("stations" in rule and "cz.chmu" in rule for rule in rules)
         assert any("years" in rule and METEO in rule for rule in rules)
+    # No server publishes a capture's files: store sync seals them (ADR-030 D3).
     archive = _values(_options("datasets files")["dataset"])
     assert archive == [
         item.key
         for item in datasets()
-        if item.server_dir is not None and item.time_unit != "station_list"
+        if item.server_dir is not None
+        and item.time_unit != "station_list"
+        and item.archive_scope != CAPTURE_SCOPE
     ]
     assert {HYDRO, METEO} <= set(archive)
     entry = _entry("datasets providers")
@@ -185,7 +208,7 @@ def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
 
     groups = {command.name.split()[0] for command in view}
     assert not groups & {"current", "pmaxtp"}
-    assert len(view) == 25  # 35 without five current and five pmaxtp commands
+    assert len(view) == 25  # 36 without six current and five pmaxtp commands
     for command in view:
         for option in command.options:
             if option.name in ("dataset", "datasets"):
@@ -429,9 +452,10 @@ def test_check_of_a_live_chmu_search_names_its_sources_without_requests():
         plan = check_command("stations find", options={"provider": "CHMU"}).result
 
     assert not router.calls
-    assert [action.status for action in plan.actions] == ["unverifiable"] * 3
+    assert [action.status for action in plan.actions] == ["unverifiable"] * 4
     details = " ".join(action.detail for action in plan.actions)
     assert HYDRO_NOW in details and METEO_LISTING in details
+    assert GROUNDWATER_NOW in details
 
 
 def test_source_unavailable_title_is_neutral_and_the_detail_names_chmu(server):
@@ -533,10 +557,11 @@ def test_store_catalog_of_chmu_is_planned_alike_offline_in_python_cli_and_rest(
 
     assert len(chmu.calls) == start  # the plan reads the stored sources only
     assert python.result.items == ()
-    # Five stored source files (hydro now has meta1 and meta3), the series
-    # indexes and the catalog: no catalog yet, so nothing is current.
+    # Five stored source files (hydro now has meta1 and meta3), the two optional
+    # groundwater lists (not stored, ADR-032), the series indexes and the catalog: no
+    # catalog yet, so nothing is current.
     assert len(synced.items) == 5
-    assert [action.status for action in python.result.actions] == ["missing"] * 7
+    assert [action.status for action in python.result.actions] == ["missing"] * 9
     stored = [item.version.relative_to(raw).as_posix() for item in synced.items]
     assert all(
         path in action.detail

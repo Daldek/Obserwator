@@ -248,7 +248,7 @@ def test_the_meteorological_stations_show_precipitation_and_temperatures(
     assert sorted(title.rsplit(": ", 1)[1] for title in titles) == ["P", "Tmean"]
 
 
-def test_a_chmu_station_shows_its_catalog_data_and_no_current_data(
+def test_a_chmu_station_shows_its_catalog_data_and_its_chart_without_current_values(
     open_page: Any,
 ) -> None:
     page = open_page(f"?station={HYDRO_CHMU}&section=stacja")
@@ -264,11 +264,19 @@ def test_a_chmu_station_shows_its_catalog_data_and_no_current_data(
     covered = info.locator(".coverage tbody tr").all_inner_texts()
     assert [row.split()[0] for row in covered] == ["H", "Q", "T"]
 
+    # No current values of ČHMÚ, but the chart of its hours (O6): the root holds no
+    # hourly series, so only today's hours of its now file, fetched now
     now = card(page, "teraz")
-    expect(now.locator(".acc-body")).to_contain_text(
-        str(message("gui.errors.no_current_chmu", "pl"))
+    figure = now.locator(".now-figure")
+    expect(figure.locator("svg.chart-svg")).to_be_visible()
+    expect(figure.locator("figcaption")).to_contain_text(
+        "Dane operacyjne, niezweryfikowane"
+    )
+    expect(figure.locator(".chart-legend")).to_contain_text(
+        str(message("gui.station.now.chart.live", "pl"))
     )
     assert not [url for url in asked if "api/current" in url]
+    assert [url for url in asked if "/subdaily" in url]
 
 
 def test_current_values_of_an_imgw_station_come_with_their_times(

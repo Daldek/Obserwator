@@ -12,8 +12,8 @@ MESSAGES = {
         "Nieznany dostawca danych: {provider!r}; dozwolone: {allowed}",
     ),
     "invalid_kind_dataset_allowed_hydro": Text(
-        "Invalid kind of dataset: {kind!r}; allowed: hydro, meteo",
-        "Nieprawidłowy rodzaj zbioru: {kind!r}; dozwolone: hydro, meteo",
+        "Invalid kind of dataset: {kind!r}; allowed: hydro, meteo, groundwater",
+        "Nieprawidłowy rodzaj zbioru: {kind!r}; dozwolone: hydro, meteo, groundwater",
     ),
     "unknown_imgw_dataset_allowed_keys": Text(
         "Unknown IMGW dataset: {dataset!r}; allowed keys: {allowed}",
@@ -59,6 +59,12 @@ MESSAGES = {
     "dataset_has_no_annual_archives": Text(
         "The dataset {key} has no annual archives",
         "Zbiór {key} nie udostępnia archiwów rocznych",
+    ),
+    "dataset_is_capture": Text(
+        "The dataset {key} is a capture: no server publishes its files, store sync "
+        "seals the answers kept in the spool into one version a UTC day",
+        "Zbiór {key} jest zapisem odpowiedzi: żaden serwer nie publikuje jego plików, "
+        "store sync zamyka odpowiedzi zebrane w buforze w jedną wersję na dobę UTC",
     ),
     "invalid_years_dataset_first_year": Text(
         "Invalid years of the dataset {key}; the first year is {first_year}",
@@ -117,6 +123,12 @@ MESSAGES = {
         "The option months does not apply to the dataset {key}: the {short_name} "
         "files are not monthly",
         "Opcja months nie dotyczy zbioru {key}: pliki {short_name} nie są miesięczne",
+    ),
+    "option_months_station_month": Text(
+        "The option months does not apply to the dataset {key}: years chooses its "
+        "{short_name} month files, every month of each year",
+        "Opcja months nie dotyczy zbioru {key}: years wybiera jego pliki miesięczne "
+        "{short_name}, każdy miesiąc każdego roku",
     ),
     "dataset_needs_option_stations_station": Text(
         "The dataset {key} needs the option stations: {short_name} station codes "
@@ -194,6 +206,10 @@ MESSAGES = {
         "Szczegóły stacji hydrologicznych z hydro.imgw.pl: stany progowe, ekstrema, "
         "zero wodowskazu",
     ),
+    "title_meteo_details": Text(
+        "Meteorological station details of hydro.imgw.pl: location and elevation",
+        "Szczegóły stacji meteorologicznych z hydro.imgw.pl: położenie i wysokość",
+    ),
     "title_pmaxtp": Text(
         "Maximum precipitation of a given duration and probability of exceedance "
         "(PMAXTP)",
@@ -235,6 +251,74 @@ MESSAGES = {
     "title_actinometric": Text(
         "Actinometric data (solar radiation) of the actinometric stations",
         "Dane aktynometryczne (promieniowanie słoneczne) ze stacji aktynometrycznych",
+    ),
+    # The datasets of the operational series (ADR-030): the words „dane operacyjne,
+    # niezweryfikowane” of Nogat DEV-20.8 wherever operational data meet a person.
+    "title_hydro_operational": Text(
+        "Hourly hydrological data of hydro.imgw.pl (H, Q, T): operational data, "
+        "unverified",
+        "Godzinowe dane hydrologiczne z hydro.imgw.pl (H, Q, T): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_operational": Text(
+        "Meteorological station data of hydro.imgw.pl (captured answers): operational "
+        "data, unverified",
+        "Dane stacji meteorologicznych z hydro.imgw.pl (zapisane odpowiedzi): dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_hydro_telemetry": Text(
+        "Hydrological telemetry, monthly files of 10-minute H, Q, T: operational "
+        "data, unverified",
+        "Telemetria hydrologiczna, pliki miesięczne z H, Q, T co 10 minut: dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    # The hourly series built from the tiers (ADR-031): verified, telemetry and
+    # operational hours, each point with its tier.
+    "title_hydro_subdaily": Text(
+        "Hourly hydrological series (H, Q, T) of the telemetry and of hydro.imgw.pl: "
+        "operational data, unverified, each hour with its tier",
+        "Godzinowe serie hydrologiczne (H, Q, T) z telemetrii i z hydro.imgw.pl: dane "
+        "operacyjne, niezweryfikowane, każda godzina z poziomem danych",
+    ),
+    "title_hydro_current": Text(
+        "Current hydrological data (captured answers): operational data, unverified",
+        "Bieżące dane hydrologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_current": Text(
+        "Current meteorological data (captured answers): operational data, unverified",
+        "Bieżące dane meteorologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_synop_current": Text(
+        "Current data of the synoptic stations (captured answers): operational data, "
+        "unverified",
+        "Bieżące dane ze stacji synoptycznych (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_warnings_hydro_current": Text(
+        "Current hydrological warnings (captured answers): operational data, "
+        "unverified",
+        "Bieżące ostrzeżenia hydrologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_warnings_meteo_current": Text(
+        "Current meteorological warnings (captured answers): operational data, "
+        "unverified",
+        "Bieżące ostrzeżenia meteorologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_hydro_states_current": Text(
+        "Water states of the map of hydro.imgw.pl (captured answers): operational "
+        "data, unverified",
+        "Stany wody z mapy hydro.imgw.pl (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_states_current": Text(
+        "Precipitation states of the meteorological map of hydro.imgw.pl (captured "
+        "answers): operational data, unverified",
+        "Stany opadów z mapy stacji meteorologicznych hydro.imgw.pl (zapisane "
+        "odpowiedzi): dane operacyjne, niezweryfikowane",
     ),
     # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
     # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt,
@@ -503,5 +587,106 @@ MESSAGES = {
     "title_chmu_meteo_now": Text(
         "ČHMÚ — current metadata of meteorological stations",
         "ČHMÚ — bieżące metadane stacji meteorologicznych",
+    ),
+    "title_chmu_hydro_recent": Text(
+        "ČHMÚ — 10-minute hydrological data of the recent days (H, Q, T): "
+        "operational data, unverified",
+        "ČHMÚ — dane hydrologiczne z ostatnich dni, co 10 minut (H, Q, T): dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_hydro_current": Text(
+        "ČHMÚ — current 10-minute hydrological data of the day (H, Q, T): "
+        "operational data, unverified",
+        "ČHMÚ — bieżące dane hydrologiczne doby, co 10 minut (H, Q, T): dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_hydro_hourly": Text(
+        "ČHMÚ — hourly hydrological data (H, Q)",
+        "ČHMÚ — dane hydrologiczne godzinowe (H, Q)",
+    ),
+    "title_chmu_hydro_subdaily": Text(
+        "ČHMÚ — hourly hydrological series (H, Q, T) of the validated hours and of the "
+        "recent days: operational data where unverified, each hour with its tier",
+        "ČHMÚ — godzinowe serie hydrologiczne (H, Q, T) z godzin zweryfikowanych i z "
+        "ostatnich dni: dane operacyjne tam, gdzie niezweryfikowane, każda godzina z "
+        "poziomem danych",
+    ),
+    "title_chmu_groundwater_daily": Text(
+        "ČHMÚ — daily groundwater data (level, spring yield, water temperature)",
+        "ČHMÚ — dane o wodach podziemnych dobowe (poziom zwierciadła, wydajność "
+        "źródeł, temperatura wody)",
+    ),
+    "note_chmu_groundwater_daily_h_asl": Text(
+        "Groundwater level of a borehole in metres above sea level (HD, „Hladiny – "
+        "denní”, MNM), the daily value; date = the day of DT (…T00:00Z, …T06:00Z or "
+        "…T07:00Z)",
+        "Poziom zwierciadła wody podziemnej w otworze w metrach n.p.m. (HD, „Hladiny "
+        "– denní”, MNM), wartość dobowa; data = dzień z DT (…T00:00Z, …T06:00Z albo "
+        "…T07:00Z)",
+    ),
+    "note_chmu_groundwater_daily_yield": Text(
+        "Yield of a spring in litres per second (YD, „Vydatnost – denní”, L_S), the "
+        "daily value; date = the day of DT",
+        "Wydajność źródła w litrach na sekundę (YD, „Vydatnost – denní”, L_S), "
+        "wartość dobowa; data = dzień z DT",
+    ),
+    "note_chmu_groundwater_daily_t": Text(
+        "Water temperature (TD, „Teploty vody – denní”, 0C), the daily value; date = "
+        "the day of DT",
+        "Temperatura wody (TD, „Teploty vody – denní”, 0C), wartość dobowa; data = "
+        "dzień z DT",
+    ),
+    "title_chmu_groundwater_weekly": Text(
+        "ČHMÚ — weekly groundwater data (level, spring yield, water temperature)",
+        "ČHMÚ — dane o wodach podziemnych tygodniowe (poziom zwierciadła, wydajność "
+        "źródeł, temperatura wody)",
+    ),
+    "note_chmu_groundwater_weekly_h_asl": Text(
+        "Groundwater level of a borehole in metres above sea level (HT, „Hladiny – "
+        "týdenní”, MNM), one reading a week (mostly on Wednesday) at its date, the "
+        "day of DT; no row between two readings",
+        "Poziom zwierciadła wody podziemnej w otworze w metrach n.p.m. (HT, „Hladiny "
+        "– týdenní”, MNM), jeden odczyt w tygodniu (zwykle w środę) z jego datą, "
+        "dniem z DT; bez wierszy między odczytami",
+    ),
+    "note_chmu_groundwater_weekly_yield": Text(
+        "Yield of a spring in litres per second (YT, „Vydatnost – týdenní”, L_S), one "
+        "reading a week (mostly on Wednesday) at its date, the day of DT; no row "
+        "between two readings",
+        "Wydajność źródła w litrach na sekundę (YT, „Vydatnost – týdenní”, L_S), "
+        "jeden odczyt w tygodniu (zwykle w środę) z jego datą, dniem z DT; bez "
+        "wierszy między odczytami",
+    ),
+    "note_chmu_groundwater_weekly_t": Text(
+        "Water temperature (TT, „Teploty vody – týdenní”, 0C), one reading a week "
+        "(mostly on Wednesday) at its date, the day of DT; no row between two readings",
+        "Temperatura wody (TT, „Teploty vody – týdenní”, 0C), jeden odczyt w tygodniu "
+        "(zwykle w środę) z jego datą, dniem z DT; bez wierszy między odczytami",
+    ),
+    "title_chmu_groundwater_recent": Text(
+        "ČHMÚ — daily groundwater data of the last months (level, spring yield): "
+        "operational data, unverified",
+        "ČHMÚ — dane o wodach podziemnych dobowe z ostatnich miesięcy (poziom "
+        "zwierciadła, wydajność źródeł): dane operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_groundwater_current": Text(
+        "ČHMÚ — current daily groundwater data (level, spring yield): operational "
+        "data, unverified",
+        "ČHMÚ — bieżące dane o wodach podziemnych, dobowe (poziom zwierciadła, "
+        "wydajność źródeł): dane operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_groundwater_characteristic": Text(
+        "ČHMÚ — characteristics of groundwater objects (quantiles of the level or the "
+        "yield per week or month of the year)",
+        "ČHMÚ — charakterystyki obiektów wód podziemnych (kwantyle poziomu "
+        "zwierciadła albo wydajności w tygodniach lub miesiącach roku)",
+    ),
+    "title_chmu_groundwater_stations": Text(
+        "ČHMÚ — list of groundwater objects (boreholes and springs)",
+        "ČHMÚ — wykaz obiektów wód podziemnych (otwory obserwacyjne i źródła)",
+    ),
+    "title_chmu_groundwater_now": Text(
+        "ČHMÚ — current metadata of groundwater objects",
+        "ČHMÚ — bieżące metadane obiektów wód podziemnych",
     ),
 }

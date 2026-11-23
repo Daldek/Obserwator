@@ -43,6 +43,25 @@ MESSAGES = {
         "local",
         "lokalna",
     ),
+    "station_sources": Text(
+        "Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store "
+        "sync` alone.",
+        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` "
+        "osobno.",
+    ),
+    # Braces of a key pattern are doubled: the text is a format string.
+    "captures": Text(
+        "Captures (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_{{current,recent}}`, unverified, one version a UTC day): "
+        "`store sync` alone (`start`/`end`: closed UTC days); `pace_until` first "
+        "harvests them (default yesterday) of `pl.imgw.hydro_operational` or "
+        "`cz.chmu.hydro_recent`.",
+        "Zapisy (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_{{current,recent}}`, niezweryfikowane, wersja na dobę UTC): "
+        "`store sync` osobno (`start`/`end`: zakończone doby UTC); `pace_until` "
+        "najpierw pobiera je (domyślnie wczoraj) dla `pl.imgw.hydro_operational` "
+        "albo `cz.chmu.hydro_recent`.",
+    ),
     "outside_store": Text(
         "Download only (`datasets download`):",
         "Do pobrania (`datasets download`):",
@@ -92,27 +111,24 @@ MESSAGES = {
     ),
     "rule_learn_commands": Text(
         "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
-        "commands schema --command … --json` or `obserwator "
-        "<group> <command> --schema --json`; REST `GET /api/v1/commands/list` and "
+        "commands schema --command … --json`; REST `GET /api/v1/commands/list` and "
         "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
-        "Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules "
-        "they do not express are in `rules`, effects in `effects` (`writes`, `network`, "
-        "`idempotent`).",
+        "Options are in `options`; rules they do not express are in `rules`, effects in "
+        "`effects` (`writes`, `network`, `idempotent`).",
         "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
-        "commands schema --command … --json` albo `obserwator "
-        "<grupa> <komenda> --schema --json`; REST `GET /api/v1/commands/list` i `/schema`; "
+        "commands schema --command … --json`; REST `GET /api/v1/commands/list` i `/schema`; "
         "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
-        "`options` (`name`, `type`, `required`, `flags`, `enum`); reguły, których nie "
-        "wyrażają, są w `rules`, skutki w `effects` (`writes`, `network`, `idempotent`).",
+        "`options`; reguły, których nie wyrażają, są w `rules`, skutki w `effects` "
+        "(`writes`, `network`, `idempotent`).",
     ),
     "rule_check_first": Text(
         "**Check without writing:** `--check` (CLI), `?check=true` (REST, POST), "
         "`check: true` (MCP; the default of writing commands), `check_command()` "
-        "(Python) → an `obserwator-plan/1` plan without writing and without downloading "
-        "content. `store check` is a check itself. Ask the user about a large plan.",
+        "(Python) → an `obserwator-plan/1` plan, nothing written or downloaded. "
+        "`store check` is a check itself. Ask the user about a large plan.",
         "**Sprawdź bez zapisu:** `--check` (CLI), `?check=true` (REST, POST), "
         "`check: true` (MCP; domyślne dla komend zapisujących), `check_command()` "
-        "(Python) → plan `obserwator-plan/1` bez zapisu i bez pobierania treści. `store "
+        "(Python) → plan `obserwator-plan/1` bez zapisu i pobierania. `store "
         "check` sam jest sprawdzeniem. Przy dużym planie zapytaj użytkownika.",
     ),
     "rule_run": Text(
@@ -122,9 +138,9 @@ MESSAGES = {
     ),
     "rule_read_offline": Text(
         "**Read offline:** `store info`, `store scan`, `series summary`, `series "
-        "read` (`limit`/`cursor`), `pmaxtp read` — without downloading again.",
+        "read` (`limit`/`cursor`), `pmaxtp read`.",
         "**Czytaj offline:** `store info`, `store scan`, `series summary`, `series "
-        "read` (`limit`/`cursor`), `pmaxtp read` — bez ponownego pobierania.",
+        "read` (`limit`/`cursor`), `pmaxtp read`.",
     ),
     "rule_decide_by_codes": Text(
         "**Decide by codes:** `code`, `status`, `items[].status`, `error_code`; the "
@@ -212,10 +228,10 @@ MESSAGES = {
     ),
     "flags_lists": Text(
         "- Lists ({lists}): comma-separated values (`--months 1,2`) or a repeated "
-        "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023`, `2020,2022` or "
+        "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023` or "
         "`2018,2020-2023`. Dates ({dates}): ISO `YYYY-MM-DD`.",
         "- Listy ({lists}): wartości po przecinku (`--months 1,2`) albo powtórzona "
-        "flaga (`-s A -s B`). Roczniki ({years}): `2024`, `2020-2023`, `2020,2022` "
+        "flaga (`-s A -s B`). Roczniki ({years}): `2024`, `2020-2023` "
         "albo `2018,2020-2023`. Daty ({dates}): ISO `RRRR-MM-DD`.",
     ),
     "flags_switches": Text(
@@ -226,11 +242,9 @@ MESSAGES = {
     ),
     "flags_output": Text(
         "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
-        "only that; without it, a summary for a person in the language of `--lang`. A "
-        "stream without `--output` prints its data lines in both modes.",
+        "only that; without it, a summary for a person in the language of `--lang`.",
         "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
-        "ją; bez niego podsumowanie dla człowieka w języku `--lang`. Strumień bez "
-        "`--output` wypisuje swoje linie danych w obu trybach.",
+        "ją; bez niego podsumowanie dla człowieka w języku `--lang`.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else "

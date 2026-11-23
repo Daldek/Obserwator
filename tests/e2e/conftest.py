@@ -41,6 +41,7 @@ error or Content-Security-Policy violation.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shlex
 import shutil
@@ -50,6 +51,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Self
@@ -176,6 +178,16 @@ def _recorded_live() -> tuple[dict[str, Any], Callable[..., Any]]:
     return records, pmaxtp
 
 
+def tail_value(moment: datetime, variable: str) -> float | None:
+    """The values of the servers' live tails: a slow wave of H, Q beside it, T at 06:00."""
+    phase = moment.timestamp() / 3600 / 36
+    if variable == "H":
+        return round(120 + 25 * math.sin(phase), 1)
+    if variable == "Q":
+        return round(4 + math.sin(phase), 2)
+    return 6.0 if (moment.hour, moment.minute) == (6, 0) else None
+
+
 def _read_only(path: Path, *, writable: bool = False) -> None:
     """Make a tree read-only (or writable again, to remove it)."""
     for item in sorted(path.rglob("*"), reverse=True) + [path]:
@@ -268,7 +280,8 @@ def _start(
     """A GUI server on ``root``; its own files under ``work``, an instance's beside them."""
     from obserwator.gui._app import build_app
     from obserwator.gui._config import GuiConfig
-    from obserwator.gui._live import CurrentData, Pmaxtp
+    from obserwator.gui._live import CurrentData, LiveTail, Pmaxtp
+    from tests.unit.gui.hourly import FakeTail
 
     port = _free_port()
     url = f"http://127.0.0.1:{port}/"
@@ -314,6 +327,9 @@ def _start(
             sources={name: partial(list, found) for name, found in records.items()}
         )
         state.pmaxtp = Pmaxtp(fetch=pmaxtp)
+    # A station's live tail (O6) answers as its provider does, made at the time asked:
+    # no request of a test leaves the machine
+    app.state.gui.tail = LiveTail(FakeTail(lambda: datetime.now(UTC), tail_value))
     return _Server(app, port)
 
 
@@ -355,6 +371,26 @@ def gui_url(gui_root, tmp_path_factory) -> Iterator[str]:
     work = tmp_path_factory.mktemp("gui-private")
     with _start(gui_root, work, hydrolog=hydrolog) as server:
         yield server.url
+
+
+@pytest.fixture(scope="session")
+def groundwater_url(tmp_path_factory) -> Iterator[str]:
+    """
+    The GUI on a read-only data root of the variant ``groundwater``, not public.
+
+    ``complete_pl_cz`` and ČHMÚ's groundwater objects (ADR-032).
+    """
+    from obserwator.testing import build_fixture_store
+
+    base = tmp_path_factory.mktemp("gui-groundwater")
+    roots = build_fixture_store(
+        base / "raw", data_root=base / "data", variant="groundwater"
+    )
+    root = roots.data.root
+    _read_only(root)
+    with _start(root, base / "work") as server:
+        yield server.url
+    _read_only(root, writable=True)
 
 
 @pytest.fixture(scope="session")

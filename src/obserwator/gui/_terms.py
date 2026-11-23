@@ -22,6 +22,7 @@ import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from obserwator.datasets import providers
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.gui._config import GuiConfig
 from obserwator.instance import SECTION
@@ -33,10 +34,11 @@ BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmu", "gugik", "cuz
 """The blocks of Obserwator's data sources, the packaged borders of PRG (GUGiK) and
 RÚIAN (ČÚZK) among them (ADR-018); ``osm`` joins them with a basemap."""
 PROVIDER_BLOCKS: Mapping[str, tuple[str, ...]] = {
-    "IMGW": ("imgw", "imgw-hydro"),
-    "CHMU": ("chmu",),
+    provider.id: tuple(origin.replace("_", "-") for origin in provider.adapter.origins)
+    for provider in providers()
 }
-"""The blocks of each provider's data, dropped when an instance turns it ``off``."""
+"""The blocks of each provider's data (the origins of its adapter, ADR-029), dropped
+when an instance turns it ``off``."""
 KNOWN_BLOCKS: frozenset[str] = frozenset(
     {
         "imgw",

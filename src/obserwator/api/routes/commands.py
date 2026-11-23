@@ -35,7 +35,10 @@ before the root; list commands page by ``limit`` (default and maximum
 answer). With ``[obserwator.instance]`` every route serves only what the instance
 serves (ADR-025, `obserwator.api.instance`): a provider, dataset, version or station
 not served is ``not_found`` before any request, a list keeps only the items served
-before it is paged. The catalog
+before it is paged. A capture dataset whose publication state is ``private``
+(``[obserwator.capture]``, ADR-030 D5) is never served: an option or a ``version``
+naming it is ``not_found`` before any request (`obserwator.api.publication`). The
+catalog
 messages of an answer (notices, texts of failed items) and the texts of a command
 with a ``lang`` option are in the language of ``?lang=``, else of
 ``Accept-Language`` (English by default, AGI-6.4); every answer names it in
@@ -78,6 +81,7 @@ from obserwator._file_names import (
     stations_file_name,
 )
 from obserwator._jsonable import jsonable
+from obserwator.api import publication
 from obserwator.api.errors import PROBLEM_RESPONSES, accept_language, hide_server_paths
 from obserwator.api.instance import Scope, scope_of
 from obserwator.commands import (
@@ -480,8 +484,9 @@ def _confine_version(
     """
     ``version`` relative to the root under the command's ``*/versions/``.
 
-    An instance refuses a version of a provider it does not serve by the path alone,
-    before the path is looked up (`Scope.version`).
+    An instance refuses a version of a provider it does not serve, and every server a
+    version of a private capture (ADR-030 D5), by the path alone, before the path is
+    looked up (`Scope.version`, `obserwator.api.publication.refuse_version`).
     """
     text = value if isinstance(value, str) else ""
     details = {"option": "version", "value": text}
@@ -509,6 +514,7 @@ def _confine_version(
         )
     if scope is not None:
         scope.version(parts)
+    publication.refuse_version(parts)
     path = root
     for part in parts:
         path = path / part
@@ -756,6 +762,8 @@ def _respond(
         if scope is not None:
             # After the catalog's normalization, before any request or write.
             scope.guard(normalized)
+        # A private capture is no answer of the server's (ADR-030 D5).
+        publication.guard(normalized)
         if check:
             envelope: CommandResult[Any] = check_command(
                 route.spec.name, options=normalized

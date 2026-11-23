@@ -14,10 +14,13 @@ from typing import Any, ClassVar, Literal, cast
 
 from pydantic import BaseModel, Field, computed_field
 
+from obserwator.datasets import Kind
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 
 Flag = Literal["value", "missing", "no_phenomenon", "accumulated"]
+Tier = Literal["verified", "telemetry", "operational"]
+"""What a point of a sub-daily series is (ADR-030 D1, ADR-031): the tier of its input."""
 
 
 @dataclass(frozen=True)
@@ -42,12 +45,18 @@ class Measurement:
         ČHMÚ ``FLAG`` verbatim, also codes outside the ČHMÚ dictionary (e.g.
         ``"T"`` unmeasurable trace of precipitation, ``"M"`` manual gauge);
         None when absent.
+    tier : {"verified", "telemetry", "operational"} or None, optional
+        The tier of the input a value of a sub-daily series came from (ADR-031):
+        a higher tier replaces a lower one per station, variable and hour; None
+        without a value and for every other series (an optional field of
+        ``obserwator-record/1``, written only when set).
     """
 
     value: float | None
     flag: Flag
     quality: int | None = None
     source_flag: str | None = None
+    tier: Tier | None = field(default=None, metadata={"omit_none": True})
 
 
 @dataclass(frozen=True)
@@ -65,7 +74,7 @@ class NormalizedRecord:
         ``"cz.chmu.hydro_daily"``.
     date : date
         Calendar start of the time unit (day, first day of the month or
-        start of the half-year period).
+        start of the half-year period); the UTC day of an hour.
     hydro_year : int
         Hydrological year (November-October) of the unit.
     period : {"winter", "summer", "annual"} or None
@@ -82,6 +91,10 @@ class NormalizedRecord:
     extrema_occurrences : Mapping of str to int, optional
         Number of IMGW rows (occurrences of the extremum) merged into the
         value of a semi-annual column, keyed like ``extrema_dates``.
+    time : datetime or None, optional
+        The start of the hour of a sub-daily series (UTC, ADR-031); None for
+        every other unit (an optional field of ``obserwator-record/1``,
+        written only when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-record/1"
@@ -97,6 +110,7 @@ class NormalizedRecord:
         default_factory=dict
     )
     extrema_occurrences: Mapping[str, int] = field(default_factory=dict)
+    time: datetime | None = field(default=None, metadata={"omit_none": True})
 
 
 # The 27 probabilities [%] of every PMAXTP table, the same for each duration (measured
@@ -701,7 +715,7 @@ def _safe_int(value: Any) -> int | None:
 @dataclass(frozen=True)
 class StationListEntry:
     """
-    One station of a provider station list (hydrological or meteorological).
+    One station of a provider station list (hydrological, meteorological or groundwater).
 
     A live search (`find_stations`) gives the rows of the providers' lists; a
     search of the store gives the stations of the current station catalogs of
@@ -709,8 +723,9 @@ class StationListEntry:
 
     Attributes
     ----------
-    kind : {"hydro", "meteo"}
-        Station family of the list the row comes from.
+    kind : {"hydro", "meteo", "groundwater"}
+        Station family of the list the row comes from (``groundwater``: ČHMÚ's
+        boreholes and springs, ADR-032).
     station_code : str
         Station code as text, kept verbatim (nine IMGW-PIB digits or a
         ČHMÚ WIGOS identifier).
@@ -743,11 +758,15 @@ class StationListEntry:
     provider : str, optional
         Provider identifier of the list: ``"IMGW"`` (default) or
         ``"CHMU"``.
+    groundwater_kind : {"bore", "spring"} or None, optional
+        Groundwater only: ČHMÚ's ``OBJECT_TYPE`` of the object, a borehole or a
+        spring; None for the other families (and left out of the
+        ``obserwator-station/1`` document then, an optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-station/1"
 
-    kind: Literal["hydro", "meteo"]
+    kind: Kind
     station_code: str
     name: str
     river: str | None = None
@@ -757,6 +776,9 @@ class StationListEntry:
     latitude: float | None = None
     longitude: float | None = None
     provider: str = "IMGW"
+    groundwater_kind: Literal["bore", "spring"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 class HydroArchiveStation(BaseModel):

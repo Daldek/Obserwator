@@ -287,6 +287,22 @@
             "maxItems": 2
           }
         },
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "verified",
+              "telemetry",
+              "operational"
+            ]
+          }
+        },
         "stations": {
           "type": "object",
           "patternProperties": {
@@ -332,14 +348,28 @@
                           "string",
                           "null"
                         ],
-                        "format": "date"
+                        "anyOf": [
+                          {
+                            "format": "date"
+                          },
+                          {
+                            "format": "date-time"
+                          }
+                        ]
                       },
                       "last": {
                         "type": [
                           "string",
                           "null"
                         ],
-                        "format": "date"
+                        "anyOf": [
+                          {
+                            "format": "date"
+                          },
+                          {
+                            "format": "date-time"
+                          }
+                        ]
                       },
                       "with_value": {
                         "type": "integer",
@@ -356,11 +386,25 @@
                           "prefixItems": [
                             {
                               "type": "string",
-                              "format": "date"
+                              "anyOf": [
+                                {
+                                  "format": "date"
+                                },
+                                {
+                                  "format": "date-time"
+                                }
+                              ]
                             },
                             {
                               "type": "string",
-                              "format": "date"
+                              "anyOf": [
+                                {
+                                  "format": "date"
+                                },
+                                {
+                                  "format": "date-time"
+                                }
+                              ]
                             }
                           ],
                           "minItems": 2,
@@ -484,7 +528,8 @@
                   "kind": {
                     "enum": [
                       "hydro",
-                      "meteo"
+                      "meteo",
+                      "groundwater"
                     ]
                   },
                   "meteo_kind": {
@@ -492,6 +537,13 @@
                       "synop",
                       "climate",
                       "precipitation",
+                      null
+                    ]
+                  },
+                  "groundwater_kind": {
+                    "enum": [
+                      "bore",
+                      "spring",
                       null
                     ]
                   },
@@ -520,12 +572,15 @@
                     "enum": [
                       "pl.imgw.hydro_now",
                       "pl.imgw.meteo_now",
+                      "pl.imgw.meteo_details",
                       "static",
                       "user",
                       "cz.chmu.hydro_now",
                       "cz.chmu.hydro_stations",
                       "cz.chmu.meteo_now",
                       "cz.chmu.meteo_stations",
+                      "cz.chmu.groundwater_now",
+                      "cz.chmu.groundwater_stations",
                       null
                     ]
                   },
@@ -635,6 +690,7 @@
                   "details_source": {
                     "enum": [
                       "hydro_details",
+                      "meteo_details",
                       null
                     ]
                   }

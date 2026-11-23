@@ -2,18 +2,25 @@
 Data fetching functions for IMGW public data.
 
 Provides both synchronous and asynchronous versions of all fetch functions.
-Data is fetched directly from IMGW servers - nothing is stored locally.
+Data is fetched directly from IMGW servers and returned; nothing is stored in a
+root. Every answer of a source of current data is kept as it came in the capture
+spool of ``state_dir`` (`_keep`, ``obserwator.captures``, ADR-030 D7). The paced
+requests of a harvest (`PacedSession`: the spacing to a deadline, the backoff and
+gzip, ADR-030 D9) are here too.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta, tzinfo
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
-from urllib.parse import quote, unquote, urlsplit
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -23,19 +30,15 @@ from obserwator._version import __version__
 from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
-    DatasetDescriptor,
     MonthsArg,
     ProviderDescriptor,
     YearsArg,
-    _indexed,
-    _indexed_file,
-    _indexed_years,
-    _year_folder,
     archive_files,
     get_dataset,
     get_provider,
 )
 from obserwator.exceptions import (
+    ErrorCode,
     ObserwatorCancelledError,
     ObserwatorConnectionError,
     ObserwatorDataError,
@@ -89,8 +92,6 @@ UNPUBLISHED = message("common.unpublished")
 # §4.5); IMGW-PIB archive traffic keeps the default headers of 3.0.0.
 _IDENTIFY = {"User-Agent": f"obserwator/{__version__}"}
 _NOT_PUBLISHED = (404, 410)
-# Links of a server's folder index (Apache autoindex of IMGW-PIB).
-_HREF = re.compile(r"""href\s*=\s*["']([^"'#?]+)""", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,20 @@ def _source_error(
     )
 
 
+def _keep(response: httpx.Response) -> None:
+    """
+    Keep an answer in the capture spool when it is one of a capture dataset (P14).
+
+    Every request path of the library hands each read answer here before checking
+    it, so an answer of a source of current data is kept whatever its status;
+    anything else (an archive, a station list) is left alone. A failure is one
+    warning record, never an error of the request (ADR-030 D7).
+    """
+    from obserwator.captures import keep_response
+
+    keep_response(response)
+
+
 def _get(
     url: str,
     *,
@@ -193,6 +208,7 @@ def _get(
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.get(url, headers=headers)
+            _keep(response)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -210,6 +226,7 @@ async def _get_async(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, headers=headers)
+            await asyncio.to_thread(_keep, response)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -859,6 +876,7 @@ def _archive_response(
     """
     try:
         response = client.get(url)
+        _keep(response)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -871,6 +889,7 @@ async def _archive_response_async(
     """Async twin of `_archive_response`."""
     try:
         response = await client.get(url)
+        await asyncio.to_thread(_keep, response)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url) from exc
@@ -1041,65 +1060,20 @@ def _origin(archive: ArchiveFile) -> tuple[ProviderDescriptor, bool]:
     return get_provider(descriptor.provider), descriptor.archive_scope != "country"
 
 
+def _server(archive: ArchiveFile) -> str:
+    """
+    The server's name in the texts of a failed download of an archive.
+
+    The provider's short name for a file of one station, its adapter's
+    ``server_name`` for a file of the whole country (``IMGW``, as 3.0.0 wrote).
+    """
+    provider, per_station = _origin(archive)
+    return provider.short_name if per_station else provider.adapter.server_name
+
+
 def _zipped(archive: ArchiveFile) -> bool:
     """Whether the bytes of an archive must form a ZIP archive (by its name)."""
     return archive.server_path.lower().endswith(".zip")
-
-
-def _index_names(client: httpx.Client, url: str) -> list[str]:
-    """
-    Names of a folder index: files, and sub-folders with a trailing ``/``.
-
-    The links are percent-decoded (UTF-8); the parent folder, absolute links and
-    the sorting links of the index are no entries.
-
-    Raises
-    ------
-    ObserwatorConnectionError
-        If the index cannot be read (``source_unavailable``).
-    """
-    try:
-        response = client.get(url)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise _source_error(exc, url) from exc
-    names = (
-        unquote(href)
-        for href in _HREF.findall(response.text)
-        if not href.startswith("/") and not urlsplit(href).scheme
-    )
-    return list(dict.fromkeys(name for name in names if name.strip("/")))
-
-
-def _indexed_archives(
-    descriptor: DatasetDescriptor, years: Iterable[int], *, timeout: float
-) -> tuple[ArchiveFile, ...]:
-    """
-    Files of a dataset named only in the folder index (ADR-023), in index order.
-
-    The tree below ``server_dir`` is walked folder by folder, whatever the
-    names and spelling of the folders; a year folder (``2015``, ``1991-1992``)
-    is entered only when it holds a selected year, and every file outside the
-    year folders (the summary of the dataset, a station's documents) belongs
-    to every selection.
-    """
-    assert descriptor.server_dir is not None
-    selected = set(years)
-    base = f"{get_provider(descriptor.provider).base_url}{descriptor.server_dir}/"
-    found: list[ArchiveFile] = []
-    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-
-        def walk(relative: str) -> None:
-            for name in _index_names(client, base + quote(relative)):
-                if not name.endswith("/"):
-                    found.append(_indexed_file(descriptor, relative + name))
-                    continue
-                span = _year_folder(name[:-1])
-                if span is None or selected.intersection(range(span[0], span[1] + 1)):
-                    walk(relative + name)
-
-        walk("")
-    return tuple(found)
 
 
 def _download_files(
@@ -1114,20 +1088,25 @@ def _download_files(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[ArchiveFile, ...]:
     """
-    Files of a download: `archive_files`, or the folder index of a dataset named there.
+    Files of a download: `archive_files`, or the server's index of a dataset named there.
 
     With ``index=False`` the selection of an indexed dataset is only checked
     (offline) and no file is returned.
     """
     descriptor = get_dataset(dataset)
-    if not _indexed(descriptor):
+    adapter = get_provider(descriptor.provider).adapter
+    if not adapter.indexed(descriptor):
         return archive_files(
             dataset, years=years, months=months, params=params, stations=stations
         )
-    selected = _indexed_years(descriptor, years=years, params=params, stations=stations)
-    if not index:
-        return ()
-    return _indexed_archives(descriptor, selected, timeout=timeout)
+    return adapter.index_files(
+        descriptor,
+        years=years,
+        params=params,
+        stations=stations,
+        index=index,
+        timeout=timeout,
+    )
 
 
 def _stage(
@@ -1325,12 +1304,11 @@ def _download_plain(
     with Staging(directory) as staging:
 
         def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-            provider, per_station = _origin(archive)
             staged, size, sha256 = _stage(
                 client,
                 archive,
                 staging,
-                source=provider.short_name if per_station else "IMGW",
+                source=_server(archive),
                 zipped=_zipped(archive),
             )
             target = directory.joinpath(*archive.server_path.split("/"))
@@ -1383,11 +1361,10 @@ def _download_store(
             on_notice(notice)
 
     def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-        provider, per_station = _origin(archive)
         response = _archive_response(
             client,
             archive.url,
-            source=provider.short_name if per_station else "IMGW",
+            source=_server(archive),
             zipped=_zipped(archive),
         )
         version = write_archive(
@@ -1554,7 +1531,7 @@ def download_archives(
                 "reason": "not_in_store",
             },
         )
-    if _indexed(descriptor):
+    if get_provider(descriptor.provider).adapter.indexed(descriptor):
         files = _download_files(
             dataset, years=years, months=months, params=params, stations=stations
         )
@@ -1583,3 +1560,559 @@ def download_archives(
     return DownloadReport(
         target.mode, directory, store, tuple(items), tuple(written), cancelled
     )
+
+
+# ============================================================================
+# Paced requests of a harvest (ADR-030 D9)
+# ============================================================================
+
+MIN_SPACING = 5.0
+"""
+The shortest spacing of two requests of a paced run, in seconds (ADR-030 D9).
+
+A run without a deadline, or whose deadline has passed (a missed night caught up
+later), asks at this spacing; a run with a deadline never asks closer.
+"""
+BACKOFF: tuple[float, ...] = (60.0, 120.0, 240.0)
+"""
+Seconds waited after an answer 429 or 5xx before the request is asked again.
+
+A request still refused after the last wait skips its station until the next run.
+"""
+CONNECTION_FAILURES = 3
+"""Requests in a row without any answer (timeouts, network errors) that end a paced run."""
+_GZIP: Mapping[str, str] = MappingProxyType({"Accept-Encoding": "gzip"})
+_PACE_UNTIL = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
+_TICK = 1.0
+"""The longest single sleep of a paced run: a cancel is noticed within it."""
+_UNAVAILABLE: ErrorCode = "source_unavailable"
+
+
+class Clock(Protocol):
+    """The time of a paced run: a test gives a fake one, so that no test sleeps."""
+
+    def now(self) -> datetime:
+        """The current time, UTC."""
+        ...
+
+    def sleep(self, seconds: float, /) -> None:
+        """Wait ``seconds``."""
+        ...
+
+
+class SystemClock:
+    """The real clock of a paced run: `datetime.now` in UTC and `time.sleep`."""
+
+    def now(self) -> datetime:
+        """The current time, UTC."""
+        return datetime.now(UTC)
+
+    def sleep(self, seconds: float, /) -> None:
+        """Wait ``seconds``."""
+        time.sleep(seconds)
+
+
+def _clock() -> Clock:
+    """The clock of a paced run (tests replace it)."""
+    return SystemClock()
+
+
+def pace_deadline(
+    until: str | None, /, *, now: datetime, tz: tzinfo | None = None
+) -> datetime | None:
+    """
+    The deadline of ``--pace-until HH:MM``: that time of the local day of ``now``.
+
+    A deadline that has already passed is kept as it is: the run asks at the
+    minimum spacing (`MIN_SPACING`), as a missed night caught up later does.
+
+    Parameters
+    ----------
+    until : str or None
+        ``HH:MM`` (24 h), local time; None for no deadline.
+    now : datetime.datetime
+        The current time (aware).
+    tz : datetime.tzinfo or None, optional
+        The local time zone; None is the system's.
+
+    Returns
+    -------
+    datetime.datetime or None
+        The deadline in UTC; None without ``until``.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``until`` is no ``HH:MM`` (``details.option`` ``pace_until``).
+    """
+    if until is None:
+        return None
+    match = _PACE_UNTIL.fullmatch(until) if isinstance(until, str) else None
+    if match is None:
+        raise ObserwatorValidationError(
+            message("fetch.pace_until_invalid", value=until),
+            details={"option": "pace_until", "value": str(until)},
+        )
+    local = now.astimezone(tz).replace(
+        hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0
+    )
+    return local.astimezone(UTC)
+
+
+@dataclass(frozen=True)
+class PacedRequest:
+    """
+    One planned request of a paced run (`PacedSession.run`).
+
+    Attributes
+    ----------
+    url : str
+        The address to ask.
+    station : str
+        The station it belongs to: a request refused after the backoff skips the
+        station's other requests of the run.
+    headers : Mapping of str to str, optional
+        Request headers (the user agent a source needs).
+    """
+
+    url: str
+    station: str
+    headers: Mapping[str, str] = MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class PacedOutcome:
+    """
+    What came of one planned request of a paced run.
+
+    Attributes
+    ----------
+    request : PacedRequest
+        The request.
+    status : {"answered", "failed", "skipped", "stopped", "cancelled"}
+        ``answered``: an answer 2xx, or 404 or 410 (nothing published for the
+        station), kept in the spool; ``failed``: no answer (a connection failure),
+        another refusal (kept in the spool) or an answer the spool could not keep;
+        ``skipped``: the station was refused (429 or 5xx) after the backoff, by this
+        request or an earlier one of the station; ``stopped``: not asked, the run
+        ended after `CONNECTION_FAILURES` connection failures in a row;
+        ``cancelled``: not asked, the run was cancelled.
+    http_status : int or None, optional
+        The status of the last answer; None without one.
+    attempts : int, optional
+        Requests made for it, the retries of the backoff included.
+    asked_at : datetime.datetime or None, optional
+        When it was last asked (UTC); None when it was not.
+    error : str or None, optional
+        Why it failed, was skipped or not asked; None when answered.
+    error_code : ErrorCode or None, optional
+        The code of that error: ``source_unavailable`` (no answer, a refusal, a
+        skipped station, a stopped run), ``io_error`` (the spool did not keep the
+        answer) or ``cancelled``; None when answered.
+    """
+
+    request: PacedRequest
+    status: Literal["answered", "failed", "skipped", "stopped", "cancelled"]
+    http_status: int | None = None
+    attempts: int = 0
+    asked_at: datetime | None = None
+    error: str | None = None
+    error_code: ErrorCode | None = None
+
+
+class _Refused(Exception):
+    """A request still answered 429 or 5xx after the backoff."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        super().__init__(response.status_code)
+        self.response = response
+
+
+class _Stopped(Exception):
+    """`CONNECTION_FAILURES` requests in a row without any answer."""
+
+    def __init__(self, failure: httpx.RequestError) -> None:
+        super().__init__(str(failure))
+        self.failure = failure
+
+
+def _backs_off(status: int) -> bool:
+    """Whether an answer is retried after a wait: 429 Too Many Requests and 5xx."""
+    return status == 429 or status >= 500
+
+
+class PacedSession:
+    """
+    The requests of one run, one at a time, spread evenly to a deadline (ADR-030 D9).
+
+    The one place of the pacing, the backoff and gzip of Obserwator's harvests:
+
+    - **Pacing:** each request waits until a spacing has passed since the one
+      before: with a deadline the time left divided by the requests left plus one
+      (`run` spreads its requests so that the last one comes a spacing before the
+      deadline), never less than `MIN_SPACING`; without a deadline, or with one
+      already passed, `MIN_SPACING`.
+    - **Backoff:** an answer 429 or 5xx is asked again after each wait of
+      `BACKOFF` (60, 120 and 240 s); still refused, the request is refused.
+    - **Connection failures:** `CONNECTION_FAILURES` requests in a row without any
+      answer end the run; any answer resets the count.
+    - **gzip:** every request asks for a gzip-compressed answer, which httpx
+      decompresses.
+    - **Captures:** every answer (each attempt's, refusals included) goes to the
+      capture spool when its address belongs to a capture dataset (P14).
+
+    Parameters
+    ----------
+    deadline : datetime.datetime or None, optional
+        When the requests should be done (`pace_deadline`); None for none.
+    clock : Clock or None, optional
+        The clock (tests give a fake one); None is the system's.
+    timeout : float, optional
+        Timeout of each request in seconds.
+    cancel : Cancel or None, optional
+        Polled before each request and during every wait.
+    source : str, optional
+        The server's name in the texts of a failed request.
+    """
+
+    def __init__(
+        self,
+        *,
+        deadline: datetime | None = None,
+        clock: Clock | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+        cancel: Cancel | None = None,
+        source: str = "IMGW",
+    ) -> None:
+        self.deadline = deadline
+        self.clock = _clock() if clock is None else clock
+        self.source = source
+        self._timeout = timeout
+        self._cancel = cancel
+        self._client: httpx.Client | None = None
+        self._last: datetime | None = None
+        self._failures = 0
+        self.requests = 0
+        """Requests made: the retries of the backoff included."""
+        self.answers = 0
+        """Answers received, whatever their status."""
+        self.stopped = False
+        """Whether `run` ended after `CONNECTION_FAILURES` connection failures in a row."""
+
+    def __enter__(self) -> PacedSession:
+        """Open the client of the run (gzip-compressed answers)."""
+        self._client = httpx.Client(timeout=self._timeout, headers=dict(_GZIP))
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the client of the run."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def _check_cancel(self) -> None:
+        if self._cancel is not None and self._cancel():
+            raise ObserwatorCancelledError(message("common.cancelled"))
+
+    def _wait_until(self, moment: datetime) -> None:
+        """Sleep until ``moment`` in steps of at most `_TICK`, polling ``cancel``."""
+        while True:
+            self._check_cancel()
+            left = (moment - self.clock.now()).total_seconds()
+            if left <= 0:
+                return
+            self.clock.sleep(min(left, _TICK))
+
+    def spacing(self, left: int | None) -> float:
+        """
+        The spacing of the next request after the one before, in seconds.
+
+        Parameters
+        ----------
+        left : int or None
+            The requests left to the deadline, the next one included; None for a
+            request outside the spread (a station list): `MIN_SPACING`.
+
+        Returns
+        -------
+        float
+            The time left to the deadline divided by ``left + 1``, at least
+            `MIN_SPACING`; `MIN_SPACING` without a deadline or a request before.
+        """
+        if left is None or self.deadline is None or self._last is None:
+            return MIN_SPACING
+        remaining = (self.deadline - self._last).total_seconds()
+        return max(MIN_SPACING, remaining / (left + 1))
+
+    def _ask(self, url: str, headers: Mapping[str, str]) -> tuple[httpx.Response, bool]:
+        """
+        One attempt: the GET, counted, its answer to the spool.
+
+        Returns the answer and whether the spool kept it (always True for an
+        address of no capture dataset). A request without an answer raises the
+        `httpx.RequestError`, or `_Stopped` when it is the last one of
+        `CONNECTION_FAILURES` in a row.
+        """
+        # The captures import this module, so they are reached at call time.
+        from obserwator.captures import capture_dataset, keep_response
+
+        assert self._client is not None, "PacedSession is used outside its with"
+        self._check_cancel()
+        self._last = self.clock.now()
+        self.requests += 1
+        try:
+            response = self._client.get(url, headers=dict(headers))
+        except httpx.RequestError as exc:
+            self._failures += 1
+            if self._failures >= CONNECTION_FAILURES:
+                raise _Stopped(exc) from exc
+            raise
+        self._failures = 0
+        self.answers += 1
+        kept = (
+            capture_dataset(str(response.url)) is None
+            or keep_response(response) is not None
+        )
+        return response, kept
+
+    def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        left: int | None = None,
+    ) -> tuple[httpx.Response, bool, int]:
+        """
+        One request of the run: paced, asked again after 429 or 5xx.
+
+        Parameters
+        ----------
+        url : str
+            The address.
+        headers : Mapping of str to str or None, optional
+            Request headers besides gzip's.
+        left : int or None, optional
+            The requests left to the deadline, this one included (`spacing`).
+
+        Returns
+        -------
+        tuple of (httpx.Response, bool, int)
+            The last answer, whether the spool kept every answer of a capture
+            source, and the attempts made.
+
+        Raises
+        ------
+        httpx.RequestError
+            If no answer came (a connection failure).
+        ObserwatorCancelledError
+            If ``cancel`` returned True.
+        """
+        if self._last is not None:
+            self._wait_until(self._last + timedelta(seconds=self.spacing(left)))
+        sent = dict(headers or {})
+        response, kept = self._ask(url, sent)
+        attempts = 1
+        for pause in BACKOFF:
+            if not _backs_off(response.status_code):
+                break
+            self._wait_until(self.clock.now() + timedelta(seconds=pause))
+            response, again = self._ask(url, sent)
+            kept, attempts = kept and again, attempts + 1
+        return response, kept, attempts
+
+    def fetch(
+        self, url: str, *, headers: Mapping[str, str] | None = None
+    ) -> httpx.Response:
+        """
+        One request that the run cannot do without (a station list): a success or an error.
+
+        Paced at `MIN_SPACING` and asked again after 429 or 5xx as `get`.
+
+        Parameters
+        ----------
+        url : str
+            The address.
+        headers : Mapping of str to str or None, optional
+            Request headers besides gzip's.
+
+        Returns
+        -------
+        httpx.Response
+            An answer 2xx.
+
+        Raises
+        ------
+        ObserwatorConnectionError
+            If no answer came or the last answer was no success
+            (``source_unavailable``).
+        ObserwatorCancelledError
+            If ``cancel`` returned True.
+        """
+        try:
+            response, _, _ = self.get(url, headers=headers)
+            response.raise_for_status()
+        except _Stopped as exc:
+            raise _source_error(exc.failure, url, source=self.source) from exc
+        except httpx.HTTPError as exc:
+            raise _source_error(exc, url, source=self.source) from exc
+        return response
+
+    def run(
+        self,
+        requests: Sequence[PacedRequest],
+        *,
+        on_progress: ProgressHook | None = None,
+    ) -> list[PacedOutcome]:
+        """
+        Ask every request in order, spread to the deadline (see the class).
+
+        A station refused after the backoff is skipped: its later requests are not
+        asked and the spread is computed without them. After `CONNECTION_FAILURES`
+        connection failures in a row the rest is ``stopped``; after a cancel,
+        ``cancelled``.
+
+        Parameters
+        ----------
+        requests : sequence of PacedRequest
+            The requests, those of one station together.
+        on_progress : ProgressHook or None, optional
+            Called after each request (unit ``request``) with its status and a line
+            naming its time, HTTP status and address.
+
+        Returns
+        -------
+        list of PacedOutcome
+            One per request, in order.
+        """
+        # store.types is imported lazily: the obserwator.store package imports this module.
+        from obserwator.store.types import Progress
+
+        positions: dict[str, list[int]] = {}
+        for index, request in enumerate(requests):
+            positions.setdefault(request.station, []).append(index)
+        outcomes: list[PacedOutcome] = []
+        skipped: dict[str, PacedOutcome] = {}
+        left = len(requests)
+        ended: Literal["stopped", "cancelled"] | None = None
+        for index, request in enumerate(requests):
+            if ended is not None:
+                outcome = PacedOutcome(
+                    request,
+                    ended,
+                    error=self._ended_text(ended),
+                    error_code="cancelled" if ended == "cancelled" else _UNAVAILABLE,
+                )
+            elif request.station in skipped:
+                before = skipped[request.station]
+                outcome = PacedOutcome(
+                    request,
+                    "skipped",
+                    before.http_status,
+                    error=before.error,
+                    error_code=_UNAVAILABLE,
+                )
+            else:
+                outcome = self._one(request, left)
+                left -= 1
+                if outcome.status == "skipped":
+                    skipped[request.station] = outcome
+                    left -= sum(
+                        1 for later in positions[request.station] if later > index
+                    )
+                elif outcome.status == "cancelled":
+                    ended = "cancelled"
+                elif outcome.status == "stopped":
+                    ended, self.stopped = "stopped", True
+                    # The third failure itself is a failed request.
+                    outcome = replace(outcome, status="failed")
+            outcomes.append(outcome)
+            if on_progress is not None:
+                on_progress(
+                    Progress(
+                        index + 1,
+                        len(requests),
+                        "request",
+                        outcome.status,
+                        message(
+                            "fetch.paced_request",
+                            time=_stamp(outcome.asked_at),
+                            status=outcome.http_status or "—",
+                            url=request.url,
+                        ),
+                    )
+                )
+        return outcomes
+
+    def _ended_text(self, ended: Literal["stopped", "cancelled"]) -> str:
+        if ended == "cancelled":
+            return message("common.cancelled")
+        return message("fetch.paced_run_stopped", failures=CONNECTION_FAILURES)
+
+    def _one(self, request: PacedRequest, left: int) -> PacedOutcome:
+        """Ask one planned request (see `run`)."""
+        try:
+            response, kept, attempts = self.get(
+                request.url, headers=request.headers, left=left
+            )
+        except ObserwatorCancelledError:
+            return PacedOutcome(
+                request,
+                "cancelled",
+                error=message("common.cancelled"),
+                error_code="cancelled",
+            )
+        except _Stopped as exc:
+            error = _source_error(exc.failure, request.url, source=self.source)
+            return PacedOutcome(
+                request,
+                "stopped",
+                attempts=1,
+                asked_at=self._last,
+                error=error.detail,
+                error_code=_UNAVAILABLE,
+            )
+        except httpx.RequestError as exc:
+            error = _source_error(exc, request.url, source=self.source)
+            return PacedOutcome(
+                request,
+                "failed",
+                attempts=1,
+                asked_at=self._last,
+                error=error.detail,
+                error_code=_UNAVAILABLE,
+            )
+        status = response.status_code
+        if _backs_off(status):
+            text = message(
+                "fetch.paced_station_skipped",
+                station=request.station,
+                status=status,
+                url=request.url,
+                attempts=attempts,
+            )
+            return PacedOutcome(
+                request, "skipped", status, attempts, self._last, text, _UNAVAILABLE
+            )
+        if not kept:
+            text = message("fetch.paced_not_kept", url=request.url)
+            return PacedOutcome(
+                request, "failed", status, attempts, self._last, text, "io_error"
+            )
+        if response.is_success or status in _NOT_PUBLISHED:
+            return PacedOutcome(request, "answered", status, attempts, self._last)
+        text = message(
+            "fetch.server_returned_http",
+            source=self.source,
+            status=status,
+            url=request.url,
+        )
+        return PacedOutcome(
+            request, "failed", status, attempts, self._last, text, _UNAVAILABLE
+        )
+
+
+def _stamp(moment: datetime | None) -> str:
+    """An instant of a paced run in its progress lines: UTC to the second, ``Z``."""
+    if moment is None:
+        return "—"
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

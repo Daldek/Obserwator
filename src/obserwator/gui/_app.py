@@ -25,10 +25,10 @@ import shutil
 import tempfile
 import weakref
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from datetime import date
+from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlencode
 
 from anyio import CapacityLimiter, to_thread
@@ -56,10 +56,20 @@ from obserwator.attribution import (
     attribution,
     border_origin,
     dataset_origin,
+    dataset_origins,
     provider_origin,
 )
+from obserwator.captures import publication
 from obserwator.config import check_credentials
-from obserwator.datasets import get_dataset, get_provider, providers
+from obserwator.datasets import (
+    KINDS,
+    Kind,
+    datasets,
+    get_dataset,
+    get_provider,
+    monthly_series,
+    providers,
+)
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui import _params as params
 from obserwator.gui._admin import (
@@ -88,20 +98,25 @@ from obserwator.gui._http import (
     prebuilt_response,
 )
 from obserwator.gui._live import (
+    CURRENT_PROVIDER,
     PMAXTP_METHODS,
     CurrentData,
+    LiveTail,
     Pmaxtp,
     PmaxtpMethod,
     hydro_points,
+    iso_utc,
     meteo_points,
     synop_indices,
     synop_record,
+    utc_hour,
     utc_now,
 )
 from obserwator.gui._page import Site, WebFiles
 from obserwator.gui._root import (
     ANALYSES_SLOTS,
     DataRoot,
+    Held,
     Snapshot,
     StationsFormat,
     record_years,
@@ -132,14 +147,10 @@ STATIONS_FORMATS: tuple[str, ...] = ("geojson", "csv")
 """The formats of the stations file (`export_stations`, ADR-014)."""
 ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 """The formats of a station's stored analyses (`export_analyses`, ADR-016)."""
-KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
-CURRENT_PROVIDER = "IMGW"
-"""The provider of the current measurements view: the only live data the GUI serves."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
-    "IMGW": ("imgw", "imgw_hydro"),
-    "CHMU": ("chmu",),
+    provider.id: provider.adapter.origins for provider in providers()
 }
 """The origins of each provider's data (``obserwator.attribution``), dropped when an
 instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
@@ -161,7 +172,6 @@ page's files, the admin page's script, the packaged borders, the guide and the r
 the same for every client, are logged only when answered with 400 or more."""
 
 Handler = Callable[[Request], Awaitable[Response]]
-StationKind = Literal["hydro", "meteo"]
 
 
 def _gui(request: Request) -> GuiState:
@@ -342,6 +352,26 @@ async def _thread[T](function: Callable[[], T]) -> T:
     return await to_thread.run_sync(function, limiter=limiter)
 
 
+_LIVE_LIMITERS: weakref.WeakKeyDictionary[
+    asyncio.AbstractEventLoop, CapacityLimiter
+] = weakref.WeakKeyDictionary()
+"""The one live request of each event loop (each server): a station's live tail."""
+
+
+async def _live_thread[T](function: Callable[[], T]) -> T:
+    """
+    Run a live request in a worker thread, one at a time, apart from the reads.
+
+    A provider's slow answer then holds one thread and none of the `READERS`: the
+    requests behind it wait without a thread.
+    """
+    loop = asyncio.get_running_loop()
+    limiter = _LIVE_LIMITERS.get(loop)
+    if limiter is None:
+        limiter = _LIVE_LIMITERS[loop] = CapacityLimiter(1)
+    return await to_thread.run_sync(function, limiter=limiter)
+
+
 def _etag(request: Request, *parts: object) -> str:
     """A strong ETag of an answer of this server's run: what it was made from (D7)."""
     return etag_of(_gui(request).boot, *parts)
@@ -409,15 +439,17 @@ def _station_origins(
     with its details, hydro.imgw.pl's for an IMGW-PIB station whose catalog feature
     carries them (``details_source``, ADR-021).
     """
-    lines = attribution(provider_origin(provider))
-    if details and provider == "IMGW" and properties.get("details_source") is not None:
-        lines = lines | attribution("imgw_hydro")
+    adapter = get_provider(provider).adapter
+    lines = attribution(
+        provider_origin(provider),
+        *adapter.station_origins(properties, location=False, details=details),
+    )
     if not location:
         return lines
-    lines = lines | attribution(border_origin(provider))
-    if provider == "IMGW" and properties.get("location_source") == "static":
-        lines = lines | attribution("imgw_hydro")
-    return lines
+    return lines | attribution(
+        border_origin(provider),
+        *adapter.station_origins(properties, location=True, details=False),
+    )
 
 
 # --- the session and the texts ------------------------------------------------------
@@ -563,7 +595,12 @@ async def stations(request: Request) -> Response:
 
 @_route
 async def station(request: Request) -> Response:
-    """One station: its catalog properties, the series holding it and their lines."""
+    """
+    One station: its catalog properties, the series holding it and their lines.
+
+    ``subdaily`` says whether ``api/station/{code}/subdaily`` serves the station's
+    chart of „teraz” (O6, `_hourly_chart`), so the page asks it only then.
+    """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
@@ -574,7 +611,8 @@ async def station(request: Request) -> Response:
     catalog = _station_origins(feature.provider, props, location=True, details=True)
     series_lines = Attribution()
     for entry in held:
-        series_lines = series_lines | attribution(dataset_origin(entry["dataset"]))
+        series_lines = series_lines | attribution(*dataset_origins(entry["dataset"]))
+    chart = _serves_chart(feature)
     document = {
         "code": code,
         "provider": feature.provider,
@@ -582,6 +620,7 @@ async def station(request: Request) -> Response:
         "lat": lat,
         "properties": props,
         "datasets": held,
+        "subdaily": chart,
         **record_years(held),
         **catalog.fields(),
         "attribution_parts": {
@@ -592,7 +631,7 @@ async def station(request: Request) -> Response:
     }
     _gui(request).traffic.count("stations_opened")
     return json_response(
-        request, document, etag=_etag(request, "station", snapshot.key, code)
+        request, document, etag=_etag(request, "station", snapshot.key, code, chart)
     )
 
 
@@ -602,25 +641,33 @@ def _slice(
     start: date | None,
     end: date | None,
 ) -> dict[str, Any]:
-    """The rows of a series document between two dates, of some variables."""
+    """
+    The rows of a series document between two dates, of some variables.
+
+    The rows of an hourly series are its hours: those of the UTC days ``start`` to
+    ``end``, each variable's runs of a tier cut to them.
+    """
     dates: list[str] = document["dates"]
     first = (
         0
         if start is None
         else next(
-            (i for i, d in enumerate(dates) if d >= start.isoformat()), len(dates)
+            (i for i, d in enumerate(dates) if d[:10] >= start.isoformat()), len(dates)
         )
     )
     last = (
         len(dates)
         if end is None
-        else next((i for i, d in enumerate(dates) if d > end.isoformat()), len(dates))
+        else next(
+            (i for i, d in enumerate(dates) if d[:10] > end.isoformat()), len(dates)
+        )
     )
     names = variables or tuple(document["values"])
     out = {
         key: value
         for key, value in document.items()
-        if key not in ("dates", "hydro_year", "values", "flags", "period", "extremes")
+        if key
+        not in ("dates", "hydro_year", "values", "flags", "period", "extremes", "tiers")
     }
     out["dates"] = dates[first:last]
     out["hydro_year"] = document["hydro_year"][first:last]
@@ -640,6 +687,15 @@ def _slice(
             key: values[first:last]
             for key, values in document["extremes"].items()
             if key.rsplit("_", 1)[0] in names
+        }
+    if "tiers" in document:
+        out["tiers"] = {
+            name: [
+                [max(low, first) - first, min(high, last - 1) - first, tier]
+                for low, high, tier in document["tiers"][name]
+                if low < last and high >= first
+            ]
+            for name in names
         }
     return out
 
@@ -667,7 +723,7 @@ async def series(request: Request) -> Response:
     )
     body = {
         **_slice(document, variables, start, end),
-        **attribution(dataset_origin(dataset)).fields(),
+        **attribution(*dataset_origins(dataset)).fields(),
     }
     return json_response(
         request, body, etag=_etag(request, base, variables, start, end)
@@ -842,6 +898,16 @@ async def current_station(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     feature = snapshot.features[code]
+    kind = feature.properties.get("kind")
+    if kind not in ("hydro", "meteo"):
+        # Current data are of hydrological and meteorological stations only: a groundwater
+        # object (ADR-032) is refused as such, whoever provides it, and never taken for a
+        # meteorological station
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_current_kind"),
+            details={"reason": "kind"},
+        )
     if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
@@ -849,7 +915,6 @@ async def current_station(request: Request) -> Response:
             details={"reason": "provider"},
         )
     live = _gui(request).current
-    kind = feature.properties.get("kind")
     indices = synop_indices(snapshot.features)
     names = (
         ("hydro", "states")
@@ -892,6 +957,174 @@ async def current_station(request: Request) -> Response:
     elif "synop" in snaps:
         document["synop"] = synop_record(code, feature, indices, snaps["synop"])
     return json_response(request, document, etag=etag)
+
+
+# --- the chart of „teraz” (O6) -------------------------------------------------------------
+
+
+def _hourly_chart(feature: StationFeature) -> tuple[str, str | None]:
+    """
+    The hourly series and the live tail's dataset of a station's chart in „teraz” (O6).
+
+    Returns
+    -------
+    tuple of (str, str or None)
+        The provider's hourly hydrological series (ADR-031) and the capture dataset of
+        its adapter's live tail (`ProviderAdapter.live_source`; None without one).
+
+    Raises
+    ------
+    GuiError
+        ``not_found`` before any request: of a station of another kind than
+        hydrological (``details.reason`` ``kind``; a groundwater object has no current
+        chart, ADR-032), of a provider without an hourly series (``provider``), and of
+        one whose series or live tail comes from a source set ``private`` (``private``:
+        P15, ADR-030 D5, the state in force read on every request).
+    """
+    if feature.properties.get("kind") != "hydro":
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_chart_kind"),
+            details={"reason": "kind"},
+        )
+    provider = get_provider(feature.provider)
+    dataset = next(
+        (
+            descriptor.key
+            for descriptor in datasets()
+            if monthly_series(descriptor)
+            and descriptor.provider == provider.id
+            and descriptor.kind == "hydro"
+        ),
+        None,
+    )
+    if dataset is None:
+        raise GuiError(
+            "not_found",
+            message("gui.errors.no_chart_provider", provider=provider.short_name),
+            details={"reason": "provider"},
+        )
+    live = provider.adapter.live_source
+    if any(publication(key) == "private" for key in (dataset, live) if key is not None):
+        raise GuiError(
+            "not_found",
+            message("gui.errors.chart_private", station=feature.station_code),
+            details={"reason": "private"},
+        )
+    return dataset, live
+
+
+def _serves_chart(feature: StationFeature) -> bool:
+    """Whether ``api/station/{code}/subdaily`` serves a station (`_hourly_chart`)."""
+    try:
+        _hourly_chart(feature)
+    except GuiError:
+        return False
+    return True
+
+
+def _newest_hour(held: Held | None) -> datetime | None:
+    """The newest stored hour of a station's hourly series: the last with a value."""
+    lasts = [] if held is None else [c.last for c in held.variables.values() if c.last]
+    return datetime.fromisoformat(max(lasts)) if lasts else None
+
+
+@_route
+async def subdaily(request: Request) -> Response:
+    """
+    The hours of a station's chart in „teraz” (O6): its hourly series and the live tail.
+
+    ``stored``: the station's hours of the data root's hourly series (ADR-031) from
+    00:00 UTC of the day ``from`` on, read from the months of that range only (every
+    stored hour without ``from``), each variable's tiers as runs of rows, the months'
+    versions and ``last``, its newest stored hour. ``live``: when that hour is older
+    than the current one, the hours after it that the station's provider gives now
+    (`LiveTail`: asked at most once per 10 minutes, the answers spooled), with their
+    tier, when they came and the error of a failed request; null when nothing was
+    asked. The lines are those of the tiers served and of the live tail. A station
+    without the chart is ``not_found`` before any request (`_hourly_chart`).
+    """
+    query = request.query_params
+    params.only(query, ("from",))
+    start = params.iso_date(query.get("from"), "from")
+    state = _gui(request)
+    snapshot = await _thread(lambda: _snapshot(request))
+    code = _station(request, snapshot)
+    feature = snapshot.features[code]
+    dataset, live = _hourly_chart(feature)
+    descriptor = get_dataset(dataset)
+    names = tuple(descriptor.variables)
+    series = snapshot.series.get(dataset)
+    held = None if series is None else series.stations.get(code)
+    since = _newest_hour(held)
+    stored: dict[str, Any] = {
+        "dates": [],
+        "values": {name: [] for name in names},
+        "flags": {name: [] for name in names},
+        "tiers": {name: [] for name in names},
+        "versions": [],
+    }
+    if held is not None:
+        month = None if start is None else f"{start:%Y-%m}"
+        document, _ = await _thread(
+            lambda: state.root.series_document(dataset, code, since=month)
+        )
+        part = _slice(document, None, start, None)
+        stored = {key: part[key] for key in stored}
+    stored["last"] = None if since is None else iso_utc(since)
+    tail = None
+    if live is not None and (since is None or since < utc_hour(state.tail.now())):
+        tail = state.tail.cached(feature.provider, code, since)
+        if tail is None:
+            tail = await _live_thread(
+                partial(state.tail.get, feature.provider, code, since)
+            )
+    lang = page_lang(request)
+    origins: list[Origin] = []
+    tiers = {get_dataset(key).tier: key for key in descriptor.inputs or ()}
+    shown = {tier for runs in stored["tiers"].values() for _, _, tier in runs}
+    origins += [dataset_origin(tiers[tier]) for tier in shown if tier in tiers]
+    recent: dict[str, Any] | None = None
+    if tail is not None and live is not None:
+        first = (
+            None
+            if start is None
+            else datetime(start.year, start.month, start.day, tzinfo=UTC)
+        )
+        times, values = tail.hours_after(since, first)
+        recent = {
+            "dataset": live,
+            "tier": get_dataset(live).tier,
+            "dates": [iso_utc(moment) for moment in times],
+            "values": {name: values.get(name, [None] * len(times)) for name in names},
+            "hours": tail.hours,
+            "fetched_at": tail.fetched_at,
+            "error": None
+            if tail.error is None
+            else error_body(tail.error, lang)["message"],
+        }
+        if times:
+            origins.append(dataset_origin(live))
+    body = {
+        "station": code,
+        "provider": feature.provider,
+        "dataset": dataset,
+        "from": None if start is None else start.isoformat(),
+        "units": dict(descriptor.variables),
+        "stored": stored,
+        "live": recent,
+        **attribution(*origins).fields(),
+    }
+    etag = _etag(
+        request,
+        "subdaily",
+        snapshot.key,
+        code,
+        start,
+        lang,
+        None if tail is None else tail.serial,
+    )
+    return json_response(request, body, etag=etag)
 
 
 def _pmaxtp_query(query: Mapping[str, str]) -> tuple[PmaxtpMethod, float, float]:
@@ -1080,7 +1313,7 @@ async def downloads(request: Request) -> Response:
                     "url": descriptor.license.url,
                     "terms_url": descriptor.license.terms_url,
                 },
-                **attribution(dataset_origin(dataset)).fields(),
+                **attribution(*dataset_origins(dataset)).fields(),
             }
         )
     stored = await _thread(lambda: state.analyses.list(code))
@@ -1174,15 +1407,16 @@ async def series_file(request: Request) -> Response:
 
 def _stations_query(
     query: Mapping[str, str],
-) -> tuple[str | None, StationKind | None]:
+) -> tuple[str | None, Kind | None]:
     """The provider and the kind of a stations file; None for every one."""
     provider = query.get("provider") or None
     if provider is not None:
         params.choice(provider, "provider", tuple(item.id for item in providers()))
-    kind = query.get("kind") or None
-    if kind is not None:
-        params.choice(kind, "kind", KINDS)
-    return provider, ("hydro" if kind == "hydro" else "meteo" if kind else None)
+    chosen = query.get("kind") or None
+    if chosen is None:
+        return provider, None
+    params.choice(chosen, "kind", KINDS)
+    return provider, next(kind for kind in KINDS if kind == chosen)
 
 
 def _stations_of(
@@ -1372,7 +1606,7 @@ async def handoff(request: Request) -> Response:
                 document["values"][variable][i] if i in kept else None for i in rows
             ],
         }
-        lines = attribution(dataset_origin(dataset))
+        lines = attribution(*dataset_origins(dataset))
         provenance = {
             "series": {
                 "source": feature.provider.lower(),
@@ -1767,6 +2001,7 @@ def build_app(
             analyses=Analyses(config.root),
             current=CurrentData(log=log),
             pmaxtp=Pmaxtp(log=log),
+            tail=LiveTail(log=log),
             traffic=TrafficState(
                 limit=config.request_limit,
                 window=config.request_window,
@@ -1799,6 +2034,7 @@ def build_app(
         Route("/api/analysis/{code}/{analysis}", analysis),
         Route("/api/current", current),
         Route("/api/current/{code}", current_station),
+        Route("/api/station/{code}/subdaily", subdaily),
         Route("/api/pmaxtp", pmaxtp),
         Route("/api/downloads/stations", stations_downloads),
         Route("/api/downloads/{code}", downloads),

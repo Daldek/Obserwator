@@ -332,6 +332,12 @@ MESSAGES = {
     "config_instance_title": Text(
         "Instance ([obserwator.instance]):", "Instancja ([obserwator.instance]):"
     ),
+    "config_capture_title": Text(
+        "Captures (spool {spool}; [obserwator.capture]: public or private of each "
+        "source):",
+        "Zapisy odpowiedzi (bufor {spool}; [obserwator.capture]: public albo private "
+        "każdego źródła):",
+    ),
     "config_problems_title": Text("Problems:", "Problemy:"),
     "config_no_problems": Text("Problems: none", "Problemy: brak"),
     "mcp_allow_dir_help": Text(

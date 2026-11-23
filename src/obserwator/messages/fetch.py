@@ -101,4 +101,26 @@ MESSAGES = {
         "Zbiór {dataset} nie ma miejsca w magazynie (tylko do pobrania): użyj "
         "--output-dir, aby zapisać zwykłe pliki",
     ),
+    "pace_until_invalid": Text(
+        "Invalid pace_until {value}: expected HH:MM (24-hour local time)",
+        "Niepoprawne pace_until {value}: oczekiwano GG:MM (czas lokalny, 24 h)",
+    ),
+    "paced_request": Text(
+        "{time} {status} {url}",
+        "{time} {status} {url}",
+    ),
+    "paced_run_stopped": Text(
+        "not asked: the run ended after {failures} connection failures in a row",
+        "nie zapytano: przebieg zakończył się po {failures} błędach połączenia z rzędu",
+    ),
+    "paced_station_skipped": Text(
+        "The station {station} is skipped until the next run: HTTP {status} after "
+        "{attempts} attempts ({url})",
+        "Stacja {station} pominięta do następnego przebiegu: HTTP {status} po "
+        "{attempts} próbach ({url})",
+    ),
+    "paced_not_kept": Text(
+        "The capture spool did not keep the answer of {url}",
+        "Bufor zapisów nie przyjął odpowiedzi z {url}",
+    ),
 }

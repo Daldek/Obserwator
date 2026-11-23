@@ -50,6 +50,9 @@ from obserwator._version import __version__
 # Guide for AI agents
 from obserwator.agent_guide import agent_guide
 
+# Captures of current data: the hourly poll into the capture spool (ADR-030 D9)
+from obserwator.captures import PolledAnswer, PollReport, poll_current
+
 # Data command catalog
 from obserwator.commands import (
     check_command,
@@ -74,6 +77,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     License,
     MonthsArg,
+    ProviderCredential,
     ProviderDescriptor,
     YearsArg,
     archive_files,
@@ -141,6 +145,7 @@ from obserwator.output import FileResult, OutputReport
 from obserwator.parsers import (
     IMGW_ENCODING,
     normalize_archive,
+    parse_chmu_groundwater,
     parse_chmu_hydro_daily,
     parse_chmu_meteo_daily,
     parse_chmu_stations,
@@ -175,6 +180,7 @@ from obserwator.store import (
     AnalysisVariant,
     Cancel,
     CatalogReport,
+    HarvestReport,
     Meta,
     Notice,
     NoticeHook,
@@ -228,6 +234,7 @@ from obserwator.store import (
     read_series_index,
     read_station_list,
     select_series,
+    series_months,
     store_info,
     summarize_series,
     sync_pmaxtp,
@@ -322,6 +329,10 @@ __all__ = [
     "find_stations_async",
     "fetch_hydro_states",
     "fetch_hydro_states_async",
+    # Captures of current data (ADR-030): the hourly poll into the capture spool
+    "poll_current",
+    "PollReport",
+    "PolledAnswer",
     # Parsers
     "parse_daily_csv",
     "parse_monthly_csv",
@@ -334,10 +345,12 @@ __all__ = [
     "normalize_archive",
     "IMGW_ENCODING",
     "parse_chmu_hydro_daily",
+    "parse_chmu_groundwater",
     "parse_chmu_meteo_daily",
     "parse_chmu_stations",
     # Dataset registry
     "License",
+    "ProviderCredential",
     "ProviderDescriptor",
     "DatasetDescriptor",
     "ArchiveFile",
@@ -368,6 +381,7 @@ __all__ = [
     "PlanAction",
     "StorePlan",
     "OperationResult",
+    "HarvestReport",
     "SyncReport",
     "StationCoverage",
     "SeriesReport",
@@ -417,6 +431,7 @@ __all__ = [
     "read_series_index",
     "read_series",
     "select_series",
+    "series_months",
     "summarize_series",
     "export_series",
     "export_stations",

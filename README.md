@@ -4,12 +4,12 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 
 ## When to use
 
-- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily station data, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 27 datasets, 21 of IMGW-PIB and 6 of ČHMÚ.
-- Read current water levels, meteorological and synoptic measurements and warnings of IMGW-PIB, and find IMGW-PIB and ČHMÚ stations by name, river or code.
+- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily station data, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 33 datasets, 27 of IMGW-PIB (six of them captures of current data) and 6 of ČHMÚ.
+- Read current water levels, meteorological and synoptic measurements and warnings of IMGW-PIB, every answer kept as it came and sealed into the raw root day by day (captures, `obserwator current poll` hourly), and find IMGW-PIB and ČHMÚ stations by name, river or code.
 - Get the PMAXTP maximum precipitation (quantiles, confidence bounds, errors) of a point in Poland.
 - Build station series (Parquet) and station catalogs (GeoJSON) offline from the downloaded archives, and export them as CSV, JSON, JSONL or Parquet with the providers' attribution lines.
 - Store the analyses Hydrolog computes for every station (87: characteristic levels and discharges, frequencies, regimes, trends, precipitation indices) next to the series, and browse stations, series and analyses on a map in the web GUI.
-- Let an AI agent call the same 35 commands through MCP, the CLI, REST or Python, with one result envelope and stable error codes.
+- Let an AI agent call the same 36 commands through MCP, the CLI, REST or Python, with one result envelope and stable error codes.
 
 ## When not to use
 
@@ -166,7 +166,7 @@ The full list with effects is `obserwator commands list --json`; Python names ar
 
 ## MCP server
 
-`obserwator mcp` serves the 35 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
+`obserwator mcp` serves the 36 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
 
 ```bash
 claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
@@ -236,13 +236,15 @@ Obserwator does not distribute IMGW-PIB or ČHMÚ data; every download and write
 |---|---|---|
 | IMGW-PIB, `danepubliczne.imgw.pl` | archives of measurements and observations (ZIP/CSV), current data API | free for private (non-profit) purposes, high-value data for any purpose; business use, websites with advertising and the purposes the terms list need an agreement with IMGW-PIB; the source line and, for processed data, the processed-data line are mandatory ([terms](https://danepubliczne.imgw.pl/regulations)) |
 | IMGW-PIB, `klimat.imgw.pl/opady-maksymalne` | PMAXTP | cite IMGW-PIB and the monograph of the PMAXTP project (ed. B. Ozga-Zieliński, IMGW-PIB, Warsaw 2022, CC BY 4.0); mark processed data ([terms](https://klimat.imgw.pl/opady-maksymalne/)) |
-| IMGW-PIB, `hydro-back.imgw.pl` (backend of `hydro.imgw.pl`) | station map with coordinates, water states, station details (`pl.imgw.hydro_details`) | private use only; the source and processed-data lines plus the line naming the service; water states are shown as current and never stored (ADR-021) ([terms](https://hydro.imgw.pl/#/regulamin)) |
+| IMGW-PIB, `hydro-back.imgw.pl` (backend of `hydro.imgw.pl`) | station map with coordinates, water states, station details (`pl.imgw.hydro_details`), meteorological stations' coordinates and elevation (`pl.imgw.meteo_details`) | private use only; the source and processed-data lines plus the line naming the service; water states are shown as current, and every answer is also kept as a capture, which a server serves only when its operator sets it `public` in `[obserwator.capture]` (ADR-030; `private` by default) ([terms](https://hydro.imgw.pl/#/regulamin)) |
 | ČHMÚ, `opendata.chmi.cz` | daily hydrological and meteorological archives, station metadata | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): credit ČHMÚ, give the licence, mark changes ([terms](https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti)) |
 | GUGiK (PRG), ČÚZK (RÚIAN, CC BY 4.0) | the state borders bundled in `src/obserwator/_data/` for position checks (ADR-018) | the lines G and Z of Nogat DEV §20 |
 
 Every product with provider data carries the lines these terms require, as the Nogat standard quotes them (DEV §20, ADR-012): the envelope (`attribution`, `terms_notice`), the CLI summary, CSV, JSONL and Parquet exports, stored series, catalogs and PMAXTP cells, `ATTRIBUTION.txt` of a plain download and every view and file of the GUI. Whoever publishes results made with the data shows the lines with them.
 
 Data is written only where the user says: `--output-dir` (plain files), `--root`, or the default raw and data roots under `<data_dir>` (`~/.local/share/nogat` on Linux); a server writes only to its configured `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`. The IMGW-PIB reference files (station lists, coordinates, format descriptions) are downloaded once with `python -m obserwator.reference_data` into `OBSERWATOR_REFERENCE_DIR` (default `<cache_dir>/obserwator/reference`); they are IMGW-PIB data under its terms, not under the project's MIT licence. Settings, their precedence (`OBSERWATOR_<KEY>`, `.env`, `NOGAT_<KEY>`, `nogat.toml`) and store backup: [USAGE.md "Configuration"](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#configuration); `obserwator config show --json` lists every setting with its source.
+
+**What cannot be downloaded again, and backups (DEV-18.5).** The raw root holds archive versions that IMGW-PIB or ČHMÚ have since removed and the captures of operational data, which hydro.imgw.pl keeps for about six weeks only (ADR-030); losing it loses them. Copy a root only with hard links kept (`rsync -aH`; on Windows a tool that keeps hard links, not Explorer or `robocopy`) or through `store export`/`series export`. A deployment runs `deploy/obserwator-backup.sh` with its timer: weekly snapshots of both roots linked to the one before, a monthly full copy with a restore test, 8 and 6 kept, a free-space guard ([USAGE.md "Backups"](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#backups)); the night, telemetry and hourly timers are in [USAGE.md "Timers"](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#timers).
 
 ## Documentation
 
@@ -251,7 +253,7 @@ Data is written only where the user says: `--output-dir` (plain files), `--root`
 | [USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md) | task-oriented guide to the library, the CLI, REST, the GUI and the MCP server; configuration, the versioned store, Docker, server logs |
 | [ARCHITECTURE.md](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) | layers, store layout, data flow, CI/CD |
 | [CODEBASE.md](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) | public API, command catalog, option and error tables, data formats |
-| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-028 |
+| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-030 |
 | [PRD.md](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) | product requirements and scope |
 | [CHANGELOG.md](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) | changes per release, including the breaking changes and the migration from IMGWTools 2.1.1 |
 

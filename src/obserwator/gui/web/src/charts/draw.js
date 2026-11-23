@@ -19,7 +19,7 @@
 import { onLangChange } from "../i18n.js";
 import { chartLayout, drawAxes, drawGrid } from "./axes.js";
 import { keysHint, probabilityHeading, zoomRangeText, zoomResetLabel } from "./labels.js";
-import { formatDay, formatNumber, formatTime } from "./scale.js";
+import { formatDateTime, formatDay, formatNumber, formatTime } from "./scale.js";
 import { drawMarks, drawSeries, fitBoxes, seriesGeometry, valueAt } from "./series.js";
 import { c1, htmlEl, svgEl, textEl } from "./svg.js";
 
@@ -47,6 +47,7 @@ export function readoutNumber(value, digits) {
 function xText(spec, type, x) {
   if (spec.x?.scale === "time") return formatTime(x);
   if (spec.x?.scale === "date") return formatDay(x);
+  if (spec.x?.scale === "datetime") return formatDateTime(x);
   if (type === "gumbel") return readoutNumber(x, x >= 1 ? 1 : 2);
   return readoutNumber(x, spec.x?.digits);
 }
@@ -57,6 +58,7 @@ function headingText(layout, x, spec) {
   const type = layout.x.scale.type;
   if (spec.x?.scale === "time") return `t = ${formatTime(x)}`;
   if (spec.x?.scale === "date") return formatDay(x);
+  if (spec.x?.scale === "datetime") return formatDateTime(x);
   if (type === "gumbel") {
     const years = 100 / x;
     return probabilityHeading(readoutNumber(x, x >= 1 ? 1 : 2), readoutNumber(years, years >= 10 ? 0 : 1));
@@ -199,13 +201,13 @@ function withinFrame(master, plot) {
 }
 
 /** The x scales a range of which can be shown (zoom); a probability axis keeps its own. */
-const ZOOM_SCALES = new Set(["date", "linear", "log", "time"]);
+const ZOOM_SCALES = new Set(["date", "datetime", "linear", "log", "time"]);
 
-/** Whether a chart zooms: a `date` x axis unless `zoom: false`, the other x scales with `zoom: true`. */
+/** Whether a chart zooms: a `date` or `datetime` x axis unless `zoom: false`, the other x scales with `zoom: true`. */
 function zoomable(spec) {
   const kind = spec.x?.scale ?? "linear";
   if (spec.y?.scale === "band" || !ZOOM_SCALES.has(kind)) return false;
-  return spec.zoom ?? kind === "date";
+  return spec.zoom ?? (kind === "date" || kind === "datetime");
 }
 
 /** Whether two specs draw the same data on the same x axis (a zoom outlives a redraw of the same data). */

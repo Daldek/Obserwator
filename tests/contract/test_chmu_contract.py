@@ -1084,7 +1084,12 @@ RUNS = [
     Run(
         "stations find",
         {"provider": "CHMU", "query": "Ves", "limit": 5},
-        cases=("hydro_now_get", "meteo_now_listing", "meteo_now_get"),
+        cases=(
+            "hydro_now_get",
+            "meteo_now_listing",
+            "meteo_now_get",
+            "groundwater_now_get",
+        ),
     ),
     Run(
         "stations find",

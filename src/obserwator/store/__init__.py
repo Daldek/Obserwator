@@ -38,6 +38,7 @@ from obserwator.store.reader import (
     read_series_index,
     read_station_list,
     select_series,
+    series_months,
     store_info,
     summarize_series,
 )
@@ -46,6 +47,7 @@ from obserwator.store.sync import check_store, sync_store
 from obserwator.store.types import (
     Cancel,
     CatalogReport,
+    HarvestReport,
     Meta,
     Notice,
     NoticeHook,
@@ -85,6 +87,7 @@ __all__ = [
     "AnalysisVariant",
     "Cancel",
     "CatalogReport",
+    "HarvestReport",
     "Meta",
     "Notice",
     "NoticeHook",
@@ -139,6 +142,7 @@ __all__ = [
     "read_series_index",
     "read_station_list",
     "select_series",
+    "series_months",
     "store_info",
     "summarize_series",
     "sync_pmaxtp",

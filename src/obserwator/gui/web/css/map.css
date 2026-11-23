@@ -42,6 +42,9 @@
   --imgw-precip: #2b60bd;     /* --precip-status-color: precipitation */
   --imgw-no-precip: #289613;  /* --no-precip-status-color: no precipitation; also „Stacje”'s meteorological station */
   --imgw-outline: #777777;    /* its icons' stroke="#777" */
+  /* Our own: ČHMÚ's groundwater objects (bores and springs, ADR-032), a kind hydro.imgw.pl
+     has not, are a brown diamond (src/symbols.js) */
+  --station-groundwater: #a0612a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -65,6 +68,7 @@
     /* Our own: hydro.imgw.pl has no dark theme; a lighter outline keeps the black and the
        dark red symbols apart from the dark basemap */
     --imgw-outline: #a8b1bd;
+    --station-groundwater: #c07a3a;
   }
 }
 
@@ -86,6 +90,7 @@
   --map-place-4: #8b949e;
   --map-border: #6e7781;
   --imgw-outline: #a8b1bd;
+  --station-groundwater: #c07a3a;
 }
 
 .map-wrap { position: absolute; inset: 0; overflow: hidden; background: var(--map-bg); display: flex; flex-direction: column; }

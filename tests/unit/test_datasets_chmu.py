@@ -7,12 +7,13 @@ import pytest
 
 from obserwator.attribution import attribution
 from obserwator.datasets import (
+    CAPTURE_SCOPE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
     License,
     _archive_from_path,
-    _indexed_file,
+    _capture_file,
     _station_file,
     _station_files,
     archive_files,
@@ -23,6 +24,7 @@ from obserwator.datasets import (
     station_source_files,
 )
 from obserwator.exceptions import ObserwatorValidationError
+from obserwator.providers.pl.imgw import _indexed_file
 from obserwator.store.content import CONTENT_FORMS
 
 HYDRO = "cz.chmu.hydro_daily"
@@ -30,6 +32,14 @@ METEO = "cz.chmu.meteo_daily"
 # Fictional codes: no published ČHMÚ code starts with 0-203-1-9 or 0-203-0-9.
 A, B = "0-203-1-900001", "0-203-1-CB900003"
 M = "0-203-0-90001"
+GROUNDWATER_KEYS = [
+    "cz.chmu.groundwater_daily",
+    "cz.chmu.groundwater_weekly",
+    "cz.chmu.groundwater_recent",
+    "cz.chmu.groundwater_characteristic",
+    "cz.chmu.groundwater_stations",
+    "cz.chmu.groundwater_now",
+]
 CHMU_KEYS = [
     HYDRO,
     METEO,
@@ -37,6 +47,13 @@ CHMU_KEYS = [
     "cz.chmu.meteo_stations",
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
+    *GROUNDWATER_KEYS,
+    # The operational day files, the live tail's now files and the validated hourly
+    # set (ADR-030, O2), then the hourly series built per month from them (ADR-031).
+    "cz.chmu.hydro_recent",
+    "cz.chmu.hydro_current",
+    "cz.chmu.hydro_hourly",
+    "cz.chmu.hydro_subdaily",
 ]
 
 
@@ -137,7 +154,8 @@ def test_registry_invariants_across_providers():
         provider = by_provider[item.provider]
         assert item.key.startswith(provider.key_prefix + ".")
         # PMAXTP has the terms of its project page (ADR-012 D8), hydro.imgw.pl's
-        # station details those of that service (ADR-021).
+        # station details (hydrological and meteorological), its maps and the
+        # answers of its station endpoints those of that service (ADR-021, ADR-030).
         expected = provider.license
         if item.key == "pl.imgw.pmaxtp":
             expected = License(
@@ -145,7 +163,14 @@ def test_registry_invariants_across_providers():
                 attribution("pmaxtp", processed=False).attribution[0],
                 "https://klimat.imgw.pl/opady-maksymalne",
             )
-        if item.key == "pl.imgw.hydro_details":
+        if item.key in (
+            "pl.imgw.hydro_details",
+            "pl.imgw.meteo_details",
+            "pl.imgw.hydro_states_current",
+            "pl.imgw.hydro_operational",
+            "pl.imgw.meteo_operational",
+            "pl.imgw.meteo_states_current",
+        ):
             expected = License(
                 "IMGW-PIB",
                 attribution("imgw_hydro", processed=False).attribution[0],
@@ -165,8 +190,9 @@ def test_registry_invariants_across_providers():
         for provider in by_provider
     }
     # The current-data API of IMGW-PIB lies below its site, not below the archive,
-    # hydro.imgw.pl's station pages below its backend (ADR-021) and the warning
-    # archives below the published files (ADR-023).
+    # hydro.imgw.pl's station pages and map of water states below its backend
+    # (ADR-021, ADR-030), the warning archives below the published files (ADR-023)
+    # and the monthly telemetry below the datastore (ADR-030).
     assert roots == {
         "IMGW": {
             "dane_hydrologiczne",
@@ -174,7 +200,9 @@ def test_registry_invariants_across_providers():
             "dane_aktynometryczne",
             "api",
             "station",
+            "map",
             "arch",
+            "Arch",
         },
         "CHMU": {"hydrology", "meteorology"},
     }
@@ -203,6 +231,9 @@ def test_content_forms_only_for_the_chmu_json_datasets():
         "cz.chmu.meteo_stations",
         "cz.chmu.hydro_now",
         "cz.chmu.meteo_now",
+        "cz.chmu.groundwater_stations",
+        "cz.chmu.groundwater_now",
+        "cz.chmu.hydro_hourly",
     ]
 
 
@@ -215,7 +246,7 @@ def test_chmu_descriptors_follow_the_spec_table():
     ]
     hydro, meteo, hydro_list, meteo_list, hydro_now, meteo_now = datasets(
         provider="CHMU"
-    )
+    )[:6]
     assert (hydro.slug, hydro.server_dir, hydro.parser) == (
         "chmu_hydro_daily",
         "hydrology/historical/data/daily",
@@ -283,6 +314,53 @@ def test_chmu_descriptors_follow_the_spec_table():
             True,
             (),
         )
+    # ČHMÚ's groundwater (ADR-032): two series of one directory, the operational
+    # months and the statistics without a series, the two lists of the objects.
+    assert [item.key for item in datasets(provider="CHMU", kind="groundwater")] == (
+        GROUNDWATER_KEYS
+    )
+    daily, weekly, recent, characteristic, objects, current = datasets(
+        provider="CHMU", kind="groundwater"
+    )
+    for item, unit, first in ((daily, "day", 1960), (weekly, "week", 1933)):
+        assert (item.server_dir, item.parser, item.archive_scope) == (
+            "hydrology/groundwater/historical/data",
+            "parse_chmu_groundwater",
+            "station_year",
+        )
+        assert item.variables == {"H_asl": "m", "spring_yield": "l/s", "T": "degC"}
+        assert set(item.variable_notes) == set(item.variables)
+        assert (item.time_unit, item.first_year, item.tier) == (unit, first, "verified")
+    assert (recent.server_dir, recent.parser, recent.archive_scope) == (
+        "hydrology/groundwater/recent/data",
+        None,
+        "station_month",
+    )
+    assert (recent.time_unit, recent.first_year, recent.tier) == (
+        "day",
+        2025,
+        "operational",
+    )
+    assert recent.variables == {"H_asl": "m", "spring_yield": "l/s"}
+    assert (
+        characteristic.server_dir,
+        characteristic.archive_scope,
+        characteristic.time_unit,
+        characteristic.year_type,
+    ) == ("hydrology/groundwater/characteristic/data", "station", "statistics", "none")
+    for item, directory, signal in (
+        (objects, "hydrology/groundwater/historical/metadata", "http"),
+        (current, "hydrology/groundwater/now/metadata", "none"),
+    ):
+        assert (item.server_dir, item.time_unit, item.archive_scope) == (
+            directory,
+            "station_list",
+            "country",
+        )
+        assert (item.update_signal, item.content_form) == (signal, "chmu-json/1")
+    assert {item.update_signal for item in (daily, weekly, recent, characteristic)} == {
+        "listing"
+    }
     with pytest.raises(ObserwatorValidationError) as error:
         datasets(provider="SHMU")
     assert error.value.details["option"] == "provider"
@@ -402,7 +480,11 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
-        elif item.update_signal == "listing" and item.provider == "IMGW":
+        elif item.archive_scope == CAPTURE_SCOPE:
+            # A sealed capture of a UTC day, also the first day of a year and a leap day.
+            days = (date(2026, 11, 22), date(2027, 1, 1), date(2028, 2, 29))
+            files += [_capture_file(item, day) for day in days]
+        elif get_provider(item.provider).adapter.indexed(item):
             # Files named in the folder index: one in a range folder, the summary.
             files += [
                 _indexed_file(item, "Kłodzko/Źródłowe/1991-1992/Klodzko1991-1992.xls"),
@@ -415,8 +497,11 @@ def _every_file() -> list[ArchiveFile]:
                 item.key, stations=["353140200"], years=years, months=[1]
             )
         elif item.archive_scope == "station_year":
-            files += archive_files(item.key, stations=[A, B], years=[1887, 2025])
-        elif item.archive_scope == "station_element":
+            first = item.first_year or 1887
+            files += archive_files(item.key, stations=[A, B], years=[first, 2025])
+        elif item.archive_scope == "station_month":
+            files += archive_files(item.key, stations=[A, B], years=[2025, 2026])
+        elif item.archive_scope in ("station_element", "station"):
             files += archive_files(item.key, stations=[M, "0-20000-0-11406"])
         else:
             first = item.first_year or 1951
@@ -457,6 +542,30 @@ def test_reverse_mapping_recreates_every_file():
         ("cz.chmu.hydro_now", "hydrology/now/metadata/meta2.json"),
         ("cz.chmu.meteo_now", "meteorology/climate/now/metadata/meta2-20261018.json"),
         ("cz.chmu.meteo_now", "meteorology/climate/now/metadata/meta1-2026101.json"),
+        (
+            "cz.chmu.groundwater_daily",
+            f"hydrology/groundwater/historical/data/H_{A}_W_2012.json",
+        ),
+        (
+            "cz.chmu.groundwater_weekly",
+            f"hydrology/groundwater/historical/data/H_{A}_D_2012.json",
+        ),
+        (
+            "cz.chmu.groundwater_weekly",
+            f"hydrology/groundwater/historical/data/H_{A}_W_1932.json",
+        ),
+        (
+            "cz.chmu.groundwater_recent",
+            f"hydrology/groundwater/recent/data/{A}_D_2026.json",
+        ),
+        (
+            "cz.chmu.groundwater_recent",
+            f"hydrology/groundwater/recent/data/{A}_D_202613.json",
+        ),
+        (
+            "cz.chmu.groundwater_characteristic",
+            "hydrology/groundwater/characteristic/data/GCHAR_SCHEMA.json",
+        ),
         ("pl.imgw.hydro_now", "api/data/synop"),
         ("pl.imgw.meteo_now", "api/data/hydro"),
         ("pl.imgw.hydro_daily", "dane_hydrologiczne/dobowe/2023/zjaw_2023.zip"),

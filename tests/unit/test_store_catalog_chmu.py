@@ -455,7 +455,7 @@ def test_regenerated_envelopes_are_observed_by_the_sync_and_keep_the_catalog(sto
     assert not [n for n in notices if n.code == "license_terms"]
     second = offline_build(store)
     assert (second.status, second.version) == ("unchanged", first.version)
-    assert [action.status for action in offline_check(store).actions] == ["current"] * 7
+    assert [action.status for action in offline_check(store).actions] == ["current"] * 9
 
     with respx.mock(assert_all_called=False) as router:
         routes = serve(router, *REGENERATED)
@@ -644,13 +644,23 @@ def test_catalog_builds_and_checks_with_the_network_off(store):
     assert report.version.is_relative_to(data_root(store))
     assert tree(store.root) == raw  # the build only reads the raw root
     assert plan.items == ()
-    assert [action.status for action in plan.actions] == ["current"] * 7
-    assert [action.detail.split(":", 1)[0] for action in plan.actions[:5]] == [
+    assert [action.status for action in plan.actions] == ["current"] * 9
+    assert [action.detail.split(":", 1)[0] for action in plan.actions[:7]] == [
         "source chmu_hydro_stations",
         "source chmu_meteo_stations",
         "source chmu_hydro_now",
         "source chmu_hydro_meta3",
         "source chmu_meteo_now",
+        "source chmu_groundwater_stations",
+        "source chmu_groundwater_now",
+    ]
+    # The groundwater lists are optional sources (ADR-032): not stored, still current.
+    assert [action.detail for action in plan.actions[5:7]] == [
+        message("catalog.groundwater_not_stored", source=source, dataset=key)
+        for source, key in (
+            ("chmu_groundwater_stations", "cz.chmu.groundwater_stations"),
+            ("chmu_groundwater_now", "cz.chmu.groundwater_now"),
+        )
     ]
 
 
@@ -687,7 +697,7 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
     notices = []
     empty = offline_check(store, on_notice=notices.append)
     assert empty.items == ()
-    assert [action.status for action in empty.actions] == ["missing"] * 7
+    assert [action.status for action in empty.actions] == ["missing"] * 9
     assert [n.code for n in notices] == ["source_missing"] * 5
     assert notices[-1].message == message(
         "catalog.source_not_stored",
@@ -698,10 +708,10 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
 
     sync_sources(store)
     # Stored sources without a catalog: the build would make the first version.
-    assert [action.status for action in offline_check(store).actions] == ["missing"] * 7
+    assert [action.status for action in offline_check(store).actions] == ["missing"] * 9
     offline_build(store)
     before = tree(store.root), tree(data_root(store))
-    assert [action.status for action in offline_check(store).actions] == ["current"] * 7
+    assert [action.status for action in offline_check(store).actions] == ["current"] * 9
     assert (tree(store.root), tree(data_root(store))) == before
 
     # meta3 has no signal: the sync downloads it and keeps the changed bytes.
@@ -717,6 +727,8 @@ def test_check_catalog_compares_the_stored_sources_and_writes_nothing(store):
         "current",
         "current",
         "newer",
+        "current",
+        "current",
         "current",
         "current",
         "newer",

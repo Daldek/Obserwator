@@ -58,8 +58,15 @@ MESSAGES = {
         "Nieczytelny indeks szeregu {relative}: {exc}",
     ),
     "station_codes_appear_both_hydro": Text(
-        "The station codes appear in both the hydro and the meteo family: {shared}",
-        "Kody stacji występują jednocześnie w rodzinie hydro i meteo: {shared}",
+        "The station codes appear in both the {first} and the {second} family: "
+        "{shared}",
+        "Kody stacji występują jednocześnie w rodzinie {first} i {second}: {shared}",
+    ),
+    "source_unknown_object_type": Text(
+        "Source {source}: object {code} has an unknown OBJECT_TYPE {value!r} "
+        "(neither bore nor spring); its groundwater_kind is null",
+        "Źródło {source}: obiekt {code} ma nieznany OBJECT_TYPE {value!r} (ani bore, "
+        "ani spring); jego groundwater_kind to null",
     ),
     "number_out_range": Text(
         "the number {value} is out of range",
@@ -230,6 +237,23 @@ MESSAGES = {
         "źródło {source}: brak w katalogu surowym ({dataset}); nieobowiązkowe, bez "
         "niego katalog nie ma szczegółów stacji z hydro.imgw.pl",
     ),
+    "groundwater_not_stored": Text(
+        "source {source}: not in the store ({dataset}); optional, without it the "
+        "catalog takes no name, kind or location of ČHMÚ's groundwater objects from it",
+        "źródło {source}: brak w katalogu surowym ({dataset}); nieobowiązkowe, bez "
+        "niego katalog nie bierze z niego nazw, rodzajów ani położeń obiektów wód "
+        "podziemnych ČHMÚ",
+    ),
+    "groundwater_sources_missing": Text(
+        "The data root holds groundwater series of ČHMÚ, but the store {raw} holds "
+        "neither the list nor the current metadata of its groundwater objects: the "
+        "catalog gives them without a name, kind or location. obserwator store sync "
+        "--root {raw} --datasets {datasets} stores them",
+        "Katalog danych ma szeregi wód podziemnych ČHMÚ, ale katalog surowy {raw} "
+        "nie ma ani wykazu, ani bieżących metadanych jego obiektów wód podziemnych: "
+        "katalog poda je bez nazwy, rodzaju i położenia. obserwator store sync "
+        "--root {raw} --datasets {datasets} je zapisze",
+    ),
     "details_absent": Text(
         "Station source {server_path}: not in the store (optional)",
         "Źródło stacji {server_path}: brak w katalogu surowym (nieobowiązkowe)",
@@ -247,6 +271,18 @@ MESSAGES = {
         "województwa ani powiatu stacji hydrologicznych IMGW-PIB. Zapisze je "
         "obserwator store sync --root {root} --datasets {dataset} (jedno zapytanie "
         "na stację mapy hydro.imgw.pl)",
+    ),
+    "meteo_details_missing": Text(
+        "The store {root} holds no meteorological station details of hydro.imgw.pl "
+        "({dataset}): the catalog has no elevation of IMGW-PIB's meteorological "
+        "stations and no location of those the current-data API does not report. "
+        "obserwator store sync --root {root} --datasets {dataset} stores them (one "
+        "request per station of the meteorological map of hydro.imgw.pl)",
+        "Katalog surowy {root} nie ma szczegółów stacji meteorologicznych z "
+        "hydro.imgw.pl ({dataset}): katalog nie poda wysokości stacji "
+        "meteorologicznych IMGW-PIB ani położenia tych, których nie podaje API "
+        "danych bieżących. Zapisze je obserwator store sync --root {root} --datasets "
+        "{dataset} (jedno zapytanie na stację mapy meteorologicznej hydro.imgw.pl)",
     ),
     "static_missing": Text(
         "No local location file {static_path} (source static): the station locations "

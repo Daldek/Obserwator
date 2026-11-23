@@ -5,13 +5,13 @@ A setting comes from the first of: the environment variable ``OBSERWATOR_<KEY>``
 same key in a ``.env`` file of the working directory, the shared variable
 ``NOGAT_<KEY>`` (keys ``data_dir``, ``cache_dir``, ``state_dir``, ``lang``), the section
 ``[obserwator]`` of ``nogat.toml``, the section ``[nogat]`` of it (shared keys), the
-default; a command-line option goes before all of them. The store write token and the
-GUI's admin key are credentials: only the environment (and ``.env``) may give them, or
-a file the environment names, never ``nogat.toml`` (DEV-18.4). `environment_report` is
-the document of ``obserwator config show --json`` (DEV-18.6); `check_config` rejects an
-unusable ``nogat.toml``; `credential_problems` and `check_credentials` find a weak key
-or token and `check_root_layout` a root of an unknown layout as a server starts
-(ADR-025).
+default; a command-line option goes before all of them. The store write token, the
+GUI's admin key and a provider's API key (`provider_key`) are credentials: only the
+environment (and ``.env``) may give them, or a file the environment names, never
+``nogat.toml`` (DEV-18.4). `environment_report` is the document of ``obserwator config
+show --json`` (DEV-18.6); `check_config` rejects an unusable ``nogat.toml``;
+`credential_problems` and `check_credentials` find a weak key or token and
+`check_root_layout` a root of an unknown layout as a server starts (ADR-025).
 """
 
 import codecs
@@ -35,6 +35,12 @@ from pydantic_settings import (
 
 from obserwator import _environment as environment
 from obserwator._version import __version__
+from obserwator.datasets import (
+    ProviderCredential,
+    ProviderDescriptor,
+    get_provider,
+    providers,
+)
 from obserwator.exceptions import (
     ObserwatorError,
     ObserwatorStoreError,
@@ -54,9 +60,13 @@ __all__ = [
     "check_credentials",
     "check_root_layout",
     "configured_token",
+    "credential_error",
+    "credential_keys",
     "credential_problems",
+    "credential_providers",
     "environment_report",
     "human_language",
+    "provider_key",
     "read_secret_file",
     "settings",
     "store_root",
@@ -500,6 +510,40 @@ def configured_token(current: "Settings | None" = None) -> str | None:
     return read_secret_file(chosen.store_write_token_file)
 
 
+def _file_problems(path: Path, option: str) -> tuple[str, list[dict[str, str]]]:
+    """The text of a key file and its problems: not UTF-8, open to group or others."""
+    found, encoding = _read_secret(path)
+    text = found or ""
+    problems: list[dict[str, str]] = []
+    if encoding is not None:
+        problems.append(
+            {
+                "code": "secret_file_encoding",
+                "option": option,
+                "message": message(
+                    "config.secret_file_encoding", name=option, encoding=encoding
+                )
+                if encoding
+                else message("config.secret_file_not_utf8", name=option),
+            }
+        )
+    try:
+        mode = stat.S_IMODE(path.expanduser().stat().st_mode)
+    except OSError:
+        mode = 0
+    if text and os.name != "nt" and mode & 0o077:
+        problems.append(
+            {
+                "code": "secret_file_mode",
+                "option": option,
+                "message": message(
+                    "config.secret_file_mode", name=option, mode=f"{mode:04o}"
+                ),
+            }
+        )
+    return text, problems
+
+
 def credential_problems(
     use: Literal["token", "admin"] | None = None,
 ) -> list[dict[str, str]]:
@@ -511,12 +555,14 @@ def credential_problems(
     and a key file that is not UTF-8 text (UTF-16 from Windows PowerShell 5.1, say),
     of which no key is read. Only the credential in force counts: the variable when
     it is set, else the file. A missing or unreadable file is no problem here: no key
-    is set.
+    is set. A provider's API key (P3) has only the problems of its file: the
+    provider, not the operator, chooses its length.
 
     Parameters
     ----------
     use : {"token", "admin"} or None, optional
-        The REST server's write token, the GUI's admin key, or both (None).
+        The REST server's write token, the GUI's admin key, or all of them and the
+        provider keys (None).
 
     Returns
     -------
@@ -534,39 +580,9 @@ def credential_problems(
         text = value.get_secret_value().strip() if value is not None else ""
         option = _variable(value_key)
         if not text and path is not None:
-            found, encoding = _read_secret(path)
-            text = found or ""
             option = _variable(file_key)
-            if encoding is not None:
-                problems.append(
-                    {
-                        "code": "secret_file_encoding",
-                        "option": option,
-                        "message": message(
-                            "config.secret_file_encoding",
-                            name=option,
-                            encoding=encoding,
-                        )
-                        if encoding
-                        else message("config.secret_file_not_utf8", name=option),
-                    }
-                )
-            try:
-                mode = stat.S_IMODE(path.expanduser().stat().st_mode)
-            except OSError:
-                mode = 0
-            if text and os.name != "nt" and mode & 0o077:
-                problems.append(
-                    {
-                        "code": "secret_file_mode",
-                        "option": option,
-                        "message": message(
-                            "config.secret_file_mode",
-                            name=option,
-                            mode=f"{mode:04o}",
-                        ),
-                    }
-                )
+            text, found = _file_problems(path, option)
+            problems.extend(found)
         if text and len(text.encode("utf-8")) < SECRET_MIN_BYTES:
             problems.append(
                 {
@@ -577,7 +593,155 @@ def credential_problems(
                     ),
                 }
             )
+    if use is None:
+        for provider in credential_providers():
+            problems.extend(_provider_secret(provider)[1])
     return problems
+
+
+def credential_keys() -> tuple[str, ...]:
+    """
+    The keys only the environment may give: `CREDENTIAL_KEYS` and the providers' (P3).
+
+    Returns
+    -------
+    tuple of str
+        ``environment.CREDENTIAL_KEYS`` followed by ``<stem>_api_key`` and
+        ``<stem>_api_key_file`` of every provider declaring a `ProviderCredential`,
+        in registry order; a key of ``[obserwator]`` among them is ignored as a
+        credential (DEV-18.4).
+    """
+    return environment.CREDENTIAL_KEYS + tuple(
+        variable.removeprefix(environment.PREFIX).lower()
+        for provider in credential_providers()
+        for variable in _provider_variables(provider)
+    )
+
+
+def credential_providers() -> tuple[ProviderDescriptor, ...]:
+    """The providers whose requests need an API key (``credential`` set), in order."""
+    return tuple(provider for provider in providers() if provider.credential)
+
+
+def _provider_variables(provider: ProviderDescriptor) -> tuple[str, str]:
+    credential = _credential_of(provider)
+    return credential.variable, credential.file_variable
+
+
+def _credential_of(provider: ProviderDescriptor) -> ProviderCredential:
+    if provider.credential is None:
+        raise ValueError(f"The provider {provider.id} declares no credential")
+    return provider.credential
+
+
+def _environment_value(variable: str) -> str | None:
+    """
+    A variable of the environment, else of ``.env``, as `Settings` reads them.
+
+    Case-insensitive, an empty value unset; never ``nogat.toml`` (DEV-18.4).
+    """
+    name = variable.lower()
+    for source in (EnvSettingsSource(Settings), DotEnvSettingsSource(Settings)):
+        value = source.env_vars.get(name)
+        if value is not None:
+            return value
+    return None
+
+
+def _provider_secret(
+    provider: ProviderDescriptor,
+) -> tuple[str | None, list[dict[str, str]]]:
+    """A provider's key now and the problems of its file, as the admin key's (ADR-020)."""
+    variable, file_variable = _provider_variables(provider)
+    text = (_environment_value(variable) or "").strip()
+    if text:
+        return text, []
+    path = _environment_value(file_variable)
+    if path is None or not path.strip():
+        return None, []
+    text, problems = _file_problems(Path(path.strip()), file_variable)
+    return text or None, problems
+
+
+def provider_key(provider: str, /) -> str:
+    """
+    The API key of a provider, read now (Nogat plan 2026-11-20, P3, P4).
+
+    ``OBSERWATOR_<STEM>_API_KEY``, else the text of the file
+    ``OBSERWATOR_<STEM>_API_KEY_FILE`` names (`read_secret_file`), from the
+    environment or ``.env`` only, never from ``nogat.toml``; a key file group or
+    others may access, or one that is not UTF-8, is a warning of the logger
+    ``obserwator.config``. The key itself is never logged.
+
+    Parameters
+    ----------
+    provider : str
+        A provider declaring a `ProviderCredential`, by identifier or key prefix.
+
+    Returns
+    -------
+    str
+        The key without surrounding white space.
+
+    Raises
+    ------
+    ObserwatorError
+        ``forbidden`` with ``details.reason`` ``missing_credentials`` when neither
+        variable gives a key (`credential_error`).
+    ObserwatorValidationError
+        If ``provider`` names no provider.
+    ValueError
+        If the provider declares no credential.
+    """
+    descriptor = get_provider(provider)
+    key, problems = _provider_secret(descriptor)
+    for problem in problems:
+        _LOG.warning("%s", problem["message"])
+    if key is None:
+        raise credential_error(descriptor.id, "missing_credentials")
+    return key
+
+
+def credential_error(
+    provider: str, reason: Literal["missing_credentials", "invalid_credentials"]
+) -> ObserwatorError:
+    """
+    The error of a missing or rejected provider key (P4), for its caller to raise.
+
+    An adapter raises it with ``invalid_credentials`` when the provider refuses the
+    key (HTTP 401 or 403); `provider_key` raises it with ``missing_credentials``.
+
+    Parameters
+    ----------
+    provider : str
+        A provider declaring a `ProviderCredential`, by identifier or key prefix.
+    reason : {"missing_credentials", "invalid_credentials"}
+        No key is set, or the provider rejected it.
+
+    Returns
+    -------
+    ObserwatorError
+        ``forbidden`` (exit 12, HTTP 403) with ``details.reason`` and
+        ``details.provider`` (the identifier) and a hint naming the variables.
+    """
+    descriptor = get_provider(provider)
+    variable, file_variable = _provider_variables(descriptor)
+    missing = reason == "missing_credentials"
+    return ObserwatorError(
+        message(
+            "config.provider_key_missing"
+            if missing
+            else "config.provider_key_rejected",
+            provider=descriptor.short_name,
+        ),
+        code="forbidden",
+        details={"reason": reason, "provider": descriptor.id},
+        hint=message(
+            "config.provider_key_hint" if missing else "config.provider_key_renew",
+            variable=variable,
+            file_variable=file_variable,
+        ),
+    )
 
 
 def check_credentials(use: Literal["token", "admin"], *, strict: bool) -> None:
@@ -737,15 +901,23 @@ def environment_report() -> dict[str, object]:
         uses and credentials found in the file), ``keys`` (every setting but
         the credentials: ``value``, ``source`` ``default``, ``env``, ``dotenv``
         or ``file`` and ``name``, the variable or the table), ``credentials``
-        (each credential variable ``present`` or ``missing``; the value is never
-        given), ``store`` (the data root, its source, whether it exists and
+        (each credential variable ``present`` or ``missing``, those of every
+        provider key after the servers'; the value is never given), ``store``
+        (the data root, its source, whether it exists and
         its size in bytes; hard-linked files counted once), ``raw_store``
         (the same of the raw root, ADR-017), ``instance`` (the resolved
-        ``[obserwator.instance]``, ADR-025, or null) and ``problems`` (each
+        ``[obserwator.instance]``, ADR-025, or null), ``capture`` (the capture
+        spool's directory and each source's publication state, ``public`` or
+        ``private``, with where it comes from, ``default`` or ``file``
+        ``[obserwator.capture]``; ADR-030 D5, D7) and ``problems`` (each
         ``code``, ``option`` and ``message``: an invalid instance section, which
-        keeps the servers from starting, a weak key or token, a leftover
-        ``api_keys.json`` of the deprecated ``obserwator admin``).
+        keeps the servers from starting, an invalid capture section, whose
+        defaults apply, a capture spool that cannot be written or whose last
+        write failed, a weak key or token, a leftover ``api_keys.json`` of the
+        deprecated ``obserwator admin``).
     """
+    from obserwator.captures import SECTION as CAPTURE_SECTION
+    from obserwator.captures import capture_report, spool_problem
     from obserwator.instance import SECTION, instance_report
 
     current = Settings()
@@ -760,17 +932,26 @@ def environment_report() -> dict[str, object]:
             credentials[variable] = "present" if value is not None else "missing"
             continue
         keys[name] = {"value": _plain(value), **_origin(name, layers)}
+    for provider in credential_providers():
+        for variable in _provider_variables(provider):
+            present = (_environment_value(variable) or "").strip()
+            credentials[variable] = "present" if present else "missing"
+    secret_keys = credential_keys()
     ignored = [
         {
             "key": key,
-            "reason": "credential" if key in environment.CREDENTIAL_KEYS else "unknown",
+            "reason": "credential" if key in secret_keys else "unknown",
         }
         for key in file.sections.get(environment.TOOL, {})
-        if key != SECTION
-        and (key not in Settings.model_fields or key in environment.CREDENTIAL_KEYS)
+        if key not in (SECTION, CAPTURE_SECTION)
+        and (key not in Settings.model_fields or key in secret_keys)
     ]
     instance, invalid = instance_report()
     problems: list[dict[str, object]] = [] if invalid is None else [invalid]
+    capture, invalid_capture = capture_report()
+    problems.extend(
+        problem for problem in (invalid_capture, spool_problem()) if problem is not None
+    )
     problems.extend(dict(problem) for problem in credential_problems())
     if current.api_keys_file.expanduser().is_file():
         problems.append(
@@ -808,5 +989,6 @@ def environment_report() -> dict[str, object]:
         "store": described("data"),
         "raw_store": described("raw"),
         "instance": instance,
+        "capture": capture,
         "problems": problems,
     }

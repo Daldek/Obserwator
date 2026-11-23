@@ -26,11 +26,14 @@ from obserwator.attribution import Attribution
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    KINDS,
     DatasetDescriptor,
+    Kind,
     License,
     ProviderDescriptor,
     get_dataset,
     get_provider,
+    monthly_series,
     providers,
 )
 from obserwator.exceptions import (
@@ -42,12 +45,13 @@ from obserwator.exceptions import (
 from obserwator.messages import message
 from obserwator.models import Measurement, NormalizedRecord
 from obserwator.output import OutputReport, Staging, plan_plain, refuse
-from obserwator.store.catalog import DETAILS_SOURCE, RootArg, _catalog_lines
+from obserwator.store.catalog import RootArg, _catalog_lines
 from obserwator.store.reader import (
     _archive_main,
+    _month_parts,
     _open,
     _series_datasets,
-    _series_path,
+    _series_paths,
     _variables,
     current_version,
     read_archive,
@@ -81,7 +85,6 @@ _ARCHIVE_FORMATS = ("csv", "jsonl")
 # Formats that are no text lines: one file, so they need output (REST attaches it).
 _BINARY_FORMATS = ("parquet",)
 _YEAR_TYPES = ("hydrological", "calendar")
-_KINDS = ("hydro", "meteo")
 _PROGRESS_ROWS = 256
 _CANCELLED = message("export.cancelled")
 # The trailing columns of the CSV of a series or of the stations: the lines of
@@ -607,7 +610,12 @@ def export_archive(
     )
 
 
-_Kind = Literal["date", "int", "text", "number", "code", "timestamp"]
+_Kind = Literal["date", "int", "text", "number", "code", "timestamp", "time"]
+
+
+def _hour_text(value: datetime) -> str:
+    """The start of an hour of a sub-daily series: ``YYYY-MM-DDTHH:MM:SSZ`` in UTC."""
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass(frozen=True)
@@ -618,6 +626,7 @@ class _Column:
     ``header`` names it in the CSV and in Parquet, ``name`` in JSON (where the
     unit of a value column is given in ``variables``); ``kind`` gives its CSV
     cell, its JSON value and its Arrow type; ``value`` reads it from a record.
+    The ``time`` of a sub-daily series is UTC text with ``Z`` in CSV and JSON.
     """
 
     name: str
@@ -630,6 +639,8 @@ class _Column:
         value = self.value(record)
         if value is None:
             return ""
+        if self.kind == "time":
+            return _hour_text(cast(datetime, value))
         if isinstance(value, float):
             return _number(value)
         if isinstance(value, date):
@@ -639,6 +650,8 @@ class _Column:
     def json_value(self, record: NormalizedRecord) -> object:
         """The JSON value: a date as ISO text, null without a value."""
         value = self.value(record)
+        if self.kind == "time" and value is not None:
+            return _hour_text(cast(datetime, value))
         return value.isoformat() if isinstance(value, date) else value
 
 
@@ -670,15 +683,20 @@ def _series_columns(
     ``date``, ``year`` (of ``year_type``), ``period`` of half-years, then per
     variable the value (``<V> [<unit>]``), ``<V>_flag``, the extra fields of the
     dataset (``<V>_quality``, ``<V>_source_flag``) and the extremum columns of
-    half-years (``<V>_start``, ``<V>_end``, ``<V>_occurrences``).
+    half-years (``<V>_start``, ``<V>_end``, ``<V>_occurrences``). A sub-daily
+    series (ADR-031) has ``time`` instead of ``date`` and ``<V>_tier`` after
+    the flag of every variable.
     """
     half_year = descriptor.time_unit == "half_year"
+    hourly = monthly_series(descriptor)
 
     def year(record: NormalizedRecord) -> int:
         return record.hydro_year if year_type == "hydrological" else record.date.year
 
     columns = [
-        _plain("date", "date", lambda record: record.date),
+        _plain("time", "time", lambda record: record.time)
+        if hourly
+        else _plain("date", "date", lambda record: record.date),
         _plain("year", "int", year),
     ]
     if half_year:
@@ -692,6 +710,8 @@ def _series_columns(
         for field in descriptor.measurement_fields:
             kind: _Kind = "code" if field == "quality" else "text"
             columns.append(_plain(f"{name}_{field}", kind, _measured(name, field)))
+        if hourly:
+            columns.append(_plain(f"{name}_tier", "text", _measured(name, "tier")))
         if half_year:
             columns += [
                 _plain(f"{name}_start", "timestamp", _extremum(name, 0)),
@@ -713,6 +733,9 @@ def _license_json(license_: License) -> dict[str, str | None]:
 
 def _series_version(series: Path, descriptor: DatasetDescriptor) -> str:
     """A series version as ``--version`` names it: its directory relative to the root."""
+    if monthly_series(descriptor):
+        month = series.parent.parent.name
+        return f"series/versions/{descriptor.slug}/{month}/{series.parent.name}"
     return f"series/versions/{descriptor.slug}/{series.parent.name}"
 
 
@@ -722,13 +745,21 @@ def _series_head(
     version: str,
     year_type: str,
     names: Sequence[str],
+    *,
+    versions: Sequence[str] | None = None,
 ) -> dict[str, object]:
-    """The fields of a series export before its data (JSON; Parquet metadata)."""
+    """
+    The fields of a series export before its data (JSON; Parquet metadata).
+
+    ``versions`` (a sub-daily series, ADR-031): the version of every month
+    exported, in month order, as ``series_versions``; ``version`` is the first.
+    """
     return {
         "dataset": descriptor.key,
         "provider": descriptor.provider,
         "station": station,
         "series_version": version,
+        **({} if versions is None else {"series_versions": list(versions)}),
         "year_type": year_type,
         "time_unit": descriptor.time_unit,
         "variables": {
@@ -781,7 +812,8 @@ def _series_parquet(
 
     Values ``float64``, flags and other texts ``string``, ``date`` ``date32``,
     ``year`` and ``<V>_occurrences`` ``int32``, ``<V>_quality`` ``int8``,
-    ``<V>_start`` and ``<V>_end`` ``timestamp[us]``; the file metadata holds
+    ``<V>_start`` and ``<V>_end`` ``timestamp[us]``, the ``time`` of a sub-daily
+    series ``timestamp[us, tz=UTC]``; the file metadata holds
     ``obserwator_schema`` and the head's fields, objects and arrays as JSON
     (``units`` and ``variable_notes`` from ``variables``).
     """
@@ -793,6 +825,7 @@ def _series_parquet(
         "number": pa.float64(),
         "code": pa.int8(),
         "timestamp": pa.timestamp("us"),
+        "time": pa.timestamp("us", tz="UTC"),
     }
     table = pa.table(
         {
@@ -909,6 +942,19 @@ def export_series(
     (``obserwator_schema``, ``units`` and ``variable_notes`` instead of
     ``variables``; objects and arrays as JSON text).
 
+    A sub-daily series (``pl.imgw.hydro_subdaily``, ``cz.chmu.hydro_subdaily``,
+    ADR-031) has ``time`` (the start of the hour in UTC,
+    ``YYYY-MM-DDTHH:MM:SSZ``; Parquet ``timestamp[us, tz=UTC]``) instead of
+    ``date`` and ``<V>_tier`` after the flag of every variable (``verified``,
+    ``telemetry`` or ``operational``; empty or null without a value), in every
+    format. With ``root`` and ``dataset`` it joins the current versions of its
+    months within ``start``–``end`` (the hours from 00:00 of ``start`` to 23:00
+    of ``end``, UTC), with ``version`` it exports that month. Its JSON head and
+    Parquet metadata add ``series_versions``, the version directory of every
+    month exported in month order (``series_version`` is the first), and its
+    lines are those of every input of the series
+    (`obserwator.attribution.dataset_origins`).
+
     Parameters
     ----------
     version : str, os.PathLike or None, optional
@@ -1010,28 +1056,56 @@ def export_series(
                 "allowed": list(_YEAR_TYPES),
             },
         )
-    series = _series_path(version, root=root, dataset=dataset)
-    index = read_series_index(series)
-    descriptor = get_dataset(index.dataset)
+    monthly, paths = _series_paths(
+        version, root=root, dataset=dataset, start=start, end=end
+    )
+    published: str
+    if monthly is None:
+        (series,) = paths
+        index = read_series_index(series)
+        descriptor, key, published = (
+            get_dataset(index.dataset),
+            index.dataset,
+            index.year_type,
+        )
+    else:
+        # The year type every month of the series is built with (``series.json``).
+        descriptor, key, published = monthly, monthly.key, monthly.year_type
     names = _variables(variables, descriptor)
-    chosen = year_type or index.year_type
+    chosen = year_type or published
     if descriptor.time_unit == "half_year" and chosen == "calendar":
         raise ObserwatorValidationError(
-            message(
-                "export.semi_annual_annual_characteristics_have", dataset=index.dataset
-            ),
+            message("export.semi_annual_annual_characteristics_have", dataset=key),
             details={"option": "year_type", "value": "calendar"},
         )
     target = _target(output, force=force)
-    records = list(
-        read_series(series, station=station, variables=names, start=start, end=end)
-    )
+    if monthly is None:
+        versions = [series]
+        records = list(
+            read_series(series, station=station, variables=names, start=start, end=end)
+        )
+    else:
+        assert root is not None  # the months of a dataset are those of a root
+        versions, records = [], []
+        for path, part in _month_parts(
+            paths,
+            root=root,
+            descriptor=monthly,
+            station=station,
+            variables=names,
+            start=start,
+            end=end,
+        ):
+            found = list(part)
+            if found:
+                versions.append(path)
+                records += found
     if not records:
         raise ObserwatorDataError(
             message(
                 "export.series_station_empty_chosen_range",
                 station=station,
-                dataset=index.dataset,
+                dataset=key,
             )
         )
     _check_cancel(cancel)
@@ -1039,10 +1113,12 @@ def export_series(
     columns = _series_columns(descriptor, names, chosen)
     done = message("export.series_exported", station=station)
     label = message("export.station_progress", station=station)
+    named = [_series_version(path, descriptor) for path in versions]
+    months = named if monthly_series(descriptor) else None
     if format == "parquet":
         assert target is not None  # _needs_output refused a Parquet without it
         head = _series_head(
-            descriptor, station, _series_version(series, descriptor), chosen, names
+            descriptor, station, named[0], chosen, names, versions=months
         )
         report = _write((_series_parquet(head, columns, records),), target, cancel)
         if on_progress is not None:
@@ -1051,7 +1127,7 @@ def export_series(
         return report
     if format == "json":
         head = _series_head(
-            descriptor, station, _series_version(series, descriptor), chosen, names
+            descriptor, station, named[0], chosen, names, versions=months
         )
         opening, data, closing = _series_json(head, columns, records)
         return _deliver(
@@ -1400,6 +1476,9 @@ def _catalogs(
         Code ``not_found`` when an explicit ``provider`` has no catalog, or
         none of the providers has one.
     """
+    from obserwator.datasets import METEO_DETAILS
+    from obserwator.providers.pl.imgw import DETAILS_SOURCE, METEO_DETAILS_SOURCE
+
     owners = providers() if provider is None else (get_provider(provider),)
     found: list[_Catalog] = []
     for owner in owners:
@@ -1431,14 +1510,20 @@ def _catalogs(
             )
             if not features:
                 continue
-        static = sum(
-            feature.properties.get("location_source") == "static"
-            for feature in features
-        )
-        detailed = sum(
-            feature.properties.get("details_source") == DETAILS_SOURCE
-            for feature in features
-        )
+        located = {
+            source: sum(
+                feature.properties.get("location_source") == source
+                for feature in features
+            )
+            for source in ("static", METEO_DETAILS)
+        }
+        detailed = {
+            source: sum(
+                feature.properties.get("details_source") == source
+                for feature in features
+            )
+            for source in (DETAILS_SOURCE, METEO_DETAILS_SOURCE)
+        }
         chosen = (
             feature
             for feature in features
@@ -1451,7 +1536,7 @@ def _catalogs(
                 entry.version.parent.relative_to(base).as_posix(),
                 entry.meta,
                 tuple(sorted(chosen, key=lambda feature: feature.station_code)),
-                _catalog_lines(owner, {"static": static, DETAILS_SOURCE: detailed}),
+                _catalog_lines(owner, {**located, **detailed}),
             )
         )
     if not found:
@@ -1500,13 +1585,18 @@ def _holdings(
 
     Only ``series.json`` indexes are read (no pyarrow): the series of the
     providers' datasets of ``kind``, in registry order; a dataset without a
-    series is skipped.
+    series is skipped, and so is a sub-daily series (ADR-031), which has no
+    one current version but one per month.
     """
     chosen = {catalog.owner.id for catalog in catalogs}
     versions: list[dict[str, str]] = []
     held: dict[str, dict[str, dict[str, object]]] = {}
     for descriptor in _series_datasets().values():
-        if descriptor.provider not in chosen or kind not in (None, descriptor.kind):
+        if (
+            descriptor.provider not in chosen
+            or kind not in (None, descriptor.kind)
+            or monthly_series(descriptor)
+        ):
             continue
         entry = current_version(base, slot=f"series:{descriptor.key}")
         if entry is None or entry.version is None:
@@ -1677,7 +1767,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: None = None,
@@ -1695,7 +1785,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: PathArg,
@@ -1712,7 +1802,7 @@ def export_stations(
     /,
     *,
     provider: str | None = None,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     series: bool = True,
     format: Literal["geojson", "csv"] = "geojson",
     output: PathArg | None = None,
@@ -1727,9 +1817,10 @@ def export_stations(
 
     The current station catalog of every chosen provider is read (offline,
     verified against its sidecar), and with ``series`` the ``series.json``
-    indexes of the providers' current series (no pyarrow). Stations without a
-    location are included. Arguments and data are validated and read before
-    anything is returned or written.
+    indexes of the providers' current series (no pyarrow); a sub-daily series
+    (ADR-031), which has a version per month and no one current version, is
+    not among them. Stations without a location are included. Arguments and
+    data are validated and read before anything is returned or written.
 
     GeoJSON (UTF-8, LF lines) is one ``obserwator-stations-export/1``
     document, an RFC 7946 FeatureCollection with the foreign members
@@ -1747,9 +1838,11 @@ def export_stations(
     first and last date with a value, the variables with values).
 
     CSV (UTF-8, comma, dot decimal, CRLF rows) has one row per station:
-    ``station_code,name,kind,provider``, the other catalog properties sorted
-    by name (an object such as the ČHMÚ ``thresholds`` as JSON, booleans
-    ``true``/``false``), ``latitude,longitude`` (empty without a location),
+    ``station_code,name,kind,provider``, the other catalog properties of the
+    exported stations sorted by name (``groundwater_kind`` only with a
+    groundwater object, ADR-032; an object such as the ČHMÚ ``thresholds`` as
+    JSON, booleans ``true``/``false``), ``latitude,longitude`` (empty without a
+    location),
     with ``series`` ``datasets`` (keys joined with ``;``), then the columns
     ``attribution,terms_notice`` of `export_series`. The rows of each
     provider form a block that starts with the provider's lines.
@@ -1762,9 +1855,9 @@ def export_stations(
     provider : str or None, optional
         Provider identifier or key prefix (``"IMGW"``, ``"CHMU"``,
         ``"cz.chmu"``); None exports every provider with a catalog.
-    kind : {"hydro", "meteo"} or None, optional
+    kind : {"hydro", "meteo", "groundwater"} or None, optional
         Only the stations of this kind (and the series of its datasets);
-        None exports both.
+        None exports every kind.
     series : bool, optional
         Name the current series that hold each station (default); False
         reads no series.
@@ -1820,10 +1913,10 @@ def export_stations(
         If the target cannot be written; the target stays untouched.
     """
     _format(format, _STATIONS_FORMATS)
-    if kind is not None and kind not in _KINDS:
+    if kind is not None and kind not in KINDS:
         raise ObserwatorValidationError(
-            message("export.unknown_kind_allowed", kind=kind, kinds=", ".join(_KINDS)),
-            details={"option": "kind", "value": str(kind), "allowed": list(_KINDS)},
+            message("export.unknown_kind_allowed", kind=kind, kinds=", ".join(KINDS)),
+            details={"option": "kind", "value": str(kind), "allowed": list(KINDS)},
         )
     chosen = None if provider is None else get_provider(provider).id
     base = _data_root(root)
@@ -1834,7 +1927,7 @@ def export_stations(
         raise ObserwatorDataError(
             message(
                 "export.no_station_of_kind",
-                kind=kind or ", ".join(_KINDS),
+                kind=kind or ", ".join(KINDS),
                 providers=", ".join(catalog.owner.id for catalog in catalogs),
             )
         )

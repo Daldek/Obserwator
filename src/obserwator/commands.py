@@ -1,5 +1,5 @@
 """
-Catalog of the 35 data commands and the single dispatcher of public functions.
+Catalog of the 36 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -29,9 +29,9 @@ import shlex
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
 from obserwator import fetch as _fetch
 from obserwator import stations as _stations
@@ -43,12 +43,14 @@ from obserwator.attribution import (
     attribution,
     border_origin,
     carried,
-    dataset_origin,
+    dataset_origins,
     provider_origin,
 )
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    CAPTURE_SCOPE,
+    KINDS,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -57,9 +59,12 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     archive_files,
+    builds_series,
     datasets,
     get_dataset,
     get_provider,
+    keeps_archives,
+    monthly_series,
     parse_months,
     parse_years,
     providers,
@@ -114,6 +119,9 @@ from obserwator.store.types import (
 )
 from obserwator.urls import build_api_url, build_pmaxtp_url
 
+if TYPE_CHECKING:
+    from obserwator.captures import PollReport
+
 __all__ = [
     "check_command",
     "command_for_version",
@@ -145,36 +153,45 @@ _STATION = STATION_CODE_PATTERN
 # Live IMGW-PIB readings accept only IMGW-PIB codes.
 _IMGW_STATION = "^[0-9]{9}$"
 _SYNOP_STATION = "^[0-9]{5}$"
+# The end of a harvest's window, local time (ADR-030 D9).
+_PACE_UNTIL = "^([01][0-9]|2[0-3]):[0-5][0-9]$"
 _PATTERN_TEXT = {
     _STATION: message("commands.pattern_station"),
     _IMGW_STATION: message("commands.pattern_imgw_station"),
     _SYNOP_STATION: message("commands.pattern_synop_station"),
+    _PACE_UNTIL: message("commands.pattern_pace_until"),
 }
 _INTEGER = re.compile(r"-?[0-9]+")
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
-_KINDS = ("hydro", "meteo")
+# IMGW-PIB's warnings are of hydrological and meteorological stations only.
+_WARNING_KINDS = ("hydro", "meteo")
 _YEAR_TYPES = ("hydrological", "calendar")
 # Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
-# station lists and PMAXTP have none.
+# station lists, PMAXTP and the captures (sealed from the spool, ADR-030 D3) have none.
 _ARCHIVE_DATASETS = tuple(
     d.key
     for d in datasets()
-    if d.server_dir is not None and d.time_unit != "station_list"
+    if d.server_dir is not None
+    and d.time_unit != "station_list"
+    and d.archive_scope != CAPTURE_SCOPE
 )
-_SERIES_DATASETS = tuple(
-    d.key
-    for d in datasets()
-    if d.in_store and d.time_unit in ("day", "month", "half_year")
-)
-# What ``store check`` and ``store sync`` download: the measurement archives and
-# the station sources of the catalogs (station lists and metadata, ADR-015).
-_SYNC_DATASETS = _SERIES_DATASETS + tuple(
-    d.key for d in datasets() if d.in_store and d.time_unit == "station_list"
+_SERIES_DATASETS = tuple(d.key for d in datasets() if builds_series(d))
+# What ``store check`` and ``store sync`` download or seal: the measurement archives
+# (also those no series reads, ADR-032), the station sources of the catalogs (station
+# lists and metadata, ADR-015) and the captures of current data, sealed from the
+# spool per UTC day (ADR-030 D3).
+_SYNC_DATASETS = (
+    tuple(d.key for d in datasets() if keeps_archives(d))
+    + tuple(d.key for d in datasets() if d.in_store and d.time_unit == "station_list")
+    + tuple(d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE)
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
-# Groups reading the sources of one provider only (spec 2026-10-18 §9.3).
-_GROUP_PROVIDERS = {"current": "IMGW", "pmaxtp": "IMGW"}
+# Groups reading the sources of one provider only (spec 2026-10-18 §9.3): those its
+# adapter declares (ADR-029).
+_GROUP_PROVIDERS = {
+    group: provider.id for provider in providers() for group in provider.adapter.groups
+}
 _DONE = ("new", "relabeled", "unchanged")
 _EXIT_CODES = {"ok": 0, "partial": 10, "failed": 11, "cancelled": 130}
 _GROUPS = {
@@ -225,6 +242,7 @@ _MODULES = {
     "fetch_pmaxtp": "obserwator.fetch",
     "find_stations": "obserwator.stations",
     "fetch_hydro_states": "obserwator.stations",
+    "poll_current": "obserwator.captures",
     "build_pmaxtp_url": "obserwator.urls",
     **dict.fromkeys(_STORE_FUNCTIONS, "obserwator.store"),
     "command_schema": "obserwator.commands",
@@ -387,7 +405,7 @@ _FAMILY = _option(
     "kind",
     "choice",
     message("commands.family_help"),
-    choices=_KINDS,
+    choices=KINDS,
     aliases=("-k",),
 )
 _YEARS = _option(
@@ -818,6 +836,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         (
             replace(
                 _FAMILY,
+                choices=_WARNING_KINDS,
                 help=message("commands.current_warnings_family_help"),
             ),
         ),
@@ -845,6 +864,20 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         method="GET",
         result_type="HydroState",
         network=True,
+    ),
+    # The hourly poll of the deployment's timer (ADR-030 D9): into the capture spool
+    # of state_dir, never a root, so no REST route; a later poll records new answers.
+    _command(
+        "current poll",
+        message("commands.current_poll_description"),
+        (),
+        function="poll_current",
+        check="check_command",
+        result_type="PollReport",
+        rules=(message("commands.current_poll_rule"),),
+        writes="add",
+        network=True,
+        idempotent=False,
     ),
     _command(
         "pmaxtp fetch",
@@ -996,6 +1029,8 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
+            replace(_START, help=message("commands.store_check_start_help")),
+            replace(_END, help=message("commands.store_check_end_help")),
             _PLAN_FILE,
         ),
         function="check_store",
@@ -1005,6 +1040,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         rules=(
             *_STORE_RULES,
             message("commands.store_check_rule_1"),
+            message("commands.store_check_rule_days"),
         ),
         # Listing and HEAD requests; the plan file is the effect of an option.
         network=True,
@@ -1027,6 +1063,22 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
+            replace(
+                _START, help=message("commands.store_sync_start_help"), store_only=True
+            ),
+            replace(
+                _END, help=message("commands.store_sync_end_help"), store_only=True
+            ),
+            # The night's harvest of a capture dataset (ADR-030 D9): a local job of
+            # the deployment's timer, no REST parameter.
+            _option(
+                "pace_until",
+                "str",
+                message("commands.store_sync_pace_until_help"),
+                pattern=_PACE_UNTIL,
+                rest="local",
+                store_only=True,
+            ),
         ),
         function="sync_store",
         result_type="SyncReport",
@@ -1037,6 +1089,8 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         exclusive=_TARGETS,
         rules=(
             message("commands.store_sync_rule_1"),
+            message("commands.store_sync_rule_2"),
+            message("commands.store_sync_rule_days"),
             *_STORE_RULES,
         ),
         writes="add",
@@ -1113,6 +1167,8 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             replace(_SERIES_DATASET, required=True),
             replace(_STATIONS, help=message("commands.series_build_stations_help")),
             replace(_YEARS, help=message("commands.series_build_years_help")),
+            replace(_START, help=message("commands.series_build_start_help")),
+            replace(_END, help=message("commands.series_build_end_help")),
         ),
         function="build_series",
         result_type="SeriesReport",
@@ -1120,7 +1176,10 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         store_only=True,
         check="check_series",
         method="POST",
-        rules=(message("commands.series_build_rule_subset"),),
+        rules=(
+            message("commands.series_build_rule_subset"),
+            message("commands.series_build_rule_months"),
+        ),
         writes="add",
     ),
     _command(
@@ -1407,7 +1466,7 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
 
 def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
     """
-    Return the catalog of all 31 data commands or its view for one provider.
+    Return the catalog of all 36 data commands or its view for one provider.
 
     Parameters
     ----------
@@ -1812,6 +1871,9 @@ def _rules_store_check(options: Options) -> None:
         options.get("years"),
         options.get("months"),
         options.get("stations"),
+        start=options.get("start"),
+        end=options.get("end"),
+        pace_until=options.get("pace_until"),
     )
 
 
@@ -1828,7 +1890,15 @@ def _rules_store_sync(options: Options) -> None:
             return
         _rules_store_check(options)
         return
-    selectors = ("datasets", "years", "months", "stations")
+    selectors = (
+        "datasets",
+        "years",
+        "months",
+        "stations",
+        "start",
+        "end",
+        "pace_until",
+    )
     given = [name for name in selectors if name in options]
     if given:
         _fail(
@@ -1879,13 +1949,23 @@ def _rules_series_select(options: Options) -> None:
 
 
 def _rules_series_build(options: Options) -> None:
-    # A subset (ADR-026): codes in the grammar of the dataset's provider, as the
-    # library refuses them.
-    _series._subset(
-        get_dataset(options["dataset"]),
-        cast("tuple[str, ...] | None", options.get("stations")),
-        cast("tuple[int, ...] | None", options.get("years")),
+    descriptor = get_dataset(options["dataset"])
+    # A sub-daily series is built per month, every other whole or as a subset
+    # (ADR-031, ADR-026), as the library refuses them.
+    _series._build_options(
+        descriptor,
+        stations=options.get("stations"),
+        years=options.get("years"),
+        start=options.get("start"),
+        end=options.get("end"),
     )
+    if not monthly_series(descriptor):
+        # A subset: codes in the grammar of the dataset's provider.
+        _series._subset(
+            descriptor,
+            cast("tuple[str, ...] | None", options.get("stations")),
+            cast("tuple[int, ...] | None", options.get("years")),
+        )
 
 
 def _rules_series(options: Options) -> None:
@@ -2592,12 +2672,18 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     attachment (the PMAXTP ``response.json``) or a station file of a series
     version (``stations/<code>.parquet``) or of an analyses version
     (``stations/<code>.json``, ``stations/<code>/<analysis>.json``); only the
-    layout of the store places it, the data file itself need not exist.
+    layout of the store places it, the data file itself need not exist. A
+    version of a sub-daily series lies in the directory of its month (ADR-031),
+    slot ``series:<key>:<YYYY-MM>``.
     """
     parts = PurePosixPath(relative).parts
-    station_file = parts[4:5] == ("stations",) and (
-        (parts[:2] == ("series", "versions") and len(parts) == 6)
-        or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
+    monthly_file = parts[:2] == ("series", "versions") and parts[5:6] == ("stations",)
+    station_file = (monthly_file and len(parts) == 7) or (
+        parts[4:5] == ("stations",)
+        and (
+            (parts[:2] == ("series", "versions") and len(parts) == 6)
+            or (parts[:2] == ("analyses", "versions") and len(parts) in (6, 7))
+        )
     )
     given: str | None = None
     if path.is_dir():
@@ -2605,7 +2691,8 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
     elif path.name.endswith(_reader._SIDECAR):
         directory, given = path.parent, path.name.removesuffix(_reader._SIDECAR)
     elif station_file:
-        directory = path.parents[len(parts) - 5]
+        # The version directory holds ``stations/``.
+        directory = path.parents[len(parts) - (6 if monthly_file else 5)]
     else:
         directory, given = path.parent, path.name
     if not directory.is_dir() or not _reader._VERSION_DIR.match(directory.name):
@@ -2620,8 +2707,21 @@ def _locate_version(base: Path, relative: str, path: Path) -> tuple[str, Path, s
         if found is None:
             _not_a_version(relative)
         slot, name = found[0], PurePosixPath(found[1]).name
-    elif where[:2] == ("series", "versions") and len(where) == 4 and where[2] in series:
+    elif (
+        where[:2] == ("series", "versions")
+        and len(where) == 4
+        and where[2] in series
+        and not monthly_series(series[where[2]])
+    ):
         slot, name = f"series:{series[where[2]].key}", _reader.SERIES_FILE
+    elif (
+        where[:2] == ("series", "versions")
+        and len(where) == 5
+        and where[2] in series
+        and monthly_series(series[where[2]])
+        and _reader._MONTH.fullmatch(where[3])
+    ):
+        slot, name = f"series:{series[where[2]].key}:{where[3]}", _reader.SERIES_FILE
     elif (
         where[:2] == ("stations", "versions")
         and len(where) == 4
@@ -2668,11 +2768,22 @@ def _version_meta(base: Path, relative: str, sidecar: Path) -> Meta:
 def _archive_call(
     relative: str, meta: Meta, key: str, server_path: str
 ) -> tuple[str, Options]:
-    """``store sync`` of an archive version or of a station source (ADR-015)."""
+    """
+    ``store sync`` of an archive version or of a station source (ADR-015).
+
+    A capture (ADR-030 D3) is refused: it holds what a source answered on one UTC
+    day, which no request gives again.
+    """
     descriptor = get_dataset(key)
     request = meta.request
     if request.get("server_path", server_path) != server_path:
         _mismatch(relative, "request.server_path", request["server_path"], server_path)
+    if descriptor.archive_scope == CAPTURE_SCOPE:
+        _not_rebuildable(
+            message("commands.version_command_capture", version=relative, dataset=key),
+            relative,
+            server_path=server_path,
+        )
     if descriptor.time_unit == "station_list":
         # Station lists and metadata are downloaded by store sync (ADR-015).
         return "store sync", {"datasets": [key]}
@@ -2699,10 +2810,10 @@ def _archive_call(
             options["months"] = [archive.month]
     else:
         options["stations"] = [archive.station_code]
-        if descriptor.archive_scope == "station_year":
+        if descriptor.archive_scope in ("station_year", "station_month"):
             options["years"] = [archive.year]
     try:
-        _, _, candidates, archives = _sync._selection(
+        _, _, candidates, archives, _ = _sync._selection(
             options["datasets"],
             options.get("years"),
             options.get("months"),
@@ -2796,6 +2907,9 @@ def command_for_version(
     series version (or its station file)    ``series build --raw-root <raw>
                                             --dataset <key>`` (``--stations``
                                             and ``--years`` of a subset)
+    month of a sub-daily series             ``series build --raw-root <raw>
+                                            --dataset <key> --start <first day>
+                                            --end <last day>``
     analyses version (or a station file)    ``analyses build``
     ======================================  ========================================
 
@@ -2808,7 +2922,9 @@ def command_for_version(
     provider), each with its own plan item. A version whose metadata does not
     give the call is refused, never guessed: a catalog built with a user's
     coordinates file (only its name is recorded), a sidecar without a field
-    the call needs, or a file that ``store sync`` does not select.
+    the call needs, a file that ``store sync`` does not select, or a capture of
+    current data (ADR-030 D3: what a source answered on one UTC day, which no
+    request gives again).
 
     Parameters
     ----------
@@ -2869,13 +2985,23 @@ def command_for_version(
     elif kind == "series":
         if meta.request.get("dataset", key) != key:
             _mismatch(relative, "request.dataset", meta.request["dataset"], key)
-        # A subset (ADR-026) is built again with its stations and years.
-        subset = {
-            name: meta.request[name]
-            for name in ("stations", "years")
-            if name in meta.request
-        }
-        command, options = "series build", {"dataset": key, **subset}
+        month = slot.split(":", 2)[2] if slot.count(":") == 2 else None
+        if month is not None:
+            # A month of a sub-daily series (ADR-031) is built again by its days.
+            if meta.request.get("month", month) != month:
+                _mismatch(relative, "request.month", meta.request["month"], month)
+            first = date.fromisoformat(f"{month}-01")
+            last = _series._next_month(first) - timedelta(days=1)
+            options = {"dataset": key, "start": first, "end": last}
+        else:
+            # A subset (ADR-026) is built again with its stations and years.
+            subset = {
+                name: meta.request[name]
+                for name in ("stations", "years")
+                if name in meta.request
+            }
+            options = {"dataset": key, **subset}
+        command = "series build"
     elif kind == "catalog":
         command, options = _catalog_call(relative, meta, key)
     elif kind == "analyses":
@@ -2969,6 +3095,14 @@ def _status(result: object) -> Status:
             statuses.count("failed"),
             statuses.count("downloaded") + statuses.count("not_published"),
         )
+    if isinstance(result, SeriesReport) and result.months:
+        # A build of months (ADR-031): partial when some months failed, others not.
+        months = [month.status for month in result.months]
+        return _outcome(
+            result.status == "cancelled",
+            months.count("failed"),
+            sum(status in _DONE for status in months),
+        )
     if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
         return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
     if isinstance(result, _analyses.AnalysesReport):
@@ -2977,6 +3111,18 @@ def _status(result: object) -> Status:
             result.status == "cancelled",
             providers_.count("failed") + int(result.status == "failed"),
             sum(status in _DONE for status in providers_),
+        )
+    # The captures import the store's types, so they come after the store package
+    # (imported at call time, as `obserwator.config` and the writer do).
+    from obserwator.captures import PollReport
+
+    if isinstance(result, PollReport):
+        # A source skipped by its ceiling (P16) is no failure.
+        polled = [answer.status for answer in result.answers]
+        return _outcome(
+            result.cancelled,
+            polled.count("failed"),
+            polled.count("captured") + polled.count("skipped"),
         )
     return "ok"
 
@@ -2992,9 +3138,15 @@ def _page(options: Options) -> tuple[int | None, int]:
 
 
 def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
-    """Lines of the data of the given datasets (keys, slugs or legacy aliases)."""
+    """
+    Lines of the data of the given datasets (keys, slugs or legacy aliases).
+
+    A sub-daily series has the lines of the datasets it is built from (ADR-031).
+    """
     return attribution(
-        *dict.fromkeys(dataset_origin(get_dataset(key).key) for key in keys),
+        *dict.fromkeys(
+            origin for key in keys for origin in dataset_origins(get_dataset(key).key)
+        ),
         processed=processed,
     )
 
@@ -3030,7 +3182,8 @@ def _sync_lines(options: Options, result: object) -> Attribution:
 
     A sync writes raw data only (ADR-015): the provider's files verbatim, except
     the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
-    which are processed data.
+    which are processed data. A harvest's answers are kept verbatim (ADR-030 D9),
+    so its dataset's lines stand even when no day was sealed.
     """
     report = cast(SyncReport, result)
     keys = [
@@ -3038,9 +3191,18 @@ def _sync_lines(options: Options, result: object) -> Attribution:
         for item in report.items
         if (slot := item.slot) is not None and slot.startswith("archive:")
     ]
+    if report.harvest is not None:
+        keys.append(report.harvest.dataset)
     kept = [key for key in keys if get_dataset(key).kept_fields]
     verbatim = [key for key in keys if key not in kept]
     return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
+
+
+def _poll_lines(options: Options, result: object) -> Attribution:
+    """Lines of the answers a poll kept verbatim in the capture spool (ADR-030 D9)."""
+    report = cast("PollReport", result)
+    kept = [answer.dataset for answer in report.answers if answer.path is not None]
+    return _of_datasets(kept, processed=False)
 
 
 def _catalog_lines(options: Options, result: object) -> Attribution:
@@ -3060,15 +3222,14 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     lines = attribution(
         provider_origin(report.provider), border_origin(report.provider)
     )
-    if any(
-        properties.get("location_source") == "static"
-        or properties.get("details_source") is not None
-        for properties in (
-            feature.get("properties") or {} for feature in document.get("features", ())
-        )
-    ):
-        lines |= attribution("imgw_hydro")
-    return lines
+    adapter = get_provider(report.provider).adapter
+    return lines | attribution(
+        *{
+            origin
+            for feature in document.get("features", ())
+            for origin in adapter.station_origins(feature.get("properties") or {})
+        }
+    )
 
 
 def _stations_lines(options: Options, result: object) -> Attribution:
@@ -3086,23 +3247,30 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     if options.get("source") != "store":
         return lines
     lines |= attribution(*(border_origin(owner) for owner in owners))
-    located = {
-        entry.station_code
-        for entry in entries
-        if entry.provider == "IMGW" and entry.latitude is not None
-    }
-    if not located:
-        return lines
-    try:
-        features = _store.read_catalog(root=options["root"], provider="IMGW")
-    except ObserwatorStoreError:
-        return lines
-    if any(
-        feature.station_code in located
-        and feature.properties.get("location_source") == "static"
-        for feature in features
-    ):
-        lines |= attribution("imgw_hydro")
+    for owner in owners:
+        adapter = get_provider(owner).adapter
+        # Only a provider with data of another origin can have located a station so.
+        if not set(adapter.origins) - {adapter.origin}:
+            continue
+        located = {
+            entry.station_code
+            for entry in entries
+            if entry.provider == owner and entry.latitude is not None
+        }
+        if not located:
+            continue
+        try:
+            features = _store.read_catalog(root=options["root"], provider=owner)
+        except ObserwatorStoreError:
+            return lines
+        lines |= attribution(
+            *{
+                origin
+                for feature in features
+                if feature.station_code in located
+                for origin in adapter.station_origins(feature.properties, details=False)
+            }
+        )
     return lines
 
 
@@ -3165,6 +3333,7 @@ _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "current synop": _origin_lines("imgw"),
     "current warnings": _origin_lines("imgw"),
     "current hydro-states": _origin_lines("imgw_hydro"),
+    "current poll": _poll_lines,
     "pmaxtp fetch": _origin_lines("pmaxtp"),
     "pmaxtp sync": _origin_lines("pmaxtp"),
     "pmaxtp read": _origin_lines("pmaxtp"),
@@ -3467,6 +3636,13 @@ def _check_hydro_states(options: Options, hooks: Hooks) -> StorePlan:
     return _live("current hydro-states", [url])
 
 
+def _check_current_poll(options: Options, hooks: Hooks) -> StorePlan:
+    # Per polled source: the live read into the spool, or why it waits (P16).
+    from obserwator.captures import poll_plan
+
+    return _plan(Path.cwd(), poll_plan())
+
+
 def _pmaxtp_url(options: Options) -> str:
     return build_pmaxtp_url(
         options["latitude"], options["longitude"], method=options.get("method", "POT")
@@ -3591,7 +3767,16 @@ def _check_store_sync(options: Options, hooks: Hooks) -> StorePlan:
         )
     root = cast(Path, options["root"])
     if "plan" not in options:
-        selection = ("root", "datasets", "years", "months", "stations")
+        selection = (
+            "root",
+            "datasets",
+            "years",
+            "months",
+            "stations",
+            "start",
+            "end",
+            "pace_until",
+        )
         return cast(
             StorePlan,
             _call(
@@ -3671,14 +3856,28 @@ def _check_select(options: Options, hooks: Hooks) -> StorePlan:
 def _check_series(command: str) -> Checker:
     def check(options: Options, hooks: Hooks) -> StorePlan:
         root = options.get("root")
+        codes = (options["station"],) if "station" in options else ()
         try:
-            path = _reader._series_path(
-                options.get("version"), root=root, dataset=options.get("dataset")
+            # A sub-daily series is read from the version of each month (ADR-031).
+            monthly, paths = _reader._series_paths(
+                options.get("version"),
+                root=root,
+                dataset=options.get("dataset"),
+                start=options.get("start"),
+                end=options.get("end"),
             )
-            index = _store.read_series_index(path)
-            descriptor = get_dataset(index.dataset)
-            codes = (options["station"],) if "station" in options else ()
-            _reader._outside(options.get("stations", codes), index)
+            if monthly is None:
+                index = _store.read_series_index(paths[0])
+                descriptor = get_dataset(index.dataset)
+                _reader._outside(options.get("stations", codes), index)
+            else:
+                descriptor = monthly
+                held = {
+                    code
+                    for path in paths
+                    for code in _store.read_series_index(path).stations
+                }
+                _reader._absent(options.get("stations", codes), held, descriptor.key)
             _reader._variables(options.get("variables"), descriptor)
             _half_year(descriptor, options.get("year_type"))
         except ObserwatorError as exc:
@@ -3689,6 +3888,7 @@ def _check_series(command: str) -> Checker:
                 )
             ]
         else:
+            path: object = paths[0] if monthly is None else ", ".join(map(str, paths))
             actions = (
                 _export_actions(
                     command,
@@ -3817,6 +4017,7 @@ _CHECKS: dict[str, Checker] = {
     "current synop": _check_current("synop"),
     "current warnings": _check_warnings,
     "current hydro-states": _check_hydro_states,
+    "current poll": _check_current_poll,
     "pmaxtp fetch": _check_pmaxtp_fetch,
     "pmaxtp url": _check_pmaxtp_url,
     "pmaxtp check": _twin("check_pmaxtp"),
@@ -4068,6 +4269,7 @@ _WRITES_ORDER: tuple[Writes, ...] = ("none", "add", "replace")
 _MEANINGS = {
     ("kind", "hydro"): message("commands.meaning_kind_hydro"),
     ("kind", "meteo"): message("commands.meaning_kind_meteo"),
+    ("kind", "groundwater"): message("commands.meaning_kind_groundwater"),
     ("kind", "raw"): message("commands.meaning_kind_raw"),
     ("kind", "data"): message("commands.meaning_kind_data"),
     ("kind", "archive"): message("commands.meaning_kind_archive"),

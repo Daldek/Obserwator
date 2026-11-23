@@ -6,26 +6,25 @@ national registers: the state border of Poland from PRG (GUGiK) and the state of
 from RÚIAN (ČÚZK), simplified to the tolerance their properties name. Each is one GeoJSON
 feature whose properties say what it is: ``name``, ``product``, ``source``, ``created``,
 ``acquired``, ``license`` and ``simplify_tolerance_m``. A provider's station catalog
-checks its locations against its country's border (`obserwator.store.catalog`), the GUI
-draws both as the map's background without a basemap, and `obserwator.attribution`
-writes their lines G and Z (Nogat DEV §20) from the properties. Standard library only.
+checks its locations against its country's border (its adapter's ``border``,
+`obserwator.store.catalog`), the GUI draws both as the map's background without a
+basemap, and `obserwator.attribution` writes their lines G and Z (Nogat DEV §20) from
+the properties. Standard library only.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from importlib.resources import files
-from types import MappingProxyType
 
 POLAND = "poland_border_wgs84.geojson"
 """The state border of Poland, from PRG (GUGiK)."""
 CZECHIA = "czechia_border_wgs84.geojson"
 """The state border of Czechia, from RÚIAN (ČÚZK)."""
-PROVIDERS: Mapping[str, str] = MappingProxyType({"IMGW": POLAND, "CHMU": CZECHIA})
-"""The border each provider's station locations are checked against."""
+BORDERS: tuple[str, ...] = (POLAND, CZECHIA)
+"""Every packaged border."""
 
 
 @dataclass(frozen=True)

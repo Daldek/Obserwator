@@ -66,7 +66,12 @@ def test_lines_and_file_equal_the_former_store_read_output(
 def test_jsonl_objects_carry_the_normalized_record_fields(root):
     version = stored(root, "hydro_semiannual_2024")
     objects = [json.loads(line) for line in export_archive(version, format="jsonl")]
-    fields = [field.name for field in dataclasses.fields(NormalizedRecord)]
+    # The optional fields (``time`` of a sub-daily series) are written only when set.
+    fields = [
+        field.name
+        for field in dataclasses.fields(NormalizedRecord)
+        if not field.metadata.get("omit_none")
+    ]
     lines = attribution("imgw").fields()
     # The first object adds the lines of the data (ADR-012 D4), the others do not.
     first, *others = objects

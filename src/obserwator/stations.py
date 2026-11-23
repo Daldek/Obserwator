@@ -2,10 +2,11 @@
 Station search and current states of hydrological stations.
 
 `find_stations` searches the station lists of the data providers (IMGW-PIB
-and ČHMÚ), live or from a versioned store; `fetch_hydro_states` reads the
-locations and current water states of hydrological stations from the
-hydro.imgw.pl map API, whose station pages also give the station details
-``store sync`` keeps for the catalog (``pl.imgw.hydro_details``, ADR-021).
+and ČHMÚ), live through each provider's adapter (ADR-029) or from a versioned
+store; `fetch_hydro_states` reads the locations and current water states of
+hydrological stations from the hydro.imgw.pl map API, whose station pages (and
+those of its meteorological map) also give the station details ``store sync``
+keeps for the catalog (``pl.imgw.hydro_details``, ``pl.imgw.meteo_details``, ADR-021).
 """
 
 from __future__ import annotations
@@ -13,24 +14,19 @@ from __future__ import annotations
 import json
 import math
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from pydantic import ValidationError
 
-from obserwator._parsing.chmu import iter_stations, parse_listing
-from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
 from obserwator.datasets import (
-    _CHMU_METEO_NOW_FILE,
+    KINDS,
+    Kind,
     ProviderDescriptor,
-    _station_files,
-    get_dataset,
     get_provider,
     providers,
-    station_source_files,
 )
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -39,12 +35,12 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
 )
 from obserwator.fetch import (
-    _IDENTIFY,
     DEFAULT_TIMEOUT,
     DownloadResult,
     _get,
     _get_async,
     _json_payload,
+    _keep,
     _source_error,
 )
 from obserwator.messages import message
@@ -55,22 +51,16 @@ if TYPE_CHECKING:
     from obserwator.store.types import StationFeature
 
 HYDRO_MAP_API_URL = "https://hydro-back.imgw.pl/map/stations/hydrologic"
+# The map of hydro.imgw.pl's meteorological stations, the codes of their pages.
+_METEO_MAP_URL = (
+    "https://hydro-back.imgw.pl/map/stations/meteorologic?onlyMainStations=false"
+)
 # hydro-back.imgw.pl answers 403 to the default user agents of curl and httpx; the
 # requests name the program and its project, nothing about the person running it.
 _MAP_HEADERS = {
     "User-Agent": f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)",
 }
-_KINDS: tuple[Literal["hydro", "meteo"], ...] = ("hydro", "meteo")
 _SOURCES = ("live", "store")
-# The newest dated file of a listed directory, as plans name it.
-_NEWEST = "meta1-<YYYYMMDD>.json"
-# IMGW-PIB current-data API answer of each family whose ``lon``/``lat`` locate the
-# rows of the live list (the first location source of the catalog too), and the
-# key of the station code in it.
-_IMGW_LOCATIONS: Mapping[str, tuple[str, str]] = {
-    "hydro": ("pl.imgw.hydro_now", "id_stacji"),
-    "meteo": ("pl.imgw.meteo_now", "kod_stacji"),
-}
 # Area of a search: west, south, east, north (WGS84 degrees, bounds included).
 Area = tuple[float, float, float, float]
 
@@ -142,12 +132,12 @@ def _search_options(
     source: str,
     root: object,
     bbox: Sequence[float] | None = None,
-) -> tuple[tuple[Literal["hydro", "meteo"], ...], str | None, Area | None]:
+) -> tuple[tuple[Kind, ...], str | None, Area | None]:
     """Validate the search options; return the families, stripped query and area."""
-    if kind is not None and kind not in _KINDS:
+    if kind is not None and kind not in KINDS:
         raise ObserwatorValidationError(
             message("stations.unknown_kind_station_allowed_hydro", kind=kind),
-            details={"option": "kind", "allowed": list(_KINDS)},
+            details={"option": "kind", "allowed": list(KINDS)},
         )
     if source not in _SOURCES:
         raise ObserwatorValidationError(
@@ -172,7 +162,7 @@ def _search_options(
                 message("stations.station_search_phrase_must_not"),
                 details={"option": "query"},
             )
-    kinds = _KINDS if kind is None else (kind,)
+    kinds = KINDS if kind is None else (kind,)
     return kinds, needle, _area(bbox)
 
 
@@ -206,7 +196,7 @@ def _matching(
     if area is not None:
         rows = [entry for entry in rows if _inside(entry, area)]
     rank = {owner.id: index for index, owner in enumerate(providers())}
-    order = {family: index for index, family in enumerate(_KINDS)}
+    order = {family: index for index, family in enumerate(KINDS)}
     return tuple(
         sorted(
             rows,
@@ -220,184 +210,18 @@ def _matching(
     )
 
 
-@dataclass(frozen=True)
-class _LiveSource:
-    """
-    Live station list of one provider and family.
-
-    ``listing`` marks the URL of a directory listing whose newest
-    ``meta1-<YYYYMMDD>.json`` is the list (ČHMÚ meteo ``now`` metadata);
-    ``locations`` is the URL of the IMGW-PIB current-data API answer of the
-    family, read after the list for the coordinates of its stations.
-    """
-
-    provider: ProviderDescriptor
-    kind: Literal["hydro", "meteo"]
-    url: str
-    listing: bool = False
-    locations: str | None = None
-
-
-def _live_sources(
-    kinds: Sequence[Literal["hydro", "meteo"]],
-    owners: Iterable[ProviderDescriptor],
-) -> list[_LiveSource]:
-    """Live station list of each provider and family, in search order."""
-    # The current ČHMÚ metadata, as the first source of its catalog (§7.2).
-    sources: list[_LiveSource] = []
-    for owner in owners:
-        if owner.id == "CHMU":
-            hydro = _LiveSource(
-                owner, "hydro", _station_files("cz.chmu.hydro_now")[0].url
-            )
-            meteo_now = get_dataset("cz.chmu.meteo_now")
-            meteo = _LiveSource(
-                owner, "meteo", f"{owner.base_url}{meteo_now.server_dir}/", listing=True
-            )
-        else:
-            hydro_list, meteo_list = station_source_files(provider=owner.id)
-            hydro = _LiveSource(
-                owner, "hydro", hydro_list.url, locations=_locations_url("hydro")
-            )
-            meteo = _LiveSource(
-                owner, "meteo", meteo_list.url, locations=_locations_url("meteo")
-            )
-        sources.extend(hydro if family == "hydro" else meteo for family in kinds)
-    return sources
-
-
-def _locations_url(kind: Literal["hydro", "meteo"]) -> str:
-    """URL of the IMGW-PIB current-data API answer of a family."""
-    return _station_files(_IMGW_LOCATIONS[kind][0])[0].url
-
-
 def _live_urls(
-    kinds: Sequence[Literal["hydro", "meteo"]],
+    kinds: Sequence[Kind],
     owners: Iterable[ProviderDescriptor],
 ) -> list[str]:
     """URLs a live search reads, the newest file of a listing as a pattern (plans)."""
-    urls: list[str] = []
-    for source in _live_sources(kinds, owners):
-        urls.append(source.url)
-        if source.listing:
-            urls.append(source.url + _NEWEST)
-        if source.locations is not None:
-            urls.append(source.locations)
-    return urls
-
-
-def _identity(source: _LiveSource) -> tuple[Mapping[str, str] | None, str]:
-    """Request headers and the server name of errors (ČHMÚ requests name the library)."""
-    if source.provider.id == "CHMU":
-        return _IDENTIFY, source.provider.short_name
-    return None, "IMGW"
-
-
-def _newest(source: _LiveSource, content: bytes) -> str:
-    """URL of the newest ``meta1-<YYYYMMDD>.json`` in the listing of ``source``."""
-    names = sorted(
-        entry.name
-        for entry in parse_listing(content, url=source.url)
-        if _CHMU_METEO_NOW_FILE.fullmatch(entry.name)
-    )
-    if not names:
-        raise ObserwatorDataError(
-            message(
-                "stations.unreadable_listing_no_file", url=source.url, newest=_NEWEST
-            ),
-            details={"url": source.url},
-        )
-    return source.url + names[-1]
-
-
-def _parsed(source: _LiveSource, content: bytes, url: str) -> list[StationListEntry]:
-    """Stations of a live list: an IMGW-PIB CSV or ČHMÚ metadata JSON."""
-    if source.provider.id == "CHMU":
-        return list(iter_stations(content, kind=source.kind, filename=url))
-    return list(parse_stations_csv(content, kind=source.kind))
-
-
-def _degrees(value: object) -> float | None:
-    """A published coordinate (number or numeric text) as a finite float, else None."""
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        return None
-    try:
-        number = float(value)
-    except ValueError:
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _located(
-    entries: list[StationListEntry], source: _LiveSource, response: httpx.Response
-) -> list[StationListEntry]:
-    """
-    The rows of an IMGW-PIB live list with the coordinates of the current-data API.
-
-    Each row whose code the API answer lists with a numeric ``lat`` and ``lon``
-    gets them as published (no border check); other rows keep None.
-    """
-    url = str(response.url)
-    payload = _json_payload(response)
-    if not isinstance(payload, list):
-        raise ObserwatorDataError(
-            message("stations.unexpected_response_from_list_stations", url=url),
-            details={"url": url},
-        )
-    code_key = _IMGW_LOCATIONS[source.kind][1]
-    points: dict[str, tuple[float, float]] = {}
-    for row in payload:
-        if not isinstance(row, dict):
-            continue
-        code = str(row.get(code_key) or "").strip()
-        latitude, longitude = _degrees(row.get("lat")), _degrees(row.get("lon"))
-        if code and latitude is not None and longitude is not None:
-            points.setdefault(code, (latitude, longitude))
     return [
-        replace(entry, latitude=point[0], longitude=point[1])
-        if (point := points.get(entry.station_code)) is not None
-        else entry
-        for entry in entries
+        url
+        for owner in owners
+        for kind in kinds
+        if kind in owner.adapter.kinds
+        for url in owner.adapter.live_urls(kind)
     ]
-
-
-def _read_live(source: _LiveSource, timeout: float) -> list[StationListEntry]:
-    """
-    Stations of one live list.
-
-    One GET; a listed directory adds its listing, an IMGW-PIB list the
-    current-data API answer of its coordinates.
-    """
-    headers, name = _identity(source)
-    url = source.url
-    if source.listing:
-        listing = _get(url, timeout=timeout, headers=headers, source=name)
-        url = _newest(source, listing.content)
-    response = _get(url, timeout=timeout, headers=headers, source=name)
-    entries = _parsed(source, response.content, url)
-    if source.locations is None:
-        return entries
-    answer = _get(source.locations, timeout=timeout, headers=headers, source=name)
-    return _located(entries, source, answer)
-
-
-async def _read_live_async(
-    source: _LiveSource, timeout: float
-) -> list[StationListEntry]:
-    """Async twin of `_read_live`."""
-    headers, name = _identity(source)
-    url = source.url
-    if source.listing:
-        listing = await _get_async(url, timeout=timeout, headers=headers, source=name)
-        url = _newest(source, listing.content)
-    response = await _get_async(url, timeout=timeout, headers=headers, source=name)
-    entries = _parsed(source, response.content, url)
-    if source.locations is None:
-        return entries
-    answer = await _get_async(
-        source.locations, timeout=timeout, headers=headers, source=name
-    )
-    return _located(entries, source, answer)
 
 
 def _text(value: object) -> str | None:
@@ -409,9 +233,10 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
     """The search entry of a catalog station; None for a station of no family."""
     properties = feature.properties
     kind = properties.get("kind")
-    if kind not in _KINDS:
+    if kind not in KINDS:
         return None
     order = properties.get("river_order")
+    groundwater = properties.get("groundwater_kind")
     return StationListEntry(
         kind=kind,
         station_code=feature.station_code,
@@ -424,12 +249,19 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
         latitude=None if feature.geometry is None else feature.geometry[1],
         longitude=None if feature.geometry is None else feature.geometry[0],
         provider=feature.provider,
+        groundwater_kind=(
+            "bore"
+            if groundwater == "bore"
+            else "spring"
+            if groundwater == "spring"
+            else None
+        ),
     )
 
 
 def _stored(
     root: RootArg,
-    kinds: Sequence[Literal["hydro", "meteo"]],
+    kinds: Sequence[Kind],
     owners: Sequence[ProviderDescriptor],
     *,
     explicit: bool,
@@ -472,7 +304,7 @@ def _stored(
 
 def find_stations(
     *,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     query: str | None = None,
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
@@ -485,8 +317,9 @@ def find_stations(
 
     Parameters
     ----------
-    kind : {"hydro", "meteo"} or None, optional
-        Station family; None searches both lists.
+    kind : {"hydro", "meteo", "groundwater"} or None, optional
+        Station family; None searches every family (``groundwater``: ČHMÚ's
+        boreholes and springs, ADR-032).
     query : str or None, optional
         Text matched case- and diacritic-insensitively (``"lodz"`` finds
         ``"ŁÓDŹ"``, ``"spindleruv"`` finds ``"Špindlerův Mlýn"``) as a
@@ -496,11 +329,13 @@ def find_stations(
         ``"live"`` downloads the current lists of each provider: the
         IMGW-PIB station list CSV of each family and its current-data API
         answer (``api/data/hydro``, ``api/data/meteo``: two GETs per family)
-        and the ČHMÚ metadata ``hydrology/now/metadata/meta1.json`` and the
+        and the ČHMÚ metadata ``hydrology/now/metadata/meta1.json``, the
         newest ``meteorology/climate/now/metadata/meta1-<YYYYMMDD>.json``
-        (its directory listing, then the file). ``"store"`` reads the
-        current station catalogs of a data root offline (ADR-017), which
-        ``store catalog`` builds from the stored lists.
+        (its directory listing, then the file) and
+        ``hydrology/groundwater/now/metadata/meta1.json``; a provider is asked
+        only for the families it publishes (IMGW-PIB: no groundwater).
+        ``"store"`` reads the current station catalogs of a data root offline
+        (ADR-017), which ``store catalog`` builds from the stored lists.
     root : str, os.PathLike or StoreHandle, optional
         Data root; required with ``source="store"`` and not allowed with
         ``source="live"``.
@@ -520,7 +355,7 @@ def find_stations(
     -------
     tuple of StationListEntry
         Matching stations ordered by provider (registry order), family
-        (hydro, meteo), normalized name and code, each with its
+        (hydro, meteo, groundwater), normalized name and code, each with its
         ``provider``; a code listed twice on the live IMGW-PIB meteo list is
         returned for each row. Live entries carry the coordinates as their
         provider publishes them, without validation against the country
@@ -532,7 +367,8 @@ def find_stations(
         With ``source="store"`` every station of a catalog is one entry with
         its code, family, name, river, hydrographic code and river order, the
         coordinates of its geometry (None for stations with ``geometry:
-        null``, validated by ``store catalog``) and ``short_code`` None.
+        null``, validated by ``store catalog``), ``short_code`` None and, of
+        a groundwater object, its ``groundwater_kind`` (``bore``, ``spring``).
 
     Raises
     ------
@@ -570,15 +406,17 @@ def find_stations(
         return _matching(stored, needle, area)
     entries = [
         entry
-        for live in _live_sources(kinds, owners)
-        for entry in _read_live(live, timeout)
+        for owner in owners
+        for family in kinds
+        if family in owner.adapter.kinds
+        for entry in owner.adapter.live_stations(family, timeout=timeout)
     ]
     return _matching(entries, needle, area)
 
 
 async def find_stations_async(
     *,
-    kind: Literal["hydro", "meteo"] | None = None,
+    kind: Kind | None = None,
     query: str | None = None,
     source: Literal["live", "store"] = "live",
     root: RootArg | None = None,
@@ -597,8 +435,13 @@ async def find_stations_async(
         stored = _stored(root, kinds, owners, explicit=provider is not None)
         return _matching(stored, needle, area)
     entries: list[StationListEntry] = []
-    for live in _live_sources(kinds, owners):
-        entries.extend(await _read_live_async(live, timeout))
+    for owner in owners:
+        for family in kinds:
+            if family not in owner.adapter.kinds:
+                continue
+            entries.extend(
+                await owner.adapter.live_stations_async(family, timeout=timeout)
+            )
     return _matching(entries, needle, area)
 
 
@@ -700,19 +543,32 @@ async def fetch_hydro_states_async(
     return _hydro_states(_json_payload(response), url)
 
 
-def _hydro_details(
-    client: httpx.Client, url: str, *, cancel: Callable[[], bool] | None = None
+def _map_codes(payload: Any, url: str) -> list[str]:
+    """The station codes of a map of hydro.imgw.pl, in map order."""
+    return [state.station_code for state in _hydro_states(payload, url)]
+
+
+def _station_details(
+    client: httpx.Client,
+    url: str,
+    map_url: str,
+    *,
+    cancel: Callable[[], bool] | None = None,
 ) -> DownloadResult:
     """
-    hydro.imgw.pl's details of every station of its map, gathered into one JSON list.
+    hydro.imgw.pl's details of every station of one of its maps, in one JSON list.
 
-    The map (``onlyMainStations=false``) names the stations; then ``url``, the
-    endpoint of a station page (``station/hydro/status``), is asked once per
+    ``map_url`` (the hydrological or the meteorological map, ``onlyMainStations=false``)
+    names the stations; then ``url``, the endpoint of their station pages
+    (``station/hydro/status``, ``station/meteo/status``), is asked once per
     station (``?id=<code>``), in map order, one request at a time and with the
     headers of `fetch_hydro_states`. An answer that is no object (``null``
     for a code the backend does not know) is left out. The list holds the
-    whole answers: `write_archive` keeps only the fields of
-    ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021).
+    whole answers: `write_archive` keeps only the fields of the dataset
+    (``pl.imgw.hydro_details``, ``pl.imgw.meteo_details``; ADR-015 D5, ADR-021);
+    each answer as it came, the map's too, goes to the capture spool
+    (``pl.imgw.hydro_states_current`` and ``pl.imgw.hydro_operational``, or
+    ``pl.imgw.meteo_states_current`` and ``pl.imgw.meteo_operational``; ADR-030 D3).
 
     Parameters
     ----------
@@ -720,6 +576,8 @@ def _hydro_details(
         Client of the requests.
     url : str
         The endpoint of the station pages, the URL of the dataset's file.
+    map_url : str
+        The map whose stations are asked for.
     cancel : callable or None, optional
         Polled before each request; once it returns True the download stops.
 
@@ -739,16 +597,18 @@ def _hydro_details(
     ObserwatorCancelledError
         If ``cancel`` returns True.
     """
-    asked = _map_url(False)
+    asked = map_url
     answers: list[Any] = []
     try:
         response = client.get(asked, headers=_MAP_HEADERS)
+        _keep(response)
         response.raise_for_status()
-        for state in _hydro_states(_json_payload(response), asked):
+        for code in _map_codes(_json_payload(response), asked):
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("stations.details_cancelled"))
-            asked = f"{url}?id={state.station_code}"
+            asked = f"{url}?id={code}"
             response = client.get(asked, headers=_MAP_HEADERS)
+            _keep(response)
             response.raise_for_status()
             answer = _json_payload(response)
             if isinstance(answer, dict):

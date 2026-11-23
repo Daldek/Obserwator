@@ -166,7 +166,11 @@
           "required": ["station_code", "kind", "name", "provider"],
           "properties": {
             "station_code": {"$ref": "#/$defs/station_code"},
-            "kind": {"enum": ["hydro", "meteo"]},
+            "kind": {"enum": ["hydro", "meteo", "groundwater"]},
+            "groundwater_kind": {
+              "description": "What a groundwater object is (ČHMÚ's OBJECT_TYPE, ADR-032); only on groundwater objects",
+              "enum": ["bore", "spring", null]
+            },
             "name": {"type": ["string", "null"]},
             "provider": {"type": "string", "minLength": 1},
             "series": {

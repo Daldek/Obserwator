@@ -308,6 +308,30 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             ),
         ),
     ),
+    "current poll": (
+        Example(
+            "obserwator current poll --json",
+            {
+                "schema": "obserwator-poll-report/1",
+                "answers": [
+                    {
+                        "dataset": "pl.imgw.hydro_current",
+                        "url": "https://danepubliczne.imgw.pl/api/data/hydro",
+                        "status": "captured",
+                        "http_status": 200,
+                    }
+                ],
+                "cancelled": False,
+            },
+        ),
+        Example(
+            "obserwator current poll --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "actions": [{"command": "current poll", "status": "unverifiable"}],
+            },
+        ),
+    ),
     "pmaxtp fetch": (
         Example(
             "obserwator pmaxtp fetch --latitude 52.23 --longitude 21.01 --json",
