@@ -117,11 +117,14 @@ const BORDER_ORIGINS = { IMGW: "gugik", CHMU: "cuzk" };
 /** The origins of the packaged borders, PRG of GUGiK and RÚIAN of ČÚZK, while the map draws
  * them as its background. */
 export const BORDER_SOURCES = ["gugik", "cuzk"];
+/** The location sources of hydro.imgw.pl: its map's file and its meteorological station pages. */
+const HYDRO_BACK_LOCATIONS = new Set(["static", "pl.imgw.meteo_details"]);
 
 /**
  * The origins of a set of catalog stations, as the server counts a station's: its
  * provider's, the border's its location was checked against, and hydro.imgw.pl's for an
- * IMGW-PIB station located from there (`location_source` "static").
+ * IMGW-PIB station located from there (`location_source` "static" or
+ * "pl.imgw.meteo_details").
  *
  * @param {object[]} stations entries of api/stations
  * @returns {string[]} e.g. ["imgw", "gugik", "imgw_hydro", "chmu", "cuzk"]
@@ -133,7 +136,7 @@ export function catalogSources(stations) {
     if (!origin) continue;
     out.add(origin);
     out.add(BORDER_ORIGINS[station.provider]);
-    if (origin === "imgw" && station.location_source === "static" && station.lon !== null) out.add("imgw_hydro");
+    if (origin === "imgw" && HYDRO_BACK_LOCATIONS.has(station.location_source) && station.lon !== null) out.add("imgw_hydro");
   }
   return [...out];
 }

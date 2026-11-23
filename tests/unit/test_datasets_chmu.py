@@ -148,8 +148,8 @@ def test_registry_invariants_across_providers():
         provider = by_provider[item.provider]
         assert item.key.startswith(provider.key_prefix + ".")
         # PMAXTP has the terms of its project page (ADR-012 D8), hydro.imgw.pl's
-        # station details and its map of water states those of that service
-        # (ADR-021, ADR-030).
+        # station details (hydrological and meteorological) and its map of water
+        # states those of that service (ADR-021, ADR-030).
         expected = provider.license
         if item.key == "pl.imgw.pmaxtp":
             expected = License(
@@ -157,7 +157,11 @@ def test_registry_invariants_across_providers():
                 attribution("pmaxtp", processed=False).attribution[0],
                 "https://klimat.imgw.pl/opady-maksymalne",
             )
-        if item.key in ("pl.imgw.hydro_details", "pl.imgw.hydro_states_current"):
+        if item.key in (
+            "pl.imgw.hydro_details",
+            "pl.imgw.meteo_details",
+            "pl.imgw.hydro_states_current",
+        ):
             expected = License(
                 "IMGW-PIB",
                 attribution("imgw_hydro", processed=False).attribution[0],

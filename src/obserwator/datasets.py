@@ -82,6 +82,8 @@ _IMGW_DATA = f"{_IMGW_SITE}data/"
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
 """Key of the station details of hydro.imgw.pl, an optional source of the IMGW-PIB catalog (ADR-021)."""
+METEO_DETAILS = "pl.imgw.meteo_details"
+"""Key of the meteo station details of hydro.imgw.pl, an optional source of the IMGW-PIB catalog (ADR-021 erratum of 2026-11-23)."""
 CAPTURE_SCOPE = "country_day"
 """``archive_scope`` of a capture dataset: one version holds the answers of a UTC day (ADR-030 D3)."""
 CAPTURE_SUFFIX = ".jsonl.gz"
@@ -871,6 +873,27 @@ _DATASETS = (
             "status.warningValue",
         ),
     ),
+    # The meteorological station pages of hydro.imgw.pl, gathered as the hydrological
+    # ones above: of each station only its code, coordinates and elevation, never its
+    # precipitation, sums or records (ADR-015 D5, ADR-021 erratum of 2026-11-23).
+    DatasetDescriptor(
+        key=METEO_DETAILS,
+        slug="imgw_meteo_details",
+        kind="meteo",
+        title=message("datasets.title_meteo_details"),
+        server_dir="station/meteo",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_HYDRO_BACK,
+        kept_fields=("id", "coordinates.x", "coordinates.y", "properties.altitude"),
+    ),
     DatasetDescriptor(
         key="pl.imgw.pmaxtp",
         slug="imgw_pmaxtp",
@@ -1446,6 +1469,48 @@ _PENDING = (
         parser=None,
         variables={"H": "cm", "Q": "m3/s", "T": "degC"},
         time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # Every answer of hydro-back's meteorological station endpoints ``station/meteo/…``
+    # (the station pages of `pl.imgw.meteo_details`), as `pl.imgw.hydro_operational`.
+    DatasetDescriptor(
+        key="pl.imgw.meteo_operational",
+        slug="imgw_meteo_operational",
+        kind="meteo",
+        title=message("datasets.title_meteo_operational"),
+        server_dir="station/meteo",
+        parser=None,
+        variables={},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # The map of hydro.imgw.pl's meteorological stations: each station's precipitation
+    # state, asked for the codes of `pl.imgw.meteo_details`.
+    DatasetDescriptor(
+        key="pl.imgw.meteo_states_current",
+        slug="imgw_meteo_states_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_states_current"),
+        server_dir="map/stations/meteorologic",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
         year_type="calendar",
         first_year=None,
         update_signal="none",
@@ -2221,8 +2286,8 @@ def _parse_stations(
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
 # daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmu.meteo_now``, the newest of its listing,
-# is a file of its adapter's. The file of hydro.imgw.pl's station details gathers one
-# answer per station (ADR-021).
+# is a file of its adapter's. Each file of hydro.imgw.pl's station details (hydro and
+# meteo) gathers one answer per station (ADR-021).
 _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "pl.imgw.hydro_stations": ("lista_stacji_hydro.csv",),
@@ -2230,6 +2295,7 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "pl.imgw.hydro_now": ("hydro",),
         "pl.imgw.meteo_now": ("meteo",),
         HYDRO_DETAILS: ("status",),
+        METEO_DETAILS: ("status",),
         "cz.chmu.hydro_stations": ("meta1.json",),
         "cz.chmu.meteo_stations": ("meta1.json",),
         "cz.chmu.hydro_now": ("meta1.json", "meta3.json"),

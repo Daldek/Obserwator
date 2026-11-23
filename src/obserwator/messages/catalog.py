@@ -272,6 +272,18 @@ MESSAGES = {
         "obserwator store sync --root {root} --datasets {dataset} (jedno zapytanie "
         "na stację mapy hydro.imgw.pl)",
     ),
+    "meteo_details_missing": Text(
+        "The store {root} holds no meteorological station details of hydro.imgw.pl "
+        "({dataset}): the catalog has no elevation of IMGW-PIB's meteorological "
+        "stations and no location of those the current-data API does not report. "
+        "obserwator store sync --root {root} --datasets {dataset} stores them (one "
+        "request per station of the meteorological map of hydro.imgw.pl)",
+        "Katalog surowy {root} nie ma szczegółów stacji meteorologicznych z "
+        "hydro.imgw.pl ({dataset}): katalog nie poda wysokości stacji "
+        "meteorologicznych IMGW-PIB ani położenia tych, których nie podaje API "
+        "danych bieżących. Zapisze je obserwator store sync --root {root} --datasets "
+        "{dataset} (jedno zapytanie na stację mapy meteorologicznej hydro.imgw.pl)",
+    ),
     "static_missing": Text(
         "No local location file {static_path} (source static): the station locations "
         "of the hydro.imgw.pl map were skipped. IMGW-PIB data are not shipped with "

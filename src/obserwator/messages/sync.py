@@ -137,10 +137,10 @@ MESSAGES = {
     ),
     "station_sources_alone": Text(
         "Station sources (station lists and station metadata, *_stations, *_now and "
-        "pl.imgw.hydro_details) are synchronized in a call of their own, without "
+        "pl.imgw.*_details) are synchronized in a call of their own, without "
         "measurement datasets",
         "Źródła stacji (listy i metadane stacji, *_stations, *_now i "
-        "pl.imgw.hydro_details) synchronizuje osobne wywołanie, bez zbiorów "
+        "pl.imgw.*_details) synchronizuje osobne wywołanie, bez zbiorów "
         "pomiarowych",
     ),
     "option_not_for_station_sources": Text(

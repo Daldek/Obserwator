@@ -528,6 +528,7 @@
                     "enum": [
                       "pl.imgw.hydro_now",
                       "pl.imgw.meteo_now",
+                      "pl.imgw.meteo_details",
                       "static",
                       "user",
                       "cz.chmu.hydro_now",
@@ -645,6 +646,7 @@
                   "details_source": {
                     "enum": [
                       "hydro_details",
+                      "meteo_details",
                       null
                     ]
                   }

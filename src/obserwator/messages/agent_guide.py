@@ -44,9 +44,9 @@ MESSAGES = {
         "lokalna",
     ),
     "station_sources": Text(
-        "Station sources (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store "
+        "Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store "
         "sync` alone.",
-        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store sync` "
+        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` "
         "osobno.",
     ),
     "captures": Text(

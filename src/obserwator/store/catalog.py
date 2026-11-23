@@ -36,6 +36,7 @@ from obserwator.attribution import (
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     KINDS,
+    METEO_DETAILS,
     STATION_CODE_PATTERN,
     ArchiveFile,
     License,
@@ -858,14 +859,16 @@ def _catalog_lines(
     changes, spec 2026-10-18 §7.5, §8), and its locations were checked against
     the packaged border of the provider's country, so it carries that border's
     line too (G of PRG, Z of RÚIAN); a catalog that took any location from the
-    static file, written from the hydro.imgw.pl map, or any station details of
-    hydro.imgw.pl (``used[DETAILS_SOURCE]``, the number of stations with them)
-    adds its lines.
+    static file, written from the hydro.imgw.pl map, or from the meteorological
+    station pages of hydro.imgw.pl, or any station details of hydro.imgw.pl
+    (``used[DETAILS_SOURCE]``, ``used[METEO_DETAILS_SOURCE]``, the numbers of
+    stations with them) adds its lines.
     """
-    from obserwator.providers.pl.imgw import DETAILS_SOURCE
+    from obserwator.providers.pl.imgw import DETAILS_SOURCE, METEO_DETAILS_SOURCE
 
     lines = attribution(provider_origin(provider.id), border_origin(provider.id))
-    if used.get("static") or used.get(DETAILS_SOURCE):
+    sources = ("static", METEO_DETAILS, DETAILS_SOURCE, METEO_DETAILS_SOURCE)
+    if any(used.get(source) for source in sources):
         lines |= attribution("imgw_hydro")
     return lines
 
@@ -1391,11 +1394,12 @@ def build_catalog(
     only in a series index is a historical station of the series family with
     ``geometry`` null unless the user file locates it, counted in
     ``from_series``); codes only in the user file are reported in ``problems``.
-    Location precedence: API, then the local static file
-    ``station_code,latitude,longitude`` (``settings.reference_dir``; the
-    coordinates of hydro.imgw.pl's map, which ``python -m
-    obserwator.reference_data`` downloads, since IMGW-PIB data are not shipped with
-    the package), then the user CSV. A missing static file is not an error: it is
+    Location precedence: API, then the meteorological station page of
+    hydro.imgw.pl (``pl.imgw.meteo_details``, meteorological stations only), then
+    the local static file ``station_code,latitude,longitude``
+    (``settings.reference_dir``; the coordinates of hydro.imgw.pl's map, which
+    ``python -m obserwator.reference_data`` downloads, since IMGW-PIB data are not
+    shipped with the package), then the user CSV. A missing static file is not an error: it is
     reported in ``problems``, recorded in the sidecar as ``available: false`` and
     given as a ``warning`` notice ``source_missing`` that names that command and,
     when the raw root holds the station details, how many hydrological stations
@@ -1414,11 +1418,15 @@ def build_catalog(
     alarm levels, absolute minimum and maximum with their dates, gauge zero with
     its datum, river kilometre, catchment area, year of establishment, province
     and district (``details_source`` ``"hydro_details"``; they add no station);
-    without them these properties are null, the sidecar records the source as
-    ``available: false`` and an ``info`` notice ``source_missing`` names the
-    ``store sync`` that stores them. No stored source gives the year of
-    establishment of a meteorological station: ``established_year`` is null
-    for every one.
+    the meteorological station details (``pl.imgw.meteo_details``) give each
+    meteorological station on that service's meteorological map its elevation
+    (``elevation_m``) and a location (``location_source``
+    ``"pl.imgw.meteo_details"``, after the API's), ``details_source``
+    ``"meteo_details"``; without either dataset its properties are null, the
+    sidecar records the source as ``available: false`` and an ``info`` notice
+    ``source_missing`` names the ``store sync`` that stores it. No stored source
+    gives the year of establishment of a meteorological station:
+    ``established_year`` is null for every one.
 
     ČHMÚ (``stations/versions/chmu_stations/<label>_<sha8>/``, spec
     2026-10-18 §7): sources in precedence order of location, name, river and
@@ -1513,8 +1521,9 @@ def build_catalog(
         raw,
         owner,
         user,
-        # IMGW-PIB: four sources and the station details; ČHMÚ: five sources; then
-        # the assembly and the publication.
+        # IMGW-PIB: four sources and its optional station details (one step for
+        # both); ČHMÚ: five sources (its optional groundwater sources in the fifth);
+        # then the assembly and the publication.
         7,
         on_progress,
         on_notice,

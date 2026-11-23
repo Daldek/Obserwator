@@ -1,0 +1,229 @@
+{
+  "recorded_at": "2026-11-23T12:32:58Z",
+  "base_url": "https://hydro-back.imgw.pl/",
+  "description": "Odpowiedzi hydro-back.imgw.pl (backend hydro.imgw.pl) dla szczegółów stacji pl.imgw.meteo_details (ADR-021, erratum 2026-11-23), nagrane 2026-11-23 o 12:32 UTC: mapa stacji meteorologicznych (map/stations/meteorologic?onlyMainStations=false) z trzema stacjami nagranej mapy (877) i ich karty (station/meteo/status?id=…) bez zmian: Śnieżka, Hel, Warszawa-Bielany. Odpowiedź null backend daje na kod, którego nie zna (kod 999999999 fikcyjny).",
+  "interactions": [
+    {
+      "case": "map",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/map/stations/meteorologic?onlyMainStations=false",
+      "status": 200,
+      "json": {
+        "numOfHighPrecipStates": 0,
+        "stations": [
+          {
+            "s": "no-precip",
+            "p": "02",
+            "d": "0206",
+            "c": "16",
+            "o": "WROC",
+            "id": "350150510",
+            "n": "ŚNIEŻKA",
+            "lo": 15.7397,
+            "la": 50.7364
+          },
+          {
+            "s": "precip",
+            "p": "22",
+            "d": "2211",
+            "c": "47",
+            "o": "GDYN",
+            "id": "354180135",
+            "n": "HEL",
+            "lo": 18.8119,
+            "la": 54.6036
+          },
+          {
+            "s": "precip",
+            "p": "14",
+            "d": "1465",
+            "c": "25",
+            "o": "SOWR",
+            "id": "252200150",
+            "n": "WARSZAWA-BIELANY",
+            "lo": 20.9633,
+            "la": 52.2814
+          }
+        ]
+      }
+    },
+    {
+      "case": "status_350150510",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/meteo/status?id=350150510",
+      "status": 200,
+      "json": {
+        "properties": {
+          "dataClause": null,
+          "district": "karkonoski",
+          "yearOfEstablishment": "1945",
+          "altitude": 1603.0
+        },
+        "stateCode": "no-precip",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 10059,
+          "name": "350150510",
+          "description": "ŚNIEŻKA",
+          "river": "Łomniczka (16184)",
+          "status": 0,
+          "precip": {
+            "date": "2026-11-23T12:00:00Z",
+            "value": 0.0,
+            "dreId": 10059,
+            "operationId": "OPAD_SUM_GODZ",
+            "parameterId": "B00606S",
+            "versionId": -1,
+            "id": 42207468740001
+          },
+          "precipDaily": {
+            "date": "2026-11-23T06:00:00Z",
+            "value": 2.0,
+            "dreId": 10059,
+            "operationId": "OPAD_SUM_DOB",
+            "parameterId": "B00604S",
+            "versionId": -1,
+            "id": 42207469903901
+          },
+          "precip3HoursSum": 0.0,
+          "precip6HoursSum": 0.0,
+          "precip12HoursSum": 0.0,
+          "precip24HoursSum": 0.0,
+          "maxDailyPrecipValue": 149.7,
+          "maxDailyPrecipDate": "1977-07-31",
+          "maxHourPrecipValue": 6.2,
+          "province": "dolnośląskie",
+          "notes": []
+        },
+        "id": "350150510",
+        "coordinates": {
+          "y": 50.73639,
+          "x": 15.7397223
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_354180135",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/meteo/status?id=354180135",
+      "status": 200,
+      "json": {
+        "properties": {
+          "dataClause": null,
+          "district": "pucki",
+          "yearOfEstablishment": "1920",
+          "altitude": 1.0
+        },
+        "stateCode": "precip",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 4685,
+          "name": "354180135",
+          "description": "HEL",
+          "river": "Bałtyk (0)",
+          "status": 100,
+          "precip": {
+            "date": "2026-11-23T12:00:00Z",
+            "value": 0.1,
+            "dreId": 4685,
+            "operationId": "OPAD_SUM_GODZ",
+            "parameterId": "B00606S",
+            "versionId": -1,
+            "id": 42207468530001
+          },
+          "precipDaily": {
+            "date": "2026-11-23T06:00:00Z",
+            "value": 12.2,
+            "dreId": 4685,
+            "operationId": "OPAD_SUM_DOB",
+            "parameterId": "B00604S",
+            "versionId": -1,
+            "id": 42207469896901
+          },
+          "precip3HoursSum": 0.8,
+          "precip6HoursSum": 2.0,
+          "precip12HoursSum": 3.4,
+          "precip24HoursSum": 11.0,
+          "maxDailyPrecipValue": 104.8,
+          "maxDailyPrecipDate": "2016-07-14",
+          "maxHourPrecipValue": 4.4,
+          "province": "pomorskie",
+          "notes": []
+        },
+        "id": "354180135",
+        "coordinates": {
+          "y": 54.60361,
+          "x": 18.811945
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_252200150",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/meteo/status?id=252200150",
+      "status": 200,
+      "json": {
+        "properties": {
+          "dataClause": null,
+          "district": "Warszawa",
+          "yearOfEstablishment": "1938",
+          "altitude": 98.0
+        },
+        "stateCode": "precip",
+        "info": null,
+        "area": null,
+        "status": {
+          "id": 100454500,
+          "name": "252200150",
+          "description": "WARSZAWA-BIELANY",
+          "river": "Wisła (2)",
+          "status": 100,
+          "precip": {
+            "date": "2026-11-23T12:00:00Z",
+            "value": 0.4,
+            "dreId": 100454500,
+            "operationId": "OPAD_SUM_GODZ",
+            "parameterId": "B00606S",
+            "versionId": -1,
+            "id": 42207468826801
+          },
+          "precipDaily": {
+            "date": "2026-11-23T06:00:00Z",
+            "value": 0.0,
+            "dreId": 100454500,
+            "operationId": "OPAD_SUM_DOB",
+            "parameterId": "B00604S",
+            "versionId": -1,
+            "id": 42207469909101
+          },
+          "precip3HoursSum": 0.8,
+          "precip6HoursSum": 1.1,
+          "precip12HoursSum": 1.1,
+          "precip24HoursSum": 1.1,
+          "maxDailyPrecipValue": 119.5,
+          "maxDailyPrecipDate": "2024-08-19",
+          "maxHourPrecipValue": 5.0,
+          "province": "mazowieckie",
+          "notes": []
+        },
+        "id": "252200150",
+        "coordinates": {
+          "y": 52.2813873,
+          "x": 20.9633331
+        },
+        "mapSettings": null
+      }
+    },
+    {
+      "case": "status_unknown",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/meteo/status?id=999999999",
+      "status": 200,
+      "json": null
+    }
+  ]
+}

@@ -284,10 +284,10 @@ MESSAGES = {
     "datasets_help": Text(
         "Comma-separated store datasets: key, slug or legacy alias; datasets of one "
         "kind: pl.imgw.* or cz.chmu.*; station sources (*_stations, *_now, "
-        "pl.imgw.hydro_details) alone",
+        "pl.imgw.*_details) alone",
         "Zbiory magazynu rozdzielone przecinkami: klucz, slug albo alias legacy; "
         "zbiory jednego rodzaju: pl.imgw.* albo cz.chmu.*; źródła stacji "
-        "(*_stations, *_now, pl.imgw.hydro_details) osobno",
+        "(*_stations, *_now, pl.imgw.*_details) osobno",
     ),
     "family_help": Text(
         "Kind: hydro, meteo or groundwater; none = every family",

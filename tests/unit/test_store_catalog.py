@@ -27,6 +27,7 @@ from obserwator.messages import message
 from obserwator.store import (
     build_series,
     catalog,
+    export_stations,
     init_store,
     read_station_list,
     sync_store,
@@ -355,6 +356,7 @@ def test_changed_station_list_is_synced_and_picked_up_by_the_next_build(store, d
         "api_hydro": "current",
         "api_meteo": "current",
         "hydro_details": "current",  # stored by neither side: nothing to pick up
+        "meteo_details": "current",
     }
     assert stale.actions[-1].status == "newer"
     assert second.status == "new"
@@ -961,6 +963,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
         "api_meteo",
         "static",
         "hydro_details",
+        "meteo_details",
     }
     assert (
         by_source["imgw_hydro_stations"]["sha256"]
@@ -976,7 +979,7 @@ def test_geojson_is_rfc7946_and_sidecar_records_sources(
     assert all(
         len(entry["sha256"]) == 64
         for source, entry in by_source.items()
-        if source != "hydro_details"
+        if source not in ("hydro_details", "meteo_details")
     )
     assert by_source["static"] == {
         "source": "static",
@@ -1152,18 +1155,22 @@ def test_station_details_of_hydro_imgw_pl_fill_the_hydro_stations_only(
         n.code == "source_missing" and DETAILS_DATASET in n.message
         for n in detailed_notices
     )
-    # Seven steps: four sources, the details, the assembly and the publication.
+    # Seven steps: four sources, the station details (step 5 for each of the two
+    # datasets, hydrological first), the assembly and the publication.
     for steps, details_status in ((progress, "missing"), (detailed_progress, "done")):
-        assert [(p.current, p.total) for p in steps] == [(i, 7) for i in range(1, 8)]
+        assert [(p.current, p.total) for p in steps] == [
+            (i, 7) for i in (1, 2, 3, 4, 5, 5, 6, 7)
+        ]
         assert steps[4].status == details_status
+        assert steps[5].status == "missing"
 
 
 def test_check_catalog_follows_the_station_details(store, data, tmp_path):
     def check():
         progress = []
         plan = check_catalog(data, raw_root=store, on_progress=progress.append)
-        # Four sources, the details, then the location file, series and catalog.
-        assert {p.total for p in progress} == {7}
+        # Four sources, the two details, then the location file, series and catalog.
+        assert {p.total for p in progress} == {8}
         (step,) = [p for p in progress if p.current == 5]
         assert step.status == source_actions(plan)["hydro_details"]
         return source_actions(plan)["hydro_details"], plan.actions[-1].status
@@ -1184,6 +1191,170 @@ def test_check_catalog_follows_the_station_details(store, data, tmp_path):
     other = init_store(tmp_path / "other", kind="data")
     plan = check_catalog(other, raw_root=store)
     assert source_actions(plan)["hydro_details"] == "missing"
+
+
+METEO_RECORDINGS = {
+    item["case"]: item
+    for item in json.loads(
+        (FIXTURES / "meteo_details_recordings.json").read_text(encoding="utf-8")
+    )["interactions"]
+}
+METEO_DETAILS_DATASET = "pl.imgw.meteo_details"
+METEO_DETAILS_URL = METEO_RECORDINGS["status_unknown"]["url"].split("?", 1)[0]
+
+
+def meteo_answers():
+    """
+    Meteorological station pages of hydro.imgw.pl by the code of its map.
+
+    The recorded page of Warszawa-Bielany is re-keyed to the fixture station
+    123750000 (located by the current-data API), that of Hel to 123760000 (which
+    the API does not locate); Śnieżka keeps its own code, which no fixture list
+    holds, and 999999999 is the recorded null of a code the backend does not know.
+    """
+
+    def page(recorded, code):
+        answer = copy.deepcopy(METEO_RECORDINGS[f"status_{recorded}"]["json"])
+        answer["id"] = code
+        return answer
+
+    return {
+        "123750000": page("252200150", "123750000"),
+        "123760000": page("354180135", "123760000"),
+        "350150510": METEO_RECORDINGS["status_350150510"]["json"],
+        "999999999": METEO_RECORDINGS["status_unknown"]["json"],
+    }
+
+
+def sync_meteo_details(store, router, answers):
+    """Put meteorological station details into the store as ``store sync`` does."""
+    recorded = METEO_RECORDINGS["map"]
+    template = recorded["json"]["stations"][0]
+    stations = [{**template, "id": code} for code in answers]
+    router.get(recorded["url"]).mock(
+        return_value=httpx.Response(
+            200, json={**recorded["json"], "stations": stations}
+        )
+    )
+    for code, answer in answers.items():
+        router.get(f"{METEO_DETAILS_URL}?id={code}").mock(
+            return_value=httpx.Response(
+                200,
+                content=json.dumps(answer).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+        )
+    report = sync_store(store, datasets=[METEO_DETAILS_DATASET])
+    assert [item.status for item in report.items] == ["new"], report.items
+    return report.items[0].version
+
+
+def test_meteo_station_details_give_elevation_and_a_location_of_their_own(
+    store, data, tmp_path
+):
+    notices = []
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        without = build_catalog(data, raw_root=store, on_notice=notices.append)
+        stored = sync_meteo_details(store, router, meteo_answers())
+        stale = check_catalog(data, raw_root=store)
+        progress = []
+        report = build_catalog(data, raw_root=store, on_progress=progress.append)
+        plan = check_catalog(data, raw_root=store)
+    before, found = features(without), features(report)
+    # The details add no station (Śnieżka is on no fixture list).
+    assert list(found) == list(before)
+    warsaw, bez = found["123750000"]["properties"], found["123760000"]["properties"]
+    # The API's point still comes first; the page gives the elevation.
+    assert found["123750000"]["geometry"] == before["123750000"]["geometry"]
+    assert (warsaw["location_source"], warsaw["elevation_m"]) == (
+        "pl.imgw.meteo_now",
+        98.0,
+    )
+    assert warsaw["details_source"] == "meteo_details"
+    # A station the API does not locate gets the point of its page, with its source.
+    assert before["123760000"]["geometry"] is None
+    assert found["123760000"]["geometry"] == {
+        "type": "Point",
+        "coordinates": [18.811945, 54.60361],
+    }
+    assert {
+        key: bez[key]
+        for key in (
+            "location_source",
+            "location_uncertainty_m",
+            "location_missing_reason",
+            "elevation_m",
+            "details_source",
+        )
+    } == {
+        "location_source": "pl.imgw.meteo_details",
+        "location_uncertainty_m": 150.0,
+        "location_missing_reason": None,
+        "elevation_m": 1.0,
+        "details_source": "meteo_details",
+    }
+    # Nothing else changes: every other property, and every other station whole.
+    changed = {"location_source", "location_uncertainty_m", "location_missing_reason"}
+    changed |= {"elevation_m", "details_source"}
+    for code in ("123750000", "123760000"):
+        assert {
+            k: v for k, v in found[code]["properties"].items() if k not in changed
+        } == {k: v for k, v in before[code]["properties"].items() if k not in changed}
+    assert {c: f for c, f in found.items() if c not in ("123750000", "123760000")} == {
+        c: f for c, f in before.items() if c not in ("123750000", "123760000")
+    }
+
+    # The lines of hydro.imgw.pl (RH) with the details, in the catalog and in
+    # the stations export.
+    lines = attribution("imgw", "gugik") | attribution("imgw_hydro")
+    document = json.loads(report.version.read_bytes())
+    assert {key: document[key] for key in lines.fields()} == lines.fields()
+    exported = json.loads("".join(export_stations(data, provider="IMGW", kind="meteo")))
+    assert exported["attribution"] == document["attribution"]
+
+    # The sidecar records the stored file; the build reads it in step 5, after the
+    # hydrological details.
+    entry = next(
+        e for e in sidecar(report)["extra"]["catalog"] if e["source"] == "meteo_details"
+    )
+    assert (entry["available"], entry["count"], entry["url"]) == (
+        True,
+        3,
+        METEO_DETAILS_URL,
+    )
+    assert entry["file"] == stored.relative_to(store.root).as_posix()
+    assert entry["sha256"] == hashlib.sha256(stored.read_bytes()).hexdigest()
+    assert (progress[5].current, progress[5].status) == (5, "done")
+    # Before the sync the build named it in an info notice.
+    (missing,) = [
+        n
+        for n in notices
+        if n.code == "source_missing" and METEO_DETAILS_DATASET in n.message
+    ]
+    assert missing.level == "info"
+    assert f"--datasets {METEO_DETAILS_DATASET}" in missing.message
+    # check_catalog sees the new details, then the catalog built from them.
+    assert source_actions(stale)["meteo_details"] == "newer"
+    assert stale.actions[-1].status == "newer"
+    assert source_actions(plan)["meteo_details"] == "current"
+    assert plan.actions[-1].status == "current"
+
+
+def test_meteo_details_of_no_catalog_station_leave_the_catalog_byte_identical(
+    store, data
+):
+    with respx.mock(assert_all_called=False) as router:
+        sync_sources(store, router)
+        first = build_catalog(data, raw_root=store)
+        content = first.version.read_bytes()
+        answers = meteo_answers()
+        sync_meteo_details(
+            store, router, {code: answers[code] for code in ("350150510", "999999999")}
+        )
+        again = build_catalog(data, raw_root=store)
+    assert again.status == "unchanged" and again.version == first.version
+    assert again.version.read_bytes() == content
 
 
 def test_identical_content_next_day_is_unchanged(store, data, tmp_path, monkeypatch):
@@ -1233,6 +1404,7 @@ def test_check_catalog_is_offline_and_writes_nothing(store, data, tmp_path):
             "api_hydro",
             "api_meteo",
             "hydro_details",
+            "meteo_details",
         ),
         "missing",
     )

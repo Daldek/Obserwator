@@ -21,6 +21,7 @@ import respx
 
 from obserwator._version import __version__
 from obserwator.attribution import attribution
+from obserwator.captures import read_spooled, spool_root
 from obserwator.datasets import get_provider
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
@@ -896,3 +897,126 @@ def test_details_are_unverifiable_and_unchanged_when_only_water_states_moved(
     assert [item.status for item in changed.items] == ["new"]
     rows = json.loads(changed.items[0].version.read_bytes())
     assert rows[1]["status"]["warningValue"] == 710.0
+
+
+# --------------------------------------------------------------------------
+# hydro.imgw.pl's meteorological station details (ADR-021 erratum of 2026-11-23)
+# --------------------------------------------------------------------------
+
+METEO_DETAILS_KEY = "pl.imgw.meteo_details"
+METEO = _cases("meteo_details_recordings.json")
+METEO_MAP = METEO["map"]["json"]
+METEO_MAP_URL = METEO["map"]["url"]
+METEO_DETAILS_URL = "https://hydro-back.imgw.pl/station/meteo/status"
+# The recorded station pages by code, the null of an unknown code included.
+METEO_PAGES = {
+    row["url"].rpartition("=")[2]: row["json"]
+    for case, row in METEO.items()
+    if case.startswith("status_")
+}
+METEO_CODES = [station["id"] for station in METEO_MAP["stations"]]
+METEO_SLOT = "archives/versions/station/meteo/status"
+
+
+def serve_meteo_details(server, *, pages=None, stations=None):
+    """The recorded meteorological map and station pages; ``pages`` replaces answers."""
+    stations = METEO_MAP["stations"] if stations is None else stations
+    server.get(METEO_MAP_URL).respond(200, json={**METEO_MAP, "stations": stations})
+    answers = {**METEO_PAGES, **(pages or {})}
+    return {
+        station["id"]: server.get(f"{METEO_DETAILS_URL}?id={station['id']}").respond(
+            200,
+            content=json.dumps(answers[station["id"]]).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        for station in stations
+    }
+
+
+def test_meteo_details_keep_each_stations_location_and_elevation_and_spool_every_answer(
+    root, server, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("OBSERWATOR_STATE_DIR", str(tmp_path / "state"))
+    stations = [*METEO_MAP["stations"]]
+    stations.insert(1, {**stations[0], "id": "999999999", "n": "NIEZNANA"})
+    serve_meteo_details(server, stations=stations)
+    notices = []
+
+    report = sync_store(root, datasets=[METEO_DETAILS_KEY], on_notice=notices.append)
+
+    assert [(item.slot, item.status) for item in report.items] == [
+        (f"archive:{METEO_DETAILS_KEY}:status", "new")
+    ]
+    version = report.items[0].version
+    assert version.parent.parent == root / METEO_SLOT
+    content = version.read_bytes()
+    # Sorted by code, the unknown code left out: Warszawa-Bielany, Śnieżka, Hel.
+    assert json.loads(content) == [
+        {"id": "252200150", "coordinates": {"x": 20.9633331, "y": 52.2813873}, "properties": {"altitude": 98.0}},
+        {"id": "350150510", "coordinates": {"x": 15.7397223, "y": 50.73639}, "properties": {"altitude": 1603.0}},
+        {"id": "354180135", "coordinates": {"x": 18.811945, "y": 54.60361}, "properties": {"altitude": 1.0}},
+    ]  # fmt: skip
+    # Precipitation, its sums and records, notes and the backend's own ids never
+    # reach the derived file.
+    for name in ("precip", "maxDailyPrecipValue", "notes", "stateCode", "status"):
+        assert f'"{name}"'.encode() not in content, name
+    sidecar = json.loads(version.with_name("status.meta.json").read_text("utf-8"))
+    assert sidecar["license"]["url"] == "https://hydro.imgw.pl/#/regulamin"
+    assert sidecar["extra"]["kept_fields"] == [
+        "id",
+        "coordinates.x",
+        "coordinates.y",
+        "properties.altitude",
+    ]
+    (terms,) = [notice for notice in notices if notice.code == "license_terms"]
+    assert str(message("legal.imgw_terms_hydro")) in terms.message
+
+    # The map, then one page per station in map order, naming Obserwator only.
+    assert urls(server) == [
+        METEO_MAP_URL,
+        *(f"{METEO_DETAILS_URL}?id={station['id']}" for station in stations),
+    ]
+    for call in server.calls:
+        assert "Referer" not in call.request.headers
+        assert call.request.headers["User-Agent"] == (
+            f"Obserwator/{__version__} (+https://github.com/Daldek/Obserwator)"
+        )
+
+    # Every answer as it came, in the declared captures of the backend (ADR-030 D3).
+    def spooled(dataset):
+        return [
+            read_spooled(p) for p in sorted((spool_root() / dataset).rglob("*.json"))
+        ]
+
+    (kept_map,) = spooled("pl.imgw.meteo_states_current")
+    assert kept_map.address == METEO_MAP_URL
+    pages = spooled("pl.imgw.meteo_operational")
+    assert sorted(page.address for page in pages) == sorted(
+        f"{METEO_DETAILS_URL}?id={station['id']}" for station in stations
+    )
+    assert b"null" in {page.content for page in pages}
+
+
+def test_meteo_details_are_unchanged_when_only_precipitation_moved(root, server):
+    serve_meteo_details(server)
+    first = sync_store(root, datasets=[METEO_DETAILS_KEY])
+
+    warsaw = METEO_PAGES["252200150"]
+    wet = {
+        **warsaw,
+        "stateCode": "high-precip",
+        "status": {**warsaw["status"], "precip24HoursSum": 42.0, "notes": ["x"]},
+    }
+    serve_meteo_details(server, pages={"252200150": wet})
+    again = sync_store(root, datasets=[METEO_DETAILS_KEY])
+
+    assert [item.status for item in again.items] == ["unchanged"]
+    assert again.items[0].version == first.items[0].version
+
+    # A changed elevation is new station reference data.
+    moved = {**warsaw, "properties": {**warsaw["properties"], "altitude": 99.0}}
+    serve_meteo_details(server, pages={"252200150": moved})
+    changed = sync_store(root, datasets=[METEO_DETAILS_KEY])
+    assert [item.status for item in changed.items] == ["new"]
+    rows = json.loads(changed.items[0].version.read_bytes())
+    assert rows[0]["properties"] == {"altitude": 99.0}

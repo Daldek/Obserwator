@@ -4,9 +4,9 @@ Station search and current states of hydrological stations.
 `find_stations` searches the station lists of the data providers (IMGW-PIB
 and ČHMÚ), live through each provider's adapter (ADR-029) or from a versioned
 store; `fetch_hydro_states` reads the locations and current water states of
-hydrological stations from the hydro.imgw.pl map API, whose station pages also
-give the station details ``store sync`` keeps for the catalog
-(``pl.imgw.hydro_details``, ADR-021).
+hydrological stations from the hydro.imgw.pl map API, whose station pages (and
+those of its meteorological map) also give the station details ``store sync``
+keeps for the catalog (``pl.imgw.hydro_details``, ``pl.imgw.meteo_details``, ADR-021).
 """
 
 from __future__ import annotations
@@ -51,6 +51,10 @@ if TYPE_CHECKING:
     from obserwator.store.types import StationFeature
 
 HYDRO_MAP_API_URL = "https://hydro-back.imgw.pl/map/stations/hydrologic"
+# The map of hydro.imgw.pl's meteorological stations, the codes of their pages.
+_METEO_MAP_URL = (
+    "https://hydro-back.imgw.pl/map/stations/meteorologic?onlyMainStations=false"
+)
 # hydro-back.imgw.pl answers 403 to the default user agents of curl and httpx; the
 # requests name the program and its project, nothing about the person running it.
 _MAP_HEADERS = {
@@ -539,21 +543,32 @@ async def fetch_hydro_states_async(
     return _hydro_states(_json_payload(response), url)
 
 
-def _hydro_details(
-    client: httpx.Client, url: str, *, cancel: Callable[[], bool] | None = None
+def _map_codes(payload: Any, url: str) -> list[str]:
+    """The station codes of a map of hydro.imgw.pl, in map order."""
+    return [state.station_code for state in _hydro_states(payload, url)]
+
+
+def _station_details(
+    client: httpx.Client,
+    url: str,
+    map_url: str,
+    *,
+    cancel: Callable[[], bool] | None = None,
 ) -> DownloadResult:
     """
-    hydro.imgw.pl's details of every station of its map, gathered into one JSON list.
+    hydro.imgw.pl's details of every station of one of its maps, in one JSON list.
 
-    The map (``onlyMainStations=false``) names the stations; then ``url``, the
-    endpoint of a station page (``station/hydro/status``), is asked once per
+    ``map_url`` (the hydrological or the meteorological map, ``onlyMainStations=false``)
+    names the stations; then ``url``, the endpoint of their station pages
+    (``station/hydro/status``, ``station/meteo/status``), is asked once per
     station (``?id=<code>``), in map order, one request at a time and with the
     headers of `fetch_hydro_states`. An answer that is no object (``null``
     for a code the backend does not know) is left out. The list holds the
-    whole answers: `write_archive` keeps only the fields of
-    ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021); each answer as it came, the
-    map's too, goes to the capture spool (``pl.imgw.hydro_states_current``,
-    ``pl.imgw.hydro_operational``; ADR-030 D3).
+    whole answers: `write_archive` keeps only the fields of the dataset
+    (``pl.imgw.hydro_details``, ``pl.imgw.meteo_details``; ADR-015 D5, ADR-021);
+    each answer as it came, the map's too, goes to the capture spool
+    (``pl.imgw.hydro_states_current`` and ``pl.imgw.hydro_operational``, or
+    ``pl.imgw.meteo_states_current`` and ``pl.imgw.meteo_operational``; ADR-030 D3).
 
     Parameters
     ----------
@@ -561,6 +576,8 @@ def _hydro_details(
         Client of the requests.
     url : str
         The endpoint of the station pages, the URL of the dataset's file.
+    map_url : str
+        The map whose stations are asked for.
     cancel : callable or None, optional
         Polled before each request; once it returns True the download stops.
 
@@ -580,16 +597,16 @@ def _hydro_details(
     ObserwatorCancelledError
         If ``cancel`` returns True.
     """
-    asked = _map_url(False)
+    asked = map_url
     answers: list[Any] = []
     try:
         response = client.get(asked, headers=_MAP_HEADERS)
         _keep(response)
         response.raise_for_status()
-        for state in _hydro_states(_json_payload(response), asked):
+        for code in _map_codes(_json_payload(response), asked):
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("stations.details_cancelled"))
-            asked = f"{url}?id={state.station_code}"
+            asked = f"{url}?id={code}"
             response = client.get(asked, headers=_MAP_HEADERS)
             _keep(response)
             response.raise_for_status()
