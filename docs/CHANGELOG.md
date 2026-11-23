@@ -247,12 +247,45 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
     listings and object lists cut to their rows; `chmu_groundwater_recordings.json`): their
     daily, weekly, recent and characteristic files, the object list and `now` metadata,
     both series and one ČHMÚ catalog. `complete` and `complete_pl_cz` are unchanged.
+- **Timers of the deployment (Nogat plan `2026-11-16-operational-series.md` step A2, E9;
+  ADR-030 D9, D10).** `deploy/systemd/` holds user systemd templates of three `Type=oneshot`
+  services and their `Persistent=true` timers, run through `deploy/obserwator-jobs.sh`:
+  `obserwator-night` (02:30: `store sync` of `pl.imgw.hydro_operational --pace-until 05:00`,
+  then of `cz.chmu.hydro_recent --pace-until 06:30`, each from the UTC day after its last
+  whole harvest, kept in `<state_dir>/obserwator/timers/<dataset>.harvested`, at most 40 days
+  back, then the sealing of every other served capture dataset), `obserwator-telemetry`
+  (06:45: `pl.imgw.hydro_telemetry` of the current year, in January also the year before, and
+  the listing check of `cz.chmu.hydro_hourly` for `CHMU_HOURLY_STATIONS`) and
+  `obserwator-current` (hourly at :15: `current poll`). Each step runs even after a failure
+  and the service ends with the first failure's code; `night --start` and `--check` serve a
+  backfill and a dry run. The units are confined by the install contract's unit rule
+  (`NoNewPrivileges`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`,
+  `SystemCallArchitectures=native`, `PrivateTmp`, `ProtectHome=read-only`,
+  `ProtectSystem=strict`, `ReadWritePaths=` for the roots and `<state_dir>/obserwator`;
+  `User=`/`Group=` commented for a system unit). `docker/docker-compose.yml` has the service
+  `jobs` (profile `jobs`) that the same units start with `docker compose run`. USAGE.md
+  „Timers”.
+- **Backups of both roots (step A4, D10, review decision 16; Nogat DEV-18.5).**
+  `deploy/obserwator-backup.sh` and `obserwator-backup.timer` (Sundays at 07:00): weekly
+  snapshots `<target>/obserwator/weekly/<YYYY-MM-DD>/{raw,data}/` by `rsync -aH --no-perms`
+  with `--link-dest` to the newest snapshot, the month's first run a full copy under
+  `monthly/` without it, `.incoming/` never copied; 8 weekly and 6 monthly kept, deleting only
+  whole snapshot directories of its own target and following no link; a full copy that would
+  leave less than 15 % of the share free refused (exit 3, an `error` record
+  `backup_refused`). After each full copy a restore test (`store scan` of the copied data root
+  with the source's version count and no problem, the SHA-256 of 50 version files against
+  their sidecars, one `series read`, a sample of 100 raw version directories) writes
+  `restore-test.log` beside the snapshot and one `backup_restore_test` record to
+  `<state_dir>/obserwator/logs/app-<day>.jsonl`. The unit writes only the target and that
+  directory. USAGE.md „Backups”, README.
 
 ### Changed
 
 - **The scope of 3.2.0 (the author's decision of 2026-11-22).** The provider fed by files
   (step 6 of ADR-025's plan) and Gdańskie Wody move to 3.3.0 (ADR-025 erratum of 2026-11-23;
   `docs/PROGRESS.md`, „Release 3.3.0”).
+- **The Docker image installs the `store` extra** (pyarrow: the series the jobs build) and
+  carries `obserwator-jobs.sh` for the compose service `jobs` (step A2).
 - **Fetching current data writes the capture spool (ADR-030 D7; step H2a).** Every `fetch_*`
   and live `find_stations` call, `obserwator current …`, the GUI and `store sync` of IMGW-PIB's
   station sources write each answer of a capture source to `<state_dir>/obserwator/captures`

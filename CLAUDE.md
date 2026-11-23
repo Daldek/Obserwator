@@ -59,7 +59,7 @@ src/obserwator/
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
 └── gui/                  # web GUI server (Starlette), web/ (the page; admin/ the admin panel)  [obserwator[gui]]
-tests/{unit,contract,e2e,live}  AGENTS.md, llms.txt (derived)  docker/  scripts/  docs/
+tests/{unit,contract,e2e,live}  AGENTS.md, llms.txt (derived)  deploy/ (timers, backup)  docker/  scripts/  docs/
 ```
 
 Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Package Tree").

@@ -937,6 +937,91 @@ Every provider's stations are drawn alike, by kind only (a triangle hydrological
 
 **Backup and move.** Copy the two roots (`rsync -aH`, hard links kept), `state_dir` (logs) and the configuration directory; on the new host install the same tag and point `NOGAT_CONFIG` at the copy. A server refuses a data root of a layout its version does not read, with a hint, so an older release never serves a newer root.
 
+### Timers
+
+Obserwator's own schedule (Nogat plan `2026-11-16-operational-series.md`, step A2, E9; ADR-030 D9, D10) is three user systemd timers that run its commands through `deploy/obserwator-jobs.sh`; nothing runs in Archiwista's queue, so an instance without Archiwista loses nothing. The templates are in `deploy/systemd/` of the tag:
+
+| Unit | When | What it runs | Writes |
+|---|---|---|---|
+| `obserwator-night` | 02:30 local | `store sync --datasets pl.imgw.hydro_operational --pace-until 05:00`, then `store sync --datasets cz.chmu.hydro_recent --pace-until 06:30`, each `--start <day after its last whole harvest> --end <the last closed UTC day>`; then `store sync` of every other served capture dataset (`pl.imgw.*_current`, `pl.imgw.meteo_operational`, `pl.imgw.meteo_states_current`, `cz.chmu.hydro_current`), which seals their closed UTC days | the raw root, `state_dir` |
+| `obserwator-telemetry` | 06:45 local | `store sync --datasets pl.imgw.hydro_telemetry --years <this year>` (in January also the year before: December's zip comes about 12 January), then `store check --datasets cz.chmu.hydro_hourly --stations $CHMU_HOURLY_STATIONS --years <last year>`, one listing that tells whether ČHMÚ's validated hourly year is out (about May; nothing is downloaded, the check is skipped without stations) | the raw root |
+| `obserwator-current` | every hour at :15 | `current poll`: the six polled sources into the capture spool | `state_dir` only |
+
+Each is a `Type=oneshot` service with a timer of `Persistent=true`: a run missed while the machine was off starts at the next boot. Every step runs even when one before it failed, and the service ends with the first failure's exit code (2 invalid input, 4 `conflict`: the capture lock was held for 10 minutes, 10 `partial`), so `systemctl --user status` shows a bad night; `journalctl --user -u obserwator-night` holds each command and its summary. Hourly series (O4) add the `series build` of the months a night touched.
+
+**Missed nights.** The night keeps, per harvest, the last UTC day of a run that ended with 0 in `<state_dir>/obserwator/timers/<dataset>.harvested`. The next night asks from the day after it to the last closed day, so a night that ended `partial` or a machine that was off for three nights is caught up by the next run (one request per station and parameter of hydro-back whatever the number of days; ČHMÚ one file per station and day, 548 a day, about 46 minutes a day at the minimum spacing of 5 s). Days more than 40 days back are beyond the sources' reach (`--start` at most today − 40, `harvest_reach`): the night starts at the earliest day and says so. A deadline already passed (a catch-up at noon) means the minimum spacing of 5 s. The first backfill of an instance (D1), by hand with the unit's variables:
+
+```bash
+OBSERWATOR=~/.local/bin/obserwator OBSERWATOR_RAW_ROOT=/srv/obserwator-raw OBSERWATOR_ROOT=/srv/obserwator \
+  OBSERWATOR_STATE_DIR=~/.local/state/nogat ~/.local/lib/obserwator/obserwator-jobs.sh night --start 2026-10-15
+~/.local/lib/obserwator/obserwator-jobs.sh night --check   # the same commands with --check: plans only, no harvest recorded
+```
+
+**Install.** The scripts and units come from the checkout of the installed tag; replace every `@NAME@`:
+
+| Placeholder | Value |
+|---|---|
+| `@OBSERWATOR@` | the program, e.g. `/home/<user>/.local/bin/obserwator` of `uv tool install` |
+| `@DEPLOY_DIR@` | the directory of the copied `obserwator-jobs.sh` and `obserwator-backup.sh` |
+| `@RAW_ROOT@`, `@DATA_ROOT@` | the raw root and the data root |
+| `@STATE_DIR@` | `state_dir` (`obserwator config show`: default `~/.local/state/nogat`); its `obserwator/` holds the spool, the lock, the harvests' days and the logs |
+| `@BACKUP_TARGET@` | the backup share ([Backups](#backups)) |
+
+```bash
+git clone --depth 1 --branch v3.2.0 https://github.com/Daldek/Obserwator.git /tmp/obserwator-v3.2.0
+install -D -m 755 -t ~/.local/lib/obserwator /tmp/obserwator-v3.2.0/deploy/*.sh
+mkdir -p ~/.local/state/nogat/obserwator/logs ~/.config/systemd/user   # every path of ReadWritePaths must exist
+for unit in /tmp/obserwator-v3.2.0/deploy/systemd/*; do
+  sed -e "s#@OBSERWATOR@#$HOME/.local/bin/obserwator#g" -e "s#@DEPLOY_DIR@#$HOME/.local/lib/obserwator#g" \
+      -e "s#@RAW_ROOT@#/srv/obserwator-raw#g" -e "s#@DATA_ROOT@#/srv/obserwator#g" \
+      -e "s#@STATE_DIR@#$HOME/.local/state/nogat#g" -e "s#@BACKUP_TARGET@#/mnt/nas/backup#g" \
+      "$unit" > ~/.config/systemd/user/"$(basename "$unit")"
+done
+systemd-analyze --user verify ~/.config/systemd/user/obserwator-*.service ~/.config/systemd/user/obserwator-*.timer
+systemctl --user daemon-reload
+systemctl --user start obserwator-backup.service    # the first backup, before the first night (E4)
+systemctl --user enable --now obserwator-night.timer obserwator-telemetry.timer obserwator-current.timer obserwator-backup.timer
+sudo loginctl enable-linger "$USER"                 # once: the user's timers run without a session
+```
+
+The ČHMÚ stations of the telemetry's check go into `Environment=CHMU_HOURLY_STATIONS=` of `obserwator-telemetry.service` (a commented line of the template). `systemctl --user list-timers 'obserwator-*'` shows the next runs.
+
+**Confinement** (Nogat install contract, rule 10, units): `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, `SystemCallArchitectures=native`, `PrivateTmp=yes`, `ProtectHome=read-only`, `ProtectSystem=strict` and `ReadWritePaths=` for the roots and `<state_dir>/obserwator` (the poll: `<state_dir>/obserwator` only). In a user unit the last four need unprivileged user namespaces, present on Debian 13 with systemd 257; where they are disabled the unit fails with status `226/NAMESPACE`, and those four lines are commented out. `User=` and `Group=`, which a user unit cannot apply, are commented lines for a system unit.
+
+**With Docker.** `docker/docker-compose.yml` has the service `jobs` (profile `jobs`, no daemon): the image's `obserwator-jobs.sh` with the host's `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT` mounted as `/srv/obserwator-raw` and `/srv/obserwator`, the host's `${NOGAT_STATE_DIR:-../state}/obserwator` as the app's, the host's `/etc/localtime` (the deadlines are local time), as the user `OBSERWATOR_UID`:`OBSERWATOR_GID` (default 1000, the owner of the roots) with `read_only`, `cap_drop: [ALL]`, `no-new-privileges` and a `pids_limit`. The same units start it, each with a drop-in (the unit's `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT` already name the host's roots):
+
+```ini
+# ~/.config/systemd/user/obserwator-night.service.d/docker.conf (likewise telemetry and current)
+[Service]
+Environment=NOGAT_STATE_DIR=<state_dir> OBSERWATOR_UID=<uid> OBSERWATOR_GID=<gid>
+ExecStart=
+ExecStart=/usr/bin/docker compose -f <checkout>/docker/docker-compose.yml --profile jobs run --rm jobs night
+```
+
+### Backups
+
+The raw root holds what no source gives again: archive versions a source removed, and the captures of operational data, which hydro.imgw.pl forgets after six weeks (ADR-030). `deploy/obserwator-backup.sh` copies both roots to a share every Sunday at 07:00 (`obserwator-backup.timer`, after the night; Nogat plan `2026-11-16-operational-series.md` step A4, D10, review decision 16), and its first run belongs before the first night:
+
+```text
+<target>/obserwator/weekly/<YYYY-MM-DD>/{raw,data}/    # rsync -aH --link-dest=<the newest snapshot>: unchanged files are hard links
+<target>/obserwator/monthly/<YYYY-MM-DD>/{raw,data}/   # the month's first run: a full copy without --link-dest, then restore-test.log
+```
+
+- **Copies.** `rsync -aH --no-perms`, without the `.incoming/` staging directories (a version without its sidecar in a copy is an interrupted publication that `store scan` reports and the next write completes). Permissions are not compared: a CIFS share fixes them by its mount options, and a differing mode would make rsync copy every file instead of linking it. Since the store only adds versions, a weekly snapshot holds only the week's new files as new inodes; the weeklies after a monthly share its inodes, and each monthly is an independent copy, so damage to one inode never reaches every snapshot. A snapshot is written as `<YYYY-MM-DD>.incomplete` and renamed when whole; an interrupted one is removed by the next run.
+- **Retention.** 8 weekly and 6 monthly snapshots (`--keep-weekly`, `--keep-monthly`). The only deletion is of whole `<YYYY-MM-DD>` directories beyond them under `<target>/obserwator/{weekly,monthly}/`, never through a link, never in a root; a run whose restore test failed deletes nothing.
+- **Free space.** Before a full copy (the monthly, or the first weekly) the script adds up both roots (hard links once) and, for the monthly, the restore copy of the data root, and refuses when the share would keep less than 15 % free (`--min-free-percent`): the share also holds the raw root and other stores, and a full share stops Obserwator's writer. The refusal is exit 3 with an `error` record `backup_refused`. Measured on 2026-11-23 for the author's NAS: the raw root about 1.8 GB, the data root 4.2 GB, 214 GB of 300 GB free, so a monthly takes about 10 GB while it runs and 6 GB kept.
+- **Restore test** after each monthly: the snapshot's data root is copied into `<target>/obserwator/.restore-test.*` and `obserwator store scan --root <copy>` (offline) must give as many versions as the data root had while it was copied and no problem; 50 random version files must match the SHA-256 of their sidecars; `obserwator series read` of one station of a series version must give records. A random sample of 100 version directories of the raw root is copied and checked the same way (scan, every file against its sidecar). The report is `restore-test.log` in the snapshot, ending `result: passed` or `result: failed`, and one record of event `backup_restore_test` (`info`, or `error` when it failed) goes to `<state_dir>/obserwator/logs/app-<UTC day>.jsonl` beside the servers' records ([Server logs](#server-logs)).
+- **Refusals.** A root without its marker (`obserwator-store.json`, `obserwator-data.json`: an unmounted share), a target that is no directory, a target inside a root or the other way round, a link in place of `obserwator/`, `weekly/` or `monthly/` and an existing snapshot of the day are exit 2 with an `error` record `backup_failed`, before anything is copied; a failed copy is exit 1 and the same record; a second run on the same target is exit 4 (`flock`).
+
+```bash
+~/.local/lib/obserwator/obserwator-backup.sh --raw-root /srv/obserwator-raw --data-root /srv/obserwator --target /mnt/nas/backup   # what the unit runs: monthly when the month has none yet, else weekly
+~/.local/lib/obserwator/obserwator-backup.sh ... --mode monthly    # a full copy and its restore test now
+cat /mnt/nas/backup/obserwator/monthly/*/restore-test.log
+rsync -aH /mnt/nas/backup/obserwator/weekly/2026-11-29/raw/ /srv/obserwator-raw/   # a restore: the snapshot's trees copied back
+```
+
+`obserwator-backup.service` is confined like the timers, with `ReadWritePaths=` for the target and `<state_dir>/obserwator/logs` (its records) only: the roots are read. The script needs `bash`, `rsync`, GNU coreutils and findutils, `flock` and `python3`. A copy on the same share as the raw root protects against deletion and software errors, not against the loss of the share; a copy elsewhere waits for the author (plan E7).
+
 ## AI agents: language, command effects and the MCP server
 
 **Language.** Machine output is in English (AGI-9.2): the envelope, the error `message` and `hint`, notices, plan lines, `commands list|schema|guide` descriptions (`command_schema()`, `list_commands()`, `agent_guide()`), `AGENTS.md`, `llms.txt`, the OpenAPI document, REST responses without an `Accept-Language` header and the MCP server. Polish catalog texts (command descriptions, option help, rules, groups, error and dataset titles) are available on explicit request: `lang="pl"`, `--lang pl`, `Accept-Language: pl`. `OBSERWATOR_LANG` (default `pl`) applies only to human-facing CLI text: help, progress lines, the summary printed without `--json` and the readable error line, all of which `--lang` overrides per call; the last error line and the envelope of `--json` are always in English, and with `--json` the `--lang` of `commands list|schema` defaults to English, not to `OBSERWATOR_LANG`. An agent decides by `code`, `status` and JSON fields; the language does not change the contract.
@@ -1032,7 +1117,7 @@ docker compose up -d
 OBSERWATOR_MCP_ENABLED=true OBSERWATOR_MCP_ALLOWED_HOSTS=dane.example.pl docker compose up -d
 ```
 
-The image (`python:3.12-slim`) installs `.[api,mcp]` and runs a single uvicorn process (MCP sessions live in the process) with `--no-access-log --log-level warning`. `docker-compose.yml` passes `OBSERWATOR_MCP_ENABLED` (default `false`), `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) and `OBSERWATOR_CORS_ORIGINS` (default empty: no cross-origin access) from the environment and `NOGAT_STATE_DIR=/state`, mounts the host's `${NOGAT_STATE_DIR:-../state}/obserwator` (relative to `docker/`) as `/state/obserwator`, where the server writes its logs (section [Server logs](#server-logs); the directory must be writable by the image's `appuser`, UID 1000: `mkdir -p <state_dir>/obserwator && chown 1000 <state_dir>/obserwator`), and gives both containers the logging driver `local` (`max-size: "1m"`, `max-file: "3"`). `nginx.conf` has `location = /mcp` with a request limit and no buffering, keeps no log (`access_log off;`, `error_log /dev/null;`, so a rejection of `limit_req` is not logged either) and passes no `X-Request-ID`.
+The image (`python:3.12-slim`) installs `.[api,mcp,store]` and runs a single uvicorn process (MCP sessions live in the process) with `--no-access-log --log-level warning`. `docker-compose.yml` passes `OBSERWATOR_MCP_ENABLED` (default `false`), `OBSERWATOR_MCP_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) and `OBSERWATOR_CORS_ORIGINS` (default empty: no cross-origin access) from the environment and `NOGAT_STATE_DIR=/state`, mounts the host's `${NOGAT_STATE_DIR:-../state}/obserwator` (relative to `docker/`) as `/state/obserwator`, where the server writes its logs (section [Server logs](#server-logs); the directory must be writable by the image's `appuser`, UID 1000: `mkdir -p <state_dir>/obserwator && chown 1000 <state_dir>/obserwator`), and gives both containers the logging driver `local` (`max-size: "1m"`, `max-file: "3"`). `nginx.conf` has `location = /mcp` with a request limit and no buffering, keeps no log (`access_log off;`, `error_log /dev/null;`, so a rejection of `limit_req` is not logged either) and passes no `X-Request-ID`.
 
 **Migrating a container.** A container created before 3.0.0's logging change keeps Docker's default `json-file` log: uncapped, with uvicorn's access lines and the client addresses in them (on the VPS: `imgwtools-api`). Docker deletes that file with the container: rebuild it from this code (`docker compose up -d --build` in `docker/`) or remove it (`docker rm -f <name>`); both need the `docker` group.
 
@@ -1112,7 +1197,7 @@ api_max_limit = 500
 
 `obserwator config show --json` prints one `obserwator-config/1` document: every key with its value and source (`default`, `env`, `dotenv`, `file` and the variable or table name), every credential variable as `present` or `missing` (without the value) and both roots, `store` the data root and `raw_store` the raw root, each with its source, whether it exists and its size (hard-linked files counted once), `instance` (the resolved `[obserwator.instance]`, null without it), `capture` (the capture spool's directory and each source's publication `state`, `tier` and `source`, `default` or `file`) and `problems`, each with `code`, `option` and `message`: `invalid_instance`, `invalid_capture` (an invalid `[obserwator.capture]`, whose defaults then apply), `capture_spool` (a capture spool that cannot be written, or whose last write failed), `short_secret` (a key or token shorter than 32 bytes), `secret_file_mode` (a key file group or others may access; POSIX only), `secret_file_encoding` (a key file that is not UTF-8) and `deprecated_api_keys` (a leftover `api_keys.json`); without `--json` the same description as text (the lines "Data root" and "Raw root", then "Instance", "Captures" and "Problems").
 
-**Store backup.** The raw root is the only place holding archive versions that IMGW-PIB or ČHMÚ have removed from their server, so they cannot be downloaded again. A backup of a root must preserve hard links (`rsync -aH`; on Windows a tool that preserves links, not Explorer or `robocopy`) or use an export (`obserwator store export`, `obserwator series export`); a copy without links multiplies the size of the root.
+**Store backup.** The raw root is the only place holding archive versions that IMGW-PIB or ČHMÚ have removed from their server, so they cannot be downloaded again. A backup of a root must preserve hard links (`rsync -aH`; on Windows a tool that preserves links, not Explorer or `robocopy`) or use an export (`obserwator store export`, `obserwator series export`); a copy without links multiplies the size of the root. The deployment's weekly and monthly snapshots with their restore test: [Backups](#backups).
 
 ## Versioned store (optional)
 
