@@ -160,4 +160,62 @@ MESSAGES = {
         "The archives of {key} read hold no records of the stations {codes}",
         "Odczytane archiwa {key} nie zawierają rekordów stacji {codes}",
     ),
+    # The hourly series built per calendar month (ADR-031).
+    "option_needs_monthly": Text(
+        "{option} applies only to the hourly series built per calendar month "
+        "({allowed}); {key} is built whole or as a subset of stations and years",
+        "{option} dotyczy tylko szeregów godzinowych budowanych w miesiącach "
+        "kalendarzowych ({allowed}); {key} buduje się w całości albo jako podzbiór "
+        "stacji i lat",
+    ),
+    "monthly_option_refused": Text(
+        "{option} does not apply to {key}: an hourly series is built per calendar "
+        "month, the months chosen with start and end",
+        "{option} nie dotyczy {key}: szereg godzinowy buduje się w miesiącach "
+        "kalendarzowych, wybieranych przez start i end",
+    ),
+    "range_bound_not_date": Text(
+        "The range bound {bound} is not a date (YYYY-MM-DD)",
+        "Granica zakresu {bound} nie jest datą (RRRR-MM-DD)",
+    ),
+    "start_later_than_end": Text(
+        "The start of the range {start} is later than its end {end}",
+        "Początek zakresu {start} jest późniejszy niż koniec {end}",
+    ),
+    "month_without_value": Text(
+        "No input of {key} holds a value of {month}",
+        "Żadne wejście {key} nie zawiera wartości z {month}",
+    ),
+    "no_inputs_of_months": Text(
+        "The raw root holds no input of {key} in the chosen months",
+        "Katalog surowy nie zawiera wejść {key} w wybranych miesiącach",
+    ),
+    "inputs_hold_no_value": Text(
+        "The inputs of {key} hold no value of any month",
+        "Wejścia {key} nie zawierają wartości z żadnego miesiąca",
+    ),
+    "month_current": Text(
+        "The series {slug} of {month} matches its current inputs",
+        "Szereg {slug} z {month} odpowiada bieżącym wejściom",
+    ),
+    "month_needs_rebuild": Text(
+        "The series {slug} of {month} needs a rebuild",
+        "Szereg {slug} z {month} wymaga przebudowy",
+    ),
+    "month_missing": Text(
+        "No series {slug} of {month}",
+        "Brak szeregu {slug} z {month}",
+    ),
+    "month_inputs_unchanged": Text(
+        "The series {slug} of {month} has unchanged inputs",
+        "Szereg {slug} z {month} bez zmian wejść",
+    ),
+    "month_progress": Text(
+        "Month {month}",
+        "Miesiąc {month}",
+    ),
+    "input_unreadable": Text(
+        "The input {relative} cannot be read: {reason}",
+        "Nie można odczytać wejścia {relative}: {reason}",
+    ),
 }
