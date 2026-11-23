@@ -875,7 +875,7 @@ The checks of „Stan”, each `ok`, `warning` or `failed` with a detail in the 
 
 An operator other than the author runs Obserwator on his own infrastructure from the same code; everything that is his lives in his files, never in the checkout (ADR-025, Nogat `install-contract`).
 
-**Install from a tag**, never a branch: `uv tool install "obserwator[cli,gui,api] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0"` (or the image of the tag). An update is the same command with the next tag, in a maintenance window; read the CHANGELOG first.
+**Install from a tag**, never a branch: `uv tool install "obserwator[cli,gui,api] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0"` (or the image of the tag). An update is the same command with the next tag, in a maintenance window; read the CHANGELOG first.
 
 **Files under one configuration directory** (`/config` in a container, `NOGAT_CONFIG=/config/nogat.toml`): `nogat.toml`, the area, the logo, the regulamin and the secret files. Relative paths of `[obserwator.instance]` start at `nogat.toml`'s directory.
 
@@ -958,6 +958,8 @@ OBSERWATOR=~/.local/bin/obserwator OBSERWATOR_RAW_ROOT=/srv/obserwator-raw OBSER
   OBSERWATOR_STATE_DIR=~/.local/state/nogat ~/.local/lib/obserwator/obserwator-jobs.sh night --start 2026-10-15
 ~/.local/lib/obserwator/obserwator-jobs.sh night --check   # the same commands with --check: plans only, no harvest recorded
 ```
+
+**Order of the first deployment** (the plan's step D1; Nogat ECO-085): Archiwista 0.4.0 comes first, so that it accepts the tiers, the hourly series and the kind `groundwater` before Obserwator 3.2.0 writes captures or hourly series to a root it shares; then Obserwator `v3.2.0`; then `[obserwator.capture]` in `nogat.toml` (the sources of hydro.imgw.pl's backend are `private` by default, section "Captures of current data"); then the first backup ([Backups](#backups)); then the timers below; then the first backfill (above).
 
 **Install.** The scripts and units come from the checkout of the installed tag; replace every `@NAME@`:
 
@@ -1046,7 +1048,7 @@ rsync -aH /mnt/nas/backup/obserwator/weekly/2026-11-29/raw/ /srv/obserwator-raw/
 }
 ```
 
-- Without a system-wide installation: `"command": "uvx", "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0", "obserwator", "mcp"]`.
+- Without a system-wide installation: `"command": "uvx", "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0", "obserwator", "mcp"]`.
 - Writes: `"args": ["mcp", "--allow-writes", "--allow-dir", "/dane/obserwator", "--allow-dir", "/dane/obserwator-raw"]` (or `OBSERWATOR_MCP_ALLOW_WRITES=true`; `--allow-dir` can be repeated). Without `--allow-writes` the server does not write: writing commands have the `check` argument fixed to `true` and return an `obserwator-plan/1` plan, and writing options (`output_dir`, `output`, `force`, `plan`) are unavailable (an attempt → `forbidden`, `details.reason="writes_disabled"`). With the flag, `check` defaults to `true` and writing requires `check: false` — the user decides about writes in the configuration, not the model. Writing without `--allow-dir` is `forbidden` (`no_allowed_dir`), and a target (`root`, `raw_root`, `output_dir`, `output` or a default root) outside these directories is `forbidden` (`outside_allowed_dirs`).
 - Language: the MCP server always speaks English (tool descriptions, instructions, error documents; AGI-9.2), regardless of `OBSERWATOR_LANG`. There is no `--lang` option; an agent gets Polish text only on explicit request (the `lang: "pl"` argument of the `obserwator_commands_list`, `obserwator_commands_schema`, `obserwator_commands_guide` tools).
 - `root` as in the CLI: a tool argument, else the default root of the command's kind — the data root (`OBSERWATOR_ROOT`, `[obserwator] root` or `<data_dir>/obserwator`) or, for the commands of the raw root, the raw root (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` or `<data_dir>/obserwator-raw`); `raw_root` of `obserwator_series_build` and `obserwator_store_catalog` defaults to the raw root. With `--allow-dir` every root a call uses, a default root included, must lie within one of the directories; relative paths are resolved from the server's working directory, and the server instructions give the working directory and both default roots.

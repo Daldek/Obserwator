@@ -42,12 +42,14 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | ID | Feature | Status | Description |
 |---|---------|--------|-------------|
 | FR-1.1 | Real-time data (IMGW API) | Implemented | Current hydro/meteo/synop data |
-| FR-1.2 | Archive data (ZIP/CSV) | Implemented | Dataset registry (21 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
-| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 6 `cz.chmu.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, since 3.1.0 also the snow depth and new snow; station lists, current station metadata); freshness from directory listings; station catalog with SPA thresholds |
+| FR-1.2 | Archive data (ZIP/CSV) | Implemented | Dataset registry (33 `pl.imgw.*` descriptors, 9 of them download-only, `in_store` false: ADR-001 D6, ADR-023): URL generation and downloads into an IMGW server-path tree |
+| FR-1.3 | ČHMÚ data (JSON/CSV per station) | Implemented (3.0.0) | 16 `cz.chmu.*` descriptors (daily hydro H/Q/T, daily meteo P/Tmean/Tmax/Tmin with quality and flags, since 3.1.0 also the snow depth and new snow; station lists, current station metadata; since 3.2.0 the validated hourly set, the `recent` and `now` hydrological files and the groundwater of bores and springs, ADR-032); freshness from directory listings; station catalog with SPA thresholds |
 | FR-1.4 | PMAXTP data | Implemented | Maximum precipitation of a given duration and probability of exceedance (IMGW-PIB grid only) |
 | FR-1.5 | Warnings | Implemented | Hydro/meteo warnings from API |
 | FR-1.6 | Versioned store | Implemented (3.0.0) | Immutable versions with provenance (both providers) in a raw root (archives, station sources, PMAXTP cells) and a data root (Parquet series, `stations.geojson` per provider, Hydrolog's stored analyses; ADR-016, ADR-017), freshness plan, canonical content (`content_sha256`) and the observation register for ČHMÚ |
 | FR-1.7 | Projects (pins of store versions) | Moved to Archiwista (ADR-008, 2026-10-31) | Obserwator's project manifest and the `imgw project` command group are removed; Archiwista keeps projects in `archiwista-project/1` and pins versions by the store's `sha256` and `content_sha256` |
+| FR-1.8 | Captures of current data | Implemented (3.2.0, ADR-030) | Every answer of a source of current data kept as it came in the capture spool and sealed into the raw root per UTC day; `current poll` hourly; the night's harvest of hydro-back's hourly series and ČHMÚ's `recent` day files (`store sync --pace-until`); IMGW-PIB's monthly telemetry; each dataset's tier (`verified`, `telemetry`, `operational`) and each source's publication (`[obserwator.capture]`; hydro.imgw.pl's backend `private` by default) |
+| FR-1.9 | Hourly series | Implemented (3.2.0, ADR-031) | `pl.imgw.hydro_subdaily` and `cz.chmu.hydro_subdaily`: H, Q and T per hour, one version per month, per hour the highest tier with a value |
 
 ### 3.2. Interfaces
 
@@ -56,7 +58,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-2.1 | CLI | Implemented | `obserwator` command: catalog groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses`, `commands` plus `version`, `server`, `mcp`, `gui serve`, `admin`, `config show`; help in Polish or English (`OBSERWATOR_LANG`) |
 | FR-2.2 | GUI | Implemented (ADR-013) | `obserwator gui serve` (extra `gui`, with `cli` for the command): a Starlette app of its own on the data root, reading data only through public functions; every station of both providers on a map, the station panel with series, Hydrolog's stored analyses and downloads, PMAXTP of a point |
 | FR-2.3 | REST API | Implemented | FastAPI with OpenAPI documentation; routes generated from the same command catalog; `Accept-Language`; `GET /llms.txt` |
-| FR-2.4 | Python command catalog | Implemented (3.0.0) | 35 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
+| FR-2.4 | Python command catalog | Implemented (3.0.0) | 36 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
 | FR-2.5 | MCP server | Implemented (3.0.0) | `obserwator[mcp]`: `obserwator mcp` (stdio, read and plan by default, writes with `--allow-writes`) and `/mcp` in the REST server (read and plan only); tools = catalog commands |
 
 ### 3.3. Visualization
@@ -99,6 +101,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-6.11 | Request logging (Nogat's `nogat_logging`: `<state_dir>/obserwator/logs/<kind>-YYYY-MM-DD.jsonl`, kept 14 days, no client addresses) | Implemented (ADR-019) |
 | FR-6.14 | Cross-origin access only from the configured origins (`OBSERWATOR_CORS_ORIGINS`, none by default), never with credentials; the security headers the GUI sends (`nosniff`, `Referrer-Policy`, `Permissions-Policy`) | Implemented (3.1.0) |
 | FR-6.15 | An operator's instance (`[obserwator.instance]` of `nogat.toml`): the providers and the area served, filtered on the server for every route | Implemented (3.1.0, ADR-025) |
+| FR-6.16 | A source that is not `public` (`[obserwator.capture]`): its captures and series are `not_found` (`details.reason` `private`) before any request | Implemented (3.2.0, ADR-030) |
 
 ### Not Implemented
 
@@ -131,6 +134,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-5.12 | Nogat's rules for a public GUI (DEV-15.7 to DEV-15.12): terms (linked from the left panel, the app menu and the welcome window; the statement of DEV-15.8 in § 3 of the terms), rate limit, logs without addresses, daily totals, „Zgłoś uwagę” | Implemented |
 | FR-5.13 | Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` (or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`), not a REST API key | Implemented (ADR-020) |
 | FR-5.20 | An operator's instance (ADR-025): providers `visible`, `hidden` or `off`, a featured provider with the others faded (`others_opacity`) until „Pokaż inne źródła”, an area (`focus` or `clip`), the start view, PMAXTP on or off, the operator's title, logo and regulamin | Implemented (3.1.0) |
+| FR-5.21 | „Wykres godzinowy” of a hydrological station: its hourly series by tier and the live hours its provider serves now, while both are `public` | Implemented (3.2.0) |
 | FR-5.14 | HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
@@ -140,7 +144,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-5.15 | User accounts, sign-in | Not in scope: an authenticating proxy in front of the GUI |
 | FR-5.16 | Climate stripes (M15) | A prototype of the colour scale only (Hydrolog has no stripes yet) |
 | FR-5.17 | IMGW-PIB warnings | Not implemented (warnings name areas, not stations) |
-| FR-5.18 | ČHMÚ current data | Not supported (Obserwator reads no ČHMÚ current data) |
+| FR-5.18 | ČHMÚ current data | Partly (3.2.0): a ČHMÚ hydrological station's card is „Wykres godzinowy” with its `now` file; „Pomiary bieżące” shows IMGW-PIB's stations only |
 | FR-5.19 | Other open gaps | `docs/PROGRESS.md`, „GUI: open gaps” |
 
 ---
@@ -176,9 +180,9 @@ The commands and their options are listed by `obserwator commands list` and `obs
 | NFR-1 | No server-side data storage by default | Implemented | Core design principle: URL generation and live proxy; the servers store data only in their configured roots (`OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`); the CLI and the library write where the person says (`--root`, `--output-dir`, `--output`) or, without it, to the default raw and data roots (ADR-017) |
 | NFR-2 | PEP8 compliance | Implemented | Using ruff |
 | NFR-3 | NumPy-style docstrings | Implemented | Enforced by ruff `D` rules, numpy convention |
-| NFR-4 | Unit and contract tests | Implemented | 3325 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-15); Python = CLI = REST = MCP contract |
-| NFR-5 | GUI browser tests | Implemented | 152 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-15) |
-| NFR-6 | Live integration tests | Implemented | 72 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (50: 35 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmu_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-15) |
+| NFR-4 | Unit and contract tests | Implemented | 3837 tests in `/tests/unit` and `/tests/contract`, all offline (2026-11-23); Python = CLI = REST = MCP contract |
+| NFR-5 | GUI browser tests | Implemented | 189 tests in `/tests/e2e` (Playwright, Chromium; marker `e2e`, 44 of them also `hydrolog`), skipped without Chromium (2026-11-23) |
+| NFR-6 | Live integration tests | Implemented | 73 tests marked `live` (outside the gate, run with `-m live`): `tests/live/test_interfaces_live.py` (51: 36 commands × Python/`obserwator`/REST on real IMGW-PIB servers, live errors, MCP leg) and `tests/live/test_chmu_live.py` (22: ČHMÚ on opendata.chmi.cz) (2026-11-23) |
 | NFR-7 | API response time < 2s | Implemented | For proxied requests |
 | NFR-8 | Online documentation | Implemented | Swagger at `/docs` |
 
@@ -206,7 +210,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 |-----|--------|----------------|
 | API response time (proxied) | < 2s | Met |
 | API documentation completeness | 100% | Met (Swagger) |
-| Test coverage | 80% | 94.54% (last measured 2026-11-15) |
+| Test coverage | 80% | 94.48% (last measured 2026-11-23) |
 | Stability (no critical bugs) | 30 days | In progress |
 
 ---
@@ -214,8 +218,8 @@ The commands and their options are listed by `obserwator commands list` and `obs
 ## 10. Versioning
 
 - SemVer for API and CLI/GUI package
-- Current version: 3.1.0 (release notes: `docs/CHANGELOG.md`)
-- Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ and agent support add only optional fields within `/1`; the project manifest contract left with the projects (ADR-008)
+- Current version: 3.2.0 (release notes: `docs/CHANGELOG.md`)
+- Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ, agent support and the operational tier with the hourly series of 3.2.0 (Nogat ECO-085) add only optional fields and values within `/1`; the project manifest contract left with the projects (ADR-008)
 
 ---
 

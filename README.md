@@ -4,11 +4,11 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 
 ## When to use
 
-- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily station data, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 33 datasets, 27 of IMGW-PIB (six of them captures of current data) and 6 of ČHMÚ.
+- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data and the monthly hydrological telemetry; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily and validated hourly station data and groundwater readings, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 49 datasets, 33 of IMGW-PIB and 16 of ČHMÚ, captures of current data and hourly series among them.
 - Read current water levels, meteorological and synoptic measurements and warnings of IMGW-PIB, every answer kept as it came and sealed into the raw root day by day (captures, `obserwator current poll` hourly), and find IMGW-PIB and ČHMÚ stations by name, river or code.
 - Get the PMAXTP maximum precipitation (quantiles, confidence bounds, errors) of a point in Poland.
-- Build station series (Parquet) and station catalogs (GeoJSON) offline from the downloaded archives, and export them as CSV, JSON, JSONL or Parquet with the providers' attribution lines.
-- Store the analyses Hydrolog computes for every station (87: characteristic levels and discharges, frequencies, regimes, trends, precipitation indices) next to the series, and browse stations, series and analyses on a map in the web GUI.
+- Build daily, weekly and hourly station series (Parquet) and station catalogs (GeoJSON) offline from the downloaded archives and captures, and export them as CSV, JSON, JSONL or Parquet with the providers' attribution lines.
+- Store the analyses Hydrolog computes for every station (87: characteristic levels and discharges, frequencies, regimes, trends, precipitation indices) next to the series, and browse stations, series, analyses and a station's hourly readings on a map in the web GUI.
 - Let an AI agent call the same 36 commands through MCP, the CLI, REST or Python, with one result envelope and stable error codes.
 
 ## When not to use
@@ -18,7 +18,7 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 - Projects that pin store versions, browsing a store in a browser: [Archiwista](https://github.com/Daldek/Archiwista) (ADR-008).
 - Watershed delineation and design hydrographs in a web application: [Hydrograf](https://github.com/Daldek/Hydrograf).
 - Forecasts: Obserwator reads published observations only; use the forecasts of IMGW-PIB (https://meteo.imgw.pl) and ČHMÚ (https://www.chmi.cz).
-- Current measurements of ČHMÚ: Obserwator reads only their station metadata; read https://opendata.chmi.cz directly.
+- ČHMÚ's current meteorological measurements and the current readings of its groundwater objects: Obserwator reads ČHMÚ's current hydrological files and only the station metadata of the rest; read https://opendata.chmi.cz directly.
 - Data of other countries: use the provider of that country.
 
 ## Install
@@ -26,12 +26,12 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 Obserwator is not on PyPI yet (the name `imgwtools` there holds the releases up to 2.1.1); install it from Git (Python 3.12 or newer):
 
 ```bash
-uv tool install "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0"
-uv add "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.1.0"
-uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
+uv tool install "obserwator[cli] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0"
+uv add "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.2.0"
+uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0" obserwator mcp
 ```
 
-The lines install the CLI of the release 3.1.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs`; the extras add the rest:
+The lines install the CLI of the release 3.2.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs`; the extras add the rest:
 
 | Extra | Adds |
 |---|---|
@@ -63,7 +63,7 @@ Offline: the URLs of a dataset's files, nothing downloaded. The envelope names t
 {
   "schema": "obserwator-result/1",
   "tool": "obserwator",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "command": "datasets files",
   "check": false,
   "status": "ok",
@@ -169,8 +169,8 @@ The full list with effects is `obserwator commands list --json`; Python names ar
 `obserwator mcp` serves the 36 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
 
 ```bash
-claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
-codex mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0" obserwator mcp
+claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0" obserwator mcp
+codex mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0" obserwator mcp
 ```
 
 Cursor reads `.cursor/mcp.json`:
@@ -180,7 +180,7 @@ Cursor reads `.cursor/mcp.json`:
   "mcpServers": {
     "obserwator": {
       "command": "uvx",
-      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0", "obserwator", "mcp"]
+      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0", "obserwator", "mcp"]
     }
   }
 }
@@ -193,7 +193,7 @@ VS Code reads `.vscode/mcp.json`, whose key is `servers`:
   "servers": {
     "obserwator": {
       "command": "uvx",
-      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.1.0", "obserwator", "mcp"]
+      "args": ["--from", "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0", "obserwator", "mcp"]
     }
   }
 }
@@ -253,7 +253,7 @@ Data is written only where the user says: `--output-dir` (plain files), `--root`
 | [USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md) | task-oriented guide to the library, the CLI, REST, the GUI and the MCP server; configuration, the versioned store, Docker, server logs |
 | [ARCHITECTURE.md](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) | layers, store layout, data flow, CI/CD |
 | [CODEBASE.md](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) | public API, command catalog, option and error tables, data formats |
-| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-030 |
+| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-032 |
 | [PRD.md](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) | product requirements and scope |
 | [CHANGELOG.md](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) | changes per release, including the breaking changes and the migration from IMGWTools 2.1.1 |
 

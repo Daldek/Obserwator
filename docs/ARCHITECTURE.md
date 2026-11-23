@@ -4,10 +4,10 @@
 
 System consists of six main components:
 
-1. **Python Library** (v3.1.0)
+1. **Python Library** (v3.2.0)
    - the package `obserwator` (installed from Git by its tag, README "Install") for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
-   - Provider registry (`IMGW` — IMGW-PIB, `CHMU` — ČHMÚ, ADR-003, ADR-028) and dataset registry (47 descriptors: 31 `pl.imgw.*`, nine of them captures and one the monthly telemetry, and 16 `cz.chmu.*`, two of them captures, with slugs and legacy aliases, each with its tier; one more declared ahead of the step that serves it, offered by no surface, ADR-030), IMGW-PIB and ČHMÚ parsers with value flags
+   - Provider registry (`IMGW` — IMGW-PIB, `CHMU` — ČHMÚ, ADR-003, ADR-028) and dataset registry (49 descriptors: 33 `pl.imgw.*`, nine of them captures, one the monthly telemetry and one an hourly series, and 16 `cz.chmu.*`, two of them captures and one an hourly series, with slugs and legacy aliases, each with its tier; one more declared ahead of the step that serves it, offered by no surface, ADR-030), IMGW-PIB and ČHMÚ parsers with value flags
    - Command catalog (`obserwator.commands`): 36 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); English texts with a Polish variant (ADR-006), declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Captures (ADR-030): every answer of a source of current data, whichever interface asked, is kept as it came in the capture spool `<state_dir>/obserwator/captures` (one file per answer, never in a root); `current poll` asks each polled source at most once per its declared interval; `store sync --pace-until` harvests hydro-back's hourly series or ČHMÚ's `recent` day files of the last closed UTC day through `fetch.PacedSession` (spread to a deadline, at least 5 s apart, backoff, gzip), then seals
    - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
@@ -136,7 +136,7 @@ The data the server keeps without that configuration are its captures (ADR-030 D
 ### Security (Planned, Not Implemented)
 - ~~API key validation middleware~~ - keys managed but not enforced (store writes use their own token); `obserwator admin` and `api_keys.json` are deprecated and go in v4.0.0
 - ~~Per-key rate limiting~~ - only nginx-level limiting
-- ~~MCP writes over HTTP with authorization~~ - out of 3.1.0 (ADR-004 open question)
+- ~~MCP writes over HTTP with authorization~~ - out of 3.2.0 (ADR-004 open question)
 
 ---
 
