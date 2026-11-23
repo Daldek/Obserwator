@@ -34,6 +34,7 @@ Each entry keeps the state of the decision as of the day it was accepted; later 
 | [ADR-026](#adr-026-series-of-chosen-stations-and-years) | Series of chosen stations and years | 2026-11-21 | Accepted |
 | [ADR-027](#adr-027-the-guis-memory-what-it-keeps-of-the-data-root) | The GUI's memory: what it keeps of the data root | 2026-11-21 | Accepted |
 | [ADR-028](#adr-028-national-provider-names-locations-named-by-their-dataset-two-csv-attribution-columns) | National provider names, locations named by their dataset, two CSV attribution columns | 2026-11-21 | Accepted |
+| [ADR-029](#adr-029-provider-adapters) | Provider adapters | 2026-11-23 | Accepted |
 | [ADR-030](#adr-030-captures-and-the-operational-tier) | Captures and the operational tier | 2026-11-23 | Accepted |
 
 ---
@@ -1208,3 +1209,31 @@ The datasets of D4 (`_PENDING`; served from the step named):
 ### Consequences
 
 Additive. `DatasetDescriptor` gains `tier`, `time_unit` the values `hour`, `ten_minutes` and `snapshot`, `archive_scope` the value `country_day`, and `datasets()` the keyword `pending`; each `datasets list` document carries `"tier": "verified"` after its other fields, which are unchanged. `AGENTS.md`, `llms.txt`, `commands schema`, every other envelope, every sidecar and the fixture stores keep their bytes, since no surface offers a declared dataset (D8). The hourly series (`pl.imgw.hydro_subdaily`, `cz.chmu.hydro_subdaily`; `time_unit` `hour` and the optional `<var>_tier` of `obserwator-series/1`) are O4's, with Archiwista's A1 deployed before the first one reaches a shared data root (ECO-085). Who builds what: H2a D3's writer and sealing, D5's section, D6, D7 and the six `*_current` datasets with their hourly poll; O2 the fetchers, the pacing and the other five datasets; O3 `--start`/`--end` and D10; O4 the hourly series, the precedence of the tiers and the plan's D9 trim; O6 the chart, the live tail and D5 in the GUI; A2 the timers; A4 the backup of both roots (the captures are the only copy of what a source forgets). `pl.imgw.meteo_details`, an item of 3.2.0 outside the plans' steps, declares the capture dataset of hydro-back's `station/meteo/…` when it lands.
+
+---
+
+## ADR-029: Provider adapters
+
+**Date:** 2026-11-23  
+**Status:** Accepted (Nogat plan `2026-11-20-hydromet-providers.md` P1, P2, step 2, approved 2026-11-23 by Fable for the author; row H2 of `2026-11-16-operational-series.md`)  
+**Standard:** amends ADR-003 D1 (a provider is a registry entry and an adapter)
+
+### Context
+
+IMGW-PIB and ČHMÚ were told apart wherever they differ: `if provider == "IMGW"` or `"CHMU"` and tables keyed by the two ids in the archive enumeration (`datasets.py`), the downloads (`fetch._origin`, `store.sync`), the live station search (`stations._live_sources`, `_parsed`, `_identity`), the station catalog (`_CATALOG_DIRS`, the choice of builder), the attribution (`attribution._PROVIDERS`), the command groups (`commands._GROUP_PROVIDERS`), the writer's sidecar layout and the GUI (`_station_origins`, the current view, the regulamin's blocks). A third provider would add a branch to each.
+
+### Decision
+
+- **D1. One adapter per provider behind one `typing.Protocol`.** `obserwator.providers.base.ProviderAdapter`; the adapters are `obserwator.providers.pl.imgw` and `obserwator.providers.cz.chmu` (ECO-082 names). `ProviderDescriptor.adapter` (a property, not a field, so `obserwator-provider/1` and the OpenAPI schemas stay) gives a provider's adapter; `obserwator.providers.adapter(id)` the same.
+- **D2. The registry declares, the adapter acts.** `datasets.py` stays the declarative registry the catalog, `AGENTS.md` and `llms.txt` are generated from; names that follow from it are derived, not tabled: the catalog key `<key prefix>.stations`, the catalog directory `stations/versions/<acronym>_stations` (P2; `ProviderDescriptor.acronym` is the id in lower case), the GUI's catalog and analyses slots. The adapter holds the provider's facts the code acts on (attribution `origin` and `origins`, `border`, `server_name`, `identifies`, `groups`, `current`, `station_sources`, `optional_sources`, `archive_suffixes`, `sidecar_station`) and its behaviour: the files of each dataset (`archive_files`, `archive_from_path`, `indexed`, `index_files`, `station_key`, `archive_station`), the download of a file (`download`), the store's choice of check (`check_scope`, `folders`, `listed_station`), the station sources (`station_file`, `parse_station_list`, `live_urls`, `live_stations`), the catalog (`catalog_sources`, `source_datasets`, `optional_action`, `location_files`, `build_catalog`), the parsers per dataset (`normalize`), the attribution of datasets and stations (`dataset_origin`, `station_origins`), live current data (`current`, optional), the credential (`credential`, optional: none for IMGW-PIB and ČHMÚ; step H3 declares it in the registry and this returns it) and the hook of the captures (`capture`).
+- **D3. The store keeps the mechanisms.** The checks by HEAD, by a folder index and by a directory listing, the catalog's location checks and publication and the series builder stay in `obserwator.store`; the adapter chooses and parameterizes them. The two catalog builders still live in `store/catalog.py` and are reached only through `build_catalog`.
+- **D4. Captures (P14).** `capture(answer)` takes an `Answer` (address without credential, time, status, bytes, dataset) and is a no-op: step H2a fills it with the capture writer and routes every request path of a provider through it, so no provider can skip it.
+- **D5. No behaviour changes (P2).** Archives, sidecars, series, catalogs, envelopes, the GUI's documents, `AGENTS.md` and `llms.txt` keep their bytes; the quirks of 3.0.0 stay (IMGW-PIB's server is `IMGW` in the texts of a failed request of a country file and `IMGW-PIB` of a per-station file; its archive sidecars name no station).
+
+### Consequences
+
+A provider is one module in `obserwator.providers`, one entry of its `_ADAPTERS`, its registry entries, its attribution lines and its messages (P1). No module outside `obserwator.providers` and the registry compares a provider's id, except the defaults of the `provider` parameters of 3.0.0's interface (`"IMGW"`), the fixture builder and the examples of the documents. The GUI's page (`gui/web/src`) still names IMGW-PIB for its current-data and PMAXTP views; the source classes of P11–P13 (step 5, `v3.3.0`) change those views. Step H2a builds on `capture`; Gdańskie Wody (`v3.3.0`) is the first adapter written against the protocol.
+
+### Rejected
+
+An adapter field in `ProviderDescriptor` (it would change `obserwator-provider/1` and the OpenAPI schemas). One generic adapter driven by more registry fields (the providers differ in behaviour, not only data). Moving the store's mechanisms into the adapters (each adapter would repeat them).

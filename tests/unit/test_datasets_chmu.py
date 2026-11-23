@@ -12,7 +12,6 @@ from obserwator.datasets import (
     DatasetDescriptor,
     License,
     _archive_from_path,
-    _indexed_file,
     _station_file,
     _station_files,
     archive_files,
@@ -23,6 +22,7 @@ from obserwator.datasets import (
     station_source_files,
 )
 from obserwator.exceptions import ObserwatorValidationError
+from obserwator.providers.pl.imgw import _indexed_file
 from obserwator.store.content import CONTENT_FORMS
 
 HYDRO = "cz.chmu.hydro_daily"

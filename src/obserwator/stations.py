@@ -2,10 +2,11 @@
 Station search and current states of hydrological stations.
 
 `find_stations` searches the station lists of the data providers (IMGW-PIB
-and ČHMÚ), live or from a versioned store; `fetch_hydro_states` reads the
-locations and current water states of hydrological stations from the
-hydro.imgw.pl map API, whose station pages also give the station details
-``store sync`` keeps for the catalog (``pl.imgw.hydro_details``, ADR-021).
+and ČHMÚ), live through each provider's adapter (ADR-029) or from a versioned
+store; `fetch_hydro_states` reads the locations and current water states of
+hydrological stations from the hydro.imgw.pl map API, whose station pages also
+give the station details ``store sync`` keeps for the catalog
+(``pl.imgw.hydro_details``, ADR-021).
 """
 
 from __future__ import annotations
@@ -13,24 +14,17 @@ from __future__ import annotations
 import json
 import math
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from pydantic import ValidationError
 
-from obserwator._parsing.chmu import iter_stations, parse_listing
-from obserwator._parsing.stations import parse_stations_csv
 from obserwator._version import __version__
 from obserwator.datasets import (
-    _CHMU_METEO_NOW_FILE,
     ProviderDescriptor,
-    _station_files,
-    get_dataset,
     get_provider,
     providers,
-    station_source_files,
 )
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -39,7 +33,6 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
 )
 from obserwator.fetch import (
-    _IDENTIFY,
     DEFAULT_TIMEOUT,
     DownloadResult,
     _get,
@@ -62,15 +55,6 @@ _MAP_HEADERS = {
 }
 _KINDS: tuple[Literal["hydro", "meteo"], ...] = ("hydro", "meteo")
 _SOURCES = ("live", "store")
-# The newest dated file of a listed directory, as plans name it.
-_NEWEST = "meta1-<YYYYMMDD>.json"
-# IMGW-PIB current-data API answer of each family whose ``lon``/``lat`` locate the
-# rows of the live list (the first location source of the catalog too), and the
-# key of the station code in it.
-_IMGW_LOCATIONS: Mapping[str, tuple[str, str]] = {
-    "hydro": ("pl.imgw.hydro_now", "id_stacji"),
-    "meteo": ("pl.imgw.meteo_now", "kod_stacji"),
-}
 # Area of a search: west, south, east, north (WGS84 degrees, bounds included).
 Area = tuple[float, float, float, float]
 
@@ -220,184 +204,17 @@ def _matching(
     )
 
 
-@dataclass(frozen=True)
-class _LiveSource:
-    """
-    Live station list of one provider and family.
-
-    ``listing`` marks the URL of a directory listing whose newest
-    ``meta1-<YYYYMMDD>.json`` is the list (ČHMÚ meteo ``now`` metadata);
-    ``locations`` is the URL of the IMGW-PIB current-data API answer of the
-    family, read after the list for the coordinates of its stations.
-    """
-
-    provider: ProviderDescriptor
-    kind: Literal["hydro", "meteo"]
-    url: str
-    listing: bool = False
-    locations: str | None = None
-
-
-def _live_sources(
-    kinds: Sequence[Literal["hydro", "meteo"]],
-    owners: Iterable[ProviderDescriptor],
-) -> list[_LiveSource]:
-    """Live station list of each provider and family, in search order."""
-    # The current ČHMÚ metadata, as the first source of its catalog (§7.2).
-    sources: list[_LiveSource] = []
-    for owner in owners:
-        if owner.id == "CHMU":
-            hydro = _LiveSource(
-                owner, "hydro", _station_files("cz.chmu.hydro_now")[0].url
-            )
-            meteo_now = get_dataset("cz.chmu.meteo_now")
-            meteo = _LiveSource(
-                owner, "meteo", f"{owner.base_url}{meteo_now.server_dir}/", listing=True
-            )
-        else:
-            hydro_list, meteo_list = station_source_files(provider=owner.id)
-            hydro = _LiveSource(
-                owner, "hydro", hydro_list.url, locations=_locations_url("hydro")
-            )
-            meteo = _LiveSource(
-                owner, "meteo", meteo_list.url, locations=_locations_url("meteo")
-            )
-        sources.extend(hydro if family == "hydro" else meteo for family in kinds)
-    return sources
-
-
-def _locations_url(kind: Literal["hydro", "meteo"]) -> str:
-    """URL of the IMGW-PIB current-data API answer of a family."""
-    return _station_files(_IMGW_LOCATIONS[kind][0])[0].url
-
-
 def _live_urls(
     kinds: Sequence[Literal["hydro", "meteo"]],
     owners: Iterable[ProviderDescriptor],
 ) -> list[str]:
     """URLs a live search reads, the newest file of a listing as a pattern (plans)."""
-    urls: list[str] = []
-    for source in _live_sources(kinds, owners):
-        urls.append(source.url)
-        if source.listing:
-            urls.append(source.url + _NEWEST)
-        if source.locations is not None:
-            urls.append(source.locations)
-    return urls
-
-
-def _identity(source: _LiveSource) -> tuple[Mapping[str, str] | None, str]:
-    """Request headers and the server name of errors (ČHMÚ requests name the library)."""
-    if source.provider.id == "CHMU":
-        return _IDENTIFY, source.provider.short_name
-    return None, "IMGW"
-
-
-def _newest(source: _LiveSource, content: bytes) -> str:
-    """URL of the newest ``meta1-<YYYYMMDD>.json`` in the listing of ``source``."""
-    names = sorted(
-        entry.name
-        for entry in parse_listing(content, url=source.url)
-        if _CHMU_METEO_NOW_FILE.fullmatch(entry.name)
-    )
-    if not names:
-        raise ObserwatorDataError(
-            message(
-                "stations.unreadable_listing_no_file", url=source.url, newest=_NEWEST
-            ),
-            details={"url": source.url},
-        )
-    return source.url + names[-1]
-
-
-def _parsed(source: _LiveSource, content: bytes, url: str) -> list[StationListEntry]:
-    """Stations of a live list: an IMGW-PIB CSV or ČHMÚ metadata JSON."""
-    if source.provider.id == "CHMU":
-        return list(iter_stations(content, kind=source.kind, filename=url))
-    return list(parse_stations_csv(content, kind=source.kind))
-
-
-def _degrees(value: object) -> float | None:
-    """A published coordinate (number or numeric text) as a finite float, else None."""
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        return None
-    try:
-        number = float(value)
-    except ValueError:
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _located(
-    entries: list[StationListEntry], source: _LiveSource, response: httpx.Response
-) -> list[StationListEntry]:
-    """
-    The rows of an IMGW-PIB live list with the coordinates of the current-data API.
-
-    Each row whose code the API answer lists with a numeric ``lat`` and ``lon``
-    gets them as published (no border check); other rows keep None.
-    """
-    url = str(response.url)
-    payload = _json_payload(response)
-    if not isinstance(payload, list):
-        raise ObserwatorDataError(
-            message("stations.unexpected_response_from_list_stations", url=url),
-            details={"url": url},
-        )
-    code_key = _IMGW_LOCATIONS[source.kind][1]
-    points: dict[str, tuple[float, float]] = {}
-    for row in payload:
-        if not isinstance(row, dict):
-            continue
-        code = str(row.get(code_key) or "").strip()
-        latitude, longitude = _degrees(row.get("lat")), _degrees(row.get("lon"))
-        if code and latitude is not None and longitude is not None:
-            points.setdefault(code, (latitude, longitude))
     return [
-        replace(entry, latitude=point[0], longitude=point[1])
-        if (point := points.get(entry.station_code)) is not None
-        else entry
-        for entry in entries
+        url
+        for owner in owners
+        for kind in kinds
+        for url in owner.adapter.live_urls(kind)
     ]
-
-
-def _read_live(source: _LiveSource, timeout: float) -> list[StationListEntry]:
-    """
-    Stations of one live list.
-
-    One GET; a listed directory adds its listing, an IMGW-PIB list the
-    current-data API answer of its coordinates.
-    """
-    headers, name = _identity(source)
-    url = source.url
-    if source.listing:
-        listing = _get(url, timeout=timeout, headers=headers, source=name)
-        url = _newest(source, listing.content)
-    response = _get(url, timeout=timeout, headers=headers, source=name)
-    entries = _parsed(source, response.content, url)
-    if source.locations is None:
-        return entries
-    answer = _get(source.locations, timeout=timeout, headers=headers, source=name)
-    return _located(entries, source, answer)
-
-
-async def _read_live_async(
-    source: _LiveSource, timeout: float
-) -> list[StationListEntry]:
-    """Async twin of `_read_live`."""
-    headers, name = _identity(source)
-    url = source.url
-    if source.listing:
-        listing = await _get_async(url, timeout=timeout, headers=headers, source=name)
-        url = _newest(source, listing.content)
-    response = await _get_async(url, timeout=timeout, headers=headers, source=name)
-    entries = _parsed(source, response.content, url)
-    if source.locations is None:
-        return entries
-    answer = await _get_async(
-        source.locations, timeout=timeout, headers=headers, source=name
-    )
-    return _located(entries, source, answer)
 
 
 def _text(value: object) -> str | None:
@@ -570,8 +387,9 @@ def find_stations(
         return _matching(stored, needle, area)
     entries = [
         entry
-        for live in _live_sources(kinds, owners)
-        for entry in _read_live(live, timeout)
+        for owner in owners
+        for family in kinds
+        for entry in owner.adapter.live_stations(family, timeout=timeout)
     ]
     return _matching(entries, needle, area)
 
@@ -597,8 +415,11 @@ async def find_stations_async(
         stored = _stored(root, kinds, owners, explicit=provider is not None)
         return _matching(stored, needle, area)
     entries: list[StationListEntry] = []
-    for live in _live_sources(kinds, owners):
-        entries.extend(await _read_live_async(live, timeout))
+    for owner in owners:
+        for family in kinds:
+            entries.extend(
+                await owner.adapter.live_stations_async(family, timeout=timeout)
+            )
     return _matching(entries, needle, area)
 
 

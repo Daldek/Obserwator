@@ -88,6 +88,7 @@ from obserwator.gui._http import (
     prebuilt_response,
 )
 from obserwator.gui._live import (
+    CURRENT_PROVIDER,
     PMAXTP_METHODS,
     CurrentData,
     Pmaxtp,
@@ -135,11 +136,8 @@ ANALYSES_FORMATS: tuple[str, ...] = ("json", "csv")
 KINDS = ("hydro", "meteo")
 READERS = 4
 """Blocking reads of the data root running at a time (D7: the VPS's 4 vCPU)."""
-CURRENT_PROVIDER = "IMGW"
-"""The provider of the current measurements view: the only live data the GUI serves."""
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
-    "IMGW": ("imgw", "imgw_hydro"),
-    "CHMU": ("chmu",),
+    provider.id: provider.adapter.origins for provider in providers()
 }
 """The origins of each provider's data (``obserwator.attribution``), dropped when an
 instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
@@ -409,15 +407,17 @@ def _station_origins(
     with its details, hydro.imgw.pl's for an IMGW-PIB station whose catalog feature
     carries them (``details_source``, ADR-021).
     """
-    lines = attribution(provider_origin(provider))
-    if details and provider == "IMGW" and properties.get("details_source") is not None:
-        lines = lines | attribution("imgw_hydro")
+    adapter = get_provider(provider).adapter
+    lines = attribution(
+        provider_origin(provider),
+        *adapter.station_origins(properties, location=False, details=details),
+    )
     if not location:
         return lines
-    lines = lines | attribution(border_origin(provider))
-    if provider == "IMGW" and properties.get("location_source") == "static":
-        lines = lines | attribution("imgw_hydro")
-    return lines
+    return lines | attribution(
+        border_origin(provider),
+        *adapter.station_origins(properties, location=True, details=False),
+    )
 
 
 # --- the session and the texts ------------------------------------------------------

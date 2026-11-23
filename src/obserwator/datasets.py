@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from types import MappingProxyType
-from typing import ClassVar, Literal
+from typing import TYPE_CHECKING, ClassVar, Literal
 from urllib.parse import quote
 
 from obserwator._environment import PREFIX
@@ -15,6 +15,9 @@ from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import Message, message
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
+
+if TYPE_CHECKING:
+    from obserwator.providers import ProviderAdapter
 
 YearsArg = int | str | Iterable[int | str]
 """Years: ``2024``, ``"2020-2023"``, ``"2020,2022"`` or ``[2020, "2022-2023"]``."""
@@ -30,11 +33,6 @@ DATASET_KEY_PATTERN = r"^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$"
 
 CATALOG_DATASET = "pl.imgw.stations"
 """Derived dataset key of the IMGW-PIB station catalog ``stations.geojson`` (no descriptor)."""
-
-# Derived dataset key of each provider's station catalog, by provider id (ADR-003 D5).
-_CATALOG_DATASETS: Mapping[str, str] = MappingProxyType(
-    {"IMGW": CATALOG_DATASET, "CHMU": "cz.chmu.stations"}
-)
 
 DATASET_KEY_ALIASES: Mapping[str, str] = MappingProxyType(
     {
@@ -75,37 +73,11 @@ _PARAMS = ("H", "Q", "T")
 
 # ČHMÚ station code: a WIGOS identifier exactly as in the source (ADR-003 D3).
 _WIGOS_CODE = r"0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}"
-# File names of the per-station ČHMÚ archives (spec 2026-10-18 §2.3); other
-# names in a server listing are not files of the datasets.
-_CHMU_HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
-_CHMU_METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
-# Daily ČHMÚ elements in file order and the server directory of each.
-_CHMU_ELEMENT_GROUPS: Mapping[str, str] = MappingProxyType(
-    {
-        "SRA": "precipitation",
-        "T": "temperature",
-        "TMA": "temperature",
-        "TMI": "temperature",
-        "SCE": "snow",
-        "SNO": "snow",
-    }
-)
-# Folder of a country archive: a year or a five-year range (IMGW-PIB layout).
-_FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
 # Site of IMGW-PIB's public data: the current-data API (``IMGW_API_URL``) lies below it.
 _IMGW_SITE = "https://danepubliczne.imgw.pl/"
 # Root of the published files; the warning archives (``arch/``) lie outside the
 # measurement data (``IMGW_PUBLIC_DATA_URL``) below it.
 _IMGW_DATA = f"{_IMGW_SITE}data/"
-# Per-station synop archives of IMGW-PIB (``meteo/dobowe|terminowe/synop``): the
-# folder's period and the station number (the last three digits of its code); the
-# running year is published as monthly files of the whole country instead.
-_IMGW_STATION_FILE = re.compile(r"^(?:([0-9]{4})_)?([0-9]{4})_([0-9]{3})_s\.zip$")
-_IMGW_MONTH_FILE = re.compile(r"^([0-9]{4})_([0-9]{2})_s\.zip$")
-# Monthly archives of the warnings, ``<year>/<MM>.zip`` from September 2017.
-_WARNING_ARCHIVES = ("pl.imgw.warnings_hydro_archive", "pl.imgw.warnings_meteo_archive")
-# Year folder of the actinometric index: a year or a range of years.
-_INDEX_YEARS = re.compile(r"([0-9]{4})(?:-([0-9]{4}))?")
 # Backend of IMGW-PIB's hydrological service hydro.imgw.pl (its map and station pages).
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
@@ -267,6 +239,34 @@ class ProviderDescriptor:
             attribution=". ".join(lines.attribution),
             notice=notice,
         )
+
+    @property
+    def adapter(self) -> ProviderAdapter:
+        """
+        The provider's adapter: what Obserwator does with it beyond this entry (ADR-029).
+
+        Returns
+        -------
+        ProviderAdapter
+            The adapter of ``obserwator.providers`` for `id`.
+        """
+        # The adapters import this registry, so they are reached at call time.
+        from obserwator.providers import adapter
+
+        return adapter(self.id)
+
+    @property
+    def acronym(self) -> str:
+        """
+        The provider's acronym in identifiers and file names (ECO-082, ADR-028).
+
+        Returns
+        -------
+        str
+            `id` in lower case: the first part of its slugs and of its store
+            directories (``imgw``, ``chmu``).
+        """
+        return self.id.lower()
 
 
 @dataclass(frozen=True)
@@ -1407,6 +1407,11 @@ _PROVIDER_BY_NAME = {
     for provider in _PROVIDERS
     for name in (provider.key_prefix, provider.id)
 }
+# Derived dataset key of each provider's station catalog, ``<key prefix>.stations``, by
+# provider id (ADR-003 D5).
+_CATALOG_DATASETS: Mapping[str, str] = MappingProxyType(
+    {provider.id: f"{provider.key_prefix}.stations" for provider in _PROVIDERS}
+)
 # Lookup order key → slug → legacy alias: later entries of the inner tuple win.
 _BY_NAME = {
     name: descriptor
@@ -1420,20 +1425,6 @@ _UNSUPPORTED = {
         "not_published",
         message("datasets.meteo_terminowe_opad_data_do"),
     ),
-}
-# Suffix of the file name and the last year of the first folder of the
-# meteorological five-year grid (klimat 1951_1955, opad 1950_1955, synop
-# 1960_1965, the per-station synop archives 1966_1970); from 1966 all subtypes
-# share the 1966_1970, ... grid.
-_METEO_LAYOUT = {
-    "pl.imgw.meteo_climate_daily": ("k", 1955),
-    "pl.imgw.meteo_precip_daily": ("o", 1955),
-    "pl.imgw.meteo_synop_daily": ("s", 1970),
-    "pl.imgw.meteo_climate_monthly": ("k", 1955),
-    "pl.imgw.meteo_precip_monthly": ("o", 1955),
-    "pl.imgw.meteo_synop_monthly": ("s", 1965),
-    "pl.imgw.meteo_climate_terms": ("k", 1955),
-    "pl.imgw.meteo_synop_terms": ("s", 1970),
 }
 
 
@@ -1789,15 +1780,6 @@ def _parse_params(
     return tuple(param for param in _PARAMS if param in items)
 
 
-def _meteo_folder(year: int, *, first_year: int, first_folder_end: int) -> str:
-    if year > 2000:
-        return str(year)
-    if year <= first_folder_end:
-        return f"{first_year}_{first_folder_end}"
-    start = 1951 + (year - 1951) // 5 * 5
-    return f"{start}_{start + 4}"
-
-
 def _period(year: int, month: int | None, *, hydrological: bool) -> tuple[date, date]:
     if month is None:
         start = date(year - 1, 11, 1) if hydrological else date(year, 1, 1)
@@ -1929,21 +1911,7 @@ def archive_files(
             message("datasets.dataset_has_no_annual_archives", key=descriptor.key),
             details={"option": "dataset", "value": descriptor.key},
         )
-    if _indexed(descriptor):
-        _indexed_years(descriptor, years=years, params=params, stations=stations)
-        raise ObserwatorValidationError(
-            message("datasets.files_named_in_folder_index", key=descriptor.key),
-            details={"option": "dataset", "value": descriptor.key, "reason": "listed"},
-        )
-    if descriptor.archive_scope == "country":
-        return _country_archives(
-            descriptor, years=years, months=months, params=params, stations=stations
-        )
-    if descriptor.provider == "IMGW":
-        return _imgw_station_archives(
-            descriptor, years=years, months=months, params=params, stations=stations
-        )
-    return _station_archives(
+    return get_provider(descriptor.provider).adapter.archive_files(
         descriptor, years=years, months=months, params=params, stations=stations
     )
 
@@ -1963,120 +1931,6 @@ def _minimum_year(years: tuple[int, ...], descriptor: DatasetDescriptor) -> None
                 "minimum": descriptor.first_year,
             },
         )
-
-
-def _country_archives(
-    descriptor: DatasetDescriptor,
-    *,
-    years: YearsArg | None,
-    months: MonthsArg | None,
-    params: Iterable[Literal["H", "Q", "T"]] | None,
-    stations: Iterable[str] | None,
-) -> tuple[ArchiveFile, ...]:
-    """Archives of an IMGW-PIB dataset covering the whole country."""
-    key = descriptor.key
-    if stations is not None:
-        raise ObserwatorValidationError(
-            message("datasets.archives_dataset_cover_whole_country", key=key),
-            details={"option": "stations", "value": key},
-        )
-    if years is None:
-        raise ObserwatorValidationError(
-            message("datasets.dataset_needs_option_years_years", key=key),
-            details={"option": "years", "value": None},
-        )
-    selected_years = parse_years(years)
-    selected_months = (
-        parse_months(months) if months is not None else tuple(range(1, 13))
-    )
-    selected_params = (
-        _parse_params(params, descriptor) if params is not None else _PARAMS
-    )
-    _minimum_year(selected_years, descriptor)
-    first_year = descriptor.first_year or selected_years[0]
-
-    directory = descriptor.server_dir
-    result: list[ArchiveFile] = []
-    folders: set[str] = set()
-    for year in selected_years:
-        if key == "pl.imgw.hydro_daily":
-            if year < 2023:
-                for month in selected_months:
-                    result.append(
-                        _archive(
-                            descriptor,
-                            f"{directory}/{year}/codz_{year}_{month:02d}.zip",
-                            year,
-                            month,
-                        )
-                    )
-            else:
-                result.append(
-                    _archive(descriptor, f"{directory}/{year}/codz_{year}.zip", year)
-                )
-        elif key == "pl.imgw.hydro_phenomena":
-            result.append(
-                _archive(descriptor, f"{directory}/{year}/zjaw_{year}.zip", year)
-            )
-        elif key == "pl.imgw.hydro_monthly":
-            result.append(
-                _archive(descriptor, f"{directory}/{year}/mies_{year}.zip", year)
-            )
-        elif key in _WARNING_ARCHIVES:
-            for month in selected_months:
-                result.append(
-                    _archive(
-                        descriptor,
-                        f"{directory}/{year}/{month:02d}.zip",
-                        year,
-                        month,
-                    )
-                )
-        elif key == "pl.imgw.hydro_semiannual":
-            for param in selected_params:
-                result.append(
-                    _archive(
-                        descriptor,
-                        f"{directory}/{year}/polr_{param}_{year}.zip",
-                        year,
-                        param=param,
-                    )
-                )
-        else:
-            suffix, first_folder_end = _METEO_LAYOUT[key]
-            folder = _meteo_folder(
-                year, first_year=first_year, first_folder_end=first_folder_end
-            )
-            if descriptor.time_unit == "month":
-                if folder in folders:
-                    continue
-                folders.add(folder)
-                first, _, last = folder.partition("_")
-                result.append(
-                    _archive(
-                        descriptor,
-                        f"{directory}/{folder}/{folder}_m_{suffix}.zip",
-                        int(first),
-                        last_year=int(last or first),
-                    )
-                )
-            elif year <= 2000:
-                result.append(
-                    _archive(
-                        descriptor, f"{directory}/{folder}/{year}_{suffix}.zip", year
-                    )
-                )
-            else:
-                for month in selected_months:
-                    result.append(
-                        _archive(
-                            descriptor,
-                            f"{directory}/{folder}/{year}_{month:02d}_{suffix}.zip",
-                            year,
-                            month,
-                        )
-                    )
-    return tuple(result)
 
 
 def _parse_stations(
@@ -2108,256 +1962,11 @@ def _parse_stations(
     return tuple(sorted(set(items)))
 
 
-def _station_archives(
-    descriptor: DatasetDescriptor,
-    *,
-    years: YearsArg | None,
-    months: MonthsArg | None,
-    params: Iterable[Literal["H", "Q", "T"]] | None,
-    stations: Iterable[str] | None,
-) -> tuple[ArchiveFile, ...]:
-    """Per-station files of a ČHMÚ dataset (station × year or station × element)."""
-    key = descriptor.key
-    provider = get_provider(descriptor.provider)
-    if months is not None:
-        raise ObserwatorValidationError(
-            message(
-                "datasets.option_months_does_not_apply",
-                key=key,
-                short_name=provider.short_name,
-            ),
-            details={"option": "months", "value": key},
-        )
-    if params is not None:
-        _parse_params(params, descriptor)
-    if stations is None:
-        raise ObserwatorValidationError(
-            message(
-                "datasets.dataset_needs_option_stations_station",
-                key=key,
-                short_name=provider.short_name,
-            ),
-            details={"option": "stations", "value": None},
-        )
-    codes = _parse_stations(stations, provider)
-    directory = descriptor.server_dir
-    if descriptor.archive_scope == "station_element":
-        if years is not None:
-            raise ObserwatorValidationError(
-                message(
-                    "datasets.files_dataset_cover_whole_history",
-                    short_name=provider.short_name,
-                    key=key,
-                ),
-                details={"option": "years", "value": key},
-            )
-        return tuple(
-            _archive(
-                descriptor,
-                f"{directory}/{group}/dly-{code}-{element}.csv",
-                None,
-                param=element,
-                station_code=code,
-            )
-            for code in codes
-            for element, group in _CHMU_ELEMENT_GROUPS.items()
-        )
-    if years is None:
-        raise ObserwatorValidationError(
-            message("datasets.dataset_needs_option_years_without", key=key),
-            details={"option": "years", "value": None},
-        )
-    selected_years = parse_years(years)
-    _minimum_year(selected_years, descriptor)
-    return tuple(
-        _archive(
-            descriptor,
-            f"{directory}/H_{code}_DQ_{year}.json",
-            year,
-            station_code=code,
-        )
-        for code in codes
-        for year in selected_years
-    )
-
-
-def _imgw_station_file(
-    descriptor: DatasetDescriptor, folder: str, number: str
-) -> ArchiveFile:
-    """
-    Per-station synop archive of IMGW-PIB: one station in one folder.
-
-    The file carries no station code (its name has only the station number),
-    so the archive equals the one `_archive_from_path` gives for its path; it
-    covers the whole folder (a five-year range or a year).
-    """
-    suffix = _METEO_LAYOUT[descriptor.key][0]
-    first, _, last = folder.partition("_")
-    return _archive(
-        descriptor,
-        f"{descriptor.server_dir}/{folder}/{folder}_{number}_{suffix}.zip",
-        int(first),
-        last_year=int(last or first),
-    )
-
-
-def _imgw_month_file(
-    descriptor: DatasetDescriptor, year: int, month: int
-) -> ArchiveFile:
-    """Monthly file of the whole country that stands for the running year's station files."""
-    suffix = _METEO_LAYOUT[descriptor.key][0]
-    return _archive(
-        descriptor,
-        f"{descriptor.server_dir}/{year}/{year}_{month:02d}_{suffix}.zip",
-        year,
-        month,
-    )
-
-
-def _imgw_station_archives(
-    descriptor: DatasetDescriptor,
-    *,
-    years: YearsArg | None,
-    months: MonthsArg | None,
-    params: Iterable[Literal["H", "Q", "T"]] | None,
-    stations: Iterable[str] | None,
-) -> tuple[ArchiveFile, ...]:
-    """
-    Per-station synop archives of IMGW-PIB and the monthly files of the running year.
-
-    Stations give one file per station and folder (the station number is the
-    last three digits of the code; two codes of one number name one file);
-    months give the monthly files of the whole country of the years from 2001.
-    """
-    key = descriptor.key
-    if params is not None:
-        _parse_params(params, descriptor)
-    if years is None:
-        raise ObserwatorValidationError(
-            message("datasets.dataset_needs_option_years_years", key=key),
-            details={"option": "years", "value": None},
-        )
-    if stations is None and months is None:
-        raise ObserwatorValidationError(
-            message("datasets.station_archives_need_stations_or_months", key=key),
-            details={"option": "stations", "value": None},
-        )
-    selected_years = parse_years(years)
-    _minimum_year(selected_years, descriptor)
-    first_year = descriptor.first_year or selected_years[0]
-    first_folder_end = _METEO_LAYOUT[key][1]
-    result: dict[str, ArchiveFile] = {}
-    if stations is not None:
-        for code in _parse_stations(stations, get_provider(descriptor.provider)):
-            for year in selected_years:
-                folder = _meteo_folder(
-                    year, first_year=first_year, first_folder_end=first_folder_end
-                )
-                archive = _imgw_station_file(descriptor, folder, code[-3:])
-                result.setdefault(archive.server_path, archive)
-    if months is not None:
-        selected_months = parse_months(months)
-        recent = [year for year in selected_years if year > 2000]
-        if not recent:
-            raise ObserwatorValidationError(
-                message("datasets.monthly_station_archives_from_2001", key=key),
-                details={"option": "months", "value": list(selected_months)},
-            )
-        for year in recent:
-            for month in selected_months:
-                archive = _imgw_month_file(descriptor, year, month)
-                result.setdefault(archive.server_path, archive)
-    return tuple(result.values())
-
-
-def _imgw_station_path(
-    descriptor: DatasetDescriptor, directory: str, name: str
-) -> ArchiveFile | None:
-    """The archive of a per-station synop path, None when it is no file of the dataset."""
-    parent, _, folder = directory.rpartition("/")
-    period = _FOLDER.fullmatch(folder)
-    if parent != descriptor.server_dir or period is None:
-        return None
-    first = int(period[1])
-    first_year = descriptor.first_year or first
-    if first < first_year or folder != _meteo_folder(
-        first, first_year=first_year, first_folder_end=_METEO_LAYOUT[descriptor.key][1]
-    ):
-        return None
-    if (station := _IMGW_STATION_FILE.fullmatch(name)) is not None:
-        archive = _imgw_station_file(descriptor, folder, station[3])
-    elif (monthly := _IMGW_MONTH_FILE.fullmatch(name)) is not None and (
-        first > 2000 and 1 <= int(monthly[2]) <= 12
-    ):
-        archive = _imgw_month_file(descriptor, first, int(monthly[2]))
-    else:
-        return None
-    return archive if archive.server_path == f"{directory}/{name}" else None
-
-
-def _indexed(descriptor: DatasetDescriptor) -> bool:
-    """Whether the dataset's files are named only in the server's folder index."""
-    return descriptor.provider == "IMGW" and descriptor.update_signal == "listing"
-
-
-def _indexed_years(
-    descriptor: DatasetDescriptor,
-    *,
-    years: YearsArg | None,
-    params: Iterable[Literal["H", "Q", "T"]] | None,
-    stations: Iterable[str] | None,
-) -> tuple[int, ...]:
-    """
-    Years of a dataset named in the folder index, checked offline.
-
-    Its folders are named after the stations, without their codes, so a
-    selection takes every station; months select nothing (the file names
-    follow no rule), as for the yearly archives.
-    """
-    key = descriptor.key
-    if stations is not None:
-        raise ObserwatorValidationError(
-            message("datasets.stations_folders_without_codes", key=key),
-            details={"option": "stations", "value": key},
-        )
-    if params is not None:
-        _parse_params(params, descriptor)
-    if years is None:
-        raise ObserwatorValidationError(
-            message("datasets.dataset_needs_option_years_years", key=key),
-            details={"option": "years", "value": None},
-        )
-    selected = parse_years(years)
-    _minimum_year(selected, descriptor)
-    return selected
-
-
-def _year_folder(name: str) -> tuple[int, int] | None:
-    """First and last year of a year folder of the folder index (``2015``, ``1991-1992``)."""
-    span = _INDEX_YEARS.fullmatch(name)
-    if span is None:
-        return None
-    return int(span[1]), int(span[2] or span[1])
-
-
-def _indexed_file(descriptor: DatasetDescriptor, relative: str) -> ArchiveFile:
-    """
-    The archive of a file found in the folder index, by its path below ``server_dir``.
-
-    A file in a year folder covers that folder's years; any other file (the
-    summary of the dataset, a station's documents) has no year.
-    """
-    path = f"{descriptor.server_dir}/{relative}"
-    for part in relative.split("/")[:-1]:
-        if (span := _year_folder(part)) is not None:
-            return _archive(descriptor, path, span[0], last_year=span[1])
-    return _archive(descriptor, path, None)
-
-
 # Files of each station-source dataset (ADR-015): the provider's station lists and
 # the station metadata its catalog is built from, with their fixed names; the
-# daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmu.meteo_now`` is the newest of its listing.
-# The file of hydro.imgw.pl's station details gathers one answer per station (ADR-021).
+# daily ``meta1-<YYYYMMDD>.json`` of ``cz.chmu.meteo_now``, the newest of its listing,
+# is a file of its adapter's. The file of hydro.imgw.pl's station details gathers one
+# answer per station (ADR-021).
 _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "pl.imgw.hydro_stations": ("lista_stacji_hydro.csv",),
@@ -2371,34 +1980,18 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.meteo_now": (),
     }
 )
-_CHMU_METEO_NOW_FILE = re.compile(r"^meta1-[0-9]{8}\.json$")
-# Station-source datasets of each provider's catalog: the hydro and meteo lists,
-# then the hydro and meteo station metadata.
-_CATALOG_SOURCES: Mapping[str, tuple[str, str, str, str]] = MappingProxyType(
-    {
-        "IMGW": (
-            "pl.imgw.hydro_stations",
-            "pl.imgw.meteo_stations",
-            "pl.imgw.hydro_now",
-            "pl.imgw.meteo_now",
-        ),
-        "CHMU": (
-            "cz.chmu.hydro_stations",
-            "cz.chmu.meteo_stations",
-            "cz.chmu.hydro_now",
-            "cz.chmu.meteo_now",
-        ),
-    }
-)
+
+
+def _fixed_station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | None:
+    """A file with a fixed name of a station-source dataset; None for another name."""
+    if name in _STATION_FILES.get(descriptor.key, ()):
+        return _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
+    return None
 
 
 def _station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | None:
     """A file of a station-source dataset by its name; None when it is no file of it."""
-    if name in _STATION_FILES.get(descriptor.key, ()) or (
-        descriptor.key == "cz.chmu.meteo_now" and _CHMU_METEO_NOW_FILE.fullmatch(name)
-    ):
-        return _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
-    return None
+    return get_provider(descriptor.provider).adapter.station_file(descriptor, name)
 
 
 def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
@@ -2432,7 +2025,7 @@ def station_source_files(*, provider: str = "IMGW") -> tuple[ArchiveFile, Archiv
     ObserwatorValidationError
         If ``provider`` names no provider.
     """
-    hydro, meteo, _, _ = _CATALOG_SOURCES[get_provider(provider).id]
+    hydro, meteo, _, _ = get_provider(provider).adapter.station_sources
     return _station_files(hydro)[0], _station_files(meteo)[0]
 
 
@@ -2469,39 +2062,6 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
         return _station_file(descriptor, name)
     if descriptor.server_dir is None:
         return None
-    if _indexed(descriptor):
-        prefix = f"{descriptor.server_dir}/"
-        if not server_path.startswith(prefix) or server_path.endswith("/"):
-            return None
-        return _indexed_file(descriptor, server_path.removeprefix(prefix))
-    if descriptor.archive_scope == "station_year" and descriptor.provider == "IMGW":
-        return _imgw_station_path(descriptor, directory, name)
-    if descriptor.archive_scope == "station_year":
-        hydro = _CHMU_HYDRO_FILE.fullmatch(name)
-        if hydro is None or directory != descriptor.server_dir:
-            return None
-        year = int(hydro[2])
-        if descriptor.first_year is not None and year < descriptor.first_year:
-            return None
-        return archive_files(descriptor.key, stations=[hydro[1]], years=[year])[0]
-    if descriptor.archive_scope == "station_element":
-        meteo = _CHMU_METEO_FILE.fullmatch(name)
-        if meteo is None or directory != (
-            f"{descriptor.server_dir}/{_CHMU_ELEMENT_GROUPS[meteo[2]]}"
-        ):
-            return None
-        return next(
-            item
-            for item in archive_files(descriptor.key, stations=[meteo[1]])
-            if item.param == meteo[2]
-        )
-    parent, _, folder = directory.rpartition("/")
-    years = _FOLDER.fullmatch(folder)
-    if years is None or parent != descriptor.server_dir:
-        return None
-    first = max(int(years[1]), descriptor.first_year or 1)
-    for year in range(first, int(years[2] or years[1]) + 1):
-        for item in archive_files(descriptor.key, years=(year,)):
-            if item.server_path == server_path:
-                return item
-    return None
+    return get_provider(descriptor.provider).adapter.archive_from_path(
+        descriptor, server_path
+    )

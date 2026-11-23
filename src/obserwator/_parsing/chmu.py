@@ -30,7 +30,7 @@ from decimal import Decimal
 from typing import Literal, NoReturn
 from urllib.parse import unquote
 
-from obserwator.datasets import _CHMU_HYDRO_FILE, _CHMU_METEO_FILE
+from obserwator.datasets import _WIGOS_CODE
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import message, reason
 from obserwator.models import Measurement, NormalizedRecord, StationListEntry
@@ -38,6 +38,11 @@ from obserwator.models import Measurement, NormalizedRecord, StationListEntry
 HYDRO_DATASET = "cz.chmu.hydro_daily"
 METEO_DATASET = "cz.chmu.meteo_daily"
 PROVIDER = "CHMU"
+
+HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
+"""Name of a daily hydro file: group 1 the station code, group 2 the year (§2.3)."""
+METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
+"""Name of a daily meteo file: group 1 the station code, group 2 the element (§2.3)."""
 
 ELEMENT_VARIABLES: Mapping[str, str] = {
     "SRA": "P",
@@ -265,7 +270,7 @@ def parse_chmu_hydro_daily(
         of ``filename``, or one date of a variable has two different values.
         The message names the file and the JSON path.
     """
-    match = _filename_match(filename, _CHMU_HYDRO_FILE, "H_<code>_DQ_<year>.json")
+    match = _filename_match(filename, HYDRO_FILE, "H_<code>_DQ_<year>.json")
     code, year = match.group(1), int(match.group(2))
     root = _load_json(_decode(content, filename), filename, decimal=False)
     if not isinstance(root, dict):
@@ -481,7 +486,7 @@ def parse_chmu_meteo_daily(
         ``QUALITY`` is not an integer, or one date has two different rows.
         The message names the file and the line.
     """
-    match = _filename_match(filename, _CHMU_METEO_FILE, "dly-<code>-<element>.csv")
+    match = _filename_match(filename, METEO_FILE, "dly-<code>-<element>.csv")
     code, element = match.group(1), match.group(2)
     variable = ELEMENT_VARIABLES[element]
     reader = csv.reader(io.StringIO(_decode(content, filename)))
