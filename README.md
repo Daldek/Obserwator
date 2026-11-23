@@ -251,7 +251,7 @@ Data is written only where the user says: `--output-dir` (plain files), `--root`
 | [USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md) | task-oriented guide to the library, the CLI, REST, the GUI and the MCP server; configuration, the versioned store, Docker, server logs |
 | [ARCHITECTURE.md](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) | layers, store layout, data flow, CI/CD |
 | [CODEBASE.md](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) | public API, command catalog, option and error tables, data formats |
-| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-028 |
+| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-030 |
 | [PRD.md](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) | product requirements and scope |
 | [CHANGELOG.md](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) | changes per release, including the breaking changes and the migration from IMGWTools 2.1.1 |
 
