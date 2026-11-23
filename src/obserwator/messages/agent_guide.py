@@ -49,11 +49,16 @@ MESSAGES = {
         "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` "
         "osobno.",
     ),
+    # Braces of a key pattern are doubled: the text is a format string.
     "captures": Text(
-        "Captures (`pl.imgw.*_current`, unverified, one version a UTC day): `store "
-        "sync` alone.",
-        "Zapisy (`pl.imgw.*_current`, niezweryfikowane, wersja na dobę UTC): `store "
-        "sync` osobno.",
+        "Captures (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_{{current,recent}}`, unverified, one version a UTC day): "
+        "`store sync` alone; `pace_until` first harvests the last UTC day of "
+        "`pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`.",
+        "Zapisy (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_{{current,recent}}`, niezweryfikowane, wersja na dobę UTC): "
+        "`store sync` osobno; `pace_until` najpierw pobiera ostatnią dobę UTC "
+        "`pl.imgw.hydro_operational` albo `cz.chmu.hydro_recent`.",
     ),
     "outside_store": Text(
         "Download only (`datasets download`):",

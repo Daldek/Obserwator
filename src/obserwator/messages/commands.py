@@ -68,8 +68,10 @@ MESSAGES = {
         "Szereg półroczny obsługuje wyłącznie rok hydrologiczny",
     ),
     "obserwator_plan_1_plan_excludes": Text(
-        "An obserwator-plan/1 plan excludes the options datasets, years, months and stations",
-        "Plan obserwator-plan/1 wyklucza opcje datasets, years, months i stations",
+        "An obserwator-plan/1 plan excludes the options datasets, years, months, "
+        "stations and pace_until",
+        "Plan obserwator-plan/1 wyklucza opcje datasets, years, months, stations i "
+        "pace_until",
     ),
     "station_codes_outside_grammar_dataset": Text(
         "Station codes outside the {short_name} grammar of the dataset {key}: "
@@ -284,10 +286,12 @@ MESSAGES = {
     "datasets_help": Text(
         "Comma-separated store datasets: key, slug or legacy alias; datasets of one "
         "kind: pl.imgw.* or cz.chmu.*; station sources (*_stations, *_now, "
-        "pl.imgw.*_details) alone",
+        "pl.imgw.*_details) alone; captures (*_current, *_operational, "
+        "cz.chmu.hydro_recent) alone",
         "Zbiory magazynu rozdzielone przecinkami: klucz, slug albo alias legacy; "
         "zbiory jednego rodzaju: pl.imgw.* albo cz.chmu.*; źródła stacji "
-        "(*_stations, *_now, pl.imgw.*_details) osobno",
+        "(*_stations, *_now, pl.imgw.*_details) osobno; zapisy (*_current, "
+        "*_operational, cz.chmu.hydro_recent) osobno",
     ),
     "family_help": Text(
         "Kind: hydro, meteo or groundwater; none = every family",
@@ -307,13 +311,13 @@ MESSAGES = {
     "store_years_help": Text(
         "Years: numbers or ranges, e.g. 2023-2025 or 2020,2022; required for "
         "pl.imgw.*, optional for the ČHMÚ files of a year or month "
-        "(cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly, _recent; none = "
-        "the published years), not allowed for cz.chmu.meteo_daily and "
+        "(cz.chmu.hydro_daily, _hourly, cz.chmu.groundwater_daily, _weekly, _recent; "
+        "none = the published years), not allowed for cz.chmu.meteo_daily and "
         "cz.chmu.groundwater_characteristic",
         "Roczniki: liczby lub zakresy, np. 2023-2025 albo 2020,2022; wymagane dla "
         "pl.imgw.*, opcjonalne dla plików ČHMÚ roku albo miesiąca "
-        "(cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly, _recent; brak = "
-        "lata opublikowane), niedozwolone dla cz.chmu.meteo_daily i "
+        "(cz.chmu.hydro_daily, _hourly, cz.chmu.groundwater_daily, _weekly, _recent; "
+        "brak = lata opublikowane), niedozwolone dla cz.chmu.meteo_daily i "
         "cz.chmu.groundwater_characteristic",
     ),
     "months_help": Text(
@@ -447,8 +451,10 @@ MESSAGES = {
         "Powstaje z katalogu komend i rejestrów.",
     ),
     "datasets_list_description": Text(
-        "List the datasets of the registry: keys, providers, variables and first year.",
-        "Wypisz zbiory z rejestru: klucze, dostawców, zmienne i pierwszy rocznik.",
+        "List the datasets of the registry. Each gives its key, provider, variables "
+        "and first year.",
+        "Wypisz zbiory z rejestru. Każdy podaje klucz, dostawcę, zmienne i pierwszy "
+        "rocznik.",
     ),
     "datasets_files_description": Text(
         "List the source files of a dataset for given years or stations. Offline, no "
@@ -457,17 +463,18 @@ MESSAGES = {
         "bez pobierania.",
     ),
     "datasets_download_description": Text(
-        "Download the source files of a dataset as plain files (--output-dir) or "
-        "into the raw root (--root). Plain files are named like the provider's "
-        "server paths; an existing one needs --force.",
-        "Pobierz pliki źródłowe zbioru: zwykłe (--output-dir) albo do katalogu "
-        "surowego (--root). Zwykłe pliki mają nazwy jak ścieżki serwera dostawcy; "
-        "istniejący plik wymaga --force.",
+        "Download the source files of a dataset as plain files or into the raw root. "
+        "Plain files (--output-dir) are named like the provider's server paths, an "
+        "existing one needs --force; --root stores versions.",
+        "Pobierz pliki źródłowe zbioru: zwykłe albo do katalogu surowego. Zwykłe "
+        "pliki (--output-dir) mają nazwy jak ścieżki serwera dostawcy, istniejący "
+        "plik wymaga --force; --root zapisuje wersje.",
     ),
     "datasets_providers_description": Text(
-        "List the data providers: countries, licenses, station code patterns, "
-        "datasets.",
-        "Wypisz dostawców danych: kraje, licencje, wzorce kodów stacji i zbiory.",
+        "List the data providers. Each gives its country, license, station code "
+        "pattern and datasets.",
+        "Wypisz dostawców danych. Każdy podaje kraj, licencję, wzorzec kodów stacji "
+        "i zbiory.",
     ),
     "stations_find_description": Text(
         "Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.",
@@ -557,11 +564,10 @@ MESSAGES = {
         "Sprawdź komórkę PMAXTP w katalogu surowym bez pobierania.",
     ),
     "pmaxtp_sync_description": Text(
-        "Download the PMAXTP cell of a point into the raw root or, with "
-        "--output-dir, as plain files. The plain files are cell.json and "
-        "response.json.",
-        "Pobierz komórkę PMAXTP punktu do katalogu surowego albo, z --output-dir, "
-        "jako zwykłe pliki. Zwykłe pliki to cell.json i response.json.",
+        "Download the PMAXTP cell of a point into the raw root or as plain files. "
+        "The plain files (--output-dir) are cell.json and response.json.",
+        "Pobierz komórkę PMAXTP punktu do katalogu surowego albo jako zwykłe pliki. "
+        "Zwykłe pliki (--output-dir) to cell.json i response.json.",
     ),
     "pmaxtp_read_description": Text(
         "Read a saved PMAXTP cell from the raw root. It works offline.",
@@ -588,35 +594,58 @@ MESSAGES = {
     ),
     "store_check_description": Text(
         "Check the freshness of the dataset archives without downloading data. "
-        "Sources: listing and HEAD (IMGW-PIB), the server listing alone (ČHMÚ); "
-        "station lists by HEAD, station metadata without a signal are always "
-        "downloaded by store sync; the captures of current data (*_current) are "
-        "checked offline against the capture spool.",
+        "Sources: listing and HEAD (IMGW-PIB), the datastore's listing (IMGW-PIB's "
+        "telemetry), the server listing alone (ČHMÚ); station lists by HEAD, station "
+        "metadata without a signal are always downloaded by store sync; the captures "
+        "(*_current, *_operational, cz.chmu.hydro_recent) are checked offline "
+        "against the capture spool.",
         "Sprawdź aktualność archiwów zbiorów bez pobierania danych. Źródła: listing "
-        "i HEAD (IMGW-PIB), sam listing serwera (ČHMÚ); listy stacji przez HEAD, "
-        "metadane stacji bez sygnału store sync pobiera zawsze; zapisy danych "
-        "bieżących (*_current) sprawdza offline względem bufora zapisów.",
+        "i HEAD (IMGW-PIB), listing magazynu danych (telemetria IMGW-PIB), sam "
+        "listing serwera (ČHMÚ); listy stacji przez HEAD, metadane stacji bez "
+        "sygnału store sync pobiera zawsze; zapisy (*_current, *_operational, "
+        "cz.chmu.hydro_recent) sprawdza offline względem bufora zapisów.",
     ),
     "store_check_rule_1": Text(
         "plan written only outside the store, in an existing directory",
         "plan zapisywany wyłącznie poza magazynem, w istniejącym katalogu",
     ),
     "store_sync_description": Text(
-        "Download new or missing archives into the raw root, by plan or by datasets "
-        "and stations. It writes raw data only (archives, station lists, station "
-        "metadata, the captures of current data: each closed UTC day of the capture "
-        "spool sealed into one version); series build and store catalog build from "
-        "them. With --output-dir it writes the selected archives as plain files (no "
-        "plan).",
-        "Pobierz nowe lub brakujące archiwa do katalogu surowego według planu albo "
-        "wyboru zbiorów i stacji. Zapisuje wyłącznie dane surowe (archiwa, listy i "
-        "metadane stacji, zapisy danych bieżących: każdą zakończoną dobę UTC bufora "
-        "zapisów zamkniętą w jedną wersję); series build i store catalog budują z "
-        "nich. Z --output-dir zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
+        "Download new or missing archives into the raw root. By plan or by datasets "
+        "and stations, it writes raw data only (archives, station lists, station "
+        "metadata, the captures: each closed UTC day of the capture spool sealed "
+        "into one version); series build and store catalog build from them. With "
+        "--pace-until it first harvests the last closed UTC day of "
+        "pl.imgw.hydro_operational or cz.chmu.hydro_recent at its source, paced "
+        "until that local time, and seals today's day too. With --output-dir it "
+        "writes the selected archives as plain files (no plan).",
+        "Pobierz nowe lub brakujące archiwa do katalogu surowego. Według planu albo "
+        "wyboru zbiorów i stacji zapisuje wyłącznie dane surowe (archiwa, listy i "
+        "metadane stacji, zapisy: każdą zakończoną dobę UTC bufora zapisów "
+        "zamkniętą w jedną wersję); series build i store catalog budują z nich. Z "
+        "--pace-until najpierw pobiera u źródła ostatnią zakończoną dobę UTC "
+        "zbioru pl.imgw.hydro_operational albo cz.chmu.hydro_recent, z odstępami do "
+        "podanej godziny lokalnej, i zamyka też dobę dzisiejszą. Z --output-dir "
+        "zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
     ),
     "store_sync_rule_1": Text(
-        "plan excludes datasets, years, months and stations",
-        "plan wyklucza datasets, years, months i stations",
+        "plan excludes datasets, years, months, stations and pace_until",
+        "plan wyklucza datasets, years, months, stations i pace_until",
+    ),
+    "store_sync_rule_2": Text(
+        "pace_until only with one dataset of pl.imgw.hydro_operational and "
+        "cz.chmu.hydro_recent, alone; stations optional there (none = every station "
+        "of the provider's list), years and months not allowed",
+        "pace_until wyłącznie z jednym zbiorem spośród pl.imgw.hydro_operational i "
+        "cz.chmu.hydro_recent, osobno; stations tam opcjonalne (brak = każda stacja "
+        "z listy dostawcy), years i months niedozwolone",
+    ),
+    "store_sync_pace_until_help": Text(
+        "Harvest first: ask the source for the last closed UTC day, the requests "
+        "spread evenly until this local time HH:MM, at least 5 s apart (a time "
+        "already passed gives 5 s), then seal the spool with today's day",
+        "Najpierw pobór: zapytaj źródło o ostatnią zakończoną dobę UTC, zapytania "
+        "rozłożone równo do tej godziny lokalnej GG:MM, co najmniej co 5 s (godzina "
+        "już miniona daje 5 s), potem zamknij bufor razem z dobą dzisiejszą",
     ),
     "store_catalog_description": Text(
         "Build the station catalog stations.geojson of one provider. Offline: from "
@@ -633,10 +662,11 @@ MESSAGES = {
         "weryfikacją SHA-256.",
     ),
     "series_build_description": Text(
-        "Build the Parquet series of a dataset from the current archives of the raw "
-        "root. The series go into the data root; stations or years build a subset.",
-        "Zbuduj szereg Parquet zbioru z bieżących archiwów katalogu surowego. Szeregi "
-        "trafiają do katalogu danych; stations albo years budują podzbiór.",
+        "Build the Parquet series of a dataset from the raw root. It reads the "
+        "current archives, the series go into the data root; stations or years "
+        "build a subset.",
+        "Zbuduj szereg Parquet zbioru z katalogu surowego. Czyta bieżące archiwa, "
+        "szeregi trafiają do katalogu danych; stations albo years budują podzbiór.",
     ),
     "series_build_stations_help": Text(
         "Build only these stations: comma-separated codes of the dataset's provider "
@@ -679,15 +709,16 @@ MESSAGES = {
         "Odczytaj wartości i flagi szeregu stacji z katalogu danych.",
     ),
     "series_summary_description": Text(
-        "Show the coverage of stations and variables of a series from series.json. It "
-        "needs no pyarrow.",
-        "Pokaż pokrycie stacji i zmiennych szeregu ze spisu series.json. Nie wymaga "
-        "pyarrow.",
+        "Show the coverage of stations and variables of a series. It reads "
+        "series.json and needs no pyarrow.",
+        "Pokaż pokrycie stacji i zmiennych szeregu. Czyta spis series.json i nie "
+        "wymaga pyarrow.",
     ),
     "series_export_description": Text(
-        "Export one station's series as CSV, JSON or Parquet with the provider's "
-        "attribution.",
-        "Wyeksportuj szereg stacji jako CSV, JSON albo Parquet z atrybucją dostawcy.",
+        "Export one station's series as CSV, JSON or Parquet. The provider's "
+        "attribution goes with it.",
+        "Wyeksportuj szereg stacji jako CSV, JSON albo Parquet. Atrybucja dostawcy "
+        "idzie razem z nim.",
     ),
     "series_export_rule_parquet": Text(
         "format=parquet needs output; REST answers every format as an attachment",
@@ -932,6 +963,10 @@ MESSAGES = {
         "synoptic station code of 5 digits",
         "kod stacji synoptycznej z 5 cyfr",
     ),
+    "pattern_pace_until": Text(
+        "local time HH:MM (24 h), e.g. 06:30",
+        "czas lokalny GG:MM (24 h), np. 06:30",
+    ),
     "group_datasets": Text(
         "Registry of providers and datasets: list, files and download",
         "Rejestr dostawców i zbiorów: lista, pliki i pobieranie",
@@ -1014,10 +1049,12 @@ MESSAGES = {
         "params wyłącznie dla pl.imgw.hydro_semiannual",
     ),
     "store_rule_1": Text(
-        "datasets of one kind: country archives pl.imgw.*, the synop station archives "
+        "datasets of one kind: country archives pl.imgw.*, the telemetry "
+        "pl.imgw.hydro_telemetry, the synop station archives "
         "pl.imgw.meteo_synop_daily or station files cz.chmu.*",
-        "zbiory jednego rodzaju: archiwa krajowe pl.imgw.*, archiwa stacji "
-        "synoptycznych pl.imgw.meteo_synop_daily albo pliki stacji cz.chmu.*",
+        "zbiory jednego rodzaju: archiwa krajowe pl.imgw.*, telemetria "
+        "pl.imgw.hydro_telemetry, archiwa stacji synoptycznych "
+        "pl.imgw.meteo_synop_daily albo pliki stacji cz.chmu.*",
     ),
     "store_rule_2": Text(
         "years not earlier than the first year of each dataset",
@@ -1025,12 +1062,12 @@ MESSAGES = {
     ),
     "store_rule_3": Text(
         "years required for pl.imgw.* datasets, optional for the ČHMÚ files of a year "
-        "or month: cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly and "
-        "_recent (none = the years published in the station listing), and not "
+        "or month: cz.chmu.hydro_daily, _hourly, cz.chmu.groundwater_daily, _weekly "
+        "and _recent (none = the years published in the station listing), and not "
         "allowed for cz.chmu.meteo_daily and cz.chmu.groundwater_characteristic",
         "years wymagane dla zbiorów pl.imgw.*, opcjonalne dla plików ČHMÚ roku albo "
-        "miesiąca: cz.chmu.hydro_daily, cz.chmu.groundwater_daily, _weekly i _recent "
-        "(brak = lata opublikowane w listingu stacji) i niedozwolone dla "
+        "miesiąca: cz.chmu.hydro_daily, _hourly, cz.chmu.groundwater_daily, _weekly "
+        "i _recent (brak = lata opublikowane w listingu stacji) i niedozwolone dla "
         "cz.chmu.meteo_daily i cz.chmu.groundwater_characteristic",
     ),
     "series_rule_1": Text(

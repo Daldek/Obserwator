@@ -665,6 +665,71 @@ class SeriesReport:
 
 
 @dataclass(frozen=True)
+class HarvestReport:
+    """
+    The night's harvest of a capture dataset before ``store sync`` seals it (ADR-030 D9).
+
+    The requests of a harvest write only the capture spool; ``store sync`` then seals
+    the days the answers came on into versions (the run's own day included).
+
+    Attributes
+    ----------
+    dataset : str
+        The capture dataset (``pl.imgw.hydro_operational``, ``cz.chmu.hydro_recent``).
+    start, end : datetime.date
+        The first and last UTC day the requests cover.
+    stations : int
+        The stations asked.
+    planned : int
+        The requests planned for them (one per station and source).
+    requests : int
+        The requests made: the station list and the retries of the backoff
+        included.
+    answers : int
+        The answers received, whatever their status, each kept in the spool.
+    failed : int
+        The planned requests without a usable answer: a connection failure, a
+        refusal other than 429 and 5xx, an answer the spool did not keep.
+    skipped : tuple of str
+        The stations skipped until the next run: still answered 429 or 5xx after
+        the backoff (60, 120 and 240 s).
+    stopped : bool
+        Whether the run ended after three connection failures in a row.
+    cancelled : bool
+        Whether the run was cancelled.
+    deadline : datetime.datetime or None
+        The deadline of ``pace_until`` (UTC); None without one.
+    started_at, ended_at : datetime.datetime
+        When the harvest began and ended (UTC).
+    seconds : float
+        Its wall time.
+    error : str or None, optional
+        Why no station was asked (its station list could not be read); None
+        otherwise.
+    error_code : ErrorCode or None, optional
+        The code of that error; None otherwise.
+    """
+
+    dataset: str
+    start: date
+    end: date
+    stations: int
+    planned: int
+    requests: int
+    answers: int
+    failed: int
+    skipped: tuple[str, ...]
+    stopped: bool
+    cancelled: bool
+    deadline: datetime | None
+    started_at: datetime
+    ended_at: datetime
+    seconds: float
+    error: str | None = None
+    error_code: ErrorCode | None = None
+
+
+@dataclass(frozen=True)
 class SyncReport:
     """
     Report of a store synchronisation.
@@ -683,6 +748,10 @@ class SyncReport:
         archive versions with their sidecar size and SHA-256 and their status
         (``new``, ``unchanged``, ``relabeled``); in plain mode the files
         written (``written``, ``replaced``).
+    harvest : HarvestReport or None, optional
+        The harvest of a capture dataset that asks its source before it is sealed
+        (ADR-030 D9); written to the document only when there was one (an
+        optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-sync-report/1"
@@ -690,6 +759,7 @@ class SyncReport:
     items: tuple[OperationResult, ...]
     cancelled: bool
     files: tuple[FileResult, ...] = ()
+    harvest: HarvestReport | None = field(default=None, metadata={"omit_none": True})
 
 
 @dataclass(frozen=True)

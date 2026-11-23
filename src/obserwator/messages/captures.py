@@ -106,4 +106,38 @@ MESSAGES = {
         "The spool holds no readable answer of {dataset} of {day}",
         "Bufor nie zawiera żadnej czytelnej odpowiedzi zbioru {dataset} z {day}",
     ),
+    "harvest_series_unknown": Text(
+        "The series of each station are unknown ({url}: {reason}): every station is "
+        "asked for H, Q and T",
+        "Serie poszczególnych stacji są nieznane ({url}: {reason}): każda stacja jest "
+        "pytana o H, Q i T",
+    ),
+    "not_harvested": Text(
+        "The dataset {dataset} has no harvest: store sync asks its source for nothing "
+        "and seals what the spool holds",
+        "Zbiór {dataset} nie ma poboru: store sync nie pyta jego źródła i zamyka to, "
+        "co jest w buforze",
+    ),
+    "harvest_end_before_start": Text(
+        "The last day {end} of the harvest is before its first day {start}",
+        "Ostatni dzień poboru {end} jest przed jego pierwszym dniem {start}",
+    ),
+    "harvest_unplanned": Text(
+        "The harvest of {dataset} asked no station: {reason}",
+        "Pobór zbioru {dataset} nie zapytał żadnej stacji: {reason}",
+    ),
+    "harvest_stopped": Text(
+        "The harvest of {dataset} ended after {failures} connection failures in a "
+        "row: {count} requests were not asked",
+        "Pobór zbioru {dataset} zakończył się po {failures} błędach połączenia z "
+        "rzędu: {count} zapytań nie wysłano",
+    ),
+    "harvest_done": Text(
+        "The harvest of {dataset} for {start} to {end}: {stations} stations, "
+        "{requests} requests, {answers} answers, {failed} failed, {skipped} stations "
+        "skipped, in {seconds} s",
+        "Pobór zbioru {dataset} za {start}–{end}: stacje {stations}, zapytania "
+        "{requests}, odpowiedzi {answers}, nieudane {failed}, pominięte stacje "
+        "{skipped}, w {seconds} s",
+    ),
 }

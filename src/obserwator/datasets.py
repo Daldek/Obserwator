@@ -78,6 +78,8 @@ _IMGW_SITE = "https://danepubliczne.imgw.pl/"
 # Root of the published files; the warning archives (``arch/``) lie outside the
 # measurement data (``IMGW_PUBLIC_DATA_URL``) below it.
 _IMGW_DATA = f"{_IMGW_SITE}data/"
+# The datastore of the same site: IMGW-PIB's monthly telemetry (``Arch/Telemetria``).
+_IMGW_DATASTORE = f"{_IMGW_SITE}datastore/getfiledown/"
 # Backend of IMGW-PIB's hydrological service hydro.imgw.pl (its map and station pages).
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
@@ -1029,6 +1031,91 @@ _DATASETS = (
         base_url=_HYDRO_BACK,
         tier="operational",
     ),
+    # Every answer of hydro-back's station endpoints ``station/hydro/…`` (the night's
+    # ``status/data``, ``discharge`` and ``water-temperature``, the GUI's live tail,
+    # the station pages of `pl.imgw.hydro_details`), one capture version per UTC day.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_operational",
+        slug="imgw_hydro_operational",
+        kind="hydro",
+        title=message("datasets.title_hydro_operational"),
+        server_dir="station/hydro",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # Every answer of hydro-back's meteorological station endpoints ``station/meteo/…``
+    # (the station pages of `pl.imgw.meteo_details`), as `pl.imgw.hydro_operational`.
+    DatasetDescriptor(
+        key="pl.imgw.meteo_operational",
+        slug="imgw_meteo_operational",
+        kind="meteo",
+        title=message("datasets.title_meteo_operational"),
+        server_dir="station/meteo",
+        parser=None,
+        variables={},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # The map of hydro.imgw.pl's meteorological stations: each station's precipitation
+    # state, asked for the codes of `pl.imgw.meteo_details`.
+    DatasetDescriptor(
+        key="pl.imgw.meteo_states_current",
+        slug="imgw_meteo_states_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_states_current"),
+        server_dir="map/stations/meteorologic",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # The monthly zips of every station's 10-minute H, Q and T (B00020S, B00050S,
+    # B00100S), year folders from 2008; the signal is the datastore's listing
+    # (``POST datastore/getFilesList``), not a folder index.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_telemetry",
+        slug="imgw_hydro_telemetry",
+        kind="hydro",
+        title=message("datasets.title_hydro_telemetry"),
+        server_dir="Arch/Telemetria/Hydro",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="ten_minutes",
+        year_type="calendar",
+        first_year=2008,
+        update_signal="listing",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_IMGW_DATASTORE,
+        tier="telemetry",
+    ),
     DatasetDescriptor(
         key="pl.imgw.hydro_phenomena",
         slug="imgw_hydro_phenomena",
@@ -1448,100 +1535,6 @@ _DATASETS = (
         content_form=_CHMU_JSON,
         volatile_fields=_CHMU_VOLATILE,
     ),
-)
-# Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
-# with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
-# REST route or GUI view lists or accepts them (`get_dataset`, the providers'
-# ``datasets`` and the choices of the catalog read `_DATASETS`) until their step
-# moves them there (O2 for every one of them; H2a moved the six captures of current
-# data above, beside IMGW-PIB's stored datasets).
-_IMGW_DATASTORE = f"{_IMGW_SITE}datastore/getfiledown/"
-_PENDING = (
-    # Every answer of hydro-back's station endpoints ``station/hydro/…`` (the night's
-    # ``status/data``, ``discharge`` and ``water-temperature``, the GUI's live tail,
-    # the station pages of `pl.imgw.hydro_details`), one capture version per UTC day.
-    DatasetDescriptor(
-        key="pl.imgw.hydro_operational",
-        slug="imgw_hydro_operational",
-        kind="hydro",
-        title=message("datasets.title_hydro_operational"),
-        server_dir="station/hydro",
-        parser=None,
-        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
-        time_unit="hour",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_HYDRO_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_HYDRO_BACK,
-        tier="operational",
-    ),
-    # Every answer of hydro-back's meteorological station endpoints ``station/meteo/…``
-    # (the station pages of `pl.imgw.meteo_details`), as `pl.imgw.hydro_operational`.
-    DatasetDescriptor(
-        key="pl.imgw.meteo_operational",
-        slug="imgw_meteo_operational",
-        kind="meteo",
-        title=message("datasets.title_meteo_operational"),
-        server_dir="station/meteo",
-        parser=None,
-        variables={},
-        time_unit="hour",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_HYDRO_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_HYDRO_BACK,
-        tier="operational",
-    ),
-    # The map of hydro.imgw.pl's meteorological stations: each station's precipitation
-    # state, asked for the codes of `pl.imgw.meteo_details`.
-    DatasetDescriptor(
-        key="pl.imgw.meteo_states_current",
-        slug="imgw_meteo_states_current",
-        kind="meteo",
-        title=message("datasets.title_meteo_states_current"),
-        server_dir="map/stations/meteorologic",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_HYDRO_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_HYDRO_BACK,
-        tier="operational",
-    ),
-    # The monthly zips of every station's 10-minute H, Q and T (B00020S, B00050S,
-    # B00100S), year folders from 2008; the signal is the datastore's listing
-    # (``POST datastore/getFilesList``), not a folder index.
-    DatasetDescriptor(
-        key="pl.imgw.hydro_telemetry",
-        slug="imgw_hydro_telemetry",
-        kind="hydro",
-        title=message("datasets.title_hydro_telemetry"),
-        server_dir="Arch/Telemetria/Hydro",
-        parser=None,
-        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
-        time_unit="ten_minutes",
-        year_type="calendar",
-        first_year=2008,
-        update_signal="listing",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        base_url=_IMGW_DATASTORE,
-        tier="telemetry",
-    ),
     # ČHMÚ's day files of 10-minute H, Q and TH (never rewritten, published about
     # 00:20 UTC the next day), the 548 stations of a day in one capture version.
     DatasetDescriptor(
@@ -1584,28 +1577,6 @@ _PENDING = (
         archive_scope="country_day",
         tier="operational",
     ),
-    # ČHMÚ's groundwater ``now`` files, an object's latest daily value rewritten every
-    # hour (ADR-032): captured when they are asked for, like the hydro ``now`` files;
-    # the same values come in `cz.chmu.groundwater_recent` the next night.
-    DatasetDescriptor(
-        key="cz.chmu.groundwater_current",
-        slug="chmu_groundwater_current",
-        kind="groundwater",
-        title=message("datasets.title_chmu_groundwater_current"),
-        server_dir="hydrology/groundwater/now/data",
-        parser=None,
-        variables={"H_asl": "m", "spring_yield": "l/s"},
-        time_unit="day",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_CHMU_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        provider="CHMU",
-        archive_scope="country_day",
-        tier="operational",
-    ),
     # ČHMÚ's validated hourly HH and QH, one file per station and year (from 1905
     # in the listing of 2026-11-16), published once a year like the daily DQ.
     DatasetDescriptor(
@@ -1628,6 +1599,36 @@ _PENDING = (
         content_form=_CHMU_JSON,
         volatile_fields=_CHMU_VOLATILE,
         tier="verified",
+    ),
+)
+# Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
+# with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
+# REST route or GUI view lists or accepts them (`get_dataset`, the providers'
+# ``datasets`` and the choices of the catalog read `_DATASETS`) until their step
+# moves them there (H2a moved the six captures of current data, O2 the datasets of
+# the operational series, beside each provider's stored datasets).
+_PENDING = (
+    # ČHMÚ's groundwater ``now`` files, an object's latest daily value rewritten every
+    # hour (ADR-032): captured when they are asked for, like the hydro ``now`` files;
+    # the same values come in `cz.chmu.groundwater_recent` the next night.
+    DatasetDescriptor(
+        key="cz.chmu.groundwater_current",
+        slug="chmu_groundwater_current",
+        kind="groundwater",
+        title=message("datasets.title_chmu_groundwater_current"),
+        server_dir="hydrology/groundwater/now/data",
+        parser=None,
+        variables={"H_asl": "m", "spring_yield": "l/s"},
+        time_unit="day",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="country_day",
+        tier="operational",
     ),
 )
 _REGISTRY = _DATASETS + _PENDING

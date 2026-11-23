@@ -152,10 +152,13 @@ _STATION = STATION_CODE_PATTERN
 # Live IMGW-PIB readings accept only IMGW-PIB codes.
 _IMGW_STATION = "^[0-9]{9}$"
 _SYNOP_STATION = "^[0-9]{5}$"
+# The end of a harvest's window, local time (ADR-030 D9).
+_PACE_UNTIL = "^([01][0-9]|2[0-3]):[0-5][0-9]$"
 _PATTERN_TEXT = {
     _STATION: message("commands.pattern_station"),
     _IMGW_STATION: message("commands.pattern_imgw_station"),
     _SYNOP_STATION: message("commands.pattern_synop_station"),
+    _PACE_UNTIL: message("commands.pattern_pace_until"),
 }
 _INTEGER = re.compile(r"-?[0-9]+")
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -1056,6 +1059,16 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
+            # The night's harvest of a capture dataset (ADR-030 D9): a local job of
+            # the deployment's timer, no REST parameter.
+            _option(
+                "pace_until",
+                "str",
+                message("commands.store_sync_pace_until_help"),
+                pattern=_PACE_UNTIL,
+                rest="local",
+                store_only=True,
+            ),
         ),
         function="sync_store",
         result_type="SyncReport",
@@ -1066,6 +1079,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         exclusive=_TARGETS,
         rules=(
             message("commands.store_sync_rule_1"),
+            message("commands.store_sync_rule_2"),
             *_STORE_RULES,
         ),
         writes="add",
@@ -1841,6 +1855,7 @@ def _rules_store_check(options: Options) -> None:
         options.get("years"),
         options.get("months"),
         options.get("stations"),
+        pace_until=options.get("pace_until"),
     )
 
 
@@ -1857,7 +1872,7 @@ def _rules_store_sync(options: Options) -> None:
             return
         _rules_store_check(options)
         return
-    selectors = ("datasets", "years", "months", "stations")
+    selectors = ("datasets", "years", "months", "stations", "pace_until")
     given = [name for name in selectors if name in options]
     if given:
         _fail(
@@ -3084,7 +3099,8 @@ def _sync_lines(options: Options, result: object) -> Attribution:
 
     A sync writes raw data only (ADR-015): the provider's files verbatim, except
     the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
-    which are processed data.
+    which are processed data. A harvest's answers are kept verbatim (ADR-030 D9),
+    so its dataset's lines stand even when no day was sealed.
     """
     report = cast(SyncReport, result)
     keys = [
@@ -3092,6 +3108,8 @@ def _sync_lines(options: Options, result: object) -> Attribution:
         for item in report.items
         if (slot := item.slot) is not None and slot.startswith("archive:")
     ]
+    if report.harvest is not None:
+        keys.append(report.harvest.dataset)
     kept = [key for key in keys if get_dataset(key).kept_fields]
     verbatim = [key for key in keys if key not in kept]
     return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
@@ -3666,7 +3684,7 @@ def _check_store_sync(options: Options, hooks: Hooks) -> StorePlan:
         )
     root = cast(Path, options["root"])
     if "plan" not in options:
-        selection = ("root", "datasets", "years", "months", "stations")
+        selection = ("root", "datasets", "years", "months", "stations", "pace_until")
         return cast(
             StorePlan,
             _call(

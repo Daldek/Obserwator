@@ -107,6 +107,11 @@ _REGISTRY = [
         None,
     ),
     ("pl.imgw.hydro_states_current", "hydro", True, "snapshot", "calendar", None, None),
+    # The operational series of hydro.imgw.pl and the monthly telemetry (ADR-030, O2).
+    ("pl.imgw.hydro_operational", "hydro", True, "hour", "calendar", None, None),
+    ("pl.imgw.meteo_operational", "meteo", True, "hour", "calendar", None, None),
+    ("pl.imgw.meteo_states_current", "meteo", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.hydro_telemetry", "hydro", True, "ten_minutes", "calendar", 2008, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
         "pl.imgw.meteo_climate_monthly",
@@ -171,6 +176,9 @@ _CHMU_KEYS = [
     "cz.chmu.groundwater_characteristic",
     "cz.chmu.groundwater_stations",
     "cz.chmu.groundwater_now",
+    "cz.chmu.hydro_recent",
+    "cz.chmu.hydro_current",
+    "cz.chmu.hydro_hourly",
 ]
 
 
@@ -209,7 +217,14 @@ def test_datasets_kind_filter():
     ] + ["cz.chmu.meteo_daily", "cz.chmu.meteo_stations", "cz.chmu.meteo_now"]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
-    ] + ["cz.chmu.hydro_daily", "cz.chmu.hydro_stations", "cz.chmu.hydro_now"]
+    ] + [
+        "cz.chmu.hydro_daily",
+        "cz.chmu.hydro_stations",
+        "cz.chmu.hydro_now",
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
+        "cz.chmu.hydro_hourly",
+    ]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
@@ -270,8 +285,10 @@ def test_aliases_without_descriptor_explain_reason(alias, reason):
     assert alias in str(exc.value)
 
 
-# ADR-030: the captures of current data (H2a), served with their (tier, time_unit,
-# archive_scope); every other served dataset but ČHMÚ's groundwater months is verified.
+# ADR-030: the captures (H2a's six of current data, O2's of hydro.imgw.pl's station
+# endpoints and map and ČHMÚ's day files), served with their (tier, time_unit,
+# archive_scope); every other served dataset but IMGW-PIB's telemetry and ČHMÚ's
+# groundwater months is verified.
 _CAPTURES = {
     "pl.imgw.hydro_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.meteo_current": ("operational", "snapshot", "country_day"),
@@ -279,24 +296,22 @@ _CAPTURES = {
     "pl.imgw.warnings_hydro_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.warnings_meteo_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.hydro_states_current": ("operational", "snapshot", "country_day"),
-}
-# ADR-030: the datasets of the operational series, declared before the steps that
-# serve them, with their (tier, time_unit, archive_scope).
-_DECLARED = {
     "pl.imgw.hydro_operational": ("operational", "hour", "country_day"),
     "pl.imgw.meteo_operational": ("operational", "hour", "country_day"),
     "pl.imgw.meteo_states_current": ("operational", "snapshot", "country_day"),
-    "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
     "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),
-    "cz.chmu.hydro_hourly": ("verified", "hour", "station_year"),
+}
+# ADR-030, ADR-032: the datasets declared before the steps that serve them, with
+# their (tier, time_unit, archive_scope).
+_DECLARED = {
     "cz.chmu.groundwater_current": ("operational", "day", "country_day"),
 }
 
 
 def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
-    # ADR-030, ADR-032: the captures of current data and ČHMÚ's groundwater months
-    # (recent) are the operational data served.
+    # ADR-030, ADR-032: the captures, the telemetry and ČHMÚ's groundwater months
+    # (recent) are the data of other tiers served; ČHMÚ's hourly set is verified.
     served = datasets()
     assert {
         d.key: (d.tier, d.time_unit, d.archive_scope)
@@ -304,6 +319,7 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
         if d.tier != "verified"
     } == {
         **_CAPTURES,
+        "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
         "cz.chmu.groundwater_recent": ("operational", "day", "station_month"),
     }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
@@ -320,14 +336,6 @@ def test_declared_datasets_follow_the_served_ones_with_their_tiers():
     assert {d.key: (d.tier, d.time_unit, d.archive_scope) for d in declared} == (
         _DECLARED
     )
-    assert [d.key for d in datasets(kind="hydro", provider="CHMU", pending=True)] == [
-        "cz.chmu.hydro_daily",
-        "cz.chmu.hydro_stations",
-        "cz.chmu.hydro_now",
-        "cz.chmu.hydro_recent",
-        "cz.chmu.hydro_current",
-        "cz.chmu.hydro_hourly",
-    ]
     # The conventions of the served registry hold before a step serves them.
     names = [name for d in registry for name in (d.key, d.slug)]
     assert len(names) == len(set(names))

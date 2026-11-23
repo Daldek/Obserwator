@@ -18,7 +18,7 @@ capture spool, ADR-030 D7).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -40,11 +40,11 @@ if TYPE_CHECKING:
         ProviderDescriptor,
         YearsArg,
     )
-    from obserwator.fetch import DownloadResult
+    from obserwator.fetch import DownloadResult, PacedRequest, PacedSession
     from obserwator.messages import Message
     from obserwator.models import NormalizedRecord, StationListEntry
     from obserwator.store.catalog import CatalogBuild
-    from obserwator.store.types import CatalogReport
+    from obserwator.store.types import CatalogReport, NoticeHook
 
 __all__ = [
     "Answer",
@@ -55,7 +55,7 @@ __all__ = [
     "SourceAction",
 ]
 
-CheckScope = Literal["country", "folders", "stations"]
+CheckScope = Literal["country", "folders", "stations", "listing"]
 """
 How ``store check`` finds and checks the files of a measurement dataset.
 
@@ -63,7 +63,9 @@ How ``store check`` finds and checks the files of a measurement dataset.
 HEAD; ``folders``: files named in the index of each folder of the selected years
 (`ProviderAdapter.folders`), checked by HEAD; ``stations``: one directory listing per
 directory of the station files (`ProviderAdapter.listed_station`), which is their
-signal.
+signal; ``listing``: files enumerated offline and published when the provider's
+listing of their directory names them (`ProviderAdapter.listing`), without any HTTP
+signal: a stored file is current, as published once (IMGW-PIB's telemetry).
 """
 
 SourceAction = tuple[Literal["current", "newer", "missing", "unverifiable"], "Message"]
@@ -132,11 +134,12 @@ class ProviderAdapter(Protocol):
     `ProviderDescriptor.adapter` gives it. The attributes are the provider's facts the
     code acts on; the methods are its behaviour. Adapters subclass this protocol to
     inherit the defaults of the optional members: `current` (no live current data),
-    `polled` (no source of the hourly poll), `credential` (none), `capture` (the
-    capture spool), `publication_default` (``private``), `server_name`, `groups`,
-    `identifies`, `optional_sources`, `dataset_origin`, `station_origins`, `indexed`,
-    `index_files`, `station_key`, `archive_station`, `download`, `folders`,
-    `listed_station`, `station_file`, `optional_action` and `location_files`.
+    `polled` (no source of the hourly poll), `harvested` (no harvest), `credential`
+    (none), `capture` (the capture spool), `publication_default` (``private``),
+    `server_name`, `groups`, `identifies`, `optional_sources`, `dataset_origin`,
+    `station_origins`, `indexed`, `index_files`, `station_key`, `archive_station`,
+    `download`, `folders`, `listed_station`, `listing`, `station_file`,
+    `optional_action`, `location_files`, `harvest_requests` and `live_tail`.
 
     Attributes
     ----------
@@ -166,6 +169,9 @@ class ProviderAdapter(Protocol):
     polled : tuple of PolledSource
         The sources of current data the hourly poll asks (P16, ADR-030 D9), each with
         the ceiling of its rate; empty without any.
+    harvested : frozenset of str
+        Capture datasets whose answers ``store sync`` asks for before it seals them:
+        the night's harvest (ADR-030 D9, `harvest_requests`); empty without any.
     station_sources : tuple of str
         Keys of its station-source datasets (ADR-015): the hydro and meteo station
         lists, then the hydro and meteo station metadata.
@@ -193,6 +199,7 @@ class ProviderAdapter(Protocol):
     groups: frozenset[str] = frozenset()
     current: Mapping[str, Callable[[], Any]] = MappingProxyType({})
     polled: tuple[PolledSource, ...] = ()
+    harvested: frozenset[str] = frozenset()
     station_sources: tuple[str, str, str, str]
     optional_sources: tuple[str, ...] = ()
     kinds: tuple[Kind, ...] = ("hydro", "meteo")
@@ -547,6 +554,35 @@ class ProviderAdapter(Protocol):
         """
         raise ValueError(f"{descriptor.key}: no per-station listing of {name}")
 
+    def listing(
+        self, descriptor: DatasetDescriptor, directory: str, /, *, client: httpx.Client
+    ) -> set[str] | None:
+        """
+        The file names the provider's listing publishes in a directory of a dataset.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset whose `check_scope` is ``listing``.
+        directory : str
+            A directory of its files, relative to the dataset's base URL.
+        client : httpx.Client
+            The client of the check.
+
+        Returns
+        -------
+        set of str or None
+            The names; None when the directory is not published.
+
+        Raises
+        ------
+        httpx.HTTPError
+            If the listing cannot be read.
+        ValueError
+            For a dataset without such a listing (the default: every one).
+        """
+        raise ValueError(f"{descriptor.key}: no listing of {directory}")
+
     # --- station sources ---------------------------------------------------------
 
     def station_file(
@@ -847,3 +883,85 @@ class ProviderAdapter(Protocol):
             never served.
         """
         return "private"
+
+    def harvest_requests(
+        self,
+        descriptor: DatasetDescriptor,
+        /,
+        *,
+        start: date,
+        end: date,
+        stations: Sequence[str] | None,
+        session: PacedSession,
+        on_notice: NoticeHook | None,
+    ) -> tuple[PacedRequest, ...]:
+        """
+        The requests of the night's harvest of a capture dataset (ADR-030 D9).
+
+        The adapter reads the station list it needs through ``session`` (paced, its
+        answer kept in the spool when it is a capture source's) and returns one
+        request per station and source of the closed UTC days ``start`` to ``end``,
+        those of one station together; `obserwator.captures.harvest` asks them and the
+        spool keeps every answer.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            One of `harvested`.
+        start, end : datetime.date
+            The first and last UTC day to cover, closed days.
+        stations : sequence of str or None
+            Station codes to ask (each for every source); None for every station of
+            the provider's list.
+        session : PacedSession
+            The paced requests of the run.
+        on_notice : NoticeHook or None
+            Receives the warnings of the planning (a station list read only in part).
+
+        Returns
+        -------
+        tuple of PacedRequest
+            The requests in order.
+
+        Raises
+        ------
+        ObserwatorConnectionError
+            If the station list cannot be read (``source_unavailable``).
+        ObserwatorDataError
+            If the station list cannot be parsed.
+        ObserwatorCancelledError
+            If the session's ``cancel`` returned True.
+        ValueError
+            For a dataset it does not harvest (the default: every one).
+        """
+        raise ValueError(f"{descriptor.key}: {self.provider_id} harvests no answers")
+
+    def live_tail(
+        self, code: str, /, *, hours: int, timeout: float
+    ) -> tuple[Answer, ...]:
+        """
+        The operational answers of one station asked live (the GUI's live tail, O6).
+
+        Every answer goes to the capture spool as the library's requests keep them
+        (P14); the answers are returned whatever their status.
+
+        Parameters
+        ----------
+        code : str
+            A station code of the provider.
+        hours : int
+            How many hours back the answers should reach, where the source takes it.
+        timeout : float
+            Timeout of each request in seconds.
+
+        Returns
+        -------
+        tuple of Answer
+            One per request, in order; none by default (no live tail).
+
+        Raises
+        ------
+        ObserwatorConnectionError
+            If a request gets no answer (``source_unavailable``).
+        """
+        return ()

@@ -24,6 +24,10 @@ closed UTC day of the spool into one archive version (`obserwator.store.captures
 - `poll_current` is the hourly poll (D9, P16): one request per source an adapter
   declares (`ProviderAdapter.polled`), written to the spool only; a source polled
   sooner than its declared interval allows is skipped.
+- `harvest` is the night's harvest (D9): the paced requests of a dataset an adapter
+  harvests (`ProviderAdapter.harvested`, `harvest_requests`) for a range of closed UTC
+  days, every answer written to the spool; ``store sync`` with ``pace_until`` runs it
+  before sealing.
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -51,20 +55,37 @@ from obserwator.datasets import (
     CAPTURE_SCOPE,
     DatasetDescriptor,
     ProviderDescriptor,
+    _parse_stations,
     _source_address,
     datasets,
+    get_dataset,
     get_provider,
     providers,
 )
-from obserwator.exceptions import ErrorCode, ObserwatorError, ObserwatorValidationError
-from obserwator.fetch import DEFAULT_TIMEOUT, _source_error
+from obserwator.exceptions import (
+    ErrorCode,
+    ObserwatorCancelledError,
+    ObserwatorError,
+    ObserwatorValidationError,
+)
+from obserwator.fetch import (
+    CONNECTION_FAILURES,
+    DEFAULT_TIMEOUT,
+    Clock,
+    PacedOutcome,
+    PacedRequest,
+    PacedSession,
+    _source_error,
+)
 from obserwator.messages import Message, message, reason
 from obserwator.output import FileResult
 from obserwator.providers.base import Answer, PolledSource, ProviderAdapter
 from obserwator.store.types import (
     Cancel,
+    HarvestReport,
     Notice,
     NoticeHook,
+    OperationResult,
     PlanAction,
     Progress,
     ProgressHook,
@@ -79,9 +100,9 @@ __all__ = [
     "capture_datasets",
     "capture_report",
     "capture_sources",
+    "harvest",
     "keep",
     "keep_response",
-    "poll_current",
     "publication",
     "publication_sources",
     "spool_problem",
@@ -1234,3 +1255,234 @@ def poll_current(
                 )
             )
     return PollReport(tuple(answers), stopped, tuple(files))
+
+
+# --------------------------------------------------------------------------
+# The night's harvest (ADR-030 D9)
+# --------------------------------------------------------------------------
+
+
+def _harvested(descriptor: DatasetDescriptor, /) -> bool:
+    """Whether ``store sync`` asks a capture dataset's source before sealing it (D9)."""
+    return descriptor.key in get_provider(descriptor.provider).adapter.harvested
+
+
+def harvest(
+    dataset: str,
+    start: date,
+    end: date,
+    /,
+    *,
+    stations: Sequence[str] | None = None,
+    deadline: datetime | None = None,
+    clock: Clock | None = None,
+    on_progress: ProgressHook | None = None,
+    on_notice: NoticeHook | None = None,
+    cancel: Cancel | None = None,
+) -> HarvestReport:
+    """
+    Ask a harvest dataset's source for the UTC days ``start`` to ``end``, into the spool.
+
+    The night's harvest of ADR-030 D9: the provider's adapter plans one request per
+    station and source (`ProviderAdapter.harvest_requests`, which reads the station
+    list it needs through the session), and `obserwator.fetch.PacedSession` asks them
+    one at a time, spread evenly up to ``deadline`` and never closer than 5 s, with
+    gzip and the backoff of 429 and 5xx (60, 120 and 240 s, then the station is
+    skipped until the next run); three connection failures in a row end the run.
+    Every answer goes to the capture spool of its dataset, on the UTC day of its time
+    (the day of the run, not the days it covers); nothing else is written, and
+    ``store sync`` seals the spool (`obserwator.store.sync_store` with ``pace_until``
+    runs both).
+
+    Parameters
+    ----------
+    dataset : str
+        Key, slug or legacy alias of a dataset an adapter harvests
+        (`ProviderAdapter.harvested`): ``pl.imgw.hydro_operational`` (hydro-back's
+        hourly H, Q and T) or ``cz.chmu.hydro_recent`` (ČHMÚ's day files).
+    start, end : datetime.date
+        The first and last UTC day to cover, closed days.
+    stations : sequence of str or None, optional
+        Station codes of the dataset's provider, each asked for every source; None
+        for every station of the provider's list.
+    deadline : datetime.datetime or None, optional
+        When the requests should be done (`obserwator.fetch.pace_deadline`); None, or
+        a deadline already passed, asks at the minimum spacing of 5 s.
+    clock : Clock or None, optional
+        The clock of the run (tests give a fake one); None is the system's.
+    on_progress : ProgressHook or None, optional
+        Called after each planned request (unit ``request``) with its status and a
+        line ``<UTC time> <HTTP status> <address>``.
+    on_notice : NoticeHook or None, optional
+        Receives a ``harvest_failed`` warning for every failed request, skipped
+        station, stopped run or unreadable station list, the adapter's warnings
+        (``harvest_series_unknown``) and one ``harvest_done`` notice (info) with the
+        requests, failures and wall time.
+    cancel : Cancel or None, optional
+        Polled before each request and during every wait.
+
+    Returns
+    -------
+    HarvestReport
+        The counts and times of the run.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If no adapter harvests the dataset (``details.reason`` ``not_harvested``),
+        ``end`` is before ``start`` or a station code does not follow the
+        provider's grammar.
+    """
+    return _harvest(
+        dataset,
+        start,
+        end,
+        stations=stations,
+        deadline=deadline,
+        clock=clock,
+        on_progress=on_progress,
+        on_notice=on_notice,
+        cancel=cancel,
+    )[0]
+
+
+def _harvest(
+    dataset: str,
+    start: date,
+    end: date,
+    /,
+    *,
+    stations: Sequence[str] | None,
+    deadline: datetime | None,
+    clock: Clock | None,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[HarvestReport, list[OperationResult]]:
+    """
+    `harvest`, with its failures as the failed results of a ``store sync`` (no slot).
+
+    One result per failed request, per skipped station, for a run stopped by
+    connection failures and for a station list that could not be read.
+    """
+    descriptor = get_dataset(dataset)
+    if not _harvested(descriptor):
+        raise ObserwatorValidationError(
+            message("captures.not_harvested", dataset=descriptor.key),
+            details={
+                "option": "dataset",
+                "value": descriptor.key,
+                "reason": "not_harvested",
+            },
+        )
+    if end < start:
+        raise ObserwatorValidationError(
+            message(
+                "captures.harvest_end_before_start",
+                start=start.isoformat(),
+                end=end.isoformat(),
+            ),
+            details={"option": "end", "value": end.isoformat()},
+        )
+    adapter = get_provider(descriptor.provider).adapter
+    codes = None if stations is None else _parse_stations(stations, adapter.provider)
+    session = PacedSession(
+        deadline=deadline, clock=clock, cancel=cancel, source=adapter.server_name
+    )
+    started = session.clock.now()
+    requests: tuple[PacedRequest, ...] = ()
+    outcomes: list[PacedOutcome] = []
+    error: ObserwatorError | None = None
+    cancelled = False
+    with session:
+        try:
+            requests = adapter.harvest_requests(
+                descriptor,
+                start=start,
+                end=end,
+                stations=codes,
+                session=session,
+                on_notice=on_notice,
+            )
+        except ObserwatorCancelledError:
+            cancelled = True
+        except ObserwatorError as exc:
+            error = exc
+        else:
+            outcomes = session.run(requests, on_progress=on_progress)
+    ended = session.clock.now()
+    failures: list[OperationResult] = []
+
+    def fail(text: str, code: ErrorCode) -> None:
+        failures.append(OperationResult(None, "failed", None, text, error_code=code))
+        if on_notice is not None:
+            on_notice(Notice("warning", "harvest_failed", text))
+
+    if error is not None:
+        fail(
+            message(
+                "captures.harvest_unplanned",
+                dataset=descriptor.key,
+                reason=reason(error),
+            ),
+            error.code,
+        )
+    skipped: dict[str, None] = {}
+    unasked = 0
+    for outcome in outcomes:
+        if outcome.status == "failed":
+            fail(outcome.error or "", outcome.error_code or "source_unavailable")
+        elif outcome.status == "skipped" and outcome.request.station not in skipped:
+            skipped[outcome.request.station] = None
+            fail(outcome.error or "", "source_unavailable")
+        elif outcome.status == "stopped":
+            unasked += 1
+    if unasked:
+        fail(
+            message(
+                "captures.harvest_stopped",
+                dataset=descriptor.key,
+                failures=CONNECTION_FAILURES,
+                count=unasked,
+            ),
+            "source_unavailable",
+        )
+    report = HarvestReport(
+        dataset=descriptor.key,
+        start=start,
+        end=end,
+        stations=len({request.station for request in requests}),
+        planned=len(requests),
+        requests=session.requests,
+        answers=session.answers,
+        failed=sum(outcome.status == "failed" for outcome in outcomes),
+        skipped=tuple(skipped),
+        stopped=session.stopped,
+        cancelled=cancelled or any(o.status == "cancelled" for o in outcomes),
+        deadline=deadline,
+        started_at=started,
+        ended_at=ended,
+        seconds=round((ended - started).total_seconds(), 3),
+        error=None if error is None else reason(error),
+        error_code=None if error is None else error.code,
+    )
+    if on_notice is not None:
+        on_notice(
+            Notice(
+                "info",
+                "harvest_done",
+                message(
+                    "captures.harvest_done",
+                    dataset=report.dataset,
+                    start=start.isoformat(),
+                    end=end.isoformat(),
+                    stations=report.stations,
+                    requests=report.requests,
+                    answers=report.answers,
+                    failed=report.failed,
+                    skipped=len(report.skipped),
+                    seconds=f"{report.seconds:.0f}",
+                ),
+            )
+        )
+    return report, failures
