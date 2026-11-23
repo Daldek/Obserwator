@@ -1156,7 +1156,7 @@ for target, trees in ((raw, ("archives", "pmaxtp")), (data, ("series", "stations
 | `cz.chmu.hydro_stations`, `cz.chmu.meteo_stations` | — | ČHMÚ station lists (JSON) — input of the ČHMÚ catalog |
 | `cz.chmu.hydro_now`, `cz.chmu.meteo_now` | — | ČHMÚ `now` station metadata (JSON) — input of the ČHMÚ catalog |
 
-"Download only" datasets support `datasets files|download`, but not the store. Current data, warnings and `fetch_pmaxtp` remain live queries, without the store. `datasets(provider="CHMU")` or `obserwator datasets list --provider CHMU` lists the datasets of one provider, and `providers()` / `obserwator datasets providers` — the providers with licenses and station code patterns.
+"Download only" datasets support `datasets files|download`, but not the store. Current data, warnings and `fetch_pmaxtp` remain live queries, without the store. `datasets(provider="CHMU")` or `obserwator datasets list --provider CHMU` lists the datasets of one provider, and `providers()` / `obserwator datasets providers` — the providers with licenses and station code patterns. Every dataset has a `tier` (`verified` for each one above; ADR-030), which every `datasets list` document carries. `datasets(pending=True)` also lists, after them, the datasets of 3.2.0's operational series declared ahead of the steps that serve them, with their tiers (`operational`, `telemetry`); no command, MCP tool, REST route or GUI view lists or accepts these yet, and `get_dataset` refuses their keys.
 
 ### Schemas
 

@@ -236,6 +236,54 @@ MESSAGES = {
         "Actinometric data (solar radiation) of the actinometric stations",
         "Dane aktynometryczne (promieniowanie słoneczne) ze stacji aktynometrycznych",
     ),
+    # The datasets of the operational series (ADR-030): the words „dane operacyjne,
+    # niezweryfikowane” of Nogat DEV-20.8 wherever operational data meet a person.
+    "title_hydro_operational": Text(
+        "Hourly hydrological data of hydro.imgw.pl (H, Q, T): operational data, "
+        "unverified",
+        "Godzinowe dane hydrologiczne z hydro.imgw.pl (H, Q, T): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_hydro_telemetry": Text(
+        "Hydrological telemetry, monthly files of 10-minute H, Q, T: operational "
+        "data, unverified",
+        "Telemetria hydrologiczna, pliki miesięczne z H, Q, T co 10 minut: dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_hydro_current": Text(
+        "Current hydrological data (captured answers): operational data, unverified",
+        "Bieżące dane hydrologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_current": Text(
+        "Current meteorological data (captured answers): operational data, unverified",
+        "Bieżące dane meteorologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_meteo_synop_current": Text(
+        "Current data of the synoptic stations (captured answers): operational data, "
+        "unverified",
+        "Bieżące dane ze stacji synoptycznych (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_warnings_hydro_current": Text(
+        "Current hydrological warnings (captured answers): operational data, "
+        "unverified",
+        "Bieżące ostrzeżenia hydrologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_warnings_meteo_current": Text(
+        "Current meteorological warnings (captured answers): operational data, "
+        "unverified",
+        "Bieżące ostrzeżenia meteorologiczne (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
+    "title_hydro_states_current": Text(
+        "Water states of the map of hydro.imgw.pl (captured answers): operational "
+        "data, unverified",
+        "Stany wody z mapy hydro.imgw.pl (zapisane odpowiedzi): dane operacyjne, "
+        "niezweryfikowane",
+    ),
     # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
     # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt,
     # s_d_format.txt, s_d_t_format.txt), with the field names of the files and
@@ -503,5 +551,21 @@ MESSAGES = {
     "title_chmu_meteo_now": Text(
         "ČHMÚ — current metadata of meteorological stations",
         "ČHMÚ — bieżące metadane stacji meteorologicznych",
+    ),
+    "title_chmu_hydro_recent": Text(
+        "ČHMÚ — 10-minute hydrological data of the recent days (H, Q, T): "
+        "operational data, unverified",
+        "ČHMÚ — dane hydrologiczne z ostatnich dni, co 10 minut (H, Q, T): dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_hydro_current": Text(
+        "ČHMÚ — current 10-minute hydrological data of the day (H, Q, T): "
+        "operational data, unverified",
+        "ČHMÚ — bieżące dane hydrologiczne doby, co 10 minut (H, Q, T): dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "title_chmu_hydro_hourly": Text(
+        "ČHMÚ — hourly hydrological data (H, Q)",
+        "ČHMÚ — dane hydrologiczne godzinowe (H, Q)",
     ),
 }

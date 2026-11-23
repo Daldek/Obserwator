@@ -295,8 +295,12 @@ class DatasetDescriptor:
     variables : Mapping of str to str
         Variable codes mapped to their units, e.g. ``{"H": "cm"}``; empty for
         station lists and download-only datasets.
-    time_unit : {"day", "month", "half_year", "term", "station_list", "cell"}
-        Time resolution of a record, or the auxiliary source type.
+    time_unit : str
+        Time resolution of a record: ``"day"``, ``"month"``, ``"half_year"``,
+        ``"term"`` (the observation times), ``"hour"`` or ``"ten_minutes"``; or
+        the auxiliary source type: ``"station_list"``, ``"cell"`` (PMAXTP) or
+        ``"snapshot"`` (an answer of current data that gives every station's
+        latest values at their own times, ADR-030).
     year_type : {"hydrological", "calendar", "none"}
         Year numbering of the archives.
     first_year : int or None
@@ -314,9 +318,11 @@ class DatasetDescriptor:
         datasets that can only be downloaded.
     provider : str, optional
         ``ProviderDescriptor.id`` of the dataset's provider.
-    archive_scope : {"country", "station_year", "station_element"}, optional
-        What one source file covers: the whole country, one station and
-        year, or the whole history of one station and element.
+    archive_scope : str, optional
+        What one source file covers: ``"country"`` the whole country,
+        ``"station_year"`` one station and year, ``"station_element"`` the whole
+        history of one station and element, ``"country_day"`` the answers of one
+        UTC day for the whole network (a capture version, ADR-030).
     variable_notes : Mapping of str to str, optional
         Convention of each variable (English catalog messages), e.g. the day of
         a sum; the series metadata keeps the English text.
@@ -340,6 +346,12 @@ class DatasetDescriptor:
         (ADR-015 D5, ADR-021). A dotted name reaches into an object of the
         answer (``"status.alarmValue"``), the first field is the station code;
         empty keeps the provider's bytes verbatim.
+    tier : {"verified", "telemetry", "operational"}, optional
+        What the data are, set here and never inferred from their values
+        (ADR-030, Nogat ECO-084): ``"verified"`` a published archive or a
+        validated set (the default, every dataset of 3.1.0), ``"telemetry"``
+        IMGW-PIB's monthly telemetry, ``"operational"`` what a source gives as
+        current or unverified data.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -351,7 +363,17 @@ class DatasetDescriptor:
     server_dir: str | None
     parser: str | None
     variables: Mapping[str, str]
-    time_unit: Literal["day", "month", "half_year", "term", "station_list", "cell"]
+    time_unit: Literal[
+        "day",
+        "month",
+        "half_year",
+        "term",
+        "hour",
+        "ten_minutes",
+        "station_list",
+        "cell",
+        "snapshot",
+    ]
     year_type: Literal["hydrological", "calendar", "none"]
     first_year: int | None
     update_signal: Literal["http", "listing", "none"]
@@ -359,13 +381,16 @@ class DatasetDescriptor:
     legacy_alias: str | None
     in_store: bool
     provider: str = "IMGW"
-    archive_scope: Literal["country", "station_year", "station_element"] = "country"
+    archive_scope: Literal[
+        "country", "station_year", "station_element", "country_day"
+    ] = "country"
     variable_notes: Mapping[str, str] = field(default_factory=dict)
     measurement_fields: tuple[Literal["quality", "source_flag"], ...] = ()
     content_form: str | None = None
     volatile_fields: tuple[str, ...] = ()
     base_url: str | None = None
     kept_fields: tuple[str, ...] = ()
+    tier: Literal["verified", "telemetry", "operational"] = "verified"
 
 
 @dataclass(frozen=True)
@@ -1111,6 +1136,240 @@ _DATASETS = (
         volatile_fields=_CHMU_VOLATILE,
     ),
 )
+# Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
+# with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
+# REST route or GUI view lists or accepts them (`get_dataset`, the providers'
+# ``datasets`` and the choices of the catalog read `_DATASETS`) until their step
+# moves them there: H2a the captures of the sources polled every hour, O2 the rest.
+_IMGW_DATASTORE = f"{_IMGW_SITE}datastore/getfiledown/"
+_PENDING = (
+    # Every answer of hydro-back's station endpoints ``station/hydro/…`` (the night's
+    # ``status/data``, ``discharge`` and ``water-temperature``, the GUI's live tail,
+    # the station pages of `pl.imgw.hydro_details`), one capture version per UTC day.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_operational",
+        slug="imgw_hydro_operational",
+        kind="hydro",
+        title=message("datasets.title_hydro_operational"),
+        server_dir="station/hydro",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # The monthly zips of every station's 10-minute H, Q and T (B00020S, B00050S,
+    # B00100S), year folders from 2008; the signal is the datastore's listing
+    # (``POST datastore/getFilesList``), not a folder index.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_telemetry",
+        slug="imgw_hydro_telemetry",
+        kind="hydro",
+        title=message("datasets.title_hydro_telemetry"),
+        server_dir="Arch/Telemetria/Hydro",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="ten_minutes",
+        year_type="calendar",
+        first_year=2008,
+        update_signal="listing",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        base_url=_IMGW_DATASTORE,
+        tier="telemetry",
+    ),
+    # The sources of current data that answer for every station in one request,
+    # polled every hour and fetched live by the GUI and the ``current`` commands.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_current",
+        slug="imgw_hydro_current",
+        kind="hydro",
+        title=message("datasets.title_hydro_current"),
+        server_dir="api/data/hydro",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.meteo_current",
+        slug="imgw_meteo_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_current"),
+        server_dir="api/data/meteo",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.meteo_synop_current",
+        slug="imgw_meteo_synop_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_synop_current"),
+        server_dir="api/data/synop",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.warnings_hydro_current",
+        slug="imgw_warnings_hydro_current",
+        kind="hydro",
+        title=message("datasets.title_warnings_hydro_current"),
+        server_dir="api/data/warningshydro",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.warnings_meteo_current",
+        slug="imgw_warnings_meteo_current",
+        kind="meteo",
+        title=message("datasets.title_warnings_meteo_current"),
+        server_dir="api/data/warningsmeteo",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    # The map of hydro.imgw.pl: every station's water state and its class.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_states_current",
+        slug="imgw_hydro_states_current",
+        kind="hydro",
+        title=message("datasets.title_hydro_states_current"),
+        server_dir="map/stations/hydrologic",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
+    # ČHMÚ's day files of 10-minute H, Q and TH (never rewritten, published about
+    # 00:20 UTC the next day), the 548 stations of a day in one capture version.
+    DatasetDescriptor(
+        key="cz.chmu.hydro_recent",
+        slug="chmu_hydro_recent",
+        kind="hydro",
+        title=message("datasets.title_chmu_hydro_recent"),
+        server_dir="hydrology/recent/data",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="ten_minutes",
+        year_type="calendar",
+        first_year=None,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="country_day",
+        tier="operational",
+    ),
+    # ČHMÚ's ``now`` files of a station's current UTC day, rewritten every 20
+    # minutes, captured when they are asked for (the GUI's live tail).
+    DatasetDescriptor(
+        key="cz.chmu.hydro_current",
+        slug="chmu_hydro_current",
+        kind="hydro",
+        title=message("datasets.title_chmu_hydro_current"),
+        server_dir="hydrology/now/data",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s", "T": "degC"},
+        time_unit="ten_minutes",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="country_day",
+        tier="operational",
+    ),
+    # ČHMÚ's validated hourly HH and QH, one file per station and year (from 1905
+    # in the listing of 2026-11-16), published once a year like the daily DQ.
+    DatasetDescriptor(
+        key="cz.chmu.hydro_hourly",
+        slug="chmu_hydro_hourly",
+        kind="hydro",
+        title=message("datasets.title_chmu_hydro_hourly"),
+        server_dir="hydrology/historical/data/hourly",
+        parser=None,
+        variables={"H": "cm", "Q": "m3/s"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=1905,
+        update_signal="listing",
+        license=_CHMU_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider="CHMU",
+        archive_scope="station_year",
+        content_form=_CHMU_JSON,
+        volatile_fields=_CHMU_VOLATILE,
+        tier="verified",
+    ),
+)
+_REGISTRY = _DATASETS + _PENDING
 _PROVIDERS = (
     ProviderDescriptor(
         id="IMGW",
@@ -1232,6 +1491,7 @@ def datasets(
     *,
     kind: Literal["hydro", "meteo"] | None = None,
     provider: str | None = None,
+    pending: bool = False,
 ) -> tuple[DatasetDescriptor, ...]:
     """
     Return the dataset registry, optionally limited to a family and a provider.
@@ -1244,12 +1504,17 @@ def datasets(
     provider : str or None, optional
         Provider identifier or key prefix to keep (see `get_provider`); None
         keeps all providers.
+    pending : bool, optional
+        Also the datasets declared ahead of the step that serves them (ADR-030):
+        no command, MCP tool, REST route or GUI view lists or accepts these, and
+        `get_dataset` refuses their keys, until that step serves them.
 
     Returns
     -------
     tuple of DatasetDescriptor
         Descriptors in registry order: the IMGW-PIB datasets (those of the
-        store, then the download-only ones), then the six ČHMÚ datasets.
+        store, then the download-only ones), then the six ČHMÚ datasets; with
+        ``pending``, then the declared ones.
 
     Raises
     ------
@@ -1263,11 +1528,12 @@ def datasets(
             details={"option": "kind", "value": kind, "allowed": ["hydro", "meteo"]},
         )
     owner = None if provider is None else get_provider(provider).id
+    registry = _REGISTRY if pending else _DATASETS
     if kind is None and owner is None:
-        return _DATASETS
+        return registry
     return tuple(
         descriptor
-        for descriptor in _DATASETS
+        for descriptor in registry
         if (kind is None or descriptor.kind == kind)
         and (owner is None or descriptor.provider == owner)
     )
@@ -1293,9 +1559,10 @@ def get_dataset(dataset: str, /) -> DatasetDescriptor:
     Raises
     ------
     ObserwatorValidationError
-        If the value names no dataset (``details.allowed`` lists the keys),
-        or it is a legacy alias of an archive without a descriptor
-        (nonexistent hourly precipitation; ``details.reason`` says why).
+        If the value names no dataset (``details.allowed`` lists the keys; a
+        key or slug declared ahead of its step, ADR-030, names none either), or
+        it is a legacy alias of an archive without a descriptor (nonexistent
+        hourly precipitation; ``details.reason`` says why).
     """
     if isinstance(dataset, str):
         if (descriptor := _BY_NAME.get(dataset)) is not None:

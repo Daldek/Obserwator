@@ -25,6 +25,37 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   `config.credential_error(provider, "invalid_credentials")` is the error of a refused one,
   both with `details.provider` and a hint naming the variable (pl/en). `.env.example`
   documents the variables.
+- **Dataset tiers (ADR-030; Nogat ECO-084, ECO-085).** `DatasetDescriptor.tier` says what a
+  dataset's data are: `verified` (a published archive or a validated set), `telemetry`
+  (IMGW-PIB's monthly telemetry) or `operational` (what a source gives as current or
+  unverified data). It is set in the registry and never inferred from the values; every
+  dataset of 3.1.0 is `verified`. The `obserwator-dataset/1` documents of `datasets list`
+  (Python, CLI, REST, MCP) gain the field `tier` after their other fields, which are unchanged
+  (an optional field, AGI-4.1). `AGENTS.md`, `llms.txt`, `commands schema`, every sidecar and
+  the fixture stores keep their bytes.
+- **The datasets of the operational series, declared ahead of their steps (ADR-030 D4, D8).**
+  The registry holds eleven datasets that no command, MCP tool, REST route or GUI view lists
+  or accepts yet (`get_dataset` refuses their keys as unknown) and that only
+  `datasets(pending=True)` lists, after the served ones, with their tiers:
+  `pl.imgw.hydro_operational` (hydro-back's hourly H, Q and T), `pl.imgw.hydro_telemetry` (the
+  monthly telemetry, from 2008), the captures of current data `pl.imgw.hydro_current`,
+  `pl.imgw.meteo_current`, `pl.imgw.meteo_synop_current`, `pl.imgw.warnings_hydro_current`,
+  `pl.imgw.warnings_meteo_current` and `pl.imgw.hydro_states_current`, and ČHMÚ's
+  `cz.chmu.hydro_recent`, `cz.chmu.hydro_current` and `cz.chmu.hydro_hourly` (validated, from
+  1905). New values: `time_unit` `hour`, `ten_minutes` and `snapshot`, `archive_scope`
+  `country_day`. Each dataset is served by its step of 3.2.0 (the captures by H2a, the others
+  by O2).
+- **ADR-030 „Captures and the operational tier”** records the tiers, the scope (ČHMÚ's
+  `recent`, `now` and `historical/hourly`), the captures as archive versions
+  (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
+  sidecar fields `tier` and `publication`, the GUI's spool in `state_dir`, the polling and the
+  lock of the raw root, and amends ADR-003 D4, ADR-013 D5 and D6 and ADR-015 D5.
+
+### Changed
+
+- **The scope of 3.2.0 (the author's decision of 2026-11-22).** The provider fed by files
+  (step 6 of ADR-025's plan) and Gdańskie Wody move to 3.3.0 (ADR-025 erratum of 2026-11-23;
+  `docs/PROGRESS.md`, „Release 3.3.0”).
 
 ## [3.1.0] - 2026-11-22
 
