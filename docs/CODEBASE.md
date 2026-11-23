@@ -150,7 +150,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |Function|Description|
 |---|---|
 |`providers()`, `get_provider(id or key_prefix)`|Provider registry (`ProviderDescriptor`: `IMGW` (IMGW-PIB), `CHMU` (ČHMÚ))|
-|`datasets(*, kind=None, provider=None)`|Dataset descriptors (`DatasetDescriptor`; 27)|
+|`datasets(*, kind=None, provider=None, pending=False)`|Dataset descriptors (`DatasetDescriptor`; 27, each with its `tier`; `pending=True` adds the 11 declared ahead of their steps, ADR-030)|
 |`get_dataset(dataset)`|Descriptor by key, slug or legacy alias|
 |`archive_files(dataset, /, *, years=None, months=None, params=None, stations=None)`|Archive files with URLs (`ArchiveFile`; `stations` required for `cz.chmu.*`)|
 |`station_source_files(*, provider="IMGW")`|The two station lists of a provider as `ArchiveFile`s (hydro, meteo): IMGW-PIB `lista_stacji_hydro.csv`, `wykaz_stacji.csv`; ČHMÚ the two `historical` `meta1.json`|
@@ -402,6 +402,8 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`cz.chmu.hydro_now`, `cz.chmu.meteo_now`|—|yes (`now` station metadata, canonical form `chmu-json/1`)|
 
 `get_dataset`/`archive_files` accept the key, the slug (the provider's acronym and the last part of the key, e.g. `imgw_hydro_daily`, `chmu_hydro_daily`; a slug of 3.0.x without `imgw_` is no input, ADR-028) or the legacy alias; results and slots always use the full key. Archive commands (`datasets files|download`) accept 17 datasets (`datasets files` refuses `pl.imgw.actinometric`, ADR-023), `store check|sync` the 8 measurement datasets and the 9 station sources (lists, metadata and the station details of hydro.imgw.pl, `time_unit="station_list"`, a call of their own; ADR-015, ADR-021), series commands 8. Descriptor fields added by ADR-003: `provider`, `archive_scope`, `variable_notes`, `measurement_fields`, `content_form`, `volatile_fields`, `update_signal="listing"`; by ADR-015: `base_url` (the current-data API lies below IMGW-PIB's site) and `kept_fields` (the station fields a derived file keeps; since ADR-021 a dotted name such as `status.alarmValue` reaches into a nested object and is kept nested). `title` and the values of `variable_notes` are English catalog messages (`messages/datasets.py`); `localize(title, "pl")` is the Polish title.
+
+Every descriptor has a `tier` (ADR-030, Nogat ECO-084): `verified` for the 27 above, `telemetry` or `operational` for what a source gives as current or unverified data; it is set in the registry, never inferred from values, and every `datasets list` document carries it. The registry also declares eleven datasets of 3.2.0's operational series ahead of the steps that serve them — `pl.imgw.hydro_operational`, `pl.imgw.hydro_telemetry`, the captures `pl.imgw.{hydro,meteo,meteo_synop,warnings_hydro,warnings_meteo,hydro_states}_current`, `cz.chmu.hydro_recent`, `cz.chmu.hydro_current` and `cz.chmu.hydro_hourly` — which only `datasets(pending=True)` lists: no command, MCP tool, REST route or GUI view lists or accepts them, and `get_dataset` refuses their keys, until their step moves them into the registry (ADR-030 D4 gives their tiers, time units and scopes, D8 the move).
 
 ### IMGW-PIB hydrological data (1951-2024+)
 - `dobowe` (daily):

@@ -54,7 +54,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |---|---|---|
 |`tests/conftest.py`|-|Shared fixtures; autouse `isolated_reference_dir` (`settings.reference_dir` in a temporary directory)|
 |`tests/fixtures/hydrolog/`|-|Recorded Hydrolog of the stored analyses: `fake_hydrolog.py` answers `config show` and `commands batch` with `answers.json` (the real Hydrolog on `complete_pl_cz`); `FAKE_HYDROLOG_VERSION`, `FAKE_HYDROLOG_SLEEP`, `FAKE_HYDROLOG_FAIL`, `FAKE_HYDROLOG_LOG` steer it|
-|`tests/unit/test_public_store_api.py`|212|`__all__` == spec §13.12 + ČHMÚ + `agent_guide` + stored analyses (ADR-016), removed names absent, light imports|
+|`tests/unit/test_public_store_api.py`|213|`__all__` == spec §13.12 + ČHMÚ + `agent_guide` + stored analyses (ADR-016), removed names absent, light imports|
 |`tests/unit/test_cli_catalog.py`|189|CLI generated from the catalog: envelope, errors, exit codes, streams, help languages, the default root of each kind|
 |`tests/unit/test_api_commands.py`|190|REST routes from the catalog, problem+json, write guard, refused request options, `Accept-Language`, the server's two roots (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`)|
 |`tests/unit/test_command_schema.py`|118|`command_schema`, `obserwator-commands/1`|
@@ -62,7 +62,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/unit/test_analyses.py`|29|Stored analyses (ADR-016) with the recorded Hydrolog on `complete_pl_cz`: layout, sidecar, every line verbatim, check plans, carry-forward by hard links, `stations`, `workers`, list/read/export, tampered files, on-the-fly options (passed on, refused, locked), timeout, program failure and absence, analyses entries and slots of the data root, a raw root refused; one test marked `hydrolog`|
 |`tests/unit/test_command_for_version.py`|26|`command_for_version` on `complete_pl_cz` and a PMAXTP cell: the call of each family (archives, station sources and PMAXTP of the raw root; series and catalogs with `--raw-root`, analyses of the data root), its line read back, its offline plan of the same file; refusals `unsupported`, `not_found`, `data_error`, `validation_error`, `wrong_root`|
 |`tests/unit/test_fetch_live.py`|66|Live functions with `respx`|
-|`tests/unit/test_datasets.py`|80|Registry, aliases, `archive_files`, `YearsArg`, the download-only datasets (ADR-023)|
+|`tests/unit/test_datasets.py`|83|Registry, aliases, `archive_files`, `YearsArg`, the download-only datasets (ADR-023), the tiers and the datasets declared ahead of their steps (ADR-030)|
 |`tests/unit/test_parsers.py`|51|Hydro/meteo/station-list parsers|
 |`tests/unit/test_exceptions.py`|49|`ERROR_CODES`, codes and details, file-system errors|
 |`tests/unit/test_messages.py`|13|Message catalog: both languages, call sites against entries, Polish literals left|
@@ -76,7 +76,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/unit/test_output.py`, `test_plain_output.py`|40|Plain output (ADR-007): target list, conflicts, staging and its cleanup, `files[]`, `--check` plan|
 |`tests/unit/test_default_root.py`, `test_environment.py`|63|Default roots and their sources (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`, `nogat.toml`, `<data_dir>/obserwator`, `<data_dir>/obserwator-raw`), REST and MCP write refusals, `nogat.toml` settings|
 |`tests/unit/test_library_install.py`|3|Wheel built from the checkout, installed without extras into a fresh `uv` venv: `import obserwator` and `list_commands` run (marker `slow`, ~2 s, in the gate)|
-|`tests/unit/` other files|472|fetch, models, stations, urls, coverage, download_archives, fixture builder, reference data, CLI admin/main, API main, attribution lines (ADR-012), harmonized exports (ADR-014), station sources (ADR-015), daily synop data (ADR-022, `test_synop.py`), error report; an operator's instance (ADR-025: `test_instance.py` with `config show`, `test_api_instance.py` on the REST routes), series subsets (ADR-026, `test_series_subset.py`), the resume of an interrupted `analyses build` (`test_analyses_resume.py`) and ČHMÚ's computed half-years (`test_analyses_half_years.py`, one test marked `hydrolog`)|
+|`tests/unit/` other files|479|fetch, models, stations, urls, coverage, download_archives, fixture builder, reference data, CLI admin/main, API main, attribution lines (ADR-012), harmonized exports (ADR-014), station sources (ADR-015), daily synop data (ADR-022, `test_synop.py`), error report; an operator's instance (ADR-025: `test_instance.py` with `config show`, `test_api_instance.py` on the REST routes), series subsets (ADR-026, `test_series_subset.py`), the resume of an interrupted `analyses build` (`test_analyses_resume.py`), ČHMÚ's computed half-years (`test_analyses_half_years.py`, one test marked `hydrolog`) and the providers' credentials (`test_provider_credentials.py`)|
 |`tests/contract/test_interface_contract.py`|95|Python = CLI = REST for all 33 REST commands, each on the root of its kind (analyses on the served data root, built by the recorded Hydrolog), error matrix, paging|
 |`tests/contract/test_command_lines.py`|204|Every example call of the catalog: `parse_command` reads its line, `validate_command` accepts it, `format_command` writes the same line|
 |`tests/contract/test_chmu_contract.py`|69|IMGW-15..19 on `complete_pl_cz`; Python = CLI = REST = MCP for ČHMÚ runs|
@@ -85,7 +85,7 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 |`tests/live/test_interfaces_live.py`|50|Live IMGW-PIB: 35 commands × Python/`obserwator`/REST (the analyses with the recorded Hydrolog), 6 live errors, MCP leg (`-k obserwator_mcp`, 8 commands); marker `live`|
 |`tests/live/test_chmu_live.py`|22|Live ČHMÚ (opendata.chmi.cz) through Python/CLI/REST/MCP with a request log; marker `live`|
 
-**Total: 3829 tests** (`pytest --collect-only -q -m ''`, 2026-11-22): 3757 offline (181 of them in `tests/e2e`, skipped without Chromium), 72 live (`uv run pytest tests/live -m live`; JSON report via `OBSERWATOR_LIVE_REPORT=<file>`). The counts of the rows above were recounted the same day with `pytest --collect-only -q` and add up to that total, the GUI's rows included. The contract suite and the analyses tests run the recorded Hydrolog (`OBSERWATOR_HYDROLOG_COMMAND` set by their fixtures); no offline test needs the real program. Fixtures: `fixture_roots` (`FixtureRoots`), `fixture_root` (the data root) and `fixture_raw_root` (the raw root) in `tests/conftest.py`; `served_root`, `served_raw_root` and `served` (both server settings) in `tests/contract/conftest.py`.
+**Total: 3840 tests** (`pytest --collect-only -q -m ''`, 2026-11-23): 3768 offline (181 of them in `tests/e2e`, skipped without Chromium), 72 live (`uv run pytest tests/live -m live`; JSON report via `OBSERWATOR_LIVE_REPORT=<file>`). The counts of the rows above were recounted the same day with `pytest --collect-only -q` and add up to that total, the GUI's rows included. The contract suite and the analyses tests run the recorded Hydrolog (`OBSERWATOR_HYDROLOG_COMMAND` set by their fixtures); no offline test needs the real program. Fixtures: `fixture_roots` (`FixtureRoots`), `fixture_root` (the data root) and `fixture_raw_root` (the raw root) in `tests/conftest.py`; `served_root`, `served_raw_root` and `served` (both server settings) in `tests/contract/conftest.py`.
 
 ## Tests (from README)
 
@@ -135,7 +135,7 @@ tests/
 └── live/                    # live regression (marker `live`, outside the gate): IMGW-PIB 35 commands × Python/CLI/REST + MCP; ČHMÚ
 ```
 
-**Total: 3829 tests** (`pytest --collect-only`, 2026-11-22): 3757 offline and 72 live (marker `live`, run explicitly with `-m live`):
+**Total: 3840 tests** (`pytest --collect-only`, 2026-11-23): 3768 offline and 72 live (marker `live`, run explicitly with `-m live`):
 
 ```bash
 uv run pytest tests/live/test_interfaces_live.py -m live   # IMGW-PIB: 50 tests
