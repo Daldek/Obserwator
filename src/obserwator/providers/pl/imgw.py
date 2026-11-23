@@ -1296,6 +1296,7 @@ class ImgwAdapter(ProviderAdapter):
     )
     polled = _POLLED
     harvested = frozenset({_OPERATIONAL})
+    live_source = _OPERATIONAL
     station_sources = (
         "pl.imgw.hydro_stations",
         "pl.imgw.meteo_stations",

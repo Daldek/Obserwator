@@ -879,6 +879,7 @@ class ChmuAdapter(ProviderAdapter):
     border = CZECHIA
     identifies = True
     harvested = frozenset({_RECENT})
+    live_source = _CURRENT
     station_sources = (
         "cz.chmu.hydro_stations",
         "cz.chmu.meteo_stations",
