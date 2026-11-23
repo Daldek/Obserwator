@@ -696,6 +696,10 @@ class ChmuAdapter(ProviderAdapter):
     archive_suffixes = (".json", ".csv")
     sidecar_station = True
 
+    def publication_default(self, key: str, /) -> Literal["public", "private"]:
+        """``public``: ČHMÚ's open data are CC BY 4.0 (ADR-030 D5)."""
+        return "public"
+
     # --- archives --------------------------------------------------------------
 
     def archive_files(

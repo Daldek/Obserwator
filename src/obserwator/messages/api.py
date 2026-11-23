@@ -143,4 +143,10 @@ MESSAGES = {
         "{command} przetworzyłoby także dane {provider} z katalogu danych, których ta "
         "instancja nie udostępnia; uruchom je z wiersza poleceń",
     ),
+    "capture_private": Text(
+        "{dataset} is not served by this server: its captures are private "
+        "([obserwator.capture]); the command line reads them",
+        "{dataset} nie jest udostępniany przez ten serwer: jego zapisy są prywatne "
+        "([obserwator.capture]); czyta je wiersz poleceń",
+    ),
 }

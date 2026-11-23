@@ -847,6 +847,16 @@ class Meta:
         stands in for it. ``obserwator-meta/1`` requires the field, so every
         sidecar a reader accepts has it; None only in a ``Meta`` built
         without it.
+    tier : {"telemetry", "operational"} or None, optional
+        ``tier`` of the sidecar (ADR-030 D6): the tier of a version of a dataset
+        whose tier is not ``verified``; None for a sidecar without it, which is
+        ``verified`` (every sidecar written before 3.2.0). Written to the
+        ``obserwator-store-entry/1`` document only when set (ECO-085).
+    publication : {"public", "private"} or None, optional
+        ``publication`` of the sidecar (ADR-030 D6): the publication state of the
+        version's source when it was written, as provenance (a server serves by
+        the setting in force); None for a sidecar without it (public). Written
+        only when set.
     """
 
     schema: str
@@ -864,6 +874,12 @@ class Meta:
     country: str = "PL"
     producer: str = "obserwator"
     producer_version: str | None = None
+    tier: Literal["telemetry", "operational"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
+    publication: Literal["public", "private"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 @dataclass(frozen=True)

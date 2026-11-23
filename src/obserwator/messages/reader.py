@@ -41,6 +41,12 @@ MESSAGES = {
         "the fields content_sha256 and content_form appear together or not at all",
         "pola content_sha256 i content_form występują razem albo wcale",
     ),
+    "fields_tier_publication": Text(
+        "the fields tier and publication appear together or not at all, tier one of "
+        "{tiers}, publication one of {publications}",
+        "pola tier i publication występują razem albo wcale, tier jedno z {tiers}, "
+        "publication jedno z {publications}",
+    ),
     "field_content_sha256_must_have": Text(
         "the field content_sha256 must have 64 lowercase hex digits",
         "pole content_sha256 musi mieć 64 małe cyfry szesnastkowe",

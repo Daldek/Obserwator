@@ -23,8 +23,11 @@ from typing import Any, Literal, cast
 from obserwator._version import __version__
 from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
+    CAPTURE_SCOPE,
+    CAPTURE_SUFFIX,
     ArchiveFile,
     DatasetDescriptor,
+    _capture_from_path,
     _license_document,
     _station_file,
     get_dataset,
@@ -114,10 +117,22 @@ def _canonical(value: object) -> bytes:
     return (_canonical_text(value) + "\n").encode("utf-8")
 
 
+def _slot_stem(name: str) -> str:
+    """
+    The name of a file's slot directory: the file name without its ending.
+
+    A capture's ``<YYYY-MM-DD>.jsonl.gz`` loses its whole ending (ADR-030 D3), so its
+    slot directory is the day; any other file loses its last suffix.
+    """
+    if name.endswith(CAPTURE_SUFFIX) and name != CAPTURE_SUFFIX:
+        return name.removesuffix(CAPTURE_SUFFIX)
+    return PurePosixPath(name).stem
+
+
 def _archive_slot_dir(server_path: str) -> str:
     """The slot directory of an archive file: ``archives/versions/<folder>/<stem>``."""
     relative = PurePosixPath(server_path)
-    return f"archives/versions/{relative.parent.as_posix()}/{relative.stem}"
+    return f"archives/versions/{relative.parent.as_posix()}/{_slot_stem(relative.name)}"
 
 
 def _field(row: Mapping[str, Any], name: str) -> tuple[bool, object]:
@@ -1413,6 +1428,23 @@ def _content_fields(
     return {"content_sha256": content, "content_form": form}
 
 
+def _tier_fields(descriptor: DatasetDescriptor) -> dict[str, str]:
+    """
+    ``tier`` and ``publication`` of a new version's sidecar (ADR-030 D6, ECO-085).
+
+    Both only for a dataset whose tier is not ``verified``: its tier and the
+    publication state of its source when the version is written (provenance; a
+    server serves by the setting in force, `obserwator.captures.publication`). A
+    verified dataset's sidecar has neither, so it keeps the bytes of 3.1.0.
+    """
+    if descriptor.tier == "verified":
+        return {}
+    # The captures import the store's types, so they are imported at call time.
+    from obserwator.captures import publication
+
+    return {"tier": descriptor.tier, "publication": publication(descriptor.key)}
+
+
 def _content_unchanged(
     root: Path,
     *,
@@ -1574,6 +1606,10 @@ def write_archive(
     canonical content of the current version give ``"unchanged"`` without a
     version: a new source signal is recorded once in the slot's observation
     register ``observations/`` (ADR-003 D18).
+
+    For a dataset whose tier is not ``verified`` (ADR-030 D1) the sidecar also
+    records ``tier`` and ``publication``, the publication state of its source as
+    the version is written (D6); a verified dataset's sidecar has neither.
 
     Parameters
     ----------
@@ -1772,6 +1808,7 @@ def write_archive(
             "sha256": sha,
             "size_bytes": len(response.data),
             **_content_fields(same, content=content, form=form),
+            **_tier_fields(descriptor),
             "extra": {
                 "version": {"label": label, "label_source": label_source},
                 "period": period,
@@ -1826,6 +1863,174 @@ def write_archive(
         return VersionResult(
             "relabeled" if matching else "new", target / filename, sha, label
         )
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+
+def write_capture(
+    root: PathArg | StoreHandle,
+    /,
+    *,
+    archive: ArchiveFile,
+    data: bytes,
+    answers: int,
+    on_progress: ProgressHook | None = None,
+    on_notice: NoticeHook | None = None,
+    cancel: Cancel | None = None,
+) -> VersionResult:
+    """
+    Commit the sealed capture of one dataset and UTC day as an archive version (D3).
+
+    The file ``<YYYY-MM-DD>.jsonl.gz`` (`obserwator.store.captures.encode`) and its
+    sidecar are staged in ``.incoming`` and published into the version directory
+    ``<YYYY-MM-DD>_<sha8>`` of the slot ``archive:<key>:<YYYY-MM-DD>.jsonl.gz`` by
+    hard links, the sidecar last, as `write_archive` publishes a download (ADR-030
+    D3). The label is the day (``label_source`` ``downloaded``: the day the answers
+    came), so a correction of the day (answers sealed later, the earlier ones kept)
+    is another version of the slot, told apart by its SHA-256; bytes a version of
+    the slot already has are ``unchanged``. The sidecar's ``sha256`` is the stored
+    file's; ``extra.http`` is the source's address without a signal,
+    ``extra.capture`` the number of answers, and ``tier`` and ``publication`` are
+    those of D6.
+
+    Parameters
+    ----------
+    root : str, os.PathLike or StoreHandle
+        Raw root directory or an open handle of one (ADR-017).
+    archive : ArchiveFile
+        The file of the day (`obserwator.datasets._capture_file`) of a capture
+        dataset.
+    data : bytes
+        The sealed answers.
+    answers : int
+        How many answers they hold.
+    on_progress : ProgressHook or None, optional
+        Called once with a ``new`` progress event after publication.
+    on_notice : NoticeHook or None, optional
+        Receives a ``leftover_incoming`` warning for every abandoned staging
+        directory removed and the ``license_terms`` notice after publication.
+    cancel : Cancel or None, optional
+        Polled before and after staging; returning ``True`` aborts the write.
+
+    Returns
+    -------
+    VersionResult
+        ``new``, or ``unchanged`` naming the version that holds the bytes.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``archive`` is no file of a capture dataset.
+    ObserwatorStoreError
+        If the root is not a supported raw root or a path holds a symbolic link.
+    ObserwatorStoreConflictError
+        If a version of the slot is corrupted, the version directory collides
+        with other content or the file system has no hard links.
+    ObserwatorCancelledError
+        If ``cancel`` returns ``True`` before publication.
+    """
+    handle = prepare_store(root, kind="raw")
+    path = handle.root
+    descriptor = get_dataset(archive.dataset)
+    if (
+        descriptor.archive_scope != CAPTURE_SCOPE
+        or archive.period_start is None
+        or _capture_from_path(descriptor, archive.server_path) != archive
+    ):
+        raise ObserwatorValidationError(
+            message("writer.path_does_not_belong_dataset", dataset=archive.dataset)
+        )
+    provider = get_provider(descriptor.provider)
+    slot_dir = _archive_slot_dir(archive.server_path)
+    slot = _validate_slot(path, slot_dir)
+    filename = PurePosixPath(archive.server_path).name
+    label = archive.period_start.isoformat()
+    if cancel is not None and cancel():
+        raise ObserwatorCancelledError(message("writer.archive_write_cancelled"))
+    incoming = path / ".incoming"
+    incoming.mkdir(exist_ok=True)
+    _cleanup(incoming, on_notice=on_notice)
+    staging = incoming / f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex}"
+    staging.mkdir()
+    try:
+        _write_new(staging / filename, data)
+        sha = hashlib.sha256(data).hexdigest()
+        for old_file, old_meta in _existing(slot, filename, archive=True):
+            if old_meta["sha256"] == sha:
+                old_label = old_meta["extra"]["version"]["label"]
+                return VersionResult("unchanged", old_file, sha, old_label)
+        if cancel is not None and cancel():
+            raise ObserwatorCancelledError(message("writer.archive_write_cancelled"))
+        meta = {
+            "schema": "obserwator-meta/1",
+            "producer": "obserwator",
+            "producer_version": __version__,
+            "dataset": archive.dataset,
+            "country": provider.country,
+            "provider": provider.id,
+            "request": {
+                "server_path": archive.server_path,
+                "year": archive.year,
+                "month": archive.month,
+            },
+            "license": _license_document(descriptor.license),
+            "downloaded_at": _utc(datetime.now(UTC)),
+            "sha256": sha,
+            "size_bytes": len(data),
+            **_tier_fields(descriptor),
+            "extra": {
+                "version": {"label": label, "label_source": "downloaded"},
+                "period": {
+                    "year": archive.year,
+                    "month": archive.month,
+                    "param": None,
+                    "year_type": archive.year_type,
+                    "start": label,
+                    "end": label,
+                },
+                "http": {
+                    "url": archive.url,
+                    "etag": None,
+                    "last_modified": None,
+                    "content_length": None,
+                },
+                "capture": {"answers": answers},
+            },
+        }
+        _write_json(staging / f"{filename}.meta.json", meta)
+        _fsync_dir(staging)
+        slot.mkdir(parents=True, exist_ok=True)
+        _validate_slot(path, f"{slot_dir}/{label}_{sha[:8]}")
+        target = slot / f"{label}_{sha[:8]}"
+        try:
+            _publish_dir(staging, target, f"{filename}.meta.json")
+        except FileExistsError as exc:
+            for old_file, old_meta in _existing(slot, filename, archive=True):
+                if old_file.parent == target and old_meta["sha256"] == sha:
+                    return VersionResult("unchanged", old_file, sha, label)
+            raise ObserwatorStoreConflictError(
+                message("writer.version_directory_collision", target=target)
+            ) from exc
+        if on_progress is not None:
+            on_progress(
+                Progress(
+                    1,
+                    1,
+                    "archive",
+                    "new",
+                    message(
+                        "captures.capture_written",
+                        filename=filename,
+                        answers=answers,
+                        day=label,
+                    ),
+                )
+            )
+        if on_notice is not None:
+            lines = attribution(dataset_origin(descriptor.key), processed=False)
+            on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
+        return VersionResult("new", target / filename, sha, label)
     finally:
         if staging.exists():
             shutil.rmtree(staging)

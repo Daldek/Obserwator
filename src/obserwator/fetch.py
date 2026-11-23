@@ -2,11 +2,14 @@
 Data fetching functions for IMGW public data.
 
 Provides both synchronous and asynchronous versions of all fetch functions.
-Data is fetched directly from IMGW servers - nothing is stored locally.
+Data is fetched directly from IMGW servers and returned; nothing is stored in a
+root. Every answer of a source of current data is kept as it came in the capture
+spool of ``state_dir`` (`_keep`, ``obserwator.captures``, ADR-030 D7).
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
@@ -173,6 +176,20 @@ def _source_error(
     )
 
 
+def _keep(response: httpx.Response) -> None:
+    """
+    Keep an answer in the capture spool when it is one of a capture dataset (P14).
+
+    Every request path of the library hands each read answer here before checking
+    it, so an answer of a source of current data is kept whatever its status;
+    anything else (an archive, a station list) is left alone. A failure is one
+    warning record, never an error of the request (ADR-030 D7).
+    """
+    from obserwator.captures import keep_response
+
+    keep_response(response)
+
+
 def _get(
     url: str,
     *,
@@ -184,6 +201,7 @@ def _get(
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.get(url, headers=headers)
+            _keep(response)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -201,6 +219,7 @@ async def _get_async(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, headers=headers)
+            await asyncio.to_thread(_keep, response)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -850,6 +869,7 @@ def _archive_response(
     """
     try:
         response = client.get(url)
+        _keep(response)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url, source=source) from exc
@@ -862,6 +882,7 @@ async def _archive_response_async(
     """Async twin of `_archive_response`."""
     try:
         response = await client.get(url)
+        await asyncio.to_thread(_keep, response)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise _source_error(exc, url) from exc

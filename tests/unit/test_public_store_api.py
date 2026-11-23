@@ -91,6 +91,8 @@ SPEC_FUNCTIONS = (
     "read_analysis",
     "export_analyses",
     "compute_analysis",
+    # ADR-030 D9: the hourly poll into the capture spool.
+    "poll_current",
 )
 SPEC_TYPES = (
     "PathArg",
@@ -152,6 +154,8 @@ SPEC_TYPES = (
     "AnalysisInput",
     "AnalysisPick",
     "AnalysisOption",
+    "PollReport",
+    "PolledAnswer",
 )
 # Type aliases and constants.
 SPEC_VALUES = (

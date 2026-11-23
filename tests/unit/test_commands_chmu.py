@@ -29,6 +29,7 @@ from obserwator._jsonable import jsonable
 from obserwator.api.main import app as rest_app
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
+from obserwator.datasets import CAPTURE_SCOPE
 from obserwator.store import build_catalog, init_store, sync_store
 from tests.contract.support import (
     canonical,
@@ -115,8 +116,8 @@ def chmu():
 # --------------------------------------------------------------------------
 
 
-def test_catalog_has_35_commands_and_datasets_providers_lists_both_providers():
-    assert len(data_commands()) == 35
+def test_catalog_has_36_commands_and_datasets_providers_lists_both_providers():
+    assert len(data_commands()) == 36
 
     listed = run_command("datasets providers", options={})
     planned = check_command("datasets providers", options={})
@@ -160,11 +161,14 @@ def test_command_schema_publishes_provider_stations_and_their_rules():
         rules = entry["rules"]
         assert any("stations" in rule and "cz.chmu" in rule for rule in rules)
         assert any("years" in rule and METEO in rule for rule in rules)
+    # No server publishes a capture's files: store sync seals them (ADR-030 D3).
     archive = _values(_options("datasets files")["dataset"])
     assert archive == [
         item.key
         for item in datasets()
-        if item.server_dir is not None and item.time_unit != "station_list"
+        if item.server_dir is not None
+        and item.time_unit != "station_list"
+        and item.archive_scope != CAPTURE_SCOPE
     ]
     assert {HYDRO, METEO} <= set(archive)
     entry = _entry("datasets providers")
@@ -185,7 +189,7 @@ def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
 
     groups = {command.name.split()[0] for command in view}
     assert not groups & {"current", "pmaxtp"}
-    assert len(view) == 25  # 35 without five current and five pmaxtp commands
+    assert len(view) == 25  # 36 without six current and five pmaxtp commands
     for command in view:
         for option in command.options:
             if option.name in ("dataset", "datasets"):

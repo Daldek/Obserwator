@@ -12,7 +12,8 @@ compares a provider's name.
 
 `ProviderAdapter` is a `typing.Protocol`; the adapters of ``obserwator.providers``
 subclass it explicitly to inherit the defaults of the optional members (no live current
-data, no credential, captures not kept).
+data, no credential, no polled source; every answer of a capture dataset written to the
+capture spool, ADR-030 D7).
 """
 
 from __future__ import annotations
@@ -42,7 +43,14 @@ if TYPE_CHECKING:
     from obserwator.store.catalog import CatalogBuild
     from obserwator.store.types import CatalogReport
 
-__all__ = ["Answer", "CheckScope", "Kind", "ProviderAdapter", "SourceAction"]
+__all__ = [
+    "Answer",
+    "CheckScope",
+    "Kind",
+    "PolledSource",
+    "ProviderAdapter",
+    "SourceAction",
+]
 
 Kind = Literal["hydro", "meteo"]
 """A station family."""
@@ -90,6 +98,32 @@ class Answer:
     dataset: str | None = None
 
 
+@dataclass(frozen=True)
+class PolledSource:
+    """
+    A source of current data the hourly poll asks (``current poll``, P16, ADR-030 D9).
+
+    Attributes
+    ----------
+    dataset : str
+        Key of the capture dataset its answers belong to.
+    url : str
+        The address of its answer for every station, without any credential.
+    interval : int
+        How often the source changes, in seconds: the shortest spacing of two polls
+        of it. The rate is a ceiling (P16): the deployment's timer runs at it or
+        slower, and a poll asked sooner skips the source.
+    headers : Mapping of str to str, optional
+        Request headers the source needs (hydro.imgw.pl's backend refuses the
+        default user agents of HTTP libraries).
+    """
+
+    dataset: str
+    url: str
+    interval: int
+    headers: Mapping[str, str] = MappingProxyType({})
+
+
 class ProviderAdapter(Protocol):
     """
     What Obserwator does with one data provider beyond its registry entry (ADR-029).
@@ -98,7 +132,8 @@ class ProviderAdapter(Protocol):
     `ProviderDescriptor.adapter` gives it. The attributes are the provider's facts the
     code acts on; the methods are its behaviour. Adapters subclass this protocol to
     inherit the defaults of the optional members: `current` (no live current data),
-    `credential` (none), `capture` (a no-op until step H2a), `server_name`, `groups`,
+    `polled` (no source of the hourly poll), `credential` (none), `capture` (the
+    capture spool), `publication_default` (``private``), `server_name`, `groups`,
     `identifies`, `optional_sources`, `dataset_origin`, `station_origins`, `indexed`,
     `index_files`, `station_key`, `archive_station`, `download`, `folders`,
     `listed_station`, `station_file`, `optional_action` and `location_files`.
@@ -128,6 +163,9 @@ class ProviderAdapter(Protocol):
         Its live current data by source name, the sources of the GUI's view of the
         current measurements (``states``, ``hydro``, ``meteo``, ``synop``); empty
         without any.
+    polled : tuple of PolledSource
+        The sources of current data the hourly poll asks (P16, ADR-030 D9), each with
+        the ceiling of its rate; empty without any.
     station_sources : tuple of str
         Keys of its station-source datasets (ADR-015): the hydro and meteo station
         lists, then the hydro and meteo station metadata.
@@ -149,6 +187,7 @@ class ProviderAdapter(Protocol):
     identifies: bool = False
     groups: frozenset[str] = frozenset()
     current: Mapping[str, Callable[[], Any]] = MappingProxyType({})
+    polled: tuple[PolledSource, ...] = ()
     station_sources: tuple[str, str, str, str]
     optional_sources: tuple[str, ...] = ()
     archive_suffixes: tuple[str, ...]
@@ -750,18 +789,55 @@ class ProviderAdapter(Protocol):
 
     # --- captures ------------------------------------------------------------------
 
-    def capture(self, answer: Answer, /) -> None:
+    def capture(self, answer: Answer, /) -> Path | None:
         """
         Keep an answer of the provider's servers as a capture (P14, ECO-084).
 
         The hook of the captures: every answer a request path of the provider
-        receives goes here, so no provider can skip it. Step H2a fills it with the
-        capture writer (the spool per dataset and UTC day, sealed by ``store sync``)
-        and routes the request paths through it; until then nothing is kept.
+        receives goes here (through `obserwator.captures.keep`, which turns a failure
+        into one warning record), so no provider can skip it. By default an answer
+        of a capture dataset is written to the capture spool
+        (``<state_dir>/obserwator/captures/<dataset>/<YYYY-MM-DD>/``, one file per
+        answer, ADR-030 D7), which ``store sync`` seals into one version a UTC day;
+        an answer of another dataset, or of none, is not kept here (an archive
+        download keeps its own version).
 
         Parameters
         ----------
         answer : Answer
             The answer as it came.
+
+        Returns
+        -------
+        pathlib.Path or None
+            The spool file of the answer; None when its dataset is no capture
+            dataset.
+
+        Raises
+        ------
+        OSError
+            If the spool cannot be written.
         """
-        return None
+        from obserwator.captures import write_spool
+
+        return write_spool(answer)
+
+    def publication_default(self, key: str, /) -> Literal["public", "private"]:
+        """
+        Whether a source of the provider is served when the operator says nothing (P15).
+
+        The default follows the source's terms as the provider's intake records them
+        (ADR-030 D5); ``[obserwator.capture]`` of ``nogat.toml`` overrides it.
+
+        Parameters
+        ----------
+        key : str
+            A dataset of the provider whose tier is not ``verified``.
+
+        Returns
+        -------
+        {"public", "private"}
+            ``private`` by default: a source whose terms nobody recorded is stored,
+            never served.
+        """
+        return "private"

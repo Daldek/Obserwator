@@ -38,6 +38,7 @@ from obserwator.fetch import (
     _get,
     _get_async,
     _json_payload,
+    _keep,
     _source_error,
 )
 from obserwator.messages import message
@@ -533,7 +534,9 @@ def _hydro_details(
     headers of `fetch_hydro_states`. An answer that is no object (``null``
     for a code the backend does not know) is left out. The list holds the
     whole answers: `write_archive` keeps only the fields of
-    ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021).
+    ``pl.imgw.hydro_details`` (ADR-015 D5, ADR-021); each answer as it came, the
+    map's too, goes to the capture spool (``pl.imgw.hydro_states_current``,
+    ``pl.imgw.hydro_operational``; ADR-030 D3).
 
     Parameters
     ----------
@@ -564,12 +567,14 @@ def _hydro_details(
     answers: list[Any] = []
     try:
         response = client.get(asked, headers=_MAP_HEADERS)
+        _keep(response)
         response.raise_for_status()
         for state in _hydro_states(_json_payload(response), asked):
             if cancel is not None and cancel():
                 raise ObserwatorCancelledError(message("stations.details_cancelled"))
             asked = f"{url}?id={state.station_code}"
             response = client.get(asked, headers=_MAP_HEADERS)
+            _keep(response)
             response.raise_for_status()
             answer = _json_payload(response)
             if isinstance(answer, dict):

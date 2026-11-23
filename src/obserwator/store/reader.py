@@ -15,6 +15,7 @@ from typing import Any, Final, Literal, cast
 from obserwator._parsing import normalize_archive
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    CAPTURE_SCOPE,
     DATASET_KEY_PATTERN,
     PROVIDER_ID_ALIASES,
     STATION_CODE_PATTERN,
@@ -85,6 +86,7 @@ from obserwator.store.writer import (
     _missing_hint,
     _observation_name,
     _safe_root,
+    _slot_stem,
     _unmarked_message,
     _validate_slot,
     _wrong_root,
@@ -438,6 +440,7 @@ def _parse_meta(payload: object) -> Meta:
             ),
         )
     content_sha256, content_form = _content_fields(payload)
+    tier, publication = _tier_fields(payload)
     terms_url = license_.get("terms_url")
     return Meta(
         schema,
@@ -460,6 +463,42 @@ def _parse_meta(payload: object) -> Meta:
         country=country,
         producer=producer,
         producer_version=producer_version,
+        tier=tier,
+        publication=publication,
+    )
+
+
+_TIERS = ("telemetry", "operational")
+_PUBLICATIONS = ("public", "private")
+
+
+def _tier_fields(
+    payload: Mapping[str, Any],
+) -> tuple[
+    Literal["telemetry", "operational"] | None, Literal["public", "private"] | None
+]:
+    """
+    ``tier`` and ``publication`` (ADR-030 D6): both absent (a verified version) or both valid.
+
+    A sidecar of a verified dataset has neither; one of a dataset of another tier
+    has its tier and the publication state of its source when it was written.
+    """
+    present = [key for key in ("tier", "publication") if key in payload]
+    if not present:
+        return None, None
+    tier, publication = payload.get("tier"), payload.get("publication")
+    if tier not in _TIERS or publication not in _PUBLICATIONS:
+        raise _Invalid(
+            "invalid_meta",
+            message(
+                "reader.fields_tier_publication",
+                tiers=", ".join(_TIERS),
+                publications=", ".join(_PUBLICATIONS),
+            ),
+        )
+    return (
+        cast(Literal["telemetry", "operational"], tier),
+        cast(Literal["public", "private"], publication),
     )
 
 
@@ -1037,9 +1076,11 @@ def _archive_slot(server_path: str) -> str | None:
     Slot ``archive:<key>:<selector>`` of a stored server path.
 
     The owning dataset is the stored one with the longest matching server
-    directory; station-source datasets (lists and station metadata) accept
-    only their own file names, so two of them may share a directory, other
-    datasets a selector with a folder; any other path has no slot.
+    directory; station-source datasets (lists and station metadata) and capture
+    datasets (``<YYYY-MM-DD>.jsonl.gz``, ADR-030 D3) accept only their own file
+    names, so one of them may share a directory with another dataset (the
+    captures of ``api/data/hydro`` lie below the slot of ``pl.imgw.hydro_now``),
+    other datasets a selector with a folder; any other path has no slot.
     """
     for descriptor in _archive_descriptors():
         if not server_path.startswith(f"{descriptor.server_dir}/"):
@@ -1047,6 +1088,10 @@ def _archive_slot(server_path: str) -> str | None:
         selector = server_path.removeprefix(f"{descriptor.server_dir}/")
         if descriptor.time_unit == "station_list":
             if _station_file(descriptor, selector) is None:
+                continue
+            valid = True
+        elif descriptor.archive_scope == CAPTURE_SCOPE:
+            if _archive_from_path(descriptor.key, server_path) is None:
                 continue
             valid = True
         elif descriptor.archive_scope != "country":
@@ -1079,12 +1124,29 @@ def _scanned_archive_slot(
     )
     slot_dir = directory.parent
     name = next(
-        (item for item in names if PurePosixPath(item).stem == slot_dir.name),
+        (item for item in names if _slot_stem(item) == slot_dir.name),
         slot_dir.name,
     )
     server_path = f"{slot_dir.parent.relative_to(base).as_posix()}/{name}"
     slot = _archive_slot(server_path)
     return None if slot is None else (slot, server_path)
+
+
+def _nested_slot(path: Path) -> bool:
+    """
+    Whether a directory among an archive slot's versions is another dataset's slot.
+
+    A directory that holds no file and whose name is no version name
+    ``<label>_<sha8>``, as the scan tells it apart (`_scan_archives`): the captures
+    ``api/data/hydro/<YYYY-MM-DD>/`` below the slot of ``pl.imgw.hydro_now``
+    (ADR-030 D3).
+    """
+    if path.is_symlink() or not path.is_dir() or _VERSION_DIR.match(path.name):
+        return False
+    try:
+        return all(item.is_dir() and not item.is_symlink() for item in path.iterdir())
+    except OSError:
+        return False
 
 
 def _directories(root: Path, path: Path) -> Iterator[Path | StoreEntry]:
@@ -1631,7 +1693,7 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     versions: list[tuple[Path, dict[str, Any]]] = []
     entries: dict[Path, StoreEntry] = {}
     for version in sorted(directory.iterdir()):
-        if kind == "archive" and _is_register(version):
+        if kind == "archive" and (_is_register(version) or _nested_slot(version)):
             continue
         entry = (
             _entry(path, kind, slot, version, name, strict=True, **options)

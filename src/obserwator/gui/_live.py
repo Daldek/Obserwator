@@ -1,5 +1,12 @@
 """
-Live data through the server only, kept in memory and never stored (GUI plan D8).
+Live data through the server only, kept in memory, never in a root (GUI plan D8).
+
+Every answer of IMGW-PIB's current data the snapshots fetch also goes, as it came, to
+the capture spool of ``state_dir`` (``<state_dir>/obserwator/captures``, ADR-030 D7):
+the library's fetchers hand it to the provider's adapter (`obserwator.captures`), so
+``store sync`` of the capture datasets seals it into the raw root later; the GUI
+writes no root. A spool that cannot be written is one warning record, and the
+snapshot is served all the same.
 
 - Snapshots of IMGW-PIB's current data (`fetch_hydro_states`, `fetch_hydro_current`,
   `fetch_meteo_current`, `fetch_synop`): each fetched on demand at most once per 10

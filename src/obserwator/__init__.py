@@ -50,6 +50,9 @@ from obserwator._version import __version__
 # Guide for AI agents
 from obserwator.agent_guide import agent_guide
 
+# Captures of current data: the hourly poll into the capture spool (ADR-030 D9)
+from obserwator.captures import PolledAnswer, PollReport, poll_current
+
 # Data command catalog
 from obserwator.commands import (
     check_command,
@@ -323,6 +326,10 @@ __all__ = [
     "find_stations_async",
     "fetch_hydro_states",
     "fetch_hydro_states_async",
+    # Captures of current data (ADR-030): the hourly poll into the capture spool
+    "poll_current",
+    "PollReport",
+    "PolledAnswer",
     # Parsers
     "parse_daily_csv",
     "parse_monthly_csv",

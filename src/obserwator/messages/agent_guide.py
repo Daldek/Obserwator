@@ -43,6 +43,14 @@ MESSAGES = {
         "local",
         "lokalna",
     ),
+    "station_sources": Text(
+        "Station sources (`store sync`):",
+        "Źródła stacji (`store sync`):",
+    ),
+    "captures": Text(
+        "Captures (unverified, one version a UTC day):",
+        "Zapisy (niezweryfikowane, wersja na dobę UTC):",
+    ),
     "outside_store": Text(
         "Download only (`datasets download`):",
         "Do pobrania (`datasets download`):",
@@ -226,11 +234,9 @@ MESSAGES = {
     ),
     "flags_output": Text(
         "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
-        "only that; without it, a summary for a person in the language of `--lang`. A "
-        "stream without `--output` prints its data lines in both modes.",
+        "only that; without it, a summary for a person in the language of `--lang`.",
         "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
-        "ją; bez niego podsumowanie dla człowieka w języku `--lang`. Strumień bez "
-        "`--output` wypisuje swoje linie danych w obu trybach.",
+        "ją; bez niego podsumowanie dla człowieka w języku `--lang`.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else "

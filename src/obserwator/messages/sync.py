@@ -144,6 +144,22 @@ MESSAGES = {
         "Źródła stacji zapisuje się tylko w magazynie, gdzie czyta je store catalog; "
         "podaj root, nie output_dir",
     ),
+    "captures_alone": Text(
+        "Capture datasets (*_current) are sealed from the capture spool in a call of "
+        "their own, without other datasets",
+        "Zbiory zapisów (*_current) zamyka z bufora zapisów osobne wywołanie, bez "
+        "innych zbiorów",
+    ),
+    "option_not_for_captures": Text(
+        "The option {option} does not apply to capture datasets: every closed UTC day "
+        "of the spool is sealed",
+        "Opcja {option} nie dotyczy zbiorów zapisów: zamykana jest każda zakończona "
+        "doba UTC bufora",
+    ),
+    "captures_store_only": Text(
+        "Capture datasets are sealed only into a store; give root, not output_dir",
+        "Zbiory zapisów zamyka się tylko w magazynie; podaj root, nie output_dir",
+    ),
     "station_source_no_signal": Text(
         "no stable freshness signal: the answer or its envelope is regenerated, so "
         "store sync downloads it and compares the content",

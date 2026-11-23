@@ -73,6 +73,14 @@ def _render(report: dict[str, Any]) -> str:
         lines.append(message("cli.config_instance_title", lang=_LANG))
         for key, value in instance.items():
             lines.append(f"  {key} = {_json(value)}")
+    # The captures (ADR-030 D5, D7): the spool and each source's publication state.
+    capture = report.get("capture")
+    if capture is not None:
+        lines.append(
+            message("cli.config_capture_title", lang=_LANG, spool=capture["spool"])
+        )
+        for key, entry in capture["sources"].items():
+            lines.append(f"  {key} = {entry['state']}  [{_origin(entry)}]")
     problems = report.get("problems") or []
     if not problems:
         lines.append(message("cli.config_no_problems", lang=_LANG))

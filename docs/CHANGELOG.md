@@ -10,6 +10,76 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
 
 ### Added
 
+- **Captures: every answer of a source of current data kept as it came (ADR-030 D3, D7 and
+  its errata of 2026-11-23; Nogat plan `2026-11-20-hydromet-providers.md` P14, step H2a).**
+  The library's request paths (`fetch._get`, `_archive_response` and their async twins, the
+  map and station pages of `pl.imgw.hydro_details`) hand every answer whose address belongs to
+  a capture dataset to its provider's adapter, which writes it to the capture spool
+  `<state_dir>/obserwator/captures/<dataset>/<YYYY-MM-DD>/` (the UTC day of the answer): one
+  file `<YYYYMMDDTHHMMSS.ffffffZ>_<sha256>.json` per answer, created with `O_EXCL`, holding
+  its time, its address without any credential, its status and its body; never a root. So
+  `current hydro|meteo|synop|warnings|hydro-states` and their functions, the GUI's snapshots,
+  IMGW-PIB's live station search and `store sync` of `pl.imgw.hydro_now`, `pl.imgw.meteo_now`
+  and `pl.imgw.hydro_details` keep what they receive (hydro.imgw.pl's station pages for the
+  declared `pl.imgw.hydro_operational`, which O2 seals). A spool that cannot be written is one
+  warning record (event `capture_failed`) and the `config show` problem `capture_spool`; the
+  answer is served all the same. New module `obserwator.captures`.
+- **Six capture datasets, sealed by `store sync` (ADR-030 D3, D4, D8; step H2a).**
+  `pl.imgw.hydro_current`, `pl.imgw.meteo_current`, `pl.imgw.meteo_synop_current`,
+  `pl.imgw.warnings_hydro_current`, `pl.imgw.warnings_meteo_current` and
+  `pl.imgw.hydro_states_current` (tier `operational`, `time_unit` `snapshot`, `archive_scope`
+  `country_day`, titled „operational data, unverified”) leave the declared datasets:
+  `datasets()` and `datasets list` give 33 datasets, and five stay declared. `store check` and
+  `store sync --datasets` take them in a call of their own, without `years`, `months` or
+  `stations` (`details.reason` `captures`), and only into a root (`--output-dir`:
+  `store_only_dataset`). `store sync` seals every closed UTC day of the spool into one archive
+  version, slot `archive:<key>:<YYYY-MM-DD>.jsonl.gz`, at
+  `archives/versions/<server_dir>/<YYYY-MM-DD>/<YYYY-MM-DD>_<sha8>/<YYYY-MM-DD>.jsonl.gz`:
+  gzip-compressed canonical JSON Lines, one line per answer in time order, an answer equal to
+  the one before it from its address recorded once as `seen`. A day sealed before is sealed
+  again with its current version's answers (late answers give a new version holding them all,
+  nothing new gives `unchanged`), today (UTC) never, and the sealed spool files are removed
+  once the version holding them is published. `store check` plans each closed day without a
+  request (`missing`, `newer`, `current`, `check_failed`); a spool file it cannot read is a
+  `capture_unreadable` warning and stays. `datasets files` and `datasets download` do not offer
+  them (`archive_files` refuses one, `details.reason` `capture`), and `command_for_version`
+  refuses a capture version (`unsupported`, `command_not_rebuildable`): no request gives a past
+  day's answers again.
+- **`current poll`: the hourly poll (ADR-030 D9, P16; step H2a).** The 36th catalog command
+  (`poll_current`, public with `PollReport` and `PolledAnswer`; `obserwator current poll
+  [--check]`, MCP `obserwator_current_poll` on stdio, no REST route) asks once each source an
+  adapter declares (`ProviderAdapter.polled`: IMGW-PIB's `api/data/hydro`, `meteo`, `synop`,
+  `warningshydro`, `warningsmeteo` and hydro-back's map of water states, each declared at
+  3600 s) and keeps the answers in the spool, nothing else. A source asked less than its
+  interval minus a tenth of it ago is skipped without a request (`info` notice `poll_skipped`;
+  the last poll is kept in `<spool>/<dataset>/.polled`); a source without an answer, with a
+  status other than 2xx, a redirect included (its answer is kept), or whose answer could not
+  be written is `failed` (`warning` notice `capture_failed`). Result
+  `obserwator-poll-report/1`: `answers`
+  (`obserwator-polled-answer/1`: `dataset`, `url`, `status` `captured`, `skipped`, `failed` or
+  `cancelled`, `http_status`, `path`, `sha256`, `polled_at`, `error`, `error_code`),
+  `cancelled` and `files[]`; a failed source makes the envelope `partial` or `failed`.
+  `--check` plans each source `unverifiable` (asked) or `current` (skipped). Effects: `writes`
+  `add`, `network`, not idempotent. The deployment's `obserwator-current.timer` (A2) runs it at
+  :15 every hour.
+- **`[obserwator.capture]`: whether each source is served (ADR-030 D5, P15; step H2a).**
+  `nogat.toml` sets `"<dataset>" = "public"` or `"private"` for each source of a tier other than
+  `verified` (ten, the declared ones included; a dotted key is read as the dataset's key); the
+  defaults follow the sources' terms (hydro.imgw.pl's backend `private`, danepubliczne.imgw.pl
+  and ČHMÚ `public`). `config show` gains `capture` (the spool's directory and per source its
+  `state`, `tier` and `source`, `default` or `file`) and the problems `invalid_capture` (no
+  table, another dataset, one source named twice or another value; the defaults then apply)
+  and `capture_spool`. Every REST request, and so
+  MCP over HTTP, answers `not_found` with `details.reason` `private`, before any request, when
+  an option `dataset` or `datasets`, or a `store sync` plan item, names a capture whose state in
+  force is `private`, or a `version` lies under its slot; the CLI, the library and MCP on stdio
+  read every capture.
+- **Sidecar fields `tier` and `publication` (ADR-030 D6; Nogat ECO-085; step H2a).** A version
+  of a dataset whose tier is not `verified` carries both in its `obserwator-meta/1` sidecar
+  (`publication`: its source's state when it was written); `read_meta` and the scans give them
+  as `Meta.tier` and `Meta.publication`, written to `obserwator-store-entry/1` only when set,
+  and a sidecar with one without the other or another value is `invalid_meta`. A verified
+  dataset's sidecar has neither and keeps its bytes.
 - **Provider credentials and their errors (Nogat plan `2026-11-20-hydromet-providers.md`,
   P3, P4, step H3).** A provider whose requests need an API key declares it in the new
   optional field `ProviderDescriptor.credential` (type `ProviderCredential`, public), written
@@ -35,8 +105,8 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   the fixture stores keep their bytes.
 - **The datasets of the operational series, declared ahead of their steps (ADR-030 D4, D8).**
   The registry holds eleven datasets that no command, MCP tool, REST route or GUI view lists
-  or accepts yet (`get_dataset` refuses their keys as unknown) and that only
-  `datasets(pending=True)` lists, after the served ones, with their tiers:
+  or accepts until their step serves them (`get_dataset` refuses their keys as unknown) and
+  that only `datasets(pending=True)` lists, after the served ones, with their tiers:
   `pl.imgw.hydro_operational` (hydro-back's hourly H, Q and T), `pl.imgw.hydro_telemetry` (the
   monthly telemetry, from 2008), the captures of current data `pl.imgw.hydro_current`,
   `pl.imgw.meteo_current`, `pl.imgw.meteo_synop_current`, `pl.imgw.warnings_hydro_current`,
@@ -56,6 +126,18 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
 - **The scope of 3.2.0 (the author's decision of 2026-11-22).** The provider fed by files
   (step 6 of ADR-025's plan) and Gdańskie Wody move to 3.3.0 (ADR-025 erratum of 2026-11-23;
   `docs/PROGRESS.md`, „Release 3.3.0”).
+- **Fetching current data writes the capture spool (ADR-030 D7; step H2a).** Every `fetch_*`
+  and live `find_stations` call, `obserwator current …`, the GUI and `store sync` of IMGW-PIB's
+  station sources write each answer of a capture source to `<state_dir>/obserwator/captures`
+  (above). `ProviderAdapter.capture` (ADR-029) writes the spool and returns its file instead of
+  doing nothing, and the protocol gains `publication_default` and `polled` (ADR-029 erratum of
+  2026-11-23). `obserwator.testing`'s recorded answers never reach the spool, so
+  `build_fixture_store` leaves a real one alone.
+- **`AGENTS.md` and `llms.txt` follow the catalog (step H2a):** they are regenerated with
+  `current poll` and the six capture datasets. To keep `AGENTS.md` within 16 KiB (DOC-1.7),
+  the station sources and the captures are each one line of folded keys below the table of
+  the datasets, and the line on CLI output no longer repeats the envelope section's rule
+  for streams.
 
 - Provider adapters (ADR-029; Nogat plan `2026-11-20-hydromet-providers.md` P1, P2): `obserwator.providers` with one adapter per provider (`pl.imgw`, `cz.chmu`) behind the protocol `ProviderAdapter`; `ProviderDescriptor.adapter` and `ProviderDescriptor.acronym`. The archive enumeration, downloads, store checks, live station search, station catalog, parsers, attribution origins, command groups and the GUI's provider logic dispatch through it; the catalog keys, catalog directories and GUI slots are derived from the registry. Each provider's catalog builder lives in its adapter's module, `store/catalog.py` keeps the shared parts (location files, series codes, notices, lines, publication); the internal constants `STATIC_LOCATIONS` and `DETAILS_SOURCE` moved from `obserwator.store.catalog` to `obserwator.providers.pl.imgw`. No output changes: archives, sidecars, series, catalogs, envelopes, `AGENTS.md` and `llms.txt` keep their bytes. `_borders.PROVIDERS` is gone (`BORDERS` lists the packaged borders).
 

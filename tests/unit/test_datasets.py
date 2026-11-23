@@ -83,6 +83,29 @@ _REGISTRY = [
     ("pl.imgw.meteo_now", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_details", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.pmaxtp", None, True, "cell", "none", None, None),
+    # The captures of current data (ADR-030 D2): sealed by store sync from the spool.
+    ("pl.imgw.hydro_current", "hydro", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.meteo_current", "meteo", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.meteo_synop_current", "meteo", True, "snapshot", "calendar", None, None),
+    (
+        "pl.imgw.warnings_hydro_current",
+        "hydro",
+        True,
+        "snapshot",
+        "calendar",
+        None,
+        None,
+    ),
+    (
+        "pl.imgw.warnings_meteo_current",
+        "meteo",
+        True,
+        "snapshot",
+        "calendar",
+        None,
+        None,
+    ),
+    ("pl.imgw.hydro_states_current", "hydro", True, "snapshot", "calendar", None, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
         "pl.imgw.meteo_climate_monthly",
@@ -240,27 +263,38 @@ def test_aliases_without_descriptor_explain_reason(alias, reason):
     assert alias in str(exc.value)
 
 
-# ADR-030: the datasets of the operational series, declared before the steps that
-# serve them, with their (tier, time_unit, archive_scope).
-_DECLARED = {
-    "pl.imgw.hydro_operational": ("operational", "hour", "country_day"),
-    "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
+# ADR-030: the captures of current data (H2a), served with their (tier, time_unit,
+# archive_scope); every other served dataset is verified.
+_CAPTURES = {
     "pl.imgw.hydro_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.meteo_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.meteo_synop_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.warnings_hydro_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.warnings_meteo_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.hydro_states_current": ("operational", "snapshot", "country_day"),
+}
+# ADR-030: the datasets of the operational series, declared before the steps that
+# serve them, with their (tier, time_unit, archive_scope).
+_DECLARED = {
+    "pl.imgw.hydro_operational": ("operational", "hour", "country_day"),
+    "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
     "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_hourly": ("verified", "hour", "station_year"),
 }
 
 
-def test_every_served_dataset_is_verified_and_its_document_says_so():
-    assert {descriptor.tier for descriptor in datasets()} == {"verified"}
+def test_every_served_dataset_but_the_captures_is_verified_and_its_document_says_so():
+    served = datasets()
+    assert {
+        d.key: (d.tier, d.time_unit, d.archive_scope)
+        for d in served
+        if d.tier != "verified"
+    } == _CAPTURES
     listed = run_command("datasets list", options={"limit": 100}).to_json()
-    assert [item["tier"] for item in listed["result"]] == ["verified"] * len(datasets())
+    assert [(item["key"], item["tier"]) for item in listed["result"]] == [
+        (d.key, d.tier) for d in served
+    ]
 
 
 def test_declared_datasets_follow_the_served_ones_with_their_tiers():

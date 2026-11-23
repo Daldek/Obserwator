@@ -16,6 +16,7 @@ import httpx
 
 from obserwator._parsing.chmu import ListingEntry, parse_listing
 from obserwator.datasets import (
+    CAPTURE_SCOPE,
     ArchiveFile,
     DatasetDescriptor,
     MonthsArg,
@@ -51,6 +52,7 @@ from obserwator.fetch import (
 from obserwator.messages import Message, message, reason
 from obserwator.messages.sync import MESSAGES
 from obserwator.output import resolve_target
+from obserwator.store.captures import check_captures, seal_item
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
     _current_version,
@@ -640,6 +642,36 @@ def _source_descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor] | No
     return list(sources.values())
 
 
+def _capture_descriptors(datasets: Iterable[str]) -> list[DatasetDescriptor] | None:
+    """
+    The capture datasets of a request, or None when it names none of them.
+
+    A capture dataset (``archive_scope`` ``country_day``, ADR-030 D3) is sealed from
+    the spool, not downloaded; a request holds either only capture datasets or none.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``datasets`` is a string, names an unknown dataset, or mixes capture
+        datasets with others.
+    """
+    if isinstance(datasets, str):
+        raise ObserwatorValidationError(
+            message("sync.parameter_datasets_must_list_dataset"),
+            details={"option": "datasets", "value": datasets},
+        )
+    named = [get_dataset(dataset) for dataset in dict.fromkeys(datasets)]
+    captures = {d.key: d for d in named if d.archive_scope == CAPTURE_SCOPE}
+    if not captures:
+        return None
+    if len(captures) != len({d.key for d in named}):
+        raise ObserwatorValidationError(
+            message("sync.captures_alone"),
+            details={"option": "datasets", "value": [d.key for d in named]},
+        )
+    return list(captures.values())
+
+
 def _country_archives(
     descriptors: list[DatasetDescriptor],
     years: YearsArg | None,
@@ -787,12 +819,26 @@ def _selection(
         `_station_request`) with no archives, for the per-station synop
         archives of IMGW-PIB the station codes and no candidates (see
         `_folder_request`) with no archives, for country datasets (IMGW-PIB)
-        no codes, no candidates and the archives, or for station sources
+        no codes, no candidates and the archives, for station sources
         (lists and station metadata, ADR-015) no codes, no candidates and
-        their files with a fixed name.
+        their files with a fixed name, or for capture datasets (ADR-030 D3,
+        sealed from the spool) no codes, no candidates and no files.
     """
     if not isinstance(datasets, str):
         datasets = tuple(datasets)
+    captures = _capture_descriptors(datasets)
+    if captures is not None:
+        for name, given in (
+            ("years", years),
+            ("months", months),
+            ("stations", stations),
+        ):
+            if given is not None:
+                raise ObserwatorValidationError(
+                    message("sync.option_not_for_captures", option=name),
+                    details={"option": name, "value": None, "reason": "captures"},
+                )
+        return captures, (), {}, []
     sources = _source_descriptors(datasets)
     if sources is not None:
         for name, given in (
@@ -878,7 +924,8 @@ def check_store(
     (to the minute) and size are compared with the reference signal of the
     slot (the newest observation of its current version, or that version's
     ``Last-Modified`` and size). Per-archive errors are recorded in the plan,
-    never raised.
+    never raised. A capture dataset (ADR-030 D3) is checked without a request:
+    one item per closed UTC day of its spool (`obserwator.store.captures`).
 
     Parameters
     ----------
@@ -887,7 +934,8 @@ def check_store(
     datasets : Iterable[str]
         Dataset keys, slugs or legacy aliases of measurement series datasets
         of one kind: IMGW-PIB country archives, the IMGW-PIB synop archives or
-        ČHMÚ station files. A bare string is rejected.
+        ČHMÚ station files; or station sources; or capture datasets (no
+        ``years``, ``months`` or ``stations``). A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
@@ -962,10 +1010,30 @@ def check_store(
             refused.to_json(_plan_target(refused.root, plan))
         return refused
     path = lenient_store(root, kind="raw").root
+    target = _plan_target(path, plan) if plan is not None else None
+    if descriptors[0].archive_scope == CAPTURE_SCOPE:
+        items, cancelled = check_captures(
+            path,
+            descriptors,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
+        captured = StorePlan(
+            schema="obserwator-plan/1",
+            root=path,
+            checked_at=datetime.now(UTC),
+            items=tuple(items),
+            series_state={},
+            cancelled=cancelled,
+            requests={"made": 0, "planned": 0},
+        )
+        if target is not None:
+            captured.to_json(target)
+        return captured
     sources = descriptors[0].time_unit == "station_list"
     scope = None if sources else _scope(descriptors[0])
     listed = sources or scope == "stations"
-    target = _plan_target(path, plan) if plan is not None else None
     made = 0
 
     def count(_request: httpx.Request) -> None:
@@ -1450,7 +1518,11 @@ def sync_store(
 
     Downloads write only raw data (ADR-015): the archives, the station lists
     and the station metadata of the catalogs. Series and catalogs are built
-    from the store afterwards by ``series build`` and ``store catalog``.
+    from the store afterwards by ``series build`` and ``store catalog``. A
+    capture dataset (ADR-030 D3) downloads nothing: every closed UTC day of its
+    spool is sealed into one version (`obserwator.store.captures.seal_day`),
+    ``new`` or ``unchanged`` when its current version holds every answer, and
+    the day's spool files are removed once the version holding them is published.
 
     Without ``plan`` the plan is built by :func:`check_store` from the given
     selectors; ``plan`` and the selectors are mutually exclusive. Before each
@@ -1618,17 +1690,21 @@ def sync_store(
             if stop:
                 results.append(_result(item, "cancelled", error=CANCELLED))
                 continue
-            results.append(
-                _sync_one(
-                    client,
-                    path,
-                    item,
-                    explicit=explicit,
-                    force=force,
-                    cancel=cancel,
-                    on_notice=on_notice,
+            if get_dataset(item.archive.dataset).archive_scope == CAPTURE_SCOPE:
+                sealed = seal_item(path, item, on_notice=on_notice, cancel=cancel)
+                results.append(sealed)
+            else:
+                results.append(
+                    _sync_one(
+                        client,
+                        path,
+                        item,
+                        explicit=explicit,
+                        force=force,
+                        cancel=cancel,
+                        on_notice=on_notice,
+                    )
                 )
-            )
             if on_progress is not None:
                 on_progress(
                     Progress(
@@ -1690,6 +1766,11 @@ def _plain_archives(
     if descriptors[0].time_unit == "station_list":
         raise ObserwatorValidationError(
             message("sync.station_sources_store_only"),
+            details={"option": "datasets", "reason": "store_only_dataset"},
+        )
+    if descriptors[0].archive_scope == CAPTURE_SCOPE:
+        raise ObserwatorValidationError(
+            message("sync.captures_store_only"),
             details={"option": "datasets", "reason": "store_only_dataset"},
         )
     if not candidates:
