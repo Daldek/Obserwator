@@ -1105,9 +1105,11 @@ class StationCoverage:
     period : {"winter", "summer", "annual"} or None
         Half-year period for semi-annual data, None otherwise.
     first : date or None
-        First unit with a value, or None when there is none.
+        First unit with a value, or None when there is none; for a sub-daily
+        series (ADR-031) the start of an hour, an aware UTC ``datetime``.
     last : date or None
-        Last unit with a value, or None when there is none.
+        Last unit with a value, or None when there is none (an hour as
+        ``first``).
     with_value : int
         Number of units with a value (including ``no_phenomenon`` and
         ``accumulated``).
@@ -1115,7 +1117,7 @@ class StationCoverage:
         Number of units flagged ``accumulated``.
     gaps : tuple of tuple of (date, date)
         Maximal closed ranges of units without a value between ``first``
-        and ``last``.
+        and ``last``; ranges of hours for a sub-daily series.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-coverage/1"

@@ -287,6 +287,22 @@
             "maxItems": 2
           }
         },
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "verified",
+              "telemetry",
+              "operational"
+            ]
+          }
+        },
         "stations": {
           "type": "object",
           "patternProperties": {
@@ -332,14 +348,28 @@
                           "string",
                           "null"
                         ],
-                        "format": "date"
+                        "anyOf": [
+                          {
+                            "format": "date"
+                          },
+                          {
+                            "format": "date-time"
+                          }
+                        ]
                       },
                       "last": {
                         "type": [
                           "string",
                           "null"
                         ],
-                        "format": "date"
+                        "anyOf": [
+                          {
+                            "format": "date"
+                          },
+                          {
+                            "format": "date-time"
+                          }
+                        ]
                       },
                       "with_value": {
                         "type": "integer",
@@ -356,11 +386,25 @@
                           "prefixItems": [
                             {
                               "type": "string",
-                              "format": "date"
+                              "anyOf": [
+                                {
+                                  "format": "date"
+                                },
+                                {
+                                  "format": "date-time"
+                                }
+                              ]
                             },
                             {
                               "type": "string",
-                              "format": "date"
+                              "anyOf": [
+                                {
+                                  "format": "date"
+                                },
+                                {
+                                  "format": "date-time"
+                                }
+                              ]
                             }
                           ],
                           "minItems": 2,
