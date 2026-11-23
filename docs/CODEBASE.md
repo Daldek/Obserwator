@@ -278,6 +278,10 @@ The command catalog is the single source of options, validation, help texts and 
   - Kept (dotted `kept_fields`, a derived JSON list sorted by `id`): `id`, `properties.{maximumStateValue, maximumStateDate, minimumStateValue, minimumStateDate, district, waterGaugeZeroOrdinate, waterGaugeZeroOrdinateReferrenceSystem, yearOfEstablishment}`, `status.{riverCourseKm, catchmentArea, province, alarmValue, warningValue}`; never the water states and trends (operational, DEV-20.8), `status.notes`, `properties.dataClause`, the internal `status.id` or the coordinates. The whole answers, the map's too, go to the capture spool (`pl.imgw.hydro_states_current`, the declared `pl.imgw.hydro_operational`; ADR-030)
   - No freshness signal (`update_signal="none"`): `store check` → `unverifiable`, `store sync` always downloads; license = the hydro.imgw.pl terms (`https://hydro.imgw.pl/#/regulamin`), lines S, P, RH
   - Catalog properties of IMGW-PIB features (optional source of `store catalog`): `established_year`, `gauge_zero_m` (0 → null), `gauge_zero_datum` (only with a gauge zero), `river_km`, `catchment_area_km2` (0 → null), `province`, `district`, `warning_level_cm`, `alarm_level_cm`, `absolute_min_level_cm`, `absolute_min_level_dates`, `absolute_max_level_cm`, `absolute_max_level_dates`, `details_source` (`"hydro_details"` or null); all null without details (docs/USAGE.md, "Station data sources")
+- **Meteo station details** (`pl.imgw.meteo_details`, ADR-021 erratum of 2026-11-23): `https://hydro-back.imgw.pl/station/meteo/status?id=<code>`, the page of a station of hydro.imgw.pl's meteorological map `https://hydro-back.imgw.pl/map/stations/meteorologic?onlyMainStations=false` (877 stations on 2026-11-23)
+  - Asked as the hydro details above (`stations._station_details(client, url, map_url)`: the same header, map order, one request at a time, `null` skipped, any HTTP error fails the item, `cancel` before each station, no freshness signal, the hydro.imgw.pl terms, lines S, P, RH)
+  - Kept: `id`, `coordinates.{x, y}`, `properties.altitude`; never the precipitation, its sums and records, `status.notes` or the backend's ids. The whole answers go to the declared captures `pl.imgw.meteo_operational` (pages) and `pl.imgw.meteo_states_current` (the map), `private` by default
+  - Catalog of a meteorological IMGW-PIB feature (optional source of `store catalog`): `elevation_m` from `properties.altitude`, `details_source` `"meteo_details"`, and, after the current-data API's point, the page's point with `location_source` `pl.imgw.meteo_details` (ADR-028 erratum)
 
 ### Station Pages
 - **Hydro**: `https://hydro.imgw.pl/#/station/hydro/{station_code}`
@@ -402,6 +406,7 @@ Envelope status exit codes: `ok` 0, `partial` 10, `failed` 11, `cancelled` 130.
 |`pl.imgw.hydro_stations`, `pl.imgw.meteo_stations`|—|yes (station lists)|
 |`pl.imgw.hydro_now`, `pl.imgw.meteo_now`|—|yes (station metadata of the current-data API, derived: code, name, river, coordinates; ADR-015 D5)|
 |`pl.imgw.hydro_details`|—|yes (station details of hydro.imgw.pl, derived: gauge zero and datum, river km, catchment area, year, province, district, warning and alarm levels, absolute extremes; ADR-021)|
+|`pl.imgw.meteo_details`|—|yes (meteorological station details of hydro.imgw.pl, derived: coordinates and elevation; ADR-021 erratum of 2026-11-23)|
 |`pl.imgw.pmaxtp`|—|yes (grid cells)|
 |`pl.imgw.hydro_phenomena`|— (`hydro/dobowe` with month 13)|download only|
 |`pl.imgw.meteo_climate_monthly`, `pl.imgw.meteo_precip_monthly`, `pl.imgw.meteo_synop_monthly`|`meteo/miesieczne/klimat\|opad\|synop`|download only|
