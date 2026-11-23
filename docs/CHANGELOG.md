@@ -4,7 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
-## [Unreleased]
+## [3.2.0] - 2026-11-23
 
 Changes since 3.1.0, in 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, provider credentials, captures of every answer of current data, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, hourly series, ČHMÚ's groundwater, the meteorological station details of hydro.imgw.pl, the hourly chart of the current readings, and the deployment's timers and backups. Deployment order (ECO-085; the plan's step D1): Archiwista 0.4.0 is deployed before Obserwator 3.2.0 writes captures or hourly series to a root Archiwista shares; the sources of hydro.imgw.pl's backend stay `private` by default (`[obserwator.capture]`), so REST and the GUI serve neither their captures nor IMGW-PIB's hourly series until the operator sets them `public`.
 
