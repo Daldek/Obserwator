@@ -1,0 +1,15 @@
+# Starts obserwator-backup.service (docs/USAGE.md "Backups"; Nogat plan
+# 2026-11-16-operational-series, step A4). Persistent=true: a run missed while
+# the machine was off happens at the next boot. The month's first run is the full
+# copy; the first run of all belongs before the first night.
+
+[Unit]
+Description=Obserwator backup on Sundays at 07:00 local time
+Documentation=https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#backups
+
+[Timer]
+OnCalendar=Sun *-*-* 07:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

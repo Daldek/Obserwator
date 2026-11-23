@@ -190,7 +190,7 @@ def test_every_unit_verifies_once_its_paths_are_given(tmp_path):
     units = sorted((DEPLOY / "systemd").iterdir())
     assert {u.name for u in units} == {
         f"obserwator-{name}.{kind}"
-        for name in ("night", "telemetry", "current")
+        for name in ("night", "telemetry", "current", "backup")
         for kind in ("service", "timer")
     }
     for unit in units:
