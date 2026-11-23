@@ -179,7 +179,7 @@ for station in read_station_list(raw, kind="meteo")[:3]:
     print(station.station_code, station.name, station.short_code)
 ```
 
-For offline tests use `obserwator.testing.build_fixture_store(raw_dir, data_root=data_dir)` — it builds a small raw root and the data root built from it from recorded responses, without internet access (fictitious stations, e.g. `149190310`), and returns `FixtureRoots(raw, data)`, the handles of both; the `variant="complete_pl_cz"` variant adds ČHMÚ data (stations `0-203-1-900001`, `0-203-1-900002`, `0-203-0-90001`, `0-203-0-90000000002`, series, catalog and an observation).
+For offline tests use `obserwator.testing.build_fixture_store(raw_dir, data_root=data_dir)` — it builds a small raw root and the data root built from it from recorded responses, without internet access (fictitious stations, e.g. `149190310`), and returns `FixtureRoots(raw, data)`, the handles of both; the `variant="complete_pl_cz"` variant adds ČHMÚ data (stations `0-203-1-900001`, `0-203-1-900002`, `0-203-0-90001`, `0-203-0-90000000002`, series, catalog and an observation), and `variant="groundwater"` adds to that ČHMÚ's real bore `0-203-1-VP0624` and spring `0-203-1-PP0744` (their groundwater files, the daily and weekly series and the groundwater objects in the ČHMÚ catalog; ADR-032).
 
 ### ČHMÚ data (Czechia)
 

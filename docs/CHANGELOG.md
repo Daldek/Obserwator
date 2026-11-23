@@ -87,6 +87,12 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   - GUI: groundwater objects on the map and in the legend with a symbol of their own (a brown
     rounded diamond), a third choice in the kind filter where a catalog holds one, and in the
     station's row and panel what the object is (a bore or a spring) and its series.
+  - Fixture variant `groundwater` of `obserwator.testing.build_fixture_store` (ADR-032 D9):
+    `complete_pl_cz` plus ČHMÚ's real bore `0-203-1-VP0624` „Rakousy” and spring
+    `0-203-1-PP0744` „Želechy” (files and server headers recorded on 2026-11-23, the
+    listings and object lists cut to their rows; `chmu_groundwater_recordings.json`): their
+    daily, weekly, recent and characteristic files, the object list and `now` metadata,
+    both series and one ČHMÚ catalog. `complete` and `complete_pl_cz` are unchanged.
 
 ### Changed
 
