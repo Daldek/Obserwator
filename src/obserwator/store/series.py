@@ -73,6 +73,7 @@ from obserwator.store.writer import (
     _fsync_dir,
     _is_register,
     _publish_dir,
+    _tier_fields,
     _utc,
     _validate_slot,
     _write_json,
@@ -1899,6 +1900,10 @@ def build_series(
                     "downloaded_at": _utc(now),
                     "sha256": sha,
                     "size_bytes": len(content),
+                    # Its tier and publication state (ADR-030 D6): a series of an
+                    # unverified source (a provider fed by files, ADR-033); a verified
+                    # series has neither, so it keeps the bytes of 3.2.0.
+                    **_tier_fields(descriptor),
                     "extra": {
                         "version": {"label": version_label, "label_source": "inputs"},
                         "derived": "series",

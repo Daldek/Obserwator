@@ -9,7 +9,8 @@ Obserwator downloads the public hydrological and meteorological data of IMGW-PIB
 - Get the PMAXTP maximum precipitation (quantiles, confidence bounds, errors) of a point in Poland.
 - Build daily, weekly and hourly station series (Parquet) and station catalogs (GeoJSON) offline from the downloaded archives and captures, and export them as CSV, JSON, JSONL or Parquet with the providers' attribution lines.
 - Store the analyses Hydrolog computes for every station (87: characteristic levels and discharges, frequencies, regimes, trends, precipitation indices) next to the series, and browse stations, series, analyses and a station's hourly readings on a map in the web GUI.
-- Let an AI agent call the same 36 commands through MCP, the CLI, REST or Python, with one result envelope and stable error codes.
+- Bring an operator's own measurement network into the same store, map and commands as data, not code: a provider file beside `nogat.toml` declares it (licence and attribution line included), and `obserwator store import --provider-file` imports its station file and daily series files ([USAGE.md "A provider fed by files"](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#a-provider-fed-by-files), ADR-033).
+- Let an AI agent call the same 37 commands through MCP, the CLI, REST or Python, with one result envelope and stable error codes.
 
 ## When not to use
 
@@ -139,7 +140,7 @@ The GUI reads the data root and never writes it. Running it behind an authentica
 
 ## Capabilities
 
-The CLI command is `obserwator <group> <name>`, the MCP tool `obserwator_<group>_<name>` and the REST route `/api/v1/<group>/<name>` (every command but `datasets download` and `store init`).
+The CLI command is `obserwator <group> <name>`, the MCP tool `obserwator_<group>_<name>` and the REST route `/api/v1/<group>/<name>` (every command but `datasets download`, `store init` and `current poll`).
 
 | Task | CLI command | Python function | Data source and licence |
 |---|---|---|---|
@@ -151,6 +152,7 @@ The CLI command is `obserwator <group> <name>`, the MCP tool `obserwator_<group>
 | PMAXTP of a point; its cell in the raw root | `pmaxtp fetch`, `pmaxtp url`, `pmaxtp check`, `pmaxtp sync`, `pmaxtp read` | `fetch_pmaxtp`, `build_pmaxtp_url`, `check_pmaxtp`, `sync_pmaxtp`, `read_pmaxtp` | IMGW-PIB klimat.imgw.pl terms |
 | Versioned archives in the raw root | `store init`, `store info`, `store scan`, `store check`, `store sync`, `store export` | `init_store`, `store_info`, `iter_store`, `check_store`, `sync_store`, `export_archive` | IMGW-PIB, ČHMÚ |
 | Station catalog of a provider (offline) | `store catalog` | `build_catalog` | IMGW-PIB, ČHMÚ, hydro.imgw.pl; borders PRG (GUGiK) and RÚIAN (ČÚZK) |
+| Import a provider fed by files (offline) | `store import` | `import_files` | the operator's files and the licence its provider file declares |
 | Station series (offline) | `series build`, `series select`, `series read`, `series summary`, `series export` | `build_series`, `select_series`, `read_series`, `summarize_series`, `export_series` | the archives of the raw root |
 | Stations' analyses computed by Hydrolog | `analyses build`, `analyses list`, `analyses read`, `analyses export` | `build_analyses`, `list_analyses`, `read_analysis`, `export_analyses` | the series of the data root |
 | The catalog itself | `commands list`, `commands schema`, `commands guide` | `list_commands`, `command_schema`, `agent_guide` | none |
@@ -166,7 +168,7 @@ The full list with effects is `obserwator commands list --json`; Python names ar
 
 ## MCP server
 
-`obserwator mcp` serves the 36 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
+`obserwator mcp` serves the 37 catalog commands as tools named `obserwator_<group>_<name>` over stdio. Each client below starts it as in the Install section:
 
 ```bash
 claude mcp add obserwator -- uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0" obserwator mcp
@@ -239,6 +241,7 @@ Obserwator does not distribute IMGW-PIB or ČHMÚ data; every download and write
 | IMGW-PIB, `hydro-back.imgw.pl` (backend of `hydro.imgw.pl`) | station map with coordinates, water states, station details (`pl.imgw.hydro_details`), meteorological stations' coordinates and elevation (`pl.imgw.meteo_details`) | private use only; the source and processed-data lines plus the line naming the service; water states are shown as current, and every answer is also kept as a capture, which a server serves only when its operator sets it `public` in `[obserwator.capture]` (ADR-030; `private` by default) ([terms](https://hydro.imgw.pl/#/regulamin)) |
 | ČHMÚ, `opendata.chmi.cz` | daily hydrological and meteorological archives, station metadata | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): credit ČHMÚ, give the licence, mark changes ([terms](https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti)) |
 | GUGiK (PRG), ČÚZK (RÚIAN, CC BY 4.0) | the state borders bundled in `src/obserwator/_data/` for position checks (ADR-018) | the lines G and Z of Nogat DEV §20 |
+| An operator's provider fed by files (ADR-033) | the station file and daily series its provider file names | the licence (`[license]`) and attribution line (`[attribution]`) its operator declares; every product with its data carries that line, after the standard's |
 
 Every product with provider data carries the lines these terms require, as the Nogat standard quotes them (DEV §20, ADR-012): the envelope (`attribution`, `terms_notice`), the CLI summary, CSV, JSONL and Parquet exports, stored series, catalogs and PMAXTP cells, `ATTRIBUTION.txt` of a plain download and every view and file of the GUI. Whoever publishes results made with the data shows the lines with them.
 

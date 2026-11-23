@@ -2,7 +2,8 @@
 The operator's instance on the REST routes (ADR-025).
 
 With ``[obserwator.instance]`` in ``nogat.toml`` the REST server serves only what the
-instance serves; without the section nothing changes. `check_start` reads the section as
+instance serves; without the section nothing changes. `check_start` refuses the start
+on a provider file of ``nogat.toml`` that cannot be used (ADR-033), reads the section as
 the server starts (`served_instance` keeps it for the process) and stops the start on a
 problem of it, on a root of a layout this version does not read (`check_root_layout`)
 and, with the section, on a weak write token (`check_credentials`; only a warning
@@ -16,7 +17,8 @@ without an instance:
 - after `validate_command` (`Scope.guard`, also for ``?check=true``): a provider, a
   dataset or a station an option names and the instance does not serve is ``not_found``
   (``details.reason`` ``not_served``; a station by `Instance.serves_station`, which
-  answers a code that does not exist the same way); a PMAXTP point outside a clipped
+  answers a code that does not exist the same way), and so is the provider file of
+  ``store import`` that adds such a provider; a PMAXTP point outside a clipped
   area is ``not_found`` (``outside_area``); a command whose answer would hold stations
   outside a clipped area and cannot be reduced exactly is ``forbidden``
   (``instance_clip``); ``stations find`` and ``stations export`` without a provider name
@@ -42,9 +44,11 @@ from obserwator.commands import _ATTRIBUTIONS, _GROUP_PROVIDERS, run_command
 from obserwator.config import check_credentials, check_root_layout, settings
 from obserwator.datasets import (
     DatasetDescriptor,
+    check_provider_files,
     datasets,
     get_dataset,
     get_provider,
+    provider_files,
     providers,
 )
 from obserwator.exceptions import ObserwatorError, ObserwatorValidationError
@@ -88,7 +92,7 @@ def served_instance() -> Instance | None:
 
 def check_start(*, warn: bool = True) -> Instance | None:
     """
-    Check what the REST server serves as it starts (ADR-025, I7, I10, I12).
+    Check what the REST server serves as it starts (ADR-025, ADR-033, I7, I10, I12).
 
     Parameters
     ----------
@@ -104,13 +108,16 @@ def check_start(*, warn: bool = True) -> Instance | None:
     Raises
     ------
     ObserwatorValidationError
-        A problem of ``[obserwator.instance]`` (``details.option``
+        A provider file of ``nogat.toml`` that cannot be used (its ``details.option``
+        ``provider_file.<field>`` and ``details.path``; `check_provider_files`), a
+        problem of ``[obserwator.instance]`` (``details.option``
         ``instance.<field>``) or, with the section, a weak write token
         (``details.option`` the variable, ``details.reason`` the problem).
     ObserwatorStoreError
         ``store_unavailable``: ``OBSERWATOR_ROOT`` or ``OBSERWATOR_RAW_ROOT`` holds
         a root of a layout this version does not read.
     """
+    check_provider_files()
     instance = served_instance()
     roots: tuple[tuple[RootKind, Path | None], ...] = (
         ("data", settings.root),
@@ -536,6 +543,20 @@ def _analyses_build(scope: Scope, options: dict[str, object]) -> None:
             )
 
 
+def _provider_file(scope: Scope, options: dict[str, object]) -> None:
+    """
+    ``store import`` of a provider that is ``off``, by the provider its file adds.
+
+    A path that names no provider file is left to the import, which refuses it.
+    """
+    path = options.get("provider_file")
+    found = provider_files().find(path) if isinstance(path, Path) else None
+    if found is not None and not scope.instance.serves(found.id):
+        raise _not_found(
+            _not_served(found.id), "not_served", "provider_file", str(path)
+        )
+
+
 _RULES: dict[str, Callable[[Scope, dict[str, object]], None]] = {
     "stations find": _narrow,
     "stations export": _narrow,
@@ -543,6 +564,7 @@ _RULES: dict[str, Callable[[Scope, dict[str, object]], None]] = {
     "store export": _unclipped,
     "store check": _selection,
     "store sync": _selection,
+    "store import": _provider_file,
     "pmaxtp fetch": _point,
     "pmaxtp url": _point,
     "pmaxtp check": _point,

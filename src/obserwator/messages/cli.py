@@ -338,6 +338,14 @@ MESSAGES = {
         "Zapisy odpowiedzi (bufor {spool}; [obserwator.capture]: public albo private "
         "każdego źródła):",
     ),
+    "config_provider_files_title": Text(
+        "Provider files ([obserwator] provider_files: the provider each adds):",
+        "Pliki dostawców ([obserwator] provider_files: dostawca, którego dodaje każdy):",
+    ),
+    "config_provider_file_unused": Text(
+        "none: the file cannot be used (see the problems)",
+        "brak: pliku nie można użyć (zob. problemy)",
+    ),
     "config_problems_title": Text("Problems:", "Problemy:"),
     "config_no_problems": Text("Problems: none", "Problemy: brak"),
     "mcp_allow_dir_help": Text(

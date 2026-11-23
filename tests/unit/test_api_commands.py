@@ -301,7 +301,7 @@ def test_api_routes_and_openapi_are_generated_from_the_catalog(client):
         for method, operation in operations.items()
     }
 
-    assert len(expected) == 33
+    assert len(expected) == 34
     assert served.keys() == expected.keys()
     assert [
         (route["method"], route["path"])
@@ -1122,7 +1122,9 @@ def test_api_no_route_takes_a_place_to_write_from_a_request(
             "option": option
         }
     else:
+        # store import runs only with a provider file (tests/contract/test_file_provider.py)
         bodies = {name: body for name, body, _ in POST_CASES}
+        bodies["store import"] = {"provider_file": "siec.toml"}
         response = client.post(
             path_of(command), json={**bodies[command], option: "x"}, headers=writable
         )

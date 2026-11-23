@@ -24,7 +24,7 @@ import shlex
 import shutil
 import tempfile
 import weakref
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
@@ -50,13 +50,13 @@ from obserwator._file_names import (
 )
 from obserwator._http_headers import security_headers
 from obserwator.attribution import (
-    ORIGINS,
     Attribution,
     Origin,
     attribution,
     border_origin,
     dataset_origin,
     dataset_origins,
+    origins,
     provider_origin,
 )
 from obserwator.captures import publication
@@ -64,6 +64,7 @@ from obserwator.config import check_credentials
 from obserwator.datasets import (
     KINDS,
     Kind,
+    ProviderDescriptor,
     datasets,
     get_dataset,
     get_provider,
@@ -120,13 +121,14 @@ from obserwator.gui._root import (
     Snapshot,
     StationsFormat,
     record_years,
+    series_datasets,
 )
 from obserwator.gui._state import GuiState
 from obserwator.gui._stripes import stripes as stripes_prototype
 from obserwator.gui._terms import terms_page
 from obserwator.gui._traffic import Traffic, TrafficState, is_admin
 from obserwator.instance import Instance
-from obserwator.messages import LANGS, Lang, message
+from obserwator.messages import LANGS, Lang, localize, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
 from obserwator.store.types import StationFeature
@@ -152,8 +154,9 @@ READERS = 4
 PROVIDER_ORIGINS: Mapping[str, tuple[Origin, ...]] = {
     provider.id: provider.adapter.origins for provider in providers()
 }
-"""The origins of each provider's data (``obserwator.attribution``), dropped when an
-instance turns it ``off`` (ADR-025); PMAXTP's follows ``pmaxtp``, the borders' stay."""
+"""The origins of each provider's data (``obserwator.attribution``), a provider fed by
+files among them (ADR-033), dropped when an instance turns it ``off`` (ADR-025);
+PMAXTP's follows ``pmaxtp``, the borders' stay."""
 LOGO_CSP = "sandbox; default-src 'none'"
 """The operator's logo's own policy (I14): an SVG opened by itself runs nothing."""
 SEXT = {
@@ -201,18 +204,24 @@ def _instance(request: Request) -> Instance | None:
 
 
 def served_origins(instance: Instance | None) -> tuple[Origin, ...]:
-    """The origins of the data a deployment serves: every one without an instance."""
+    """
+    The origins of the data a deployment serves: every one without an instance.
+
+    Those of the packaged providers and borders, then those of the providers fed by
+    files (`obserwator.attribution.origins`, ADR-033), in the order of their lines.
+    """
+    every = origins()
     if instance is None:
-        return ORIGINS
+        return every
     dropped: set[str] = {
         origin
-        for provider, origins in PROVIDER_ORIGINS.items()
+        for provider, kept in PROVIDER_ORIGINS.items()
         if not instance.serves(provider)
-        for origin in origins
+        for origin in kept
     }
     if not instance.pmaxtp:
         dropped.add("pmaxtp")
-    return tuple(origin for origin in ORIGINS if origin not in dropped)
+    return tuple(origin for origin in every if origin not in dropped)
 
 
 def _needs_current(handler: Handler) -> Handler:
@@ -455,14 +464,60 @@ def _station_origins(
 # --- the session and the texts ------------------------------------------------------
 
 
+def _session_datasets(
+    shown: Sequence[ProviderDescriptor], lang: Lang
+) -> dict[str, dict[str, object]]:
+    """
+    The series datasets the GUI serves of the providers shown, in the registry's order.
+
+    Each with its provider, the kind of its stations, its time step (``time_unit``),
+    its tier and its title and short label in ``lang`` without the words of its tier,
+    which the page labels itself: the GUI catalog's (``words.dataset.<key>``), or, for
+    a provider fed by files, which the catalog cannot know, its provider file's
+    (ADR-033). A series of a private source is not served (`series_datasets`).
+    """
+    texts = _texts(lang)["texts"]
+    served = {provider.id for provider in shown}
+    found: dict[str, dict[str, object]] = {}
+    for key in series_datasets():
+        descriptor = get_dataset(key)
+        if descriptor.provider not in served:
+            continue
+        file = get_provider(descriptor.provider).adapter.provider_file
+        slug = key.replace(".", "_")
+        if file is None or descriptor.kind is None:
+            title = texts.get(
+                f"words.dataset.{slug}.title", localize(descriptor.title, lang)
+            )
+            short = texts.get(f"words.dataset.{slug}.short", key)
+        else:
+            title = localize(file.dataset_title(descriptor.kind), lang)
+            short = message("provider_files.short_daily", lang=lang)
+        found[key] = {
+            "provider": descriptor.provider,
+            "kind": descriptor.kind,
+            "step": descriptor.time_unit,
+            "tier": descriptor.tier,
+            "title": str(title),
+            "short": str(short),
+        }
+    return found
+
+
 @_route
 async def session(request: Request) -> Response:
     """
     ``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus.
 
+    ``providers`` describes each provider for the page (names, the prefix of its keys,
+    the origins of its lines and of the border its stations were checked against, the
+    class of its source, P11) and ``datasets`` each series dataset served
+    (`_session_datasets`), so the page names no provider (P1); ``attribution`` holds the
+    lines of each origin, their order and the ``screen_lines`` the kit's strip shows
+    beside its own (each provider fed by files: its line, Nogat kit 1.2.0, ADR-033).
     On an instance (ADR-025) only what it serves: its providers (the featured one
-    first), the origins of their lines (the featured provider's lines first in
-    ``order``) and ``instance`` (`_instance_document`); null without one.
+    first), their datasets, the origins of their lines (the featured provider's lines
+    first in ``order``) and ``instance`` (`_instance_document`); null without one.
     """
     params.only(request.query_params, ())
     state = _gui(request)
@@ -475,8 +530,8 @@ async def session(request: Request) -> Response:
     )
     config = state.config
     instance = config.instance
-    origins = served_origins(instance)
-    every = attribution(*origins)
+    served = served_origins(instance)
+    every = attribution(*served)
     first = (
         Attribution()
         if instance is None or instance.featured is None
@@ -485,8 +540,9 @@ async def session(request: Request) -> Response:
     shown = (
         providers()
         if instance is None
-        else [get_provider(provider) for provider in instance.served]
+        else tuple(get_provider(provider) for provider in instance.served)
     )
+    datasets_shown = await _thread(lambda: _session_datasets(shown, lang))
     document = {
         "schema": SESSION_SCHEMA,
         "version": {"obserwator": state.version, "hydrolog": hydrolog},
@@ -515,16 +571,26 @@ async def session(request: Request) -> Response:
             provider.id: {
                 "short_name": provider.short_name,
                 "name": provider.name,
+                "key_prefix": provider.key_prefix,
+                "origin": provider_origin(provider.id),
+                "border": border_origin(provider.id),
+                "source_class": provider.source_class,
                 **attribution(provider_origin(provider.id)).fields(),
             }
             for provider in shown
         },
+        "datasets": datasets_shown,
         "attribution": {
-            "origins": {origin: attribution(origin).fields() for origin in origins},
+            "origins": {origin: attribution(origin).fields() for origin in served},
             "order": list(dict.fromkeys([*first.attribution, *every.attribution])),
             "terms_order": list(
                 dict.fromkeys([*first.terms_notice, *every.terms_notice])
             ),
+            "screen_lines": [
+                file.screen_line()
+                for provider in shown
+                if (file := provider.adapter.provider_file) is not None
+            ],
         },
         "basemap": None
         if config.basemap is None
@@ -911,7 +977,10 @@ async def current_station(request: Request) -> Response:
     if feature.provider != CURRENT_PROVIDER:
         raise GuiError(
             "not_found",
-            message("gui.errors.no_current_chmu"),
+            message(
+                "gui.errors.no_current_provider",
+                provider=get_provider(feature.provider).short_name,
+            ),
             details={"reason": "provider"},
         )
     live = _gui(request).current

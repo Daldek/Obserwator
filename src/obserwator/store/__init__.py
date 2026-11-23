@@ -27,6 +27,7 @@ from obserwator.store.analysis_registry import (
 )
 from obserwator.store.catalog import RootArg, build_catalog, check_catalog
 from obserwator.store.export import export_archive, export_series, export_stations
+from obserwator.store.files import check_import, import_files
 from obserwator.store.pmaxtp import check_pmaxtp, read_pmaxtp, sync_pmaxtp
 from obserwator.store.reader import (
     current_version,
@@ -48,6 +49,7 @@ from obserwator.store.types import (
     Cancel,
     CatalogReport,
     HarvestReport,
+    ImportReport,
     Meta,
     Notice,
     NoticeHook,
@@ -88,6 +90,7 @@ __all__ = [
     "Cancel",
     "CatalogReport",
     "HarvestReport",
+    "ImportReport",
     "Meta",
     "Notice",
     "NoticeHook",
@@ -120,6 +123,7 @@ __all__ = [
     "build_series",
     "check_analyses",
     "check_catalog",
+    "check_import",
     "compute_analysis",
     "check_pmaxtp",
     "check_series",
@@ -129,6 +133,7 @@ __all__ = [
     "export_archive",
     "export_series",
     "export_stations",
+    "import_files",
     "init_store",
     "iter_store",
     "list_analyses",

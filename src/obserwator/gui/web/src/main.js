@@ -14,10 +14,12 @@
 // with every line and, in a public deployment, „Regulamin serwisu” (ui/welcome.js); a
 // public deployment also links „Regulamin” at the bottom of the left panel (`TermsLink`).
 // „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's parameters.
-// On an operator's instance (ADR-025, instance.js: api/session's `instance`) the list and
-// the map wait for the session, so nothing the instance leaves out shows for a moment; the
-// map's bar offers only the views it serves (an address asking for another falls back to
-// „Stacje”) and the map starts on the instance's box.
+// The providers and their datasets are the session's (api/session `providers`, `datasets`:
+// the registry's, a provider fed by files among them; words.js `setRegistry`), so the list
+// and the map wait for it. On an operator's instance (ADR-025, instance.js: api/session's
+// `instance`) nothing the instance leaves out shows for a moment then; the map's bar offers
+// only the views it serves (an address asking for another falls back to „Stacje”) and the
+// map starts on the instance's box.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
@@ -42,7 +44,7 @@ import { ToastHost, toast } from "./ui/toast.js";
 import { TopBar } from "./ui/top-bar.js";
 import { ViewLayout } from "./ui/view-layout.js";
 import { WelcomeDialog } from "./ui/welcome.js";
-import { shownKinds } from "./words.js";
+import { setRegistry, shownKinds } from "./words.js";
 
 /** The sections open on a first visit: the current measurements and the measurement data. */
 const FIRST_OPEN = ["teraz", "dane"];
@@ -87,9 +89,10 @@ function App({ lang: language }) {
   const [pickFly, setPickFly] = useState(start.point && start.view === "pmaxtp" ? { n: 0 } : null);
   const [method, setMethod] = useState(start.method);
   // What the deployment shows (instance.js), null until the session answers; the same
-  // object while the instance stays (the session comes again in each language)
-  const instanceKey = asked ? JSON.stringify(session ? session.instance : null) : null;
-  const scope = useMemo(() => (asked ? scopeOf(session) : null), [instanceKey]);
+  // object while the instance and the providers stay (the session comes again in each
+  // language)
+  const scopeKey = asked ? JSON.stringify(session ? [session.instance, Object.keys(session.providers)] : null) : null;
+  const scope = useMemo(() => (asked ? scopeOf(session) : null), [scopeKey]);
   // A view the instance does not serve (an old link) falls back to „Stacje”
   const view = scope && !scope.views.includes(chosen) ? VIEWS[0] : chosen;
   const pmaxtpServed = scope !== null && scope.views.includes("pmaxtp");
@@ -114,6 +117,7 @@ function App({ lang: language }) {
       (doc) => {
         if (!live) return;
         setTexts(doc.attribution);
+        setRegistry(doc);
         setSession(doc);
         setAsked(true);
       },

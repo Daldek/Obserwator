@@ -98,9 +98,11 @@ MESSAGES: dict[str, Text] = {
         "IMGW-PIB's current data are not available now.",
         "Dane bieżące IMGW-PIB są teraz niedostępne.",
     ),
-    "errors.no_current_chmu": Text(
-        "ČHMÚ's current data are not provided.",
-        "Dane bieżące ČHMÚ nie są udostępniane.",
+    # No current data of a provider other than IMGW-PIB (ČHMÚ, a provider fed by files):
+    # for ČHMÚ the words of 3.2.0, byte for byte
+    "errors.no_current_provider": Text(
+        "{provider}'s current data are not provided.",
+        "Dane bieżące {provider} nie są udostępniane.",
     ),
     "errors.no_current_kind": Text(
         "Current data are given only for hydrological and meteorological stations.",

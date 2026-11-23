@@ -721,7 +721,7 @@ def test_the_current_values_of_one_station(client):
     assert meteo["record"]["station_name"] == "Warszawa"
     assert "synop" not in meteo  # the code is no synoptic station's
     body = problem(chmu, 404, "not_found", "en")
-    assert body["message"] == message("gui.errors.no_current_chmu")
+    assert body["message"] == message("gui.errors.no_current_provider", provider="ČHMÚ")
 
 
 @pytest.mark.parametrize("path", ["/api/current", f"/api/current/{HYDRO}"])

@@ -50,6 +50,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-1.7 | Projects (pins of store versions) | Moved to Archiwista (ADR-008, 2026-10-31) | Obserwator's project manifest and the `imgw project` command group are removed; Archiwista keeps projects in `archiwista-project/1` and pins versions by the store's `sha256` and `content_sha256` |
 | FR-1.8 | Captures of current data | Implemented (3.2.0, ADR-030) | Every answer of a source of current data kept as it came in the capture spool and sealed into the raw root per UTC day; `current poll` hourly; the night's harvest of hydro-back's hourly series and ČHMÚ's `recent` day files (`store sync --pace-until`); IMGW-PIB's monthly telemetry; each dataset's tier (`verified`, `telemetry`, `operational`) and each source's publication (`[obserwator.capture]`; hydro.imgw.pl's backend `private` by default) |
 | FR-1.9 | Hourly series | Implemented (3.2.0, ADR-031) | `pl.imgw.hydro_subdaily` and `cz.chmu.hydro_subdaily`: H, Q and T per hour, one version per month, per hour the highest tier with a value |
+| FR-1.10 | Providers fed by files | Implemented (3.3.0.dev0, ADR-033) | An operator's own network declared in a provider file listed by `[obserwator] provider_files` of `nogat.toml` (id, names, country, source class `other`, tier, publication, licence, attribution line, daily datasets); its station file and daily series files kept in the raw root and built into the data root by `store import --provider-file`; station codes `<ID>-<code>` |
 
 ### 3.2. Interfaces
 
@@ -58,7 +59,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-2.1 | CLI | Implemented | `obserwator` command: catalog groups `datasets`, `stations`, `current`, `pmaxtp`, `store`, `series`, `analyses`, `commands` plus `version`, `server`, `mcp`, `gui serve`, `admin`, `config show`; help in Polish or English (`OBSERWATOR_LANG`) |
 | FR-2.2 | GUI | Implemented (ADR-013) | `obserwator gui serve` (extra `gui`, with `cli` for the command): a Starlette app of its own on the data root, reading data only through public functions; every station of both providers on a map, the station panel with series, Hydrolog's stored analyses and downloads, PMAXTP of a point |
 | FR-2.3 | REST API | Implemented | FastAPI with OpenAPI documentation; routes generated from the same command catalog; `Accept-Language`; `GET /llms.txt` |
-| FR-2.4 | Python command catalog | Implemented (3.0.0) | 36 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
+| FR-2.4 | Python command catalog | Implemented (3.0.0) | 37 commands, `command_schema` and `list_commands` (Polish or English texts, declared effects), `run_command`/`check_command`, envelope `obserwator-result/1`, error registry `ERROR_CODES` |
 | FR-2.5 | MCP server | Implemented (3.0.0) | `obserwator[mcp]`: `obserwator mcp` (stdio, read and plan by default, writes with `--allow-writes`) and `/mcp` in the REST server (read and plan only); tools = catalog commands |
 
 ### 3.3. Visualization
@@ -90,7 +91,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 |---|-------------|--------|
 | FR-6.1 | OpenAPI/Swagger documentation | Implemented |
 | FR-6.2 | API versioning (`/api/v1/`) | Implemented |
-| FR-6.3 | Catalog routes `/api/v1/<group>/<command>` (datasets, stations, current, pmaxtp, store, series, analyses, commands) | Implemented — 33 routes generated from `command_schema()` (every catalog command but `datasets download` and `store init`) |
+| FR-6.3 | Catalog routes `/api/v1/<group>/<command>` (datasets, stations, current, pmaxtp, store, series, analyses, commands) | Implemented — 34 routes generated from `command_schema()` (every catalog command but `datasets download`, `store init` and `current poll`) |
 | FR-6.4 | Paging of list commands (`limit`/`cursor`, maximum `OBSERWATOR_API_MAX_LIMIT`) | Implemented |
 | FR-6.5 | Errors as `application/problem+json` with registry codes | Implemented |
 | FR-6.6 | Health check | Implemented |
@@ -135,6 +136,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-5.13 | Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` (or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`), not a REST API key | Implemented (ADR-020) |
 | FR-5.20 | An operator's instance (ADR-025): providers `visible`, `hidden` or `off`, a featured provider with the others faded (`others_opacity`) until „Pokaż inne źródła”, an area (`focus` or `clip`), the start view, PMAXTP on or off, the operator's title, logo and regulamin | Implemented (3.1.0) |
 | FR-5.21 | „Wykres godzinowy” of a hydrological station: its hourly series by tier and the live hours its provider serves now, while both are `public` | Implemented (3.2.0) |
+| FR-5.22 | A provider fed by files in the GUI (ADR-033): its stations, series and line in the sources strip; the chip „Inne źródło” with the note that its data do not come from a national service, and „dane operacyjne, niezweryfikowane” by an unverified dataset; a private series not served | Implemented (3.3.0.dev0) |
 | FR-5.14 | HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
@@ -218,7 +220,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 ## 10. Versioning
 
 - SemVer for API and CLI/GUI package
-- Current version: 3.2.0 (release notes: `docs/CHANGELOG.md`)
+- Current version: 3.2.0 (release notes: `docs/CHANGELOG.md`); in development: 3.3.0 (`3.3.0.dev0`)
 - Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ, agent support and the operational tier with the hourly series of 3.2.0 (Nogat ECO-085) add only optional fields and values within `/1`; the project manifest contract left with the projects (ADR-008)
 
 ---

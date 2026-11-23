@@ -126,8 +126,8 @@ def chmu():
 # --------------------------------------------------------------------------
 
 
-def test_catalog_has_36_commands_and_datasets_providers_lists_both_providers():
-    assert len(data_commands()) == 36
+def test_catalog_has_37_commands_and_datasets_providers_lists_both_providers():
+    assert len(data_commands()) == 37
 
     listed = run_command("datasets providers", options={})
     planned = check_command("datasets providers", options={})
@@ -208,7 +208,8 @@ def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
 
     groups = {command.name.split()[0] for command in view}
     assert not groups & {"current", "pmaxtp"}
-    assert len(view) == 25  # 36 without six current and five pmaxtp commands
+    # 37 without six current and five pmaxtp commands and store import (fed by files)
+    assert len(view) == 25
     for command in view:
         for option in command.options:
             if option.name in ("dataset", "datasets"):
@@ -222,7 +223,9 @@ def test_chmu_view_of_the_catalog_drops_imgw_only_commands_and_narrows_choices()
                 )
     assert data_commands(provider="cz.chmu") == view
     imgw = data_commands(provider="IMGW")
-    assert [command.name for command in imgw] == [c.name for c in data_commands()]
+    assert [command.name for command in imgw] == [
+        c.name for c in data_commands() if c.name != "store import"
+    ]
     assert all(
         key.startswith("pl.imgw.")
         for command in imgw

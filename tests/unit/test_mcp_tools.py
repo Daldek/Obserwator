@@ -257,7 +257,11 @@ async def test_root_and_raw_root_are_optional_on_stdio_in_every_environment(
     builds = {
         name for name, given in rooted.items() if "raw_root" in given["properties"]
     }
-    assert builds == {"obserwator_series_build", "obserwator_store_catalog"}
+    assert builds == {
+        "obserwator_series_build",
+        "obserwator_store_catalog",
+        "obserwator_store_import",
+    }
     assert rooted["obserwator_series_read"]["oneOf"] == [
         {"required": ["version"]},
         {"required": ["dataset"]},

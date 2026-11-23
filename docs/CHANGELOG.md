@@ -4,6 +4,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [Unreleased]
+
+Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P8, P11, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033). `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
+
+### Added
+
+- **Providers fed by files (ADR-033 D1 to D3, D7, D8; I13).** `[obserwator] provider_files` of
+  `nogat.toml` lists provider files, TOML files whose paths are relative to the directory of
+  `nogat.toml` (paths inside a file to that file). A provider file declares `id`
+  (`[A-Z][A-Z0-9]{1,15}`), `short_name`, `name`, `country` (`PL` or `CZ`), `source_class`
+  (`other`), `tier` (`verified`, `telemetry` or `operational`, default `operational`),
+  `publication` (`public` or `private`, default `private`, not with `verified`) and `stations`
+  (a GeoJSON station file); `[license]` `id`, `url`, `terms_url`; `[attribution]` `line`,
+  `processed`, `short`, `links`; and its daily datasets `[datasets.<hydro|meteo|groundwater>_daily]`
+  with `directory`, `variables` (`{name = unit}`, the registry's daily variables and units) and
+  `year_type`. Each adds a provider to the registry, served by one `FileFedAdapter` (ADR-029):
+  datasets `<cc>.<acronym>.station_list` and `<cc>.<acronym>.<kind>_daily`, station codes
+  `<ID>-<code>`, the catalog `stations/versions/<acronym>_stations`, and its attribution line
+  after the standard's lines in every product with its data. The station file has the documented
+  properties (`station_code`, `kind`, `name` required); a series file is one station's daily
+  series in the form of `series export` (`obserwator-series-csv`) or its Parquet. Both are read
+  strictly (`parse_series_export` and the station-file reader). A file with a problem registers
+  nothing and fails closed (below).
+- **`store import --provider-file PATH` (ADR-033 D4, D5): the 37th command.** `import_files`
+  (check `check_import`; `POST /api/v1/store/import`, MCP `obserwator_store_import`) reads and
+  checks every file a provider file names before it writes, keeps each in the raw root as it
+  came (`archives/versions/files/<acronym>/…`), then builds the provider's series and catalog
+  into the data root, offline; `--check` plans it. The path must be one of the files
+  `provider_files` lists (a relative path lies in the directory of `nogat.toml`); any other is
+  `validation_error` with `details.reason` `not_listed` before anything is read. A second run is
+  all `unchanged`; a failed build after the files were kept makes the envelope `partial`.
+  `command_for_version` refuses a raw version of such a provider (`command_not_rebuildable`),
+  and its datasets are no choices of `datasets files|download` and `store check|sync`.
+  `stations find`, `series *`, `store scan` and `stations export` take its provider and codes
+  like IMGW-PIB's and ČHMÚ's.
+- **`config show`: the section `provider_files` (ADR-033 D8).** `obserwator-config/1` gains
+  `provider_files`, `[{path, provider}]` (`provider` null for a file with a problem), and the
+  problem `invalid_provider_file` (`option` `provider_file.<field>`, `path`, `message`);
+  `provider_files` is no longer an ignored key. The REST server and the GUI refuse to start
+  while a provider file has a problem.
+- **P15 on every surface (ADR-033 D6; ADR-030 D5 erratum).** A dataset of a provider file of a
+  tier other than `verified` is a source of `[obserwator.capture]` whose default is the file's
+  `publication`. While it is `private` the GUI serves none of its series, and REST refuses
+  `series/versions/<slug>/…` and a `dataset` naming it (`not_found`, `details.reason`
+  `private`); the GUI now also leaves out every other private series with a publication state
+  (the sub-daily series). A daily series of an unverified source records `tier` and
+  `publication` in its sidecar; verified series keep their bytes.
+- **The GUI's session describes providers and datasets (ADR-033 D9).** `api/session` gains
+  `providers[id].key_prefix`, `origin`, `border` and `source_class`, `datasets` (each served
+  series dataset with `provider`, `kind`, `step`, `tier`, `title`, `short`) and
+  `attribution.screen_lines` (the declared line of each provider fed by files shown); the page
+  takes names, catalog origins, dataset titles and the hand-off to Hydrolog from it instead of
+  fixed IMGW-PIB and ČHMÚ tables. A station of the source class `other` shows the chip „Inne
+  źródło” with the note that its data do not come from a national service, and an unverified
+  dataset is labelled „dane operacyjne, niezweryfikowane” in the record and by its series. A
+  station without current data answers `gui.errors.no_current_provider` (it replaces
+  `no_current_chmu`). The hand-off to Hydrolog stays IMGW-PIB's and ČHMÚ's.
+
+### Changed
+
+- **Nogat's kit 1.2.0 (ECO-086, ECO-087; Nogat `6cc9d9e`).** `nogat-sources.js` shows the lines
+  a GUI declares in `screen-lines`, so the strip shows a provider file's line (its `short` form
+  where it has one); the regulamin's template and the operator's draft gain the blocks
+  `camels-pl` and `e-obs` (regulamin 1.0). Copied byte for byte with `nogat-kit.json`.
+- **The contract schemas take the codes of a provider fed by files.** The station keys and
+  files of `obserwator-series/1` and the `id` and `station_code` of a catalog feature also
+  accept `<ID>-<code>` (`STATION_CODE_PATTERN`), and `location_source` also
+  `<cc>.<acronym>.station_list`; both copies of `contract_schemas.json` stay byte-identical.
+- **REST hides the directory of `nogat.toml`** in its answers like the other server
+  directories (the provider files of `store import`).
+- **Shorter first sentences of three command descriptions**, so `AGENTS.md` stays within
+  16 KiB in both languages: `stations find` („Find stations by name, river, code prefix or
+  area.”, then the providers it searches, now with the providers fed by files), `commands list`
+  and `commands guide` (their words moved to the next sentence). The station option's help names
+  `<ID>-<code>`.
+
 ## [3.2.0] - 2026-11-23
 
 Changes since 3.1.0, in 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, provider credentials, captures of every answer of current data, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, hourly series, ČHMÚ's groundwater, the meteorological station details of hydro.imgw.pl, the hourly chart of the current readings, and the deployment's timers and backups. Deployment order (ECO-085; the plan's step D1): Archiwista 0.4.0 is deployed before Obserwator 3.2.0 writes captures or hourly series to a root Archiwista shares; the sources of hydro.imgw.pl's backend stay `private` by default (`[obserwator.capture]`), so REST and the GUI serve neither their captures nor IMGW-PIB's hourly series until the operator sets them `public`.

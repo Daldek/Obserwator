@@ -874,6 +874,45 @@ class CatalogReport:
 
 
 @dataclass(frozen=True)
+class ImportReport:
+    """
+    Result of importing the files of a provider fed by files (``store import``, ADR-033).
+
+    The station file and each station's series file of the provider file are kept in
+    the raw root as they came (P14), then the provider's series and its catalog are
+    built into the data root, as ``series build`` and ``store catalog`` build them.
+
+    Attributes
+    ----------
+    provider : str
+        ``ProviderDescriptor.id`` of the provider.
+    items : tuple of OperationResult
+        The raw version of each file: the station file first, then the series files
+        of each dataset by station code (``new``, ``relabeled`` or ``unchanged``).
+    series : tuple of SeriesReport
+        The build of each dataset of the provider whose files the raw root holds, in
+        the order of the provider file.
+    catalog : CatalogReport or None
+        The build of the provider's catalog; None when cancelled before it.
+    cancelled : bool
+        Whether the import was cancelled (what was written stays: every version is
+        complete or absent).
+    files : tuple of FileResult, optional
+        Every version the import wrote or found (DEV-19.19): the raw versions, then the
+        series and the catalog, each with its size, SHA-256 and status.
+    """
+
+    SCHEMA: ClassVar[str] = "obserwator-import-report/1"
+
+    provider: str
+    items: tuple[OperationResult, ...]
+    series: tuple[SeriesReport, ...]
+    catalog: CatalogReport | None
+    cancelled: bool
+    files: tuple[FileResult, ...] = ()
+
+
+@dataclass(frozen=True)
 class Meta:
     """
     Parsed ``<file>.meta.json`` sidecar of a store version.

@@ -35,6 +35,12 @@ origins of its data and keeps only another tool's own lines from what was stored
 product written before ECO-071 may hold CP with the processing in parentheses („Dane
 ČHMÚ zostały przetworzone (…)”, of Obserwator or of Hydrolog): every `Attribution`
 holds it as CP, once.
+
+A provider fed by files (ADR-033) declares its own origin, named by its acronym, with
+the line of its provider file and its optional processed line (`declare_origin`): its
+lines follow every line of the standard (S … Z), in the order the deployment declares
+them, its text before its processed line (DEV-20.4 and Nogat's table of provider lines,
+P9).
 """
 
 from __future__ import annotations
@@ -42,7 +48,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from obserwator._borders import CZECHIA, POLAND, border
 from obserwator.messages import message
@@ -60,13 +66,18 @@ __all__ = [
     "carried",
     "dataset_origin",
     "dataset_origins",
+    "declare_origin",
+    "origins",
     "provider_origin",
 ]
 
-Origin = Literal["imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"]
-"""Origin of provider data with its own attribution and terms."""
+Origin = str
+"""
+Origin of provider data with its own attribution and terms: one of `ORIGINS` or the
+acronym of a provider fed by files (`declare_origin`).
+"""
 ORIGINS: tuple[Origin, ...] = ("imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk")
-"""Every origin, in the order of their lines."""
+"""Every origin of the packaged providers and borders, in the order of their lines."""
 
 # Plain text: the legal wordings are one text in every language.
 _S = str(message("legal.imgw_attribution"))
@@ -97,6 +108,48 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
 }
 # The origin of the data of each packaged border.
 _BORDER_ORIGINS: dict[str, Origin] = {POLAND: "gugik", CZECHIA: "cuzk"}
+# The origins of the providers fed by files, in the order the deployment declares them
+# (`declare_origin`), with their lines as in `_LINES`.
+_DECLARED: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {}
+
+
+def declare_origin(origin: Origin, line: str, processed: str | None = None) -> None:
+    """
+    Declare the origin of a provider fed by files and its lines (ADR-033).
+
+    The registry calls this once for each provider file as it is imported; its lines
+    follow every line of the standard in `attribution` and every merge.
+
+    Parameters
+    ----------
+    origin : str
+        The provider's acronym: no origin of `ORIGINS` and none declared before.
+    line : str
+        The line every product with its data carries.
+    processed : str or None, optional
+        The line a product of its processed data carries after ``line``.
+
+    Raises
+    ------
+    ValueError
+        If ``origin`` is taken (a program error: the registry checks the ids).
+    """
+    if origin in ORIGINS or origin in _DECLARED:
+        raise ValueError(f"The origin {origin!r} is taken")
+    _DECLARED[origin] = ((line,), (processed,) if processed else (), ())
+    _attribution_order.cache_clear()
+
+
+def origins() -> tuple[Origin, ...]:
+    """
+    Every origin: those of `ORIGINS`, then those of the providers fed by files.
+
+    Returns
+    -------
+    tuple of str
+        The origins in the order of their lines.
+    """
+    return ORIGINS + tuple(_DECLARED)
 
 
 @cache
@@ -124,14 +177,22 @@ def _border_lines() -> dict[Origin, str]:
 
 @cache
 def _attribution_order() -> tuple[str, ...]:
-    """The attribution lines in the order of DEV-20.4: S, P, PS, PP, M, C, CP, G, Z."""
+    """
+    The attribution lines in the order of DEV-20.4: S, P, PS, PP, M, C, CP, G, Z.
+
+    The lines of the providers fed by files follow, in the order they were declared,
+    each text before its processed line (`declare_origin`).
+    """
     borders = _border_lines()
-    return (_S, _P, _PS, _PP, _M, _C, _CP, borders["gugik"], borders["cuzk"])
+    declared = tuple(
+        line for source, extra, _ in _DECLARED.values() for line in (*source, *extra)
+    )
+    return (_S, _P, _PS, _PP, _M, _C, _CP, borders["gugik"], borders["cuzk"], *declared)
 
 
 def _lines(origin: Origin) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     """Lines of an origin: of a verbatim copy, added by processing, the terms lines."""
-    fixed = _LINES.get(origin)
+    fixed = _LINES.get(origin) or _DECLARED.get(origin)
     return fixed if fixed is not None else ((_border_lines()[origin],), (), ())
 
 
@@ -397,7 +458,7 @@ def dataset_origins(key: str, /) -> tuple[Origin, ...]:
     if descriptor is None or descriptor.inputs is None:
         return (dataset_origin(key),)
     found = {dataset_origin(item) for item in descriptor.inputs}
-    return tuple(origin for origin in ORIGINS if origin in found)
+    return tuple(origin for origin in origins() if origin in found)
 
 
 def provider_origin(provider: str, /) -> Origin:

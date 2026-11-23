@@ -1,4 +1,4 @@
-# Obserwator — guide for agents (version 3.2.0)
+# Obserwator — guide for agents (version 3.3.0.dev0)
 
 > Generated from the command catalog: `obserwator commands guide --format agents`. Do not edit by hand.
 
@@ -103,13 +103,13 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `analyses list` — List the stored analyses of a station.
 - `analyses read` — Read one stored analysis of a station.
 - `analyses export` — Export the stored analyses of a station as JSON or CSV. [`output`: write; `force`: overwrite]
-- `commands list` — List the catalog commands: tool names, effects and routes.
+- `commands list` — List the catalog commands.
 - `commands schema` — Describe a command or the whole catalog as obserwator-commands/1.
-- `commands guide` — Generate AGENTS.md or llms.txt for AI agents, in Polish or English. [`output`: write; `force`: overwrite]
+- `commands guide` — Generate AGENTS.md or llms.txt for AI agents. [`output`: write; `force`: overwrite]
 
 **Network — connects to a source, writes nothing**
 
-- `stations find` — Find IMGW-PIB and ČHMÚ stations by name, river, code prefix or area.
+- `stations find` — Find stations by name, river, code prefix or area.
 - `current hydro` — Fetch current hydrological data from the IMGW API.
 - `current meteo` — Fetch current meteorological data from the IMGW API.
 - `current synop` — Fetch current synoptic data from the IMGW API.
@@ -126,6 +126,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 - `store init` — Create a raw root or, with --kind data, a data root. [local]
 - `store sync` — Download new or missing archives into the raw root. [`output_dir`: write; `force`: overwrite]
 - `store catalog` — Build the station catalog stations.geojson of one provider.
+- `store import` — Import the files of a provider fed by files.
 - `series build` — Build the Parquet series of a dataset from the raw root.
 - `analyses build` — Compute and store the analyses of every station with Hydrolog.
 

@@ -15,6 +15,7 @@ from obserwator.config import (
     check_root_layout,
     store_root,
 )
+from obserwator.datasets import check_provider_files
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.instance import Instance, load_instance
 from obserwator.messages import message
@@ -119,13 +120,16 @@ class GuiConfig:
         Raises
         ------
         ObserwatorError
-            ``validation_error`` for an unusable setting: the basemap's address, any
-            problem of ``[obserwator.instance]`` (`load_instance`) and, with that
-            section, a weak admin key (`check_credentials`) or an operator's regulamin
-            the deployment cannot fill; ``store_unavailable`` for a data root of a
-            layout this version does not read (`check_root_layout`). The server does
-            not start (ADR-025, I7, I10, I12).
+            ``validation_error`` for an unusable setting: a provider file of
+            ``nogat.toml`` that cannot be used (`check_provider_files`, ADR-033), the
+            basemap's address, any problem of ``[obserwator.instance]``
+            (`load_instance`) and, with that section, a weak admin key
+            (`check_credentials`) or an operator's regulamin the deployment cannot
+            fill; ``store_unavailable`` for a data root of a layout this version does
+            not read (`check_root_layout`). The server does not start (ADR-025, I7,
+            I10, I12).
         """
+        check_provider_files()
         settings = Settings()
         chosen = (
             root if root is not None else store_root(kind="data").root

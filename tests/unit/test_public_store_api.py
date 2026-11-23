@@ -96,6 +96,10 @@ SPEC_FUNCTIONS = (
     "poll_current",
     # ADR-031 D2: the current version of each month of a sub-daily series.
     "series_months",
+    # ADR-033: a provider fed by files, its import and the reader of its series files.
+    "import_files",
+    "check_import",
+    "parse_series_export",
 )
 SPEC_TYPES = (
     "PathArg",
@@ -160,6 +164,7 @@ SPEC_TYPES = (
     "PollReport",
     "HarvestReport",
     "PolledAnswer",
+    "ImportReport",
 )
 # Type aliases and constants.
 SPEC_VALUES = (

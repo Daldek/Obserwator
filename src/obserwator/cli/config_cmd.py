@@ -81,6 +81,15 @@ def _render(report: dict[str, Any]) -> str:
         )
         for key, entry in capture["sources"].items():
             lines.append(f"  {key} = {entry['state']}  [{_origin(entry)}]")
+    # The provider files (ADR-033): each file and the provider it adds.
+    files = report.get("provider_files") or []
+    if files:
+        lines.append(message("cli.config_provider_files_title", lang=_LANG))
+        for entry in files:
+            provider = entry["provider"] or message(
+                "cli.config_provider_file_unused", lang=_LANG
+            )
+            lines.append(f"  {entry['path']} = {provider}")
     problems = report.get("problems") or []
     if not problems:
         lines.append(message("cli.config_no_problems", lang=_LANG))

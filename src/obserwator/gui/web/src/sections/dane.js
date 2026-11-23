@@ -14,12 +14,14 @@
 // table counts readings. An hourly series (ADR-031) is drawn as a daily one on a time axis
 // in the reader's time zone, its line broken at a skipped hour, each tier of its hours a
 // line of its own style named in the legend (an unverified one „dane operacyjne,
-// niezweryfikowane”) and marked in the table.
+// niezweryfikowane”) and marked in the table. Any provider's daily series is drawn and
+// tabulated alike (a provider fed by files among them); the title of a dataset whose series
+// are unverified as a whole is labelled so (`UnverifiedFlag`).
 
 import { api } from "../api.js";
 import { Chart, dayNumber, fmt, fmtDate, fmtDateTime, hourNumber, html, isoOfDay, lang, t, tn, unit, useEffect, useMemo, useState } from "../lib.js";
 import { FLAGS, datasetShort, datasetTitle, flagName, periodName, variableInfo } from "../words.js";
-import { Seg, Table, YearRange } from "./common.js";
+import { Seg, Table, UnverifiedFlag, YearRange } from "./common.js";
 
 /** Rows of a page of the daily table. */
 const PAGE = 50;
@@ -534,7 +536,7 @@ function Dane({ station }) {
       ${datasets.length > 1
         ? html`<${Seg} label=${t("station.data.dataset")} value=${key} onChange=${setDataset} options=${datasets.map((item) => [item.dataset, datasetShort(item.dataset)])} />`
         : null}
-      <p class="ds-title">${datasetTitle(key)}</p>
+      <p class="ds-title">${datasetTitle(key)}<${UnverifiedFlag} dataset=${key} /></p>
     </div>
     ${series.error ? html`<p class="ana-error" role="alert">${series.error.message}</p>` : null}
     ${!data && !series.error ? html`<p class="muted" role="status">${t("station.data.loading")}</p>` : null}

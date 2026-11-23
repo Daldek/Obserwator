@@ -17,6 +17,21 @@ MESSAGES: dict[str, Text] = {
     "station.active": Text("active", "czynna"),
     "station.inactive": Text("inactive", "nieczynna"),
     "station.no_location": Text("no coordinates", "bez współrzędnych"),
+    # A station of a provider that is no national meteorological and hydrological service
+    # (hydromet P11: source class "other"): its class beside the provider, and P8's note
+    # under the header
+    "station.source_other": Text("Other source", "Inne źródło"),
+    "station.source_other_note": Text(
+        "The data of this station do not come from a national hydrological and "
+        "meteorological service.",
+        "Dane tej stacji nie pochodzą od państwowej służby "
+        "hydrologiczno-meteorologicznej.",
+    ),
+    # A dataset whose series are not verified data as a whole (Nogat DEV-20.8): in the
+    # station's record and beside its title in „Dane pomiarowo-obserwacyjne”
+    "station.unverified": Text(
+        "operational data, unverified", "dane operacyjne, niezweryfikowane"
+    ),
     "station.no_series": Text(
         "The data root holds no series of this station: the panel shows its catalog "
         "data.",
@@ -347,10 +362,12 @@ MESSAGES: dict[str, Text] = {
         "Źródła: IMGW-PIB, publiczne API (danepubliczne.imgw.pl); skala natężenia "
         "deszczu Chomicza",
     ),
-    "station.now.chmu_note": Text(
-        "Obserwator shows no current values of ČHMÚ; the hours of a hydrological "
+    # A station of a provider without current data (ČHMÚ, a provider fed by files): for
+    # ČHMÚ the words of 3.2.0, byte for byte
+    "station.now.provider_note": Text(
+        "Obserwator shows no current values of {provider}; the hours of a hydrological "
         "station are drawn in this card where the server serves them.",
-        "Obserwator nie pokazuje bieżących wartości ČHMÚ; godziny stacji "
+        "Obserwator nie pokazuje bieżących wartości {provider}; godziny stacji "
         "hydrologicznej są rysowane w tej karcie, gdy serwer je udostępnia.",
     ),
     "station.now.loading": Text(

@@ -11,8 +11,9 @@ src/obserwator/
 ├── fetch.py              # PUBLIC: live data (fetch_*), PMAXTP, download_archives, download_*_data; the paced requests of a harvest (PacedSession, PacedRequest, PacedOutcome, pace_deadline; ADR-030 D9)
 ├── models.py             # PUBLIC: Data models (PMaXTPData, HydroCurrentData, NormalizedRecord, Measurement, ...)
 ├── stations.py           # PUBLIC: find_stations (live lists of IMGW-PIB and ČHMÚ, or the current catalogs of a data root)
-├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 39 dataset descriptors (6 more declared, ADR-030, ADR-032), archive_files; KINDS, SERIES_TIME_UNITS, builds_series
-├── commands.py           # PUBLIC: Command catalog (36 commands, PL + EN texts, effects), run_command, command_schema, list_commands
+├── datasets.py           # PUBLIC: Provider registry (providers, get_provider) + 39 dataset descriptors (6 more declared, ADR-030, ADR-032) and those of the provider files (provider_files, check_provider_files; ADR-033), archive_files; KINDS, SERIES_TIME_UNITS, builds_series
+├── _provider_files.py    # Provider files of [obserwator] provider_files in nogat.toml (ADR-033): load_provider_files, read_provider_file, ProviderFile (screen_line, dataset_title), LoadedFiles (resolve, find)
+├── commands.py           # PUBLIC: Command catalog (37 commands, PL + EN texts, effects), run_command, command_schema, list_commands
 ├── agent_guide.py        # PUBLIC: agent_guide (AGENTS.md / llms.txt), MCP server instructions
 ├── coverage.py           # PUBLIC: summarize_coverage (per-station periods for ČHMÚ)
 ├── exceptions.py         # PUBLIC: ObserwatorError hierarchy + ERROR_CODES registry (title as a catalog message)
@@ -37,8 +38,8 @@ src/obserwator/
 ├── nogat_logging.py      # Nogat's reference module, copied byte for byte (DEV-12.9): ServerLog, AccessLog of both servers; never edited
 ├── _hydrolog.py          # Hydrolog's program (setting hydrolog_command): open_hydrolog, Hydrolog.batch (`commands batch` in a separate process; ADR-016)
 ├── _data/                # Poland/Czechia borders (PRG, RÚIAN; ADR-018), agents/ guide templates, packaged fixtures
-├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files incl. groundwater, listings, metadata)
-├── providers/            # One adapter per provider behind the ProviderAdapter protocol (ADR-029): base.py (the protocol; Answer and PolledSource of the captures; harvested, harvest_requests, live_tail and its capture dataset live_source, check_scope, listing), pl/imgw.py, cz/chmu.py
+├── _parsing/             # common.py, hydro.py, meteo.py, stations.py, chmu.py (ČHMÚ files incl. groundwater, listings, metadata), files.py (the station file and the series files of a provider fed by files: read_station_file, parse_series_export)
+├── providers/            # One adapter per provider behind the ProviderAdapter protocol (ADR-029): base.py (the protocol; Answer and PolledSource of the captures; harvested, harvest_requests, live_tail and its capture dataset live_source, check_scope, listing), pl/imgw.py, cz/chmu.py, files.py (FileFedAdapter: every provider fed by files, ADR-033)
 ├── store/                # Versioned store in two roots, raw and data (ADR-017) [Parquet: obserwator[store]]
 │   ├── types.py          # Dataclasses: StorePlan, CommandResult, Page, StoreEntry, StoreHandle, ...; RootKind
 │   ├── writer.py         # init_store (raw or data root), open_store, write_archive (atomic, append-only, content_unchanged + observations), write_capture
@@ -48,6 +49,7 @@ src/obserwator/
 │   ├── series.py         # check_series, build_series (Parquet in the data root, from the archives of the raw root)
 │   ├── subdaily.py       # build_months, check_months: the hourly series of the tiers, one version per month (ADR-031); tail_hours: the full hours of a live tail's answers, today's included (the GUI's chart of „teraz”, O6)
 │   ├── catalog.py        # check_catalog, build_catalog (stations.geojson per provider in the data root, from the station sources of the raw root); each provider's builder is in its adapter (providers/, ADR-029)
+│   ├── files.py          # import_files, check_import: store import of a provider fed by files (its files kept in the raw root, its series and catalog built; ADR-033)
 │   ├── pmaxtp.py         # check_pmaxtp, sync_pmaxtp, read_pmaxtp
 │   ├── reader.py         # store_info, iter_store, current_version, read_*, select/summarize_series
 │   ├── export.py         # export_archive, export_series (CSV/JSON/Parquet), export_stations (GeoJSON/CSV); ADR-014
@@ -89,8 +91,8 @@ src/obserwator/
     ├── _traffic.py       # Traffic: rate limit and daily totals (stats.jsonl; Nogat DEV-15.9, DEV-15.11)
     ├── _feedback.py      # POST api/feedback: „Zgłoś uwagę” reports in feedback.jsonl, next id in feedback.next_id (DEV-15.12), rewritten atomically under flock
     ├── _admin.py         # The admin panel's API (DEV-15.13): X-Admin-Key, api/admin/feedback|stats|status
-    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.1.0, regulamin 1.0) filled for the deployment (DEV-15.7), or the operator's of [obserwator.instance] (terms, from nogat-terms-operator.md)
-    └── web/              # The page (package data): index.html, theme-init.js, favicon.ico and apple-touch-icon.png (rendered from nogat/marks/obserwator.svg), src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.1.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
+    ├── _terms.py         # regulamin.html: the terms of Nogat's kit (web/nogat/nogat-terms.html, kit 1.2.0, regulamin 1.0) filled for the deployment (DEV-15.7), or the operator's of [obserwator.instance] (terms, from nogat-terms-operator.md)
+    └── web/              # The page (package data): index.html, theme-init.js, favicon.ico and apple-touch-icon.png (rendered from nogat/marks/obserwator.svg), src/ (Preact + htm modules: map, list, panel, sections/, charts/, pmaxtp/, ui/), css/, vendor/ (Preact, htm, MapLibre GL JS, glyphs), nogat/ (tokens, marks, kit 1.2.0), admin/ (the admin panel, <nogat-admin>), instrukcja/ (the guide in Polish)
 
 AGENTS.md, llms.txt       # Agent guide — DERIVED files: regenerate with `obserwator commands guide` (drift test)
 ```
@@ -179,6 +181,7 @@ Every live function but `download_archives` has an `*_async` twin with identical
 |`write_archive(root, /, *, archive, response, on_progress=None, on_notice=None, cancel=None)`|Commit one downloaded file (`DownloadResult`) and its `*.meta.json` sidecar as a version `<label>_<sha8>` of the raw root, published by hard links, the sidecar last, never replacing a version (`VersionResult`; equal canonical content → `unchanged` + an observation, ADR-003)|
 |`build_series(root, /, *, raw_root, dataset, stations=None, years=None, on_progress=None, on_notice=None, cancel=None)`, `check_series(...)`|Parquet station series in the data root `root`, built from the current archive versions of the raw root `raw_root` (keyword-only, required; only read: no marker, staging or clean-up there); `SeriesReport.source_files` and the plan items name files of the raw root. `stations` and `years` build a subset (ADR-026): only the archives holding them are read, `series.json` records `subset`, the sidecar `request.stations|years`; a version is reused only for the same subset, and a data root holding a full version of the dataset refuses a subset (`conflict`, `details.reason="full_series"`)|
 |`build_catalog(root, /, *, raw_root, provider="IMGW", user_locations=None, ...)`, `check_catalog(...)`|`stations.geojson` catalog of one provider (`"IMGW"` default, `"CHMU"`) in the data root `root`, built offline from the station sources of the raw root `raw_root` and the series indexes of the data root|
+|`import_files(root, /, *, raw_root, provider_file, ...)`, `check_import(...)`, `ImportReport`|`store import` (ADR-033): a provider file of `[obserwator] provider_files` (a relative path lies in the directory of `nogat.toml`; another path is `validation_error`, `details.reason="not_listed"`); every file it names is read and checked, kept in the raw root `raw_root` as it came (`archives/versions/files/<acronym>/…`), then the provider's series and catalog are built in the data root `root`. `ImportReport`: `provider`, `items` (the raw versions), `series`, `catalog`; a failed build after the kept files makes the envelope `partial`. `check_import` plans it offline|
 |`check_pmaxtp`, `sync_pmaxtp`, `read_pmaxtp`|PMAXTP grid cells of the raw root|
 |`current_version(root, /, *, slot)`|Current version of a slot; the slot decides the kind of root: `archive:<key>:<file>` (a capture `archive:<key>:<YYYY-MM-DD>.jsonl.gz`), `pmaxtp:…` raw; `series:<key>`, `catalog:<prefix>.stations`, `analyses:<prefix>.analyses` (`analyses:pl.imgw.analyses`, `analyses:cz.chmu.analyses`) data|
 |`read_meta`, `read_archive`, `read_station_list(root, /, *, kind, provider="IMGW")`, `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index`, `read_series`|Offline readers (`read_archive` and `read_station_list` of the raw root, `read_catalog` and the series readers of the data root); `SeriesIndex.subset` is the `SeriesSubset(stations, years)` of a subset version (ADR-026), None for a full series|
@@ -335,6 +338,7 @@ CLI command = `obserwator <group> <name>`; REST route = `/api/v1/<group>/<name>`
 |`store check`|`check_store`|self|`GET /api/v1/store/check`|
 |`store sync`|`sync_store`|`check_store`|`POST /api/v1/store/sync`|
 |`store catalog`|`build_catalog`|`check_catalog`|`POST /api/v1/store/catalog`|
+|`store import`|`import_files`|`check_import`|`POST /api/v1/store/import`|
 |`store export`|`export_archive`|`check_command`|`GET /api/v1/store/export`|
 |`series build`|`build_series`|`check_series`|`POST /api/v1/series/build`|
 |`series select`|`select_series`|—|`GET /api/v1/series/select`|
@@ -521,6 +525,8 @@ The table `instance` of `[obserwator]` (ADR-025; `obserwator.instance.load_insta
 
 The table `capture` of `[obserwator]` (ADR-030 D5; `obserwator.captures`) sets whether a server shows the captures of each source, from the file only, read whenever a state is needed (every REST request, every sealed version's sidecar): `"<dataset>" = "public"` or `"private"` for each dataset whose tier is not `verified`, the declared ones included; a dotted key, which TOML nests, is read as the dataset's key. Without it each source has its adapter's default (`ProviderAdapter.publication_default`: hydro.imgw.pl's backend `private`, danepubliczne.imgw.pl and ČHMÚ `public`). A section that is no table, names another dataset, names one source twice (a quoted and a dotted key) or sets another value is the `config show` problem `invalid_capture` (`option` `capture.<dataset>`), and the defaults apply; nothing refuses to start. `config show --json` gives `capture` (`spool` and per source `state`, `tier`, `source` `default`/`file`, `name`). Example and the REST rules: `docs/USAGE.md` „Captures of current data”.
 
+The key `provider_files` of `[obserwator]` (ADR-033; `obserwator._provider_files`, read once by `obserwator.datasets` as it is imported) lists provider files, from the file only, each path relative to the directory of `nogat.toml` (`~` expanded); paths inside a provider file are relative to that file. A provider file has `id` (`[A-Z][A-Z0-9]{1,15}`, no id of the registry), `short_name`, `name`, `country` (`PL`, `CZ`), `source_class` (`other`), `tier` (`verified`, `telemetry`, `operational`; default `operational`), `publication` (`public`, `private`; default `private`, refused with `verified`), `stations` (the GeoJSON station file), `[license]` (`id`, `url`, optional `terms_url`), `[attribution]` (`line`, optional `processed`, `short`, `links` as `[[word, url]]`) and `[datasets.<hydro|meteo|groundwater>_daily]` (`directory`, `variables` `{name = unit}` of the registry's daily variables, optional `year_type` `calendar` or `hydrological`). A valid file adds a provider (datasets `<cc>.<acronym>.station_list` and `<cc>.<acronym>.<kind>_daily`, station codes `<ID>-<code>`, attribution origin `<acronym>` after the standard's lines) served by `providers/files.py`; a file with a problem adds nothing: `config show` reports it in `provider_files` (`{path, provider}`, `provider` null) and as the problem `invalid_provider_file` (`option` `provider_file.<field>`, `path`), `datasets.check_provider_files()` refuses the start of both servers (`api/instance.check_start`, `GuiConfig.resolve`) and every `store import`. Its datasets of a tier other than `verified` are sources of `[obserwator.capture]` whose default is the file's `publication` (`docs/USAGE.md` „A provider fed by files”).
+
 |Variable|Default|Description|
 |---|---|---|
 |`OBSERWATOR_ROOT`|`<data_dir>/obserwator`|The data root (series, station catalogs, analyses; ADR-017) of the CLI, the library and `obserwator mcp` when `--root` of a command of the data root is absent (also `root` in `[obserwator]` of `nogat.toml`); of the REST server its data root: unset → the routes of those commands 503 `not_configured`, never the default|
@@ -557,6 +563,7 @@ The table `capture` of `[obserwator]` (ADR-030 D5; `obserwator.captures`) sets w
 <raw root>/obserwator-store.json                        # obserwator-store/1 marker: schema, tool, created_at, producer_version (+ optional created_by)
   archives/versions/<server dir>/<stem>/<label>_<sha8>/<file> + <file>.meta.json
   archives/versions/<server dir>/<YYYY-MM-DD>/<YYYY-MM-DD>_<sha8>/<YYYY-MM-DD>.jsonl.gz + .meta.json   # a capture of one UTC day (ADR-030 D3)
+  archives/versions/files/<acronym>/<dataset>/<stem>/<label>_<sha8>/<file> + <file>.meta.json   # a file of a provider fed by files, kept by store import (ADR-033)
   archives/versions/<server dir>/<stem>/observations/   # obserwator-observation/1 signal register (ČHMÚ datasets with a content form)
   pmaxtp/versions/<POT|AMP>/<indX>_<indY>/<label>_<sha8>/cell.json + response.json + .meta.json
   .incoming/                                            # staging; never a version
@@ -566,6 +573,7 @@ The table `capture` of `[obserwator]` (ADR-030 D5; `obserwator.captures`) sets w
   series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet  # a month of a sub-daily series (ADR-031)
   stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json  # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json  # ČHMÚ catalog
+  stations/versions/<acronym>_stations/<label>_<sha8>/stations.geojson + .meta.json  # the catalog of a provider fed by files (slot catalog:<cc>.<acronym>.stations)
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/                                            # staging; never a version
 ```
@@ -585,6 +593,8 @@ Harvests (ADR-030 D9 and its errata of 2026-11-23): `store sync --pace-until HH:
 ### Contracts (IMGW-13)
 
 `obserwator-store/1` (the marker of a raw root), `obserwator-data/1` (the marker of a data root, ADR-017), `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, envelope `obserwator-result/1`, `obserwator-commands/1` (command schema); the analyses (ADR-016): `obserwator-analyses/1`, `obserwator-station-analyses/1`, `obserwator-analysis-summary/1`, `obserwator-analysis/1`, `obserwator-analyses-report/1`, `obserwator-analyses-export/1`, `obserwator-analysis-definition/1`. Each has its own `/N` counter; within `/1` only optional fields are added. `/1` domains are open to further providers (ADR-003 C01): dataset key `^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$`, `country` `^[A-Z]{2}$`, station code `STATION_CODE_PATTERN` (9-digit IMGW or WIGOS), optional `content_sha256`/`content_form` in sidecars. Additive fields of 3.0.0 (ADR-003/004): sidecar `request.station_code`/`param`, `extra.period.station_code`, `license.terms_url`; series `stations[<code>].periods`; catalog `thresholds`; plan item `station_code`/`signal`/`remote_listed_at`/`local_observation` and plan `requests`; command schema `lang`, `x-obserwator.writes`/`network`/`operation_id`, `x-obserwator-writes`. IMGW-PIB files keep their bytes. 3.2.0 adds the optional sidecar fields `tier` and `publication` (ADR-030 D6; only for a dataset whose tier is not `verified`) and the result documents `obserwator-poll-report/1` and `obserwator-polled-answer/1`.
+
+3.3.0 (ADR-033, additive) widens the station-code grammar of the contract schemas (`STATION_CODE_PATTERN`) to the codes `<ID>-<code>` of a provider fed by files, in the station keys and files of `obserwator-series/1` and the `id` and `station_code` of a catalog feature, and `location_source` to `<cc>.<acronym>.station_list`; `obserwator-config/1` gains `provider_files` and the problem `invalid_provider_file`; both copies of `contract_schemas.json` (`tests/fixtures/store/`, `src/obserwator/_data/fixtures/`) stay byte-identical.
 
 ### IMGW CSV Format Notes
 
@@ -610,7 +620,7 @@ src/obserwator/
 ├── store/        # Versioned store in a raw and a data root (ADR-017): writer, sync, captures, series, catalog, pmaxtp, reader, export, content, plain, analyses, analysis_registry
 ├── output.py     # Writing plain files (--output-dir): resolve_target, plan_plain, Staging, OutputReport
 ├── datasets.py   # Registry of providers and 49 datasets (pl.imgw.*, cz.chmu.*; two hourly series built from their inputs, ADR-031), archive file generator
-├── commands.py   # Catalog of 36 commands shared by Python, CLI, REST, MCP and integrations
+├── commands.py   # Catalog of 37 commands shared by Python, CLI, REST, MCP and integrations
 ├── agent_guide.py # Guide for agents (AGENTS.md, llms.txt): agent_guide, commands guide
 ├── fetch.py      # Current data, PMAXTP, archive downloads
 ├── captures.py   # Captures of current data: the spool in state_dir, [obserwator.capture], current poll, the night's harvest (ADR-030)

@@ -16,6 +16,7 @@
 import { api } from "../api.js";
 import { has } from "../i18n.js";
 import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, useState } from "../lib.js";
+import { unverified } from "../words.js";
 
 /**
  * Where the documents of a card go (the panel's provider): a function called with each
@@ -23,6 +24,18 @@ import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, us
  * strip carries their lines.
  */
 export const ResultLines = createContext(null);
+
+/**
+ * „dane operacyjne, niezweryfikowane” beside a dataset whose series are not verified data
+ * (hydromet P11, Nogat DEV-20.8; words.js `unverified`): in the station's record and by the
+ * title of „Dane pomiarowo-obserwacyjne”; nothing for any other.
+ *
+ * @param {{dataset: string}} props the dataset's key
+ * @returns {object|null}
+ */
+export function UnverifiedFlag({ dataset }) {
+  return unverified(dataset) ? html` <span class="flag" data-part="unverified">${t("station.unverified")}</span>` : null;
+}
 
 function clean(overrides) {
   const out = {};

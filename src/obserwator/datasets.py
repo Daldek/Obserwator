@@ -10,8 +10,22 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Literal
 from urllib.parse import quote
 
-from obserwator._environment import PREFIX
-from obserwator.attribution import Attribution, attribution, provider_origin
+from obserwator._environment import PREFIX, config_file
+from obserwator._provider_files import (
+    CODE_GRAMMAR,
+    STATIONS_FILE,
+    FileDataset,
+    LoadedFiles,
+    ProviderFile,
+    load_provider_files,
+)
+from obserwator.attribution import (
+    ORIGINS,
+    Attribution,
+    attribution,
+    declare_origin,
+    provider_origin,
+)
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import Message, message
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
@@ -25,8 +39,13 @@ YearsArg = int | str | Iterable[int | str]
 MonthsArg = int | str | Iterable[int | str]
 """Months 1-12: ``3``, ``"3"``, ``"1,2"`` or ``[1, "2"]``."""
 
-STATION_CODE_PATTERN = r"^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
-"""Station code of any provider: nine IMGW-PIB digits or a WIGOS identifier (ČHMÚ)."""
+STATION_CODE_PATTERN = (
+    rf"^([0-9]{{9}}|0-[0-9]{{1,5}}-[0-9]{{1,5}}-[0-9A-Z]{{1,16}}|{CODE_GRAMMAR})$"
+)
+"""
+Station code of any provider: nine IMGW-PIB digits, a WIGOS identifier (ČHMÚ) or
+``<id>-<code>`` of a provider fed by files (ADR-033).
+"""
 
 DATASET_KEY_PATTERN = r"^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$"
 """Dataset key ``<country>.<key prefix>.<name>[_<variant>]`` of any provider (IMGW-20)."""
@@ -299,6 +318,21 @@ class ProviderDescriptor:
         """
         return self.id.lower()
 
+    @property
+    def source_class(self) -> Literal["nmhs", "other"]:
+        """
+        Who operates the provider's network (Nogat plan 2026-11-20, P11).
+
+        Returns
+        -------
+        {"nmhs", "other"}
+            ``nmhs`` for a national meteorological and hydrological service
+            (IMGW-PIB, ČHMÚ), ``other`` for every other operator, a provider fed by
+            files among them (ADR-033); its adapter's ``source_class``. A property,
+            so the ``obserwator-provider/1`` document is unchanged.
+        """
+        return self.adapter.source_class
+
 
 @dataclass(frozen=True)
 class DatasetDescriptor:
@@ -570,7 +604,7 @@ _IMGW_SEMIANNUAL_NOTES = {
 _IMGW_SNOW_COVER = message("datasets.note_imgw_snow_cover")
 
 
-_DATASETS = (
+_DATASETS: tuple[DatasetDescriptor, ...] = (
     DatasetDescriptor(
         key="pl.imgw.hydro_daily",
         slug="imgw_hydro_daily",
@@ -1683,8 +1717,150 @@ _PENDING = (
         tier="operational",
     ),
 )
+
+# Providers fed by files (ADR-033; Nogat plan 2026-11-21, I13): an operator's own
+# network declared in the provider files ``nogat.toml`` lists, read once as the
+# registry is imported (`obserwator._provider_files`). A valid file adds a provider
+# after the packaged ones, with its station file and its daily datasets after theirs,
+# and declares the origin of its lines (`obserwator.attribution.declare_origin`); a
+# file with a problem adds nothing (`provider_file_problems`).
+_FILES_DIRECTORY = "files"
+"""The directory of the raw root below ``archives/versions`` of every provider fed by files."""
+
+
+def _daily_variables() -> dict[str, dict[str, str]]:
+    """The variables of the daily series of each kind of station, with their units."""
+    found: dict[str, dict[str, str]] = {}
+    for descriptor in _DATASETS:
+        if (
+            descriptor.time_unit == "day"
+            and descriptor.kind is not None
+            and descriptor.parser is not None
+        ):
+            for name, unit in descriptor.variables.items():
+                found.setdefault(descriptor.kind, {}).setdefault(name, unit)
+    return found
+
+
+def _file_title(provider: ProviderFile, dataset: FileDataset) -> Message:
+    """The title of a dataset of a provider fed by files, with its tier when unverified."""
+    title = provider.dataset_title(dataset.kind)
+    if provider.tier == "verified":
+        return title
+    return message("provider_files.title_unverified", title=title)
+
+
+def _file_datasets(provider: ProviderFile) -> tuple[DatasetDescriptor, ...]:
+    """
+    The datasets of a provider fed by files: its station file, then its daily series.
+
+    Their files lie in the raw root below ``files/<acronym>/`` (`_FILES_DIRECTORY`):
+    ``station_list/stations.geojson`` and ``<name>/<station code>.csv`` (or
+    ``.parquet``), one file per station with its whole record.
+    """
+    licence = License(
+        provider.license_id, provider.line, provider.license_url, provider.terms_url
+    )
+    base = f"{_FILES_DIRECTORY}/{provider.acronym}"
+    stations = DatasetDescriptor(
+        key=f"{provider.key_prefix}.station_list",
+        slug=f"{provider.acronym}_station_list",
+        kind=None,
+        title=message(
+            "provider_files.title_station_list", provider=provider.short_name
+        ),
+        server_dir=f"{base}/station_list",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=licence,
+        legacy_alias=None,
+        in_store=True,
+        provider=provider.id,
+    )
+    return (
+        stations,
+        *(
+            DatasetDescriptor(
+                key=f"{provider.key_prefix}.{dataset.name}",
+                slug=f"{provider.acronym}_{dataset.name}",
+                kind=dataset.kind,
+                title=_file_title(provider, dataset),
+                server_dir=f"{base}/{dataset.name}",
+                parser="parse_series_export",
+                variables=dict(dataset.variables),
+                time_unit="day",
+                year_type=dataset.year_type,
+                first_year=None,
+                update_signal="none",
+                license=licence,
+                legacy_alias=None,
+                in_store=True,
+                provider=provider.id,
+                archive_scope="station",
+                tier=provider.tier,
+            )
+            for dataset in provider.datasets
+        ),
+    )
+
+
+def _file_provider(provider: ProviderFile) -> ProviderDescriptor:
+    """The registry entry of a provider fed by files."""
+    return ProviderDescriptor(
+        id=provider.id,
+        short_name=provider.short_name,
+        name=provider.name,
+        country=provider.country,
+        key_prefix=provider.key_prefix,
+        base_url="",
+        license=License(
+            provider.license_id, provider.line, provider.license_url, provider.terms_url
+        ),
+        processed_attribution=provider.processed or "",
+        notice=message(
+            "provider_files.provider_notice",
+            license=provider.license_id,
+            url=provider.license_url,
+        ),
+        station_code_pattern=provider.station_code_pattern,
+        datasets=tuple(item.key for item in _file_datasets(provider)),
+    )
+
+
+def _load_files() -> LoadedFiles:
+    """
+    Read the provider files of ``nogat.toml`` and declare the origins of their lines.
+
+    A provider file may take no id of a packaged provider (nor its old ids) and no
+    name of an attribution origin.
+    """
+    loaded = load_provider_files(
+        config_file(),
+        reserved=frozenset(
+            (
+                *ORIGINS,
+                "imgw",
+                "chmu",
+                *(alias.lower() for alias in PROVIDER_ID_ALIASES),
+            )
+        ),
+        variables=_daily_variables(),
+    )
+    for provider in loaded.files:
+        declare_origin(provider.acronym, provider.line, provider.processed)
+    return loaded
+
+
+_FILES = _load_files()
+_DATASETS = _DATASETS + tuple(
+    descriptor for item in _FILES.files for descriptor in _file_datasets(item)
+)
 _REGISTRY = _DATASETS + _PENDING
-_PROVIDERS = (
+_PROVIDERS: tuple[ProviderDescriptor, ...] = (
     ProviderDescriptor(
         id="IMGW",
         short_name="IMGW-PIB",
@@ -1715,6 +1891,7 @@ _PROVIDERS = (
         datasets=tuple(item.key for item in _DATASETS if item.provider == "CHMU"),
     ),
 )
+_PROVIDERS = _PROVIDERS + tuple(_file_provider(item) for item in _FILES.files)
 # Lookup by id and by key prefix.
 _PROVIDER_BY_NAME = {
     name: provider
@@ -1749,9 +1926,45 @@ def providers() -> tuple[ProviderDescriptor, ...]:
     Returns
     -------
     tuple of ProviderDescriptor
-        ``IMGW``, then ``CHMU`` (a fixed order).
+        ``IMGW``, then ``CHMU`` (a fixed order), then the providers fed by files of
+        ``nogat.toml`` in the order of its ``provider_files`` (ADR-033).
     """
     return _PROVIDERS
+
+
+def provider_files() -> LoadedFiles:
+    """
+    The provider files ``nogat.toml`` lists, as the registry read them (ADR-033).
+
+    Read once, when this module was imported: a change of a file is seen by the next
+    process.
+
+    Returns
+    -------
+    LoadedFiles
+        The files listed, the valid ones (each a provider of `providers`) and the
+        problem of each other (an `ObserwatorValidationError` naming the field in
+        ``details.option`` and the file in ``details.path``), which ``config show``
+        reports and which refuses the start of both servers and every ``store
+        import``.
+    """
+    return _FILES
+
+
+def check_provider_files() -> None:
+    """
+    Refuse a deployment whose provider files cannot all be used (fail closed, ADR-033).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        The first problem of `provider_files`.
+    """
+    if _FILES.problems:
+        problem = _FILES.problems[0]
+        raise ObserwatorValidationError(
+            problem.detail, details=problem.details, hint=problem.hint
+        )
 
 
 def get_provider(provider: str, /) -> ProviderDescriptor:
@@ -2375,6 +2588,11 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.meteo_now": (),
         "cz.chmu.groundwater_stations": ("meta1.json",),
         "cz.chmu.groundwater_now": ("meta1.json",),
+        # The station file of each provider fed by files (ADR-033).
+        **{
+            f"{provider.key_prefix}.station_list": (STATIONS_FILE,)
+            for provider in _FILES.files
+        },
     }
 )
 
@@ -2394,10 +2612,14 @@ def _station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | Non
 def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
     """The files with a fixed name of a station-source dataset (none for ``cz.chmu.meteo_now``)."""
     descriptor = get_dataset(dataset)
-    return tuple(
-        _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
-        for name in _STATION_FILES[descriptor.key]
-    )
+    found: list[ArchiveFile] = []
+    for name in _STATION_FILES[descriptor.key]:
+        # Each provider's adapter names its files (a provider fed by files, the path
+        # of the operator's file).
+        archive = _station_file(descriptor, name)
+        assert archive is not None  # a fixed name is a file of the dataset
+        found.append(archive)
+    return tuple(found)
 
 
 def station_source_files(*, provider: str = "IMGW") -> tuple[ArchiveFile, ArchiveFile]:

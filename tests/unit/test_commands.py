@@ -1,4 +1,4 @@
-"""Command catalog (spec §13.3, §13.6): 36 commands, validation, envelope, paging, checks."""
+"""Command catalog (spec §13.3, §13.6): 37 commands, validation, envelope, paging, checks."""
 
 import functools
 import importlib
@@ -33,6 +33,7 @@ from obserwator.store.types import (
     CommandCall,
     DownloadItem,
     DownloadReport,
+    ImportReport,
     Notice,
     Page,
     PlanAction,
@@ -82,6 +83,7 @@ SPEC_COMMANDS = [
     "store check",
     "store sync",
     "store catalog",
+    "store import",
     "store export",
     "series build",
     "series select",
@@ -183,6 +185,13 @@ VALID: dict[str, list[dict[str, object]]] = {
         {"root": ROOT, "datasets": ["pl.imgw.hydro_now", "pl.imgw.meteo_stations"]},
     ],
     "store catalog": [{"root": ROOT, "user_locations": "/tmp/moje położenia.csv"}],
+    "store import": [
+        {
+            "root": ROOT,
+            "raw_root": "/data/obserwator-raw",
+            "provider_file": "/etc/nogat/siec.toml",
+        }
+    ],
     "store export": [
         {
             "version": "archives/versions/a/codz_2024/v/codz_2024.zip",
@@ -943,6 +952,30 @@ STATUS_CASES = [
         "failed",
     ),
     (
+        "store import",
+        {"root": "/s", "provider_file": "/etc/nogat/siec.toml"},
+        store,
+        "import_files",
+        # A series is built, the catalog after it fails (no provider file is
+        # configured here, so the report keeps no file and carries no line).
+        ImportReport(
+            "SIEC",
+            (),
+            (SeriesReport("new", Path("/s/v"), 1, (), ()),),
+            CatalogReport("failed", None, 0, 0, 0, ("x",), "SIEC"),
+            False,
+        ),
+        "partial",
+    ),
+    (
+        "store import",
+        {"root": "/s", "provider_file": "/etc/nogat/siec.toml"},
+        store,
+        "import_files",
+        ImportReport("SIEC", (), (), None, True),
+        "cancelled",
+    ),
+    (
         "pmaxtp sync",
         {"root": "/s", "latitude": 52.2, "longitude": 21.0},
         store,
@@ -1034,6 +1067,11 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         },
         "store sync": {"root": raw, "datasets": DAILY, "years": 2024},
         "store catalog": {"root": root, "raw_root": raw},
+        "store import": {
+            "root": root,
+            "raw_root": raw,
+            "provider_file": tmp_path / "siec.toml",
+        },
         "store export": {"version": version, "output": tmp_path / "archive.csv"},
         "series build": {"root": root, "raw_root": raw, "dataset": DAILY},
         "series select": {"root": root, "dataset": DAILY, "stations": RABA},
@@ -1069,6 +1107,16 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         imgw.publish(H2024, V3, NEW)
         imgw.publish_catalog_sources()
         for command, values in options.items():
+            if command == "store import":
+                # nogat.toml lists no provider file here: refused before any read.
+                with pytest.raises(ObserwatorValidationError) as refused:
+                    check_command(command, options=values)
+                assert refused.value.details == {
+                    "option": "provider_file",
+                    "value": str(tmp_path / "siec.toml"),
+                    "reason": "not_listed",
+                }
+                continue
             result = check_command(command, options=values)
             assert (result.command, result.check, result.status) == (
                 command,
