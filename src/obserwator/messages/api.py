@@ -149,4 +149,10 @@ MESSAGES = {
         "{dataset} nie jest udostępniany przez ten serwer: jego zapisy są prywatne "
         "([obserwator.capture]); czyta je wiersz poleceń",
     ),
+    "series_private": Text(
+        "{dataset} is not served by this server: it is built from private captures "
+        "([obserwator.capture]); the command line reads it",
+        "{dataset} nie jest udostępniany przez ten serwer: powstaje z prywatnych "
+        "zapisów ([obserwator.capture]); czyta go wiersz poleceń",
+    ),
 }

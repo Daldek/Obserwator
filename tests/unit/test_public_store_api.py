@@ -94,6 +94,8 @@ SPEC_FUNCTIONS = (
     "compute_analysis",
     # ADR-030 D9: the hourly poll into the capture spool.
     "poll_current",
+    # ADR-031 D2: the current version of each month of a sub-daily series.
+    "series_months",
 )
 SPEC_TYPES = (
     "PathArg",

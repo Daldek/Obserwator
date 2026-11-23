@@ -9,7 +9,10 @@ HTTP, which answers through these routes: an option naming it (``dataset``,
 ``datasets``, an item of a ``store sync`` plan) and a ``version`` below one of its slots
 are ``not_found`` (``details.reason`` ``private``) before any request, a version that
 exists answering like one that does not, as for a station an instance does not serve
-(ADR-025 D2). The CLI, the library and the MCP server on stdio read every source.
+(ADR-025 D2). So is a sub-daily series built from a private source (ADR-031: its state
+follows its inputs), by its dataset and by a version below
+``series/versions/<its slug>/``. The CLI, the library and the MCP server on stdio read
+every source.
 """
 
 from __future__ import annotations
@@ -34,13 +37,26 @@ __all__ = ["guard", "refuse_version"]
 
 
 def _private() -> tuple[DatasetDescriptor, ...]:
-    """The sources (datasets of a tier other than ``verified``) set ``private``."""
-    return tuple(d for d in publication_sources() if publication(d.key) == "private")
+    """
+    The sources (datasets of a tier other than ``verified``) set ``private``.
+
+    With them the sub-daily series (``DatasetDescriptor.inputs``, ADR-031) whose
+    state, that of their inputs, is ``private``.
+    """
+    candidates = (*publication_sources(), *(d for d in datasets() if d.inputs))
+    return tuple(d for d in candidates if publication(d.key) == "private")
 
 
-def _not_found(key: str, option: str, value: object) -> ObserwatorError:
+def _not_found(
+    descriptor: DatasetDescriptor, option: str, value: object
+) -> ObserwatorError:
+    text = (
+        message("api.series_private", dataset=descriptor.key)
+        if descriptor.inputs
+        else message("api.capture_private", dataset=descriptor.key)
+    )
     return ObserwatorError(
-        message("api.capture_private", dataset=key),
+        text,
         code="not_found",
         details={"option": option, "value": value, "reason": "private"},
     )
@@ -60,7 +76,8 @@ def guard(options: Mapping[str, object]) -> None:
     Refuse a private source (a dataset not ``verified``) that the options name.
 
     Called with the options `obserwator.commands.validate_command` normalized (the
-    keys of datasets), before the command runs or plans.
+    keys of datasets), before the command runs or plans. A sub-daily series of a
+    private source (ADR-031) is refused alike.
 
     Parameters
     ----------
@@ -74,18 +91,20 @@ def guard(options: Mapping[str, object]) -> None:
         ``not_found`` (``details.option`` ``dataset``, ``datasets`` or ``plan``,
         ``details.reason`` ``private``).
     """
-    private = {descriptor.key for descriptor in _private()}
+    private = {descriptor.key: descriptor for descriptor in _private()}
     if not private:
         return
     for name in ("dataset", "datasets"):
         for key in _names(options.get(name)):
             if key in private:
-                raise _not_found(key, name, key)
+                raise _not_found(private[key], name, key)
     plan = options.get("plan")
     if isinstance(plan, Path):
         for item in StorePlan.from_json(plan).items:
             if item.archive.dataset in private:
-                raise _not_found(item.archive.dataset, "plan", item.archive.server_path)
+                raise _not_found(
+                    private[item.archive.dataset], "plan", item.archive.server_path
+                )
 
 
 def _owner(rest: Sequence[str]) -> DatasetDescriptor | None:
@@ -118,10 +137,12 @@ def refuse_version(parts: Sequence[str]) -> None:
     ----------
     parts : sequence of str
         The segments of the version's path below the root, checked for their form
-        (``archives/versions/…``) but not for existence: the slot directory of a
-        capture's day is ``<server_dir>/<YYYY-MM-DD>`` (ADR-030 D3), that of any
-        other file a directory below its dataset's server directory (IMGW-PIB's
-        telemetry: ``Arch/Telemetria/Hydro/<YYYY>/Hydro_<YYYY-MM>``).
+        (``archives/versions/…``, ``series/versions/…``) but not for existence: the
+        slot directory of a capture's day is ``<server_dir>/<YYYY-MM-DD>`` (ADR-030
+        D3), that of any other file a directory below its dataset's server directory
+        (IMGW-PIB's telemetry: ``Arch/Telemetria/Hydro/<YYYY>/Hydro_<YYYY-MM>``), and
+        the versions of a sub-daily series lie below ``series/versions/<slug>/``
+        (ADR-031).
 
     Raises
     ------
@@ -129,6 +150,12 @@ def refuse_version(parts: Sequence[str]) -> None:
         ``not_found`` (``details.option`` ``version``, ``details.reason``
         ``private``).
     """
+    if list(parts[:2]) == ["series", "versions"]:
+        slug = parts[2] if len(parts) > 2 else None
+        for descriptor in _private():
+            if descriptor.inputs and descriptor.slug == slug:
+                raise _not_found(descriptor, "version", "/".join(parts))
+        return
     if list(parts[:2]) != ["archives", "versions"]:
         return
     rest = list(parts[2:])
@@ -146,7 +173,7 @@ def refuse_version(parts: Sequence[str]) -> None:
             )
             is not None
         ):
-            raise _not_found(descriptor.key, "version", "/".join(parts))
+            raise _not_found(descriptor, "version", "/".join(parts))
     owner = _owner(rest)
     if owner is not None and owner in private:
-        raise _not_found(owner.key, "version", "/".join(parts))
+        raise _not_found(owner, "version", "/".join(parts))
