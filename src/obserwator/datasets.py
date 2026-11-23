@@ -82,6 +82,15 @@ _IMGW_DATA = f"{_IMGW_SITE}data/"
 _HYDRO_BACK = "https://hydro-back.imgw.pl/"
 HYDRO_DETAILS = "pl.imgw.hydro_details"
 """Key of the station details of hydro.imgw.pl, an optional source of the IMGW-PIB catalog (ADR-021)."""
+CAPTURE_SCOPE = "country_day"
+"""``archive_scope`` of a capture dataset: one version holds the answers of a UTC day (ADR-030 D3)."""
+CAPTURE_SUFFIX = ".jsonl.gz"
+"""
+Ending of the file of a capture version, ``<YYYY-MM-DD>.jsonl.gz`` (ADR-030 D3).
+
+The day's answers as gzip-compressed JSON Lines; the slot directory of the file is
+``<server_dir>/<YYYY-MM-DD>`` (the name without the ending).
+"""
 
 
 @dataclass(frozen=True)
@@ -847,6 +856,125 @@ _DATASETS = (
         legacy_alias=None,
         in_store=True,
     ),
+    # The captures of the sources of current data that answer for every station in
+    # one request (ADR-030 D3, D4): every answer the hourly poll (``current poll``),
+    # the GUI and the ``current`` commands receive, spooled per UTC day and sealed by
+    # ``store sync`` into one version a day (``archive:<key>:<YYYY-MM-DD>.jsonl.gz``).
+    DatasetDescriptor(
+        key="pl.imgw.hydro_current",
+        slug="imgw_hydro_current",
+        kind="hydro",
+        title=message("datasets.title_hydro_current"),
+        server_dir="api/data/hydro",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.meteo_current",
+        slug="imgw_meteo_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_current"),
+        server_dir="api/data/meteo",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.meteo_synop_current",
+        slug="imgw_meteo_synop_current",
+        kind="meteo",
+        title=message("datasets.title_meteo_synop_current"),
+        server_dir="api/data/synop",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.warnings_hydro_current",
+        slug="imgw_warnings_hydro_current",
+        kind="hydro",
+        title=message("datasets.title_warnings_hydro_current"),
+        server_dir="api/data/warningshydro",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.imgw.warnings_meteo_current",
+        slug="imgw_warnings_meteo_current",
+        kind="meteo",
+        title=message("datasets.title_warnings_meteo_current"),
+        server_dir="api/data/warningsmeteo",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_IMGW_SITE,
+        tier="operational",
+    ),
+    # The map of hydro.imgw.pl: every station's water state and its class.
+    DatasetDescriptor(
+        key="pl.imgw.hydro_states_current",
+        slug="imgw_hydro_states_current",
+        kind="hydro",
+        title=message("datasets.title_hydro_states_current"),
+        server_dir="map/stations/hydrologic",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_HYDRO_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        archive_scope="country_day",
+        base_url=_HYDRO_BACK,
+        tier="operational",
+    ),
     DatasetDescriptor(
         key="pl.imgw.hydro_phenomena",
         slug="imgw_hydro_phenomena",
@@ -1140,7 +1268,8 @@ _DATASETS = (
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
 # REST route or GUI view lists or accepts them (`get_dataset`, the providers'
 # ``datasets`` and the choices of the catalog read `_DATASETS`) until their step
-# moves them there: H2a the captures of the sources polled every hour, O2 the rest.
+# moves them there (O2 for every one of them; H2a moved the six captures of current
+# data above, beside IMGW-PIB's stored datasets).
 _IMGW_DATASTORE = f"{_IMGW_SITE}datastore/getfiledown/"
 _PENDING = (
     # Every answer of hydro-back's station endpoints ``station/hydro/…`` (the night's
@@ -1185,123 +1314,6 @@ _PENDING = (
         in_store=True,
         base_url=_IMGW_DATASTORE,
         tier="telemetry",
-    ),
-    # The sources of current data that answer for every station in one request,
-    # polled every hour and fetched live by the GUI and the ``current`` commands.
-    DatasetDescriptor(
-        key="pl.imgw.hydro_current",
-        slug="imgw_hydro_current",
-        kind="hydro",
-        title=message("datasets.title_hydro_current"),
-        server_dir="api/data/hydro",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_IMGW_SITE,
-        tier="operational",
-    ),
-    DatasetDescriptor(
-        key="pl.imgw.meteo_current",
-        slug="imgw_meteo_current",
-        kind="meteo",
-        title=message("datasets.title_meteo_current"),
-        server_dir="api/data/meteo",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_IMGW_SITE,
-        tier="operational",
-    ),
-    DatasetDescriptor(
-        key="pl.imgw.meteo_synop_current",
-        slug="imgw_meteo_synop_current",
-        kind="meteo",
-        title=message("datasets.title_meteo_synop_current"),
-        server_dir="api/data/synop",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_IMGW_SITE,
-        tier="operational",
-    ),
-    DatasetDescriptor(
-        key="pl.imgw.warnings_hydro_current",
-        slug="imgw_warnings_hydro_current",
-        kind="hydro",
-        title=message("datasets.title_warnings_hydro_current"),
-        server_dir="api/data/warningshydro",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_IMGW_SITE,
-        tier="operational",
-    ),
-    DatasetDescriptor(
-        key="pl.imgw.warnings_meteo_current",
-        slug="imgw_warnings_meteo_current",
-        kind="meteo",
-        title=message("datasets.title_warnings_meteo_current"),
-        server_dir="api/data/warningsmeteo",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_IMGW_SITE,
-        tier="operational",
-    ),
-    # The map of hydro.imgw.pl: every station's water state and its class.
-    DatasetDescriptor(
-        key="pl.imgw.hydro_states_current",
-        slug="imgw_hydro_states_current",
-        kind="hydro",
-        title=message("datasets.title_hydro_states_current"),
-        server_dir="map/stations/hydrologic",
-        parser=None,
-        variables={},
-        time_unit="snapshot",
-        year_type="calendar",
-        first_year=None,
-        update_signal="none",
-        license=_HYDRO_LICENSE,
-        legacy_alias=None,
-        in_store=True,
-        archive_scope="country_day",
-        base_url=_HYDRO_BACK,
-        tier="operational",
     ),
     # ČHMÚ's day files of 10-minute H, Q and TH (never rewritten, published about
     # 00:20 UTC the next day), the 548 stations of a day in one capture version.
@@ -1868,7 +1880,7 @@ def archive_files(
     ----------
     dataset : str
         Key, slug or legacy alias of an archive dataset (all but the station
-        lists and PMAXTP).
+        lists, PMAXTP and the captures).
     years : YearsArg or None, optional
         Archive years (hydrological or calendar per the dataset), also as
         ranges ``"a-b"``; at least ``first_year`` of the dataset. Required
@@ -1899,8 +1911,10 @@ def archive_files(
     ------
     ObserwatorValidationError
         If the dataset is unknown or has no archives (station lists,
-        PMAXTP) or its files are named only in the server's folder index
-        (``details.reason="listed"``), a required option is missing or a
+        PMAXTP), is a capture dataset (``details.reason="capture"``: its
+        versions are sealed from the spool, ADR-030 D3) or its files are named
+        only in the server's folder index (``details.reason="listed"``), a
+        required option is missing or a
         rejected one is given, the years or months are empty, malformed or out
         of range, a station code does not follow the provider's grammar, or
         ``params`` is invalid; ``details.option`` names the option.
@@ -1910,6 +1924,12 @@ def archive_files(
         raise ObserwatorValidationError(
             message("datasets.dataset_has_no_annual_archives", key=descriptor.key),
             details={"option": "dataset", "value": descriptor.key},
+        )
+    if descriptor.archive_scope == CAPTURE_SCOPE:
+        # A capture is written from the spool, not downloaded (ADR-030 D3).
+        raise ObserwatorValidationError(
+            message("datasets.dataset_is_capture", key=descriptor.key),
+            details={"option": "dataset", "value": descriptor.key, "reason": "capture"},
         )
     return get_provider(descriptor.provider).adapter.archive_files(
         descriptor, years=years, months=months, params=params, stations=stations
@@ -2034,7 +2054,8 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
     Recreate the `ArchiveFile` of a server path offline (reverse of `archive_files`).
 
     Used for stored versions, plans and server listings: the descriptor equals
-    the one `archive_files` (or `station_source_files`) gives for the path.
+    the one `archive_files` (or `station_source_files`) gives for the path; a
+    capture dataset's path is ``<server_dir>/<YYYY-MM-DD>.jsonl.gz`` (`_capture_file`).
 
     Parameters
     ----------
@@ -2055,6 +2076,8 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
         If ``dataset`` names no dataset.
     """
     descriptor = get_dataset(dataset)
+    if descriptor.archive_scope == CAPTURE_SCOPE:
+        return _capture_from_path(descriptor, server_path)
     directory, _, name = server_path.rpartition("/")
     if descriptor.time_unit == "station_list":
         if directory != descriptor.server_dir:
@@ -2065,3 +2088,47 @@ def _archive_from_path(dataset: str, server_path: str, /) -> ArchiveFile | None:
     return get_provider(descriptor.provider).adapter.archive_from_path(
         descriptor, server_path
     )
+
+
+def _source_address(descriptor: DatasetDescriptor, /) -> str:
+    """The address of a dataset's server directory: its base URL and ``server_dir``."""
+    base = descriptor.base_url or get_provider(descriptor.provider).base_url
+    return base + (descriptor.server_dir or "")
+
+
+def _capture_file(descriptor: DatasetDescriptor, day: date, /) -> ArchiveFile:
+    """
+    The file of a capture dataset's version of one UTC day (ADR-030 D3).
+
+    Its server path is ``<server_dir>/<YYYY-MM-DD>.jsonl.gz`` (the slot
+    ``archive:<key>:<YYYY-MM-DD>.jsonl.gz``) and its URL the address of the source
+    whose answers it holds: no server publishes the file, the store seals it from
+    the spool.
+    """
+    return ArchiveFile(
+        descriptor.key,
+        f"{descriptor.server_dir}/{day.isoformat()}{CAPTURE_SUFFIX}",
+        _source_address(descriptor),
+        day.year,
+        day.month,
+        None,
+        "calendar",
+        day,
+        day,
+    )
+
+
+def _capture_from_path(
+    descriptor: DatasetDescriptor, server_path: str, /
+) -> ArchiveFile | None:
+    """The file of a capture dataset's server path; None for any other path."""
+    directory, _, name = server_path.rpartition("/")
+    stem = name.removesuffix(CAPTURE_SUFFIX)
+    if directory != descriptor.server_dir or stem == name:
+        return None
+    try:
+        day = date.fromisoformat(stem)
+    except ValueError:
+        return None
+    # Only the canonical form of the day names a file (not ``20261122``, say).
+    return _capture_file(descriptor, day) if day.isoformat() == stem else None

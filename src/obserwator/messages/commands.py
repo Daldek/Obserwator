@@ -526,6 +526,22 @@ MESSAGES = {
         "Pobierz stany wód stacji hydrologicznych ze współrzędnymi (mapa "
         "hydro.imgw.pl).",
     ),
+    "current_poll_description": Text(
+        "Poll the sources of current data into the capture spool. Each source is asked "
+        "once and its answer kept; the spool lies in state_dir, never in a root; store "
+        "sync seals each closed UTC day of it into one version. The deployment's timer "
+        "runs it hourly.",
+        "Zapisz w buforze odpowiedzi źródeł danych bieżących. Każde źródło jest "
+        "odpytywane raz, a jego odpowiedź zachowana; bufor leży w state_dir, nigdy w "
+        "magazynie; store sync zamyka każdą zakończoną dobę UTC bufora w jedną wersję. "
+        "Timer wdrożenia uruchamia go co godzinę.",
+    ),
+    "current_poll_rule": Text(
+        "a source asked less than its declared interval ago (less a tenth) is skipped "
+        "without a request",
+        "źródło odpytane wcześniej niż przed zadeklarowanym odstępem (pomniejszonym o "
+        "jedną dziesiątą) jest pomijane bez zapytania",
+    ),
     "pmaxtp_fetch_description": Text(
         "Fetch the PMAXTP maximum precipitation of a point. Live, without saving.",
         "Pobierz opady maksymalne PMAXTP dla punktu. Na żywo, bez zapisu.",
@@ -572,10 +588,12 @@ MESSAGES = {
         "Check the freshness of the dataset archives without downloading data. "
         "Sources: listing and HEAD (IMGW-PIB), the server listing alone (ČHMÚ); "
         "station lists by HEAD, station metadata without a signal are always "
-        "downloaded by store sync.",
+        "downloaded by store sync; the captures of current data (*_current) are "
+        "checked offline against the capture spool.",
         "Sprawdź aktualność archiwów zbiorów bez pobierania danych. Źródła: listing "
         "i HEAD (IMGW-PIB), sam listing serwera (ČHMÚ); listy stacji przez HEAD, "
-        "metadane stacji bez sygnału store sync pobiera zawsze.",
+        "metadane stacji bez sygnału store sync pobiera zawsze; zapisy danych "
+        "bieżących (*_current) sprawdza offline względem bufora zapisów.",
     ),
     "store_check_rule_1": Text(
         "plan written only outside the store, in an existing directory",
@@ -584,12 +602,15 @@ MESSAGES = {
     "store_sync_description": Text(
         "Download new or missing archives into the raw root, by plan or by datasets "
         "and stations. It writes raw data only (archives, station lists, station "
-        "metadata); series build and store catalog build from them. With "
-        "--output-dir it writes the selected archives as plain files (no plan).",
+        "metadata, the captures of current data: each closed UTC day of the capture "
+        "spool sealed into one version); series build and store catalog build from "
+        "them. With --output-dir it writes the selected archives as plain files (no "
+        "plan).",
         "Pobierz nowe lub brakujące archiwa do katalogu surowego według planu albo "
         "wyboru zbiorów i stacji. Zapisuje wyłącznie dane surowe (archiwa, listy i "
-        "metadane stacji); series build i store catalog budują z nich. Z "
-        "--output-dir zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
+        "metadane stacji, zapisy danych bieżących: każdą zakończoną dobę UTC bufora "
+        "zapisów zamkniętą w jedną wersję); series build i store catalog budują z "
+        "nich. Z --output-dir zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
     ),
     "store_sync_rule_1": Text(
         "plan excludes datasets, years, months and stations",
@@ -1118,6 +1139,14 @@ MESSAGES = {
         "Nie można odtworzyć komendy wersji {version}: obserwator store sync --datasets "
         "{dataset} nie wybiera pliku {server_path} (nazwy, której to wydanie nie "
         "pobiera). Przypnij ją jako dane lokalne",
+    ),
+    "version_command_capture": Text(
+        "The command of {version} cannot be rebuilt: it is a capture of {dataset}, the "
+        "answers its source gave on one UTC day, which no request gives again. Pin it "
+        "as local data",
+        "Nie można odtworzyć komendy wersji {version}: to zapis odpowiedzi zbioru "
+        "{dataset}, czyli tego, co źródło podało w ciągu jednej doby UTC, a żadne "
+        "zapytanie nie poda tego ponownie. Przypnij ją jako dane lokalne",
     ),
     # Meanings of the enumeration values of the catalog (``enum`` of an option).
     "meaning_kind_hydro": Text(

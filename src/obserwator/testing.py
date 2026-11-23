@@ -4,7 +4,8 @@
 (ADR-017) with the real public writers (``init_store``, ``write_archive``,
 ``sync_store``, ``build_series``, ``build_catalog``) while every HTTP request is
 answered from recordings shipped with the package. No request reaches the network;
-an unrecorded request fails as a connection error.
+an unrecorded request fails as a connection error, and no replayed answer reaches the
+capture spool of ``state_dir`` (ADR-030 D7).
 
 Requires the ``pyarrow`` dependency of series building (``obserwator[store]``).
 """
@@ -16,7 +17,7 @@ import json
 import threading
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
@@ -198,12 +199,18 @@ def _body(interaction: Mapping[str, Any]) -> tuple[bytes, dict[str, str]]:
 
 @contextmanager
 def _recorded_http(
-    cases: Iterable[str] | None, *, recordings: Iterable[str] = _RECORDINGS
+    cases: Iterable[str] | None,
+    *,
+    recordings: Iterable[str] = _RECORDINGS,
+    keep: bool = False,
 ) -> Iterator[None]:
     """
     Answer synchronous httpx requests from recordings, in the given order per URL.
 
-    ``cases=None`` replays every interaction of ``recordings`` in file order.
+    ``cases=None`` replays every interaction of ``recordings`` in file order. A
+    replayed answer is no provider's answer: unless ``keep`` (a test of the captures),
+    the library's requests keep none in the capture spool (`obserwator.captures`), so a
+    fixture built on a machine with a real spool never reaches it (ADR-030 D7).
     """
     recorded = _interactions(recordings)
     queues: dict[tuple[str, str], deque[Mapping[str, Any]]] = {}
@@ -230,7 +237,15 @@ def _recorded_http(
             interaction["status"], headers=headers, content=content, request=request
         )
 
-    with _HTTP_LOCK, mock.patch.object(httpx.HTTPTransport, "handle_request", handle):
+    with ExitStack() as stack:
+        stack.enter_context(_HTTP_LOCK)
+        stack.enter_context(
+            mock.patch.object(httpx.HTTPTransport, "handle_request", handle)
+        )
+        if not keep:
+            stack.enter_context(
+                mock.patch("obserwator.captures.keep_response", return_value=None)
+            )
         yield
     left = sorted(f"{method} {url}" for (method, url), queue in queues.items() if queue)
     if left:

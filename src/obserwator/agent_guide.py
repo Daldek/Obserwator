@@ -39,7 +39,7 @@ from obserwator.commands import (
     format_command,
     validate_command,
 )
-from obserwator.datasets import datasets, providers
+from obserwator.datasets import CAPTURE_SCOPE, datasets, providers
 from obserwator.messages import Lang, message
 from obserwator.output import OutputReport
 from obserwator.store.export import _deliver, _Lines, _target
@@ -352,33 +352,74 @@ def _variables(variables: Iterable[str], lang: Lang) -> str:
     return f"{shown}, {more}"
 
 
-def _datasets(lang: Lang) -> str:
-    """The datasets of the store as a table and the others as a line of keys."""
-    rows = [
-        (
-            _code(descriptor.key),
-            _variables(descriptor.variables, lang),
-            _DASH if descriptor.first_year is None else str(descriptor.first_year),
-        )
-        for descriptor in datasets()
-        if descriptor.in_store
-    ]
-    # The keys outside the store fold by their prefix: ``pl.imgw.{a,b}``.
+def _folded(keys: Iterable[str]) -> str:
+    """
+    Keys as code, folded by their prefix and shared ending: ``pl.imgw.{a,b}_current``.
+
+    A prefix with one key keeps it whole; the ending shared by every name of a prefix
+    is kept from an underscore on, so a name loses whole words only.
+    """
     names: dict[str, list[str]] = {}
+    for key in keys:
+        prefix, _, name = key.rpartition(".")
+        names.setdefault(prefix, []).append(name)
+    folded = []
+    for prefix, group in names.items():
+        if len(group) == 1:
+            folded.append(_code(f"{prefix}.{group[0]}"))
+            continue
+        shared = group[0]
+        for name in group[1:]:
+            while not name.endswith(shared):
+                shared = shared[1:]
+        ending = shared[shared.index("_") :] if "_" in shared else ""
+        if ending in group:
+            ending = ""
+        stems = ",".join(name.removesuffix(ending) for name in group)
+        folded.append(_code(f"{prefix}.{{{stems}}}{ending}"))
+    return ", ".join(folded)
+
+
+def _datasets(lang: Lang) -> str:
+    """
+    The datasets of the store as a table, the others as lines of keys.
+
+    The station sources (ADR-015) and the captures of current data (ADR-030) have no
+    variables and no first year: each is one line of folded keys, as the datasets
+    outside the store, so the table keeps to the measurements and the guide to its
+    budget (DOC-1.7).
+    """
+    rows = []
+    sources: list[str] = []
+    captures: list[str] = []
     for descriptor in datasets():
         if not descriptor.in_store:
-            prefix, _, name = descriptor.key.rpartition(".")
-            names.setdefault(prefix, []).append(name)
-    outside = ", ".join(
-        _code(
-            f"{prefix}.{group[0]}"
-            if len(group) == 1
-            else f"{prefix}.{{{','.join(group)}}}"
+            continue
+        if not descriptor.variables and descriptor.first_year is None:
+            if descriptor.time_unit == "station_list":
+                sources.append(descriptor.key)
+                continue
+            if descriptor.archive_scope == CAPTURE_SCOPE:
+                captures.append(descriptor.key)
+                continue
+        rows.append(
+            (
+                _code(descriptor.key),
+                _variables(descriptor.variables, lang),
+                _DASH if descriptor.first_year is None else str(descriptor.first_year),
+            )
         )
-        for prefix, group in names.items()
-    )
-    outside_store = message("agent_guide.outside_store", lang=lang)
-    return f"{_table(_header('datasets', lang), rows)}\n\n{outside_store} {outside}."
+    outside = [descriptor.key for descriptor in datasets() if not descriptor.in_store]
+    lines = [
+        f"{message(key, lang=lang)} {_folded(keys)}."
+        for key, keys in (
+            ("agent_guide.station_sources", sources),
+            ("agent_guide.captures", captures),
+            ("agent_guide.outside_store", outside),
+        )
+        if keys
+    ]
+    return "\n\n".join((_table(_header("datasets", lang), rows), *lines))
 
 
 def _notes(schema: Mapping[str, Any], lang: Lang) -> str:

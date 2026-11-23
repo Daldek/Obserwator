@@ -1,5 +1,5 @@
 """
-Catalog of the 35 data commands and the single dispatcher of public functions.
+Catalog of the 36 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -31,7 +31,7 @@ from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
 from obserwator import fetch as _fetch
 from obserwator import stations as _stations
@@ -49,6 +49,7 @@ from obserwator.attribution import (
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
+    CAPTURE_SCOPE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -114,6 +115,9 @@ from obserwator.store.types import (
 )
 from obserwator.urls import build_api_url, build_pmaxtp_url
 
+if TYPE_CHECKING:
+    from obserwator.captures import PollReport
+
 __all__ = [
     "check_command",
     "command_for_version",
@@ -156,21 +160,26 @@ _SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
 _KINDS = ("hydro", "meteo")
 _YEAR_TYPES = ("hydrological", "calendar")
 # Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
-# station lists and PMAXTP have none.
+# station lists, PMAXTP and the captures (sealed from the spool, ADR-030 D3) have none.
 _ARCHIVE_DATASETS = tuple(
     d.key
     for d in datasets()
-    if d.server_dir is not None and d.time_unit != "station_list"
+    if d.server_dir is not None
+    and d.time_unit != "station_list"
+    and d.archive_scope != CAPTURE_SCOPE
 )
 _SERIES_DATASETS = tuple(
     d.key
     for d in datasets()
     if d.in_store and d.time_unit in ("day", "month", "half_year")
 )
-# What ``store check`` and ``store sync`` download: the measurement archives and
-# the station sources of the catalogs (station lists and metadata, ADR-015).
-_SYNC_DATASETS = _SERIES_DATASETS + tuple(
-    d.key for d in datasets() if d.in_store and d.time_unit == "station_list"
+# What ``store check`` and ``store sync`` download or seal: the measurement archives,
+# the station sources of the catalogs (station lists and metadata, ADR-015) and the
+# captures of current data, sealed from the spool per UTC day (ADR-030 D3).
+_SYNC_DATASETS = (
+    _SERIES_DATASETS
+    + tuple(d.key for d in datasets() if d.in_store and d.time_unit == "station_list")
+    + tuple(d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE)
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
 # Groups reading the sources of one provider only (spec 2026-10-18 §9.3): those its
@@ -228,6 +237,7 @@ _MODULES = {
     "fetch_pmaxtp": "obserwator.fetch",
     "find_stations": "obserwator.stations",
     "fetch_hydro_states": "obserwator.stations",
+    "poll_current": "obserwator.captures",
     "build_pmaxtp_url": "obserwator.urls",
     **dict.fromkeys(_STORE_FUNCTIONS, "obserwator.store"),
     "command_schema": "obserwator.commands",
@@ -849,6 +859,20 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         result_type="HydroState",
         network=True,
     ),
+    # The hourly poll of the deployment's timer (ADR-030 D9): into the capture spool
+    # of state_dir, never a root, so no REST route; a later poll records new answers.
+    _command(
+        "current poll",
+        message("commands.current_poll_description"),
+        (),
+        function="poll_current",
+        check="check_command",
+        result_type="PollReport",
+        rules=(message("commands.current_poll_rule"),),
+        writes="add",
+        network=True,
+        idempotent=False,
+    ),
     _command(
         "pmaxtp fetch",
         message("commands.pmaxtp_fetch_description"),
@@ -1410,7 +1434,7 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
 
 def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
     """
-    Return the catalog of all 31 data commands or its view for one provider.
+    Return the catalog of all 36 data commands or its view for one provider.
 
     Parameters
     ----------
@@ -2671,11 +2695,22 @@ def _version_meta(base: Path, relative: str, sidecar: Path) -> Meta:
 def _archive_call(
     relative: str, meta: Meta, key: str, server_path: str
 ) -> tuple[str, Options]:
-    """``store sync`` of an archive version or of a station source (ADR-015)."""
+    """
+    ``store sync`` of an archive version or of a station source (ADR-015).
+
+    A capture (ADR-030 D3) is refused: it holds what a source answered on one UTC
+    day, which no request gives again.
+    """
     descriptor = get_dataset(key)
     request = meta.request
     if request.get("server_path", server_path) != server_path:
         _mismatch(relative, "request.server_path", request["server_path"], server_path)
+    if descriptor.archive_scope == CAPTURE_SCOPE:
+        _not_rebuildable(
+            message("commands.version_command_capture", version=relative, dataset=key),
+            relative,
+            server_path=server_path,
+        )
     if descriptor.time_unit == "station_list":
         # Station lists and metadata are downloaded by store sync (ADR-015).
         return "store sync", {"datasets": [key]}
@@ -2811,7 +2846,9 @@ def command_for_version(
     provider), each with its own plan item. A version whose metadata does not
     give the call is refused, never guessed: a catalog built with a user's
     coordinates file (only its name is recorded), a sidecar without a field
-    the call needs, or a file that ``store sync`` does not select.
+    the call needs, a file that ``store sync`` does not select, or a capture of
+    current data (ADR-030 D3: what a source answered on one UTC day, which no
+    request gives again).
 
     Parameters
     ----------
@@ -2981,6 +3018,18 @@ def _status(result: object) -> Status:
             providers_.count("failed") + int(result.status == "failed"),
             sum(status in _DONE for status in providers_),
         )
+    # The captures import the store's types, so they come after the store package
+    # (imported at call time, as `obserwator.config` and the writer do).
+    from obserwator.captures import PollReport
+
+    if isinstance(result, PollReport):
+        # A source skipped by its ceiling (P16) is no failure.
+        polled = [answer.status for answer in result.answers]
+        return _outcome(
+            result.cancelled,
+            polled.count("failed"),
+            polled.count("captured") + polled.count("skipped"),
+        )
     return "ok"
 
 
@@ -3044,6 +3093,13 @@ def _sync_lines(options: Options, result: object) -> Attribution:
     kept = [key for key in keys if get_dataset(key).kept_fields]
     verbatim = [key for key in keys if key not in kept]
     return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
+
+
+def _poll_lines(options: Options, result: object) -> Attribution:
+    """Lines of the answers a poll kept verbatim in the capture spool (ADR-030 D9)."""
+    report = cast("PollReport", result)
+    kept = [answer.dataset for answer in report.answers if answer.path is not None]
+    return _of_datasets(kept, processed=False)
 
 
 def _catalog_lines(options: Options, result: object) -> Attribution:
@@ -3174,6 +3230,7 @@ _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "current synop": _origin_lines("imgw"),
     "current warnings": _origin_lines("imgw"),
     "current hydro-states": _origin_lines("imgw_hydro"),
+    "current poll": _poll_lines,
     "pmaxtp fetch": _origin_lines("pmaxtp"),
     "pmaxtp sync": _origin_lines("pmaxtp"),
     "pmaxtp read": _origin_lines("pmaxtp"),
@@ -3474,6 +3531,13 @@ def _check_warnings(options: Options, hooks: Hooks) -> StorePlan:
 def _check_hydro_states(options: Options, hooks: Hooks) -> StorePlan:
     url = _stations._map_url(bool(options.get("main_only", False)))
     return _live("current hydro-states", [url])
+
+
+def _check_current_poll(options: Options, hooks: Hooks) -> StorePlan:
+    # Per polled source: the live read into the spool, or why it waits (P16).
+    from obserwator.captures import poll_plan
+
+    return _plan(Path.cwd(), poll_plan())
 
 
 def _pmaxtp_url(options: Options) -> str:
@@ -3826,6 +3890,7 @@ _CHECKS: dict[str, Checker] = {
     "current synop": _check_current("synop"),
     "current warnings": _check_warnings,
     "current hydro-states": _check_hydro_states,
+    "current poll": _check_current_poll,
     "pmaxtp fetch": _check_pmaxtp_fetch,
     "pmaxtp url": _check_pmaxtp_url,
     "pmaxtp check": _twin("check_pmaxtp"),

@@ -59,8 +59,19 @@ from obserwator.fetch import (
 )
 from obserwator.messages import message
 from obserwator.models import NormalizedRecord, StationListEntry
-from obserwator.providers.base import CheckScope, Kind, ProviderAdapter, SourceAction
-from obserwator.stations import _hydro_details, fetch_hydro_states
+from obserwator.providers.base import (
+    CheckScope,
+    Kind,
+    PolledSource,
+    ProviderAdapter,
+    SourceAction,
+)
+from obserwator.stations import (
+    _MAP_HEADERS,
+    _hydro_details,
+    _map_url,
+    fetch_hydro_states,
+)
 from obserwator.store.catalog import (
     _catalog_lines,
     _catalog_notices,
@@ -79,6 +90,7 @@ from obserwator.store.catalog import (
 )
 from obserwator.store.types import Notice
 from obserwator.store.writer import _canonical
+from obserwator.urls import build_api_url
 
 if TYPE_CHECKING:
     from obserwator.attribution import Origin
@@ -117,9 +129,35 @@ _METEO_LAYOUT = {
     "pl.imgw.meteo_synop_terms": ("s", 1970),
 }
 # Datasets of an origin other than danepubliczne.imgw.pl: PMAXTP's own pages and
-# hydro.imgw.pl's station details (ADR-021).
+# hydro.imgw.pl's station details (ADR-021), its map's water states and the
+# answers of its station pages (ADR-030 D8: the lines S, P, RH).
 _DATASET_ORIGINS: Mapping[str, Origin] = MappingProxyType(
-    {"pl.imgw.pmaxtp": "pmaxtp", HYDRO_DETAILS: "imgw_hydro"}
+    {
+        "pl.imgw.pmaxtp": "pmaxtp",
+        HYDRO_DETAILS: "imgw_hydro",
+        "pl.imgw.hydro_states_current": "imgw_hydro",
+        "pl.imgw.hydro_operational": "imgw_hydro",
+    }
+)
+# The sources of current data that answer for every station in one request: the
+# hourly poll's (ADR-030 D9), each at most once an hour (P16).
+_HOUR = 3600
+_POLLED = (
+    PolledSource("pl.imgw.hydro_current", build_api_url("hydro"), _HOUR),
+    PolledSource("pl.imgw.meteo_current", build_api_url("meteo"), _HOUR),
+    PolledSource("pl.imgw.meteo_synop_current", build_api_url("synop"), _HOUR),
+    PolledSource(
+        "pl.imgw.warnings_hydro_current", build_api_url("warningshydro"), _HOUR
+    ),
+    PolledSource(
+        "pl.imgw.warnings_meteo_current", build_api_url("warningsmeteo"), _HOUR
+    ),
+    PolledSource(
+        "pl.imgw.hydro_states_current",
+        _map_url(False),
+        _HOUR,
+        MappingProxyType(dict(_MAP_HEADERS)),
+    ),
 )
 # The current-data API answer of each family whose ``lon``/``lat`` locate the rows of
 # the live list (the first location source of the catalog too), and the key of the
@@ -1077,6 +1115,7 @@ class ImgwAdapter(ProviderAdapter):
             "synop": fetch_synop,
         }
     )
+    polled = _POLLED
     station_sources = (
         "pl.imgw.hydro_stations",
         "pl.imgw.meteo_stations",
@@ -1093,7 +1132,7 @@ class ImgwAdapter(ProviderAdapter):
         return "IMGW"
 
     def dataset_origin(self, key: str) -> Origin:
-        """PMAXTP's and hydro.imgw.pl's station details' own; danepubliczne's otherwise."""
+        """PMAXTP's and hydro.imgw.pl's own (its station details, map and pages); danepubliczne's otherwise."""
         return _DATASET_ORIGINS.get(key, self.origin)
 
     def station_origins(
@@ -1109,6 +1148,16 @@ class ImgwAdapter(ProviderAdapter):
         ):
             return ("imgw_hydro",)
         return ()
+
+    def publication_default(self, key: str, /) -> Literal["public", "private"]:
+        """
+        ``private`` for hydro.imgw.pl and its backend, ``public`` for danepubliczne.imgw.pl.
+
+        hydro.imgw.pl's regulamin allows its data „jedynie do celów prywatnych”;
+        danepubliczne.imgw.pl's current-data API and telemetry are served as its
+        archives are, under the same regulamin (ADR-030 D5).
+        """
+        return "private" if self.dataset_origin(key) == "imgw_hydro" else "public"
 
     # --- archives --------------------------------------------------------------
 

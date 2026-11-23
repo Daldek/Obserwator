@@ -57,6 +57,8 @@ EFFECTS = {
     "current synop": ("none", True, {}),
     "current warnings": ("none", True, {}),
     "current hydro-states": ("none", True, {}),
+    # ADR-030 D9: it adds the answers to the capture spool, never into a root.
+    "current poll": ("add", True, {}),
     "pmaxtp fetch": ("none", True, {}),
     "pmaxtp url": ("none", False, {}),
     "pmaxtp check": ("none", False, {}),

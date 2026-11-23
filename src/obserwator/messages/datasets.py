@@ -60,6 +60,12 @@ MESSAGES = {
         "The dataset {key} has no annual archives",
         "Zbiór {key} nie udostępnia archiwów rocznych",
     ),
+    "dataset_is_capture": Text(
+        "The dataset {key} is a capture: no server publishes its files, store sync "
+        "seals the answers kept in the spool into one version a UTC day",
+        "Zbiór {key} jest zapisem odpowiedzi: żaden serwer nie publikuje jego plików, "
+        "store sync zamyka odpowiedzi zebrane w buforze w jedną wersję na dobę UTC",
+    ),
     "invalid_years_dataset_first_year": Text(
         "Invalid years of the dataset {key}; the first year is {first_year}",
         "Nieprawidłowe roczniki zbioru {key}; minimalny rok: {first_year}",

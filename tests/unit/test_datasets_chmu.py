@@ -7,11 +7,13 @@ import pytest
 
 from obserwator.attribution import attribution
 from obserwator.datasets import (
+    CAPTURE_SCOPE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
     License,
     _archive_from_path,
+    _capture_file,
     _station_file,
     _station_files,
     archive_files,
@@ -137,7 +139,8 @@ def test_registry_invariants_across_providers():
         provider = by_provider[item.provider]
         assert item.key.startswith(provider.key_prefix + ".")
         # PMAXTP has the terms of its project page (ADR-012 D8), hydro.imgw.pl's
-        # station details those of that service (ADR-021).
+        # station details and its map of water states those of that service
+        # (ADR-021, ADR-030).
         expected = provider.license
         if item.key == "pl.imgw.pmaxtp":
             expected = License(
@@ -145,7 +148,7 @@ def test_registry_invariants_across_providers():
                 attribution("pmaxtp", processed=False).attribution[0],
                 "https://klimat.imgw.pl/opady-maksymalne",
             )
-        if item.key == "pl.imgw.hydro_details":
+        if item.key in ("pl.imgw.hydro_details", "pl.imgw.hydro_states_current"):
             expected = License(
                 "IMGW-PIB",
                 attribution("imgw_hydro", processed=False).attribution[0],
@@ -165,8 +168,8 @@ def test_registry_invariants_across_providers():
         for provider in by_provider
     }
     # The current-data API of IMGW-PIB lies below its site, not below the archive,
-    # hydro.imgw.pl's station pages below its backend (ADR-021) and the warning
-    # archives below the published files (ADR-023).
+    # hydro.imgw.pl's station pages and map of water states below its backend
+    # (ADR-021, ADR-030) and the warning archives below the published files (ADR-023).
     assert roots == {
         "IMGW": {
             "dane_hydrologiczne",
@@ -174,6 +177,7 @@ def test_registry_invariants_across_providers():
             "dane_aktynometryczne",
             "api",
             "station",
+            "map",
             "arch",
         },
         "CHMU": {"hydrology", "meteorology"},
@@ -402,6 +406,10 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
+        elif item.archive_scope == CAPTURE_SCOPE:
+            # A sealed capture of a UTC day, also the first day of a year and a leap day.
+            days = (date(2026, 11, 22), date(2027, 1, 1), date(2028, 2, 29))
+            files += [_capture_file(item, day) for day in days]
         elif item.update_signal == "listing" and item.provider == "IMGW":
             # Files named in the folder index: one in a range folder, the summary.
             files += [

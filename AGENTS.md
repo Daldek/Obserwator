@@ -59,18 +59,13 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 | `pl.imgw.meteo_climate_daily` | `Tmax`, `Tmin`, `Tmean`, `Tground`, `P`, `snow_cover` | 1951 |
 | `pl.imgw.meteo_precip_daily` | `P`, `snow_cover`, `fresh_snow` | 1950 |
 | `pl.imgw.meteo_synop_daily` | `Tmax`, `Tmin`, `Tmean`, … (37) | 1966 |
-| `pl.imgw.hydro_stations` | — | — |
-| `pl.imgw.meteo_stations` | — | — |
-| `pl.imgw.hydro_now` | — | — |
-| `pl.imgw.meteo_now` | — | — |
-| `pl.imgw.hydro_details` | — | — |
 | `pl.imgw.pmaxtp` | `ks`, `sg`, `rb` | — |
 | `cz.chmu.hydro_daily` | `H`, `Q`, `T` | 1887 |
 | `cz.chmu.meteo_daily` | `P`, `Tmean`, `Tmax`, `Tmin`, `snow_cover`, `fresh_snow` | — |
-| `cz.chmu.hydro_stations` | — | — |
-| `cz.chmu.meteo_stations` | — | — |
-| `cz.chmu.hydro_now` | — | — |
-| `cz.chmu.meteo_now` | — | — |
+
+Station sources (`store sync`): `pl.imgw.{hydro_stations,meteo_stations,hydro_now,meteo_now,hydro_details}`, `cz.chmu.{hydro_stations,meteo_stations,hydro_now,meteo_now}`.
+
+Captures (unverified, one version a UTC day): `pl.imgw.{hydro,meteo,meteo_synop,warnings_hydro,warnings_meteo,hydro_states}_current`.
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 
@@ -118,6 +113,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 **Write — new files, versions or tasks; `--check` first**
 
 - `datasets download` — Download the source files of a dataset as plain files (--output-dir) or into the raw root (--root). [`output_dir`: write; `force`: overwrite; local]
+- `current poll` — Poll the sources of current data into the capture spool. [local]
 - `pmaxtp sync` — Download the PMAXTP cell of a point into the raw root or, with --output-dir, as plain files. [`output_dir`: write; `force`: overwrite]
 - `store init` — Create a raw root or, with --kind data, a data root. [local]
 - `store sync` — Download new or missing archives into the raw root, by plan or by datasets and stations. [`output_dir`: write; `force`: overwrite]
@@ -129,7 +125,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 - Lists (`--analyses`, `--bbox`, `--datasets`, `--months`, `--params`, `--stations`, `--variables`, `--years`): comma-separated values (`--months 1,2`) or a repeated flag (`-s A -s B`). Years (`--years`): `2024`, `2020-2023`, `2020,2022` or `2018,2020-2023`. Dates (`--end`, `--start`): ISO `YYYY-MM-DD`.
 - Switches on by default: `--series/--no-series` (`--no-…` turns it off); the other boolean flags (`--force`, `--main-only`) take no value and turn their option on.
-- CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`. A stream without `--output` prints its data lines in both modes.
+- CLI output: with `--json` stdout is the envelope in one JSON line — parse only that; without it, a summary for a person in the language of `--lang`.
 - Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else `<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default `--raw-root` and `--root` of `datasets download`, `pmaxtp check|sync|read`, `store init|check|sync|export`, else `<data_dir>/obserwator-raw` (CLI, MCP stdio; `stations find` — only with `source=store`); `OBSERWATOR_LANG` — the language of the CLI help, of the progress lines and the default `--lang` (`pl`, `en`).
 
 ## Typical flows

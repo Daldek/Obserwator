@@ -906,11 +906,18 @@ def environment_report() -> dict[str, object]:
         (the data root, its source, whether it exists and
         its size in bytes; hard-linked files counted once), ``raw_store``
         (the same of the raw root, ADR-017), ``instance`` (the resolved
-        ``[obserwator.instance]``, ADR-025, or null) and ``problems`` (each
+        ``[obserwator.instance]``, ADR-025, or null), ``capture`` (the capture
+        spool's directory and each source's publication state, ``public`` or
+        ``private``, with where it comes from, ``default`` or ``file``
+        ``[obserwator.capture]``; ADR-030 D5, D7) and ``problems`` (each
         ``code``, ``option`` and ``message``: an invalid instance section, which
-        keeps the servers from starting, a weak key or token, a leftover
-        ``api_keys.json`` of the deprecated ``obserwator admin``).
+        keeps the servers from starting, an invalid capture section, whose
+        defaults apply, a capture spool that cannot be written or whose last
+        write failed, a weak key or token, a leftover ``api_keys.json`` of the
+        deprecated ``obserwator admin``).
     """
+    from obserwator.captures import SECTION as CAPTURE_SECTION
+    from obserwator.captures import capture_report, spool_problem
     from obserwator.instance import SECTION, instance_report
 
     current = Settings()
@@ -936,10 +943,15 @@ def environment_report() -> dict[str, object]:
             "reason": "credential" if key in secret_keys else "unknown",
         }
         for key in file.sections.get(environment.TOOL, {})
-        if key != SECTION and (key not in Settings.model_fields or key in secret_keys)
+        if key not in (SECTION, CAPTURE_SECTION)
+        and (key not in Settings.model_fields or key in secret_keys)
     ]
     instance, invalid = instance_report()
     problems: list[dict[str, object]] = [] if invalid is None else [invalid]
+    capture, invalid_capture = capture_report()
+    problems.extend(
+        problem for problem in (invalid_capture, spool_problem()) if problem is not None
+    )
     problems.extend(dict(problem) for problem in credential_problems())
     if current.api_keys_file.expanduser().is_file():
         problems.append(
@@ -977,5 +989,6 @@ def environment_report() -> dict[str, object]:
         "store": described("data"),
         "raw_store": described("raw"),
         "instance": instance,
+        "capture": capture,
         "problems": problems,
     }
