@@ -74,6 +74,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     License,
     MonthsArg,
+    ProviderCredential,
     ProviderDescriptor,
     YearsArg,
     archive_files,
@@ -338,6 +339,7 @@ __all__ = [
     "parse_chmu_stations",
     # Dataset registry
     "License",
+    "ProviderCredential",
     "ProviderDescriptor",
     "DatasetDescriptor",
     "ArchiveFile",

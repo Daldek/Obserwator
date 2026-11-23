@@ -1054,6 +1054,7 @@ api_max_limit = 500
 | `OBSERWATOR_REQUEST_LIMIT`, `OBSERWATOR_REQUEST_WINDOW` | `request_limit`, `request_window` | `300`, `60` | the GUI's rate limit: requests of one client address in seconds |
 | `OBSERWATOR_ADMIN_API_KEY` | — (environment only) | none | the key of the GUI's admin panel in the `X-Admin-Key` header (section [Admin panel](#admin-panel)) |
 | `OBSERWATOR_ADMIN_API_KEY_FILE` | — (environment only) | none | a file holding that key (UTF-8, a BOM and surrounding white space dropped), used without `OBSERWATOR_ADMIN_API_KEY`; both read on every admin request |
+| `OBSERWATOR_<PROVIDER>_API_KEY`, `OBSERWATOR_<PROVIDER>_API_KEY_FILE` | — (environment only) | none | the API key of a data provider whose requests need one (`ProviderDescriptor.credential`; no provider of this release does), or a file of mode `0600` holding it (another mode is a warning); read when a request needs it, never logged. Without a key the request fails with `forbidden`, `details.reason` `missing_credentials`; a key the provider refuses gives `invalid_credentials`; both name the provider in `details.provider` and the variable in the hint |
 
 `[nogat.gui]` (GUI addresses, Nogat DEV-15.4) and `[nogat.operator]` (the operator of a public deployment, DEV-15.7) are tables of `[nogat]` in `nogat.toml` only, with no variable and no default; section [GUI](#gui).
 

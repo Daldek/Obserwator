@@ -8,6 +8,24 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, captures of every answer, provider credentials, hourly series, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, ČHMÚ's groundwater and the chart of the current readings. `develop` carries `3.2.0.dev0` (Nogat REL-1.1).
 
+### Added
+
+- **Provider credentials and their errors (Nogat plan `2026-11-20-hydromet-providers.md`,
+  P3, P4, step H3).** A provider whose requests need an API key declares it in the new
+  optional field `ProviderDescriptor.credential` (type `ProviderCredential`, public), written
+  to `obserwator-provider/1` only when set (ECO-085); IMGW-PIB and ČHMÚ need none, so their
+  documents keep their bytes. The key comes from `OBSERWATOR_<PROVIDER>_API_KEY` or the file
+  named by `OBSERWATOR_<PROVIDER>_API_KEY_FILE` (as the admin key of ADR-020), from the
+  environment or `.env` only, never from `nogat.toml` (a key there is listed in
+  `config_file.ignored` as `credential`; `config.credential_keys()` adds both keys to
+  `CREDENTIAL_KEYS`), and is never logged. `config show` reports both variables of such a
+  provider `present`/`missing`; a key file group or others may access is a warning and a
+  `secret_file_mode` problem. `config.provider_key(provider)` reads the key; a missing one is
+  `forbidden` (exit 12, HTTP 403) with `details.reason` `missing_credentials`, and
+  `config.credential_error(provider, "invalid_credentials")` is the error of a refused one,
+  both with `details.provider` and a hint naming the variable (pl/en). `.env.example`
+  documents the variables.
+
 ## [3.1.0] - 2026-11-22
 
 Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).
