@@ -226,6 +226,29 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   Tested on answers recorded on 2026-11-23 (`tests/fixtures/operational/october/`): 744 of
   744 operational hours equal to the telemetry's for H and Q of 151160060 and 150160180, 22
   of 22 of Głogów's T. ČHMÚ groundwater's `recent` stays without a series (ADR-032 erratum).
+- **The hourly chart of „teraz” (step O6; ADR-013, ADR-029, ADR-030 and ADR-031 errata of
+  2026-11-23).** A hydrological station's card „Pomiary bieżące” gains „Wykres godzinowy”:
+  H, Q or T hour by hour over 3, 7 or 30 days or every stored hour, from its provider's
+  hourly series of the data root up to the newest stored hour, then the hours after it that
+  the server asks the provider for now (the live tail: hydro-back's hourly series of the
+  station for IMGW-PIB, its `now` file for ČHMÚ). Each tier keeps its line style (verified
+  solid, telemetry dashed, captured answers dotted), the live tail is a green line of its
+  own, a reading without neighbouring hours (a daily T) is a point, H shows IMGW-PIB's
+  warning and alarm levels, and the caption says „Dane operacyjne, niezweryfikowane”; a note
+  gives when the live hours came or why their request failed. A ČHMÚ hydrological station's
+  card is the chart alone. The GUI's private API gains `api/station/{code}/subdaily?from=`
+  (the stored hours from `from` on, read from the months of that range only, with their
+  tiers, and the live tail) and `api/stations/{code}` the field `subdaily`. A station's tail
+  is asked at most once per 10 minutes (a failed one after 60 s), one request per station
+  and one live request of the server at a time, for at most 500 stations in memory; every
+  answer goes to the capture spool (`pl.imgw.hydro_operational`, `cz.chmu.hydro_current`),
+  and each request is an app record `upstream_fetch`. The chart is served only while the
+  station's hourly series and its provider's live source are `public` (`[obserwator.capture]`,
+  read on every request; else `404` `private` before any request): with the defaults ČHMÚ's
+  hydrological stations have it and IMGW-PIB's once `pl.imgw.hydro_operational` is set
+  `public`. New: `ProviderAdapter.live_source` (the capture dataset of `live_tail`) and
+  `obserwator.store.subdaily.tail_hours` (the full hours of a live tail's answers, today's
+  included). No public function, command, envelope or store schema changes.
 - **ČHMÚ groundwater (ADR-032; Nogat plans `2026-11-16-operational-series.md` row H5a and
   `2026-11-20-hydromet-providers.md` P7, step 5a).** ČHMÚ's bores and springs of
   `opendata.chmi.cz/hydrology/groundwater/` (CC BY 4.0, attribution lines C and CP as before):
@@ -346,6 +369,11 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
 - **`datasets list`** lists the six served groundwater datasets after the other ČHMÚ ones;
   `datasets(kind=…)` and `--kind` accept `groundwater`. No existing document, archive,
   series or catalog changes: nothing breaks.
+- **The GUI's texts on current data (step O6).** The snapshots' note no longer says their
+  answers are never stored (the spool keeps them since H2a), the ČHMÚ note says that a
+  hydrological station's hours are drawn where the server serves them, and the guide
+  `instrukcja/` describes „Wykres godzinowy” (chapter 02 and the cards' table), the providers
+  its server asks and ČHMÚ's chart in place of „no current data of ČHMÚ”.
 
 - Provider adapters (ADR-029; Nogat plan `2026-11-20-hydromet-providers.md` P1, P2): `obserwator.providers` with one adapter per provider (`pl.imgw`, `cz.chmu`) behind the protocol `ProviderAdapter`; `ProviderDescriptor.adapter` and `ProviderDescriptor.acronym`. The archive enumeration, downloads, store checks, live station search, station catalog, parsers, attribution origins, command groups and the GUI's provider logic dispatch through it; the catalog keys, catalog directories and GUI slots are derived from the registry. Each provider's catalog builder lives in its adapter's module, `store/catalog.py` keeps the shared parts (location files, series codes, notices, lines, publication); the internal constants `STATIC_LOCATIONS` and `DETAILS_SOURCE` moved from `obserwator.store.catalog` to `obserwator.providers.pl.imgw`. No output changes: archives, sidecars, series, catalogs, envelopes, `AGENTS.md` and `llms.txt` keep their bytes. `_borders.PROVIDERS` is gone (`BORDERS` lists the packaged borders).
 
