@@ -2,7 +2,8 @@
 The operator's instance on the REST routes (ADR-025).
 
 With ``[obserwator.instance]`` in ``nogat.toml`` the REST server serves only what the
-instance serves; without the section nothing changes. `check_start` reads the section as
+instance serves; without the section nothing changes. `check_start` refuses the start
+on a provider file of ``nogat.toml`` that cannot be used (ADR-033), reads the section as
 the server starts (`served_instance` keeps it for the process) and stops the start on a
 problem of it, on a root of a layout this version does not read (`check_root_layout`)
 and, with the section, on a weak write token (`check_credentials`; only a warning
@@ -42,6 +43,7 @@ from obserwator.commands import _ATTRIBUTIONS, _GROUP_PROVIDERS, run_command
 from obserwator.config import check_credentials, check_root_layout, settings
 from obserwator.datasets import (
     DatasetDescriptor,
+    check_provider_files,
     datasets,
     get_dataset,
     get_provider,
@@ -88,7 +90,7 @@ def served_instance() -> Instance | None:
 
 def check_start(*, warn: bool = True) -> Instance | None:
     """
-    Check what the REST server serves as it starts (ADR-025, I7, I10, I12).
+    Check what the REST server serves as it starts (ADR-025, ADR-033, I7, I10, I12).
 
     Parameters
     ----------
@@ -104,13 +106,16 @@ def check_start(*, warn: bool = True) -> Instance | None:
     Raises
     ------
     ObserwatorValidationError
-        A problem of ``[obserwator.instance]`` (``details.option``
+        A provider file of ``nogat.toml`` that cannot be used (its ``details.option``
+        ``provider_file.<field>`` and ``details.path``; `check_provider_files`), a
+        problem of ``[obserwator.instance]`` (``details.option``
         ``instance.<field>``) or, with the section, a weak write token
         (``details.option`` the variable, ``details.reason`` the problem).
     ObserwatorStoreError
         ``store_unavailable``: ``OBSERWATOR_ROOT`` or ``OBSERWATOR_RAW_ROOT`` holds
         a root of a layout this version does not read.
     """
+    check_provider_files()
     instance = served_instance()
     roots: tuple[tuple[RootKind, Path | None], ...] = (
         ("data", settings.root),

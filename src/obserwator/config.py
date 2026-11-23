@@ -34,11 +34,13 @@ from pydantic_settings import (
 )
 
 from obserwator import _environment as environment
+from obserwator._provider_files import KEY as PROVIDER_FILES
 from obserwator._version import __version__
 from obserwator.datasets import (
     ProviderCredential,
     ProviderDescriptor,
     get_provider,
+    provider_files,
     providers,
 )
 from obserwator.exceptions import (
@@ -889,6 +891,35 @@ def _tree_size(root: Path) -> int:
     return total
 
 
+def _provider_files_report() -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """
+    The provider files of ``config show`` and their problems (ADR-033).
+
+    Returns
+    -------
+    tuple of (list, list)
+        Each file ``[obserwator] provider_files`` lists, in its order: its ``path``
+        and the ``provider`` it adds, null when the file cannot be used; and one
+        problem per file that cannot (code ``invalid_provider_file``, ``option`` the
+        field, ``path`` the file, ``message``), which keeps both servers from starting.
+    """
+    loaded = provider_files()
+    added = {item.path: item.id for item in loaded.files}
+    files: list[dict[str, object]] = [
+        {"path": str(path), "provider": added.get(path)} for path in loaded.paths
+    ]
+    problems: list[dict[str, object]] = [
+        {
+            "code": "invalid_provider_file",
+            "option": problem.details.get("option", PROVIDER_FILES),
+            "path": problem.details.get("path"),
+            "message": problem.detail,
+        }
+        for problem in loaded.problems
+    ]
+    return files, problems
+
+
 def environment_report() -> dict[str, object]:
     """
     Report the settings in force and where each comes from (DEV-18.6).
@@ -909,11 +940,15 @@ def environment_report() -> dict[str, object]:
         ``[obserwator.instance]``, ADR-025, or null), ``capture`` (the capture
         spool's directory and each source's publication state, ``public`` or
         ``private``, with where it comes from, ``default`` or ``file``
-        ``[obserwator.capture]``; ADR-030 D5, D7) and ``problems`` (each
-        ``code``, ``option`` and ``message``: an invalid instance section, which
-        keeps the servers from starting, an invalid capture section, whose
-        defaults apply, a capture spool that cannot be written or whose last
-        write failed, a weak key or token, a leftover ``api_keys.json`` of the
+        ``[obserwator.capture]``; ADR-030 D5, D7), ``provider_files`` (each
+        provider file of ``[obserwator] provider_files``: its ``path`` and the
+        ``provider`` it adds, null when it cannot be used; ADR-033) and
+        ``problems`` (each ``code``, ``option`` and ``message``: an invalid
+        instance section, which keeps the servers from starting, an invalid capture
+        section, whose defaults apply, a provider file that cannot be used
+        (``invalid_provider_file`` with its ``path``), which keeps the servers from
+        starting, a capture spool that cannot be written or whose last write
+        failed, a weak key or token, a leftover ``api_keys.json`` of the
         deprecated ``obserwator admin``).
     """
     from obserwator.captures import SECTION as CAPTURE_SECTION
@@ -943,7 +978,7 @@ def environment_report() -> dict[str, object]:
             "reason": "credential" if key in secret_keys else "unknown",
         }
         for key in file.sections.get(environment.TOOL, {})
-        if key not in (SECTION, CAPTURE_SECTION)
+        if key not in (SECTION, CAPTURE_SECTION, PROVIDER_FILES)
         and (key not in Settings.model_fields or key in secret_keys)
     ]
     instance, invalid = instance_report()
@@ -952,6 +987,8 @@ def environment_report() -> dict[str, object]:
     problems.extend(
         problem for problem in (invalid_capture, spool_problem()) if problem is not None
     )
+    files, invalid_files = _provider_files_report()
+    problems.extend(invalid_files)
     problems.extend(dict(problem) for problem in credential_problems())
     if current.api_keys_file.expanduser().is_file():
         problems.append(
@@ -990,5 +1027,6 @@ def environment_report() -> dict[str, object]:
         "raw_store": described("raw"),
         "instance": instance,
         "capture": capture,
+        "provider_files": files,
         "problems": problems,
     }
