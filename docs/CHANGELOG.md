@@ -145,6 +145,40 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   declared (`datasets(pending=True)`, `[obserwator.capture]`, `config show`) and their answers
   are spooled; they are served, and sealed, with `pl.imgw.hydro_operational` (O2).
   `datasets()` gives 40 datasets, and eight stay declared.
+- **The operational series served (ADR-030 D2, D4, D8, D9 and its errata of 2026-11-23;
+  step O2).** Seven datasets leave the declared ones: hydro-back's hourly H, Q and T
+  `pl.imgw.hydro_operational` with `pl.imgw.meteo_operational` and
+  `pl.imgw.meteo_states_current` (captures, `private` by default), IMGW-PIB's monthly
+  telemetry `pl.imgw.hydro_telemetry` (tier `telemetry`, `Hydro_<YYYY-MM>.zip` from 2008),
+  ČHMÚ's day files `cz.chmu.hydro_recent` and `now` files `cz.chmu.hydro_current` (captures,
+  `public`) and ČHMÚ's validated hourly years `cz.chmu.hydro_hourly`
+  (`H_<WIGOS>_HQ_<YYYY>.json` from 1905, verified, content form `chmu-json/1`). `datasets()`
+  gives 47 datasets and only `cz.chmu.groundwater_current` stays declared; `datasets
+  files|download` take the telemetry and the hourly years. The telemetry is checked by the
+  datastore's listing, one `POST datastore/getFilesList` per year folder (`signal`
+  `listing`): listed and stored is `current` (`--force` downloads again and compares the
+  bytes), listed and not stored `missing`, unlisted or in a year not published `unverifiable`
+  with `not published`; `store sync` makes no HEAD for it.
+- **`store sync --pace-until HH:MM`: the night's harvest (ADR-030 D9; step O2).** With one
+  harvest dataset alone (`pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`; stations
+  optional, every station of the provider's list without them; no `years`, `months` or plan;
+  store only), `store sync` first asks the source for the last closed UTC day: hydro-back's
+  `status/data`, `discharge` and `water-temperature` of every station of its map (Q and T
+  where `api/data/hydro` names them) with an `hoursInterval` reaching 00:00 UTC of that day,
+  or ČHMÚ's `recent/data/<YYYYMMDD>_<WIGOS>.json` of every station of its `now` metadata.
+  The requests go one at a time, spread evenly until that local time and never closer than
+  5 s (a time passed gives 5 s), with gzip; 429 and 5xx are asked again after 60, 120 and
+  240 s and then skip the station until the next run, and three connection failures in a
+  row end the run. Every answer goes to the spool, each planned request prints
+  `<UTC time> <HTTP status> <address>`, and the run then seals the closed spool days and
+  today's, which holds its answers. The result gains the optional `harvest`
+  (`HarvestReport`, new in `obserwator` and `obserwator.store`): counts, skipped stations,
+  deadline and times; failures are `failed` items without a slot (status `partial`), with
+  `harvest_failed` warnings and one `harvest_done` notice. `store check --pace-until` plans
+  today's spool day and the harvest as an action. Refusals: `not_harvested`, `captures`,
+  `store_only_option`. The option is local: REST has no parameter; MCP on stdio has it. New:
+  `obserwator.captures.harvest(dataset, start, end)`, `obserwator.fetch.PacedSession` and
+  `pace_deadline`.
 - **ADR-030 „Captures and the operational tier”** records the tiers, the scope (ČHMÚ's
   `recent`, `now` and `historical/hourly`), the captures as archive versions
   (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
@@ -207,7 +241,7 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   doing nothing, and the protocol gains `publication_default` and `polled` (ADR-029 erratum of
   2026-11-23). `obserwator.testing`'s recorded answers never reach the spool, so
   `build_fixture_store` leaves a real one alone.
-- **`AGENTS.md` and `llms.txt` follow the catalog (steps H2a, H5a):** they are regenerated with
+- **`AGENTS.md` and `llms.txt` follow the catalog (steps H2a, H5a, O2):** they are regenerated with
   `current poll`, the six capture datasets and the groundwater datasets. To keep `AGENTS.md`
   within 16 KiB (DOC-1.7), the station sources (`*_stations`, `*_now`,
   `pl.imgw.hydro_details`) and the captures (`pl.imgw.*_current`) are each one line naming
@@ -216,6 +250,15 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   `<group> <command> --schema` beside `commands schema` (also in the MCP instructions), and
   the check rule, the example years and the first sentences of `datasets list` and
   `datasets providers` are shorter.
+  In step O2 one pattern line names every capture (`pl.imgw.*_{current,operational}`,
+  `cz.chmu.hydro_{current,recent}`) with what `pace_until` does, and the detail of eight
+  command descriptions (`datasets list`, `providers`, `download`, `pmaxtp sync`, `store
+  sync`, `series build`, `summary`, `export`) moves from their first sentence, which the guide
+  prints, to the second.
+- **REST hides every private source, not only the captures (ADR-030 D5 erratum; step O2).**
+  Every dataset of a tier other than `verified` set `private` in `[obserwator.capture]` (the
+  telemetry, `cz.chmu.groundwater_recent` included) is `not_found` (`details.reason`
+  `private`) by its option and by a version path below its server directory.
 - **The ČHMÚ catalog with groundwater objects (ADR-032 D8).** `store catalog --provider
   CHMU` reads `cz.chmu.groundwater_stations` and `cz.chmu.groundwater_now` when the raw root
   holds them; without them it builds the same catalog as before and, when the data root
