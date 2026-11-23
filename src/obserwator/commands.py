@@ -1028,6 +1028,8 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
+            replace(_START, help=message("commands.store_check_start_help")),
+            replace(_END, help=message("commands.store_check_end_help")),
             _PLAN_FILE,
         ),
         function="check_store",
@@ -1037,6 +1039,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         rules=(
             *_STORE_RULES,
             message("commands.store_check_rule_1"),
+            message("commands.store_check_rule_days"),
         ),
         # Listing and HEAD requests; the plan file is the effect of an option.
         network=True,
@@ -1059,6 +1062,12 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
             _STORE_YEARS,
             _MONTHS,
             _ARCHIVE_STATIONS,
+            replace(
+                _START, help=message("commands.store_sync_start_help"), store_only=True
+            ),
+            replace(
+                _END, help=message("commands.store_sync_end_help"), store_only=True
+            ),
             # The night's harvest of a capture dataset (ADR-030 D9): a local job of
             # the deployment's timer, no REST parameter.
             _option(
@@ -1080,6 +1089,7 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         rules=(
             message("commands.store_sync_rule_1"),
             message("commands.store_sync_rule_2"),
+            message("commands.store_sync_rule_days"),
             *_STORE_RULES,
         ),
         writes="add",
@@ -1855,6 +1865,8 @@ def _rules_store_check(options: Options) -> None:
         options.get("years"),
         options.get("months"),
         options.get("stations"),
+        start=options.get("start"),
+        end=options.get("end"),
         pace_until=options.get("pace_until"),
     )
 
@@ -1872,7 +1884,15 @@ def _rules_store_sync(options: Options) -> None:
             return
         _rules_store_check(options)
         return
-    selectors = ("datasets", "years", "months", "stations", "pace_until")
+    selectors = (
+        "datasets",
+        "years",
+        "months",
+        "stations",
+        "start",
+        "end",
+        "pace_until",
+    )
     given = [name for name in selectors if name in options]
     if given:
         _fail(
@@ -2757,7 +2777,7 @@ def _archive_call(
         if descriptor.archive_scope in ("station_year", "station_month"):
             options["years"] = [archive.year]
     try:
-        _, _, candidates, archives = _sync._selection(
+        _, _, candidates, archives, _ = _sync._selection(
             options["datasets"],
             options.get("years"),
             options.get("months"),
@@ -3684,7 +3704,16 @@ def _check_store_sync(options: Options, hooks: Hooks) -> StorePlan:
         )
     root = cast(Path, options["root"])
     if "plan" not in options:
-        selection = ("root", "datasets", "years", "months", "stations", "pace_until")
+        selection = (
+            "root",
+            "datasets",
+            "years",
+            "months",
+            "stations",
+            "start",
+            "end",
+            "pace_until",
+        )
         return cast(
             StorePlan,
             _call(

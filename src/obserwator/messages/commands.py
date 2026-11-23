@@ -69,9 +69,9 @@ MESSAGES = {
     ),
     "obserwator_plan_1_plan_excludes": Text(
         "An obserwator-plan/1 plan excludes the options datasets, years, months, "
-        "stations and pace_until",
-        "Plan obserwator-plan/1 wyklucza opcje datasets, years, months, stations i "
-        "pace_until",
+        "stations, start, end and pace_until",
+        "Plan obserwator-plan/1 wyklucza opcje datasets, years, months, stations, "
+        "start, end i pace_until",
     ),
     "station_codes_outside_grammar_dataset": Text(
         "Station codes outside the {short_name} grammar of the dataset {key}: "
@@ -598,38 +598,64 @@ MESSAGES = {
         "telemetry), the server listing alone (ČHMÚ); station lists by HEAD, station "
         "metadata without a signal are always downloaded by store sync; the captures "
         "(*_current, *_operational, cz.chmu.hydro_recent) are checked offline "
-        "against the capture spool.",
+        "against the capture spool, the closed UTC days from --start to --end when "
+        "given.",
         "Sprawdź aktualność archiwów zbiorów bez pobierania danych. Źródła: listing "
         "i HEAD (IMGW-PIB), listing magazynu danych (telemetria IMGW-PIB), sam "
         "listing serwera (ČHMÚ); listy stacji przez HEAD, metadane stacji bez "
         "sygnału store sync pobiera zawsze; zapisy (*_current, *_operational, "
-        "cz.chmu.hydro_recent) sprawdza offline względem bufora zapisów.",
+        "cz.chmu.hydro_recent) sprawdza offline względem bufora zapisów, a podane "
+        "--start i --end wybierają zakończone doby UTC.",
     ),
     "store_check_rule_1": Text(
         "plan written only outside the store, in an existing directory",
         "plan zapisywany wyłącznie poza magazynem, w istniejącym katalogu",
     ),
+    "store_check_rule_days": Text(
+        "start and end only with capture datasets: closed UTC days, start not later "
+        "than end",
+        "start i end wyłącznie ze zbiorami zapisów: zakończone doby UTC, start nie "
+        "później niż end",
+    ),
+    "store_check_start_help": Text(
+        "Capture datasets: the first closed UTC day of the spool checked (ISO "
+        "YYYY-MM-DD; default none, every closed day)",
+        "Zbiory zapisów: pierwsza zakończona doba UTC sprawdzanego bufora (ISO "
+        "RRRR-MM-DD; domyślnie brak, każda zakończona doba)",
+    ),
+    "store_check_end_help": Text(
+        "Capture datasets: the last closed UTC day of the spool checked (ISO "
+        "YYYY-MM-DD; default none, every closed day)",
+        "Zbiory zapisów: ostatnia zakończona doba UTC sprawdzanego bufora (ISO "
+        "RRRR-MM-DD; domyślnie brak, każda zakończona doba)",
+    ),
     "store_sync_description": Text(
         "Download new or missing archives into the raw root. By plan or by datasets "
         "and stations, it writes raw data only (archives, station lists, station "
-        "metadata, the captures: each closed UTC day of the capture spool sealed "
-        "into one version); series build and store catalog build from them. With "
-        "--pace-until it first harvests the last closed UTC day of "
+        "metadata, the captures: each closed UTC day of the capture spool, those "
+        "from --start to --end when given, sealed into one version); series build "
+        "and store catalog build from them. With --pace-until it first harvests the "
+        "UTC days from --start to --end (by default the last closed day) of "
         "pl.imgw.hydro_operational or cz.chmu.hydro_recent at its source, paced "
-        "until that local time, and seals today's day too. With --output-dir it "
-        "writes the selected archives as plain files (no plan).",
+        "until that local time, and seals today's day too. One run at a time seals "
+        "captures: a second waits up to 10 minutes for the lock, then fails with "
+        "conflict. With --output-dir it writes the selected archives as plain files "
+        "(no plan).",
         "Pobierz nowe lub brakujące archiwa do katalogu surowego. Według planu albo "
         "wyboru zbiorów i stacji zapisuje wyłącznie dane surowe (archiwa, listy i "
-        "metadane stacji, zapisy: każdą zakończoną dobę UTC bufora zapisów "
-        "zamkniętą w jedną wersję); series build i store catalog budują z nich. Z "
-        "--pace-until najpierw pobiera u źródła ostatnią zakończoną dobę UTC "
+        "metadane stacji, zapisy: każdą zakończoną dobę UTC bufora zapisów, z "
+        "--start i --end tylko z tego zakresu, zamkniętą w jedną wersję); series "
+        "build i store catalog budują z nich. Z --pace-until najpierw pobiera u "
+        "źródła doby UTC od --start do --end (domyślnie ostatnią zakończoną dobę) "
         "zbioru pl.imgw.hydro_operational albo cz.chmu.hydro_recent, z odstępami do "
-        "podanej godziny lokalnej, i zamyka też dobę dzisiejszą. Z --output-dir "
-        "zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
+        "podanej godziny lokalnej, i zamyka też dobę dzisiejszą. Zapisy zamyka "
+        "naraz jeden przebieg: drugi czeka na blokadę do 10 minut, potem kończy się "
+        "błędem conflict. Z --output-dir zapisuje wybrane archiwa jako zwykłe pliki "
+        "(bez planu).",
     ),
     "store_sync_rule_1": Text(
-        "plan excludes datasets, years, months, stations and pace_until",
-        "plan wyklucza datasets, years, months, stations i pace_until",
+        "plan excludes datasets, years, months, stations, start, end and pace_until",
+        "plan wyklucza datasets, years, months, stations, start, end i pace_until",
     ),
     "store_sync_rule_2": Text(
         "pace_until only with one dataset of pl.imgw.hydro_operational and "
@@ -639,13 +665,37 @@ MESSAGES = {
         "cz.chmu.hydro_recent, osobno; stations tam opcjonalne (brak = każda stacja "
         "z listy dostawcy), years i months niedozwolone",
     ),
+    "store_sync_rule_days": Text(
+        "start and end only with capture datasets: closed UTC days, start not later "
+        "than end; with pace_until start at most 40 days before today",
+        "start i end wyłącznie ze zbiorami zapisów: zakończone doby UTC, start nie "
+        "później niż end; z pace_until start najwyżej 40 dni przed dniem dzisiejszym",
+    ),
+    "store_sync_start_help": Text(
+        "Capture datasets: the first closed UTC day of the spool sealed and, with "
+        "--pace-until, of the harvest (ISO YYYY-MM-DD, at most 40 days back); "
+        "without it every closed day is sealed and the harvest starts at --end",
+        "Zbiory zapisów: pierwsza zakończona doba UTC zamykanego bufora, a z "
+        "--pace-until poboru (ISO RRRR-MM-DD, najwyżej 40 dni wstecz); bez niej "
+        "zamykana jest każda zakończona doba, a pobór zaczyna się od --end",
+    ),
+    "store_sync_end_help": Text(
+        "Capture datasets: the last closed UTC day of the spool sealed and, with "
+        "--pace-until, of the harvest (ISO YYYY-MM-DD); without it every closed day "
+        "is sealed and the harvest ends with the last closed day",
+        "Zbiory zapisów: ostatnia zakończona doba UTC zamykanego bufora, a z "
+        "--pace-until poboru (ISO RRRR-MM-DD); bez niej zamykana jest każda "
+        "zakończona doba, a pobór kończy się na ostatniej zakończonej dobie",
+    ),
     "store_sync_pace_until_help": Text(
-        "Harvest first: ask the source for the last closed UTC day, the requests "
-        "spread evenly until this local time HH:MM, at least 5 s apart (a time "
-        "already passed gives 5 s), then seal the spool with today's day",
-        "Najpierw pobór: zapytaj źródło o ostatnią zakończoną dobę UTC, zapytania "
-        "rozłożone równo do tej godziny lokalnej GG:MM, co najmniej co 5 s (godzina "
-        "już miniona daje 5 s), potem zamknij bufor razem z dobą dzisiejszą",
+        "Harvest first: ask the source for the UTC days of --start and --end (by "
+        "default the last closed day), the requests spread evenly until this local "
+        "time HH:MM, at least 5 s apart (a time already passed gives 5 s), then seal "
+        "the spool with today's day",
+        "Najpierw pobór: zapytaj źródło o doby UTC z --start i --end (domyślnie "
+        "ostatnią zakończoną dobę), zapytania rozłożone równo do tej godziny "
+        "lokalnej GG:MM, co najmniej co 5 s (godzina już miniona daje 5 s), potem "
+        "zamknij bufor razem z dobą dzisiejszą",
     ),
     "store_catalog_description": Text(
         "Build the station catalog stations.geojson of one provider. Offline: from "

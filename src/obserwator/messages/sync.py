@@ -62,10 +62,10 @@ MESSAGES = {
         "Katalog pliku planu nie istnieje: {parent}",
     ),
     "give_plan_selectors_datasets_years": Text(
-        "Give a plan or the selectors datasets/years/months/stations/pace_until, not "
-        "both",
-        "Podaj plan albo selektory datasets/years/months/stations/pace_until, nie oba "
-        "naraz",
+        "Give a plan or the selectors datasets/years/months/stations/start/end/"
+        "pace_until, not both",
+        "Podaj plan albo selektory datasets/years/months/stations/start/end/"
+        "pace_until, nie oba naraz",
     ),
     "without_plan_parameter_datasets_required": Text(
         "Without a plan the parameter datasets is required",
@@ -166,10 +166,10 @@ MESSAGES = {
         "bufora zapisów osobne wywołanie, bez innych zbiorów",
     ),
     "option_not_for_captures": Text(
-        "The option {option} does not apply to capture datasets: every closed UTC day "
-        "of the spool is sealed",
-        "Opcja {option} nie dotyczy zbiorów zapisów: zamykana jest każda zakończona "
-        "doba UTC bufora",
+        "The option {option} does not apply to capture datasets: the closed UTC days "
+        "of the spool are sealed (start and end choose them)",
+        "Opcja {option} nie dotyczy zbiorów zapisów: zamykane są zakończone doby UTC "
+        "bufora (wybierają je start i end)",
     ),
     "captures_store_only": Text(
         "Capture datasets are sealed only into a store; give root, not output_dir",
@@ -182,10 +182,40 @@ MESSAGES = {
         "cz.chmu.hydro_recent na wywołanie; podano {keys}",
     ),
     "harvest_planned": Text(
-        "{dataset}: its source is asked for the UTC day {day} ({stations}), spread "
-        "until {until}, before its spool is sealed with today's day",
-        "{dataset}: źródło jest pytane o dobę UTC {day} ({stations}) z odstępami do "
-        "{until}, zanim bufor zostanie zamknięty razem z dobą dzisiejszą",
+        "{dataset}: its source is asked for the UTC days {start} to {end} "
+        "({stations}), spread until {until}, before its spool is sealed with today's "
+        "day",
+        "{dataset}: źródło jest pytane o doby UTC od {start} do {end} ({stations}) z "
+        "odstępami do {until}, zanim bufor zostanie zamknięty razem z dobą "
+        "dzisiejszą",
+    ),
+    "day_not_date": Text(
+        "The option {name} must be a date (YYYY-MM-DD), not {value!r}",
+        "Opcja {name} musi być datą (RRRR-MM-DD), a nie {value!r}",
+    ),
+    "day_not_closed": Text(
+        "{name}: the UTC day {day} is not over yet; the last closed day is {last}",
+        "{name}: doba UTC {day} jeszcze się nie skończyła; ostatnia zakończona doba "
+        "to {last}",
+    ),
+    "end_before_start": Text(
+        "The last day {end} is before the first day {start}",
+        "Ostatni dzień {end} jest przed pierwszym dniem {start}",
+    ),
+    "harvest_reach": Text(
+        "A harvest reaches at most {days} days back: the first day {start} is before "
+        "{earliest}",
+        "Pobór sięga najwyżej {days} dni wstecz: pierwszy dzień {start} jest przed "
+        "{earliest}",
+    ),
+    "days_only_for_captures": Text(
+        "The options start and end choose the UTC days of capture datasets only; "
+        "given {keys}",
+        "Opcje start i end wybierają doby UTC wyłącznie zbiorów zapisów; podano {keys}",
+    ),
+    "sync_locked": Text(
+        "Another store sync holds the lock {path}: waited {seconds} s",
+        "Inny store sync trzyma blokadę {path}: czekano {seconds} s",
     ),
     "harvest_every": Text(
         "every station of its list",

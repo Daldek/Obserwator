@@ -377,6 +377,8 @@ async def test_store_sync_of_a_server_without_writes_matches_spec_example(
         "years",
         "months",
         "stations",
+        "start",
+        "end",
         "pace_until",
         "check",
     ]

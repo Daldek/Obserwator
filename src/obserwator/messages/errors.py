@@ -101,6 +101,25 @@ MESSAGES = {
         "Zbuduj wybrane stacje lub lata w innym katalogu danych (--root) albo tutaj "
         "cały zbiór, bez --stations i --years",
     ),
+    "hint_sync_locked": Text(
+        "Run store sync again once the other run has ended; store sync --check plans "
+        "without the lock",
+        "Uruchom store sync ponownie po zakończeniu tamtego przebiegu; store sync "
+        "--check planuje bez blokady",
+    ),
+    "hint_day_not_closed": Text(
+        "Give --start and --end up to yesterday (UTC): today's day is not over",
+        "Podaj --start i --end najdalej do wczoraj (UTC): dzisiejsza doba się nie "
+        "skończyła",
+    ),
+    "hint_harvest_reach": Text(
+        "Give a --start at most 40 days before today (UTC)",
+        "Podaj --start najwyżej 40 dni przed dniem dzisiejszym (UTC)",
+    ),
+    "hint_not_capture": Text(
+        "Drop --start and --end: they choose the UTC days of capture datasets only",
+        "Pomiń --start i --end: wybierają doby UTC wyłącznie zbiorów zapisów",
+    ),
     "hint_no_marker": Text(
         "Run obserwator store init --root {path}: it verifies the layout and writes "
         "the marker",
