@@ -3,8 +3,10 @@ IMGW-PIB, Poland's hydrological and meteorological service (provider ``IMGW``).
 
 The archives of danepubliczne.imgw.pl (files of the whole country in year or
 five-year folders, the per-station synop archives, the actinometric files named only
-in the folder index), its station lists and current-data API, hydro.imgw.pl's map
-and station details (ADR-021), and the station catalog built from them (ADR-015).
+in the folder index, the monthly telemetry of its datastore), its station lists and
+current-data API, hydro.imgw.pl's map, station details (ADR-021) and hourly
+operational series (the night's harvest, ADR-030), and the station catalog built
+from them (ADR-015).
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import math
 import re
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime, time
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -39,18 +41,28 @@ from obserwator.datasets import (
     _minimum_year,
     _parse_params,
     _parse_stations,
+    _source_address,
     _station_files,
     get_dataset,
     get_provider,
     parse_months,
     parse_years,
 )
-from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
+from obserwator.exceptions import (
+    ObserwatorCancelledError,
+    ObserwatorDataError,
+    ObserwatorError,
+    ObserwatorValidationError,
+)
 from obserwator.fetch import (
+    _GZIP,
     DownloadResult,
+    PacedRequest,
+    PacedSession,
     _get,
     _get_async,
     _json_payload,
+    _keep,
     _source_error,
     download_hydro_data,
     download_meteo_data,
@@ -58,9 +70,10 @@ from obserwator.fetch import (
     fetch_meteo_current,
     fetch_synop,
 )
-from obserwator.messages import message
+from obserwator.messages import message, reason
 from obserwator.models import NormalizedRecord, StationListEntry
 from obserwator.providers.base import (
+    Answer,
     CheckScope,
     Kind,
     PolledSource,
@@ -70,6 +83,7 @@ from obserwator.providers.base import (
 from obserwator.stations import (
     _MAP_HEADERS,
     _METEO_MAP_URL,
+    _hydro_states,
     _map_url,
     _station_details,
     fetch_hydro_states,
@@ -90,7 +104,7 @@ from obserwator.store.catalog import (
     _stored_source,
     _text,
 )
-from obserwator.store.types import Notice
+from obserwator.store.types import Notice, NoticeHook
 from obserwator.store.writer import _canonical
 from obserwator.urls import build_api_url
 
@@ -102,6 +116,27 @@ if TYPE_CHECKING:
     from obserwator.store.types import CatalogReport
 
 __all__ = ["ADAPTER", "ImgwAdapter"]
+
+# The hourly operational series of hydro.imgw.pl's backend (ADR-030 D2), each a
+# station's answer with the hours asked (``hoursInterval``): water level H,
+# discharge Q and water temperature T, below the address of `_OPERATIONAL`.
+_OPERATIONAL = "pl.imgw.hydro_operational"
+_SERIES: Mapping[str, str] = MappingProxyType(
+    {"H": "status/data", "Q": "discharge", "T": "water-temperature"}
+)
+# The fields of the current-data API answer (``api/data/hydro``) whose value says a
+# station measures Q and T; H is asked of every station.
+_SERIES_FIELDS: Mapping[str, str] = MappingProxyType(
+    {"Q": "przeplyw", "T": "temperatura_wody"}
+)
+# The monthly telemetry zips of the datastore, ``<year>/Hydro_<YYYY-MM>.zip``, and the
+# listing of a year folder (``POST`` with ``path``), whose answer holds the list of
+# files, or „Katalog nie istnieje!” for a folder that is not published.
+_TELEMETRY = "pl.imgw.hydro_telemetry"
+_FILES_LIST = "https://danepubliczne.imgw.pl/datastore/getFilesList"
+_FILE_LIST_MARK = 'id="file-list"'
+# The datasets whose files only the server's folder index names (ADR-023).
+_INDEXED = frozenset({"pl.imgw.actinometric"})
 
 # Folder of a country archive: a year or a five-year range.
 _FOLDER = re.compile(r"([0-9]{4})(?:_([0-9]{4}))?")
@@ -314,6 +349,16 @@ def _country_archives(
             result.append(
                 _archive(descriptor, f"{directory}/{year}/mies_{year}.zip", year)
             )
+        elif key == _TELEMETRY:
+            for month in selected_months:
+                result.append(
+                    _archive(
+                        descriptor,
+                        f"{directory}/{year}/Hydro_{year}-{month:02d}.zip",
+                        year,
+                        month,
+                    )
+                )
         elif key in _WARNING_ARCHIVES:
             for month in selected_months:
                 result.append(
@@ -640,6 +685,71 @@ def _located(
         else entry
         for entry in entries
     ]
+
+
+# --------------------------------------------------------------------------
+# hydro.imgw.pl's hourly operational series: the night's harvest (ADR-030 D9)
+# --------------------------------------------------------------------------
+
+
+def _series_url(
+    descriptor: DatasetDescriptor, variable: str, code: str, hours: int
+) -> str:
+    """The address of a station's series of one variable, ``hours`` back."""
+    return (
+        f"{_source_address(descriptor)}/{_SERIES[variable]}"
+        f"?id={code}&hoursInterval={hours}"
+    )
+
+
+def harvest_hours(start: date, now: datetime) -> int:
+    """
+    The ``hoursInterval`` of a request at ``now`` that reaches 00:00 UTC of ``start``.
+
+    hydro-back answers the full hours of the last ``hoursInterval`` hours (and the
+    10-minute points of about the last two); one hour more covers 00:00 of the first
+    day whatever the minute of the request.
+
+    Parameters
+    ----------
+    start : datetime.date
+        The first UTC day the answer should cover.
+    now : datetime.datetime
+        When the request is made (aware).
+
+    Returns
+    -------
+    int
+        The hours from 00:00 UTC of ``start`` to ``now``, rounded up, plus one.
+    """
+    since = datetime.combine(start, time(), UTC)
+    return math.ceil((now - since).total_seconds() / 3600) + 1
+
+
+def _measured(payload: object) -> dict[str, tuple[str, ...]] | None:
+    """
+    The variables each station of a current-data API answer measures, by code.
+
+    H of every station; Q and T of one whose row gives a value of ``przeplyw`` and
+    ``temperatura_wody``. None for an answer that is no list.
+    """
+    if not isinstance(payload, list):
+        return None
+    measured: dict[str, tuple[str, ...]] = {}
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("id_stacji") or "").strip()
+        if code:
+            measured[code] = (
+                "H",
+                *(
+                    variable
+                    for variable, name in _SERIES_FIELDS.items()
+                    if row.get(name) not in (None, "")
+                ),
+            )
+    return measured
 
 
 # --------------------------------------------------------------------------
@@ -1185,6 +1295,7 @@ class ImgwAdapter(ProviderAdapter):
         }
     )
     polled = _POLLED
+    harvested = frozenset({_OPERATIONAL})
     station_sources = (
         "pl.imgw.hydro_stations",
         "pl.imgw.meteo_stations",
@@ -1228,11 +1339,130 @@ class ImgwAdapter(ProviderAdapter):
         """
         return "private" if self.dataset_origin(key) == "imgw_hydro" else "public"
 
+    # --- the night's harvest and the live tail (ADR-030 D9) ---------------------
+
+    def harvest_requests(
+        self,
+        descriptor: DatasetDescriptor,
+        /,
+        *,
+        start: date,
+        end: date,
+        stations: Sequence[str] | None,
+        session: PacedSession,
+        on_notice: NoticeHook | None,
+    ) -> tuple[PacedRequest, ...]:
+        """
+        hydro-back's hourly series of every station of its map, or of ``stations``.
+
+        The map (``onlyMainStations=false``, its answer kept in
+        ``pl.imgw.hydro_states_current``) names the stations in its order, and the
+        current-data API answer (``api/data/hydro``, kept in ``pl.imgw.hydro_current``)
+        which of them measure Q and T (a value of ``przeplyw``, ``temperatura_wody``):
+        every station is asked for ``status/data`` (H), those with Q for
+        ``discharge``, those with T for ``water-temperature``. A station the API does
+        not list, or every station when its answer cannot be read (a
+        ``harvest_series_unknown`` warning), is asked for all three, as ``stations``
+        are without the map and the API. The hours reach 00:00 UTC of ``start``
+        (`harvest_hours`), so ``end`` changes nothing: one request per station and
+        series covers the days.
+        """
+        if descriptor.key not in self.harvested:
+            return super().harvest_requests(
+                descriptor,
+                start=start,
+                end=end,
+                stations=stations,
+                session=session,
+                on_notice=on_notice,
+            )
+        hours = harvest_hours(start, session.clock.now())
+        measured: dict[str, tuple[str, ...]] | None = {}
+        if stations is not None:
+            codes = list(stations)
+        else:
+            url = _map_url(False)
+            states = _hydro_states(
+                _json_payload(session.fetch(url, headers=_MAP_HEADERS)), url
+            )
+            codes = [state.station_code for state in states]
+            measured = self._measured(session, on_notice)
+        requests: list[PacedRequest] = []
+        for code in dict.fromkeys(codes):
+            variables = (
+                measured[code]
+                if measured is not None and code in measured
+                else tuple(_SERIES)
+            )
+            requests.extend(
+                PacedRequest(
+                    _series_url(descriptor, variable, code, hours), code, _MAP_HEADERS
+                )
+                for variable in variables
+            )
+        return tuple(requests)
+
+    def _measured(
+        self, session: PacedSession, on_notice: NoticeHook | None
+    ) -> dict[str, tuple[str, ...]] | None:
+        """The variables of each station by the current-data API; None when unread."""
+        url = build_api_url("hydro")
+        try:
+            measured = _measured(_json_payload(session.fetch(url)))
+            if measured is None:
+                raise ObserwatorDataError(
+                    message("fetch.unexpected_response_from_list_objects", url=url)
+                )
+        except ObserwatorCancelledError:
+            raise
+        except ObserwatorError as exc:
+            if on_notice is not None:
+                on_notice(
+                    Notice(
+                        "warning",
+                        "harvest_series_unknown",
+                        message(
+                            "captures.harvest_series_unknown",
+                            url=url,
+                            reason=reason(exc),
+                        ),
+                    )
+                )
+            return None
+        return measured
+
+    def live_tail(
+        self, code: str, /, *, hours: int, timeout: float
+    ) -> tuple[Answer, ...]:
+        """hydro-back's H, Q and T of one station, ``hours`` back (``hoursInterval``)."""
+        if hours < 1:
+            raise ValueError(f"hours must be at least 1, not {hours}")
+        descriptor = get_dataset(_OPERATIONAL)
+        answers: list[Answer] = []
+        with httpx.Client(timeout=timeout, headers={**_GZIP, **_MAP_HEADERS}) as client:
+            for variable in _SERIES:
+                url = _series_url(descriptor, variable, code, hours)
+                try:
+                    response = client.get(url)
+                except httpx.HTTPError as exc:
+                    raise _source_error(exc, url, source=self.server_name) from exc
+                _keep(response)
+                answers.append(
+                    Answer(
+                        url,
+                        datetime.now(UTC),
+                        response.status_code,
+                        response.content,
+                        descriptor.key,
+                    )
+                )
+        return tuple(answers)
+
     # --- archives --------------------------------------------------------------
 
     def indexed(self, descriptor: DatasetDescriptor, /) -> bool:
         """Whether the dataset's files are named only in the server's folder index."""
-        return descriptor.update_signal == "listing"
+        return descriptor.key in _INDEXED
 
     def archive_files(
         self,
@@ -1328,7 +1558,8 @@ class ImgwAdapter(ProviderAdapter):
         One file: a country archive through the 2.1.1 functions, the station details.
 
         hydro.imgw.pl's station details are one request per station of its map
-        (ADR-021); a per-station synop archive or a station list is one GET.
+        (ADR-021); a month of the telemetry, a per-station synop archive or a station
+        list is one GET.
         """
         descriptor = get_dataset(archive.dataset)
         if descriptor.key in _DETAILS_MAPS:
@@ -1339,6 +1570,7 @@ class ImgwAdapter(ProviderAdapter):
         if (
             descriptor.archive_scope != "country"
             or descriptor.time_unit == "station_list"
+            or descriptor.key == _TELEMETRY
         ):
             return super().download(archive, client=client, cancel=cancel)
         assert archive.year is not None
@@ -1357,8 +1589,37 @@ class ImgwAdapter(ProviderAdapter):
     # --- the store's checks ----------------------------------------------------
 
     def check_scope(self, descriptor: DatasetDescriptor, /) -> CheckScope:
-        """Country archives offline and by HEAD; the synop archives by the folder index."""
+        """
+        Country archives offline and by HEAD, the telemetry by the datastore's listing.
+
+        The per-station synop archives are checked by the folder index; the monthly
+        telemetry zips, which carry no HTTP signal, by the listing of their year folder
+        (`listing`).
+        """
+        if descriptor.key == _TELEMETRY:
+            return "listing"
         return "country" if descriptor.archive_scope == "country" else "folders"
+
+    def listing(
+        self, descriptor: DatasetDescriptor, directory: str, /, *, client: httpx.Client
+    ) -> set[str] | None:
+        """
+        The telemetry zips of a year folder: one ``POST datastore/getFilesList``.
+
+        The answer is an HTML list whose links end in the file names; a folder that is
+        not published answers „Katalog nie istnieje!” without the list (None).
+        """
+        if descriptor.key != _TELEMETRY:
+            return super().listing(descriptor, directory, client=client)
+        response = client.post(_FILES_LIST, data={"path": directory})
+        response.raise_for_status()
+        text = response.text
+        if _FILE_LIST_MARK not in text:
+            return None
+        return {
+            PurePosixPath(unquote(urlsplit(href).path)).name
+            for href in _HREF.findall(text)
+        }
 
     def folders(
         self, descriptor: DatasetDescriptor, years: Iterable[int], /

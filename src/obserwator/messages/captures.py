@@ -106,4 +106,10 @@ MESSAGES = {
         "The spool holds no readable answer of {dataset} of {day}",
         "Bufor nie zawiera żadnej czytelnej odpowiedzi zbioru {dataset} z {day}",
     ),
+    "harvest_series_unknown": Text(
+        "The series of each station are unknown ({url}: {reason}): every station is "
+        "asked for H, Q and T",
+        "Serie poszczególnych stacji są nieznane ({url}: {reason}): każda stacja jest "
+        "pytana o H, Q i T",
+    ),
 }

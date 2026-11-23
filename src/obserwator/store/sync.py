@@ -53,6 +53,7 @@ from obserwator.fetch import (
 from obserwator.messages import Message, message, reason
 from obserwator.messages.sync import MESSAGES
 from obserwator.output import resolve_target
+from obserwator.providers.base import CheckScope
 from obserwator.store.captures import check_captures, seal_item
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
@@ -763,7 +764,7 @@ def _station_request(
     return codes, candidates
 
 
-_Scope = Literal["country", "folders", "stations"]
+_Scope = CheckScope
 
 
 def _scope(descriptor: DatasetDescriptor) -> _Scope:

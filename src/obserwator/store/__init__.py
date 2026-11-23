@@ -46,6 +46,7 @@ from obserwator.store.sync import check_store, sync_store
 from obserwator.store.types import (
     Cancel,
     CatalogReport,
+    HarvestReport,
     Meta,
     Notice,
     NoticeHook,
@@ -85,6 +86,7 @@ __all__ = [
     "AnalysisVariant",
     "Cancel",
     "CatalogReport",
+    "HarvestReport",
     "Meta",
     "Notice",
     "NoticeHook",

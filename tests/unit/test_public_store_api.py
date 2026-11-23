@@ -156,6 +156,7 @@ SPEC_TYPES = (
     "AnalysisPick",
     "AnalysisOption",
     "PollReport",
+    "HarvestReport",
     "PolledAnswer",
 )
 # Type aliases and constants.

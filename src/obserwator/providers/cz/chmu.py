@@ -2,11 +2,13 @@
 ČHMÚ, Czechia's hydrometeorological institute (provider ``CHMU``).
 
 The CC BY 4.0 open data of opendata.chmi.cz: files of one station (one per station
-and year of the daily hydrological data and of the daily and weekly groundwater
-readings, one per station and element of the daily meteorological data, one per
-groundwater object and month of its operational data, one per object of its
-characteristics), the station metadata of ``historical`` and ``now`` and the station
-catalog built from them (spec 2026-10-18, ADR-032).
+and year of the daily hydrological data, of the validated hourly ones and of the
+daily and weekly groundwater readings, one per station and element of the daily
+meteorological data, one per groundwater object and month of its operational data,
+one per object of its characteristics), the station metadata of ``historical`` and
+``now``, the operational day files of ``recent`` (the night's harvest) and ``now``
+(the live tail, ADR-030) and the station catalog built from them (spec 2026-10-18,
+ADR-032).
 """
 
 from __future__ import annotations
@@ -15,17 +17,20 @@ import math
 import re
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from itertools import combinations
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
+
+import httpx
 
 from obserwator._borders import CZECHIA
 from obserwator._parsing.chmu import (
     GROUNDWATER_CHARACTERISTIC_FILE,
     GROUNDWATER_FILE,
     GROUNDWATER_RECENT_FILE,
+    HOURLY_FILE,
     HYDRO_FILE,
     METEO_FILE,
     MetadataTable,
@@ -58,10 +63,25 @@ from obserwator.datasets import (
     parse_years,
 )
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
-from obserwator.fetch import _IDENTIFY, _get, _get_async
+from obserwator.fetch import (
+    _GZIP,
+    _IDENTIFY,
+    PacedRequest,
+    PacedSession,
+    _get,
+    _get_async,
+    _keep,
+    _source_error,
+)
 from obserwator.messages import message
 from obserwator.models import NormalizedRecord, StationListEntry
-from obserwator.providers.base import CheckScope, Kind, ProviderAdapter, SourceAction
+from obserwator.providers.base import (
+    Answer,
+    CheckScope,
+    Kind,
+    ProviderAdapter,
+    SourceAction,
+)
 from obserwator.store.catalog import (
     _Candidate,
     _catalog_lines,
@@ -78,12 +98,10 @@ from obserwator.store.catalog import (
     _series_codes,
     _stored_source,
 )
-from obserwator.store.types import Notice
+from obserwator.store.types import Notice, NoticeHook
 from obserwator.store.writer import _canonical, _validate_slot
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from obserwator.attribution import Origin
     from obserwator.datasets import ProviderDescriptor
     from obserwator.store.catalog import CatalogBuild
@@ -112,6 +130,7 @@ _NEWEST = "meta1-<YYYYMMDD>.json"
 _STATION_YEAR_NAMES: Mapping[str, str] = MappingProxyType(
     {
         "cz.chmu.hydro_daily": "H_{code}_DQ_{year}.json",
+        "cz.chmu.hydro_hourly": "H_{code}_HQ_{year}.json",
         "cz.chmu.groundwater_daily": "H_{code}_D_{year}.json",
         "cz.chmu.groundwater_weekly": "H_{code}_W_{year}.json",
     }
@@ -126,6 +145,12 @@ _GROUNDWATER_STATIONS = "cz.chmu.groundwater_stations"
 _GROUNDWATER_NOW = "cz.chmu.groundwater_now"
 # Units of the SPA thresholds (SPAH_UNIT, SPAQ_UNIT) in the catalog.
 _THRESHOLD_UNITS: Mapping[str, str] = MappingProxyType({"CM": "cm", "M3_S": "m3/s"})
+# The validated hourly files of a station's year (ADR-030 D2).
+_HOURLY = "cz.chmu.hydro_hourly"
+# The operational files of ``recent`` (one station and UTC day, the night's harvest)
+# and of ``now`` (one station's current UTC day, the live tail), ADR-030.
+_RECENT = "cz.chmu.hydro_recent"
+_CURRENT = "cz.chmu.hydro_current"
 
 
 def _file_parts(
@@ -141,6 +166,9 @@ def _file_parts(
     if key == "cz.chmu.hydro_daily":
         hydro = HYDRO_FILE.fullmatch(name)
         return None if hydro is None else (hydro[1], int(hydro[2]), None, None)
+    if key == _HOURLY:
+        hourly = HOURLY_FILE.fullmatch(name)
+        return None if hourly is None else (hourly[1], int(hourly[2]), None, None)
     if key == "cz.chmu.meteo_daily":
         meteo = METEO_FILE.fullmatch(name)
         return None if meteo is None else (meteo[1], None, None, meteo[2])
@@ -850,6 +878,7 @@ class ChmuAdapter(ProviderAdapter):
     origins: tuple[Origin, ...] = ("chmu",)
     border = CZECHIA
     identifies = True
+    harvested = frozenset({_RECENT})
     station_sources = (
         "cz.chmu.hydro_stations",
         "cz.chmu.meteo_stations",
@@ -864,6 +893,79 @@ class ChmuAdapter(ProviderAdapter):
     def publication_default(self, key: str, /) -> Literal["public", "private"]:
         """``public``: ČHMÚ's open data are CC BY 4.0 (ADR-030 D5)."""
         return "public"
+
+    # --- the night's harvest and the live tail (ADR-030 D9) ---------------------
+
+    def harvest_requests(
+        self,
+        descriptor: DatasetDescriptor,
+        /,
+        *,
+        start: date,
+        end: date,
+        stations: Sequence[str] | None,
+        session: PacedSession,
+        on_notice: NoticeHook | None,
+    ) -> tuple[PacedRequest, ...]:
+        """
+        The ``recent`` day file of every station and day, ``start`` to ``end``.
+
+        The stations are those of the ``now`` metadata (``hydrology/now/metadata/
+        meta1.json``, 548 on 2026-11-23), in its order, or ``stations``; one request
+        per station and day, ``<YYYYMMDD>_<WIGOS>.json``, the days of a station
+        together. A station without the file of a day answers 404 (not published).
+        """
+        if descriptor.key not in self.harvested:
+            return super().harvest_requests(
+                descriptor,
+                start=start,
+                end=end,
+                stations=stations,
+                session=session,
+                on_notice=on_notice,
+            )
+        if stations is not None:
+            codes = list(stations)
+        else:
+            url = _station_files(self.station_sources[2])[0].url
+            content = session.fetch(url, headers=_IDENTIFY).content
+            codes = [
+                entry.station_code
+                for entry in self.parse_station_list(
+                    content, kind="hydro", filename=url
+                )
+            ]
+        directory = f"{self.provider.base_url}{descriptor.server_dir}"
+        days = [start + timedelta(days=step) for step in range((end - start).days + 1)]
+        return tuple(
+            PacedRequest(f"{directory}/{day:%Y%m%d}_{code}.json", code, _IDENTIFY)
+            for code in dict.fromkeys(codes)
+            for day in days
+        )
+
+    def live_tail(
+        self, code: str, /, *, hours: int, timeout: float
+    ) -> tuple[Answer, ...]:
+        """The ``now`` file of one station: its current UTC day (``hours`` unused)."""
+        descriptor = get_dataset(_CURRENT)
+        url = f"{self.provider.base_url}{descriptor.server_dir}/{code}.json"
+        try:
+            with httpx.Client(
+                timeout=timeout, headers={**_GZIP, **_IDENTIFY}
+            ) as client:
+                response = client.get(url)
+        except httpx.HTTPError as exc:
+            raise _source_error(exc, url, source=self.server_name) from exc
+        _keep(response)
+        return (
+            Answer(
+                url,
+                datetime.now(UTC),
+                response.status_code,
+                response.content,
+                descriptor.key,
+            ),
+        )
 
     # --- archives --------------------------------------------------------------
 

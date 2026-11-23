@@ -47,6 +47,8 @@ PROVIDER = "CHMU"
 
 HYDRO_FILE = re.compile(rf"^H_({_WIGOS_CODE})_DQ_([0-9]{{4}})\.json$")
 """Name of a daily hydro file: group 1 the station code, group 2 the year (§2.3)."""
+HOURLY_FILE = re.compile(rf"^H_({_WIGOS_CODE})_HQ_([0-9]{{4}})\.json$")
+"""Name of a validated hourly hydro file: the station code, then the year (ADR-030)."""
 METEO_FILE = re.compile(rf"^dly-({_WIGOS_CODE})-(SRA|T|TMA|TMI|SCE|SNO)\.csv$")
 """Name of a daily meteo file: group 1 the station code, group 2 the element (§2.3)."""
 GROUNDWATER_FILE = re.compile(rf"^H_({_WIGOS_CODE})_([DW])_([0-9]{{4}})\.json$")
