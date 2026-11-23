@@ -213,6 +213,10 @@ MESSAGES = {
         "given {keys}",
         "Opcje start i end wybierają doby UTC wyłącznie zbiorów zapisów; podano {keys}",
     ),
+    "sync_locked": Text(
+        "Another store sync holds the lock {path}: waited {seconds} s",
+        "Inny store sync trzyma blokadę {path}: czekano {seconds} s",
+    ),
     "harvest_every": Text(
         "every station of its list",
         "każda stacja z jego listy",

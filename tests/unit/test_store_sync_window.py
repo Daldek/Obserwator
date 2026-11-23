@@ -1,10 +1,13 @@
-"""The days of ``store check|sync`` of the captures (O3).
+"""The days of ``store check|sync`` of the captures and the lock of the raw root (O3).
 
 ``--start``/``--end`` (UTC dates, AGI-3.4) choose the closed spool days a sync seals and
 a check plans, and with ``--pace-until`` the days the harvest asks for: by default the
-last closed UTC day, at most 40 days back (ADR-030 D9 and its errata of 2026-11-23).
+last closed UTC day, at most 40 days back (ADR-030 D9 and its errata of 2026-11-23). A
+``store sync`` in store mode holds ``flock`` on ``<state_dir>/obserwator/store-sync.lock``
+for its whole run, the harvest included; a second one waits up to 10 minutes and then
+fails with ``conflict``, while a check takes no lock (D10).
 
-Every test has its own spool (``OBSERWATOR_STATE_DIR``), ``nogat.toml`` and a
+Every test has its own spool and lock (``OBSERWATOR_STATE_DIR``), ``nogat.toml`` and a
 fake clock (`obserwator.fetch._clock`, `obserwator.captures._now`) that moves only when a
 run waits, so no test sleeps. hydro-back is a fake source that answers any
 ``hoursInterval`` at the clock's time with the grid of its recorded answers (the full
@@ -13,6 +16,11 @@ function of the station, the series and the hour.
 """
 
 import json
+import os
+import subprocess
+import sys
+import textwrap
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from urllib.parse import parse_qs, urlsplit
 
@@ -27,12 +35,20 @@ from obserwator.cli.main import app
 from obserwator.commands import run_command
 from obserwator.error_report import error_hint
 from obserwator.exceptions import (
+    ObserwatorCancelledError,
+    ObserwatorStoreConflictError,
     ObserwatorValidationError,
 )
 from obserwator.providers.base import Answer
-from obserwator.store import check_store, init_store, sync_store
+from obserwator.store import check_store, init_store, iter_store, sync_store
+from obserwator.store import sync as store_sync
 from obserwator.store.captures import decode
+from obserwator.store.sync import LOCK_WAIT, sync_lock_path
 from tests.unit.test_paced import FakeClock
+from tests.unit.test_store_sync import H2024, V1, data, get, head, listing
+
+if sys.platform != "win32":
+    import fcntl
 
 OPERATIONAL = "pl.imgw.hydro_operational"
 HYDRO = "pl.imgw.hydro_current"
@@ -48,6 +64,9 @@ NIGHT = time(1, 30)
 PASSED = "00:00"
 """A ``pace_until`` always passed (the start of the local day): the 5 s spacing."""
 RUNNER = CliRunner(env={"TERM": "dumb", "COLUMNS": "80"})
+posix = pytest.mark.skipif(
+    sys.platform == "win32", reason="flock is POSIX only (ADR-030 D10 erratum)"
+)
 
 
 def at(day, moment=NIGHT):
@@ -116,6 +135,30 @@ def spooled_days(key=HYDRO):
 
 def tree(root):
     return sorted(path.relative_to(root).as_posix() for path in root.rglob("*"))
+
+
+@contextmanager
+def held_lock():
+    """The lock of ``store sync`` held by another holder (an open file of its own)."""
+    path = sync_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield handle
+    finally:
+        os.close(handle)
+
+
+def lock_is_free():
+    handle = os.open(sync_lock_path(), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(handle)
+    return True
 
 
 class Clock(FakeClock):
@@ -404,3 +447,197 @@ def test_start_and_end_are_selectors_of_a_store_only(raw, tmp_path):
         "reason": "store_only_option",
     }
     assert not (tmp_path / "out").exists()
+
+
+# --------------------------------------------------------------------------
+# The lock (ADR-030 D10)
+# --------------------------------------------------------------------------
+
+
+@posix
+def test_a_second_sync_waits_ten_minutes_for_the_lock_then_fails_with_conflict(
+    raw, clock
+):
+    spool_answer(LAST)
+    before = tree(raw)
+
+    with held_lock():
+        started = clock.now()
+        with pytest.raises(ObserwatorStoreConflictError) as refused:
+            sync_store(raw, datasets=[HYDRO])
+        waited = clock.now() - started
+        cli = RUNNER.invoke(
+            app, ["store", "sync", "--root", str(raw), "--datasets", HYDRO, "--json"]
+        )
+
+    assert waited == timedelta(seconds=LOCK_WAIT)
+    assert max(clock.sleeps) <= 1.0
+    assert refused.value.code == "conflict"
+    assert refused.value.details == {
+        "reason": "sync_locked",
+        "path": str(sync_lock_path()),
+        "waited": LOCK_WAIT,
+    }
+    document = json.loads(cli.stderr.splitlines()[-1])
+    assert (cli.exit_code, document["code"]) == (4, "conflict")
+    assert document["hint"] == error_hint("conflict", document["details"])
+    assert "--check" in document["hint"]
+    assert tree(raw) == before
+    assert spooled_days() == [LAST]
+    assert lock_is_free()
+
+
+@posix
+def test_a_check_plans_while_the_lock_is_held_without_waiting(raw, clock):
+    spool_answer(LAST)
+
+    with held_lock():
+        started = clock.now()
+        plan = check_store(raw, datasets=[HYDRO])
+        cli = RUNNER.invoke(
+            app,
+            [
+                "store",
+                "sync",
+                "--root",
+                str(raw),
+                "--datasets",
+                HYDRO,
+                "--check",
+                "--json",
+            ],
+        )
+
+    assert clock.now() == started
+    assert [item.status for item in plan.items] == ["missing"]
+    assert cli.exit_code == 0, cli.output
+    envelope = json.loads(cli.stdout)
+    assert [item["status"] for item in envelope["result"]["items"]] == ["missing"]
+    assert spooled_days() == [LAST]
+
+
+@posix
+def test_a_waiting_sync_runs_once_the_other_run_releases_the_lock(raw, clock):
+    spool_answer(LAST)
+    with held_lock() as other:
+        waits = []
+
+        def sleep(seconds):
+            waits.append(seconds)
+            clock.moment += timedelta(seconds=seconds)
+            if len(waits) == 90:
+                fcntl.flock(other, fcntl.LOCK_UN)
+
+        clock.sleep = sleep
+        report = sync_store(raw, datasets=[HYDRO])
+
+    assert len(waits) == 90
+    assert [(item.slot, item.status) for item in report.items] == [
+        (f"archive:{HYDRO}:{LAST}.jsonl.gz", "new")
+    ]
+    assert lock_is_free()
+
+
+@posix
+def test_the_whole_run_holds_the_lock_the_harvest_included(raw, hydro_back):
+    free_during = []
+    answer = hydro_back.series.side_effect
+
+    def asked(request):
+        free_during.append(lock_is_free())
+        return answer(request)
+
+    hydro_back.series.side_effect = asked
+    report = sync_store(
+        raw, datasets=[OPERATIONAL], stations=[STATIONS[0]], pace_until=PASSED
+    )
+
+    assert free_during == [False] * len(SERIES)
+    assert report.harvest.answers == len(SERIES)
+    assert lock_is_free()
+
+
+@posix
+def test_a_run_cancelled_while_waiting_for_the_lock_does_nothing(raw, clock):
+    spool_answer(LAST)
+    polls = []
+
+    def cancel():
+        polls.append(clock.now())
+        return len(polls) > 3
+
+    with held_lock():
+        with pytest.raises(ObserwatorCancelledError):
+            sync_store(raw, datasets=[HYDRO], cancel=cancel)
+        result = run_command(
+            "store sync", options={"root": str(raw), "datasets": [HYDRO]}, cancel=cancel
+        )
+
+    assert result.status == "cancelled"
+    assert spooled_days() == [LAST]
+    assert [entry.slot for entry in iter_store(raw)] == []
+
+
+@posix
+def test_the_lock_holds_off_a_run_of_another_process(raw, monkeypatch):
+    """A real holder in another process; the waiting run on the real clock, shortened."""
+    monkeypatch.setattr(store_sync, "LOCK_WAIT", 0.5)
+    monkeypatch.setattr(fetch, "_clock", fetch.SystemClock)
+    path = sync_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                f"""
+                import fcntl, os, sys
+                handle = os.open({str(path)!r}, os.O_RDWR | os.O_CREAT, 0o600)
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                print("held", flush=True)
+                sys.stdin.read()
+                """
+            ),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline() == "held\n"
+        started = datetime.now(UTC)
+        with pytest.raises(ObserwatorStoreConflictError):
+            sync_store(raw, datasets=[HYDRO])
+        assert datetime.now(UTC) - started >= timedelta(seconds=0.5)
+    finally:
+        holder.communicate("", timeout=30)
+    assert lock_is_free()
+    assert sync_store(raw, datasets=[HYDRO]).items == ()
+
+
+@posix
+def test_a_sync_of_archives_takes_no_lock_so_parallel_downloads_never_wait(raw, clock):
+    with respx.mock(assert_all_called=False) as server, held_lock():
+        listing(server, "dane_hydrologiczne/dobowe/2024", "codz_2024.zip")
+        head(server, H2024, V1)
+        get(server, H2024, V1, data(H2024))
+        report = sync_store(raw, datasets=["pl.imgw.hydro_daily"], years=[2024])
+        again = sync_store(
+            raw, plan=check_store(raw, datasets=["pl.imgw.hydro_daily"], years=[2024])
+        )
+
+    assert clock.sleeps == []
+    assert [item.status for item in report.items] == ["new"]
+    assert [item.status for item in again.items] == ["unchanged"]
+
+
+@posix
+def test_a_plan_holding_capture_days_waits_for_the_lock(raw, clock):
+    spool_answer(LAST)
+    plan = check_store(raw, datasets=[HYDRO])
+
+    with held_lock(), pytest.raises(ObserwatorStoreConflictError):
+        sync_store(raw, plan=plan)
+
+    assert sum(clock.sleeps) == LOCK_WAIT
+    assert spooled_days() == [LAST]

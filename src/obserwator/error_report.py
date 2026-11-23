@@ -50,6 +50,7 @@ _REASON_HINTS = {
     "writes_disabled": "errors.hint_writes_disabled",
     "no_allowed_dir": "errors.hint_allow_dir",
     "outside_allowed_dirs": "errors.hint_allow_dir",
+    "sync_locked": "errors.hint_sync_locked",
     "day_not_closed": "errors.hint_day_not_closed",
     "harvest_reach": "errors.hint_harvest_reach",
     "not_capture": "errors.hint_not_capture",

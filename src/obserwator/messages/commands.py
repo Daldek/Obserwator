@@ -637,8 +637,10 @@ MESSAGES = {
         "and store catalog build from them. With --pace-until it first harvests the "
         "UTC days from --start to --end (by default the last closed day) of "
         "pl.imgw.hydro_operational or cz.chmu.hydro_recent at its source, paced "
-        "until that local time, and seals today's day too. With --output-dir it "
-        "writes the selected archives as plain files (no plan).",
+        "until that local time, and seals today's day too. One run at a time seals "
+        "captures: a second waits up to 10 minutes for the lock, then fails with "
+        "conflict. With --output-dir it writes the selected archives as plain files "
+        "(no plan).",
         "Pobierz nowe lub brakujące archiwa do katalogu surowego. Według planu albo "
         "wyboru zbiorów i stacji zapisuje wyłącznie dane surowe (archiwa, listy i "
         "metadane stacji, zapisy: każdą zakończoną dobę UTC bufora zapisów, z "
@@ -646,8 +648,10 @@ MESSAGES = {
         "build i store catalog budują z nich. Z --pace-until najpierw pobiera u "
         "źródła doby UTC od --start do --end (domyślnie ostatnią zakończoną dobę) "
         "zbioru pl.imgw.hydro_operational albo cz.chmu.hydro_recent, z odstępami do "
-        "podanej godziny lokalnej, i zamyka też dobę dzisiejszą. Z --output-dir "
-        "zapisuje wybrane archiwa jako zwykłe pliki (bez planu).",
+        "podanej godziny lokalnej, i zamyka też dobę dzisiejszą. Zapisy zamyka "
+        "naraz jeden przebieg: drugi czeka na blokadę do 10 minut, potem kończy się "
+        "błędem conflict. Z --output-dir zapisuje wybrane archiwa jako zwykłe pliki "
+        "(bez planu).",
     ),
     "store_sync_rule_1": Text(
         "plan excludes datasets, years, months, stations, start, end and pace_until",

@@ -101,6 +101,12 @@ MESSAGES = {
         "Zbuduj wybrane stacje lub lata w innym katalogu danych (--root) albo tutaj "
         "cały zbiór, bez --stations i --years",
     ),
+    "hint_sync_locked": Text(
+        "Run store sync again once the other run has ended; store sync --check plans "
+        "without the lock",
+        "Uruchom store sync ponownie po zakończeniu tamtego przebiegu; store sync "
+        "--check planuje bez blokady",
+    ),
     "hint_day_not_closed": Text(
         "Give --start and --end up to yesterday (UTC): today's day is not over",
         "Podaj --start i --end najdalej do wczoraj (UTC): dzisiejsza doba się nie "

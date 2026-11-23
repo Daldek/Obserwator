@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -14,10 +17,12 @@ from urllib.parse import unquote, urlsplit
 
 import httpx
 
+from obserwator import _environment as environment
 from obserwator import captures as _captures
 from obserwator import fetch as _fetch
 from obserwator._parsing.chmu import ListingEntry, parse_listing
 from obserwator.captures import HARVEST_DAYS, _harvest, _harvested
+from obserwator.config import Settings
 from obserwator.datasets import (
     CAPTURE_SCOPE,
     ArchiveFile,
@@ -42,7 +47,9 @@ from obserwator.exceptions import (
     ObserwatorCancelledError,
     ObserwatorDataError,
     ObserwatorError,
+    ObserwatorStoreConflictError,
     ObserwatorValidationError,
+    io_error,
 )
 from obserwator.fetch import (
     _IDENTIFY,
@@ -88,14 +95,23 @@ from obserwator.store.writer import (
     write_archive,
 )
 
+if sys.platform != "win32":
+    import fcntl
+
 CANCELLED = message("common.cancelled")
 NO_SIGNAL = message("sync.no_comparable_header")
 NO_LISTING_SIGNAL = message("sync.no_comparable_signal")
+LOCK_FILE = "store-sync.lock"
+"""The lock of capture sealing runs, in ``<state_dir>/obserwator`` (ADR-030 D10)."""
+LOCK_WAIT = 600.0
+"""How long a sealing ``store sync`` waits for another's lock, in seconds (D10)."""
 
 _HREF = re.compile(r"""href\s*=\s*["']([^"'#?]+)""", re.IGNORECASE)
 _DONE = {"new", "relabeled", "unchanged"}
 _VersionStatus = Literal["new", "unchanged", "relabeled"]
 _SYNC = "store sync"
+# How often a waiting ``store sync`` tries the lock again, in seconds.
+_LOCK_POLL = 1.0
 Status = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
 
 
@@ -1880,6 +1896,14 @@ def sync_store(
     ``failed`` result without a slot, so a partial harvest ends ``partial``;
     ``harvest`` reports the counts and times.
 
+    A run that seals captures (a capture dataset, a harvest or a plan holding
+    capture days) holds the lock of ADR-030 D10 for its whole run, the harvest
+    included: ``flock`` on ``<state_dir>/obserwator/store-sync.lock``. One that
+    finds it held tries again every second for `LOCK_WAIT` (10 minutes), then
+    fails with ``conflict``. A sync of archives, station sources or catalogs takes
+    no lock (the writer's no-replace publication keeps parallel downloads safe),
+    nor does a check (`check_store`, ``--check``) or a plain write.
+
     Without ``plan`` the plan is built by :func:`check_store` from the given
     selectors; ``plan`` and the selectors are mutually exclusive. Before each
     download an HTTP ``HEAD`` re-validates the item: when the ETag or
@@ -1951,8 +1975,8 @@ def sync_store(
         writer (e.g. ``content_unchanged``) and of a harvest (``harvest_done``,
         info).
     cancel : Cancel or None, optional
-        Polled before each archive; once it returns ``True`` the remaining items
-        end as ``cancelled``.
+        Polled while the lock is waited for and before each archive; once it
+        returns ``True`` the remaining items end as ``cancelled``.
 
     Returns
     -------
@@ -1985,8 +2009,15 @@ def sync_store(
         the output directory when it is or lies in a store, else every
         offending path); in store mode when ``root`` nests a store
         (``nested_store``) or holds other files and is no store (``not_empty``).
+    ObserwatorStoreConflictError
+        ``conflict`` with ``details.reason`` ``sync_locked`` (and the lock file in
+        ``details.path``) when another run held the lock of the captures for
+        `LOCK_WAIT`.
+    ObserwatorCancelledError
+        If ``cancel`` returned True while the lock was waited for.
     ObserwatorDataError
-        If the plan file cannot be read or the marker of ``root`` is unreadable.
+        If the plan file cannot be read, the marker of ``root`` is unreadable or
+        the lock file cannot be opened (``io_error``).
     ObserwatorStoreError
         If ``root`` is not a supported Obserwator store.
     """
@@ -2024,7 +2055,7 @@ def sync_store(
                 message("sync.without_plan_parameter_datasets_required"),
                 details={"option": "datasets", "value": None},
             )
-        # Every selector is checked before any request.
+        # Every selector is checked before a run waits for the lock.
         selection = _selection(
             datasets,
             years,
@@ -2038,46 +2069,47 @@ def sync_store(
         if not isinstance(plan, StorePlan):
             plan = StorePlan.from_json(plan)
         _same_root(plan, path)
-    harvest: HarvestReport | None = None
-    harvested: list[OperationResult] = []
-    if plan is None:
-        assert datasets is not None and selection is not None
-        if pace_until is not None:
-            harvest, harvested, plan = _harvest_plan(
-                path,
-                selection,
-                pace_until,
-                start=start,
-                end=end,
-                on_progress=on_progress,
-                on_notice=on_notice,
-                cancel=cancel,
-            )
-        else:
-            plan = check_store(
-                path,
-                datasets=datasets,
-                years=years,
-                months=months,
-                stations=stations,
-                start=start,
-                end=end,
-                on_progress=on_progress,
-                on_notice=on_notice,
-                cancel=cancel,
-            )
-        _same_root(plan, path)
-    return _sync_plan(
-        path,
-        plan,
-        explicit=selection is not None,
-        force=force,
-        harvest=harvest,
-        harvested=harvested,
-        on_progress=on_progress,
-        on_notice=on_notice,
-        cancel=cancel,
-    )
+    with _sync_lock(cancel=cancel) if _seals(selection, plan) else nullcontext():
+        harvest: HarvestReport | None = None
+        harvested: list[OperationResult] = []
+        if plan is None:
+            assert datasets is not None and selection is not None
+            if pace_until is not None:
+                harvest, harvested, plan = _harvest_plan(
+                    path,
+                    selection,
+                    pace_until,
+                    start=start,
+                    end=end,
+                    on_progress=on_progress,
+                    on_notice=on_notice,
+                    cancel=cancel,
+                )
+            else:
+                plan = check_store(
+                    path,
+                    datasets=datasets,
+                    years=years,
+                    months=months,
+                    stations=stations,
+                    start=start,
+                    end=end,
+                    on_progress=on_progress,
+                    on_notice=on_notice,
+                    cancel=cancel,
+                )
+            _same_root(plan, path)
+        return _sync_plan(
+            path,
+            plan,
+            explicit=selection is not None,
+            force=force,
+            harvest=harvest,
+            harvested=harvested,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
 
 
 def _same_root(plan: StorePlan, root: Path) -> None:
@@ -2086,6 +2118,97 @@ def _same_root(plan: StorePlan, root: Path) -> None:
         raise ObserwatorValidationError(
             message("sync.plan_concerns_another_store", root=plan.root)
         )
+
+
+def sync_lock_path() -> Path:
+    """
+    The lock file of ``store sync``: ``<state_dir>/obserwator/store-sync.lock``.
+
+    A ``store sync`` that seals captures holds it for its whole run (ADR-030 D10).
+
+    Returns
+    -------
+    pathlib.Path
+        The absolute path; the file need not exist.
+    """
+    return (Settings().state_dir / environment.TOOL / LOCK_FILE).expanduser().absolute()
+
+
+def _seals(selection: _Selection | None, plan: StorePlan | None) -> bool:
+    """
+    Whether a ``store sync`` seals captures, so takes the lock (ADR-030 D10).
+
+    A selection of capture datasets (a harvest's included) or a plan holding a
+    capture day does; archives, station sources and catalogs do not.
+    """
+    if selection is not None:
+        return selection.descriptors[0].archive_scope == CAPTURE_SCOPE
+    return plan is not None and any(
+        get_dataset(item.archive.dataset).archive_scope == CAPTURE_SCOPE
+        for item in plan.items
+    )
+
+
+@contextmanager
+def _sync_lock(*, cancel: Cancel | None) -> Iterator[None]:
+    """
+    Hold the lock of the captures' sealing for one ``store sync`` (ADR-030 D10).
+
+    ``flock`` on `sync_lock_path` (created ``0600`` with its directory) for the whole
+    run. While another run holds it, the lock is tried again every `_LOCK_POLL`
+    seconds for `LOCK_WAIT` seconds on the clock of the paced runs
+    (`obserwator.fetch._clock`), polling ``cancel``. The lock goes with the process:
+    one that ends, however it ends, releases it. POSIX only, as the GUI's ``flock``
+    (ADR-020 erratum of 2026-11-14): on Windows a run takes no lock.
+
+    Raises
+    ------
+    ObserwatorStoreConflictError
+        ``conflict`` (``details.reason`` ``sync_locked``, ``details.path`` the lock
+        file, ``details.waited`` the seconds) when the lock stayed held.
+    ObserwatorCancelledError
+        If ``cancel`` returned True while waiting.
+    ObserwatorDataError
+        ``io_error`` when the lock file cannot be created or locked.
+    """
+    # An else block, not code after a return: mypy resolves names only in the
+    # branch of the platform it checks, so `fcntl` is no name on Windows.
+    if sys.platform == "win32":
+        yield
+    else:
+        path = sync_lock_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handle = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        except OSError as exc:
+            raise io_error(exc) from exc
+        try:
+            clock = _fetch._clock()
+            started = clock.now()
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    pass
+                except OSError as exc:
+                    raise io_error(exc) from exc
+                if cancel is not None and cancel():
+                    raise ObserwatorCancelledError(CANCELLED)
+                waited = (clock.now() - started).total_seconds()
+                if waited >= LOCK_WAIT:
+                    raise ObserwatorStoreConflictError(
+                        message("sync.sync_locked", path=path, seconds=f"{waited:.0f}"),
+                        details={
+                            "reason": "sync_locked",
+                            "path": str(path),
+                            "waited": round(waited, 3),
+                        },
+                    )
+                clock.sleep(min(_LOCK_POLL, LOCK_WAIT - waited))
+            yield
+        finally:
+            os.close(handle)
 
 
 def _sync_plan(
