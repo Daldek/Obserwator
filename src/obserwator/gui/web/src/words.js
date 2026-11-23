@@ -1,7 +1,7 @@
 // Words of the store's keys in the page's language, shared by the views: providers, station
-// kinds, datasets, variables, flags and IMGW-PIB's half-years. Every word is an entry of the
-// catalog (`gui.words.*`); providers' short names stay as they publish them. Call these at
-// render time: the texts change with the language.
+// kinds (and what a groundwater object is), datasets, variables, flags and IMGW-PIB's
+// half-years. Every word is an entry of the catalog (`gui.words.*`); providers' short names
+// stay as they publish them. Call these at render time: the texts change with the language.
 
 import { has, t } from "./i18n.js";
 
@@ -28,21 +28,43 @@ export function providerFullName(id) {
   return word(`words.provider.${slug(id)}`, providerName(id));
 }
 
-/** A station kind: "hydrological" or "meteorological" in the page's language. */
+/** The station kinds in their order (`obserwator.datasets.KINDS`). */
+export const KINDS = Object.freeze(["hydro", "meteo", "groundwater"]);
+
+/**
+ * The kinds the views offer and name (the switch „Rodzaj stacji”, the legend, the stations
+ * of each catalog): hydrological and meteorological always, groundwater only where the
+ * stations hold a groundwater object, so a deployment without one looks as before.
+ *
+ * @param {object[]} stations stations of api/stations
+ * @returns {string[]} kinds, in their order
+ */
+export function shownKinds(stations) {
+  return KINDS.filter((kind) => kind !== "groundwater" || stations.some((station) => station.kind === kind));
+}
+
+/** A station kind: "hydrological", "meteorological" or "groundwater" in the page's language. */
 export function kindName(kind) {
   return word(`words.kind.${kind}`, kind || "–");
 }
 
-/** The time step of each dataset the root may hold, in the order of the registry. */
-export const DATASET_STEPS = {
-  "pl.imgw.hydro_daily": "day",
-  "pl.imgw.hydro_monthly": "month",
-  "pl.imgw.hydro_semiannual": "half_year",
-  "pl.imgw.meteo_climate_daily": "day",
-  "pl.imgw.meteo_precip_daily": "day",
-  "pl.imgw.meteo_synop_daily": "day",
-  "cz.chmu.hydro_daily": "day",
-  "cz.chmu.meteo_daily": "day",
+/** What a groundwater object is ("borehole", "spring"); null for a station that is none. */
+export function groundwaterKindName(kind) {
+  return kind ? word(`words.groundwater_kind.${kind}`, kind) : null;
+}
+
+/** Each dataset whose station series the root may hold, in the order of the registry: its time step and the kind of its stations. */
+export const SERIES_DATASETS = {
+  "pl.imgw.hydro_daily": { step: "day", kind: "hydro" },
+  "pl.imgw.hydro_monthly": { step: "month", kind: "hydro" },
+  "pl.imgw.hydro_semiannual": { step: "half_year", kind: "hydro" },
+  "pl.imgw.meteo_climate_daily": { step: "day", kind: "meteo" },
+  "pl.imgw.meteo_precip_daily": { step: "day", kind: "meteo" },
+  "pl.imgw.meteo_synop_daily": { step: "day", kind: "meteo" },
+  "cz.chmu.hydro_daily": { step: "day", kind: "hydro" },
+  "cz.chmu.meteo_daily": { step: "day", kind: "meteo" },
+  "cz.chmu.groundwater_daily": { step: "day", kind: "groundwater" },
+  "cz.chmu.groundwater_weekly": { step: "week", kind: "groundwater" },
 };
 
 /** The title of a dataset ("Daily hydrological data (IMGW-PIB)"), its key when unknown. */
@@ -82,6 +104,8 @@ const DIGITS = {
   pressure_sea: 1,
   P_day: 1,
   P_night: 1,
+  H_asl: 2,
+  spring_yield: 2,
 };
 
 /**

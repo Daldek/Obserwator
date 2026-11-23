@@ -4,10 +4,12 @@ Fixtures of the GUI server's tests: the fixture root, recorded live data, the ap
 The data root is the session's ``fixture_root`` (``tests/conftest.py``: the data root of
 ``build_fixture_store(raw, data_root=data, variant="complete_pl_cz")``, IMGW-PIB and
 ČHMÚ) and a read-only copy of it, also with the analyses that ``build_analyses`` stores
-with the recorded Hydrolog of ``tests/fixtures/hydrolog``; IMGW-PIB's current data and
-PMAXTP are the library's recorded answers, put into the app's `GuiState`; Hydrolog's
-program of the app (``OBSERWATOR_HYDROLOG_COMMAND``) is a small recorded program that
-answers ``config show`` and ``commands batch`` as Hydrolog does, or none.
+with the recorded Hydrolog of ``tests/fixtures/hydrolog``; ČHMÚ's groundwater objects
+(ADR-032) are in the data root of the variant ``groundwater`` (`groundwater_root`);
+IMGW-PIB's current data and PMAXTP are the library's recorded answers, put into the app's
+`GuiState`; Hydrolog's program of the app (``OBSERWATOR_HYDROLOG_COMMAND``) is a small
+recorded program that answers ``config show`` and ``commands batch`` as Hydrolog does, or
+none.
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ METEO = "123750000"
 """IMGW-PIB's precipitation station of the fixture root (January 2001)."""
 METEO_CHMU = "0-203-0-90001"
 """ČHMÚ's meteorological station of the fixture root."""
+BORE = "0-203-1-VP0624"
+"""ČHMÚ's bore „Rakousy” of the variant ``groundwater`` (ADR-032): daily 2024, weekly 2012."""
+SPRING = "0-203-1-PP0744"
+"""ČHMÚ's spring „Želechy” of the variant ``groundwater``: daily 2024, weekly 2014."""
 PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""
 HYDROLOG_VERSION = "0.0.0-test"
@@ -126,6 +132,26 @@ def imgw_root(tmp_path_factory):
     base = tmp_path_factory.mktemp("gui-root-imgw")
     roots = build_fixture_store(
         base / "raw", data_root=base / "data", variant="complete"
+    )
+    return roots.data.root
+
+
+@pytest.fixture(scope="session")
+def groundwater_root(tmp_path_factory):
+    """
+    The data root of the variant ``groundwater`` (``complete_pl_cz`` and ČHMÚ's groundwater).
+
+    The tests using it are skipped while `build_fixture_store` has no such variant.
+    """
+    from typing import get_args
+
+    from obserwator.testing import FixtureVariant, build_fixture_store
+
+    if "groundwater" not in get_args(FixtureVariant):
+        pytest.skip('needs build_fixture_store(..., variant="groundwater")')
+    base = tmp_path_factory.mktemp("gui-root-groundwater")
+    roots = build_fixture_store(
+        base / "raw", data_root=base / "data", variant="groundwater"
     )
     return roots.data.root
 

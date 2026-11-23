@@ -93,6 +93,11 @@ MESSAGES: dict[str, Text] = {
         "ČHMÚ's current data are not provided.",
         "Dane bieżące ČHMÚ nie są udostępniane.",
     ),
+    "errors.no_current_kind": Text(
+        "Current data are given only for hydrological and meteorological stations.",
+        "Dane bieżące są podawane tylko dla stacji hydrologicznych i "
+        "meteorologicznych.",
+    ),
     "errors.no_values": Text(
         "The chosen years hold no values of {variable}.",
         "W wybranych latach nie ma wartości {variable}.",

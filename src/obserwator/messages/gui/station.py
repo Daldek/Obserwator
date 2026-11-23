@@ -56,6 +56,11 @@ MESSAGES: dict[str, Text] = {
         "{provider}: hydrological · meteorological",
         "{provider}: hydrologiczne · meteorologiczne",
     ),
+    # A provider whose catalog holds groundwater objects (ADR-032)
+    "station.none.provider_kinds_groundwater": Text(
+        "{provider}: hydrological · meteorological · groundwater",
+        "{provider}: hydrologiczne · meteorologiczne · podziemne",
+    ),
     "station.none.catalog_version": Text(
         "catalog {version}, downloaded {when}", "katalog {version}, pobrany {when}"
     ),
@@ -136,6 +141,7 @@ MESSAGES: dict[str, Text] = {
         "precipitation post", "posterunek opadowy"
     ),
     "station.info.meteo_kind.synop": Text("synoptic station", "stacja synoptyczna"),
+    "station.info.groundwater_kind": Text("Type of object", "Rodzaj obiektu"),
     "station.info.active": Text("Active", "Czynna"),
     "station.info.yes": Text("yes", "tak"),
     "station.info.no": Text("no", "nie"),
@@ -176,6 +182,12 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.info.source.cz.chmu.meteo_stations": Text(
         "ČHMÚ's list of stations, meteorology", "wykaz stacji ČHMÚ, meteorologia"
+    ),
+    "station.info.source.cz.chmu.groundwater_now": Text(
+        "ČHMÚ's current metadata, groundwater", "bieżące metadane ČHMÚ, wody podziemne"
+    ),
+    "station.info.source.cz.chmu.groundwater_stations": Text(
+        "ČHMÚ's list of objects, groundwater", "wykaz obiektów ČHMÚ, wody podziemne"
     ),
     # The file of a ČHMÚ station's thresholds (``thresholds.source``), named as in
     # the catalog's ``sources``.
@@ -464,6 +476,11 @@ MESSAGES: dict[str, Text] = {
     "station.data.days.few": Text("{n} days", "{n} dni"),
     "station.data.days.many": Text("{n} days", "{n} dni"),
     "station.data.days.other": Text("{n} days", "{n} dnia"),
+    # The rows of a weekly series are its readings (ADR-032)
+    "station.data.readings.one": Text("{n} reading", "{n} odczyt"),
+    "station.data.readings.few": Text("{n} readings", "{n} odczyty"),
+    "station.data.readings.many": Text("{n} readings", "{n} odczytów"),
+    "station.data.readings.other": Text("{n} readings", "{n} odczytu"),
     "station.data.no_characteristics": Text(
         "The characteristics of this station have no values.",
         "Charakterystyki tej stacji nie mają wartości.",
@@ -508,6 +525,12 @@ MESSAGES: dict[str, Text] = {
         "hydrological years (November to October).",
         "Szereg jest publikowany według roku kalendarzowego; przełącznik wyżej liczy też "
         "lata hydrologiczne (od listopada do października).",
+    ),
+    "station.data.weekly_def": Text(
+        "Weekly readings stand at their own dates, mostly Wednesdays; the line breaks "
+        "across a calendar week (Monday to Sunday) without a reading.",
+        "Odczyty tygodniowe stoją w dniach pomiaru, zwykle w środy; linia przerywa się "
+        "w tygodniu kalendarzowym (od poniedziałku do niedzieli) bez odczytu.",
     ),
     "station.data.stored_hydrological": Text(
         "hydrological year XI–X in the data root",

@@ -14,10 +14,12 @@
 //   `gui.stations.state.*` and `gui.stations.precip.*` of the message catalog in both
 //   languages, looked up when a class is asked for.
 // The outlines are drawn here, the same on the map's canvas and in SVG; no path is copied.
-// Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own mark: a
-// hollow centre for a station that is only in the catalog. A station is drawn by its kind
-// alone, whoever provides it: no provider has a symbol of its own (ADR-025, erratum of
-// 2026-11-21).
+// Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own marks: a
+// hollow centre for a station that is only in the catalog, and for ČHMÚ's groundwater
+// objects (bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
+// corners (viewBox 38 × 38) in a brown of its own, --station-groundwater, with the same
+// outline. A station is drawn by its kind alone, whoever provides it: no provider has a
+// symbol of its own (ADR-025, erratum of 2026-11-21).
 
 import { fmt, html, t } from "./lib.js";
 
@@ -92,15 +94,16 @@ export function meteoClass(total) {
   return { ...entry, label: t(entry.text), note: precipitationNote(key) };
 }
 
-/** The fill of a station in the view „Stacje”: hydro.imgw.pl's icons of a station kind in its own legend (a station in the middle zone, a station without precipitation). */
-export const KIND_COLORS = Object.freeze({ hydro: "--imgw-medium", meteo: "--imgw-no-precip" });
+/** The fill of a station in the view „Stacje”: hydro.imgw.pl's icons of a station kind in its own legend (a station in the middle zone, a station without precipitation), and the GUI's own brown of a groundwater object. */
+export const KIND_COLORS = Object.freeze({ hydro: "--imgw-medium", meteo: "--imgw-no-precip", groundwater: "--station-groundwater" });
 
 // --- the outlines -----------------------------------------------------------------------
 
-/** The box of each shape [units] and the height it takes on the map [px]. */
+/** The box of each shape [units], one per station kind; every symbol is SYMBOL_PX tall on the map. */
 export const SHAPES = Object.freeze({
   hydro: { width: 39, height: 34 },
   meteo: { width: 38, height: 38 },
+  groundwater: { width: 38, height: 38 },
 });
 export const SYMBOL_PX = 16;
 
@@ -124,7 +127,7 @@ function roundedPolygon(points, radius) {
   return `${parts.join("")}Z`;
 }
 
-/** A triangle scaled by `factor` about the centroid of `points`. */
+/** A polygon scaled by `factor` about the centroid of `points`. */
 function scaled(points, factor) {
   const cx = points.reduce((sum, p) => sum + p[0], 0) / points.length;
   const cy = points.reduce((sum, p) => sum + p[1], 0) / points.length;
@@ -136,20 +139,34 @@ const TRIANGLE = [
   [37.5, 1.5],
   [19.5, 32.5],
 ];
+/** A square on its corner, filling the box 38 × 38 within the outline's half width. */
+const DIAMOND = [
+  [19, 1.5],
+  [36.5, 19],
+  [19, 36.5],
+  [1.5, 19],
+];
 const circle = (r) => `M${19 - r} 19a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
 const OUTLINES = {
   hydro: roundedPolygon(TRIANGLE, 3.2),
   meteo: circle(16),
+  groundwater: roundedPolygon(DIAMOND, 3.2),
 };
 const HOLES = {
   hydro: roundedPolygon(scaled(TRIANGLE, 0.55), 1.2),
   meteo: circle(8),
+  groundwater: roundedPolygon(scaled(DIAMOND, 0.5), 1.4),
 };
+
+/** The shape of a station kind: its own, a hydrological station's for an unknown one. */
+export function kindShape(kind) {
+  return Object.hasOwn(SHAPES, kind) ? kind : "hydro";
+}
 
 /**
  * The paths of a symbol: the filled body (even-odd, so a hole stays empty) and the edges.
  *
- * @param {"hydro"|"meteo"} shape
+ * @param {"hydro"|"meteo"|"groundwater"} shape
  * @param {boolean} hollow
  */
 function symbolPaths(shape, hollow) {
@@ -161,7 +178,7 @@ function symbolPaths(shape, hollow) {
  * Draw a symbol on a canvas at `scale` pixels per unit, the box's top left at the origin.
  *
  * @param {CanvasRenderingContext2D} context
- * @param {{shape: "hydro"|"meteo", fill: string, outline: string, hollow?: boolean}} look
+ * @param {{shape: "hydro"|"meteo"|"groundwater", fill: string, outline: string, hollow?: boolean}} look
  *   colours as CSS colours
  * @param {number} scale
  */
@@ -181,7 +198,7 @@ export function drawSymbol(context, look, scale) {
 /**
  * A symbol as SVG, for the legend, the list, the tooltip and the panel: the map's drawing.
  *
- * @param {{shape?: "hydro"|"meteo", color: string, hollow?: boolean, faded?: boolean,
+ * @param {{shape?: "hydro"|"meteo"|"groundwater", color: string, hollow?: boolean, faded?: boolean,
  *   opacity?: number, size?: number, className?: string, label?: string}} props `color`
  *   names the CSS variable of the fill; `faded` draws an inactive station; `opacity`
  *   draws the symbol at that opacity (0–1), as the map draws the stations it fades beside
@@ -215,6 +232,6 @@ export function SymbolIcon({ shape = "hydro", color, hollow = false, faded = fal
  *   `data` whether the store holds a series of the station (else a hollow centre)
  */
 export function StationSymbol({ kind, data, active = true, size = 14 }) {
-  const shape = kind === "meteo" ? "meteo" : "hydro";
+  const shape = kindShape(kind);
   return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} faded=${!active} size=${size} className="st-sym" />`;
 }
