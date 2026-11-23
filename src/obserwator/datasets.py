@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import ClassVar, Literal
 from urllib.parse import quote
 
+from obserwator._environment import PREFIX
 from obserwator.attribution import Attribution, attribution, provider_origin
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import Message, message
@@ -139,6 +140,48 @@ class License:
     terms_url: str | None = None
 
 
+_CREDENTIAL_STEM = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+
+
+@dataclass(frozen=True)
+class ProviderCredential:
+    """
+    The API key a provider's requests need (Nogat plan 2026-11-20, P3).
+
+    The key comes from ``OBSERWATOR_<STEM>_API_KEY`` or the file named by
+    ``OBSERWATOR_<STEM>_API_KEY_FILE``, from the environment or ``.env`` only, never
+    from ``nogat.toml``, as the GUI's admin key (ADR-020); `obserwator.config.provider_key`
+    reads it. No provider of 3.2.0 needs one.
+
+    Attributes
+    ----------
+    stem : str
+        Upper-case name between ``OBSERWATOR_`` and ``_API_KEY``, e.g.
+        ``"GDANSKIE_WODY"``.
+    variable : str
+        The variable of the key, ``OBSERWATOR_<STEM>_API_KEY`` (derived).
+    file_variable : str
+        The variable naming the key's file, ``OBSERWATOR_<STEM>_API_KEY_FILE``
+        (derived).
+
+    Raises
+    ------
+    ValueError
+        If ``stem`` is not upper-case letters, digits and single underscores.
+    """
+
+    stem: str
+    variable: str = field(init=False)
+    file_variable: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Check the stem and derive the two variables."""
+        if not _CREDENTIAL_STEM.fullmatch(self.stem):
+            raise ValueError(f"Invalid credential stem {self.stem!r}")
+        object.__setattr__(self, "variable", f"{PREFIX}{self.stem}_API_KEY")
+        object.__setattr__(self, "file_variable", f"{self.variable}_FILE")
+
+
 @dataclass(frozen=True)
 class ProviderDescriptor:
     """
@@ -172,6 +215,10 @@ class ProviderDescriptor:
         Regular expression of the provider's station codes.
     datasets : tuple of str
         Keys of the provider's datasets in registry order.
+    credential : ProviderCredential or None, optional
+        The API key the provider's requests need (P3); None for a provider of open
+        data (IMGW-PIB, ČHMÚ). Written to the ``obserwator-provider/1`` document only
+        when set (an optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-provider/1"
@@ -187,6 +234,9 @@ class ProviderDescriptor:
     notice: str
     station_code_pattern: str
     datasets: tuple[str, ...]
+    credential: ProviderCredential | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
     def license_notice(self, lines: Attribution | None = None) -> Message:
         """

@@ -102,6 +102,7 @@ SPEC_TYPES = (
     "NoticeHook",
     "Cancel",
     "License",
+    "ProviderCredential",
     "ProviderDescriptor",
     "DatasetDescriptor",
     "ArchiveFile",
