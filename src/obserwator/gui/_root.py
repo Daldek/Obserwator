@@ -27,7 +27,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from obserwator.datasets import datasets, get_dataset
+from obserwator.datasets import datasets, get_dataset, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.gui._http import etag_of
 from obserwator.instance import Instance
@@ -55,13 +55,11 @@ STATIONS_FILES = 4
 StationsFormat = Literal["geojson", "csv"]
 """The formats of `export_stations`."""
 CATALOG_SLOTS: Mapping[str, str] = {
-    "IMGW": "catalog:pl.imgw.stations",
-    "CHMU": "catalog:cz.chmu.stations",
+    provider.id: f"catalog:{provider.key_prefix}.stations" for provider in providers()
 }
 """The catalog of each provider, as `current_version` names it."""
 ANALYSES_SLOTS: Mapping[str, str] = {
-    "IMGW": "analyses:pl.imgw.analyses",
-    "CHMU": "analyses:cz.chmu.analyses",
+    provider.id: f"analyses:{provider.key_prefix}.analyses" for provider in providers()
 }
 """The stored analyses of each provider (ADR-016), as `current_version` names them."""
 

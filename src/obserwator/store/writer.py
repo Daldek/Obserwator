@@ -102,11 +102,6 @@ OBSERVATION_SCHEMA = "obserwator-observation/1"
 # Observation register of an archive slot, beside its version directories.
 _OBSERVATIONS = "observations"
 _SEEN_AT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
-# File types each provider publishes as archives.
-_SUFFIXES = {"IMGW": (".zip", ".csv"), "CHMU": (".json", ".csv")}
-# Provider whose archive sidecars keep the 3.0.0 layout: no station_code or
-# param in request and no station_code in extra.period (the same bytes).
-_COUNTRY_LAYOUT = "IMGW"
 
 
 def _canonical_text(value: object) -> str:
@@ -1652,7 +1647,7 @@ def write_archive(
     if (
         _station_file(descriptor, relative.name) is None
         if descriptor.time_unit == "station_list"
-        else relative.suffix.lower() not in _SUFFIXES.get(provider.id, ())
+        else relative.suffix.lower() not in provider.adapter.archive_suffixes
     ):
         raise ObserwatorValidationError(
             message("writer.disallowed_type_archive", relative=relative)
@@ -1760,7 +1755,8 @@ def write_archive(
             "start": archive.period_start.isoformat() if archive.period_start else None,
             "end": archive.period_end.isoformat() if archive.period_end else None,
         }
-        if provider.id != _COUNTRY_LAYOUT:
+        # IMGW-PIB's archive sidecars keep the 3.0.0 layout (the same bytes).
+        if provider.adapter.sidecar_station:
             request.update(station_code=archive.station_code, param=archive.param)
             period["station_code"] = archive.station_code
         meta = {

@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 import httpx
 
-from obserwator._borders import CZECHIA, POLAND, PROVIDERS, border
+from obserwator._borders import BORDERS, CZECHIA, POLAND, border
 from obserwator._parsing.chmu import (
     MetadataTable,
     read_metadata,
@@ -41,8 +41,6 @@ from obserwator.attribution import (
 )
 from obserwator.datasets import (
     _CATALOG_DATASETS,
-    _CATALOG_SOURCES,
-    _CHMU_METEO_NOW_FILE,
     HYDRO_DETAILS,
     STATION_CODE_PATTERN,
     ArchiveFile,
@@ -54,6 +52,7 @@ from obserwator.datasets import (
     datasets,
     get_dataset,
     get_provider,
+    providers,
 )
 from obserwator.exceptions import (
     ObserwatorConnectionError,
@@ -101,13 +100,13 @@ from obserwator.store.writer import (
 RootArg = PathArg | StoreHandle
 
 CATALOG_FILE = "stations.geojson"
-# Version directory of each provider's station catalog (ADR-003 D5, ADR-028): a
+# Version directory of each provider's station catalog (ADR-003 D5, ADR-028, P2): a
 # directory of ``stations/versions/`` named by the provider's acronym, as its slugs
 # are.
 _CATALOG_DIRS: Mapping[str, str] = MappingProxyType(
     {
-        "IMGW": "stations/versions/imgw_stations",
-        "CHMU": "stations/versions/chmu_stations",
+        provider.id: f"stations/versions/{provider.acronym}_stations"
+        for provider in providers()
     }
 )
 # Directory under ``stations/versions/`` → provider of the catalog inside it.
@@ -200,12 +199,6 @@ _KIND_RANKS: Mapping[MeteoKind, int] = MappingProxyType(
 # location source is the key of the dataset whose file gave the point, or ``static``
 # and ``user`` for the two location files outside any dataset (ADR-028).
 _Candidate = tuple[str, object, object]
-# Location source of a point of IMGW-PIB's current-data answer of each station
-# family: the dataset of the answer.
-_API_LOCATION_SOURCES: Mapping[str, str] = MappingProxyType(
-    {"hydro": _CATALOG_SOURCES["IMGW"][2], "meteo": _CATALOG_SOURCES["IMGW"][3]}
-)
-
 # --------------------------------------------------------------------------
 # Shared version publication (also used by store.pmaxtp)
 # --------------------------------------------------------------------------
@@ -352,7 +345,7 @@ class _Border:
         return False
 
 
-@lru_cache(maxsize=len(PROVIDERS))
+@lru_cache(maxsize=len(BORDERS))
 def _border(resource: str) -> tuple[_Border, float]:
     """The outline of a packaged border and its error in metres (`obserwator._borders`)."""
     packaged = border(resource)
@@ -590,7 +583,7 @@ def _chmu_meteo_now(root: Path) -> ArchiveFile | None:
                 f"{child.name}.json"
                 for child in directory.iterdir()
                 if child.is_dir()
-                and _CHMU_METEO_NOW_FILE.fullmatch(f"{child.name}.json")
+                and _station_file(descriptor, f"{child.name}.json") is not None
             ),
             reverse=True,
         )
@@ -607,32 +600,8 @@ def _chmu_meteo_now(root: Path) -> ArchiveFile | None:
 def _catalog_sources(
     root: Path, provider: ProviderDescriptor
 ) -> list[tuple[str, ArchiveFile | None]]:
-    """
-    The station sources of a provider's catalog in build order, by source name.
-
-    IMGW-PIB: the hydro and meteo lists and the current-data API answers
-    (``api_hydro``, ``api_meteo``); ČHMÚ: the two ``historical`` lists, the hydro
-    ``now`` metadata ``meta1.json`` and ``meta3.json`` and the newest daily meteo
-    ``now`` file (None when none is stored).
-    """
-    hydro_list, meteo_list, hydro_now, meteo_now = _CATALOG_SOURCES[provider.id]
-    lists = [
-        (get_dataset(key).slug, _station_files(key)[0])
-        for key in (hydro_list, meteo_list)
-    ]
-    if provider.id == "IMGW":
-        return [
-            *lists,
-            ("api_hydro", _station_files(hydro_now)[0]),
-            ("api_meteo", _station_files(meteo_now)[0]),
-        ]
-    meta1, meta3 = _station_files(hydro_now)
-    return [
-        *lists,
-        ("chmu_hydro_now", meta1),
-        ("chmu_hydro_meta3", meta3),
-        ("chmu_meteo_now", _chmu_meteo_now(root)),
-    ]
+    """The station sources of a provider's catalog in build order, by source name."""
+    return provider.adapter.catalog_sources(root)
 
 
 def _read_sources(
@@ -651,7 +620,9 @@ def _read_sources(
     found: dict[str, tuple[bytes, dict[str, Any]]] = {}
     missing: list[str] = []
     for (source, archive), key in zip(
-        _catalog_sources(root, provider), _source_datasets(provider), strict=True
+        _catalog_sources(root, provider),
+        provider.adapter.source_datasets(),
+        strict=True,
     ):
         stored = None if archive is None else _stored_source(root, archive, source)
         if stored is None:
@@ -669,14 +640,6 @@ def _read_sources(
             ),
         )
     return found
-
-
-def _source_datasets(provider: ProviderDescriptor) -> list[str]:
-    """Dataset of each source of `_catalog_sources`, in the same order."""
-    hydro_list, meteo_list, hydro_now, meteo_now = _CATALOG_SOURCES[provider.id]
-    if provider.id == "IMGW":
-        return [hydro_list, meteo_list, hydro_now, meteo_now]
-    return [hydro_list, meteo_list, hydro_now, hydro_now, meteo_now]
 
 
 def _api_rows(
@@ -988,6 +951,7 @@ def _list_row_text(station: StationListEntry) -> str:
 
 def _catalog_bytes(
     *,
+    provider: ProviderDescriptor,
     lists: Mapping[str, Mapping[str, StationListEntry]],
     apis: Mapping[str, Mapping[str, Mapping[str, Any]]],
     details: Mapping[str, Mapping[str, Any]],
@@ -1006,6 +970,11 @@ def _catalog_bytes(
     known only from series indexes and the number of hydrological stations with
     details of hydro.imgw.pl (``details`` by code; it adds no station).
     """
+    # A point of the current-data answer of a family has that answer's dataset as its
+    # location source.
+    api_sources = dict(
+        zip(("hydro", "meteo"), provider.adapter.station_sources[2:], strict=True)
+    )
     for api_kind, api_rows in apis.items():
         for code in api_rows:
             if not (len(code) == 9 and code.isdecimal()):
@@ -1059,9 +1028,7 @@ def _catalog_bytes(
         api = apis[kind].get(code)
         candidates: list[tuple[str, object, object]] = []
         if api is not None:
-            candidates.append(
-                (_API_LOCATION_SOURCES[kind], api.get("lon"), api.get("lat"))
-            )
+            candidates.append((api_sources[kind], api.get("lon"), api.get("lat")))
         if code in static:
             candidates.append(("static", static[code][0], static[code][1]))
         if code in user:
@@ -1084,7 +1051,7 @@ def _catalog_bytes(
         if page is not None:
             detailed += 1
         features.append(feature)
-    lines = _catalog_lines(get_provider("IMGW"), {**used, DETAILS_SOURCE: detailed})
+    lines = _catalog_lines(provider, {**used, DETAILS_SOURCE: detailed})
     document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), unlocated, used, series_only, detailed
 
@@ -1198,7 +1165,9 @@ def _metadata(
     else:
         table.require("WSI", "FULL_NAME", "GEOGR1", "GEOGR2")
     chosen = station_rows(table, kind=kind)
-    pattern = re.compile(get_provider("CHMU").station_code_pattern)
+    pattern = re.compile(
+        get_provider(get_dataset(dataset).provider).station_code_pattern
+    )
     rows: dict[str, int] = {}
     for code, index in chosen.rows.items():
         if pattern.fullmatch(code):
@@ -1363,6 +1332,7 @@ def _chmu_feature(
 
 def _chmu_catalog_bytes(
     *,
+    provider: ProviderDescriptor,
     families: Mapping[str, Sequence[_Metadata]],
     series: Mapping[str, set[str]],
     user: Mapping[str, tuple[str, str, str | None]],
@@ -1430,7 +1400,7 @@ def _chmu_catalog_bytes(
         if conflict:
             conflicts.append(code)
         features.append(feature)
-    lines = _catalog_lines(get_provider("CHMU"), used)
+    lines = _catalog_lines(provider, used)
     document = {"type": "FeatureCollection", "features": features, **lines.fields()}
     return _canonical(document), len(features), without, used, series_only, conflicts
 
@@ -1672,11 +1642,16 @@ def check_catalog(
     }
     actions: list[PlanAction] = []
     sources = list(
-        zip(_catalog_sources(raw, owner), _source_datasets(owner), strict=True)
+        zip(
+            _catalog_sources(raw, owner),
+            owner.adapter.source_datasets(),
+            strict=True,
+        )
     )
-    # IMGW-PIB has one more, optional source: the station details of hydro.imgw.pl.
-    optional = owner.id == "IMGW"
-    total = len(sources) + (3 if optional else 2)
+    # Sources the build reads when the raw root holds them (IMGW-PIB: the station
+    # details of hydro.imgw.pl).
+    optional = owner.adapter.optional_sources
+    total = len(sources) + len(optional) + 2
     cancelled = False
     for index, ((source, archive), key) in enumerate(sources, start=1):
         cancelled = cancelled or _cancelled(cancel)
@@ -1715,26 +1690,23 @@ def check_catalog(
                     message("catalog.source_checked", server_path=key),
                 )
             )
-    if optional:
+    for number, key in enumerate(optional, start=len(sources) + 1):
         cancelled = cancelled or _cancelled(cancel)
-        status, detail = _details_action(
-            raw, recorded, catalog=catalog is not None, cancelled=cancelled
+        status, detail = owner.adapter.optional_action(
+            key, raw, recorded, catalog=catalog is not None, cancelled=cancelled
         )
         actions.append(PlanAction("store catalog", status, detail))
         if on_progress is not None:
             on_progress(
                 Progress(
-                    len(sources) + 1,
+                    number,
                     total,
                     "source",
                     status,
-                    message("catalog.source_checked", server_path=HYDRO_DETAILS),
+                    message("catalog.source_checked", server_path=key),
                 )
             )
-    local_files: list[tuple[str, bytes | None, Path]] = []
-    if owner.id == "IMGW":
-        static_path, static_bytes = _static_file()
-        local_files.append(("static", static_bytes, static_path))
+    local_files = owner.adapter.location_files()
     if user is not None:
         local_files.append(("user", user[1], user[0]))
     for source, data, path in local_files:
@@ -1967,7 +1939,7 @@ def _meteo_kind_gap(
 
 
 @dataclass(frozen=True)
-class _Build:
+class CatalogBuild:
     """Common state of one catalog build: roots, provider, user file and hooks."""
 
     root: Path
@@ -2266,7 +2238,7 @@ def build_catalog(
     base = lenient_store(root, kind="data").root
     raw = _raw(raw_root)
     user = _user_file(user_locations)
-    build = _Build(
+    build = CatalogBuild(
         base,
         raw,
         owner,
@@ -2278,10 +2250,10 @@ def build_catalog(
         on_notice,
         cancel,
     )
-    return _build_imgw(build) if owner.id == "IMGW" else _build_chmu(build)
+    return owner.adapter.build_catalog(build)
 
 
-def _build_imgw(build: _Build) -> CatalogReport:
+def _build_imgw(build: CatalogBuild) -> CatalogReport:
     """IMGW-PIB catalog from the station lists, public APIs, station details and location files."""
     owner, user = build.provider, build.user
     # Location files are validated before any download, so a bad header writes nothing.
@@ -2376,6 +2348,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
     )
     sources.extend(series_sources)
     data, count, unlocated, used, series_only, detailed = _catalog_bytes(
+        provider=owner,
         lists=parsed_lists,
         apis={"hydro": apis[0], "meteo": apis[1]},
         details=details,
@@ -2433,7 +2406,7 @@ def _build_imgw(build: _Build) -> CatalogReport:
     )
 
 
-def _build_chmu(build: _Build) -> CatalogReport:
+def _build_chmu(build: CatalogBuild) -> CatalogReport:
     """ČHMÚ catalog from the stored now and historical metadata files and the user file."""
     owner, user = build.provider, build.user
     # The user file is validated before the sources are read, so a bad header writes nothing.
@@ -2456,7 +2429,7 @@ def _build_chmu(build: _Build) -> CatalogReport:
                 server_path=archive.server_path if archive else source,
             ),
         )
-    hydro_key, meteo_key, hydro_now, meteo_now = _CATALOG_SOURCES[owner.id]
+    hydro_key, meteo_key, hydro_now, meteo_now = owner.adapter.station_sources
     hydro_list, meteo_list = (get_dataset(key).slug for key in (hydro_key, meteo_key))
     if (report := build.stopped()) is not None:
         return report
@@ -2515,6 +2488,7 @@ def _build_chmu(build: _Build) -> CatalogReport:
     series, series_sources, _ = _series_codes(build.root, problems, provider=owner)
     records.extend(series_sources)
     data, count, without, used, series_only, conflicts = _chmu_catalog_bytes(
+        provider=owner,
         families=families,
         series=series,
         user=user_rows,

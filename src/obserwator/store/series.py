@@ -25,7 +25,6 @@ from obserwator._parsing import CARRY_DATASETS, normalize_in_sequence
 from obserwator._version import __version__
 from obserwator.attribution import Attribution, attribution, dataset_origin
 from obserwator.datasets import (
-    _IMGW_STATION_FILE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
@@ -626,7 +625,8 @@ def _read_inputs(
         return inputs
     windows = _windows(descriptor, subset)
     codes = frozenset(subset.stations or ())
-    numbers = frozenset(code[-3:] for code in codes)
+    adapter = get_provider(descriptor.provider).adapter
+    numbers = frozenset(adapter.station_key(code) for code in codes)
 
     def chosen(archive: ArchiveFile) -> bool:
         start, end = archive.period_start, archive.period_end
@@ -641,8 +641,8 @@ def _read_inputs(
             return True
         if archive.station_code is not None:
             return archive.station_code in codes
-        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
-        return station is None or station[3] in numbers
+        station = adapter.archive_station(archive)
+        return station is None or station in numbers
 
     picked = {index for index, item in enumerate(inputs) if chosen(item.archive)}
     if descriptor.key in CARRY_DATASETS and windows is not None:
@@ -1171,6 +1171,7 @@ def _spill_station_file(
     ``windows`` of its years.
     """
     code = archive.station_code
+    key = get_provider(get_dataset(archive.dataset).provider).adapter.station_key
     bounds: dict[str, list[date]] = {}
     for record in records:
         if code is not None and record.station_code != code:
@@ -1182,7 +1183,7 @@ def _spill_station_file(
                     server_path=archive.server_path,
                 )
             )
-        if (record.station_code[-3:], record.date.year) in superseded:
+        if (key(record.station_code), record.date.year) in superseded:
             continue
         if kept is None or kept(record):
             spill.add(record)
@@ -1216,12 +1217,13 @@ def _superseded(inputs: Iterable[_Input]) -> set[tuple[str, int]]:
     covered: set[tuple[str, int]] = set()
     for item in inputs:
         archive = item.archive
-        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
+        adapter = get_provider(get_dataset(archive.dataset).provider).adapter
+        station = adapter.archive_station(archive)
         if station is None or archive.station_code is not None:
             continue
         assert archive.period_start is not None and archive.period_end is not None
         covered.update(
-            (station[3], year)
+            (station, year)
             for year in range(archive.period_start.year, archive.period_end.year + 1)
         )
     return covered

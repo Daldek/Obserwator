@@ -32,6 +32,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
 import obserwator
+from obserwator.datasets import get_provider, providers
 from obserwator.exceptions import ObserwatorError
 from obserwator.messages import message
 from obserwator.store.types import StationFeature
@@ -165,13 +166,12 @@ def _in_thread(run: Callable[[], None]) -> None:
     threading.Thread(target=run, name="obserwator-current", daemon=True).start()
 
 
-SOURCES: Mapping[str, Callable[[], Any]] = {
-    "states": obserwator.fetch_hydro_states,
-    "hydro": obserwator.fetch_hydro_current,
-    "meteo": obserwator.fetch_meteo_current,
-    "synop": obserwator.fetch_synop,
-}
-"""The sources of current data by the name the API gives them."""
+CURRENT_PROVIDER = next(item.id for item in providers() if item.adapter.current)
+"""The provider of the current measurements view: the only live data the GUI serves."""
+SOURCES: Mapping[str, Callable[[], Any]] = get_provider(
+    CURRENT_PROVIDER
+).adapter.current
+"""The sources of current data by the name the API gives them (its adapter's, ADR-029)."""
 
 
 class CurrentData:
@@ -322,7 +322,10 @@ def synop_indices(features: Mapping[str, StationFeature]) -> dict[str, str]:
     """
     endings: dict[str, list[str]] = {}
     for code, feature in features.items():
-        meteo = feature.provider == "IMGW" and feature.properties.get("kind") == "meteo"
+        meteo = (
+            feature.provider == CURRENT_PROVIDER
+            and feature.properties.get("kind") == "meteo"
+        )
         if meteo and len(code) == 9 and code[0] == "3" and code[5] == "0":
             endings.setdefault(code[6:], []).append(code)
     return {

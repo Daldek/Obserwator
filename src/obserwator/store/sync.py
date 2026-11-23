@@ -16,17 +16,11 @@ import httpx
 
 from obserwator._parsing.chmu import ListingEntry, parse_listing
 from obserwator.datasets import (
-    _CHMU_HYDRO_FILE,
-    _CHMU_METEO_FILE,
-    _IMGW_STATION_FILE,
-    _METEO_LAYOUT,
-    HYDRO_DETAILS,
     ArchiveFile,
     DatasetDescriptor,
     MonthsArg,
     YearsArg,
     _archive_from_path,
-    _meteo_folder,
     _minimum_year,
     _parse_stations,
     _station_file,
@@ -51,17 +45,12 @@ from obserwator.fetch import (
     DOWNLOAD_TIMEOUT,
     UNPUBLISHED,
     DownloadResult,
-    _archive_response,
     _archive_slot,
     _download_plain,
-    _zipped,
-    download_hydro_data,
-    download_meteo_data,
 )
 from obserwator.messages import Message, message, reason
 from obserwator.messages.sync import MESSAGES
 from obserwator.output import resolve_target
-from obserwator.stations import _hydro_details
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
     _current_version,
@@ -90,7 +79,6 @@ from obserwator.store.writer import (
     version_file,
     write_archive,
 )
-from obserwator.urls import IMGW_PUBLIC_DATA_URL
 
 CANCELLED = message("common.cancelled")
 NO_SIGNAL = message("sync.no_comparable_header")
@@ -100,12 +88,6 @@ _HREF = re.compile(r"""href\s*=\s*["']([^"'#?]+)""", re.IGNORECASE)
 _DONE = {"new", "relabeled", "unchanged"}
 _VersionStatus = Literal["new", "unchanged", "relabeled"]
 _SYNC = "store sync"
-# File-name grammar of per-station archives (spec 2026-10-18 §2.3); group 1 is
-# the station code.
-_STATION_FILES = {
-    "station_year": _CHMU_HYDRO_FILE,
-    "station_element": _CHMU_METEO_FILE,
-}
 Status = Literal["current", "newer", "missing", "unverifiable", "check_failed"]
 
 
@@ -116,9 +98,9 @@ class _Signal:
     content_length: int | None
 
 
-def _listing(client: httpx.Client, directory: str) -> set[str] | None:
+def _listing(client: httpx.Client, url: str) -> set[str] | None:
     """File names published in a server directory; ``None`` when the directory is absent."""
-    response = client.get(f"{IMGW_PUBLIC_DATA_URL}/{directory}/")
+    response = client.get(url)
     if response.status_code in (404, 410):
         return None
     response.raise_for_status()
@@ -152,7 +134,7 @@ _HTTP_ERRORS = tuple(
 )
 
 
-def _http_error(exc: Exception, *, source: str = "IMGW") -> Message:
+def _http_error(exc: Exception, *, source: str) -> Message:
     if isinstance(exc, httpx.TimeoutException):
         return message(
             "sync.timeout_waiting_for_server", source=source, reason=reason(exc)
@@ -174,11 +156,8 @@ def _failure_code(error: str | None) -> ErrorCode:
 
 
 def _source(archive: ArchiveFile) -> str:
-    """Provider name in the messages about an archive's server."""
-    descriptor = get_dataset(archive.dataset)
-    if descriptor.provider == "IMGW":
-        return "IMGW"
-    return get_provider(descriptor.provider).short_name
+    """Provider's server name in the messages about an archive's server."""
+    return get_provider(get_dataset(archive.dataset).provider).adapter.server_name
 
 
 def _compare(local: dict[str, object], remote: _Signal) -> Status:
@@ -330,7 +309,7 @@ def _station_targets(
     tuple of (list of _Target, list of PlanAction)
         Files to check (unsorted) and the station actions.
     """
-    grammar = _STATION_FILES[descriptor.archive_scope]
+    adapter = get_provider(descriptor.provider).adapter
     provider = get_provider(descriptor.provider)
     wanted = set(codes)
     listed: dict[str, dict[str, tuple[ArchiveFile, ListingEntry]]] = defaultdict(dict)
@@ -342,15 +321,15 @@ def _station_targets(
             continue
         known = False
         for name, entry in listing.entries.items():
-            match = grammar.fullmatch(name)
-            if match is None:
+            station = adapter.listed_station(descriptor, name)
+            if station is None:
                 continue
             known = True
-            if match[1] not in wanted:
+            if station not in wanted:
                 continue
             archive = _archive_from_path(descriptor.key, f"{directory}/{name}")
             if archive is not None:
-                listed[match[1]][archive.server_path] = (archive, entry)
+                listed[station][archive.server_path] = (archive, entry)
         if not known:
             failures[directory] = message(
                 "sync.listing_without_dataset_files",
@@ -737,33 +716,14 @@ _Scope = Literal["country", "folders", "stations"]
 
 def _scope(descriptor: DatasetDescriptor) -> _Scope:
     """
-    How the files of a measurement dataset are found and checked.
+    How the files of a measurement dataset are found and checked: its adapter's choice.
 
-    ``country``: IMGW-PIB archives of the whole country, enumerated offline
-    and checked by HEAD; ``folders``: the per-station synop archives of
-    IMGW-PIB, named in the index of each folder and checked by HEAD;
-    ``stations``: ČHMÚ station files, checked by their listing.
+    ``country``: archives enumerated offline and checked by HEAD (IMGW-PIB's
+    archives of the whole country); ``folders``: archives named in the index of
+    each folder and checked by HEAD (IMGW-PIB's per-station synop archives);
+    ``stations``: station files checked by their listing (ČHMÚ).
     """
-    if descriptor.archive_scope == "country":
-        return "country"
-    return "folders" if descriptor.provider == "IMGW" else "stations"
-
-
-def _folders(descriptor: DatasetDescriptor, years: Iterable[int]) -> list[str]:
-    """Server directories of the selected years of a dataset in folders, by year."""
-    assert descriptor.server_dir is not None and descriptor.first_year is not None
-    _, first_folder_end = _METEO_LAYOUT[descriptor.key]
-    return list(
-        dict.fromkeys(
-            f"{descriptor.server_dir}/"
-            + _meteo_folder(
-                year,
-                first_year=descriptor.first_year,
-                first_folder_end=first_folder_end,
-            )
-            for year in years
-        )
-    )
+    return get_provider(descriptor.provider).adapter.check_scope(descriptor)
 
 
 def _folder_request(
@@ -793,7 +753,9 @@ def _folder_request(
     if months is not None:
         parse_months(months, option="months")
     codes = (
-        _parse_stations(stations, get_provider("IMGW")) if stations is not None else ()
+        _parse_stations(stations, get_provider(descriptors[0].provider))
+        if stations is not None
+        else ()
     )
     for descriptor in descriptors:
         _minimum_year(selected, descriptor)
@@ -1105,14 +1067,15 @@ def _check_folders(
     """
     selected = parse_years(years, option="years")
     chosen = set(parse_months(months, option="months")) if months is not None else None
-    numbers = {code[-3:] for code in codes}
     listings: dict[str, set[str] | Exception | None] = {}
     archives: list[ArchiveFile] = []
     actions: list[PlanAction] = []
     for descriptor in descriptors:
+        adapter = get_provider(descriptor.provider).adapter
+        numbers = {adapter.station_key(code) for code in codes}
         found: set[str] = set()
         monthly = False
-        for directory in _folders(descriptor, selected):
+        for directory in adapter.folders(descriptor, selected):
             if cancel is not None and cancel():
                 return (
                     [_item(item, "unverifiable", error=CANCELLED) for item in archives],
@@ -1120,7 +1083,7 @@ def _check_folders(
                     True,
                 )
             try:
-                names = _listing(client, directory)
+                names = _listing(client, f"{adapter.provider.base_url}{directory}/")
             except httpx.HTTPError as exc:
                 actions.append(
                     PlanAction(
@@ -1129,7 +1092,7 @@ def _check_folders(
                         message(
                             "sync.folder_error",
                             directory=directory,
-                            error=_http_error(exc),
+                            error=_http_error(exc, source=adapter.server_name),
                         ),
                     )
                 )
@@ -1152,11 +1115,11 @@ def _check_folders(
                 archive = _archive_from_path(descriptor.key, f"{directory}/{name}")
                 if archive is None:
                     continue
-                station = _IMGW_STATION_FILE.fullmatch(name)
+                station = adapter.archive_station(archive)
                 if station is not None:
-                    if numbers and station[3] not in numbers:
+                    if numbers and station not in numbers:
                         continue
-                    found.add(station[3])
+                    found.add(station)
                 elif chosen is not None and archive.month not in chosen:
                     continue
                 else:
@@ -1164,7 +1127,9 @@ def _check_folders(
                 archives.append(archive)
         if not monthly:
             actions.extend(
-                _no_files(descriptor, code) for code in codes if code[-3:] not in found
+                _no_files(descriptor, code)
+                for code in codes
+                if adapter.station_key(code) not in found
             )
     if on_notice is not None:
         for action in actions:
@@ -1232,20 +1197,24 @@ def _check_one(
     except ObserwatorDataError as exc:
         return _item(archive, "check_failed", error=reason(exc))
     directory = PurePosixPath(archive.server_path).parent.as_posix()
+    provider = get_provider(get_dataset(archive.dataset).provider)
+    source = provider.adapter.server_name
     if directory not in listings:
         try:
-            listings[directory] = _listing(client, directory)
+            listings[directory] = _listing(client, f"{provider.base_url}{directory}/")
         except httpx.HTTPError as exc:
             listings[directory] = exc
     listing = listings[directory]
     if isinstance(listing, Exception):
-        return _item(archive, "check_failed", local=local, error=_http_error(listing))
+        error = _http_error(listing, source=source)
+        return _item(archive, "check_failed", local=local, error=error)
     if listing is None or PurePosixPath(archive.server_path).name not in listing:
         return _item(archive, "unverifiable", local=local, error=UNPUBLISHED)
     try:
         signal = _head(client, archive)
     except httpx.HTTPError as exc:
-        return _item(archive, "check_failed", local=local, error=_http_error(exc))
+        error = _http_error(exc, source=source)
+        return _item(archive, "check_failed", local=local, error=error)
     if signal is None:
         return _item(archive, "unverifiable", local=local, error=UNPUBLISHED)
     if local is None:
@@ -1412,35 +1381,16 @@ def _download(
         If ``cancel`` stops the requests of the station details.
     """
     descriptor = get_dataset(archive.dataset)
-    if descriptor.archive_scope != "country" or descriptor.time_unit == "station_list":
-        if client is None:
-            with httpx.Client(
-                timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, headers=_IDENTIFY
-            ) as own:
-                return _download(archive, client=own, cancel=cancel)
-        if descriptor.key == HYDRO_DETAILS:
-            return _hydro_details(client, archive.url, cancel=cancel)
-        source = get_provider(descriptor.provider).short_name
-        return _archive_response(
-            client, archive.url, source=source, zipped=_zipped(archive)
-        )
-    assert archive.year is not None
-    if descriptor.kind == "hydro":
-        intervals: dict[str, Literal["dobowe", "miesieczne", "polroczne_i_roczne"]] = {
-            "pl.imgw.hydro_daily": "dobowe",
-            "pl.imgw.hydro_monthly": "miesieczne",
-            "pl.imgw.hydro_semiannual": "polroczne_i_roczne",
-        }
-        return download_hydro_data(
-            intervals[descriptor.key],
-            archive.year,
-            archive.month,
-            cast(Literal["T", "Q", "H"] | None, archive.param),
-        )
-    subtype: Literal["klimat", "opad"] = (
-        "klimat" if descriptor.key == "pl.imgw.meteo_climate_daily" else "opad"
+    if client is None and (
+        descriptor.archive_scope != "country" or descriptor.time_unit == "station_list"
+    ):
+        with httpx.Client(
+            timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, headers=_IDENTIFY
+        ) as own:
+            return _download(archive, client=own, cancel=cancel)
+    return get_provider(descriptor.provider).adapter.download(
+        archive, client=client, cancel=cancel
     )
-    return download_meteo_data("dobowe", subtype, archive.year, archive.month)
 
 
 def _result(
@@ -1654,7 +1604,8 @@ def sync_store(
     # ČHMÚ requests name obserwator/<version> (spec 2026-10-18 §4.5), also those
     # of its station sources, which have no listing signal.
     identify = any(
-        item.signal == "listing" or get_dataset(item.archive.dataset).provider == "CHMU"
+        item.signal == "listing"
+        or get_provider(get_dataset(item.archive.dataset).provider).adapter.identifies
         for item in plan.items
     )
     with httpx.Client(

@@ -13,8 +13,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
 from obserwator._parsing import normalize_archive
-from obserwator._parsing.chmu import iter_stations
-from obserwator._parsing.stations import parse_stations_csv
 from obserwator.datasets import (
     _CATALOG_DATASETS,
     DATASET_KEY_PATTERN,
@@ -2098,9 +2096,10 @@ def read_station_list(
             )
         )
     data = _verified(entry.version)
-    if get_dataset(source.dataset).parser == "parse_chmu_stations":
-        return tuple(iter_stations(data, kind=kind, filename=str(entry.version)))
-    return tuple(parse_stations_csv(data, kind=kind))
+    adapter = get_provider(get_dataset(source.dataset).provider).adapter
+    return tuple(
+        adapter.parse_station_list(data, kind=kind, filename=str(entry.version))
+    )
 
 
 def _archive_main(version: PathArg) -> Path:
@@ -2186,9 +2185,11 @@ def read_archive(version: PathArg, /) -> Iterator[NormalizedRecord]:
                     dataset=meta.dataset,
                 )
             )
+        # The call needs no ``provider`` for the provider of its default.
+        default = (read_station_list.__kwdefaults__ or {}).get("provider")
         option = (
             ""
-            if descriptor.provider == "IMGW"
+            if descriptor.provider == default
             else f", provider={descriptor.provider!r}"
         )
         raise ObserwatorValidationError(

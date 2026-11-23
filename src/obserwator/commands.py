@@ -173,8 +173,11 @@ _SYNC_DATASETS = _SERIES_DATASETS + tuple(
     d.key for d in datasets() if d.in_store and d.time_unit == "station_list"
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
-# Groups reading the sources of one provider only (spec 2026-10-18 §9.3).
-_GROUP_PROVIDERS = {"current": "IMGW", "pmaxtp": "IMGW"}
+# Groups reading the sources of one provider only (spec 2026-10-18 §9.3): those its
+# adapter declares (ADR-029).
+_GROUP_PROVIDERS = {
+    group: provider.id for provider in providers() for group in provider.adapter.groups
+}
 _DONE = ("new", "relabeled", "unchanged")
 _EXIT_CODES = {"ok": 0, "partial": 10, "failed": 11, "cancelled": 130}
 _GROUPS = {
@@ -3060,15 +3063,14 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     lines = attribution(
         provider_origin(report.provider), border_origin(report.provider)
     )
-    if any(
-        properties.get("location_source") == "static"
-        or properties.get("details_source") is not None
-        for properties in (
-            feature.get("properties") or {} for feature in document.get("features", ())
-        )
-    ):
-        lines |= attribution("imgw_hydro")
-    return lines
+    adapter = get_provider(report.provider).adapter
+    return lines | attribution(
+        *{
+            origin
+            for feature in document.get("features", ())
+            for origin in adapter.station_origins(feature.get("properties") or {})
+        }
+    )
 
 
 def _stations_lines(options: Options, result: object) -> Attribution:
@@ -3086,23 +3088,30 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     if options.get("source") != "store":
         return lines
     lines |= attribution(*(border_origin(owner) for owner in owners))
-    located = {
-        entry.station_code
-        for entry in entries
-        if entry.provider == "IMGW" and entry.latitude is not None
-    }
-    if not located:
-        return lines
-    try:
-        features = _store.read_catalog(root=options["root"], provider="IMGW")
-    except ObserwatorStoreError:
-        return lines
-    if any(
-        feature.station_code in located
-        and feature.properties.get("location_source") == "static"
-        for feature in features
-    ):
-        lines |= attribution("imgw_hydro")
+    for owner in owners:
+        adapter = get_provider(owner).adapter
+        # Only a provider with data of another origin can have located a station so.
+        if not set(adapter.origins) - {adapter.origin}:
+            continue
+        located = {
+            entry.station_code
+            for entry in entries
+            if entry.provider == owner and entry.latitude is not None
+        }
+        if not located:
+            continue
+        try:
+            features = _store.read_catalog(root=options["root"], provider=owner)
+        except ObserwatorStoreError:
+            return lines
+        lines |= attribution(
+            *{
+                origin
+                for feature in features
+                if feature.station_code in located
+                for origin in adapter.station_origins(feature.properties, details=False)
+            }
+        )
     return lines
 
 

@@ -49,6 +49,7 @@ src/obserwator/
 ├── coverage.py, exceptions.py (ERROR_CODES), error_report.py, output.py, testing.py, config.py, reference_data.py
 ├── nogat_logging.py      # Nogat's server logs: reference module, byte copy, never edited (ADR-019)
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
+├── providers/            # one adapter per provider behind the ProviderAdapter protocol (ADR-029): pl/imgw.py, cz/chmu.py
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006); gui/ = the GUI's texts
 ├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
 ├── _data/                # borders, agents/ templates, packaged fixtures

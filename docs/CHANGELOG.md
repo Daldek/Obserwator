@@ -57,6 +57,8 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   (step 6 of ADR-025's plan) and Gdańskie Wody move to 3.3.0 (ADR-025 erratum of 2026-11-23;
   `docs/PROGRESS.md`, „Release 3.3.0”).
 
+- Provider adapters (ADR-029; Nogat plan `2026-11-20-hydromet-providers.md` P1, P2): `obserwator.providers` with one adapter per provider (`pl.imgw`, `cz.chmu`) behind the protocol `ProviderAdapter`; `ProviderDescriptor.adapter` and `ProviderDescriptor.acronym`. The archive enumeration, downloads, store checks, live station search, station catalog, parsers, attribution origins, command groups and the GUI's provider logic dispatch through it; the catalog keys, catalog directories and GUI slots are derived from the registry. No output changes: archives, sidecars, series, catalogs, envelopes, `AGENTS.md` and `llms.txt` keep their bytes. `_borders.PROVIDERS` is gone (`BORDERS` lists the packaged borders).
+
 ## [3.1.0] - 2026-11-22
 
 Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).

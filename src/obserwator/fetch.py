@@ -7,13 +7,11 @@ Data is fetched directly from IMGW servers - nothing is stored locally.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
-from urllib.parse import quote, unquote, urlsplit
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -23,14 +21,9 @@ from obserwator._version import __version__
 from obserwator.attribution import attribution, dataset_origin
 from obserwator.datasets import (
     ArchiveFile,
-    DatasetDescriptor,
     MonthsArg,
     ProviderDescriptor,
     YearsArg,
-    _indexed,
-    _indexed_file,
-    _indexed_years,
-    _year_folder,
     archive_files,
     get_dataset,
     get_provider,
@@ -89,8 +82,6 @@ UNPUBLISHED = message("common.unpublished")
 # §4.5); IMGW-PIB archive traffic keeps the default headers of 3.0.0.
 _IDENTIFY = {"User-Agent": f"obserwator/{__version__}"}
 _NOT_PUBLISHED = (404, 410)
-# Links of a server's folder index (Apache autoindex of IMGW-PIB).
-_HREF = re.compile(r"""href\s*=\s*["']([^"'#?]+)""", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -1041,65 +1032,20 @@ def _origin(archive: ArchiveFile) -> tuple[ProviderDescriptor, bool]:
     return get_provider(descriptor.provider), descriptor.archive_scope != "country"
 
 
+def _server(archive: ArchiveFile) -> str:
+    """
+    The server's name in the texts of a failed download of an archive.
+
+    The provider's short name for a file of one station, its adapter's
+    ``server_name`` for a file of the whole country (``IMGW``, as 3.0.0 wrote).
+    """
+    provider, per_station = _origin(archive)
+    return provider.short_name if per_station else provider.adapter.server_name
+
+
 def _zipped(archive: ArchiveFile) -> bool:
     """Whether the bytes of an archive must form a ZIP archive (by its name)."""
     return archive.server_path.lower().endswith(".zip")
-
-
-def _index_names(client: httpx.Client, url: str) -> list[str]:
-    """
-    Names of a folder index: files, and sub-folders with a trailing ``/``.
-
-    The links are percent-decoded (UTF-8); the parent folder, absolute links and
-    the sorting links of the index are no entries.
-
-    Raises
-    ------
-    ObserwatorConnectionError
-        If the index cannot be read (``source_unavailable``).
-    """
-    try:
-        response = client.get(url)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise _source_error(exc, url) from exc
-    names = (
-        unquote(href)
-        for href in _HREF.findall(response.text)
-        if not href.startswith("/") and not urlsplit(href).scheme
-    )
-    return list(dict.fromkeys(name for name in names if name.strip("/")))
-
-
-def _indexed_archives(
-    descriptor: DatasetDescriptor, years: Iterable[int], *, timeout: float
-) -> tuple[ArchiveFile, ...]:
-    """
-    Files of a dataset named only in the folder index (ADR-023), in index order.
-
-    The tree below ``server_dir`` is walked folder by folder, whatever the
-    names and spelling of the folders; a year folder (``2015``, ``1991-1992``)
-    is entered only when it holds a selected year, and every file outside the
-    year folders (the summary of the dataset, a station's documents) belongs
-    to every selection.
-    """
-    assert descriptor.server_dir is not None
-    selected = set(years)
-    base = f"{get_provider(descriptor.provider).base_url}{descriptor.server_dir}/"
-    found: list[ArchiveFile] = []
-    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-
-        def walk(relative: str) -> None:
-            for name in _index_names(client, base + quote(relative)):
-                if not name.endswith("/"):
-                    found.append(_indexed_file(descriptor, relative + name))
-                    continue
-                span = _year_folder(name[:-1])
-                if span is None or selected.intersection(range(span[0], span[1] + 1)):
-                    walk(relative + name)
-
-        walk("")
-    return tuple(found)
 
 
 def _download_files(
@@ -1114,20 +1060,25 @@ def _download_files(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[ArchiveFile, ...]:
     """
-    Files of a download: `archive_files`, or the folder index of a dataset named there.
+    Files of a download: `archive_files`, or the server's index of a dataset named there.
 
     With ``index=False`` the selection of an indexed dataset is only checked
     (offline) and no file is returned.
     """
     descriptor = get_dataset(dataset)
-    if not _indexed(descriptor):
+    adapter = get_provider(descriptor.provider).adapter
+    if not adapter.indexed(descriptor):
         return archive_files(
             dataset, years=years, months=months, params=params, stations=stations
         )
-    selected = _indexed_years(descriptor, years=years, params=params, stations=stations)
-    if not index:
-        return ()
-    return _indexed_archives(descriptor, selected, timeout=timeout)
+    return adapter.index_files(
+        descriptor,
+        years=years,
+        params=params,
+        stations=stations,
+        index=index,
+        timeout=timeout,
+    )
 
 
 def _stage(
@@ -1325,12 +1276,11 @@ def _download_plain(
     with Staging(directory) as staging:
 
         def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-            provider, per_station = _origin(archive)
             staged, size, sha256 = _stage(
                 client,
                 archive,
                 staging,
-                source=provider.short_name if per_station else "IMGW",
+                source=_server(archive),
                 zipped=_zipped(archive),
             )
             target = directory.joinpath(*archive.server_path.split("/"))
@@ -1383,11 +1333,10 @@ def _download_store(
             on_notice(notice)
 
     def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-        provider, per_station = _origin(archive)
         response = _archive_response(
             client,
             archive.url,
-            source=provider.short_name if per_station else "IMGW",
+            source=_server(archive),
             zipped=_zipped(archive),
         )
         version = write_archive(
@@ -1554,7 +1503,7 @@ def download_archives(
                 "reason": "not_in_store",
             },
         )
-    if _indexed(descriptor):
+    if get_provider(descriptor.provider).adapter.indexed(descriptor):
         files = _download_files(
             dataset, years=years, months=months, params=params, stations=stations
         )
