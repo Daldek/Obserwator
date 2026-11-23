@@ -132,8 +132,8 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   page's point with the new `location_source` value `pl.imgw.meteo_details` (ADR-028; after
   the API's point, before the static and the user file). The catalog's sidecar has the
   source `meteo_details` (`available` false without it, with an `info` notice
-  `source_missing` naming the sync), the build reports 8 progress steps (step 6 these
-  details), `check_catalog` one more action, and RH joins the lines of a catalog, stations
+  `source_missing` naming the sync), the build reports these details in step 5 after the hydrological ones (still 7
+  steps), `check_catalog` one more action, and RH joins the lines of a catalog, stations
   export or station panel with such a station. A catalog of a raw root without these details,
   or whose details name none of its stations, keeps its bytes (`unchanged`). The GUI names
   the location source in „Informacje o stacji”.
@@ -144,7 +144,7 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   `pl.imgw.meteo_states_current` (the map of meteorological stations, `snapshot`). Both are
   declared (`datasets(pending=True)`, `[obserwator.capture]`, `config show`) and their answers
   are spooled; they are served, and sealed, with `pl.imgw.hydro_operational` (O2).
-  `datasets()` gives 34 datasets, and seven stay declared.
+  `datasets()` gives 40 datasets, and eight stay declared.
 - **ADR-030 „Captures and the operational tier”** records the tiers, the scope (ČHMÚ's
   `recent`, `now` and `historical/hourly`), the captures as archive versions
   (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
