@@ -87,16 +87,21 @@ def series_datasets() -> tuple[str, ...]:
     """
     The datasets whose station series the GUI serves from a data root, in registry order.
 
-    A sub-daily series built from a private capture (`captures.publication` says
-    ``private``) is left out, as every product of a private capture is left out of
-    the public surfaces (P15, ADR-030 D5); asked on every read of the root, so a
-    change of ``[obserwator.capture]`` shows within a minute.
+    A series with a publication state (P15, ADR-030 D5) is left out while that state
+    is ``private`` (`captures.publication`): a sub-daily series built from a private
+    capture and the series of a private source, such as a provider fed by files
+    whose tier is not ``verified`` (ADR-033), as every product of a private source is
+    left out of the public surfaces; asked on every read of the root, so a change of
+    ``[obserwator.capture]`` shows within a minute.
     """
     return tuple(
         descriptor.key
         for descriptor in datasets()
         if builds_series(descriptor)
-        and (descriptor.inputs is None or publication(descriptor.key) == "public")
+        and (
+            (descriptor.tier == "verified" and descriptor.inputs is None)
+            or publication(descriptor.key) == "public"
+        )
     )
 
 
