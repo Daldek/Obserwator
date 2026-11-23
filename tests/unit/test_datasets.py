@@ -141,6 +141,12 @@ _CHMU_KEYS = [
     "cz.chmu.meteo_stations",
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
+    "cz.chmu.groundwater_daily",
+    "cz.chmu.groundwater_weekly",
+    "cz.chmu.groundwater_recent",
+    "cz.chmu.groundwater_characteristic",
+    "cz.chmu.groundwater_stations",
+    "cz.chmu.groundwater_now",
 ]
 
 
@@ -254,13 +260,19 @@ _DECLARED = {
     "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_hourly": ("verified", "hour", "station_year"),
+    "cz.chmu.groundwater_current": ("operational", "day", "country_day"),
 }
 
 
-def test_every_served_dataset_is_verified_and_its_document_says_so():
-    assert {descriptor.tier for descriptor in datasets()} == {"verified"}
+def test_every_served_dataset_but_the_groundwater_months_is_verified_as_listed():
+    # ADR-032: ČHMÚ's groundwater months (recent) are the first operational data served.
+    tiers = {descriptor.key: descriptor.tier for descriptor in datasets()}
+    assert {key: tier for key, tier in tiers.items() if tier != "verified"} == {
+        "cz.chmu.groundwater_recent": "operational"
+    }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
-    assert [item["tier"] for item in listed["result"]] == ["verified"] * len(datasets())
+    assert {item["key"]: item["tier"] for item in listed["result"]} == tiers
+    assert len(listed["result"]) == len(tiers)
 
 
 def test_declared_datasets_follow_the_served_ones_with_their_tiers():

@@ -38,10 +38,12 @@ ARCHIVE_KEYS = [
     for d in datasets()
     if d.server_dir is not None and d.time_unit != "station_list"
 ]
-SERIES_KEYS = [
+# Files store check/sync keep as archive versions: those of every series and ČHMÚ's
+# groundwater months and statistics, which no series reads (ADR-032).
+STORED_KEYS = [
     d.key
     for d in datasets()
-    if d.in_store and d.time_unit in ("day", "month", "half_year")
+    if d.in_store and d.time_unit in ("day", "week", "month", "half_year", "statistics")
 ]
 # Station lists and current-data sources: synced as data, never series (ADR-015).
 STATION_SOURCE_KEYS = [d.key for d in datasets() if d.time_unit == "station_list"]
@@ -98,7 +100,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         for name, option in find["properties"].items()
     }
     assert properties == {
-        "kind": {"enum": ["hydro", "meteo"]},
+        "kind": {"enum": ["hydro", "meteo", "groundwater"]},
         "query": {"type": "string", "minLength": 1},
         "source": {"enum": ["live", "store"], "default": "live"},
         "root": {
@@ -154,7 +156,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
     check = input_schema("store check")
     assert check["required"] == ["datasets"]
     assert check["properties"]["datasets"]["items"] == {
-        "enum": [*SERIES_KEYS, *STATION_SOURCE_KEYS]
+        "enum": [*STORED_KEYS, *STATION_SOURCE_KEYS]
     }
     assert check["properties"]["years"]["items"] == {
         "anyOf": [

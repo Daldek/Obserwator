@@ -138,16 +138,23 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "Envelope, statuses and errors" if lang == "en" else "Koperta, statusy i błędy",
     )
 
+    # The table holds the datasets of the store; their station sources (station lists)
+    # share one line, named by the suffix of their keys or by key (ADR-032).
     keys = [cells[0] for cells in rows(held) if cells[0].startswith("`")]
     assert keys == [
-        f"`{descriptor.key}`" for descriptor in datasets() if descriptor.in_store
+        f"`{descriptor.key}`"
+        for descriptor in datasets()
+        if descriptor.in_store and descriptor.time_unit != "station_list"
     ]
     for descriptor in datasets():
         prefix, _, name = descriptor.key.rpartition(".")
         # Keys outside the store are folded by prefix: `pl.imgw.{a,b}`.
         folded = re.search(rf"`{re.escape(prefix)}\.\{{([a-z0-9_,]+)\}}`", held)
-        assert f"`{descriptor.key}`" in held or (
-            folded is not None and name in folded[1].split(",")
+        suffix = f"`*_{name.rpartition('_')[2]}`"
+        assert (
+            f"`{descriptor.key}`" in held
+            or (folded is not None and name in folded[1].split(","))
+            or (descriptor.time_unit == "station_list" and suffix in held)
         ), descriptor.key
     statuses = {
         tuple(cells[:2]) for cells in rows(envelope) if cells[0].startswith("`")
