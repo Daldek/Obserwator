@@ -16,7 +16,7 @@ Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep
 1. **Learn the commands:** `obserwator commands list --json`, then `obserwator commands schema --command … --json`; REST `GET /api/v1/commands/list` and `/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. Options are in `options` (`name`, `type`, `required`, `flags`, `enum`); rules they do not express are in `rules`, effects in `effects` (`writes`, `network`, `idempotent`).
 2. **Check without writing:** `--check` (CLI), `?check=true` (REST, POST), `check: true` (MCP; the default of writing commands), `check_command()` (Python) → an `obserwator-plan/1` plan, nothing written or downloaded. `store check` is a check itself. Ask the user about a large plan.
 3. **Run:** without `check`; read the `status` of the envelope, not only the exit code.
-4. **Read offline:** `store info`, `store scan`, `series summary`, `series read` (`limit`/`cursor`), `pmaxtp read` — without downloading again.
+4. **Read offline:** `store info`, `store scan`, `series summary`, `series read` (`limit`/`cursor`), `pmaxtp read`.
 5. **Decide by codes:** `code`, `status`, `items[].status`, `error_code`; the `message` text is for humans, the `hint` names the option or command that fixes the error.
 
 ## Interfaces
@@ -71,7 +71,7 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 
 Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` alone.
 
-Captures (`pl.imgw.*_{current,operational}`, `cz.chmu.hydro_{current,recent}`, unverified, one version a UTC day): `store sync` alone; `pace_until` first harvests the last UTC day of `pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`.
+Captures (`pl.imgw.*_{current,operational}`, `cz.chmu.hydro_{current,recent}`, unverified, one version a UTC day): `store sync` alone (`start`/`end`: closed UTC days); `pace_until` first harvests them (default yesterday) of `pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`.
 
 Download only (`datasets download`): `pl.imgw.{hydro_phenomena,meteo_climate_monthly,meteo_precip_monthly,meteo_synop_monthly,meteo_climate_terms,meteo_synop_terms,warnings_hydro_archive,warnings_meteo_archive,actinometric}`.
 

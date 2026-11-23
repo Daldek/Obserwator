@@ -172,7 +172,14 @@ def decode(data: bytes, /) -> list[Spooled]:
     return answers
 
 
-def closed_days(key: str, /, *, today: bool = False) -> list[date]:
+def closed_days(
+    key: str,
+    /,
+    *,
+    today: bool = False,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[date]:
     """
     The UTC days of a capture dataset in the spool that are over (before today, UTC).
 
@@ -181,7 +188,11 @@ def closed_days(key: str, /, *, today: bool = False) -> list[date]:
     key : str
         A capture dataset.
     today : bool, optional
-        Also today's day (a harvest run seals its own answers).
+        Also today's day (a harvest run seals its own answers), whatever
+        ``start`` and ``end``.
+    start, end : datetime.date or None, optional
+        The first and last closed day to give (``store check|sync --start/--end``);
+        None for no bound.
 
     Returns
     -------
@@ -189,7 +200,16 @@ def closed_days(key: str, /, *, today: bool = False) -> list[date]:
         The days in order.
     """
     limit = _captures._now().date()
-    return [day for day in spool_days(key) if day < limit or (today and day == limit)]
+    return [
+        day
+        for day in spool_days(key)
+        if (
+            day < limit
+            and (start is None or day >= start)
+            and (end is None or day <= end)
+        )
+        or (today and day == limit)
+    ]
 
 
 def _spooled(
@@ -265,6 +285,8 @@ def check_captures(
     /,
     *,
     today: bool = False,
+    start: date | None = None,
+    end: date | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -283,6 +305,8 @@ def check_captures(
     today : bool, optional
         Also today's spool day (UTC), which a harvest run seals with the answers
         it asked for; else the closed days only.
+    start, end : datetime.date or None, optional
+        The first and last closed day checked (`closed_days`); None for no bound.
     on_progress : ProgressHook or None, optional
         Called after each day with its status.
     on_notice : NoticeHook or None, optional
@@ -294,13 +318,17 @@ def check_captures(
     Returns
     -------
     tuple of (list of PlanItem, bool)
-        Per spool day (each closed day, and today with ``today``): ``missing`` (no
-        version of the day yet), ``newer`` (the spool holds answers its current
-        version does not), ``current`` (every answer is in it: left over after a
-        sealing) or ``check_failed`` (no readable answer, or a broken version); and
-        whether the check was cancelled.
+        Per spool day (each closed day from ``start`` to ``end``, and today with
+        ``today``): ``missing`` (no version of the day yet), ``newer`` (the spool
+        holds answers its current version does not), ``current`` (every answer is
+        in it: left over after a sealing) or ``check_failed`` (no readable answer,
+        or a broken version); and whether the check was cancelled.
     """
-    days = [(d, day) for d in descriptors for day in closed_days(d.key, today=today)]
+    days = [
+        (d, day)
+        for d in descriptors
+        for day in closed_days(d.key, today=today, start=start, end=end)
+    ]
     items: list[PlanItem] = []
     cancelled = False
     for index, (descriptor, day) in enumerate(days, start=1):

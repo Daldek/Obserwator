@@ -53,12 +53,14 @@ MESSAGES = {
     "captures": Text(
         "Captures (`pl.imgw.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, unverified, one version a UTC day): "
-        "`store sync` alone; `pace_until` first harvests the last UTC day of "
-        "`pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`.",
+        "`store sync` alone (`start`/`end`: closed UTC days); `pace_until` first "
+        "harvests them (default yesterday) of `pl.imgw.hydro_operational` or "
+        "`cz.chmu.hydro_recent`.",
         "Zapisy (`pl.imgw.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, niezweryfikowane, wersja na dobę UTC): "
-        "`store sync` osobno; `pace_until` najpierw pobiera ostatnią dobę UTC "
-        "`pl.imgw.hydro_operational` albo `cz.chmu.hydro_recent`.",
+        "`store sync` osobno (`start`/`end`: zakończone doby UTC); `pace_until` "
+        "najpierw pobiera je (domyślnie wczoraj) dla `pl.imgw.hydro_operational` "
+        "albo `cz.chmu.hydro_recent`.",
     ),
     "outside_store": Text(
         "Download only (`datasets download`):",
@@ -137,9 +139,9 @@ MESSAGES = {
     ),
     "rule_read_offline": Text(
         "**Read offline:** `store info`, `store scan`, `series summary`, `series "
-        "read` (`limit`/`cursor`), `pmaxtp read` — without downloading again.",
+        "read` (`limit`/`cursor`), `pmaxtp read`.",
         "**Czytaj offline:** `store info`, `store scan`, `series summary`, `series "
-        "read` (`limit`/`cursor`), `pmaxtp read` — bez ponownego pobierania.",
+        "read` (`limit`/`cursor`), `pmaxtp read`.",
     ),
     "rule_decide_by_codes": Text(
         "**Decide by codes:** `code`, `status`, `items[].status`, `error_code`; the "

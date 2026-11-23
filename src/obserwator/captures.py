@@ -1261,6 +1261,16 @@ def poll_current(
 # The night's harvest (ADR-030 D9)
 # --------------------------------------------------------------------------
 
+HARVEST_DAYS = 40
+"""
+How far back a harvest reaches: its first day at most 40 days before today (UTC).
+
+``store sync --pace-until … --start <D−39>`` asks the 40 closed days D−39 to D, D the
+last closed one, inside the six weeks hydro.imgw.pl keeps its operational data („do 6
+tygodni wstecz”); ``store check|sync`` refuse an earlier ``start`` of a harvest (ADR-030
+D9 and its erratum of 2026-11-23).
+"""
+
 
 def _harvested(descriptor: DatasetDescriptor, /) -> bool:
     """Whether ``store sync`` asks a capture dataset's source before sealing it (D9)."""
