@@ -30,9 +30,17 @@ from tests.unit.test_store_catalog_chmu import (
     serve,
 )
 
-NOW = ("hydro_now_get", "meteo_now_listing", "meteo_now_get", "meteo_now_previous_get")
+NOW = (
+    "hydro_now_get",
+    "meteo_now_listing",
+    "meteo_now_get",
+    "meteo_now_previous_get",
+    "groundwater_now_get",
+)
 HYDRO_NOW = BASE_URL + "hydrology/now/metadata/meta1.json"
 METEO_LISTING = BASE_URL + "meteorology/climate/now/metadata/"
+GROUNDWATER_NOW = BASE_URL + "hydrology/groundwater/now/metadata/meta1.json"
+BORE, SPRING = "0-203-1-VP0624", "0-203-1-PP0744"
 IMGW_HYDRO, IMGW_METEO = (file.url for file in station_source_files())
 IMGW_HYDRO_CSV = '"149190310","RABA GÓRNA","Raba (2138)","2"\n'
 IMGW_METEO_CSV = '"249190310","RABA GÓRNA","GR"\n'
@@ -68,11 +76,13 @@ async def test_live_search_reads_the_current_metadata_and_finds_czech_names(rout
         station.river,
     ) == ("CHMU", "hydro", "0-203-1-900001", "Špindlerův Mlýn", "Labe")
     assert (station.latitude, station.longitude) == (50.4032345, 15.6012345)
-    # One GET of hydro meta1, the meteo listing and only its newest dated file.
+    # One GET of hydro meta1, the meteo listing and only its newest dated file, and
+    # of the groundwater meta1 (ADR-032).
     assert traffic(router) == [
         ("GET", HYDRO_NOW),
         ("GET", METEO_LISTING),
         ("GET", METEO_LISTING + "meta1-20261018.json"),
+        ("GET", GROUNDWATER_NOW),
     ]
     assert not routes["meteo_now_previous_get"].called
     assert {call.request.headers["User-Agent"] for call in router.calls} == {
@@ -93,6 +103,7 @@ def test_live_coordinates_are_the_published_values_without_border_check(router):
     assert located["0-203-0-90001"] == (50.2147, 14.8213)
     assert located["0-20000-0-99903"] == (64.1311, -21.9405)
     assert located["0-203-1-900004"] == (0.0, 0.0)
+    assert located[BORE] == (50.6259733, 15.1832503)
 
 
 def test_kind_reads_only_the_list_of_its_family(router):
@@ -106,6 +117,23 @@ def test_kind_reads_only_the_list_of_its_family(router):
         "0-203-0-90000000002",
     ]
     assert not routes["hydro_now_get"].called
+    assert not routes["groundwater_now_get"].called
+
+
+def test_kind_groundwater_reads_only_the_objects_and_names_bore_or_spring(router):
+    routes = serve(router, *NOW)
+
+    found = find_stations(provider="CHMU", kind="groundwater")
+
+    assert traffic(router) == [("GET", GROUNDWATER_NOW)]
+    assert not routes["hydro_now_get"].called
+    assert [
+        (s.kind, s.station_code, s.name, s.groundwater_kind, s.latitude, s.longitude)
+        for s in found
+    ] == [
+        ("groundwater", BORE, "Rakousy", "bore", 50.6259733, 15.1832503),
+        ("groundwater", SPRING, "Želechy", "spring", 50.5518065, 15.3798331),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -135,11 +163,13 @@ def test_without_provider_both_providers_are_searched_in_registry_order(router):
 
     found = find_stations(query="ra")
 
-    # "ra" is in RABA GÓRNA (IMGW-PIB) and Srážková Lhota (ČHMÚ, without diacritics).
+    # "ra" is in RABA GÓRNA (IMGW-PIB), Srážková Lhota (ČHMÚ, without diacritics) and
+    # the bore Rakousy (ČHMÚ's groundwater, after the meteo stations).
     assert [(s.provider, s.kind, s.station_code) for s in found] == [
         ("IMGW", "hydro", "149190310"),
         ("IMGW", "meteo", "249190310"),
         ("CHMU", "meteo", "0-203-0-90000000002"),
+        ("CHMU", "groundwater", BORE),
     ]
 
 

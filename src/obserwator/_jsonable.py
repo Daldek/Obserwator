@@ -134,8 +134,16 @@ def _convert(value: object, ctx: _Context) -> object:
     if isinstance(value, _plan_type()):
         return _convert(value._document(), ctx)
     if is_dataclass(value) and not isinstance(value, type):
-        names = (item.name for item in fields(value))
-        return _document(value, {name: getattr(value, name) for name in names}, ctx)
+        # A field marked ``omit_none`` is an optional field of its document (ECO-085):
+        # written only when set.
+        values = {
+            item.name: getattr(value, item.name)
+            for item in fields(value)
+            if not (
+                item.metadata.get("omit_none") and getattr(value, item.name) is None
+            )
+        }
+        return _document(value, values, ctx)
     if isinstance(value, Mapping):
         return {_key(key, ctx): _convert(item, ctx) for key, item in value.items()}
     if isinstance(value, tuple | list):

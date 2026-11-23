@@ -27,7 +27,7 @@ from obserwator.commands import (
     parse_command,
     validate_command,
 )
-from obserwator.datasets import datasets, providers
+from obserwator.datasets import CAPTURE_SCOPE, datasets, providers
 from obserwator.exceptions import (
     ERROR_CODES,
     ObserwatorError,
@@ -138,17 +138,56 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "Envelope, statuses and errors" if lang == "en" else "Koperta, statusy i błędy",
     )
 
-    keys = [cells[0] for cells in rows(held) if cells[0].startswith("`")]
-    assert keys == [
-        f"`{descriptor.key}`" for descriptor in datasets() if descriptor.in_store
-    ]
+    # The table holds the measurements; the station sources (ADR-015, ADR-032) and the
+    # captures (ADR-030) are one line each, naming their keys by pattern
+    # (`*_stations`, `pl.imgw.*_{current,operational}`), the datasets outside the
+    # store one line of keys folded by prefix (`pl.imgw.{a,b}`).
+    table: list[str] = []
+    lines: dict[str, list[str]] = {
+        "station_sources": [],
+        "captures": [],
+        "outside_store": [],
+    }
     for descriptor in datasets():
-        prefix, _, name = descriptor.key.rpartition(".")
-        # Keys outside the store are folded by prefix: `pl.imgw.{a,b}`.
-        folded = re.search(rf"`{re.escape(prefix)}\.\{{([a-z0-9_,]+)\}}`", held)
-        assert f"`{descriptor.key}`" in held or (
-            folded is not None and name in folded[1].split(",")
-        ), descriptor.key
+        if not descriptor.in_store:
+            lines["outside_store"].append(descriptor.key)
+        elif descriptor.time_unit == "station_list":
+            lines["station_sources"].append(descriptor.key)
+        elif descriptor.archive_scope == CAPTURE_SCOPE:
+            lines["captures"].append(descriptor.key)
+        else:
+            table.append(f"`{descriptor.key}`")
+    keys = [cells[0] for cells in rows(held) if cells[0].startswith("`")]
+    assert keys == table
+    assert lines["captures"] == [
+        "pl.imgw.hydro_current",
+        "pl.imgw.meteo_current",
+        "pl.imgw.meteo_synop_current",
+        "pl.imgw.warnings_hydro_current",
+        "pl.imgw.warnings_meteo_current",
+        "pl.imgw.hydro_states_current",
+        "pl.imgw.hydro_operational",
+        "pl.imgw.meteo_operational",
+        "pl.imgw.meteo_states_current",
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
+    ]
+    served = [descriptor.key for descriptor in datasets()]
+    for name, wanted in lines.items():
+        label = message(f"agent_guide.{name}", lang=lang).split(" (")[0]
+        line = next(line for line in held.splitlines() if line.startswith(label))
+        # A code span as a pattern: `*` any text, `{a,b}` one of the names.
+        patterns = [
+            re.sub(
+                r"\\\{([a-z0-9_,]+)\\\}",
+                lambda names: f"(?:{'|'.join(names[1].split(','))})",
+                re.escape(span).replace(r"\*", ".*"),
+            )
+            for span in re.findall(r"`([^`]+)`", line)
+        ]
+        named = {key for key in served if any(re.fullmatch(p, key) for p in patterns)}
+        # Each line names exactly its own keys, none of another family.
+        assert named == set(wanted), name
     statuses = {
         tuple(cells[:2]) for cells in rows(envelope) if cells[0].startswith("`")
     }

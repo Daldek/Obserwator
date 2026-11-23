@@ -17,6 +17,8 @@ MESSAGES: dict[str, Text] = {
     "stations.list.kind_all": Text("All", "Wszystkie"),
     "stations.list.kind_hydro": Text("Hydrological", "Hydrologiczne"),
     "stations.list.kind_meteo": Text("Meteorological", "Meteorologiczne"),
+    # Offered only where a catalog holds ČHMÚ's groundwater objects (ADR-032)
+    "stations.list.kind_groundwater": Text("Groundwater", "Podziemne"),
     "stations.list.datasets": Text(
         "Series in the data root", "Szeregi w katalogu danych"
     ),
@@ -110,6 +112,12 @@ MESSAGES: dict[str, Text] = {
     "stations.legend.symbols_note": Text(
         "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl.",
         "Kształty i kolory stacji jak na mapie hydro.imgw.pl (IMGW-PIB).",
+    ),
+    "stations.legend.groundwater_note": Text(
+        "The diamond of a groundwater object (ČHMÚ's boreholes and springs) is "
+        "Obserwator's own: hydro.imgw.pl has no such stations.",
+        "Romb obiektu wód podziemnych (otwory obserwacyjne i źródła ČHMÚ) to znak "
+        "Obserwatora: hydro.imgw.pl nie ma takich stacji.",
     ),
     "stations.legend.hydro_title": Text(
         "Hydrological stations: water state", "Stacje hydrologiczne: stan wody"

@@ -44,7 +44,10 @@ Tolerated differences, because live sources change between the calls:
 - ``checked_at`` of plans: the moment of the check;
 - current data (``current *``) are compared by structure: status, keys and the
   keys of every item must agree, while the measured values, the number of items
-  on the page and its ``page`` (``total``, ``next_cursor``, ``truncated``) may change.
+  on the page and its ``page`` (``total``, ``next_cursor``, ``truncated``) may change;
+- the hourly poll (``current poll``) by its status and keys only: an interface asks
+  a source the one before it asked within the source's interval no more (skipped,
+  P16), so its answers, files, notices and lines differ.
 
 Version labels of the station catalog and of PMAXTP cells are the dates of
 their creation (UTC): a run across midnight UTC reports them as differences
@@ -146,6 +149,7 @@ MCP_PAGE = 50
 # Commands that write; every other command must leave its directories intact.
 WRITES = {
     "datasets download",
+    "current poll",
     "pmaxtp sync",
     "store init",
     "store sync",
@@ -193,12 +197,16 @@ class Case:
     ``"absent"`` (no directories) or ``"plain"`` (directories that are no roots);
     ``None`` = no root. ``clean``: entries of the working directory removed
     before every interface. ``live``: current data, compared by structure.
+    ``polled``: the hourly poll into the capture spool (``current poll``): each
+    interface's answer depends on the polls before it (a source asked within its
+    interval is skipped, P16), so only the structure and status are compared.
     """
 
     options: dict[str, object]
     store: str | None = None
     clean: tuple[str, ...] = ()
     live: bool = False
+    polled: bool = False
 
 
 @dataclass(frozen=True)
@@ -277,6 +285,7 @@ CASES: dict[str, list[Case]] = {
     "current synop": [Case({"station": SYNOP, "limit": 1}, live=True)],
     "current warnings": [Case({"kind": "meteo", "limit": 2}, live=True)],
     "current hydro-states": [Case({"main_only": True, "limit": 3}, live=True)],
+    "current poll": [Case({}, polled=True)],
     "pmaxtp fetch": [Case({"latitude": LATITUDE, "longitude": LONGITUDE})],
     "pmaxtp url": [
         Case({"latitude": LATITUDE, "longitude": LONGITUDE, "method": "AMP"})
@@ -419,6 +428,10 @@ def tolerance(case: Case, path: str, left: object, right: object) -> str | None:
         path.startswith(("$.result[", "$.page.")) or path == "$.result.length"
     ):
         return "dane bieżące"
+    if case.polled and path.startswith(
+        ("$.result.", "$.notices", "$.attribution", "$.terms_notice")
+    ):
+        return "odpytanie na żywo"
     return None
 
 

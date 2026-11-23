@@ -17,7 +17,7 @@ from obserwator.gui._http import Prebuilt
 if TYPE_CHECKING:
     from obserwator.gui._analyses import Analyses
     from obserwator.gui._feedback import Feedback
-    from obserwator.gui._live import CurrentData, Pmaxtp
+    from obserwator.gui._live import CurrentData, LiveTail, Pmaxtp
     from obserwator.gui._root import DataRoot
     from obserwator.gui._traffic import TrafficState
 
@@ -39,6 +39,8 @@ class GuiState:
         Snapshots of IMGW-PIB's current data.
     pmaxtp : Pmaxtp
         PMAXTP of points.
+    tail : LiveTail
+        The live tails of the stations' charts in „teraz” (O6).
     traffic : TrafficState
         Rate limit and daily statistics (Nogat DEV-15.9, DEV-15.11).
     feedback : Feedback
@@ -66,6 +68,7 @@ class GuiState:
     analyses: Analyses
     current: CurrentData
     pmaxtp: Pmaxtp
+    tail: LiveTail
     traffic: TrafficState
     feedback: Feedback
     terms: bytes | None

@@ -4,10 +4,12 @@ Fixtures of the GUI server's tests: the fixture root, recorded live data, the ap
 The data root is the session's ``fixture_root`` (``tests/conftest.py``: the data root of
 ``build_fixture_store(raw, data_root=data, variant="complete_pl_cz")``, IMGW-PIB and
 ČHMÚ) and a read-only copy of it, also with the analyses that ``build_analyses`` stores
-with the recorded Hydrolog of ``tests/fixtures/hydrolog``; IMGW-PIB's current data and
-PMAXTP are the library's recorded answers, put into the app's `GuiState`; Hydrolog's
-program of the app (``OBSERWATOR_HYDROLOG_COMMAND``) is a small recorded program that
-answers ``config show`` and ``commands batch`` as Hydrolog does, or none.
+with the recorded Hydrolog of ``tests/fixtures/hydrolog``; ČHMÚ's groundwater objects
+(ADR-032) are in the data root of the variant ``groundwater`` (`groundwater_root`);
+IMGW-PIB's current data and PMAXTP are the library's recorded answers, put into the app's
+`GuiState`; Hydrolog's program of the app (``OBSERWATOR_HYDROLOG_COMMAND``) is a small
+recorded program that answers ``config show`` and ``commands batch`` as Hydrolog does, or
+none.
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ METEO = "123750000"
 """IMGW-PIB's precipitation station of the fixture root (January 2001)."""
 METEO_CHMU = "0-203-0-90001"
 """ČHMÚ's meteorological station of the fixture root."""
+BORE = "0-203-1-VP0624"
+"""ČHMÚ's bore „Rakousy” of the variant ``groundwater`` (ADR-032): daily 2024, weekly 2012."""
+SPRING = "0-203-1-PP0744"
+"""ČHMÚ's spring „Želechy” of the variant ``groundwater``: daily 2024, weekly 2014."""
 PMAXTP_POINT = (52.23, 21.01)
 """The point of the library's PMAXTP recordings."""
 HYDROLOG_VERSION = "0.0.0-test"
@@ -110,6 +116,10 @@ class Live:
         """`fetch_pmaxtp` answering the recorded point."""
         return self.pmaxtp[method]
 
+    def tail(self, provider: str, code: str, hours: int) -> Any:
+        """A live tail (`LiveTail`) a test gave no answers for: the test fails."""
+        raise AssertionError(f"no live tail is recorded for {provider} {code}")
+
 
 def read_only(path: Path, *, writable: bool = False) -> None:
     """Make a tree read-only, or writable again so that it can be removed."""
@@ -128,6 +138,12 @@ def imgw_root(tmp_path_factory):
         base / "raw", data_root=base / "data", variant="complete"
     )
     return roots.data.root
+
+
+@pytest.fixture(scope="session")
+def groundwater_root(groundwater_roots):
+    """The data root of the variant ``groundwater`` (``complete_pl_cz`` and ČHMÚ's groundwater)."""
+    return groundwater_roots.data.root
 
 
 @pytest.fixture(scope="session")
@@ -229,15 +245,16 @@ def make_client(
     """
     Open a client of the app, its lifespan running, until the test ends.
 
-    ``make_client(root=None, *, hydrolog=None, live=…, headers=…, log=None,
+    ``make_client(root=None, *, hydrolog=None, live=…, tail=None, headers=…, log=None,
     address="testclient", **config)``: the app on ``root`` (the read-only root by
     default) with Hydrolog's program ``hydrolog`` (a command line's words; none by
     default), the settings changed by ``config``, the live sources of ``live``
-    (`Live.sources` names; recorded by default), the access and app log of ``log`` (a
+    (`Live.sources` names; recorded by default), the `LiveTail` ``tail`` (by default
+    one that fails the test when asked), the access and app log of ``log`` (a
     ``ServerLog``; none by default) and requests from the client address ``address``.
     """
     from obserwator.gui._app import build_app
-    from obserwator.gui._live import CurrentData, Pmaxtp
+    from obserwator.gui._live import CurrentData, LiveTail, Pmaxtp
 
     opened: list[TestClient] = []
 
@@ -247,6 +264,7 @@ def make_client(
         hydrolog: tuple[str, ...] | None = None,
         sources: dict[str, Callable[[], Any]] | None = None,
         fetch: Callable[..., Any] | None = None,
+        tail: Any = None,
         headers: dict[str, str] | None = None,
         log: Any = None,
         address: str = "testclient",
@@ -261,6 +279,7 @@ def make_client(
         app = build_app(config, log=log)
         app.state.gui.current = CurrentData(sources=sources or live.sources(), log=log)
         app.state.gui.pmaxtp = Pmaxtp(fetch=fetch or live.fetch, log=log)
+        app.state.gui.tail = tail or LiveTail(fetch=live.tail, log=log)
         client = TestClient(app, headers=headers, client=(address, 50000))
         client.__enter__()
         opened.append(client)

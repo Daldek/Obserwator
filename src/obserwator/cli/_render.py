@@ -57,6 +57,8 @@ _COLUMNS: Mapping[str, tuple[str, ...]] = {
     "items": ("slot", "server_path", "station_code", "status", "error_code", "error"),
     "actions": ("command", "status", "detail"),
     "files": ("path", "status", "size_bytes"),
+    # The sources of the hourly poll (`obserwator.captures.PollReport`).
+    "answers": ("dataset", "status", "http_status", "error_code", "error"),
     # A provider of the registry, or of an analyses build (`ProviderAnalyses`).
     "providers": (
         "id",

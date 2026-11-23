@@ -1,0 +1,264 @@
+{
+  "recorded_at": "2026-11-23T12:49:06Z",
+  "hours_interval": 38,
+  "description": "Answers of hydro-back.imgw.pl, danepubliczne.imgw.pl and opendata.chmi.cz recorded for O2 (ADR-030): hydro-back's series of three stations with the hoursInterval of a harvest of 2026-11-22 at recorded_at, the telemetry listing and a cut monthly zip, ČHMÚ's now metadata, recent day files, a now file and an hourly year. Cut files say what was kept.",
+  "interactions": [
+    {
+      "case": "map",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/map/stations/hydrologic?onlyMainStations=false",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/map/stations/hydrologic.json",
+      "sha256": "36e7633664c6ed893dc098edceeff989e087b2601d4271312f2adf0128a52f16",
+      "received_at": "2026-11-23T12:49:07Z",
+      "cut": "the stations 151160060, 154190080 and 150200110 of the 910 of the map"
+    },
+    {
+      "case": "api_hydro",
+      "method": "GET",
+      "url": "https://danepubliczne.imgw.pl/api/data/hydro",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "danepubliczne.imgw.pl/api/data/hydro.json",
+      "sha256": "0a8ba564d2ad9119bc0deb36c338a5d2b8eb53b4a2aa5a57654e152ba6103f94",
+      "received_at": "2026-11-23T12:49:13Z",
+      "cut": "the rows of 151160060 and 154190080 (150200110 is not listed)"
+    },
+    {
+      "case": "status_data_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status/data?id=151160060&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/status/data/151160060.json",
+      "sha256": "4f4e3aff2a89bedc408e9b30aabd0525abe22e83ff076d974ef925d576053cc4",
+      "received_at": "2026-11-23T12:49:18Z"
+    },
+    {
+      "case": "discharge_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/discharge?id=151160060&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/discharge/151160060.json",
+      "sha256": "5d9cdff8ecdb53a2e8dc309d7c6190d346ca958631817249fac9da1f4030278d",
+      "received_at": "2026-11-23T12:49:26Z"
+    },
+    {
+      "case": "water-temperature_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/water-temperature?id=151160060&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/water-temperature/151160060.json",
+      "sha256": "ec9f3e5ec8564badb9a623807681c41537e54a86eee82a35c3bb4bd954d7044b",
+      "received_at": "2026-11-23T12:49:30Z"
+    },
+    {
+      "case": "status_data_154190080",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status/data?id=154190080&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/status/data/154190080.json",
+      "sha256": "e67ed780e6f83b142354e048f1ecb837e51709f91baf65af7d3c4b83ca9b3537",
+      "received_at": "2026-11-23T12:49:37Z"
+    },
+    {
+      "case": "water-temperature_154190080",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/water-temperature?id=154190080&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/water-temperature/154190080.json",
+      "sha256": "e3cf1812306d6c3f0268e8c5d03cda485b6ea6c8fad7a62265f61be7b7a38e03",
+      "received_at": "2026-11-23T12:49:43Z"
+    },
+    {
+      "case": "status_data_150200110",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status/data?id=150200110&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/status/data/150200110.json",
+      "sha256": "fbbd25950e03e7c260fab6cc92b9e7b3d2aecef9c8cb100106d673b817350cca",
+      "received_at": "2026-11-23T12:49:50Z"
+    },
+    {
+      "case": "discharge_150200110",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/discharge?id=150200110&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/discharge/150200110.json",
+      "sha256": "9c81fdd8436c4bcc452b1717856f222e3e973c106c98ab34ac2236f2aa523160",
+      "received_at": "2026-11-23T12:49:55Z"
+    },
+    {
+      "case": "water-temperature_150200110",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/water-temperature?id=150200110&hoursInterval=38",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "file": "hydro-back.imgw.pl/station/hydro/water-temperature/150200110.json",
+      "sha256": "c990b556866f54db7270acfa112fa75b5918d95b8a1704e93718bc65bc3039c1",
+      "received_at": "2026-11-23T12:50:01Z"
+    },
+    {
+      "case": "telemetry_listing_2026",
+      "method": "POST",
+      "url": "https://danepubliczne.imgw.pl/datastore/getFilesList",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "file": "danepubliczne.imgw.pl/datastore/getFilesList/2026.html",
+      "sha256": "376ac623188018046ef0f76ca30a02ab5118a3102791981a43fabd70157be966",
+      "received_at": "2026-11-23T12:50:06Z"
+    },
+    {
+      "case": "telemetry_listing_2030",
+      "method": "POST",
+      "url": "https://danepubliczne.imgw.pl/datastore/getFilesList",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      "file": "danepubliczne.imgw.pl/datastore/getFilesList/2030.html",
+      "sha256": "a3123a01c22390c85e3454d5139c6c68b25885a1c673dea05395c5d71a9afde0",
+      "received_at": "2026-11-23T12:50:12Z"
+    },
+    {
+      "case": "chmu_meta1",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/now/metadata/meta1.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Last-Modified": "Mon, 23 Nov 2026 12:01:06 GMT",
+        "ETag": "\"6b042b02-15e0b\""
+      },
+      "file": "opendata.chmi.cz/hydrology/now/metadata/meta1.json",
+      "sha256": "70274e42660b7b24fce8430ebd0017e176d7c218c94acd9a885f7560e00ae0d8",
+      "received_at": "2026-11-23T12:50:19Z",
+      "cut": "the rows of 0-203-1-001000, 0-203-1-002000 and 0-203-1-089500 of 548"
+    },
+    {
+      "case": "chmu_recent_0-203-1-001000",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-001000.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Last-Modified": "Mon, 23 Nov 2026 00:20:09 GMT",
+        "ETag": "\"6b0386b9-31f0\""
+      },
+      "file": "opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-001000.json",
+      "sha256": "1e1b3d4400ce6c730a204a9311c8af0cef0fe2fa4cc09a3e087cc26cd89cffe6",
+      "received_at": "2026-11-23T12:50:24Z"
+    },
+    {
+      "case": "chmu_recent_0-203-1-002000",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-002000.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Last-Modified": "Mon, 23 Nov 2026 00:20:04 GMT",
+        "ETag": "\"6b0386b4-3175\""
+      },
+      "file": "opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-002000.json",
+      "sha256": "db90d5a5bb4501aee4e9d921416931abe30503c4579fef9973d8500864317ea4",
+      "received_at": "2026-11-23T12:50:30Z"
+    },
+    {
+      "case": "chmu_recent_0-203-1-089500",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-089500.json",
+      "status": 404,
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "file": "opendata.chmi.cz/hydrology/recent/data/20261122_0-203-1-089500.json",
+      "sha256": "533a1ca5d6595793725bca7641d9461a0f00dd1732dded3e4281196f5dd21736",
+      "received_at": "2026-11-23T12:50:36Z"
+    },
+    {
+      "case": "chmu_now",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/now/data/0-203-1-001000.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Last-Modified": "Mon, 23 Nov 2026 12:40:09 GMT",
+        "ETag": "\"6b043429-1aa4\""
+      },
+      "file": "opendata.chmi.cz/hydrology/now/data/0-203-1-001000.json",
+      "sha256": "88e7eea5da54a0582d8960969c87bb6213e2e6b870603725e05185ff31ef7e45",
+      "received_at": "2026-11-23T12:50:42Z"
+    },
+    {
+      "case": "chmu_hourly_listing",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/historical/data/hourly/",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html"
+      },
+      "file": "opendata.chmi.cz/hydrology/historical/data/hourly/index.html",
+      "sha256": "cb64154f5909d540f37474e3d785acfae4e22bea8ba5993d4a33234ae574bc6b",
+      "received_at": "2026-11-23T12:50:49Z",
+      "cut": "the rows of 0-203-1-001000 of 12,358 files"
+    },
+    {
+      "case": "chmu_hourly_2025",
+      "method": "GET",
+      "url": "https://opendata.chmi.cz/hydrology/historical/data/hourly/H_0-203-1-001000_HQ_2025.json",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json",
+        "Last-Modified": "Thu, 21 May 2026 11:30:02 GMT",
+        "ETag": "\"6a0eecba-7d5ed\""
+      },
+      "file": "opendata.chmi.cz/hydrology/historical/data/hourly/H_0-203-1-001000_HQ_2025.json",
+      "sha256": "f09565b51eb0f10e76ca94fc9512f6cd2d7d81bb771ad4f3889aaa88baf33952",
+      "received_at": "2026-11-23T12:50:55Z",
+      "cut": "the first 48 hours of each series (HH, QH) of the 8,760 of 2025"
+    },
+    {
+      "case": "telemetry_zip",
+      "method": "GET",
+      "url": "https://danepubliczne.imgw.pl/datastore/getfiledown/Arch/Telemetria/Hydro/2026/Hydro_2026-10.zip",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/zip",
+        "Content-Disposition": "attachment; filename=\"Hydro_2026-10.zip\""
+      },
+      "file": "danepubliczne.imgw.pl/datastore/getfiledown/Arch/Telemetria/Hydro/2026/Hydro_2026-10.zip",
+      "sha256": "9ccad583a6b89fbf3a91159fc8509bd37e5d450672e8315ce35030a4cb092014",
+      "received_at": "2026-11-23T12:50:57Z",
+      "cut": "the rows of 151160060 and 150160180: of B00020S and B00050S those of 2026-10-01, of B00100S every row (151160060's daily readings)"
+    }
+  ]
+}

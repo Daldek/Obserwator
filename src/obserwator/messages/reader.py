@@ -41,6 +41,12 @@ MESSAGES = {
         "the fields content_sha256 and content_form appear together or not at all",
         "pola content_sha256 i content_form występują razem albo wcale",
     ),
+    "fields_tier_publication": Text(
+        "the fields tier and publication appear together or not at all, tier one of "
+        "{tiers}, publication one of {publications}",
+        "pola tier i publication występują razem albo wcale, tier jedno z {tiers}, "
+        "publication jedno z {publications}",
+    ),
     "field_content_sha256_must_have": Text(
         "the field content_sha256 must have 64 lowercase hex digits",
         "pole content_sha256 musi mieć 64 małe cyfry szesnastkowe",
@@ -271,12 +277,14 @@ MESSAGES = {
         "Obserwacja {relative}: {exc}",
     ),
     "archive_key_path_series_key": Text(
-        "archive:<key>:<path>, series:<key>, catalog:<catalog key> ({values}), "
+        "archive:<key>:<path>, series:<key>, series:<key>:<YYYY-MM> of a sub-daily "
+        "series ({monthly}), catalog:<catalog key> ({values}), "
         "pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY> or analyses:<provider key "
         "prefix>.analyses ({analyses})",
-        "archive:<klucz>:<ścieżka>, series:<klucz>, catalog:<klucz katalogu> "
-        "({values}), pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY> albo "
-        "analyses:<prefiks klucza dostawcy>.analyses ({analyses})",
+        "archive:<klucz>:<ścieżka>, series:<klucz>, series:<klucz>:<RRRR-MM> szeregu "
+        "godzinowego ({monthly}), catalog:<klucz katalogu> ({values}), "
+        "pmaxtp:pl.imgw.pmaxtp:<POT|AMP>/<indX>_<indY> albo analyses:<prefiks klucza "
+        "dostawcy>.analyses ({analyses})",
     ),
     "symbolic_link_store": Text(
         "A symbolic link in the store: {relative}",
@@ -319,6 +327,10 @@ MESSAGES = {
     "unknown_kind_key": Text(
         "an unknown kind or key",
         "nieznany rodzaj lub klucz",
+    ),
+    "monthly_slot_needs_month": Text(
+        "the sub-daily series {key} has a version per month: series:{key}:<YYYY-MM>",
+        "szereg godzinowy {key} ma wersję na każdy miesiąc: series:{key}:<RRRR-MM>",
     ),
     "corrupt_version_slot": Text(
         "A corrupt version in the slot {slot}: {problem}",
@@ -479,6 +491,28 @@ MESSAGES = {
         "the range {start}–{end} is reversed",
         "przedział {start}–{end} ma odwróconą kolejność",
     ),
+    "range_must_pair_hours": Text(
+        "the range must be a pair of hours",
+        "przedział musi być parą godzin",
+    ),
+    "time_must_hour_text": Text(
+        "a time must be the start of an hour in UTC, YYYY-MM-DDTHH:00:00Z: {value!r}",
+        "czas musi być początkiem godziny w UTC, RRRR-MM-DDTGG:00:00Z: {value!r}",
+    ),
+    "month_must_text": Text(
+        "the month must be a text YYYY-MM: {value!r}",
+        "miesiąc musi być tekstem RRRR-MM: {value!r}",
+    ),
+    "period_outside_month": Text(
+        "the period {start}–{end} lies outside the month {month}",
+        "okres {start}–{end} wykracza poza miesiąc {month}",
+    ),
+    "tiers_must_list": Text(
+        "tiers must be a non-empty list of distinct tiers ({tiers}), highest first: "
+        "{value!r}",
+        "tiers musi być niepustą listą różnych poziomów ({tiers}), od najwyższego: "
+        "{value!r}",
+    ),
     "must_integer": Text(
         "{name} must be an integer ≥ {minimum}",
         "{name} musi być liczbą całkowitą ≥ {minimum}",
@@ -563,6 +597,11 @@ MESSAGES = {
         "The store has no series {key}; run series build first",
         "Brak szeregu {key} w magazynie; najpierw uruchom series build",
     ),
+    "series_not_monthly": Text(
+        "The series {key} has no version per month; a sub-daily series has ({monthly})",
+        "Szereg {key} nie ma wersji na każdy miesiąc; ma je szereg godzinowy "
+        "({monthly})",
+    ),
     "variables_must_list_variable_names": Text(
         "variables must be a list of variable names, not a single text",
         "variables musi być listą nazw zmiennych, nie pojedynczym tekstem",
@@ -600,6 +639,10 @@ MESSAGES = {
         "the Parquet metadata do not match the index",
         "metadane Parquet nie odpowiadają spisowi",
     ),
+    "time_column_without_zone": Text(
+        "the column time has no time zone (UTC)",
+        "kolumna time nie ma strefy czasowej (UTC)",
+    ),
     "number_rows_differs_from_index": Text(
         "the number of rows {num_rows} differs from the index ({rows})",
         "liczba wierszy {num_rows} różni się od spisu ({rows})",
@@ -613,6 +656,11 @@ MESSAGES = {
         "{station} on {day}",
         "Niespójna flaga {flag!r} zmiennej {name} stacji {station} z {day}",
     ),
+    "inconsistent_tier_variable_station": Text(
+        "An inconsistent tier {tier!r} of the variable {name} of the station "
+        "{station} at {time}",
+        "Niespójny poziom danych {tier!r} zmiennej {name} stacji {station} z {time}",
+    ),
     "invalid_quality_source_flag_variable": Text(
         "An invalid quality or source flag of the variable {name} of the station "
         "{station} on {day}",
@@ -625,6 +673,12 @@ MESSAGES = {
     "semi_annual_series_supports_only": Text(
         "A semi-annual series supports only the hydrological year",
         "Szereg półroczny obsługuje wyłącznie rok hydrologiczny",
+    ),
+    "selection_refuses_monthly": Text(
+        "The series {key} holds hours in a version per month: a selection hands daily "
+        "series to the analyses",
+        "Szereg {key} przechowuje godziny w wersjach miesięcznych: wybór przekazuje "
+        "analizom szeregi dobowe",
     ),
     "years_outside_series": Text(
         "Years outside the series {key} ({kind}): {years}",

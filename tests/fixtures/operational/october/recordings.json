@@ -1,0 +1,71 @@
+{
+  "recorded_at": "2026-11-23T14:43:03Z",
+  "hours_interval": 1288,
+  "description": "Answers of hydro-back.imgw.pl recorded for O4 (ADR-031): a harvest of 2026-10-01 to 2026-10-31 of 151160060 (Głogów) and 150160180 (Kłodzko) started at recorded_at, each station asked for H, Q and T with the hoursInterval reaching 00:00 UTC of 2026-10-01 (Kłodzko answers no T); bodies as the spool kept them (the capture keeps time, address, status and body, no headers). The telemetry zip of October cut to the two stations.",
+  "interactions": [
+    {
+      "case": "status_data_150160180",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status/data?id=150160180&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/status/data/150160180.json",
+      "sha256": "fcbad3df311b452c9d1e12178fb53b127e86b628960058ba4f1bbfd9e1b45e20",
+      "received_at": "2026-11-23T14:43:06.111218Z"
+    },
+    {
+      "case": "discharge_150160180",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/discharge?id=150160180&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/discharge/150160180.json",
+      "sha256": "c2cf3eb66a9dbb249f6dce889d03e01cc982370309894aab269c2e7f528ec486",
+      "received_at": "2026-11-23T14:43:09.869369Z"
+    },
+    {
+      "case": "water-temperature_150160180",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/water-temperature?id=150160180&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/water-temperature/150160180.json",
+      "sha256": "c990b556866f54db7270acfa112fa75b5918d95b8a1704e93718bc65bc3039c1",
+      "received_at": "2026-11-23T14:43:14.134792Z"
+    },
+    {
+      "case": "status_data_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/status/data?id=151160060&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/status/data/151160060.json",
+      "sha256": "bf88b7a00237e7230feb41fa75946da4d37dd8f3ac8880217003ddb4d9d16a08",
+      "received_at": "2026-11-23T14:43:19.982843Z"
+    },
+    {
+      "case": "discharge_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/discharge?id=151160060&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/discharge/151160060.json",
+      "sha256": "ecbddcf4185d0113f28f8004034a8e6c334d376549f867eb514fe5988d103fbe",
+      "received_at": "2026-11-23T14:43:24.862025Z"
+    },
+    {
+      "case": "water-temperature_151160060",
+      "method": "GET",
+      "url": "https://hydro-back.imgw.pl/station/hydro/water-temperature?id=151160060&hoursInterval=1288",
+      "status": 200,
+      "file": "hydro-back.imgw.pl/station/hydro/water-temperature/151160060.json",
+      "sha256": "4695c577c06bf6321e5d42218a183395567f859011e123a305db596895d08c9d",
+      "received_at": "2026-11-23T14:43:29.126037Z"
+    },
+    {
+      "case": "telemetry_zip",
+      "method": "GET",
+      "url": "https://danepubliczne.imgw.pl/datastore/getfiledown/Arch/Telemetria/Hydro/2026/Hydro_2026-10.zip",
+      "status": 200,
+      "file": "danepubliczne.imgw.pl/datastore/getfiledown/Arch/Telemetria/Hydro/2026/Hydro_2026-10.zip",
+      "sha256": "dab3ecb2f919939dda474560d35791bd9c222a9802f64e1475db245be24eac13",
+      "received_at": "2026-11-16T10:26:00Z",
+      "cut": "every row of 151160060 and 150160180 (B00020S, B00050S, B00100S) of the zip of 17570061 bytes, sha256 ecfdde109202361834697935a02826085e650f38848a4af758dfa0349c337753, downloaded for the plan's probe on 2026-11-16 and again, with the same bytes, on 2026-11-23; its rows of 2026-10-01 are those O2 recorded on 2026-11-23"
+    }
+  ]
+}

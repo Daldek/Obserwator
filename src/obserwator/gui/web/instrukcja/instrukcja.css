@@ -124,6 +124,7 @@ html.guide-page .topbar { position: sticky; top: 0; height: var(--header-height)
 .symbols .sym { align-self: center; }
 .g-hydro, .g-medium { --sym-fill: var(--imgw-medium); }
 .g-meteo, .g-dry { --sym-fill: var(--imgw-no-precip); }
+.g-groundwater { --sym-fill: var(--station-groundwater); }
 .g-alarm { --sym-fill: var(--imgw-alarm); }
 .g-warning { --sym-fill: var(--imgw-warning); }
 .g-high { --sym-fill: var(--imgw-high); }

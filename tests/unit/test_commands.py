@@ -1,4 +1,4 @@
-"""Command catalog (spec §13.3, §13.6): 35 commands, validation, envelope, paging, checks."""
+"""Command catalog (spec §13.3, §13.6): 36 commands, validation, envelope, paging, checks."""
 
 import functools
 import importlib
@@ -70,6 +70,7 @@ SPEC_COMMANDS = [
     "current synop",
     "current warnings",
     "current hydro-states",
+    "current poll",
     "pmaxtp fetch",
     "pmaxtp url",
     "pmaxtp check",
@@ -104,6 +105,7 @@ PUBLIC_MODULES = (
     "obserwator.store",
     "obserwator.commands",
     "obserwator.agent_guide",
+    "obserwator.captures",
 )
 # Valid options of every command in their JSON form (keys, numbers, arrays).
 VALID: dict[str, list[dict[str, object]]] = {
@@ -141,6 +143,7 @@ VALID: dict[str, list[dict[str, object]]] = {
     "current synop": [{"station": "12375", "station_name": "Warszawa"}],
     "current warnings": [{"kind": "meteo"}],
     "current hydro-states": [{"main_only": True}],
+    "current poll": [{}],
     "pmaxtp fetch": [{"latitude": 52.23, "longitude": 21.01, "method": "AMP"}],
     "pmaxtp url": [{"latitude": 49.0, "longitude": 24.5}],
     "pmaxtp check": [
@@ -1014,6 +1017,7 @@ def test_check_command_of_every_command_fetches_no_content_and_writes_nothing(
         "current synop": {"station": "12375"},
         "current warnings": {},
         "current hydro-states": {"main_only": True},
+        "current poll": {},
         "pmaxtp fetch": point,
         "pmaxtp url": point,
         "pmaxtp check": {"root": raw, **point},

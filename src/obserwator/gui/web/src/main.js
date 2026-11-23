@@ -42,6 +42,7 @@ import { ToastHost, toast } from "./ui/toast.js";
 import { TopBar } from "./ui/top-bar.js";
 import { ViewLayout } from "./ui/view-layout.js";
 import { WelcomeDialog } from "./ui/welcome.js";
+import { shownKinds } from "./words.js";
 
 /** The sections open on a first visit: the current measurements and the measurement data. */
 const FIRST_OPEN = ["teraz", "dane"];
@@ -131,6 +132,8 @@ function App({ lang: language }) {
   const featured = scope ? scope.featured : null;
   const all = useMemo(() => (stations && scope ? featuredFirst(stations, featured) : []), [stations, scope !== null, featured]);
   const byCode = useMemo(() => new Map(all.map((station) => [station.code, station])), [all]);
+  // The kinds the switch offers and the legend names: groundwater only where a catalog has it
+  const kinds = useMemo(() => shownKinds(all), [all]);
   const drawn = useMemo(
     () => (scope ? all.filter((station) => onMap(station, filters, scope)) : []),
     [all, scope, filters.provider, filters.kind, filters.datasets, filters.active, filters.others],
@@ -199,7 +202,7 @@ function App({ lang: language }) {
         body: failure
           ? html`<p class="ana-error" role="alert">${t("shell.stations_failed", { reason: failure.message })}</p>`
           : stations && scope
-            ? html`<${StationList} stations=${all} filters=${filters} scope=${scope} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
+            ? html`<${StationList} stations=${all} kinds=${kinds} filters=${filters} scope=${scope} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted" role="status">${t("shell.stations_loading")}</p>`,
         foot: terms,
       };
@@ -215,6 +218,7 @@ function App({ lang: language }) {
     body: html`<${StationMap}
       stations=${drawn}
       byCode=${byCode}
+      kinds=${kinds}
       selected=${selected}
       fly=${fly}
       view=${view}

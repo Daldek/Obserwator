@@ -56,6 +56,11 @@ MESSAGES: dict[str, Text] = {
         "{provider}: hydrological · meteorological",
         "{provider}: hydrologiczne · meteorologiczne",
     ),
+    # A provider whose catalog holds groundwater objects (ADR-032)
+    "station.none.provider_kinds_groundwater": Text(
+        "{provider}: hydrological · meteorological · groundwater",
+        "{provider}: hydrologiczne · meteorologiczne · podziemne",
+    ),
     "station.none.catalog_version": Text(
         "catalog {version}, downloaded {when}", "katalog {version}, pobrany {when}"
     ),
@@ -136,6 +141,7 @@ MESSAGES: dict[str, Text] = {
         "precipitation post", "posterunek opadowy"
     ),
     "station.info.meteo_kind.synop": Text("synoptic station", "stacja synoptyczna"),
+    "station.info.groundwater_kind": Text("Type of object", "Rodzaj obiektu"),
     "station.info.active": Text("Active", "Czynna"),
     "station.info.yes": Text("yes", "tak"),
     "station.info.no": Text("no", "nie"),
@@ -154,6 +160,12 @@ MESSAGES: dict[str, Text] = {
     "station.info.source.pl.imgw.meteo_now": Text(
         "IMGW-PIB's current API (danepubliczne.imgw.pl), meteorological stations",
         "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje meteorologiczne",
+    ),
+    "station.info.source.pl.imgw.meteo_details": Text(
+        "the station page of IMGW-PIB's hydrological service (hydro.imgw.pl), "
+        "meteorological stations",
+        "strona stacji w serwisie hydrologicznym IMGW-PIB (hydro.imgw.pl), stacje "
+        "meteorologiczne",
     ),
     "station.info.source.static": Text(
         "the map of IMGW-PIB's hydrological service (hydro.imgw.pl), the file of "
@@ -176,6 +188,12 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.info.source.cz.chmu.meteo_stations": Text(
         "ČHMÚ's list of stations, meteorology", "wykaz stacji ČHMÚ, meteorologia"
+    ),
+    "station.info.source.cz.chmu.groundwater_now": Text(
+        "ČHMÚ's current metadata, groundwater", "bieżące metadane ČHMÚ, wody podziemne"
+    ),
+    "station.info.source.cz.chmu.groundwater_stations": Text(
+        "ČHMÚ's list of objects, groundwater", "wykaz obiektów ČHMÚ, wody podziemne"
     ),
     # The file of a ČHMÚ station's thresholds (``thresholds.source``), named as in
     # the catalog's ``sources``.
@@ -330,10 +348,10 @@ MESSAGES: dict[str, Text] = {
         "deszczu Chomicza",
     ),
     "station.now.chmu_note": Text(
-        "Obserwator serves no current data of ČHMÚ (now, recent), only the daily series "
-        "of the data root.",
-        "Obserwator nie obsługuje bieżących danych ČHMÚ (now, recent), tylko szeregi "
-        "dobowe z katalogu danych.",
+        "Obserwator shows no current values of ČHMÚ; the hours of a hydrological "
+        "station are drawn in this card where the server serves them.",
+        "Obserwator nie pokazuje bieżących wartości ČHMÚ; godziny stacji "
+        "hydrologicznej są rysowane w tej karcie, gdy serwer je udostępnia.",
     ),
     "station.now.loading": Text(
         "Fetching the current measurements…", "Pobieram pomiary bieżące…"
@@ -393,10 +411,10 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.now.inactive": Text("The station is inactive.", "Stacja jest nieczynna."),
     "station.now.snapshots": Text(
-        "The server's snapshots: {list}; refreshed at most every 10 minutes, never "
-        "stored. Times of measurement in UTC.",
-        "Migawki serwera: {list}; odświeżane najwyżej co 10 minut, niezapisywane. Czasy "
-        "pomiarów w UTC.",
+        "The server's snapshots: {list}; refreshed at most every 10 minutes, each "
+        "answer kept among the server's captured answers. Times of measurement in UTC.",
+        "Migawki serwera: {list}; odświeżane najwyżej co 10 minut, każda odpowiedź "
+        "zapisana wśród zapisanych odpowiedzi serwera. Czasy pomiarów w UTC.",
     ),
     "station.now.source.states": Text(
         "water states (map hydro.imgw.pl)", "stany wody (mapa hydro.imgw.pl)"
@@ -416,6 +434,67 @@ MESSAGES: dict[str, Text] = {
     "station.now.operational": Text(
         "IMGW-PIB's operational data: current, not archival",
         "Dane operacyjne IMGW-PIB: bieżące, nie archiwalne",
+    ),
+    # The chart of „teraz” (O6): the stored hourly series and the hours fetched now
+    "station.now.chart.heading": Text("Hourly chart", "Wykres godzinowy"),
+    "station.now.chart.info": Text(
+        "The station's water level H, discharge Q and water temperature T hour by hour: "
+        "the hourly series of the data root up to its newest stored hour, then the "
+        "hours after it that the server asks the provider for now (hydro.imgw.pl or "
+        "ČHMÚ's now file), at most every 10 minutes, each answer kept among its "
+        "captured answers.\n\n"
+        "Each tier of the data has its own line: verified data solid, telemetry "
+        "dashed, captured answers dotted, the hours fetched now green. A reading that "
+        "stands alone (a water temperature measured once a day) is a point. H shows "
+        "IMGW-PIB's warning and alarm levels (hydro.imgw.pl). Times in your "
+        "browser's time zone.",
+        "Stan wody H, przepływ Q i temperatura wody T stacji godzina po godzinie: "
+        "szereg godzinowy z katalogu danych do najnowszej zapisanej godziny, a po niej "
+        "godziny, o które serwer pyta teraz dostawcę (hydro.imgw.pl albo plik now "
+        "ČHMÚ), najwyżej co 10 minut, każdą odpowiedź zapisując wśród zapisanych "
+        "odpowiedzi.\n\n"
+        "Każdy poziom danych ma swoją linię: dane zweryfikowane ciągłą, telemetria "
+        "kreskowaną, zapisane odpowiedzi kropkowaną, godziny pobrane teraz zieloną. "
+        "Pomiar bez sąsiednich godzin (temperatura wody mierzona raz na dobę) jest "
+        "punktem. H pokazuje stany ostrzegawczy i alarmowy IMGW-PIB (hydro.imgw.pl). "
+        "Czasy w strefie czasowej przeglądarki.",
+    ),
+    "station.now.chart.variable": Text("Variable", "Wielkość"),
+    "station.now.chart.range_label": Text("Range", "Zakres"),
+    "station.now.chart.range.d3": Text("3 days", "3 dni"),
+    "station.now.chart.range.d7": Text("7 days", "7 dni"),
+    "station.now.chart.range.d30": Text("30 days", "30 dni"),
+    "station.now.chart.range.all": Text("All stored", "Cały zapis"),
+    "station.now.chart.title": Text(
+        "{station}: {variable}, hour by hour",
+        "{station}: {variable}, godzina po godzinie",
+    ),
+    "station.now.chart.loading": Text("Fetching the chart…", "Pobieram wykres…"),
+    "station.now.chart.empty": Text(
+        "No hour of the chosen range has a value.",
+        "Żadna godzina wybranego zakresu nie ma wartości.",
+    ),
+    "station.now.chart.live": Text(
+        "fetched now: operational data, unverified",
+        "pobrane teraz: dane operacyjne, niezweryfikowane",
+    ),
+    "station.now.chart.caption": Text(
+        "Operational data, unverified (apart from the lines of verified data): the "
+        "hours stored in the data root, each line in the style of its tier, and the "
+        "latest hours fetched now from the provider.",
+        "Dane operacyjne, niezweryfikowane (poza liniami danych zweryfikowanych): "
+        "godziny zapisane w katalogu danych, każda linia w stylu swojego poziomu "
+        "danych, i ostatnie godziny pobrane teraz od dostawcy.",
+    ),
+    "station.now.chart.live_at": Text(
+        "The hours after the stored ones came from the provider at {time}; the server "
+        "asks again after 10 minutes.",
+        "Godziny po zapisanych przyszły od dostawcy o {time}; serwer zapyta ponownie "
+        "po 10 minutach.",
+    ),
+    "station.now.chart.live_failed": Text(
+        "The latest hours could not be fetched: {message}",
+        "Nie udało się pobrać ostatnich godzin: {message}",
     ),
     # --- „Dane pomiarowo-obserwacyjne” -----------------------------------------------------
     "station.data.none": Text(
@@ -464,6 +543,50 @@ MESSAGES: dict[str, Text] = {
     "station.data.days.few": Text("{n} days", "{n} dni"),
     "station.data.days.many": Text("{n} days", "{n} dni"),
     "station.data.days.other": Text("{n} days", "{n} dnia"),
+    # The rows of a weekly series are its readings (ADR-032)
+    "station.data.readings.one": Text("{n} reading", "{n} odczyt"),
+    "station.data.readings.few": Text("{n} readings", "{n} odczyty"),
+    "station.data.readings.many": Text("{n} readings", "{n} odczytów"),
+    "station.data.readings.other": Text("{n} readings", "{n} odczytu"),
+    # The rows of an hourly series are its hours (ADR-031)
+    "station.data.hours.one": Text("{n} hour", "{n} godzina"),
+    "station.data.hours.few": Text("{n} hours", "{n} godziny"),
+    "station.data.hours.many": Text("{n} hours", "{n} godzin"),
+    "station.data.hours.other": Text("{n} hours", "{n} godziny"),
+    "station.data.time": Text("Time", "Czas"),
+    "station.data.flag_def.missing_hour": Text(
+        "no value in the hour: the line of the chart breaks",
+        "godzina bez wartości: linia wykresu się przerywa",
+    ),
+    # The tier of each hour of an hourly series (ADR-031); the words „dane operacyjne,
+    # niezweryfikowane” of Nogat DEV-20.8 wherever operational data meet a person
+    "station.data.tier.verified": Text("verified data", "dane zweryfikowane"),
+    "station.data.tier.telemetry": Text(
+        "telemetry: operational data, unverified",
+        "telemetria: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier.operational": Text(
+        "captured answers: operational data, unverified",
+        "zapisane odpowiedzi: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier_short.telemetry": Text("telemetry", "telemetria"),
+    "station.data.tier_short.operational": Text("captured", "zapisane"),
+    "station.data.tier_def.telemetry": Text(
+        "values of the provider's telemetry files: operational data, unverified",
+        "wartości z plików telemetrii dostawcy: dane operacyjne, niezweryfikowane",
+    ),
+    "station.data.tier_def.operational": Text(
+        "values of answers captured from the provider's current data: operational "
+        "data, unverified",
+        "wartości z odpowiedzi zapisanych z bieżących danych dostawcy: dane "
+        "operacyjne, niezweryfikowane",
+    ),
+    "station.data.tiers_def": Text(
+        "Each hour has the value of the highest tier that has one: verified data "
+        "before telemetry, telemetry before captured answers.",
+        "Każda godzina ma wartość najwyższego poziomu danych, który ją ma: dane "
+        "zweryfikowane przed telemetrią, telemetria przed zapisanymi odpowiedziami.",
+    ),
     "station.data.no_characteristics": Text(
         "The characteristics of this station have no values.",
         "Charakterystyki tej stacji nie mają wartości.",
@@ -508,6 +631,18 @@ MESSAGES: dict[str, Text] = {
         "hydrological years (November to October).",
         "Szereg jest publikowany według roku kalendarzowego; przełącznik wyżej liczy też "
         "lata hydrologiczne (od listopada do października).",
+    ),
+    "station.data.weekly_def": Text(
+        "Weekly readings stand at their own dates, mostly Wednesdays; the line breaks "
+        "across a calendar week (Monday to Sunday) without a reading.",
+        "Odczyty tygodniowe stoją w dniach pomiaru, zwykle w środy; linia przerywa się "
+        "w tygodniu kalendarzowym (od poniedziałku do niedzieli) bez odczytu.",
+    ),
+    "station.data.hourly_def": Text(
+        "Hourly values stand at full hours (UTC), shown in the time zone of your "
+        "browser; the line breaks at an hour without a value.",
+        "Wartości godzinowe stoją o pełnych godzinach (UTC), pokazanych w strefie "
+        "czasowej przeglądarki; linia przerywa się w godzinie bez wartości.",
     ),
     "station.data.stored_hydrological": Text(
         "hydrological year XI–X in the data root",

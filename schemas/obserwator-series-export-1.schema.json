@@ -44,8 +44,8 @@
       "enum": ["hydrological", "calendar"]
     },
     "time_unit": {
-      "description": "The unit of a row: a day, a month or a half-year (winter, summer, the year)",
-      "enum": ["day", "month", "half_year"]
+      "description": "The unit of a row: a day, a weekly reading at its own date (ADR-032), a month or a half-year (winter, summer, the year)",
+      "enum": ["day", "week", "month", "half_year"]
     },
     "variables": {
       "description": "The exported variables in column order",

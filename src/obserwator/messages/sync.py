@@ -11,6 +11,11 @@ MESSAGES = {
         "Choose at least one dataset",
         "Wybierz co najmniej jeden zbiór",
     ),
+    "dataset_keeps_no_archives": Text(
+        "store sync keeps no source files of the dataset {dataset}; allowed: {allowed}",
+        "store sync nie zapisuje plików źródłowych zbioru {dataset}; dozwolone: "
+        "{allowed}",
+    ),
     "imgw_archives_cover_whole": Text(
         "The IMGW-PIB archives cover the whole country; the option stations applies "
         "only to station datasets (ČHMÚ, the IMGW-PIB synop archives)",
@@ -32,13 +37,21 @@ MESSAGES = {
         "are not monthly",
         "Opcja months nie dotyczy zbiorów {keys}: pliki stacji nie są miesięczne",
     ),
+    "option_months_station_month": Text(
+        "The option months does not apply to the datasets {keys}: years chooses the "
+        "month files, every published month of each year",
+        "Opcja months nie dotyczy zbiorów {keys}: years wybiera pliki miesięczne, "
+        "każdy opublikowany miesiąc każdego roku",
+    ),
     "one_call_covers_datasets_one": Text(
         "One call covers datasets of one kind: national IMGW-PIB archives (without "
-        "the option stations), the IMGW-PIB synop station archives (stations "
-        "optional) or ČHMÚ station files (with the option stations); given {names}",
+        "the option stations), IMGW-PIB's telemetry (without stations), the IMGW-PIB "
+        "synop station archives (stations optional) or ČHMÚ station files (with the "
+        "option stations); given {names}",
         "Jedno wywołanie obejmuje zbiory jednego rodzaju: archiwa krajowe IMGW-PIB "
-        "(bez opcji stations), archiwa stacji synoptycznych IMGW-PIB (stations "
-        "opcjonalne) albo pliki stacji ČHMÚ (z opcją stations); podano {names}",
+        "(bez opcji stations), telemetrię IMGW-PIB (bez stations), archiwa stacji "
+        "synoptycznych IMGW-PIB (stations opcjonalne) albo pliki stacji ČHMÚ (z "
+        "opcją stations); podano {names}",
     ),
     "plan_must_written_outside_store": Text(
         "The plan must be written outside the store: {target}",
@@ -49,8 +62,10 @@ MESSAGES = {
         "Katalog pliku planu nie istnieje: {parent}",
     ),
     "give_plan_selectors_datasets_years": Text(
-        "Give a plan or the selectors datasets/years/months/stations, not both",
-        "Podaj plan albo selektory datasets/years/months/stations, nie oba naraz",
+        "Give a plan or the selectors datasets/years/months/stations/start/end/"
+        "pace_until, not both",
+        "Podaj plan albo selektory datasets/years/months/stations/start/end/"
+        "pace_until, nie oba naraz",
     ),
     "without_plan_parameter_datasets_required": Text(
         "Without a plan the parameter datasets is required",
@@ -126,10 +141,10 @@ MESSAGES = {
     ),
     "station_sources_alone": Text(
         "Station sources (station lists and station metadata, *_stations, *_now and "
-        "pl.imgw.hydro_details) are synchronized in a call of their own, without "
+        "pl.imgw.*_details) are synchronized in a call of their own, without "
         "measurement datasets",
         "Źródła stacji (listy i metadane stacji, *_stations, *_now i "
-        "pl.imgw.hydro_details) synchronizuje osobne wywołanie, bez zbiorów "
+        "pl.imgw.*_details) synchronizuje osobne wywołanie, bez zbiorów "
         "pomiarowych",
     ),
     "option_not_for_station_sources": Text(
@@ -143,6 +158,68 @@ MESSAGES = {
         "give root, not output_dir",
         "Źródła stacji zapisuje się tylko w magazynie, gdzie czyta je store catalog; "
         "podaj root, nie output_dir",
+    ),
+    "captures_alone": Text(
+        "Capture datasets (*_current, *_operational, cz.chmu.hydro_recent) are sealed "
+        "from the capture spool in a call of their own, without other datasets",
+        "Zbiory zapisów (*_current, *_operational, cz.chmu.hydro_recent) zamyka z "
+        "bufora zapisów osobne wywołanie, bez innych zbiorów",
+    ),
+    "option_not_for_captures": Text(
+        "The option {option} does not apply to capture datasets: the closed UTC days "
+        "of the spool are sealed (start and end choose them)",
+        "Opcja {option} nie dotyczy zbiorów zapisów: zamykane są zakończone doby UTC "
+        "bufora (wybierają je start i end)",
+    ),
+    "captures_store_only": Text(
+        "Capture datasets are sealed only into a store; give root, not output_dir",
+        "Zbiory zapisów zamyka się tylko w magazynie; podaj root, nie output_dir",
+    ),
+    "pace_until_not_harvested": Text(
+        "pace_until harvests one dataset of pl.imgw.hydro_operational and "
+        "cz.chmu.hydro_recent in a call; given {keys}",
+        "pace_until pobiera jeden zbiór spośród pl.imgw.hydro_operational i "
+        "cz.chmu.hydro_recent na wywołanie; podano {keys}",
+    ),
+    "harvest_planned": Text(
+        "{dataset}: its source is asked for the UTC days {start} to {end} "
+        "({stations}), spread until {until}, before its spool is sealed with today's "
+        "day",
+        "{dataset}: źródło jest pytane o doby UTC od {start} do {end} ({stations}) z "
+        "odstępami do {until}, zanim bufor zostanie zamknięty razem z dobą "
+        "dzisiejszą",
+    ),
+    "day_not_date": Text(
+        "The option {name} must be a date (YYYY-MM-DD), not {value!r}",
+        "Opcja {name} musi być datą (RRRR-MM-DD), a nie {value!r}",
+    ),
+    "day_not_closed": Text(
+        "{name}: the UTC day {day} is not over yet; the last closed day is {last}",
+        "{name}: doba UTC {day} jeszcze się nie skończyła; ostatnia zakończona doba "
+        "to {last}",
+    ),
+    "end_before_start": Text(
+        "The last day {end} is before the first day {start}",
+        "Ostatni dzień {end} jest przed pierwszym dniem {start}",
+    ),
+    "harvest_reach": Text(
+        "A harvest reaches at most {days} days back: the first day {start} is before "
+        "{earliest}",
+        "Pobór sięga najwyżej {days} dni wstecz: pierwszy dzień {start} jest przed "
+        "{earliest}",
+    ),
+    "days_only_for_captures": Text(
+        "The options start and end choose the UTC days of capture datasets only; "
+        "given {keys}",
+        "Opcje start i end wybierają doby UTC wyłącznie zbiorów zapisów; podano {keys}",
+    ),
+    "sync_locked": Text(
+        "Another store sync holds the lock {path}: waited {seconds} s",
+        "Inny store sync trzyma blokadę {path}: czekano {seconds} s",
+    ),
+    "harvest_every": Text(
+        "every station of its list",
+        "każda stacja z jego listy",
     ),
     "station_source_no_signal": Text(
         "no stable freshness signal: the answer or its envelope is regenerated, so "

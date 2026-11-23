@@ -651,7 +651,11 @@ class SeriesReport:
     files : tuple of FileResult, optional
         The version of ``version`` as ``files[]`` (DEV-19.19): its size and
         SHA-256 from the sidecar and the status of the report; empty when
-        nothing was built.
+        nothing was built. A sub-daily series has one per month built.
+    months : tuple of SeriesReport or None, optional
+        The report of each month of a sub-daily series (ADR-031), in month order:
+        its status, its version ``series/versions/<slug>/<YYYY-MM>/…`` and its
+        inputs; None for every other series (written only when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-series-report/1"
@@ -662,6 +666,74 @@ class SeriesReport:
     source_files: tuple[Path, ...]
     problems: tuple[str, ...]
     files: tuple[FileResult, ...] = ()
+    months: tuple[SeriesReport, ...] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
+
+
+@dataclass(frozen=True)
+class HarvestReport:
+    """
+    The night's harvest of a capture dataset before ``store sync`` seals it (ADR-030 D9).
+
+    The requests of a harvest write only the capture spool; ``store sync`` then seals
+    the days the answers came on into versions (the run's own day included).
+
+    Attributes
+    ----------
+    dataset : str
+        The capture dataset (``pl.imgw.hydro_operational``, ``cz.chmu.hydro_recent``).
+    start, end : datetime.date
+        The first and last UTC day the requests cover.
+    stations : int
+        The stations asked.
+    planned : int
+        The requests planned for them (one per station and source).
+    requests : int
+        The requests made: the station list and the retries of the backoff
+        included.
+    answers : int
+        The answers received, whatever their status, each kept in the spool.
+    failed : int
+        The planned requests without a usable answer: a connection failure, a
+        refusal other than 429 and 5xx, an answer the spool did not keep.
+    skipped : tuple of str
+        The stations skipped until the next run: still answered 429 or 5xx after
+        the backoff (60, 120 and 240 s).
+    stopped : bool
+        Whether the run ended after three connection failures in a row.
+    cancelled : bool
+        Whether the run was cancelled.
+    deadline : datetime.datetime or None
+        The deadline of ``pace_until`` (UTC); None without one.
+    started_at, ended_at : datetime.datetime
+        When the harvest began and ended (UTC).
+    seconds : float
+        Its wall time.
+    error : str or None, optional
+        Why no station was asked (its station list could not be read); None
+        otherwise.
+    error_code : ErrorCode or None, optional
+        The code of that error; None otherwise.
+    """
+
+    dataset: str
+    start: date
+    end: date
+    stations: int
+    planned: int
+    requests: int
+    answers: int
+    failed: int
+    skipped: tuple[str, ...]
+    stopped: bool
+    cancelled: bool
+    deadline: datetime | None
+    started_at: datetime
+    ended_at: datetime
+    seconds: float
+    error: str | None = None
+    error_code: ErrorCode | None = None
 
 
 @dataclass(frozen=True)
@@ -683,6 +755,10 @@ class SyncReport:
         archive versions with their sidecar size and SHA-256 and their status
         (``new``, ``unchanged``, ``relabeled``); in plain mode the files
         written (``written``, ``replaced``).
+    harvest : HarvestReport or None, optional
+        The harvest of a capture dataset that asks its source before it is sealed
+        (ADR-030 D9); written to the document only when there was one (an
+        optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-sync-report/1"
@@ -690,6 +766,7 @@ class SyncReport:
     items: tuple[OperationResult, ...]
     cancelled: bool
     files: tuple[FileResult, ...] = ()
+    harvest: HarvestReport | None = field(default=None, metadata={"omit_none": True})
 
 
 @dataclass(frozen=True)
@@ -847,6 +924,16 @@ class Meta:
         stands in for it. ``obserwator-meta/1`` requires the field, so every
         sidecar a reader accepts has it; None only in a ``Meta`` built
         without it.
+    tier : {"telemetry", "operational"} or None, optional
+        ``tier`` of the sidecar (ADR-030 D6): the tier of a version of a dataset
+        whose tier is not ``verified``; None for a sidecar without it, which is
+        ``verified`` (every sidecar written before 3.2.0). Written to the
+        ``obserwator-store-entry/1`` document only when set (ECO-085).
+    publication : {"public", "private"} or None, optional
+        ``publication`` of the sidecar (ADR-030 D6): the publication state of the
+        version's source when it was written, as provenance (a server serves by
+        the setting in force); None for a sidecar without it (public). Written
+        only when set.
     """
 
     schema: str
@@ -864,6 +951,12 @@ class Meta:
     country: str = "PL"
     producer: str = "obserwator"
     producer_version: str | None = None
+    tier: Literal["telemetry", "operational"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
+    publication: Literal["public", "private"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 @dataclass(frozen=True)
@@ -1012,9 +1105,11 @@ class StationCoverage:
     period : {"winter", "summer", "annual"} or None
         Half-year period for semi-annual data, None otherwise.
     first : date or None
-        First unit with a value, or None when there is none.
+        First unit with a value, or None when there is none; for a sub-daily
+        series (ADR-031) the start of an hour, an aware UTC ``datetime``.
     last : date or None
-        Last unit with a value, or None when there is none.
+        Last unit with a value, or None when there is none (an hour as
+        ``first``).
     with_value : int
         Number of units with a value (including ``no_phenomenon`` and
         ``accumulated``).
@@ -1022,7 +1117,7 @@ class StationCoverage:
         Number of units flagged ``accumulated``.
     gaps : tuple of tuple of (date, date)
         Maximal closed ranges of units without a value between ``first``
-        and ``last``.
+        and ``last``; ranges of hours for a sub-daily series.
     """
 
     SCHEMA: ClassVar[str] = "obserwator-coverage/1"
@@ -1114,6 +1209,13 @@ class SeriesIndex:
     subset : SeriesSubset or None, optional
         The stations and years of a subset version (ADR-026); None for the
         series of every station and year of the archives.
+    month : str or None, optional
+        The calendar month ``YYYY-MM`` of a version of a sub-daily series
+        (ADR-031); None for every other series.
+    tiers : tuple of {"verified", "telemetry", "operational"} or None, optional
+        The tiers of the values of a version of a sub-daily series, highest
+        first; its station files carry ``<V>_tier`` columns only when there are
+        several (ADR-031). None for every other series (verified).
     """
 
     schema: Literal["obserwator-series/1"]
@@ -1122,6 +1224,8 @@ class SeriesIndex:
     periods: tuple[tuple[date, date], ...]
     stations: Mapping[str, StationSeriesIndex]
     subset: SeriesSubset | None = None
+    month: str | None = None
+    tiers: tuple[Literal["verified", "telemetry", "operational"], ...] | None = None
 
 
 @dataclass(frozen=True)

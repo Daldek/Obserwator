@@ -64,6 +64,22 @@ def fixture_raw_root(fixture_roots):
     return fixture_roots.raw.root
 
 
+@pytest.fixture(scope="session")
+def groundwater_roots(tmp_path_factory):
+    """
+    The ``groundwater`` roots of ``obserwator.testing``, built once per session.
+
+    ``complete_pl_cz`` and ČHMÚ's bore ``0-203-1-VP0624`` and spring
+    ``0-203-1-PP0744`` (ADR-032); never written, a test copies them to mutate.
+    """
+    from obserwator.testing import build_fixture_store
+
+    base = tmp_path_factory.mktemp("fixture-groundwater")
+    return build_fixture_store(
+        base / "raw", data_root=base / "data", variant="groundwater"
+    )
+
+
 # Sample PMAXTP API response
 @pytest.fixture
 def pmaxtp_api_response():

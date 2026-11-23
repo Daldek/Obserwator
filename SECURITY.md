@@ -36,6 +36,15 @@ versioned store. Reports about the following are in scope:
   that leaks;
 - the servers' logs (`<state_dir>/obserwator/logs`): a client address, a header, a body or
   a credential written to them;
+- the captures of current data (ADR-030): the spool `<state_dir>/obserwator/captures` and
+  the publication of each source (`[obserwator.capture]`): a `private` source's captures,
+  hourly series or chart served by REST, MCP over HTTP or the GUI, or a credential kept in a
+  captured answer;
+- a data provider's API key (`OBSERWATOR_<PROVIDER>_API_KEY` or the file of
+  `…_API_KEY_FILE`): one logged or written to a URL, an envelope or a sidecar;
+- the deployment's scripts and units (`deploy/`: the timers, `obserwator-jobs.sh`,
+  `obserwator-backup.sh`): a write outside the roots, `state_dir` and the backup target, or
+  a deletion outside the script's own snapshots;
 - the MCP server (`obserwator mcp` over stdio and `/mcp` of the REST server), including
   the sandbox of writes (`--allow-writes`, `--allow-dir`): any write or path outside the
   allowed directories;
@@ -65,8 +74,9 @@ client address, 14 days); the operator's files under its configuration directory
 rate-limited per client address; the REST API `/api/v1` (reads; writes only with
 `OBSERWATOR_STORE_WRITES_ENABLED` and the token); the admin panel (`/admin`, `/admin/*`,
 `/api/admin/*`, header `X-Admin-Key`); `/mcp` when enabled (reads and plans only); the
-outbound fetches: IMGW-PIB's current data and PMAXTP by the servers, the basemap by the
-browser.
+outbound fetches: IMGW-PIB's current data, PMAXTP and the live hours of „Wykres
+godzinowy” by the servers, the hourly poll and the night's harvests by the timers, the
+basemap by the browser.
 
 **Threats and what Obserwator does about them.**
 
@@ -74,6 +84,11 @@ browser.
   the filter runs on the server, once per read of the data root, for every route of both
   servers; a station not served answers `not_found` exactly like a code that does not
   exist; an `off` provider and `pmaxtp = "off"` make no outbound request.
+- *A source the operator keeps private leaks*: every source of a tier other than
+  `verified` is `public` or `private` by `[obserwator.capture]` (hydro.imgw.pl's backend
+  `private` by default), read on every request; REST and MCP over HTTP answer `not_found`
+  (`details.reason` `private`) for its dataset, a version below it and a series built from
+  it, and the GUI draws no chart of it, all before any request (ADR-030 D5).
 - *A misconfiguration starts silently*: every field of `[obserwator.instance]` is checked
   at start (`validation_error`, exit 2, `details.option`), as are a data root of an
   unknown layout and, on an instance, weak or unreadable secrets (shorter than 32 bytes,

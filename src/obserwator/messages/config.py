@@ -38,6 +38,26 @@ MESSAGES = {
         "{problem}. Z sekcją [obserwator.instance] serwer nie uruchamia się ze "
         "słabym ani nieczytelnym kluczem lub tokenem (ADR-025).",
     ),
+    "provider_key_missing": Text(
+        "{provider} needs an API key and none is set",
+        "{provider} wymaga klucza API, a żaden nie jest ustawiony",
+    ),
+    "provider_key_rejected": Text(
+        "{provider} rejected the API key",
+        "{provider} odrzucił klucz API",
+    ),
+    "provider_key_hint": Text(
+        "Set {variable}, or {file_variable} to a file of mode 0600 holding the key, "
+        "in the environment or .env (nogat.toml is not read for keys)",
+        "Ustaw {variable} albo {file_variable} wskazującą plik z kluczem w trybie "
+        "0600, w środowisku lub w .env (klucza nie czyta się z nogat.toml)",
+    ),
+    "provider_key_renew": Text(
+        "Check the key of {variable} or {file_variable} and renew it with the "
+        "provider if it has expired",
+        "Sprawdź klucz z {variable} albo {file_variable} i odnów go u dostawcy, "
+        "jeśli wygasł",
+    ),
     "api_keys_deprecated": Text(
         "{path} holds the REST API keys of obserwator admin, which nothing checks; "
         "the command and the file are removed in v4.0.0. Delete the file: REST "

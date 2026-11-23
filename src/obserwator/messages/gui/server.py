@@ -42,6 +42,15 @@ MESSAGES: dict[str, Text] = {
         "IMGW-PIB {source}: failed after {duration_ms} ms, {code}: {reason}",
         "IMGW-PIB {source}: błąd po {duration_ms} ms, {code}: {reason}",
     ),
+    # The live tail of a station's chart in „teraz” (O6), of either provider
+    "server.tail_hours": Text(
+        "{provider} live tail: answered in {duration_ms} ms, {hours} hours",
+        "{provider} ostatnie godziny: odpowiedź w {duration_ms} ms, godzin: {hours}",
+    ),
+    "server.tail_failed": Text(
+        "{provider} live tail: failed after {duration_ms} ms, {code}: {reason}",
+        "{provider} ostatnie godziny: błąd po {duration_ms} ms, {code}: {reason}",
+    ),
     "errors.bad_parameter": Text(
         "Invalid value of {option}: {value}", "Niepoprawna wartość {option}: {value}"
     ),
@@ -92,6 +101,25 @@ MESSAGES: dict[str, Text] = {
     "errors.no_current_chmu": Text(
         "ČHMÚ's current data are not provided.",
         "Dane bieżące ČHMÚ nie są udostępniane.",
+    ),
+    "errors.no_current_kind": Text(
+        "Current data are given only for hydrological and meteorological stations.",
+        "Dane bieżące są podawane tylko dla stacji hydrologicznych i "
+        "meteorologicznych.",
+    ),
+    "errors.no_chart_kind": Text(
+        "The chart of current measurements is drawn only for hydrological stations.",
+        "Wykres pomiarów bieżących jest rysowany tylko dla stacji hydrologicznych.",
+    ),
+    "errors.no_chart_provider": Text(
+        "{provider} gives no hourly series: there is no chart of current measurements.",
+        "{provider} nie podaje szeregu godzinowego: nie ma wykresu pomiarów bieżących.",
+    ),
+    "errors.chart_private": Text(
+        "The chart of the station {station} is not served by this server: its sources "
+        "are private ([obserwator.capture]).",
+        "Wykres stacji {station} nie jest udostępniany przez ten serwer: jego źródła "
+        "są prywatne ([obserwator.capture]).",
     ),
     "errors.no_values": Text(
         "The chosen years hold no values of {variable}.",

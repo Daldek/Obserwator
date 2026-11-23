@@ -23,18 +23,19 @@ from typing import Any, Final, Literal
 
 from obserwator._parsing import CARRY_DATASETS, normalize_in_sequence
 from obserwator._version import __version__
-from obserwator.attribution import Attribution, attribution, dataset_origin
+from obserwator.attribution import Attribution, attribution, dataset_origins
 from obserwator.datasets import (
-    _IMGW_STATION_FILE,
     STATION_CODE_PATTERN,
     ArchiveFile,
     DatasetDescriptor,
     YearsArg,
     _archive_from_path,
     _license_document,
+    builds_series,
     datasets,
     get_dataset,
     get_provider,
+    monthly_series,
     parse_years,
     resolve_dataset_key,
 )
@@ -145,11 +146,7 @@ def _raw(raw_root: PathArg | StoreHandle) -> Path:
 
 def _series_descriptor(dataset: str) -> DatasetDescriptor:
     descriptor = get_dataset(dataset)
-    allowed = [
-        item.key
-        for item in datasets()
-        if item.in_store and item.time_unit in ("day", "month", "half_year")
-    ]
+    allowed = [item.key for item in datasets() if builds_series(item)]
     if descriptor.key not in allowed:
         raise ObserwatorValidationError(
             message(
@@ -309,7 +306,12 @@ def _restore_archive(dataset: str, meta: Mapping[str, Any]) -> ArchiveFile:
 def _scan_inputs(
     root: Path, descriptor: DatasetDescriptor
 ) -> tuple[list[_Input], list[str]]:
-    """Current version of every archive slot of a dataset, plus unreadable slots."""
+    """
+    Current version of every archive slot of a dataset, plus unreadable slots.
+
+    The files of another stored dataset in the same server directory (ČHMÚ's daily
+    and weekly groundwater files, ADR-032) are not the dataset's slots.
+    """
     assert descriptor.server_dir is not None
     base = root / "archives" / "versions" / PurePosixPath(descriptor.server_dir)
     if not base.exists():
@@ -317,9 +319,23 @@ def _scan_inputs(
     slots: dict[Path, str] = {}
     for sidecar in base.rglob("*.meta.json"):
         slots.setdefault(sidecar.parent.parent, sidecar.name.removesuffix(".meta.json"))
+    siblings = tuple(
+        item.key
+        for item in datasets()
+        if item.in_store
+        and item.key != descriptor.key
+        and item.server_dir == descriptor.server_dir
+    )
     inputs: list[_Input] = []
     problems: list[str] = []
     for slot_dir in sorted(slots):
+        if siblings:
+            folder = slot_dir.parent.relative_to(root / "archives" / "versions")
+            server_path = f"{folder.as_posix()}/{slots[slot_dir]}"
+            if _archive_from_path(descriptor.key, server_path) is None and any(
+                _archive_from_path(key, server_path) is not None for key in siblings
+            ):
+                continue
         slot = slot_dir.relative_to(root).as_posix()
         try:
             current = _pick_current(_read_versions(root, slot, slots[slot_dir]))
@@ -410,6 +426,66 @@ def _subset(
     return SeriesSubset(codes, None if years is None else parse_years(years))
 
 
+def _build_options(
+    descriptor: DatasetDescriptor,
+    *,
+    stations: object,
+    years: object,
+    start: object,
+    end: object,
+) -> None:
+    """
+    Refuse the options a dataset's kind of build does not take (ADR-031).
+
+    A sub-daily series (`monthly_series`) is built per calendar month, chosen with
+    ``start`` and ``end``; every other series as a whole or as a subset of
+    ``stations`` and ``years`` (ADR-026).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        ``stations`` or ``years`` of a sub-daily series (``details.reason``
+        ``monthly``), ``start`` or ``end`` of another series (``not_monthly``), a
+        bound that is no date (``details.option`` the bound) or ``start`` later
+        than ``end`` (``end``).
+    """
+    if not monthly_series(descriptor):
+        for option, value in (("start", start), ("end", end)):
+            if value is not None:
+                allowed = [item.key for item in datasets() if monthly_series(item)]
+                raise ObserwatorValidationError(
+                    message(
+                        "series.option_needs_monthly",
+                        option=option,
+                        key=descriptor.key,
+                        allowed=", ".join(allowed),
+                    ),
+                    details={"option": option, "reason": "not_monthly"},
+                )
+        return
+    for option, value in (("stations", stations), ("years", years)):
+        if value is not None:
+            raise ObserwatorValidationError(
+                message(
+                    "series.monthly_option_refused", option=option, key=descriptor.key
+                ),
+                details={"option": option, "reason": "monthly"},
+            )
+    for option, value in (("start", start), ("end", end)):
+        if value is not None and (
+            not isinstance(value, date) or isinstance(value, datetime)
+        ):
+            raise ObserwatorValidationError(
+                message("series.range_bound_not_date", bound=value),
+                details={"option": option, "value": str(value)},
+            )
+    if isinstance(start, date) and isinstance(end, date) and start > end:
+        raise ObserwatorValidationError(
+            message("series.start_later_than_end", start=start, end=end),
+            details={"option": "end", "value": end.isoformat()},
+        )
+
+
 def _subset_document(subset: SeriesSubset | None) -> dict[str, Any]:
     """``subset`` of ``series.json`` and the request of the sidecar: the given keys."""
     if subset is None:
@@ -468,9 +544,20 @@ class _SeriesVersion:
     subset: SeriesSubset | None = None
 
 
-def _series_versions(root: Path, descriptor: DatasetDescriptor) -> list[_SeriesVersion]:
-    """Readable series versions of a dataset; unverifiable ones are never reused."""
+def _series_versions(
+    root: Path, descriptor: DatasetDescriptor, month: str | None = None
+) -> list[_SeriesVersion]:
+    """
+    Readable series versions of a dataset; unverifiable ones are never reused.
+
+    ``month`` (``YYYY-MM``) reads the versions of that month of a sub-daily series,
+    ``series/versions/<slug>/<YYYY-MM>/`` (ADR-031).
+    """
     base = root / "series" / "versions" / descriptor.slug
+    if month is not None:
+        if base.is_symlink() or (base / month).is_symlink():
+            return []
+        base /= month
     if not base.exists():
         return []
     result = []
@@ -626,7 +713,8 @@ def _read_inputs(
         return inputs
     windows = _windows(descriptor, subset)
     codes = frozenset(subset.stations or ())
-    numbers = frozenset(code[-3:] for code in codes)
+    adapter = get_provider(descriptor.provider).adapter
+    numbers = frozenset(adapter.station_key(code) for code in codes)
 
     def chosen(archive: ArchiveFile) -> bool:
         start, end = archive.period_start, archive.period_end
@@ -641,8 +729,8 @@ def _read_inputs(
             return True
         if archive.station_code is not None:
             return archive.station_code in codes
-        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
-        return station is None or station[3] in numbers
+        station = adapter.archive_station(archive)
+        return station is None or station in numbers
 
     picked = {index for index, item in enumerate(inputs) if chosen(item.archive)}
     if descriptor.key in CARRY_DATASETS and windows is not None:
@@ -658,6 +746,8 @@ def check_series(
     dataset: str,
     stations: Iterable[str] | None = None,
     years: YearsArg | None = None,
+    start: date | None = None,
+    end: date | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -665,7 +755,8 @@ def check_series(
     """
     Report offline what :func:`build_series` would read and the series state.
 
-    Reads only local sidecars of both roots; no network access and no writes.
+    Reads only local sidecars of both roots (and the local input files of a
+    sub-daily series); no network access and no writes.
 
     Parameters
     ----------
@@ -680,13 +771,17 @@ def check_series(
         The stations of a subset, as in :func:`build_series`.
     years : YearsArg or None, optional
         The years of a subset, as in :func:`build_series`.
+    start, end : datetime.date or None, optional
+        The months of a sub-daily series, as in :func:`build_series`.
     on_progress : ProgressHook or None, optional
-        Called for each current input archive.
+        Called for each current input archive (of a sub-daily series, for each
+        month).
     on_notice : NoticeHook or None, optional
         Receives an ``archive_failed`` error for every unreadable archive slot.
     cancel : Cancel or None, optional
         Polled before each input; once it returns ``True`` the remaining inputs are
-        listed as ``unverifiable`` with error ``"cancelled"``.
+        listed as ``unverifiable`` with error ``"cancelled"`` (of a sub-daily
+        series, before each month: the months left are not checked).
 
     Returns
     -------
@@ -704,6 +799,18 @@ def check_series(
         dataset gives a plan of one ``conflict`` action (``reason``
         ``full_series``, ``path`` that version) and nothing else.
 
+        A sub-daily series (ADR-031) gets the plan of its months, as
+        :func:`build_series` would build them; the local input files are read
+        to tell which of them hold records of a month. ``series_state`` maps
+        ``<slug>/<YYYY-MM>`` of every month to its state and the actions hold
+        one ``series build`` action per month (``current``, ``newer`` or
+        ``missing``; a month given by ``start`` and ``end`` whose inputs hold no
+        value is ``missing`` or ``newer`` with that detail), one
+        ``check_failed`` action per unreadable input and a ``missing`` action
+        when no input lies in the chosen months; the items are the input
+        versions holding records of the months (each once), the
+        ``source_files`` the build would record.
+
     Raises
     ------
     ObserwatorStoreError
@@ -712,9 +819,28 @@ def check_series(
         ``wrong_root`` for a root of the other kind).
     ObserwatorValidationError
         If ``dataset`` is unknown or does not produce measurement series, or
-        ``stations`` or ``years`` is invalid.
+        ``stations`` or ``years`` is invalid, or an option does not apply to the
+        dataset (``details.reason`` ``monthly`` or ``not_monthly``).
     """
     descriptor = _series_descriptor(dataset)
+    _build_options(descriptor, stations=stations, years=years, start=start, end=end)
+    if monthly_series(descriptor):
+        refused = root_conflict_plan("series build", root, kind="data")
+        if refused is not None:
+            return refused
+        # Lazy import: the module of the sub-daily series imports this one.
+        from obserwator.store.subdaily import check_months
+
+        return check_months(
+            lenient_store(root, kind="data").root,
+            _raw(raw_root),
+            descriptor,
+            start=start,
+            end=end,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
     subset = _subset(descriptor, stations, years)
     refused = root_conflict_plan("series build", root, kind="data")
     if refused is not None:
@@ -1048,7 +1174,11 @@ class _Spill:
 
 
 def _row_keys(station: _Station, time_unit: str) -> list[tuple[_Key, int]]:
-    """Every unit of the continuous station calendar, with its hydrological year."""
+    """
+    Every unit of the continuous station calendar, with its hydrological year.
+
+    A weekly series has the dates of its readings only (ADR-032).
+    """
     if time_unit == "half_year":
         return [
             ((_period_start(year, period), period), year)
@@ -1056,6 +1186,9 @@ def _row_keys(station: _Station, time_unit: str) -> list[tuple[_Key, int]]:
             for period in _PERIODS
         ]
     days = sorted(day for day, _ in station.values)
+    if time_unit == "week":
+        # A weekly reading keeps its own date: no calendar is filled in (ADR-032).
+        return [((day, None), _hydro_year(day)) for day in days]
     keys: list[tuple[_Key, int]] = []
     current, last = days[0], days[-1]
     while current <= last:
@@ -1114,6 +1247,11 @@ def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) ->
                 [station.occurrences.get(key, {}).get(variable) for key, _ in keys],
                 pa.int32(),
             )
+    return pa.table(columns).replace_schema_metadata(_table_metadata(descriptor))
+
+
+def _table_metadata(descriptor: DatasetDescriptor) -> dict[str, str]:
+    """The schema metadata of a station file: schema, dataset, units and the lines."""
     metadata = {
         "obserwator_schema": SERIES_SCHEMA,
         "dataset": descriptor.key,
@@ -1126,12 +1264,16 @@ def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) ->
         (name, _canonical_text(value))
         for name, value in _lines(descriptor).fields().items()
     )
-    return pa.table(columns).replace_schema_metadata(metadata)
+    return metadata
 
 
 def _lines(descriptor: DatasetDescriptor) -> Attribution:
-    """The lines of a series: data parsed, harmonised and reformatted (ADR-012)."""
-    return attribution(dataset_origin(descriptor.key))
+    """
+    The lines of a series: data parsed, harmonised and reformatted (ADR-012).
+
+    A sub-daily series has the lines of every dataset it is built from (ADR-031).
+    """
+    return attribution(*dataset_origins(descriptor.key))
 
 
 def _archive_span(archive: ArchiveFile) -> tuple[date, date]:
@@ -1171,6 +1313,7 @@ def _spill_station_file(
     ``windows`` of its years.
     """
     code = archive.station_code
+    key = get_provider(get_dataset(archive.dataset).provider).adapter.station_key
     bounds: dict[str, list[date]] = {}
     for record in records:
         if code is not None and record.station_code != code:
@@ -1182,7 +1325,7 @@ def _spill_station_file(
                     server_path=archive.server_path,
                 )
             )
-        if (record.station_code[-3:], record.date.year) in superseded:
+        if (key(record.station_code), record.date.year) in superseded:
             continue
         if kept is None or kept(record):
             spill.add(record)
@@ -1216,12 +1359,13 @@ def _superseded(inputs: Iterable[_Input]) -> set[tuple[str, int]]:
     covered: set[tuple[str, int]] = set()
     for item in inputs:
         archive = item.archive
-        station = _IMGW_STATION_FILE.fullmatch(PurePosixPath(archive.server_path).name)
+        adapter = get_provider(get_dataset(archive.dataset).provider).adapter
+        station = adapter.archive_station(archive)
         if station is None or archive.station_code is not None:
             continue
         assert archive.period_start is not None and archive.period_end is not None
         covered.update(
-            (station[3], year)
+            (station, year)
             for year in range(archive.period_start.year, archive.period_end.year + 1)
         )
     return covered
@@ -1294,6 +1438,8 @@ def build_series(
     dataset: str,
     stations: Iterable[str] | None = None,
     years: YearsArg | None = None,
+    start: date | None = None,
+    end: date | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -1345,6 +1491,16 @@ def build_series(
     never a subset beside its full series; a full build after a subset
     becomes current as any newer build.
 
+    A sub-daily series (`obserwator.datasets.monthly_series`, ADR-031) has no
+    archives of its own: one version per calendar month,
+    ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``, holds the full hours
+    of the datasets of its ``inputs`` in that month, the first input with a
+    value winning each station, variable and hour (`obserwator.store.subdaily`).
+    ``start`` and ``end`` choose the months they touch; without them every month
+    an input may hold is built and a month whose inputs hold no value is
+    skipped. A month whose inputs (the versions holding its records) and lines
+    are those of its current version is ``unchanged``.
+
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
@@ -1364,9 +1520,15 @@ def build_series(
         dataset (hydrological years, November to October, for the
         hydrological datasets of IMGW-PIB; calendar years otherwise). None
         builds every year.
+    start, end : datetime.date or None, optional
+        Of a sub-daily series only: build the months from the month of
+        ``start`` to the month of ``end``, each reported (a month whose inputs
+        hold no value fails, its problem naming the month); one bound alone
+        limits the months an input may hold on its side. None builds every
+        month an input may hold.
     on_progress : ProgressHook or None, optional
         Called after each parsed archive and each written station file, or once
-        for an unchanged version.
+        for an unchanged version (of a sub-daily series, also after each month).
     on_notice : NoticeHook or None, optional
         Receives ``archive_failed`` errors for unreadable inputs, a
         ``leftover_incoming`` warning for every removed staging directory older
@@ -1387,6 +1549,13 @@ def build_series(
         of a failure, also of a subset whose archives hold none of its
         stations and years.
 
+        A sub-daily series reports each month in ``months`` (its version
+        ``…/<YYYY-MM>/<label>_<sha8>/series.json``); the report itself is
+        ``cancelled``, ``failed`` (every month failed, or none had a value),
+        ``new`` (a month is new) or ``unchanged``, its ``version`` that of the
+        last month built, ``stations`` the distinct stations of every month and
+        ``source_files``, ``files`` and ``problems`` those of every month.
+
     Raises
     ------
     ObserwatorStoreError
@@ -1398,7 +1567,10 @@ def build_series(
         If ``dataset`` is unknown or does not produce measurement series, or
         ``stations`` (``details.option`` ``stations``: no list, empty, or a
         code outside the grammar of the dataset's provider) or ``years`` is
-        invalid.
+        invalid, or an option does not apply to the dataset: ``stations`` or
+        ``years`` of a sub-daily series (``details.reason`` ``monthly``),
+        ``start`` or ``end`` of another (``not_monthly``); a bound that is no
+        date or ``start`` later than ``end``.
     ObserwatorStoreDependencyError
         If ``pyarrow>=15`` is not installed.
     ObserwatorStoreConflictError
@@ -1412,6 +1584,21 @@ def build_series(
     path = lenient_store(root, kind="data").root
     raw = _raw(raw_root)
     descriptor = _series_descriptor(dataset)
+    _build_options(descriptor, stations=stations, years=years, start=start, end=end)
+    if monthly_series(descriptor):
+        # Lazy import: the module of the sub-daily series imports this one.
+        from obserwator.store.subdaily import build_months
+
+        return build_months(
+            path,
+            raw,
+            descriptor,
+            start=start,
+            end=end,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
     subset = _subset(descriptor, stations, years)
     pa, pq = _pyarrow()
 
@@ -1616,7 +1803,11 @@ def build_series(
                     code,
                     station.values,
                     descriptor=descriptor,
-                    known=known if periods is None else _KnownSpans(periods),
+                    known=(
+                        known
+                        if periods is None
+                        else _KnownSpans(periods, descriptor.time_unit)
+                    ),
                 )
                 built = Path(local) / f"{code}.parquet"
                 pq.write_table(table, built)

@@ -44,7 +44,8 @@ CREDENTIAL_KEYS: tuple[str, ...] = (
     "admin_api_key_file",
 )
 """Settings that only the environment may give (DEV-18.4): the REST server's store write
-token and the GUI's admin key, or the file holding each (Nogat DEV-15.13, ADR-025)."""
+token and the GUI's admin key, or the file holding each (Nogat DEV-15.13, ADR-025);
+`obserwator.config.credential_keys` adds the API key of every provider that needs one."""
 
 
 @dataclass(frozen=True)

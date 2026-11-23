@@ -43,6 +43,7 @@ SPEC_FUNCTIONS = (
     "normalize_archive",
     "parse_chmu_hydro_daily",
     "parse_chmu_meteo_daily",
+    "parse_chmu_groundwater",
     "parse_chmu_stations",
     "summarize_coverage",
     "check_series",
@@ -91,6 +92,10 @@ SPEC_FUNCTIONS = (
     "read_analysis",
     "export_analyses",
     "compute_analysis",
+    # ADR-030 D9: the hourly poll into the capture spool.
+    "poll_current",
+    # ADR-031 D2: the current version of each month of a sub-daily series.
+    "series_months",
 )
 SPEC_TYPES = (
     "PathArg",
@@ -102,6 +107,7 @@ SPEC_TYPES = (
     "NoticeHook",
     "Cancel",
     "License",
+    "ProviderCredential",
     "ProviderDescriptor",
     "DatasetDescriptor",
     "ArchiveFile",
@@ -151,6 +157,9 @@ SPEC_TYPES = (
     "AnalysisInput",
     "AnalysisPick",
     "AnalysisOption",
+    "PollReport",
+    "HarvestReport",
+    "PolledAnswer",
 )
 # Type aliases and constants.
 SPEC_VALUES = (

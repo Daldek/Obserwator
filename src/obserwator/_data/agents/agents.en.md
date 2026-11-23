@@ -6,7 +6,7 @@
 
 Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
-Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ operational data (`now`, `recent`), PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
+Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ's climate `now` and `recent`, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
 <!-- obserwator:providers -->
 
@@ -39,12 +39,12 @@ An error has a code from a closed registry, the same in Python, the CLI, REST (p
 
 ## Datasets
 
-A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`, see `obserwator datasets list`) are accepted on input only. Datasets of the store:
+A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`) and a legacy alias (`hydro/dobowe`) are accepted on input only. Datasets of the store:
 
 <!-- obserwator:datasets -->
 
 - `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` (except `cz.chmu.meteo_daily`) and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.hydro_daily` (none = the published years); never for `cz.chmu.meteo_daily`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `years`: required in `datasets files|download` and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.*` (none = the published years); never for `cz.chmu.{meteo_daily,groundwater_characteristic}`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
@@ -58,7 +58,7 @@ One line per command, by effect; options, rules and per-option effects: `obserwa
 
 ## Typical flows
 
-Replace the upper-case symbols (`STATION_CODE`, `WIGOS_ID`) with the values of earlier steps.
+Replace `STATION_CODE` and `WIGOS_ID` with the values of earlier steps.
 
 <!-- obserwator:flows -->
 

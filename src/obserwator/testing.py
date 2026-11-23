@@ -4,7 +4,8 @@
 (ADR-017) with the real public writers (``init_store``, ``write_archive``,
 ``sync_store``, ``build_series``, ``build_catalog``) while every HTTP request is
 answered from recordings shipped with the package. No request reaches the network;
-an unrecorded request fails as a connection error.
+an unrecorded request fails as a connection error, and no replayed answer reaches the
+capture spool of ``state_dir`` (ADR-030 D7).
 
 Requires the ``pyarrow`` dependency of series building (``obserwator[store]``).
 """
@@ -16,7 +17,7 @@ import json
 import threading
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
@@ -34,6 +35,7 @@ from obserwator.exceptions import (
 )
 from obserwator.fetch import download_hydro_data, download_meteo_data
 from obserwator.messages import message
+from obserwator.providers.pl import imgw as _imgw
 from obserwator.store import (
     build_catalog,
     build_series,
@@ -41,16 +43,18 @@ from obserwator.store import (
     sync_store,
     write_archive,
 )
-from obserwator.store import catalog as _store_catalog
 from obserwator.store.types import PathArg, StoreHandle
 from obserwator.store.writer import _canonical
 
 __all__ = ["FixtureRoots", "FixtureVariant", "build_fixture_store", "fixture_files"]
 
-FixtureVariant = Literal["complete", "corrupt", "unknown_schema", "complete_pl_cz"]
+FixtureVariant = Literal[
+    "complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"
+]
 
 _RECORDINGS = ("recordings.json", "builder_recordings.json")
 _CHMU_RECORDINGS = ("chmu_builder_recordings.json",)
+_GROUNDWATER_RECORDINGS = ("chmu_groundwater_recordings.json",)
 _HYDRO = "pl.imgw.hydro_daily"
 _METEO = "pl.imgw.meteo_precip_daily"
 _UNKNOWN_LABEL = "2026-10-20"
@@ -124,6 +128,72 @@ _CHMU_STEPS: tuple[tuple[str, Mapping[str, Any], tuple[str, ...], str], ...] = (
         "new",
     ),
 )
+# ČHMÚ's groundwater part of the variant ``groundwater`` (ADR-032): a real bore and a
+# real spring, synchronized from ``chmu_groundwater_recordings.json``.
+_GW_DAILY, _GW_WEEKLY = "cz.chmu.groundwater_daily", "cz.chmu.groundwater_weekly"
+_GW_BORE, _GW_SPRING = "0-203-1-VP0624", "0-203-1-PP0744"
+_GROUNDWATER_SOURCES = ("cz.chmu.groundwater_stations", "cz.chmu.groundwater_now")
+_GROUNDWATER_STEPS: tuple[tuple[str, Mapping[str, Any], int], ...] = (
+    (
+        "ČHMÚ groundwater daily 2024",
+        {
+            "datasets": (_GW_DAILY,),
+            "stations": (_GW_BORE, _GW_SPRING),
+            "years": (2024,),
+        },
+        2,
+    ),
+    (
+        "ČHMÚ groundwater weekly 2012 of the bore",
+        {"datasets": (_GW_WEEKLY,), "stations": (_GW_BORE,), "years": (2012,)},
+        1,
+    ),
+    (
+        "ČHMÚ groundwater weekly 2014 of the spring",
+        {"datasets": (_GW_WEEKLY,), "stations": (_GW_SPRING,), "years": (2014,)},
+        1,
+    ),
+    (
+        "ČHMÚ groundwater recent months of the bore in the listing",
+        {"datasets": ("cz.chmu.groundwater_recent",), "stations": (_GW_BORE,)},
+        1,
+    ),
+    (
+        "ČHMÚ groundwater characteristics",
+        {
+            "datasets": ("cz.chmu.groundwater_characteristic",),
+            "stations": (_GW_BORE, _GW_SPRING),
+        },
+        2,
+    ),
+)
+# The recorded answers the groundwater steps and sources request, in their order (the
+# list of the objects is checked by HEAD before its sync heads and gets it).
+_GROUNDWATER_SCENARIO = (
+    "gw_historical_listing",
+    "gw_pp0744_d_2024_head",
+    "gw_pp0744_d_2024_get",
+    "gw_vp0624_d_2024_head",
+    "gw_vp0624_d_2024_get",
+    "gw_historical_listing",
+    "gw_vp0624_w_2012_head",
+    "gw_vp0624_w_2012_get",
+    "gw_historical_listing",
+    "gw_pp0744_w_2014_head",
+    "gw_pp0744_w_2014_get",
+    "gw_recent_listing",
+    "gw_recent_vp0624_d_202610_head",
+    "gw_recent_vp0624_d_202610_get",
+    "gw_characteristic_listing",
+    "gw_characteristic_pp0744_head",
+    "gw_characteristic_pp0744_get",
+    "gw_characteristic_vp0624_head",
+    "gw_characteristic_vp0624_get",
+    "gw_stations_head",
+    "gw_stations_head",
+    "gw_stations_get",
+    "gw_now_get",
+)
 # Recorder patching is process-global; serialize concurrent builders.
 _HTTP_LOCK = threading.Lock()
 
@@ -136,13 +206,17 @@ def fixture_files() -> Traversable:
     ČHMÚ station files and metadata), ``listings/`` (ČHMÚ directory
     listings), ``variants/``, recorded HTTP answers ``recordings.json``,
     ``builder_recordings.json``, ``chmu_recordings.json``,
-    ``chmu_catalog_recordings.json``, ``chmu_builder_recordings.json`` and
-    ``contract_recordings.json`` (live endpoints of the interface contract
-    tests), and ``contract_schemas.json`` (JSON Schemas with examples of the
-    store documents ``obserwator-store/1`` ... ``obserwator-pmaxtp/1``, the envelope
+    ``chmu_catalog_recordings.json``, ``chmu_builder_recordings.json``,
+    ``chmu_groundwater_recordings.json``, ``hydro_details_recordings.json`` and
+    ``meteo_details_recordings.json`` (real answers of hydro.imgw.pl's backend) and
+    ``contract_recordings.json`` (live endpoints of the interface contract tests),
+    and ``contract_schemas.json`` (JSON Schemas with examples of the store documents
+    ``obserwator-store/1`` ... ``obserwator-pmaxtp/1``, the envelope
     ``obserwator-result/1`` and the error documents ``problem+json`` and
     ``obserwator-error/1``). Data are short synthetic samples with fictional station
-    codes, not real yearbooks.
+    codes, not real yearbooks, except the recorded answers of hydro.imgw.pl's backend
+    and ČHMÚ's groundwater files: the real files of two objects with the server's
+    headers, their listings and object lists cut to the real rows of them.
 
     Returns
     -------
@@ -198,12 +272,18 @@ def _body(interaction: Mapping[str, Any]) -> tuple[bytes, dict[str, str]]:
 
 @contextmanager
 def _recorded_http(
-    cases: Iterable[str] | None, *, recordings: Iterable[str] = _RECORDINGS
+    cases: Iterable[str] | None,
+    *,
+    recordings: Iterable[str] = _RECORDINGS,
+    keep: bool = False,
 ) -> Iterator[None]:
     """
     Answer synchronous httpx requests from recordings, in the given order per URL.
 
-    ``cases=None`` replays every interaction of ``recordings`` in file order.
+    ``cases=None`` replays every interaction of ``recordings`` in file order. A
+    replayed answer is no provider's answer: unless ``keep`` (a test of the captures),
+    the library's requests keep none in the capture spool (`obserwator.captures`), so a
+    fixture built on a machine with a real spool never reaches it (ADR-030 D7).
     """
     recorded = _interactions(recordings)
     queues: dict[tuple[str, str], deque[Mapping[str, Any]]] = {}
@@ -230,7 +310,15 @@ def _recorded_http(
             interaction["status"], headers=headers, content=content, request=request
         )
 
-    with _HTTP_LOCK, mock.patch.object(httpx.HTTPTransport, "handle_request", handle):
+    with ExitStack() as stack:
+        stack.enter_context(_HTTP_LOCK)
+        stack.enter_context(
+            mock.patch.object(httpx.HTTPTransport, "handle_request", handle)
+        )
+        if not keep:
+            stack.enter_context(
+                mock.patch("obserwator.captures.keep_response", return_value=None)
+            )
         yield
     left = sorted(f"{method} {url}" for (method, url), queue in queues.items() if queue)
     if left:
@@ -258,12 +346,12 @@ def _without_reference_data() -> Iterator[None]:
     Fixture stores must not depend on reference data a user fetched with
     ``python -m obserwator.reference_data``. Process-global: call under ``_HTTP_LOCK``.
     """
-    original = _store_catalog._static_file
-    _store_catalog._static_file = lambda: (Path(_store_catalog.STATIC_LOCATIONS), None)
+    original = _imgw._static_file
+    _imgw._static_file = lambda: (Path(_imgw.STATIC_LOCATIONS), None)
     try:
         yield
     finally:
-        _store_catalog._static_file = original
+        _imgw._static_file = original
 
 
 def _add_unknown_version(root: Path) -> None:
@@ -295,16 +383,46 @@ def _add_unknown_version(root: Path) -> None:
     )
 
 
-def _add_chmu(raw: StoreHandle, data: StoreHandle) -> None:
+def _add_groundwater(raw: StoreHandle, data: StoreHandle) -> None:
+    """
+    ČHMÚ's groundwater files of the variant ``groundwater`` and their two series.
+
+    The daily files of 2024 of the bore and the spring, the weekly file of 2012 of
+    the bore and of 2014 of the spring, the bore's ``recent`` months of the listing
+    (2026-10) and the characteristics of both, each synchronized new; then the
+    daily and the weekly series, each built new.
+    """
+    for step, selectors, count in _GROUNDWATER_STEPS:
+        report = sync_store(raw, **selectors)
+        _expect(
+            step,
+            ", ".join(sorted(item.status for item in report.items)),
+            ", ".join(("new",) * count),
+        )
+    for dataset in (_GW_DAILY, _GW_WEEKLY):
+        series = build_series(data, raw_root=raw, dataset=dataset)
+        _expect(f"{dataset}: series", series.status, "new")
+
+
+def _add_chmu(raw: StoreHandle, data: StoreHandle, *, groundwater: bool) -> None:
     """
     ČHMÚ part of ``complete_pl_cz``, replayed from ``chmu_builder_recordings.json``.
 
     Each step is one `sync_store` into the raw root (listing, then HEAD and GET
     of every new or changed file), then `build_series` of the step's dataset
     into the data root; the station sources are synchronized and the ČHMÚ
-    catalog is built last.
+    catalog is built last. ``groundwater`` adds ČHMÚ's groundwater objects
+    (`_add_groundwater` and the two lists of the objects among the station
+    sources) from ``chmu_groundwater_recordings.json`` before the sources.
     """
-    with _recorded_http(None, recordings=_CHMU_RECORDINGS):
+    recordings: tuple[str, ...] = _CHMU_RECORDINGS
+    sources: tuple[str, ...] = _CHMU_SOURCES
+    cases: list[str] | None = None
+    if groundwater:
+        recordings += _GROUNDWATER_RECORDINGS
+        cases = [*_interactions(_CHMU_RECORDINGS), *_GROUNDWATER_SCENARIO]
+        sources += _GROUNDWATER_SOURCES
+    with _recorded_http(cases, recordings=recordings):
         for step, selectors, items, built in _CHMU_STEPS:
             report = sync_store(raw, **selectors)
             _expect(
@@ -314,10 +432,12 @@ def _add_chmu(raw: StoreHandle, data: StoreHandle) -> None:
             )
             series = build_series(data, raw_root=raw, dataset=selectors["datasets"][0])
             _expect(f"{step}: series", series.status, built)
-        sources = sync_store(raw, datasets=_CHMU_SOURCES)
+        if groundwater:
+            _add_groundwater(raw, data)
+        synced = sync_store(raw, datasets=sources)
         _expect(
             "ČHMÚ station sources",
-            ", ".join(sorted({item.status for item in sources.items})),
+            ", ".join(sorted({item.status for item in synced.items})),
             "new",
         )
         catalog = build_catalog(data, raw_root=raw, provider="CHMU")
@@ -385,6 +505,21 @@ def build_fixture_store(
       correction), the ``chmu_meteo_daily`` series, both ČHMÚ station lists
       and the ČHMÚ catalog ``stations/versions/chmu_stations/``.
 
+    ``groundwater`` is ``complete_pl_cz`` plus ČHMÚ's groundwater (ADR-032), real
+    files and server headers of ``chmu_groundwater_recordings.json`` synchronized
+    before the ČHMÚ station sources, so that its one ČHMÚ catalog holds them:
+
+    * ``cz.chmu.groundwater_daily`` files of 2024 of the bore ``0-203-1-VP0624``
+      (Rakousy) and of the spring ``0-203-1-PP0744`` (Želechy), and
+      ``cz.chmu.groundwater_weekly`` files of 2012 of the bore and of 2014 of the
+      spring;
+    * the bore's ``cz.chmu.groundwater_recent`` month 2026-10 and the
+      ``cz.chmu.groundwater_characteristic`` files of both objects (archives
+      without a series);
+    * the ``chmu_groundwater_daily`` and ``chmu_groundwater_weekly`` series;
+    * the list (``cz.chmu.groundwater_stations``) and the current metadata
+      (``cz.chmu.groundwater_now``) of the two objects, cut to their rows.
+
     Parameters
     ----------
     root : str or os.PathLike
@@ -392,7 +527,7 @@ def build_fixture_store(
     data_root : str or os.PathLike
         Directory of the data root, outside ``root``; it must not exist or be
         an empty directory.
-    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz"}, optional
+    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"}, optional
         Fixture variant to build.
 
     Returns
@@ -480,6 +615,6 @@ def build_fixture_store(
         sidecar.write_bytes(sidecar.read_bytes()[: sidecar.stat().st_size // 2])
     elif variant == "unknown_schema":
         _add_unknown_version(data.root)
-    elif variant == "complete_pl_cz":
-        _add_chmu(raw, data)
+    elif variant in ("complete_pl_cz", "groundwater"):
+        _add_chmu(raw, data, groundwater=variant == "groundwater")
     return FixtureRoots(raw, data)

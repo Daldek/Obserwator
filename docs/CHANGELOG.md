@@ -4,6 +4,403 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [3.2.0] - 2026-11-23
+
+Changes since 3.1.0, in 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, provider credentials, captures of every answer of current data, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, hourly series, ČHMÚ's groundwater, the meteorological station details of hydro.imgw.pl, the hourly chart of the current readings, and the deployment's timers and backups. Deployment order (ECO-085; the plan's step D1): Archiwista 0.4.0 is deployed before Obserwator 3.2.0 writes captures or hourly series to a root Archiwista shares; the sources of hydro.imgw.pl's backend stay `private` by default (`[obserwator.capture]`), so REST and the GUI serve neither their captures nor IMGW-PIB's hourly series until the operator sets them `public`.
+
+### Added
+
+- **Captures: every answer of a source of current data kept as it came (ADR-030 D3, D7 and
+  its errata of 2026-11-23; Nogat plan `2026-11-20-hydromet-providers.md` P14, step H2a).**
+  The library's request paths (`fetch._get`, `_archive_response` and their async twins, the
+  map and station pages of `pl.imgw.hydro_details`) hand every answer whose address belongs to
+  a capture dataset to its provider's adapter, which writes it to the capture spool
+  `<state_dir>/obserwator/captures/<dataset>/<YYYY-MM-DD>/` (the UTC day of the answer): one
+  file `<YYYYMMDDTHHMMSS.ffffffZ>_<sha256>.json` per answer, created with `O_EXCL`, holding
+  its time, its address without any credential, its status and its body; never a root. So
+  `current hydro|meteo|synop|warnings|hydro-states` and their functions, the GUI's snapshots,
+  IMGW-PIB's live station search and `store sync` of `pl.imgw.hydro_now`, `pl.imgw.meteo_now`
+  and `pl.imgw.hydro_details` keep what they receive (hydro.imgw.pl's station pages for the
+  declared `pl.imgw.hydro_operational`, which O2 serves and seals). A spool that cannot be
+  written is one warning record (event `capture_failed`) and the `config show` problem
+  `capture_spool`; the answer is served all the same. New module `obserwator.captures`.
+- **Six capture datasets, sealed by `store sync` (ADR-030 D3, D4, D8; step H2a).**
+  `pl.imgw.hydro_current`, `pl.imgw.meteo_current`, `pl.imgw.meteo_synop_current`,
+  `pl.imgw.warnings_hydro_current`, `pl.imgw.warnings_meteo_current` and
+  `pl.imgw.hydro_states_current` (tier `operational`, `time_unit` `snapshot`, `archive_scope`
+  `country_day`, titled „operational data, unverified”) leave the declared datasets for
+  `datasets()` and `datasets list`. `store check` and
+  `store sync --datasets` take them in a call of their own, without `years`, `months` or
+  `stations` (`details.reason` `captures`), and only into a root (`--output-dir`:
+  `store_only_dataset`). `store sync` seals every closed UTC day of the spool into one archive
+  version, slot `archive:<key>:<YYYY-MM-DD>.jsonl.gz`, at
+  `archives/versions/<server_dir>/<YYYY-MM-DD>/<YYYY-MM-DD>_<sha8>/<YYYY-MM-DD>.jsonl.gz`:
+  gzip-compressed canonical JSON Lines, one line per answer in time order, an answer equal to
+  the one before it from its address recorded once as `seen`. A day sealed before is sealed
+  again with its current version's answers (late answers give a new version holding them all,
+  nothing new gives `unchanged`), today (UTC) never, and the sealed spool files are removed
+  once the version holding them is published. `store check` plans each closed day without a
+  request (`missing`, `newer`, `current`, `check_failed`); a spool file it cannot read is a
+  `capture_unreadable` warning and stays. `datasets files` and `datasets download` do not offer
+  them (`archive_files` refuses one, `details.reason` `capture`), and `command_for_version`
+  refuses a capture version (`unsupported`, `command_not_rebuildable`): no request gives a past
+  day's answers again.
+- **`store check|sync --start/--end`: the days of the captures (ADR-030 D9, D10 and its erratum
+  of 2026-11-23, step O3).** Both commands (`check_store`, `sync_store`: `start`, `end` as
+  `datetime.date`; CLI ISO dates; REST and MCP parameters; store mode only) choose UTC days of
+  a capture dataset. Without `--pace-until` they narrow the closed spool days a run checks or
+  seals (none: every closed day, as before). With it they are the harvest's days: `--end`
+  defaults to the last closed UTC day, `--start` to `--end`, and `--start` reaches at most
+  `captures.HARVEST_DAYS` (40) days before today, so a missed night or a month is caught up in
+  one run; the run seals the closed days inside the range and today. Refused with
+  `validation_error` before any request, each with a hint: a day not over yet
+  (`day_not_closed`, `details.last`), `--end` before `--start`, a harvest reaching further
+  (`harvest_reach`, `details.earliest`), the options for a dataset that is no capture
+  (`not_capture`), and with `--plan` or `--output-dir` (`store_only_option`).
+- **One `store sync` seals captures at a time (ADR-030 D10, step O3).** A store-mode
+  `store sync` that seals captures (a capture dataset, a harvest, or a plan holding capture
+  days) takes `flock` on `<state_dir>/obserwator/store-sync.lock` (`store.sync.sync_lock_path()`)
+  for the whole run, the harvest included. A run finding it held retries every second for
+  `store.sync.LOCK_WAIT` (600 s), then fails with `conflict` (exit 4, HTTP 409),
+  `details.reason` `sync_locked` with `path` and `waited`, and a hint. Syncs of archives,
+  station sources and catalogs, every check, plain writes and Windows take no lock.
+- **`current poll`: the hourly poll (ADR-030 D9, P16; step H2a).** The 36th catalog command
+  (`poll_current`, public with `PollReport` and `PolledAnswer`; `obserwator current poll
+  [--check]`, MCP `obserwator_current_poll` on stdio, no REST route) asks once each source an
+  adapter declares (`ProviderAdapter.polled`: IMGW-PIB's `api/data/hydro`, `meteo`, `synop`,
+  `warningshydro`, `warningsmeteo` and hydro-back's map of water states, each declared at
+  3600 s) and keeps the answers in the spool, nothing else. A source asked less than its
+  interval minus a tenth of it ago is skipped without a request (`info` notice `poll_skipped`;
+  the last poll is kept in `<spool>/<dataset>/.polled`); a source without an answer, with a
+  status other than 2xx, a redirect included (its answer is kept), or whose answer could not
+  be written is `failed` (`warning` notice `capture_failed`). Result
+  `obserwator-poll-report/1`: `answers`
+  (`obserwator-polled-answer/1`: `dataset`, `url`, `status` `captured`, `skipped`, `failed` or
+  `cancelled`, `http_status`, `path`, `sha256`, `polled_at`, `error`, `error_code`),
+  `cancelled` and `files[]`; a failed source makes the envelope `partial` or `failed`.
+  `--check` plans each source `unverifiable` (asked) or `current` (skipped). Effects: `writes`
+  `add`, `network`, not idempotent. The deployment's `obserwator-current.timer` (A2) runs it at
+  :15 every hour.
+- **`[obserwator.capture]`: whether each source is served (ADR-030 D5, P15; step H2a).**
+  `nogat.toml` sets `"<dataset>" = "public"` or `"private"` for each source of a tier other than
+  `verified` (ten, the declared ones included; a dotted key is read as the dataset's key); the
+  defaults follow the sources' terms (hydro.imgw.pl's backend `private`, danepubliczne.imgw.pl
+  and ČHMÚ `public`). `config show` gains `capture` (the spool's directory and per source its
+  `state`, `tier` and `source`, `default` or `file`) and the problems `invalid_capture` (no
+  table, another dataset, one source named twice or another value; the defaults then apply)
+  and `capture_spool`. Every REST request, and so
+  MCP over HTTP, answers `not_found` with `details.reason` `private`, before any request, when
+  an option `dataset` or `datasets`, or a `store sync` plan item, names a capture whose state in
+  force is `private`, or a `version` lies under its slot; the CLI, the library and MCP on stdio
+  read every capture.
+- **Sidecar fields `tier` and `publication` (ADR-030 D6; Nogat ECO-085; step H2a).** A version
+  of a dataset whose tier is not `verified` carries both in its `obserwator-meta/1` sidecar
+  (`publication`: its source's state when it was written); `read_meta` and the scans give them
+  as `Meta.tier` and `Meta.publication`, written to `obserwator-store-entry/1` only when set,
+  and a sidecar with one without the other or another value is `invalid_meta`. A verified
+  dataset's sidecar has neither and keeps its bytes.
+- **Provider credentials and their errors (Nogat plan `2026-11-20-hydromet-providers.md`,
+  P3, P4, step H3).** A provider whose requests need an API key declares it in the new
+  optional field `ProviderDescriptor.credential` (type `ProviderCredential`, public), written
+  to `obserwator-provider/1` only when set (ECO-085); IMGW-PIB and ČHMÚ need none, so their
+  documents keep their bytes. The key comes from `OBSERWATOR_<PROVIDER>_API_KEY` or the file
+  named by `OBSERWATOR_<PROVIDER>_API_KEY_FILE` (as the admin key of ADR-020), from the
+  environment or `.env` only, never from `nogat.toml` (a key there is listed in
+  `config_file.ignored` as `credential`; `config.credential_keys()` adds both keys to
+  `CREDENTIAL_KEYS`), and is never logged. `config show` reports both variables of such a
+  provider `present`/`missing`; a key file group or others may access is a warning and a
+  `secret_file_mode` problem. `config.provider_key(provider)` reads the key; a missing one is
+  `forbidden` (exit 12, HTTP 403) with `details.reason` `missing_credentials`, and
+  `config.credential_error(provider, "invalid_credentials")` is the error of a refused one,
+  both with `details.provider` and a hint naming the variable (pl/en). `.env.example`
+  documents the variables.
+- **Dataset tiers (ADR-030; Nogat ECO-084, ECO-085).** `DatasetDescriptor.tier` says what a
+  dataset's data are: `verified` (a published archive or a validated set), `telemetry`
+  (IMGW-PIB's monthly telemetry) or `operational` (what a source gives as current or
+  unverified data). It is set in the registry and never inferred from the values; every
+  dataset of 3.1.0 is `verified`. The `obserwator-dataset/1` documents of `datasets list`
+  (Python, CLI, REST, MCP) gain the field `tier` after their other fields, which are unchanged
+  (an optional field, AGI-4.1).
+- **Declared datasets, served by their steps (ADR-030 D4, D8).** The registry can hold
+  datasets that no command, MCP tool, REST route or GUI view lists or accepts (`get_dataset`
+  refuses their keys as unknown) and that only `datasets(pending=True)` lists, after the
+  served ones, with their tiers. The datasets of the operational series were declared so
+  ahead of their steps:
+  `pl.imgw.hydro_operational` (hydro-back's hourly H, Q and T), `pl.imgw.hydro_telemetry` (the
+  monthly telemetry, from 2008), the captures of current data `pl.imgw.hydro_current`,
+  `pl.imgw.meteo_current`, `pl.imgw.meteo_synop_current`, `pl.imgw.warnings_hydro_current`,
+  `pl.imgw.warnings_meteo_current` and `pl.imgw.hydro_states_current`, and ČHMÚ's
+  `cz.chmu.hydro_recent`, `cz.chmu.hydro_current` and `cz.chmu.hydro_hourly` (validated, from
+  1905). New values: `time_unit` `hour`, `ten_minutes` and `snapshot`, `archive_scope`
+  `country_day`. Each dataset was served by its step of 3.2.0 (the captures by H2a, the
+  others by O2); in 3.2.0 only `cz.chmu.groundwater_current` stays declared.
+- **Meteorological station details of hydro.imgw.pl (`pl.imgw.meteo_details`; GEO-03 Q2, the
+  author's decision of 2026-11-21; ADR-021 erratum of 2026-11-23).** A new station source
+  (slug `imgw_meteo_details`, kind `meteo`, `time_unit` `station_list`, no update signal,
+  licence = the hydro.imgw.pl terms, lines S, P, RH): `store sync --datasets
+  pl.imgw.meteo_details` reads hydro.imgw.pl's map of meteorological stations
+  (`map/stations/meteorologic?onlyMainStations=false`, 877 stations on 2026-11-23) and then
+  the page of each, `hydro-back.imgw.pl/station/meteo/status?id=<code>`, one request at a
+  time with Obserwator's `User-Agent` and no `Referer`, exactly as `pl.imgw.hydro_details`
+  (a `null` answer is skipped, any HTTP error fails the item, `cancel` before each station).
+  The raw root keeps a derived file of each station's `id`, `coordinates.{x, y}` and
+  `properties.altitude` (`archives/versions/station/meteo/status/<label>_<sha8>/status`),
+  never its precipitation, sums, records or notes. It is an optional source of the IMGW-PIB
+  catalog: a meteorological station with a page gets `elevation_m` from it and
+  `details_source` `"meteo_details"`, and one the current-data API does not locate gets the
+  page's point with the new `location_source` value `pl.imgw.meteo_details` (ADR-028; after
+  the API's point, before the static and the user file). The catalog's sidecar has the
+  source `meteo_details` (`available` false without it, with an `info` notice
+  `source_missing` naming the sync), the build reports these details in step 5 after the hydrological ones (still 7
+  steps), `check_catalog` one more action, and RH joins the lines of a catalog, stations
+  export or station panel with such a station. A catalog of a raw root without these details,
+  or whose details name none of its stations, keeps its bytes (`unchanged`). The GUI names
+  the location source in „Informacje o stacji”.
+- **Two more capture datasets of hydro.imgw.pl's backend (ADR-030 D4, D8; erratum of
+  2026-11-23).** The answers that `pl.imgw.meteo_details` receives belong to captures of
+  their own, `private` by default
+  like every answer of hydro.imgw.pl's backend: `pl.imgw.meteo_operational` (every answer of
+  hydro-back's `station/meteo/…`, tier `operational`, `time_unit` `hour`) and
+  `pl.imgw.meteo_states_current` (the map of meteorological stations, `snapshot`). Both are
+  declared (`datasets(pending=True)`, `[obserwator.capture]`, `config show`) and their answers
+  are spooled; they are served, and sealed, with `pl.imgw.hydro_operational` (O2).
+- **The operational series served (ADR-030 D2, D4, D8, D9 and its errata of 2026-11-23;
+  step O2).** Seven datasets leave the declared ones: hydro-back's hourly H, Q and T
+  `pl.imgw.hydro_operational` with `pl.imgw.meteo_operational` and
+  `pl.imgw.meteo_states_current` (captures, `private` by default), IMGW-PIB's monthly
+  telemetry `pl.imgw.hydro_telemetry` (tier `telemetry`, `Hydro_<YYYY-MM>.zip` from 2008),
+  ČHMÚ's day files `cz.chmu.hydro_recent` and `now` files `cz.chmu.hydro_current` (captures,
+  `public`) and ČHMÚ's validated hourly years `cz.chmu.hydro_hourly`
+  (`H_<WIGOS>_HQ_<YYYY>.json` from 1905, verified, content form `chmu-json/1`). With the
+  groundwater datasets and the two hourly series below, `datasets()` gives 49 datasets (33 of
+  IMGW-PIB, 16 of ČHMÚ) and only `cz.chmu.groundwater_current` stays declared; `datasets
+  files|download` take the telemetry and the hourly years. The telemetry is checked by the
+  datastore's listing, one `POST datastore/getFilesList` per year folder (`signal`
+  `listing`): listed and stored is `current` (`--force` downloads again and compares the
+  bytes), listed and not stored `missing`, unlisted or in a year not published `unverifiable`
+  with `not published`; `store sync` makes no HEAD for it.
+- **`store sync --pace-until HH:MM`: the night's harvest (ADR-030 D9; step O2).** With one
+  harvest dataset alone (`pl.imgw.hydro_operational` or `cz.chmu.hydro_recent`; stations
+  optional, every station of the provider's list without them; no `years`, `months` or plan;
+  store only), `store sync` first asks the source for the last closed UTC day: hydro-back's
+  `status/data`, `discharge` and `water-temperature` of every station of its map (Q and T
+  where `api/data/hydro` names them) with an `hoursInterval` reaching 00:00 UTC of that day,
+  or ČHMÚ's `recent/data/<YYYYMMDD>_<WIGOS>.json` of every station of its `now` metadata.
+  The requests go one at a time, spread evenly until that local time and never closer than
+  5 s (a time passed gives 5 s), with gzip; 429 and 5xx are asked again after 60, 120 and
+  240 s and then skip the station until the next run, and three connection failures in a
+  row end the run. Every answer goes to the spool, each planned request prints
+  `<UTC time> <HTTP status> <address>`, and the run then seals the closed spool days and
+  today's, which holds its answers. The result gains the optional `harvest`
+  (`HarvestReport`, new in `obserwator` and `obserwator.store`): counts, skipped stations,
+  deadline and times; failures are `failed` items without a slot (status `partial`), with
+  `harvest_failed` warnings and one `harvest_done` notice. `store check --pace-until` plans
+  today's spool day and the harvest as an action. Refusals: `not_harvested`, `captures`,
+  `store_only_option`. The option is local: REST has no parameter; MCP on stdio has it. New:
+  `obserwator.captures.harvest(dataset, start, end)`, `obserwator.fetch.PacedSession` and
+  `pace_deadline`.
+- **ADR-030 „Captures and the operational tier”** records the tiers, the scope (ČHMÚ's
+  `recent`, `now` and `historical/hourly`), the captures as archive versions
+  (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
+  sidecar fields `tier` and `publication`, the GUI's spool in `state_dir`, the polling and the
+  lock of the raw root, and amends ADR-003 D4, ADR-013 D5 and D6 and ADR-015 D5.
+- **Hourly series of the tiers (ADR-031; step O4 with P5 and step 4 of the providers plan).**
+  `pl.imgw.hydro_subdaily` (from `pl.imgw.hydro_telemetry` and `pl.imgw.hydro_operational`)
+  and `cz.chmu.hydro_subdaily` (from `cz.chmu.hydro_hourly` and `cz.chmu.hydro_recent`):
+  `time_unit` `hour`, H, Q and T, tier `operational` (the lowest of their `inputs`, a new
+  optional field of `datasets list`), one version per calendar month (slot
+  `series:<key>:<YYYY-MM>`, `series/versions/<slug>/<YYYY-MM>/…`). A month takes the full
+  hours of the UTC days closed before each captured answer (the 10-minute tail, the answer's
+  own day and the forecasts stay in the capture), the telemetry's full-hour records (`999`
+  none) and the validated hours as published; per station, variable and hour the highest
+  tier with a value wins and labels the point. A station file has `time` (UTC,
+  `timestamp[us, tz=UTC]`) in place of `date` and `<V>_tier` only in a month of several
+  tiers; `series.json` adds `month` and `tiers`; a record adds `time` and each value's
+  `tier`; the report adds `months`. `series build --start/--end` builds the months a range
+  touches (`--stations`/`--years` refused for them, `--start`/`--end` for every other
+  dataset); `series read|summary|export --dataset` join the months (exports always with
+  `<V>_tier` and the JSON head's `series_versions`); `series select` refuses them. New:
+  `series_months` (`obserwator.store`, `obserwator`), `attribution.dataset_origins`. The
+  series of a private source is private (REST `not_found`, not in the GUI): IMGW-PIB's by
+  default. The GUI's series chart draws hours with a line style per tier. The timers: the
+  night builds the months of its harvests, the telemetry job those of the zips it stored.
+  Tested on answers recorded on 2026-11-23 (`tests/fixtures/operational/october/`): 744 of
+  744 operational hours equal to the telemetry's for H and Q of 151160060 and 150160180, 22
+  of 22 of Głogów's T. ČHMÚ groundwater's `recent` stays without a series (ADR-032 erratum).
+- **The hourly chart of „teraz” (step O6; ADR-013, ADR-029, ADR-030 and ADR-031 errata of
+  2026-11-23).** A hydrological station's card „Pomiary bieżące” gains „Wykres godzinowy”:
+  H, Q or T hour by hour over 3, 7 or 30 days or every stored hour, from its provider's
+  hourly series of the data root up to the newest stored hour, then the hours after it that
+  the server asks the provider for now (the live tail: hydro-back's hourly series of the
+  station for IMGW-PIB, its `now` file for ČHMÚ). Each tier keeps its line style (verified
+  solid, telemetry dashed, captured answers dotted), the live tail is a green line of its
+  own, a reading without neighbouring hours (a daily T) is a point, H shows IMGW-PIB's
+  warning and alarm levels, and the caption says „Dane operacyjne, niezweryfikowane”; a note
+  gives when the live hours came or why their request failed. A ČHMÚ hydrological station's
+  card is the chart alone. The GUI's private API gains `api/station/{code}/subdaily?from=`
+  (the stored hours from `from` on, read from the months of that range only, with their
+  tiers, and the live tail) and `api/stations/{code}` the field `subdaily`. A station's tail
+  is asked at most once per 10 minutes (a failed one after 60 s), one request per station
+  and one live request of the server at a time, for at most 500 stations in memory; every
+  answer goes to the capture spool (`pl.imgw.hydro_operational`, `cz.chmu.hydro_current`),
+  and each request is an app record `upstream_fetch`. The chart is served only while the
+  station's hourly series and its provider's live source are `public` (`[obserwator.capture]`,
+  read on every request; else `404` `private` before any request): with the defaults ČHMÚ's
+  hydrological stations have it and IMGW-PIB's once `pl.imgw.hydro_operational` is set
+  `public`. New: `ProviderAdapter.live_source` (the capture dataset of `live_tail`) and
+  `obserwator.store.subdaily.tail_hours` (the full hours of a live tail's answers, today's
+  included). No public function, command, envelope or store schema changes.
+- **ČHMÚ groundwater (ADR-032; Nogat plans `2026-11-16-operational-series.md` row H5a and
+  `2026-11-20-hydromet-providers.md` P7, step 5a).** ČHMÚ's bores and springs of
+  `opendata.chmi.cz/hydrology/groundwater/` (CC BY 4.0, attribution lines C and CP as before):
+  - Datasets: `cz.chmu.groundwater_daily` (from 1960) and `cz.chmu.groundwater_weekly` (from
+    1933), one file `H_<WIGOS>_{D|W}_<YYYY>.json` per object and calendar year of
+    `historical/data`, stored, built into the series `chmu_groundwater_daily` and
+    `chmu_groundwater_weekly`; `cz.chmu.groundwater_recent` (`recent/data`, one file per
+    object and month from 2025-01), tier `operational` (its sidecars carry `tier` and
+    `publication`, ADR-030 D6), stored as archive versions and built into no series (ADR-032
+    erratum of 2026-11-23); `cz.chmu.groundwater_characteristic`
+    (`characteristic/data/GCHAR_<WIGOS>.json`, the 5–95 % quantiles of an object's level or
+    yield per week or month of the year), stored and read by the store readers;
+    `cz.chmu.groundwater_stations` and `cz.chmu.groundwater_now`, the object list and the
+    operational network, optional sources of the ČHMÚ catalog; `cz.chmu.groundwater_current`
+    (`now/data`) declared only (`datasets(pending=True)`, ADR-030 D8). The four file datasets
+    need `stations`, as every per-station ČHMÚ dataset; `store sync` without `years` takes the
+    years (of `recent`: the months) the listing publishes, and refuses `years` for the
+    characteristics. New values: `time_unit` `week` and `statistics`, `archive_scope`
+    `station_month` and `station`.
+  - Station kind `groundwater` (`obserwator.datasets.KINDS`, type `Kind`): a catalog feature
+    of a groundwater object has `kind: "groundwater"`, the new property `groundwater_kind`
+    (`bore` or `spring`), `elevation_m` from ČHMÚ's `ALTITUDE` and `location_source`
+    `cz.chmu.groundwater_now` or `cz.chmu.groundwater_stations`; `stations find --kind
+    groundwater` and `stations export --kind groundwater` give them, and
+    `obserwator-station/1` gains the optional `groundwater_kind` (left out when null).
+  - Variables `H_asl` [m] (the level of a bore above sea level, never `H`), `spring_yield`
+    [l/s] and `T` [degC]; the date of a row is the date part of ČHMÚ's `DT`.
+  - Weekly series: a weekly reading keeps its own date, so `chmu_groundwater_weekly` has rows
+    only at reading dates; its coverage counts calendar weeks, Monday to Sunday, and a week
+    of a known year without a reading is a gap named by its Monday (`series.json`,
+    `series summary`); `week` is a `time_unit` of `obserwator-series-export/1` too.
+  - Parser `parse_chmu_groundwater` (`obserwator.parsers` and the package root): it reads
+    the files ČHMÚ published with the stray closing brackets of a left-out series (about
+    17 % of them) and refuses any other malformation; the groundwater data files have no
+    content form, so their bytes are compared as published.
+  - GUI: groundwater objects on the map and in the legend with a symbol of their own (a brown
+    rounded diamond), a third choice in the kind filter where a catalog holds one, and in the
+    station's row and panel what the object is (a bore or a spring) and its series.
+  - Fixture variant `groundwater` of `obserwator.testing.build_fixture_store` (ADR-032 D9):
+    `complete_pl_cz` plus ČHMÚ's real bore `0-203-1-VP0624` „Rakousy” and spring
+    `0-203-1-PP0744` „Želechy” (files and server headers recorded on 2026-11-23, the
+    listings and object lists cut to their rows; `chmu_groundwater_recordings.json`): their
+    daily, weekly, recent and characteristic files, the object list and `now` metadata,
+    both series and one ČHMÚ catalog. `complete` and `complete_pl_cz` are unchanged.
+- **Timers of the deployment (Nogat plan `2026-11-16-operational-series.md` step A2, E9;
+  ADR-030 D9, D10).** `deploy/systemd/` holds user systemd templates of three `Type=oneshot`
+  services and their `Persistent=true` timers, run through `deploy/obserwator-jobs.sh`:
+  `obserwator-night` (02:30: `store sync` of `pl.imgw.hydro_operational --pace-until 05:00`,
+  then of `cz.chmu.hydro_recent --pace-until 06:30`, each from the UTC day after its last
+  whole harvest, kept in `<state_dir>/obserwator/timers/<dataset>.harvested`, at most 40 days
+  back, then the sealing of every other served capture dataset), `obserwator-telemetry`
+  (06:45: `pl.imgw.hydro_telemetry` of the current year, in January also the year before, and
+  the listing check of `cz.chmu.hydro_hourly` for `CHMU_HOURLY_STATIONS`) and
+  `obserwator-current` (hourly at :15: `current poll`). Each step runs even after a failure
+  and the service ends with the first failure's code; `night --start` and `--check` serve a
+  backfill and a dry run. The units are confined by the install contract's unit rule
+  (`NoNewPrivileges`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`,
+  `SystemCallArchitectures=native`, `PrivateTmp`, `ProtectHome=read-only`,
+  `ProtectSystem=strict`, `ReadWritePaths=` for the roots and `<state_dir>/obserwator`;
+  `User=`/`Group=` commented for a system unit). `docker/docker-compose.yml` has the service
+  `jobs` (profile `jobs`) that the same units start with `docker compose run`. USAGE.md
+  „Timers”.
+- **Backups of both roots (step A4, D10, review decision 16; Nogat DEV-18.5).**
+  `deploy/obserwator-backup.sh` and `obserwator-backup.timer` (Sundays at 07:00): weekly
+  snapshots `<target>/obserwator/weekly/<YYYY-MM-DD>/{raw,data}/` by `rsync -aH --no-perms`
+  with `--link-dest` to the newest snapshot, the month's first run a full copy under
+  `monthly/` without it, `.incoming/` never copied; 8 weekly and 6 monthly kept, deleting only
+  whole snapshot directories of its own target and following no link; a full copy that would
+  leave less than 15 % of the share free refused (exit 3, an `error` record
+  `backup_refused`). After each full copy a restore test (`store scan` of the copied data root
+  with the source's version count and no problem, the SHA-256 of 50 version files against
+  their sidecars, one `series read`, a sample of 100 raw version directories) writes
+  `restore-test.log` beside the snapshot and one `backup_restore_test` record to
+  `<state_dir>/obserwator/logs/app-<day>.jsonl`. The unit writes only the target and that
+  directory. USAGE.md „Backups”, README.
+
+### Changed
+
+- **The scope of 3.2.0 (the author's decision of 2026-11-22).** The provider fed by files
+  (step 6 of ADR-025's plan) and Gdańskie Wody move to 3.3.0 (ADR-025 erratum of 2026-11-23;
+  `docs/PROGRESS.md`, „Release 3.3.0”).
+- **Provider adapters (ADR-029; Nogat plan `2026-11-20-hydromet-providers.md` P1, P2).**
+  `obserwator.providers` with one adapter per provider (`pl.imgw`, `cz.chmu`) behind the
+  protocol `ProviderAdapter`; `ProviderDescriptor.adapter` and `ProviderDescriptor.acronym`.
+  The archive enumeration, downloads, store checks, live station search, station catalog,
+  parsers, attribution origins, command groups and the GUI's provider logic dispatch through
+  it; the catalog keys, catalog directories and GUI slots are derived from the registry.
+  Each provider's catalog builder lives in its adapter's module, `store/catalog.py` keeps the
+  shared parts (location files, series codes, notices, lines, publication); the internal
+  constants `STATIC_LOCATIONS` and `DETAILS_SOURCE` moved from `obserwator.store.catalog` to
+  `obserwator.providers.pl.imgw`. The move alone changes no output: archives, sidecars,
+  series, catalogs and envelopes keep their bytes. `_borders.PROVIDERS` is gone (`BORDERS`
+  lists the packaged borders).
+- **The Docker image installs the `store` extra** (pyarrow: the series the jobs build) and
+  carries `obserwator-jobs.sh` for the compose service `jobs` (step A2).
+- **Fetching current data writes the capture spool (ADR-030 D7; step H2a).** Every `fetch_*`
+  and live `find_stations` call, `obserwator current …`, the GUI and `store sync` of IMGW-PIB's
+  station sources write each answer of a capture source to `<state_dir>/obserwator/captures`
+  (above). `ProviderAdapter.capture` (ADR-029) writes the spool and returns its file instead of
+  doing nothing, and the protocol gains `publication_default` and `polled` (ADR-029 erratum of
+  2026-11-23). `obserwator.testing`'s recorded answers never reach the spool, so
+  `build_fixture_store` leaves a real one alone.
+- **`AGENTS.md` and `llms.txt` follow the catalog (steps H2a, H5a, O2):** they are regenerated with
+  `current poll`, the six capture datasets and the groundwater datasets. To keep `AGENTS.md`
+  within 16 KiB (DOC-1.7), the station sources (`*_stations`, `*_now`,
+  `pl.imgw.hydro_details`) and the captures (`pl.imgw.*_current`) are each one line naming
+  their keys by pattern below the table of the datasets; the line on CLI output no longer
+  repeats the envelope section's rule for streams, the first rule no longer offers
+  `<group> <command> --schema` beside `commands schema` (also in the MCP instructions), and
+  the check rule, the example years and the first sentences of `datasets list` and
+  `datasets providers` are shorter.
+  In step O2 one pattern line names every capture (`pl.imgw.*_{current,operational}`,
+  `cz.chmu.hydro_{current,recent}`) with what `pace_until` does, and the detail of eight
+  command descriptions (`datasets list`, `providers`, `download`, `pmaxtp sync`, `store
+  sync`, `series build`, `summary`, `export`) moves from their first sentence, which the guide
+  prints, to the second. In step O3 the captures' line names `start`/`end` and the harvest's
+  default day, and principle 4 drops „ — without downloading again”. In step O4 the table
+  gains the two hourly series; the rule on `commands schema` no longer lists the fields of
+  `options`, the dataset key's sentence no longer points to `datasets list` and the flows'
+  sentence on symbols is shorter.
+- **REST hides every private source, not only the captures (ADR-030 D5 erratum; step O2).**
+  Every dataset of a tier other than `verified` set `private` in `[obserwator.capture]` (the
+  telemetry, `cz.chmu.groundwater_recent` included) is `not_found` (`details.reason`
+  `private`) by its option and by a version path below its server directory.
+- **The ČHMÚ catalog with groundwater objects (ADR-032 D8).** `store catalog --provider
+  CHMU` reads `cz.chmu.groundwater_stations` and `cz.chmu.groundwater_now` when the raw root
+  holds them; without them it builds the same catalog as before and, when the data root
+  holds a groundwater series, an `info` notice names the `store sync` that stores them. Its
+  check lists the two optional sources as actions of their own.
+- **`datasets list`** lists the six served groundwater datasets after the other ČHMÚ ones;
+  `datasets(kind=…)` and `--kind` accept `groundwater`. No existing document, archive,
+  series or catalog changes: nothing breaks.
+- **The GUI's texts on current data (step O6).** The snapshots' note no longer says their
+  answers are never stored (the spool keeps them since H2a), the ČHMÚ note says that a
+  hydrological station's hours are drawn where the server serves them, and the guide
+  `instrukcja/` describes „Wykres godzinowy” (chapter 02 and the cards' table), the providers
+  its server asks and ČHMÚ's chart in place of „no current data of ČHMÚ”.
+
+### Fixed
+
+- **The documents describe 3.2.0.** The README counted 33 datasets (27 of IMGW-PIB) and said
+  Obserwator reads no current data of ČHMÚ; it counts 49 (33 of IMGW-PIB, 16 of ČHMÚ) and
+  names the tag `v3.2.0`, as USAGE, CLAUDE.md and the guide's part 06 do. CODEBASE lists
+  the two hourly series in the dataset registry (49 descriptors, 12 series datasets, the
+  tiers of 49), ARCHITECTURE counts 33 `pl.imgw.*` descriptors, PRD adds the captures, the
+  hourly series, the private sources and „Wykres godzinowy” with the test counts of
+  2026-11-23, TESTING's second total agrees with its first, and SECURITY's scope adds the
+  capture spool and the publication of the sources, the providers' API keys and the
+  deployment's scripts. USAGE „Timers” gives the order of the first deployment: Archiwista
+  0.4.0 before Obserwator 3.2.0 writes captures or hourly series to a shared root.
+
 ## [3.1.0] - 2026-11-22
 
 Changes since 3.0.1, in 3.1.0: defect fixes of Nogat's formula audit of 2026-11-18, the analyses of Hydrolog 0.9.0 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 3), the findings of the release round of 2026-11-21, an operator's instance (ADR-025) and ČHMÚ's national identifiers (ADR-028).

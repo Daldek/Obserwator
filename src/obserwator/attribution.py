@@ -42,11 +42,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from obserwator._borders import CZECHIA, POLAND, PROVIDERS, border
+from obserwator._borders import CZECHIA, POLAND, border
 from obserwator.messages import message
 from obserwator.messages.legal import RETIRED_LINES
+
+if TYPE_CHECKING:
+    from obserwator.providers import ProviderAdapter
 
 __all__ = [
     "ORIGINS",
@@ -56,6 +59,7 @@ __all__ = [
     "border_origin",
     "carried",
     "dataset_origin",
+    "dataset_origins",
     "provider_origin",
 ]
 
@@ -90,14 +94,6 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
     "imgw_hydro": ((_S,), (_P,), (_RH,)),
     "pmaxtp": ((_PS, _M), (_PP,), (_RK,)),
     "chmu": ((_C,), (_CP,), ()),
-}
-_PROVIDERS: dict[str, Origin] = {"IMGW": "imgw", "CHMU": "chmu"}
-_PREFIXES: dict[str, Origin] = {"pl.imgw": "imgw", "cz.chmu": "chmu"}
-# Datasets of an IMGW-PIB origin other than danepubliczne.imgw.pl: PMAXTP's own
-# pages and hydro.imgw.pl's station details (ADR-021).
-_DATASET_ORIGINS: dict[str, Origin] = {
-    "pl.imgw.pmaxtp": "pmaxtp",
-    "pl.imgw.hydro_details": "imgw_hydro",
 }
 # The origin of the data of each packaged border.
 _BORDER_ORIGINS: dict[str, Origin] = {POLAND: "gugik", CZECHIA: "cuzk"}
@@ -349,9 +345,11 @@ def dataset_origin(key: str, /) -> Origin:
     Returns
     -------
     {"imgw", "imgw_hydro", "pmaxtp", "chmu"}
-        ``"pmaxtp"`` for ``pl.imgw.pmaxtp``, ``"imgw_hydro"`` for the station
-        details of hydro.imgw.pl (``pl.imgw.hydro_details``), ``"imgw"`` for the
-        other ``pl.imgw.*`` keys and ``"chmu"`` for ``cz.chmu.*``.
+        The origin the adapter of the provider of the key's prefix gives
+        (`ProviderAdapter.dataset_origin`): ``"pmaxtp"`` for ``pl.imgw.pmaxtp``,
+        ``"imgw_hydro"`` for the station details of hydro.imgw.pl
+        (``pl.imgw.hydro_details``), ``"imgw"`` for the other ``pl.imgw.*`` keys
+        and ``"chmu"`` for ``cz.chmu.*``.
 
     Raises
     ------
@@ -359,12 +357,47 @@ def dataset_origin(key: str, /) -> Origin:
         If the key belongs to no known provider (a program error: keys come
         from the registry).
     """
-    if key in _DATASET_ORIGINS:
-        return _DATASET_ORIGINS[key]
-    try:
-        return _PREFIXES[key.rpartition(".")[0]]
-    except KeyError:
-        raise ValueError(f"No attribution for the dataset {key!r}") from None
+    from obserwator.datasets import providers
+
+    prefix = key.rpartition(".")[0]
+    for provider in providers():
+        if provider.key_prefix == prefix:
+            return provider.adapter.dataset_origin(key)
+    raise ValueError(f"No attribution for the dataset {key!r}")
+
+
+def dataset_origins(key: str, /) -> tuple[Origin, ...]:
+    """
+    Origins of the data of a dataset: those of its inputs for a sub-daily series.
+
+    A sub-daily series (``DatasetDescriptor.inputs``, ADR-031) holds the data of
+    every dataset it is built from, so its lines are theirs: ``pl.imgw.hydro_subdaily``
+    has IMGW-PIB's telemetry (``imgw``) and hydro.imgw.pl's hours (``imgw_hydro``).
+
+    Parameters
+    ----------
+    key : str
+        Full dataset key, e.g. ``"pl.imgw.hydro_subdaily"``.
+
+    Returns
+    -------
+    tuple of Origin
+        The origins of the inputs once each, in the order of `ORIGINS`; for any
+        other dataset its one `dataset_origin`.
+
+    Raises
+    ------
+    ValueError
+        If the key belongs to no known provider (a program error: keys come
+        from the registry).
+    """
+    from obserwator.datasets import datasets
+
+    descriptor = next((item for item in datasets() if item.key == key), None)
+    if descriptor is None or descriptor.inputs is None:
+        return (dataset_origin(key),)
+    found = {dataset_origin(item) for item in descriptor.inputs}
+    return tuple(origin for origin in ORIGINS if origin in found)
 
 
 def provider_origin(provider: str, /) -> Origin:
@@ -387,10 +420,7 @@ def provider_origin(provider: str, /) -> Origin:
         If the provider is unknown (a program error: identifiers come from the
         registry).
     """
-    try:
-        return _PROVIDERS[provider]
-    except KeyError:
-        raise ValueError(f"No attribution for the provider {provider!r}") from None
+    return _adapter(provider).origin
 
 
 def border_origin(provider: str, /) -> Origin:
@@ -416,7 +446,14 @@ def border_origin(provider: str, /) -> Origin:
         If the provider is unknown (a program error: identifiers come from the
         registry).
     """
-    try:
-        return _BORDER_ORIGINS[PROVIDERS[provider]]
-    except KeyError:
-        raise ValueError(f"No attribution for the provider {provider!r}") from None
+    return _BORDER_ORIGINS[_adapter(provider).border]
+
+
+def _adapter(provider: str) -> ProviderAdapter:
+    """The adapter of a provider by its identifier; `ValueError` for an unknown one."""
+    from obserwator.datasets import providers
+
+    for item in providers():
+        if item.id == provider:
+            return item.adapter
+    raise ValueError(f"No attribution for the provider {provider!r}")

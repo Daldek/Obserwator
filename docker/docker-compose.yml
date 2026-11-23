@@ -62,6 +62,43 @@ services:
       app:
         condition: service_healthy
 
+  # The scheduled jobs (docs/USAGE.md "Timers"; Nogat plan 2026-11-16, step A2).
+  # No daemon: the host's timers run `docker compose --profile jobs run --rm jobs
+  # night|telemetry|current`. The roots are the host's OBSERWATOR_RAW_ROOT and
+  # OBSERWATOR_ROOT, owned by OBSERWATOR_UID (default 1000, the image's appuser).
+  jobs:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    profiles: ["jobs"]
+    entrypoint: ["/usr/local/bin/obserwator-jobs.sh"]
+    command: ["current", "--check"]
+    user: "${OBSERWATOR_UID:-1000}:${OBSERWATOR_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    volumes:
+      - ${OBSERWATOR_RAW_ROOT:-../data/obserwator-raw}:/srv/obserwator-raw
+      - ${OBSERWATOR_ROOT:-../data/obserwator}:/srv/obserwator
+      # The capture spool, the capture lock and the harvests' days, as the app's logs
+      - ${NOGAT_STATE_DIR:-../state}/obserwator:/state/obserwator
+      # --pace-until and the year of the telemetry are local time: the host's zone
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - OBSERWATOR_RAW_ROOT=/srv/obserwator-raw
+      - OBSERWATOR_ROOT=/srv/obserwator
+      - OBSERWATOR_STATE_DIR=/state
+      - CHMU_HOURLY_STATIONS=${CHMU_HOURLY_STATIONS:-}
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   api_keys:
     driver: local

@@ -3,10 +3,7 @@
 from collections.abc import Collection, Iterator
 from datetime import date
 
-from obserwator._parsing.chmu import parse_chmu_hydro_daily, parse_chmu_meteo_daily
-from obserwator._parsing.hydro import normalize_hydro_archive
-from obserwator._parsing.meteo import normalize_meteo_archive, normalize_synop_archive
-from obserwator.datasets import ArchiveFile
+from obserwator.datasets import ArchiveFile, get_dataset, get_provider
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.models import NormalizedRecord
@@ -24,10 +21,11 @@ def normalize_archive(
     IMGW-PIB hydrological datasets (``pl.imgw.hydro_daily``,
     ``pl.imgw.hydro_monthly``, ``pl.imgw.hydro_semiannual``), IMGW-PIB daily
     meteorological datasets (``pl.imgw.meteo_climate_daily``,
-    ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``) and the
-    ČHMÚ daily datasets (``cz.chmu.hydro_daily``, ``cz.chmu.meteo_daily``)
-    are supported. Parsing is strict: malformed rows raise instead of being
-    skipped.
+    ``pl.imgw.meteo_precip_daily``, ``pl.imgw.meteo_synop_daily``), the
+    ČHMÚ daily datasets (``cz.chmu.hydro_daily``, ``cz.chmu.meteo_daily``) and
+    ČHMÚ's groundwater (``cz.chmu.groundwater_daily``,
+    ``cz.chmu.groundwater_weekly``) are supported. Parsing is strict: malformed
+    rows raise instead of being skipped.
 
     Parameters
     ----------
@@ -46,8 +44,9 @@ def normalize_archive(
     NormalizedRecord
         Normalized measurements with value/flag pairs; see
         ``normalize_hydro_archive``, ``normalize_meteo_archive``,
-        ``normalize_synop_archive``, ``parse_chmu_hydro_daily`` and
-        ``parse_chmu_meteo_daily`` for the per-dataset record layout.
+        ``normalize_synop_archive``, ``parse_chmu_hydro_daily``,
+        ``parse_chmu_meteo_daily`` and ``parse_chmu_groundwater`` for the
+        per-dataset record layout.
 
     Raises
     ------
@@ -91,44 +90,19 @@ def normalize_in_sequence(
     records of the skipped rows would have covered: the months the archive
     publishes, which the records of the chosen stations alone may not show.
     """
-    if archive.dataset in {
-        "pl.imgw.hydro_daily",
-        "pl.imgw.hydro_monthly",
-        "pl.imgw.hydro_semiannual",
-    }:
-        yield from normalize_hydro_archive(
-            archive.dataset,
-            archive.server_path,
-            data,
-            stations=stations,
-            skipped_months=skipped_months,
-        )
-    elif archive.dataset in {
-        "pl.imgw.meteo_climate_daily",
-        "pl.imgw.meteo_precip_daily",
-    }:
-        yield from normalize_meteo_archive(
-            archive.dataset,
-            archive.server_path,
-            data,
-            year=archive.year,
-            month=archive.month,
-            carry=carry if archive.dataset in CARRY_DATASETS else None,
-            stations=stations,
-            skipped_months=skipped_months,
-        )
-    elif archive.dataset == "pl.imgw.meteo_synop_daily":
-        yield from normalize_synop_archive(
-            archive.server_path,
-            data,
-            start=archive.period_start,
-            end=archive.period_end,
-        )
-    elif archive.dataset == "cz.chmu.hydro_daily":
-        yield from parse_chmu_hydro_daily(data, filename=archive.server_path)
-    elif archive.dataset == "cz.chmu.meteo_daily":
-        yield from parse_chmu_meteo_daily(data, filename=archive.server_path)
-    else:
+    try:
+        descriptor = get_dataset(archive.dataset)
+    except ObserwatorValidationError:
+        descriptor = None
+    if descriptor is None or descriptor.key != archive.dataset:
         raise ObserwatorValidationError(
             message("parsing.no_parser_archive", dataset=archive.dataset)
         )
+    # The parser of each dataset is its provider's (ADR-029).
+    yield from get_provider(descriptor.provider).adapter.normalize(
+        archive,
+        data=data,
+        carry=carry,
+        stations=stations,
+        skipped_months=skipped_months,
+    )

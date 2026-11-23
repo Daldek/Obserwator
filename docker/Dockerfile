@@ -21,8 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ src/
 
-# REST API server with the MCP extra (/mcp needs OBSERWATOR_MCP_ENABLED=true)
-RUN pip install --no-cache-dir ".[api,mcp]"
+# REST API server with the MCP extra (/mcp needs OBSERWATOR_MCP_ENABLED=true) and
+# the store's series (pyarrow), which the jobs of docker-compose.yml build too
+RUN pip install --no-cache-dir ".[api,mcp,store]"
+
+# The scheduled jobs of the service `jobs` (docs/USAGE.md "Timers")
+COPY deploy/obserwator-jobs.sh /usr/local/bin/obserwator-jobs.sh
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser && \

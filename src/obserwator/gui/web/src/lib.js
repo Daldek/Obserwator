@@ -15,6 +15,11 @@ export function dayNumber(iso) {
   return Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000);
 }
 
+/** Fractional days since 1970-01-01 00:00 UTC of an ISO UTC time "YYYY-MM-DDTHH:MM:SSZ": the x of the chart's `datetime` scale. */
+export function hourNumber(iso) {
+  return Date.parse(iso) / 86400000;
+}
+
 /** The ISO date of a day number. */
 export function isoOfDay(day) {
   return new Date(day * 86400000).toISOString().slice(0, 10);

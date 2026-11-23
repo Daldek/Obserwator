@@ -177,8 +177,8 @@ MESSAGES = {
         "brak początku okresu",
     ),
     "unknown_kind_station_list_allowed": Text(
-        "Unknown kind of station list: {kind!r}; allowed hydro, meteo",
-        "Nieznany rodzaj listy stacji: {kind!r}; dozwolone hydro, meteo",
+        "Unknown kind of station list: {kind!r}; allowed hydro, meteo, groundwater",
+        "Nieznany rodzaj listy stacji: {kind!r}; dozwolone hydro, meteo, groundwater",
     ),
     "unreadable_listing_row": Text(
         "Unreadable listing {url}, row {line}: {reason}",

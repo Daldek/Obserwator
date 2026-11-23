@@ -19,7 +19,7 @@ from obserwator.commands import (
     validate_command,
 )
 from obserwator.config import settings
-from obserwator.datasets import datasets
+from obserwator.datasets import CAPTURE_SCOPE, datasets
 from obserwator.exceptions import ERROR_CODES, ObserwatorValidationError
 from obserwator.store import init_store
 from tests.contract.support import (
@@ -33,18 +33,31 @@ from tests.unit.test_commands import DAILY, REJECTED, ROOT, SAMPLES, SPEC_COMMAN
 from tests.unit.test_store_reader import observe, store_archives, with_content
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
+# The published files of a dataset: no server publishes a capture's (ADR-030 D3).
 ARCHIVE_KEYS = [
     d.key
     for d in datasets()
-    if d.server_dir is not None and d.time_unit != "station_list"
+    if d.server_dir is not None
+    and d.time_unit != "station_list"
+    and d.archive_scope != CAPTURE_SCOPE
 ]
-SERIES_KEYS = [
+# Files store check/sync keep as archive versions: those of every series, ČHMÚ's
+# groundwater months and statistics (ADR-032), IMGW-PIB's telemetry and ČHMÚ's
+# validated hourly files (ADR-030); an hourly series of the tiers has none, it is
+# built from them (ADR-031).
+STORED_KEYS = [
     d.key
     for d in datasets()
-    if d.in_store and d.time_unit in ("day", "month", "half_year")
+    if d.in_store
+    and d.time_unit
+    in ("day", "week", "month", "half_year", "statistics", "ten_minutes", "hour")
+    and d.archive_scope != CAPTURE_SCOPE
+    and d.inputs is None
 ]
 # Station lists and current-data sources: synced as data, never series (ADR-015).
 STATION_SOURCE_KEYS = [d.key for d in datasets() if d.time_unit == "station_list"]
+# Captures of current data: sealed from the capture spool by store check|sync (ADR-030).
+CAPTURE_KEYS = [d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE]
 
 
 def test_catalog_document_lists_every_command_with_groups_errors_and_exit_codes():
@@ -98,7 +111,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         for name, option in find["properties"].items()
     }
     assert properties == {
-        "kind": {"enum": ["hydro", "meteo"]},
+        "kind": {"enum": ["hydro", "meteo", "groundwater"]},
         "query": {"type": "string", "minLength": 1},
         "source": {"enum": ["live", "store"], "default": "live"},
         "root": {
@@ -154,7 +167,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
     check = input_schema("store check")
     assert check["required"] == ["datasets"]
     assert check["properties"]["datasets"]["items"] == {
-        "enum": [*SERIES_KEYS, *STATION_SOURCE_KEYS]
+        "enum": [*STORED_KEYS, *STATION_SOURCE_KEYS, *CAPTURE_KEYS]
     }
     assert check["properties"]["years"]["items"] == {
         "anyOf": [
@@ -244,7 +257,7 @@ def test_the_errors_of_a_command_follow_its_effects():
 def test_rest_routes_cover_exactly_the_non_local_commands():
     commands = command_schema()["commands"]
     local = [entry["name"] for entry in commands if entry["rest"] is None]
-    assert local == ["datasets download", "store init"]
+    assert local == ["datasets download", "current poll", "store init"]
     posts = [
         entry["name"]
         for entry in commands

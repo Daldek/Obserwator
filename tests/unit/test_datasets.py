@@ -1,11 +1,13 @@
 """Offline checks for source registry and physical archive enumeration."""
 
 import importlib
+import json
 import re
 from datetime import date
 
 import pytest
 
+from obserwator.commands import command_schema, run_command
 from obserwator.datasets import (
     CATALOG_DATASET,
     DATASET_KEY_ALIASES,
@@ -16,6 +18,7 @@ from obserwator.datasets import (
     get_provider,
     parse_months,
     parse_years,
+    providers,
     resolve_dataset_key,
     station_source_files,
 )
@@ -79,7 +82,38 @@ _REGISTRY = [
     ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_now", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_details", "hydro", True, "station_list", "none", None, None),
+    ("pl.imgw.meteo_details", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.pmaxtp", None, True, "cell", "none", None, None),
+    # The captures of current data (ADR-030 D2): sealed by store sync from the spool.
+    ("pl.imgw.hydro_current", "hydro", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.meteo_current", "meteo", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.meteo_synop_current", "meteo", True, "snapshot", "calendar", None, None),
+    (
+        "pl.imgw.warnings_hydro_current",
+        "hydro",
+        True,
+        "snapshot",
+        "calendar",
+        None,
+        None,
+    ),
+    (
+        "pl.imgw.warnings_meteo_current",
+        "meteo",
+        True,
+        "snapshot",
+        "calendar",
+        None,
+        None,
+    ),
+    ("pl.imgw.hydro_states_current", "hydro", True, "snapshot", "calendar", None, None),
+    # The operational series of hydro.imgw.pl and the monthly telemetry (ADR-030, O2).
+    ("pl.imgw.hydro_operational", "hydro", True, "hour", "calendar", None, None),
+    ("pl.imgw.meteo_operational", "meteo", True, "hour", "calendar", None, None),
+    ("pl.imgw.meteo_states_current", "meteo", True, "snapshot", "calendar", None, None),
+    ("pl.imgw.hydro_telemetry", "hydro", True, "ten_minutes", "calendar", 2008, None),
+    # The hourly series of the tiers, built per month from the two above (ADR-031).
+    ("pl.imgw.hydro_subdaily", "hydro", True, "hour", "calendar", 2008, None),
     ("pl.imgw.hydro_phenomena", "hydro", False, "day", "hydrological", 1951, None),
     (
         "pl.imgw.meteo_climate_monthly",
@@ -138,6 +172,16 @@ _CHMU_KEYS = [
     "cz.chmu.meteo_stations",
     "cz.chmu.hydro_now",
     "cz.chmu.meteo_now",
+    "cz.chmu.groundwater_daily",
+    "cz.chmu.groundwater_weekly",
+    "cz.chmu.groundwater_recent",
+    "cz.chmu.groundwater_characteristic",
+    "cz.chmu.groundwater_stations",
+    "cz.chmu.groundwater_now",
+    "cz.chmu.hydro_recent",
+    "cz.chmu.hydro_current",
+    "cz.chmu.hydro_hourly",
+    "cz.chmu.hydro_subdaily",
 ]
 
 
@@ -176,7 +220,15 @@ def test_datasets_kind_filter():
     ] + ["cz.chmu.meteo_daily", "cz.chmu.meteo_stations", "cz.chmu.meteo_now"]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
-    ] + ["cz.chmu.hydro_daily", "cz.chmu.hydro_stations", "cz.chmu.hydro_now"]
+    ] + [
+        "cz.chmu.hydro_daily",
+        "cz.chmu.hydro_stations",
+        "cz.chmu.hydro_now",
+        "cz.chmu.hydro_recent",
+        "cz.chmu.hydro_current",
+        "cz.chmu.hydro_hourly",
+        "cz.chmu.hydro_subdaily",
+    ]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
     assert exc.value.code == "validation_error"
@@ -235,6 +287,83 @@ def test_aliases_without_descriptor_explain_reason(alias, reason):
     assert exc.value.code == "validation_error"
     assert exc.value.details["reason"] == reason
     assert alias in str(exc.value)
+
+
+# ADR-030: the captures (H2a's six of current data, O2's of hydro.imgw.pl's station
+# endpoints and map and ČHMÚ's day files), served with their (tier, time_unit,
+# archive_scope); every other served dataset but IMGW-PIB's telemetry and ČHMÚ's
+# groundwater months is verified.
+_CAPTURES = {
+    "pl.imgw.hydro_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.meteo_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.meteo_synop_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.warnings_hydro_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.warnings_meteo_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.hydro_states_current": ("operational", "snapshot", "country_day"),
+    "pl.imgw.hydro_operational": ("operational", "hour", "country_day"),
+    "pl.imgw.meteo_operational": ("operational", "hour", "country_day"),
+    "pl.imgw.meteo_states_current": ("operational", "snapshot", "country_day"),
+    "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
+    "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),
+}
+# ADR-030, ADR-032: the datasets declared before the steps that serve them, with
+# their (tier, time_unit, archive_scope).
+_DECLARED = {
+    "cz.chmu.groundwater_current": ("operational", "day", "country_day"),
+}
+
+
+def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
+    # ADR-030, ADR-032: the captures, the telemetry and ČHMÚ's groundwater months
+    # (recent) are the data of other tiers served; ČHMÚ's hourly set is verified.
+    # ADR-031: an hourly series of the tiers has the lowest tier of its inputs.
+    served = datasets()
+    assert {
+        d.key: (d.tier, d.time_unit, d.archive_scope)
+        for d in served
+        if d.tier != "verified"
+    } == {
+        **_CAPTURES,
+        "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
+        "pl.imgw.hydro_subdaily": ("operational", "hour", "country"),
+        "cz.chmu.groundwater_recent": ("operational", "day", "station_month"),
+        "cz.chmu.hydro_subdaily": ("operational", "hour", "country"),
+    }
+    listed = run_command("datasets list", options={"limit": 100}).to_json()
+    assert [(item["key"], item["tier"]) for item in listed["result"]] == [
+        (d.key, d.tier) for d in served
+    ]
+
+
+def test_declared_datasets_follow_the_served_ones_with_their_tiers():
+    served = datasets()
+    registry = datasets(pending=True)
+    assert registry[: len(served)] == served
+    declared = registry[len(served) :]
+    assert {d.key: (d.tier, d.time_unit, d.archive_scope) for d in declared} == (
+        _DECLARED
+    )
+    # The conventions of the served registry hold before a step serves them.
+    names = [name for d in registry for name in (d.key, d.slug)]
+    assert len(names) == len(set(names))
+    for descriptor in declared:
+        prefix, _, name = descriptor.key.rpartition(".")
+        assert re.fullmatch(DATASET_KEY_PATTERN, descriptor.key)
+        assert prefix == get_provider(descriptor.provider).key_prefix
+        assert descriptor.slug == f"{prefix.partition('.')[2]}_{name}"
+
+
+def test_no_command_offers_or_takes_a_declared_dataset_before_its_step():
+    declared = {d.key: d for d in datasets(pending=True) if d.key in _DECLARED}
+    for key, descriptor in declared.items():
+        for name in (key, descriptor.slug):
+            with pytest.raises(ObserwatorValidationError) as exc:
+                get_dataset(name)
+            assert key not in exc.value.details["allowed"]
+        assert resolve_dataset_key(key) is None
+    offered = {key for provider in providers() for key in provider.datasets}
+    schema = json.dumps(command_schema())
+    assert [key for key in declared if key in offered or key in schema] == []
 
 
 # Golden URLs generated once from the removed build_hydro_url/build_meteo_url.
