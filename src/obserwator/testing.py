@@ -207,13 +207,15 @@ def fixture_files() -> Traversable:
     listings), ``variants/``, recorded HTTP answers ``recordings.json``,
     ``builder_recordings.json``, ``chmu_recordings.json``,
     ``chmu_catalog_recordings.json``, ``chmu_builder_recordings.json``,
-    ``chmu_groundwater_recordings.json`` and ``contract_recordings.json`` (live
-    endpoints of the interface contract tests), and ``contract_schemas.json``
-    (JSON Schemas with examples of the store documents ``obserwator-store/1``
-    ... ``obserwator-pmaxtp/1``, the envelope ``obserwator-result/1`` and the
-    error documents ``problem+json`` and ``obserwator-error/1``). Data are short
-    synthetic samples with fictional station codes, not real yearbooks, except
-    ČHMÚ's groundwater files: the real files of two objects with the server's
+    ``chmu_groundwater_recordings.json``, ``hydro_details_recordings.json`` and
+    ``meteo_details_recordings.json`` (real answers of hydro.imgw.pl's backend) and
+    ``contract_recordings.json`` (live endpoints of the interface contract tests),
+    and ``contract_schemas.json`` (JSON Schemas with examples of the store documents
+    ``obserwator-store/1`` ... ``obserwator-pmaxtp/1``, the envelope
+    ``obserwator-result/1`` and the error documents ``problem+json`` and
+    ``obserwator-error/1``). Data are short synthetic samples with fictional station
+    codes, not real yearbooks, except the recorded answers of hydro.imgw.pl's backend
+    and ČHMÚ's groundwater files: the real files of two objects with the server's
     headers, their listings and object lists cut to the real rows of them.
 
     Returns

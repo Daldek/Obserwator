@@ -206,6 +206,10 @@ MESSAGES = {
         "Szczegóły stacji hydrologicznych z hydro.imgw.pl: stany progowe, ekstrema, "
         "zero wodowskazu",
     ),
+    "title_meteo_details": Text(
+        "Meteorological station details of hydro.imgw.pl: location and elevation",
+        "Szczegóły stacji meteorologicznych z hydro.imgw.pl: położenie i wysokość",
+    ),
     "title_pmaxtp": Text(
         "Maximum precipitation of a given duration and probability of exceedance "
         "(PMAXTP)",
@@ -256,6 +260,12 @@ MESSAGES = {
         "Godzinowe dane hydrologiczne z hydro.imgw.pl (H, Q, T): dane operacyjne, "
         "niezweryfikowane",
     ),
+    "title_meteo_operational": Text(
+        "Meteorological station data of hydro.imgw.pl (captured answers): operational "
+        "data, unverified",
+        "Dane stacji meteorologicznych z hydro.imgw.pl (zapisane odpowiedzi): dane "
+        "operacyjne, niezweryfikowane",
+    ),
     "title_hydro_telemetry": Text(
         "Hydrological telemetry, monthly files of 10-minute H, Q, T: operational "
         "data, unverified",
@@ -295,6 +305,12 @@ MESSAGES = {
         "data, unverified",
         "Stany wody z mapy hydro.imgw.pl (zapisane odpowiedzi): dane operacyjne, "
         "niezweryfikowane",
+    ),
+    "title_meteo_states_current": Text(
+        "Precipitation states of the meteorological map of hydro.imgw.pl (captured "
+        "answers): operational data, unverified",
+        "Stany opadów z mapy stacji meteorologicznych hydro.imgw.pl (zapisane "
+        "odpowiedzi): dane operacyjne, niezweryfikowane",
     ),
     # The definitions of IMGW-PIB's format descriptions (danepubliczne.imgw.pl:
     # CODZ, MIES and POLR_publiczne_format.txt, k_d_format.txt, o_d_format.txt,

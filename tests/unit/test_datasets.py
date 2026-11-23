@@ -82,6 +82,7 @@ _REGISTRY = [
     ("pl.imgw.hydro_now", "hydro", True, "station_list", "none", None, None),
     ("pl.imgw.meteo_now", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.hydro_details", "hydro", True, "station_list", "none", None, None),
+    ("pl.imgw.meteo_details", "meteo", True, "station_list", "none", None, None),
     ("pl.imgw.pmaxtp", None, True, "cell", "none", None, None),
     # The captures of current data (ADR-030 D2): sealed by store sync from the spool.
     ("pl.imgw.hydro_current", "hydro", True, "snapshot", "calendar", None, None),
@@ -283,6 +284,8 @@ _CAPTURES = {
 # serve them, with their (tier, time_unit, archive_scope).
 _DECLARED = {
     "pl.imgw.hydro_operational": ("operational", "hour", "country_day"),
+    "pl.imgw.meteo_operational": ("operational", "hour", "country_day"),
+    "pl.imgw.meteo_states_current": ("operational", "snapshot", "country_day"),
     "pl.imgw.hydro_telemetry": ("telemetry", "ten_minutes", "country"),
     "cz.chmu.hydro_recent": ("operational", "ten_minutes", "country_day"),
     "cz.chmu.hydro_current": ("operational", "ten_minutes", "country_day"),

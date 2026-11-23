@@ -161,6 +161,12 @@ MESSAGES: dict[str, Text] = {
         "IMGW-PIB's current API (danepubliczne.imgw.pl), meteorological stations",
         "bieżące API IMGW-PIB (danepubliczne.imgw.pl), stacje meteorologiczne",
     ),
+    "station.info.source.pl.imgw.meteo_details": Text(
+        "the station page of IMGW-PIB's hydrological service (hydro.imgw.pl), "
+        "meteorological stations",
+        "strona stacji w serwisie hydrologicznym IMGW-PIB (hydro.imgw.pl), stacje "
+        "meteorologiczne",
+    ),
     "station.info.source.static": Text(
         "the map of IMGW-PIB's hydrological service (hydro.imgw.pl), the file of "
         "locations in Obserwator's package",

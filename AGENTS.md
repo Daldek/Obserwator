@@ -67,7 +67,7 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 | `cz.chmu.groundwater_recent` | `H_asl`, `spring_yield` | 2025 |
 | `cz.chmu.groundwater_characteristic` | — | — |
 
-Station sources (`*_stations`, `*_now`, `pl.imgw.hydro_details`): `store sync` alone.
+Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` alone.
 
 Captures (`pl.imgw.*_current`, unverified, one version a UTC day): `store sync` alone.
 

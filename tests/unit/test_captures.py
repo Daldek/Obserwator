@@ -60,7 +60,12 @@ DAY = date(2026, 11, 21)
 OUTAGE = b'{"message": "Service Unavailable"}'
 KEY = "k3y-of-the-test-provider-0123456789abcdef"
 PASSWORD = "pa55word-of-the-reader"
-PRIVATE_BY_DEFAULT = {STATES, "pl.imgw.hydro_operational"}
+PRIVATE_BY_DEFAULT = {
+    STATES,
+    "pl.imgw.hydro_operational",
+    "pl.imgw.meteo_operational",
+    "pl.imgw.meteo_states_current",
+}
 """hydro.imgw.pl and its backend, whose regulamin allows private use only (D5)."""
 
 
@@ -220,6 +225,16 @@ def test_a_spool_file_is_named_by_its_utc_time_and_body_and_holds_one_record():
         (
             "https://opendata.chmi.cz/hydrology/now/data/0-203-1-001000.json",
             "cz.chmu.hydro_current",
+        ),
+        # The meteorological map and station pages of hydro.imgw.pl, which
+        # `pl.imgw.meteo_details` reads, have captures of their own.
+        (
+            "https://hydro-back.imgw.pl/map/stations/meteorologic?onlyMainStations=false",
+            "pl.imgw.meteo_states_current",
+        ),
+        (
+            "https://hydro-back.imgw.pl/station/meteo/status?id=252200150",
+            "pl.imgw.meteo_operational",
         ),
         # Not below a source's directory: a longer name, the station sources' API.
         ("https://danepubliczne.imgw.pl/api/data/hydrology", None),

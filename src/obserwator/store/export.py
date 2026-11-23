@@ -1401,7 +1401,8 @@ def _catalogs(
         Code ``not_found`` when an explicit ``provider`` has no catalog, or
         none of the providers has one.
     """
-    from obserwator.providers.pl.imgw import DETAILS_SOURCE
+    from obserwator.datasets import METEO_DETAILS
+    from obserwator.providers.pl.imgw import DETAILS_SOURCE, METEO_DETAILS_SOURCE
 
     owners = providers() if provider is None else (get_provider(provider),)
     found: list[_Catalog] = []
@@ -1434,14 +1435,20 @@ def _catalogs(
             )
             if not features:
                 continue
-        static = sum(
-            feature.properties.get("location_source") == "static"
-            for feature in features
-        )
-        detailed = sum(
-            feature.properties.get("details_source") == DETAILS_SOURCE
-            for feature in features
-        )
+        located = {
+            source: sum(
+                feature.properties.get("location_source") == source
+                for feature in features
+            )
+            for source in ("static", METEO_DETAILS)
+        }
+        detailed = {
+            source: sum(
+                feature.properties.get("details_source") == source
+                for feature in features
+            )
+            for source in (DETAILS_SOURCE, METEO_DETAILS_SOURCE)
+        }
         chosen = (
             feature
             for feature in features
@@ -1454,7 +1461,7 @@ def _catalogs(
                 entry.version.parent.relative_to(base).as_posix(),
                 entry.meta,
                 tuple(sorted(chosen, key=lambda feature: feature.station_code)),
-                _catalog_lines(owner, {"static": static, DETAILS_SOURCE: detailed}),
+                _catalog_lines(owner, {**located, **detailed}),
             )
         )
     if not found:

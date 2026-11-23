@@ -115,6 +115,36 @@ Toward 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hyd
   1905). New values: `time_unit` `hour`, `ten_minutes` and `snapshot`, `archive_scope`
   `country_day`. Each dataset is served by its step of 3.2.0 (the captures by H2a, the others
   by O2).
+- **Meteorological station details of hydro.imgw.pl (`pl.imgw.meteo_details`; GEO-03 Q2, the
+  author's decision of 2026-11-21; ADR-021 erratum of 2026-11-23).** A new station source
+  (slug `imgw_meteo_details`, kind `meteo`, `time_unit` `station_list`, no update signal,
+  licence = the hydro.imgw.pl terms, lines S, P, RH): `store sync --datasets
+  pl.imgw.meteo_details` reads hydro.imgw.pl's map of meteorological stations
+  (`map/stations/meteorologic?onlyMainStations=false`, 877 stations on 2026-11-23) and then
+  the page of each, `hydro-back.imgw.pl/station/meteo/status?id=<code>`, one request at a
+  time with Obserwator's `User-Agent` and no `Referer`, exactly as `pl.imgw.hydro_details`
+  (a `null` answer is skipped, any HTTP error fails the item, `cancel` before each station).
+  The raw root keeps a derived file of each station's `id`, `coordinates.{x, y}` and
+  `properties.altitude` (`archives/versions/station/meteo/status/<label>_<sha8>/status`),
+  never its precipitation, sums, records or notes. It is an optional source of the IMGW-PIB
+  catalog: a meteorological station with a page gets `elevation_m` from it and
+  `details_source` `"meteo_details"`, and one the current-data API does not locate gets the
+  page's point with the new `location_source` value `pl.imgw.meteo_details` (ADR-028; after
+  the API's point, before the static and the user file). The catalog's sidecar has the
+  source `meteo_details` (`available` false without it, with an `info` notice
+  `source_missing` naming the sync), the build reports these details in step 5 after the hydrological ones (still 7
+  steps), `check_catalog` one more action, and RH joins the lines of a catalog, stations
+  export or station panel with such a station. A catalog of a raw root without these details,
+  or whose details name none of its stations, keeps its bytes (`unchanged`). The GUI names
+  the location source in „Informacje o stacji”.
+- **Two more declared capture datasets (ADR-030 D4, D8; erratum of 2026-11-23).** The answers
+  that `pl.imgw.meteo_details` receives belong to captures of their own, `private` by default
+  like every answer of hydro.imgw.pl's backend: `pl.imgw.meteo_operational` (every answer of
+  hydro-back's `station/meteo/…`, tier `operational`, `time_unit` `hour`) and
+  `pl.imgw.meteo_states_current` (the map of meteorological stations, `snapshot`). Both are
+  declared (`datasets(pending=True)`, `[obserwator.capture]`, `config show`) and their answers
+  are spooled; they are served, and sealed, with `pl.imgw.hydro_operational` (O2).
+  `datasets()` gives 40 datasets, and eight stay declared.
 - **ADR-030 „Captures and the operational tier”** records the tiers, the scope (ČHMÚ's
   `recent`, `now` and `historical/hourly`), the captures as archive versions
   (`archive:<key>:<YYYY-MM-DD>`), the publication state per source and its defaults, the
