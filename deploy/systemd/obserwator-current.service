@@ -1,0 +1,28 @@
+# Obserwator's hourly poll: `obserwator current poll` asks each polled source of
+# current data once and writes the answers to the capture spool only (no root).
+# A template of Obserwator's deployment guide (docs/USAGE.md "Timers"; Nogat plan
+# 2026-11-16-operational-series, step A2): replace every @NAME@ and copy it to
+# ~/.config/systemd/user/.
+
+[Unit]
+Description=Obserwator current poll: the hourly captures of current data
+Documentation=https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#timers
+
+[Service]
+Type=oneshot
+Environment=OBSERWATOR=@OBSERWATOR@
+Environment=OBSERWATOR_STATE_DIR=@STATE_DIR@
+ExecStart=@DEPLOY_DIR@/obserwator-jobs.sh current
+# Confinement (Nogat install contract, rule 10, units). PrivateTmp, ProtectHome,
+# ProtectSystem and ReadWritePaths need unprivileged user namespaces in a user unit
+# (present on Debian 13 with systemd 257); every path of ReadWritePaths must exist.
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=@STATE_DIR@/obserwator
+# A user unit cannot apply these; a system unit names the account it runs as:
+#User=obserwator
+#Group=obserwator
