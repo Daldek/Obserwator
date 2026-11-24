@@ -197,20 +197,23 @@ function Levels({ station, code, session, ids, years, choice, setChoice }) {
   // its failure) answers, so the whole record is not read twice
   const waiting = characteristic.loading && !own;
   const series = useSeries(waiting ? null : dataset, code, variable ? [variable] : [], from && to ? { start: `${from - 1}-11-01`, end: `${to}-10-31` } : {});
-  const unitText = unit(series.data ? series.data.units[variable] : variable === "H" ? "cm" : "m3/s");
+  // After „Zmienna” switches H and Q, the previous variable's series stays until the new one
+  // answers: it is not drawn under the new variable's levels (feedback 10 of 2026-11-23)
+  const shown = series.data && series.data.values[variable] ? series.data : null;
+  const unitText = unit(shown ? shown.units[variable] : variable === "H" ? "cm" : "m3/s");
   const daily = useMemo(() => {
-    if (!series.data) return null;
-    const values = series.data.values[variable];
+    if (!shown) return null;
+    const values = shown.values[variable];
     return {
       x: { scale: "date" },
       y: { label: `${variable} [${unitText}]`, unit: unitText, zero: false, digits: digitsOf(variable) },
-      series: [{ id: "v", kind: "line", cls: "s1", label: t(variable === "H" ? "hydro.levels.daily_h" : "hydro.levels.daily_q"), data: series.data.dates.map((d, at) => [dayNumber(d), values[at]]), width: 1 }],
+      series: [{ id: "v", kind: "line", cls: "s1", label: t(variable === "H" ? "hydro.levels.daily_h" : "hydro.levels.daily_q"), data: shown.dates.map((d, at) => [dayNumber(d), values[at]]), width: 1 }],
       marks: levels.map((item) => ({ kind: "hline", y: item.value, label: levelShort(item.key, own), cls: LEVEL_CLASS[item.key] })),
       readout: true,
       fit: { ratio: 0.55, minHeight: 210 },
       title: t("hydro.levels.chart_title", { variable }),
     };
-  }, [series.data, levels.map((item) => `${item.key}${item.value}`).join(), lang()]);
+  }, [shown, variable, levels.map((item) => `${item.key}${item.value}`).join(), lang()]);
   const result = events.result;
   const yearly = useMemo(() => {
     if (!result) return null;
