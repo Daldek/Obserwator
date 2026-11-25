@@ -827,6 +827,18 @@ def _forbidden(setting: Setting) -> Scenario:
     return Scenario("series build", {"dataset": PRECIP}, setting.roots(), ("rest",))
 
 
+def _no_data(setting: Setting) -> Scenario:
+    # Only Gdańskie Wody reports it (a station that does not measure the quantity),
+    # off by default and asked only with a key; a refusal below a command is alike.
+    refusal = ObserwatorError(
+        "Stacja nie mierzy tej wielkości",
+        code="no_data",
+        details={"reason": "not_measured"},
+    )
+    setting.raising(store, "store_info", refusal)
+    return Scenario("store info", {}, setting.roots())
+
+
 def _unsupported(setting: Setting) -> Scenario:
     # No catalog command refuses a combination itself (command_for_version is
     # Python only); a refusal raised below a command is reported alike.
@@ -862,6 +874,7 @@ SCENARIOS = {
     "io_error": _io_error,
     "cancelled": _cancelled,
     "forbidden": _forbidden,
+    "no_data": _no_data,
     "unsupported": _unsupported,
     "method_not_allowed": _method_not_allowed,
     "internal_error": _internal_error,

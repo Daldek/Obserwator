@@ -94,6 +94,7 @@ CLI_ERROR = {
                 "io_error",
                 "cancelled",
                 "forbidden",
+                "no_data",
                 "unsupported",
                 "internal_error",
             ]
@@ -977,6 +978,16 @@ def _forbidden(tmp_path, roots, router, monkeypatch):
     return ["store", "info", "-r", roots.data.root]
 
 
+def _no_data(tmp_path, roots, router, monkeypatch):
+    # Only Gdańskie Wody reports it (off by default, asked only with a key); a
+    # refusal raised below a command reaches exit 14.
+    refusal = ObserwatorError(
+        "Not measured", code="no_data", details={"reason": "not_measured"}
+    )
+    raising(monkeypatch, store, "store_info", refusal)
+    return ["store", "info", "-r", roots.data.root]
+
+
 def _unsupported(tmp_path, roots, router, monkeypatch):
     # No catalog command refuses a combination itself; a refusal below reaches exit 15.
     refusal = ObserwatorError(
@@ -1001,6 +1012,7 @@ ERRORS = {
     "store_unavailable": _store_unavailable,
     "io_error": _io_error,
     "forbidden": _forbidden,
+    "no_data": _no_data,
     "unsupported": _unsupported,
     "internal_error": _internal_error,
 }
