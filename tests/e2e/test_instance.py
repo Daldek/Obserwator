@@ -608,12 +608,15 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
     expect(dialog).to_be_visible()
     expect(dialog).not_to_contain_text("IMGW")
     page.keyboard.press("Escape")
-    # the panel without a station counts and lists the catalogs of ČHMÚ alone
+    # the panel without a station lists the providers served, ČHMÚ and PIG-PIB (on by
+    # default, no catalog of it in this root), never IMGW-PIB
     panel = page.locator("#panel-right")
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_count(1)
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_attribute(
-        "data-provider", "CHMU"
-    )
+    served = panel.locator("[data-part=analyses] tr[data-provider]")
+    expect(served).to_have_count(2)
+    assert [row.get_attribute("data-provider") for row in served.all()] == [
+        "CHMU",
+        "PIG",
+    ]
     expect(panel.locator(".no-station")).not_to_contain_text("IMGW")
 
 
