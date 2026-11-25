@@ -4,9 +4,9 @@
 
 ## What Obserwator is
 
-Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data: archives, current data and PMAXTP maximum precipitation. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
+Obserwator is a Python library, the `obserwator` CLI, a REST API and an MCP server for public hydrological and meteorological data. Archives go into a versioned raw root (immutable versions identified by SHA-256) or plain files; series, station catalogs and analyses are built from it into a data root and read offline.
 
-Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep reproducible local copies and to get PMAXTP values. Not supported: forecasts, ČHMÚ's climate `now` and `recent`, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
+Use it for archive and current data of the providers' stations, reproducible local copies and PMAXTP maximum precipitation. Not supported: forecasts, ČHMÚ's climate `now` and `recent`, PMAXTP outside Poland. Install: `pip install obserwator[cli]` (`[mcp]` adds the MCP server, `[store]` the Parquet series).
 
 <!-- obserwator:providers -->
 
@@ -16,26 +16,26 @@ Use it to read archive and current data of IMGW-PIB and ČHMÚ stations, to keep
 
 ## Interfaces
 
-| Interface | Plan | Result | Error |
-|---|---|---|---|
-| Python | `check_command(…)` | `CommandResult` (`to_json()`) | `ObserwatorError` (`code`, `detail`, `hint`, `details`); `obserwator.error_report.error_report(exc).to_dict()` = the error document |
-| CLI `obserwator` | `--check` | `--json`: one-line JSON envelope on stdout (without it a summary for a person) | last stderr line: error document `obserwator-error/1`; exit code |
-| REST `/api/v1` | `?check=true` (POST) | 200 + envelope | `application/problem+json` (with `hint`) |
-| MCP | `check: true` | `structuredContent` = envelope | `isError: true` + error document `obserwator-error/1` |
+| Interface | Result | Error |
+|---|---|---|
+| Python | `CommandResult` (`to_json()`) | `ObserwatorError` (`code`, `detail`, `hint`, `details`); `obserwator.error_report.error_report(exc).to_dict()` = the error document |
+| CLI `obserwator` | `--json`: one-line JSON envelope on stdout (without it a summary for a person) | last stderr line: error document `obserwator-error/1`; exit code |
+| REST `/api/v1` | 200 + envelope, also for `partial` and `failed` | `application/problem+json` (with `hint`) |
+| MCP | `structuredContent` = envelope | `isError: true` + error document `obserwator-error/1` |
 
-One command in every interface: CLI `obserwator <group> <command> --option value --json` (flag = `--` + the option name with `-` for `_`); Python `run_command("<group> <command>", options={...})`; REST `/api/v1/<group>/<command>` (GET: query parameters, POST: JSON body); MCP tool `obserwator_<group>_<command>`.
+One command in every interface: CLI `obserwator <group> <command> --option value --json` (flag: `--` + the option name, `-` for `_`); Python `run_command("<group> <command>", options={...})`; REST `/api/v1/<group>/<command>` (GET: query parameters, POST: JSON body); MCP tool `obserwator_<group>_<command>`.
 
-- **REST:** the server sets the roots (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`), `version` is relative to the command's root, local options do not exist; writing (POST without `?check=true`) must be enabled on the server and needs the `X-API-Key` header.
-- **MCP:** `obserwator mcp` (stdio) starts without writes — writing commands return a plan (`check` fixed to `true`); the user enables writes (`--allow-writes`), and even then `check` is `true` by default. `/mcp` of the REST server (`OBSERWATOR_MCP_ENABLED=true`) reads and plans only.
+- **REST:** the server sets the roots (`OBSERWATOR_ROOT`, `OBSERWATOR_RAW_ROOT`); no local options; writing (POST without `?check=true`) must be enabled on the server and needs `X-API-Key`.
+- **MCP:** `obserwator mcp` (stdio): writing commands only plan (`check` fixed to `true`) until the user allows writes (`--allow-writes`); then `check` still defaults to `true`. `/mcp` of the REST server (`OBSERWATOR_MCP_ENABLED=true`) only reads and plans.
 - **Language:** machine output is English; Polish on request: `--lang pl` (`commands list|schema|guide`, else the CLI summary without `--json`), `lang: "pl"` (MCP), `Accept-Language: pl` (REST).
 
 ## Envelope, statuses and errors
 
-A command returns the `obserwator-result/1` envelope `{"schema", "tool", "version", "command", "check", "status", "result", "attribution", "terms_notice", "notices"}`; `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` (only with provider data) are lines the user must see with the data; `notices` is a list of `{"level", "code", "message"}`. List commands return the list of items as `result` and the envelope's `page` `{"total", "next_cursor", "truncated"}`: while `truncated` is true, pass `next_cursor` as `cursor` for the next page. A check returns an `obserwator-plan/1` plan. Stream commands without `output` give only data lines: the CLI writes them to stdout (with or without `--json`), REST answers with an attachment (status and notices in `X-Obserwator-Status`, `X-Obserwator-Notices`). REST answers 200 for `partial` and `failed` too — the `status` in the body decides.
+A command returns the envelope `obserwator-result/1` `{schema, tool, version, command, check, status, result, attribution, terms_notice, notices}`: `result` is a document with its own `schema` (`obserwator-<kind>/1`), a list of them or null; `attribution` and `terms_notice` come with provider data; `notices` are `{level, code, message}`. A list command's `result` is the list, with the envelope's `page` `{total, next_cursor, truncated}`: while `truncated`, pass `next_cursor` as `cursor`. A stream without `output` gives only data lines: on the CLI's stdout (with or without `--json`), as a REST attachment (headers `X-Obserwator-Status`, `X-Obserwator-Notices`).
 
 <!-- obserwator:statuses -->
 
-An error has a code from a closed registry, the same in Python, the CLI, REST (problem+json) and MCP (`isError`); `details.option` names the wrong option. Codes with the CLI exit code and the HTTP status (`—`: never reported): <!-- obserwator:errors -->.
+An error has a code from a closed registry, the same in every interface; `details.option` names the wrong option. Codes (CLI exit code/HTTP status; `—`: never): <!-- obserwator:errors -->.
 
 ## Datasets
 
@@ -43,12 +43,12 @@ A dataset key reads `<country>.<provider>.<dataset>`; a slug (`imgw_hydro_daily`
 
 <!-- obserwator:datasets -->
 
-- `stations`: WIGOS (required for `cz.chmu.*`) or 9 digits (`pl.imgw.meteo_synop_*`, optional in `store check|sync`); one kind of files per call.
-- `years`: required in `datasets files|download` and, for `pl.imgw.*`, in `store check|sync`; optional there for `cz.chmu.*` (none = the published years); never for `cz.chmu.{meteo_daily,groundwater_characteristic}`; not before "First year". `months` only for `pl.imgw.*`, `params` only for `pl.imgw.hydro_semiannual`.
+- `stations`: WIGOS (required for `cz.chmu.*`), 9 digits (`pl.imgw.meteo_synop_*`) or `GDANSKIEWODY-<no>` of the stored `pl.gdanskiewody.station_list`, the last two optional in `store check|sync`; one kind of files per call.
+- `years`: required in `datasets files|download` and, for `pl.*`, in `store check|sync`; optional there for `cz.chmu.*` (none = the published years); never for `cz.chmu.{meteo_daily,groundwater_characteristic}`; not before "First year". `months` only for `pl.*`, `params` only for `pl.imgw.hydro_semiannual`.
 
 ## Commands
 
-One line per command, by effect; options, rules and per-option effects: `obserwator commands schema --command "<command>" --json`. Marks: `[output: …]` — the option writes a file when given; `[is a check]` — the command plans itself; `[local]` — no REST route.
+One line per command, by effect; details: `obserwator commands schema --command "<command>" --json`. Marks: `[output: …]` — the option writes a file when given; `[is a check]` — the command plans itself; `[local]` — no REST route.
 
 <!-- obserwator:commands -->
 
@@ -64,15 +64,15 @@ Replace `STATION_CODE` and `WIGOS_ID` with the values of earlier steps.
 
 ## What not to do
 
-1. Do not build or crawl the providers' server URLs by hand — use `datasets files`, `datasets download`, `store sync`.
-2. Exit codes 10 and 11 are not program failures — read the envelope (`items[].status`, `error_code`).
+1. Do not build or crawl the providers' server URLs by hand — use `datasets files|download`, `store sync`.
+2. Exit codes 10 and 11 are not program failures — read the envelope.
 3. Do not run writes (`store sync`, `series build`, `datasets download`) without a plan and the user's consent.
 4. Do not guess a station or a dataset: with several `stations find` hits, ask; check with `series summary` that a dataset has the station.
 5. Do not edit, move or delete files of a store — it only grows.
 6. Do not download "just in case": narrow `years`, `months` and `stations`.
-7. Read long lists in pages (`limit`, `cursor` = `page.next_cursor`); use `series read` or `series export --output`, not CSV in the context.
+7. Read long lists in pages (`limit`, `cursor`); use `series read` or `series export --output`, not CSV in the context.
 8. Do not poll `current …` in a loop — it is a live API; keep the result.
 9. Show the `attribution` and `terms_notice` lines verbatim with the data and in what you make of it (the `license_terms` notice too).
-10. Point `version` only below `*/versions/` of a root, without `..`; over REST and MCP over HTTP — relative to the server's root.
+10. Point `version` only below `*/versions/` of a root, without `..`; over REST and MCP over HTTP relative to the command's root.
 
 Developing this repository? Read CLAUDE.md.

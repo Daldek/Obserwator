@@ -23,7 +23,13 @@ from typer.testing import CliRunner
 
 from obserwator import current_version, run_command
 from obserwator.api.main import app
-from obserwator.attribution import ORIGINS, Attribution, attribution, carried
+from obserwator.attribution import (
+    ORIGINS,
+    Attribution,
+    attribution,
+    carried,
+    provisional,
+)
 from obserwator.cli.main import app as cli_app
 from obserwator.config import settings
 from obserwator.datasets import archive_files
@@ -52,6 +58,9 @@ POINT = {"latitude": 52.23, "longitude": 21.01}
 IMGW = attribution("imgw")
 CHMU = attribution("chmu")
 DATA = Path(__file__).parents[2] / "src" / "obserwator" / "_data"
+# The origins of the table of Nogat DEV §20; Gdańskie Wody's lines are drafts outside it
+# until its terms give their wording (ADR-034).
+STANDARD = tuple(origin for origin in ORIGINS if not provisional(origin))
 
 
 def border_properties(name: str) -> dict[str, str]:
@@ -119,20 +128,41 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
         "RK": f"Regulamin danych PMAXTP: {pmaxtp}",
     }
 
-    every = attribution(*ORIGINS)
+    every = attribution(*STANDARD)
 
     marks = ("S", "P", "PS", "PP", "M", "C", "CP", "G", "Z")
     assert every.attribution == tuple(table[mark] for mark in marks)
     assert every.terms_notice == tuple(table[mark] for mark in ("RD", "RH", "RK"))
 
 
+def test_gdanskiewody_drafts_follow_the_lines_and_the_terms_of_the_standard():
+    standard = attribution(*STANDARD)
+    draft, processed, notice = (
+        str(message("legal.gdanskiewody_attribution")),
+        str(message("legal.gdanskiewody_processed_attribution")),
+        str(message("datasets.source_notice_gdanskiewody", lang="pl")),
+    )
+    terms = str(message("legal.gdanskiewody_terms"))
+
+    every = attribution(*ORIGINS)
+
+    assert (*STANDARD, "gdanskiewody") == ORIGINS
+    # Its text, its processed line, then P8's notice (in Polish, as the lines), each
+    # after every line of the standard; its terms line after RD, RH and RK.
+    assert every.attribution == (*standard.attribution, draft, processed, notice)
+    assert every.terms_notice == (*standard.terms_notice, terms)
+    assert attribution("gdanskiewody", processed=False) == Attribution(
+        (draft, notice), (terms,)
+    )
+
+
 def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs():
-    s, p, ps, pp, m, c, cp, g, z = attribution(*ORIGINS).attribution
-    rd, rh, rk = attribution(*ORIGINS).terms_notice
+    s, p, ps, pp, m, c, cp, g, z = attribution(*STANDARD).attribution
+    rd, rh, rk = attribution(*STANDARD).terms_notice
 
     assert [
         (attribution(origin, processed=False), attribution(origin))
-        for origin in ORIGINS
+        for origin in STANDARD
     ] == [
         (Attribution((s,), (rd,)), Attribution((s, p), (rd,))),
         (Attribution((s,), (rh,)), Attribution((s, p), (rh,))),
@@ -146,7 +176,7 @@ def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs(
 
 
 def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
-    every = attribution(*ORIGINS)
+    every = attribution(*STANDARD)
     reversed_merge = (
         attribution("cuzk")
         | attribution("gugik")

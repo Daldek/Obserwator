@@ -180,4 +180,60 @@ MESSAGES = {
         "wartością (missing nie ma wartości, no_phenomenon ma 0 lub brak, pozostałe "
         "liczbę)",
     ),
+    # Gdańskie Wody's answers and month files (ADR-034): where and what is wrong.
+    "gdanskiewody_bad_content": Text(
+        "Gdańskie Wody's answer {filename} cannot be read at {where}: {problem}",
+        "Nie można odczytać odpowiedzi Gdańskich Wód {filename} w miejscu {where}: "
+        "{problem}",
+    ),
+    "gdanskiewody_not_json": Text("it is no JSON", "to nie jest JSON"),
+    "gdanskiewody_not_json_object": Text(
+        "a JSON object was expected", "oczekiwano obiektu JSON"
+    ),
+    "gdanskiewody_not_json_list": Text(
+        "a JSON list was expected", "oczekiwano listy JSON"
+    ),
+    "gdanskiewody_not_text": Text("a text was expected", "oczekiwano tekstu"),
+    "gdanskiewody_not_number": Text(
+        "a finite number was expected", "oczekiwano skończonej liczby"
+    ),
+    "gdanskiewody_not_integer": Text(
+        "an integer was expected", "oczekiwano liczby całkowitej"
+    ),
+    "gdanskiewody_not_boolean": Text(
+        "true or false was expected", "oczekiwano true albo false"
+    ),
+    "gdanskiewody_not_date": Text(
+        "a date YYYY-MM-DD was expected", "oczekiwano daty RRRR-MM-DD"
+    ),
+    "gdanskiewody_not_success": Text(
+        "the status is {status!r}, not success", "status to {status!r}, nie success"
+    ),
+    "gdanskiewody_bad_number": Text(
+        "the station number {number} is not 1 to 999",
+        "numer stacji {number} nie mieści się w zakresie 1–999",
+    ),
+    "gdanskiewody_bad_label": Text(
+        "a label YYYY-MM-DD HH:00:00 was expected",
+        "oczekiwano etykiety RRRR-MM-DD GG:00:00",
+    ),
+    "gdanskiewody_bad_pair": Text(
+        "a pair [label, value] was expected", "oczekiwano pary [etykieta, wartość]"
+    ),
+    "gdanskiewody_label_outside_day": Text(
+        "the label lies outside the provider's day {day} (06:00 to 05:00 UTC)",
+        "etykieta leży poza dobą dostawcy {day} (od 06:00 do 05:00 UTC)",
+    ),
+    "gdanskiewody_label_twice": Text(
+        "the label is given twice in the day's answer",
+        "etykieta występuje w odpowiedzi doby dwa razy",
+    ),
+    "gdanskiewody_day_outside_file": Text(
+        "the day lies outside the file's month ({first} to {last})",
+        "dzień leży poza miesiącem pliku (od {first} do {last})",
+    ),
+    "gdanskiewody_bad_name": Text(
+        "the name is no rest/measurements/<no>/<symbol>/<YYYY-MM>.json",
+        "nazwa nie ma postaci rest/measurements/<no>/<symbol>/<YYYY-MM>.json",
+    ),
 }

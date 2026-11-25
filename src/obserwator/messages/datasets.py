@@ -157,6 +157,30 @@ MESSAGES = {
         "Licencja CC BY 4.0 dopuszcza kopiowanie, zmiany i użycie komercyjne pod "
         "warunkiem uznania autorstwa ČHMÚ, podania licencji i oznaczenia zmian.",
     ),
+    # Gdańskie Wody's terms are not known yet (ADR-034, the providers plan's question
+    # 1): its terms notice says so, and no server serves its data until they are.
+    "provider_notice_gdanskiewody": Text(
+        "The terms of use of Gdańskie Wody's data are not known yet: they are shown "
+        "only to a signed-in user of pomiary.gdanskiewody.pl, so storing, serving and "
+        "passing on the data wait for them.",
+        "Warunki korzystania z danych Gdańskich Wód nie są jeszcze znane: serwis "
+        "pomiary.gdanskiewody.pl pokazuje je tylko zalogowanym użytkownikom, więc "
+        "przechowywanie, udostępnianie i przekazywanie danych czeka na nie.",
+    ),
+    # P8 (Nogat plan 2026-11-20): the notice of a provider of the class "other", in the
+    # provider's own words where it says more. Every product with its data carries the
+    # Polish text after the provider's lines (obserwator.attribution); the GUI shows it
+    # in the page's language.
+    "source_notice_other": Text(
+        "The data do not come from a national hydrological and meteorological service",
+        "Dane nie pochodzą od państwowej służby hydrologiczno-meteorologicznej",
+    ),
+    "source_notice_gdanskiewody": Text(
+        "The data do not come from a national hydrological and meteorological "
+        "service; Gdańskie Wody publishes them as raw data without verification",
+        "Dane nie pochodzą od państwowej służby hydrologiczno-meteorologicznej; "
+        "Gdańskie Wody publikują je jako dane surowe bez weryfikacji",
+    ),
     "license_notice": Text(
         "{attribution}. {notice}",
         "{attribution}. {notice}",
@@ -688,5 +712,68 @@ MESSAGES = {
     "title_chmu_groundwater_now": Text(
         "ČHMÚ — current metadata of groundwater objects",
         "ČHMÚ — bieżące metadane obiektów wód podziemnych",
+    ),
+    # Gdańskie Wody (ADR-034): raw data without verification, by the provider's word.
+    "title_gdanskiewody_station_list": Text(
+        "Gdańskie Wody — station list (rain gauges, water-level gauges, weather and "
+        "water-quality stations)",
+        "Gdańskie Wody — wykaz stacji (deszczomierze, wodowskazy, stacje "
+        "meteorologiczne i jakości wody)",
+    ),
+    "title_gdanskiewody_measurements": Text(
+        "Gdańskie Wody — hourly measurements, one file per station, quantity and "
+        "month: raw data without verification",
+        "Gdańskie Wody — pomiary godzinowe, jeden plik na stację, wielkość i "
+        "miesiąc: dane surowe bez weryfikacji",
+    ),
+    "title_gdanskiewody_hydro_hourly": Text(
+        "Gdańskie Wody — hourly hydrological series (water level in m a.s.l., "
+        "discharge, water temperature): raw data without verification",
+        "Gdańskie Wody — godzinowe serie hydrologiczne (poziom wody w m n.p.m., "
+        "przepływ, temperatura wody): dane surowe bez weryfikacji",
+    ),
+    "title_gdanskiewody_meteo_hourly": Text(
+        "Gdańskie Wody — hourly meteorological series (precipitation, air "
+        "temperature, wind, pressure, humidity, irradiance): raw data without "
+        "verification",
+        "Gdańskie Wody — godzinowe serie meteorologiczne (opad, temperatura "
+        "powietrza, wiatr, ciśnienie, wilgotność, natężenie promieniowania): dane "
+        "surowe bez weryfikacji",
+    ),
+    "title_gdanskiewody_hydro_daily": Text(
+        "Gdańskie Wody — daily hydrological series of the provider's day (06:00 to "
+        "05:59 UTC): raw data without verification",
+        "Gdańskie Wody — dobowe serie hydrologiczne doby dostawcy (od 06:00 do "
+        "05:59 UTC): dane surowe bez weryfikacji",
+    ),
+    "title_gdanskiewody_meteo_daily": Text(
+        "Gdańskie Wody — daily meteorological series of the provider's day (06:00 to "
+        "05:59 UTC): raw data without verification",
+        "Gdańskie Wody — dobowe serie meteorologiczne doby dostawcy (od 06:00 do "
+        "05:59 UTC): dane surowe bez weryfikacji",
+    ),
+    "note_gdanskiewody_hourly": Text(
+        "The value the provider labels with the start of the hour (UTC); the hour in "
+        "progress is a running partial value",
+        "Wartość, którą dostawca oznacza początkiem godziny (UTC); trwająca godzina "
+        "ma wartość cząstkową, uzupełnianą na bieżąco",
+    ),
+    "note_gdanskiewody_h_asl": Text(
+        "Water level in metres above sea level as published, the vertical datum not "
+        "published; never H, the stage above a gauge zero in cm",
+        "Poziom wody w metrach n.p.m., jak go opublikowano, bez podanego układu "
+        "wysokości; nigdy H, stan nad zerem wodowskazu w cm",
+    ),
+    "note_gdanskiewody_daily_sum": Text(
+        "Sum of the 24 hourly values of the provider's day D (06:00 of D to 05:59 of "
+        "D+1, UTC), rounded to three decimals; missing without all 24",
+        "Suma 24 wartości godzinowych doby dostawcy D (od 06:00 dnia D do 05:59 dnia "
+        "D+1, UTC), zaokrąglona do trzech miejsc; brak bez wszystkich 24",
+    ),
+    "note_gdanskiewody_daily_mean": Text(
+        "Mean of the 24 hourly values of the provider's day D (06:00 of D to 05:59 of "
+        "D+1, UTC), rounded to three decimals; missing without all 24",
+        "Średnia 24 wartości godzinowych doby dostawcy D (od 06:00 dnia D do 05:59 "
+        "dnia D+1, UTC), zaokrąglona do trzech miejsc; brak bez wszystkich 24",
     ),
 }

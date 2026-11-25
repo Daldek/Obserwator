@@ -40,7 +40,7 @@ from obserwator.datasets import (
     YearsArg,
 )
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
-from obserwator.messages import message
+from obserwator.messages import Message, message
 from obserwator.models import NormalizedRecord, StationListEntry
 from obserwator.providers.base import CheckScope, Kind, ProviderAdapter
 from obserwator.store.catalog import (
@@ -159,6 +159,9 @@ class FileFedAdapter(ProviderAdapter):
     archive_suffixes = (".csv", ".parquet")
     sidecar_station = True
     source_class: Literal["nmhs", "other"] = "other"
+    # P8: an operator's own network says nothing of verification in its provider
+    # file, so its notice says only that it is no national service.
+    source_notice: Message | None = message("datasets.source_notice_other")
 
     def __init__(self, provider_file: ProviderFile) -> None:
         self.provider_file = provider_file

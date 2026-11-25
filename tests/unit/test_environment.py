@@ -119,6 +119,8 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
         "OBSERWATOR_STORE_WRITE_TOKEN_FILE": "missing",
         "OBSERWATOR_ADMIN_API_KEY": "missing",
         "OBSERWATOR_ADMIN_API_KEY_FILE": "missing",
+        "OBSERWATOR_GDANSKIE_WODY_API_KEY": "missing",
+        "OBSERWATOR_GDANSKIE_WODY_API_KEY_FILE": "missing",
     }
     assert "store_write_token" not in missing["keys"]
     assert "admin_api_key" not in missing["keys"]
@@ -136,6 +138,8 @@ def test_credentials_come_from_the_environment_only(tmp_path, monkeypatch):
         "OBSERWATOR_STORE_WRITE_TOKEN_FILE": "missing",
         "OBSERWATOR_ADMIN_API_KEY": "missing",
         "OBSERWATOR_ADMIN_API_KEY_FILE": "present",
+        "OBSERWATOR_GDANSKIE_WODY_API_KEY": "missing",
+        "OBSERWATOR_GDANSKIE_WODY_API_KEY_FILE": "missing",
     }
     text = json.dumps(present)
     assert "from-env" not in text and "from-file" not in text

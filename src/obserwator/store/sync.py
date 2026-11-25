@@ -69,6 +69,7 @@ from obserwator.store.captures import check_captures, seal_item
 from obserwator.store.reader import _Reference, _reference_signal
 from obserwator.store.series import (
     _current_version,
+    _downloaded,
     _Version,
 )
 from obserwator.store.types import (
@@ -506,6 +507,20 @@ def _announce(
         )
 
 
+def _announce_actions(
+    actions: Iterable[PlanAction], *, on_notice: NoticeHook | None
+) -> None:
+    """Notice of every ``store sync`` action of a check: unverifiable or failed."""
+    if on_notice is None:
+        return
+    for action in actions:
+        on_notice(
+            Notice("warning", "source_unverifiable", action.detail)
+            if action.status == "unverifiable"
+            else Notice("warning", "archive_failed", action.detail)
+        )
+
+
 def _position(
     order: Mapping[str, int], archive: ArchiveFile
 ) -> tuple[int, str, int, str, str]:
@@ -592,13 +607,7 @@ def _check_listed(
         targets.extend(found)
         actions.extend(stations)
     targets.sort(key=lambda target: _position(order, target.archive))
-    if on_notice is not None:
-        for action in actions:
-            on_notice(
-                Notice("warning", "source_unverifiable", action.detail)
-                if action.status == "unverifiable"
-                else Notice("warning", "archive_failed", action.detail)
-            )
+    _announce_actions(actions, on_notice=on_notice)
     items: list[PlanItem] = []
     cancelled = False
     for index, target in enumerate(targets, start=1):
@@ -935,7 +944,9 @@ def _scope(descriptor: DatasetDescriptor) -> _Scope:
     each folder and checked by HEAD (IMGW-PIB's per-station synop archives);
     ``stations``: station files checked by their listing (ČHMÚ); ``listing``:
     archives enumerated offline and published when the provider's listing names
-    them, with no HTTP signal (IMGW-PIB's telemetry, `_check_listing`).
+    them, with no HTTP signal (IMGW-PIB's telemetry, `_check_listing`);
+    ``months``: month files named by the station list the raw root holds and
+    checked against the clock without a request (Gdańskie Wody, `_check_months`).
     """
     return get_provider(descriptor.provider).adapter.check_scope(descriptor)
 
@@ -976,6 +987,54 @@ def _folder_request(
     return codes, dict.fromkeys(descriptor.key for descriptor in descriptors)
 
 
+def _months_request(
+    descriptors: list[DatasetDescriptor],
+    years: YearsArg | None,
+    months: MonthsArg | None,
+    stations: Iterable[str] | None,
+) -> tuple[tuple[str, ...], dict[str, tuple[ArchiveFile, ...] | None]]:
+    """
+    Station codes of a request of month files (Gdańskie Wody, ADR-034).
+
+    The files come from the station list the raw root holds (`_check_months`), so
+    no dataset has offline candidates.
+
+    Returns
+    -------
+    tuple of (tuple of str, dict)
+        Sorted unique station codes (none: every station of the stored list) and
+        None for every dataset key.
+
+    Raises
+    ------
+    ObserwatorValidationError
+        If ``years`` is missing (option ``years``) or invalid, a year lies before a
+        dataset's first, ``months`` is invalid or a station code does not follow
+        the provider's grammar.
+    """
+    if years is None:
+        raise ObserwatorValidationError(
+            message(
+                "sync.months_need_years",
+                keys=", ".join(descriptor.key for descriptor in descriptors),
+            ),
+            details={"option": "years", "value": None},
+        )
+    selected = parse_years(years, option="years")
+    if months is not None:
+        parse_months(months, option="months")
+    codes: tuple[str, ...] = ()
+    provided = stations
+    for descriptor in descriptors:
+        _minimum_year(selected, descriptor)
+        if provided is not None:
+            # Every dataset validates the codes by its provider's grammar.
+            codes = provided = _parse_stations(
+                provided, get_provider(descriptor.provider)
+            )
+    return codes, dict.fromkeys(descriptor.key for descriptor in descriptors)
+
+
 class _Selection(NamedTuple):
     """The selectors of a check, validated offline (`_selection`)."""
 
@@ -1010,13 +1069,16 @@ def _selection(
         (ČHMÚ) the station codes and the candidates of each dataset (see
         `_station_request`) with no archives, for the per-station synop
         archives of IMGW-PIB the station codes and no candidates (see
-        `_folder_request`) with no archives, for country datasets (IMGW-PIB,
-        its telemetry included) no codes, no candidates and the archives, for
-        station sources (lists and station metadata, ADR-015) no codes, no
-        candidates and their files with a fixed name, or for capture datasets
-        (ADR-030 D3, sealed from the spool) the codes of a harvest
-        (``pace_until``, `_harvest_codes`: none for every station), no
-        candidates and no files, and the days of the harvest (`_capture_days`).
+        `_folder_request`) with no archives, for the month files of Gdańskie
+        Wody (named by the stored station list, ADR-034) the station codes (none
+        for every station of the list) and no candidates (see `_months_request`)
+        with no archives, for country datasets (IMGW-PIB, its telemetry
+        included) no codes, no candidates and the archives, for station sources
+        (lists and station metadata, ADR-015) no codes, no candidates and their
+        files with a fixed name, or for capture datasets (ADR-030 D3, sealed
+        from the spool) the codes of a harvest (``pace_until``,
+        `_harvest_codes`: none for every station), no candidates and no files,
+        and the days of the harvest (`_capture_days`).
 
     Raises
     ------
@@ -1102,6 +1164,9 @@ def _selection(
     if scopes == {"folders"}:
         codes, candidates = _folder_request(descriptors, years, months, stations)
         return _Selection(descriptors, codes, candidates, [])
+    if scopes == {"months"}:
+        codes, candidates = _months_request(descriptors, years, months, stations)
+        return _Selection(descriptors, codes, candidates, [])
     return _Selection(
         descriptors, (), {}, _country_archives(descriptors, years, months, stations)
     )
@@ -1160,7 +1225,15 @@ def check_store(
     (ADR-030 D3) is checked without a request: one item per closed UTC day of its
     spool (`obserwator.store.captures`), those from ``start`` to ``end`` when given;
     with ``pace_until`` also today's spool day, and one ``store sync`` action
-    (``missing``) names the harvest the run would ask its source for first.
+    (``missing``) names the harvest the run would ask its source for first. The
+    month files of Gdańskie Wody (``pl.gdanskiewody.measurements``, ADR-034) are
+    checked without a request too: the station list the raw root holds names the
+    files of the selected stations' quantities for every selected month begun by
+    today (UTC, on the clock `obserwator.fetch._clock`); a file is ``missing``
+    without a stored version, ``current`` when its current version was downloaded
+    once its month had settled (`ProviderAdapter.settled`: six hours after the
+    provider's last day of the month), else ``newer`` (an open or unsettled month,
+    fetched again by every sync).
 
     Parameters
     ----------
@@ -1169,33 +1242,35 @@ def check_store(
     datasets : Iterable[str]
         Dataset keys, slugs or legacy aliases of measurement datasets of one
         kind: IMGW-PIB country archives, IMGW-PIB's telemetry, the IMGW-PIB synop
-        archives or ČHMÚ station files (also those no series reads: ČHMÚ's
+        archives, ČHMÚ station files (also those no series reads: ČHMÚ's
         groundwater ``recent`` and ``characteristic``, ADR-032, and its validated
-        hourly files); or station sources; or capture datasets (no ``years``,
-        ``months`` or ``stations``, except ``stations`` of a harvest). A bare
-        string is rejected.
+        hourly files) or the month files of Gdańskie Wody; or station sources;
+        or capture datasets (no ``years``, ``months`` or ``stations``, except
+        ``stations`` of a harvest). A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
-        items. Required for IMGW-PIB datasets; optional for the ČHMÚ files of
-        a station and year or month (``cz.chmu.hydro_daily``,
-        ``cz.chmu.hydro_hourly``, ``cz.chmu.groundwater_daily``,
-        ``cz.chmu.groundwater_weekly``, ``cz.chmu.groundwater_recent``: None
-        checks every year and month the listing shows for the stations);
-        rejected for ``cz.chmu.meteo_daily`` and
-        ``cz.chmu.groundwater_characteristic``.
+        items. Required for IMGW-PIB datasets and the month files of Gdańskie
+        Wody (from 2005); optional for the ČHMÚ files of a station and year or
+        month (``cz.chmu.hydro_daily``, ``cz.chmu.hydro_hourly``,
+        ``cz.chmu.groundwater_daily``, ``cz.chmu.groundwater_weekly``,
+        ``cz.chmu.groundwater_recent``: None checks every year and month the
+        listing shows for the stations); rejected for ``cz.chmu.meteo_daily``
+        and ``cz.chmu.groundwater_characteristic``.
     months : MonthsArg or None, optional
         Months (1-12, same forms as ``years``) filtering physically monthly
-        IMGW-PIB files only (also the running year's monthly synop files);
-        yearly archives are returned once regardless of this filter. Rejected
-        for ČHMÚ datasets.
+        IMGW-PIB files (also the running year's monthly synop files) and the
+        month files of Gdańskie Wody (None: every month); yearly archives are
+        returned once regardless of this filter. Rejected for ČHMÚ datasets.
     stations : Iterable[str] or None, optional
         Station codes: ČHMÚ WIGOS identifiers, required for ČHMÚ datasets;
         nine-digit IMGW-PIB codes selecting the synop station archives whose
         number is a code's last three digits (None: every station of the
-        folder index); rejected for the other IMGW-PIB datasets; with
-        ``pace_until`` the stations of the harvest (None: every station of the
-        provider's list).
+        folder index); rejected for the other IMGW-PIB datasets; Gdańskie Wody
+        codes (``GDANSKIEWODY-<no>``) choosing stations of the station list the
+        raw root holds (None: every station of it; a code it does not hold is one
+        ``store sync`` action, ``unverifiable``); with ``pace_until`` the stations
+        of the harvest (None: every station of the provider's list).
     start, end : datetime.date or None, optional
         Capture datasets only: the first and last closed UTC day (before today,
         UTC) of the spool days checked, None for no bound (every closed day);
@@ -1236,21 +1311,26 @@ def check_store(
         dataset, station, year, element. A ČHMÚ station without any file of a
         dataset is one ``store sync`` action (``unverifiable``, or
         ``check_failed`` when the listing of its years cannot be read).
-        ``series_state`` is empty: the series lie in the data root, whose
-        state ``series build --check`` (`check_series`) reports (ADR-017).
-        ``requests`` counts the requests made by the check (``"made"``) and
-        the HEAD and GET of every ``newer`` and ``missing`` item
-        (``"planned"``).
+        Gdańskie Wody items carry ``station_code`` and follow the order of
+        `ProviderAdapter.month_files`. ``series_state`` is empty: the series
+        lie in the data root, whose state ``series build --check``
+        (`check_series`) reports (ADR-017). ``requests`` counts the requests
+        made by the check (``"made"``) and the HEAD and GET of every ``newer``
+        and ``missing`` item (``"planned"``; for a month file of Gdańskie Wody
+        the GET of each of its days up to today).
 
     Raises
     ------
     ObserwatorStoreError
         If ``root`` is not a supported raw root (code ``store_unavailable``;
         ``details.reason`` ``wrong_root`` for a data root) or a root path
-        contains a symbolic link.
+        contains a symbolic link; code ``not_found`` (``details.reason``
+        ``missing_source``, with the hint of the ``store sync`` that stores it)
+        when the month files of Gdańskie Wody are checked in a raw root without
+        its station list (``pl.gdanskiewody.station_list``).
     ObserwatorValidationError
         If ``datasets`` is a string or empty, a dataset is unknown or does not
-        produce measurement series, IMGW-PIB and ČHMÚ datasets are mixed or
+        produce measurement series, datasets of several kinds are mixed or
         ``stations`` is missing or given against the datasets (option
         ``stations``), a station code does not follow the provider's grammar,
         the years/months are missing, invalid or rejected for the datasets,
@@ -1260,6 +1340,8 @@ def check_store(
         (``not_capture``), ``end`` is before ``start``, a harvest's ``start`` lies
         more than 40 days back (``harvest_reach``), or ``plan`` lies inside the
         store or in a missing directory.
+    ObserwatorDataError
+        If the station list of Gdańskie Wody the raw root holds cannot be read.
     """
     descriptors, codes, candidates, archives, days = _selection(
         datasets, years, months, stations, start=start, end=end, pace_until=pace_until
@@ -1301,6 +1383,40 @@ def check_store(
         return captured
     sources = descriptors[0].time_unit == "station_list"
     scope = None if sources else _scope(descriptors[0])
+    if scope == "months":
+        assert years is not None
+        today = _fetch._clock().now().astimezone(UTC).date()
+        items, actions, cancelled = _check_months(
+            path,
+            descriptors,
+            years,
+            months,
+            codes,
+            today=today,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
+        monthly = StorePlan(
+            schema="obserwator-plan/1",
+            root=path,
+            checked_at=datetime.now(UTC),
+            items=tuple(items),
+            series_state={},
+            actions=tuple(actions),
+            cancelled=cancelled,
+            requests={
+                "made": 0,
+                "planned": sum(
+                    _days_asked(item.archive, today)
+                    for item in items
+                    if item.status in ("newer", "missing")
+                ),
+            },
+        )
+        if target is not None:
+            monthly.to_json(target)
+        return monthly
     listed = sources or scope == "stations"
     made = 0
 
@@ -1481,13 +1597,7 @@ def _check_folders(
                 for code in codes
                 if adapter.station_key(code) not in found
             )
-    if on_notice is not None:
-        for action in actions:
-            on_notice(
-                Notice("warning", "source_unverifiable", action.detail)
-                if action.status == "unverifiable"
-                else Notice("warning", "archive_failed", action.detail)
-            )
+    _announce_actions(actions, on_notice=on_notice)
     items, cancelled = _check_country(
         client,
         root,
@@ -1649,6 +1759,127 @@ def _check_listed_file(
     if listing is None or PurePosixPath(archive.server_path).name not in listing:
         return _item(archive, "unverifiable", local=local, error=UNPUBLISHED)
     return _item(archive, "missing" if local is None else "current", local=local)
+
+
+def _check_months(
+    root: Path,
+    descriptors: list[DatasetDescriptor],
+    years: YearsArg,
+    months: MonthsArg | None,
+    codes: tuple[str, ...],
+    *,
+    today: date,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[list[PlanItem], list[PlanAction], bool]:
+    """
+    Check the month files the stored station list names against the clock, offline.
+
+    The files and the station actions come from `ProviderAdapter.month_files`: the
+    quantities of the stations of ``codes`` (none: every station of the list the
+    raw root holds) for every selected month begun by ``today``. A file without a
+    stored version is ``missing``; one whose current version was downloaded at or
+    after its month settled (`ProviderAdapter.settled`) is ``current``, any other
+    ``newer``: an open month, or one downloaded before its last values could come
+    in. An unreadable version makes its file ``check_failed``. No request is made;
+    every item carries ``station_code``.
+
+    Parameters
+    ----------
+    root : Path
+        Raw root.
+    descriptors : list of DatasetDescriptor
+        Datasets checked by ``months``.
+    years : YearsArg
+        Selected years.
+    months : MonthsArg or None
+        Selected months of each year; None for every one.
+    codes : tuple of str
+        Requested station codes, sorted; none for every station of the stored list.
+    today : datetime.date
+        Today (UTC) on the clock of the run.
+    on_progress, on_notice : hook or None
+        Hooks of `check_store`.
+    cancel : Cancel or None
+        Polled before every file.
+
+    Returns
+    -------
+    tuple of (list of PlanItem, list of PlanAction, bool)
+        Items in the adapter's order, station actions and the cancellation flag.
+
+    Raises
+    ------
+    ObserwatorStoreError
+        ``not_found`` (``missing_source``) without the station list in the raw root.
+    ObserwatorDataError
+        If the stored station list cannot be read.
+    """
+    files: list[ArchiveFile] = []
+    actions: list[PlanAction] = []
+    for descriptor in descriptors:
+        named, unnamed = get_provider(descriptor.provider).adapter.month_files(
+            descriptor,
+            root,
+            years=years,
+            months=months,
+            stations=codes or None,
+            today=today,
+        )
+        files.extend(named)
+        actions.extend(unnamed)
+    _announce_actions(actions, on_notice=on_notice)
+    items: list[PlanItem] = []
+    cancelled = False
+    for index, archive in enumerate(files, start=1):
+        if not cancelled and cancel is not None and cancel():
+            cancelled = True
+        if cancelled:
+            items.append(_month_item(archive, "unverifiable", error=CANCELLED))
+            continue
+        items.append(_check_month(root, archive))
+        _announce(
+            items[-1],
+            index,
+            len(files),
+            on_progress=on_progress,
+            on_notice=on_notice,
+        )
+    return items, actions, cancelled
+
+
+def _month_item(
+    archive: ArchiveFile,
+    status: Status,
+    *,
+    local: _Version | None = None,
+    error: str | None = None,
+) -> PlanItem:
+    """Plan item of a month file: its station and the slot's current version."""
+    return replace(
+        _item(archive, status, local=local, error=error),
+        station_code=archive.station_code,
+    )
+
+
+def _check_month(root: Path, archive: ArchiveFile) -> PlanItem:
+    """Plan item of one month file (see `_check_months`)."""
+    try:
+        local = _current_version(root, archive)
+    except ObserwatorDataError as exc:
+        return _month_item(archive, "check_failed", error=reason(exc))
+    if local is None:
+        return _month_item(archive, "missing")
+    adapter = get_provider(get_dataset(archive.dataset).provider).adapter
+    settled = _downloaded(local.meta) >= adapter.settled(archive)
+    return _month_item(archive, "current" if settled else "newer", local=local)
+
+
+def _days_asked(archive: ArchiveFile, today: date) -> int:
+    """The requests of a month file's download: one per day of it up to today."""
+    assert archive.period_start is not None and archive.period_end is not None
+    return max((min(archive.period_end, today) - archive.period_start).days + 1, 0)
 
 
 def _check_sources(
@@ -1910,8 +2141,13 @@ def sync_store(
     Last-Modified (IMGW-PIB), or the Last-Modified minute or Content-Length
     against the listing (ČHMÚ), differs from the plan, or the file is gone,
     the item ends as ``stale_plan`` and is not downloaded; station metadata
-    without a signal are downloaded and compared after the download.
-    ``check_failed`` items are never downloaded. An ``unverifiable`` item is
+    without a signal are downloaded and compared after the download. IMGW-PIB's
+    telemetry and the month files of Gdańskie Wody have no signal to re-validate
+    and are downloaded without a ``HEAD``: a month file asks each of its days up to
+    today (UTC), one request at a time (ADR-034), and one asked once its month
+    settled carries that time as its ``Last-Modified``, so the same bytes stored
+    earlier give a ``relabeled`` version and the month is ``current`` from then
+    on. ``check_failed`` items are never downloaded. An ``unverifiable`` item is
     downloaded (then deduplicated by SHA-256) only in a sync without a
     supplied plan; from a supplied plan it stays ``unchanged`` with a
     ``source_unverifiable`` warning. An unpublished item (``"not published"``)
@@ -1925,7 +2161,8 @@ def sync_store(
     ``conflict`` that lists every path before the first request (a plan acts on
     versions, DEV-19.17). ČHMÚ station files need ``years`` in plain mode,
     because the years of a store sync come from the server listing; the
-    station sources of the catalogs are stored only in a store.
+    station sources of the catalogs and the month files of Gdańskie Wody, which
+    the station list of a raw root names, are stored only in a store.
 
     Parameters
     ----------
@@ -1947,10 +2184,12 @@ def sync_store(
         Years to synchronize (``2024``, ``"2020-2023"``, ``"2020,2022"`` or a
         collection of such items), as in :func:`check_store`.
     months : MonthsArg or None, optional
-        Months (1-12) filtering physically monthly IMGW-PIB files.
+        Months (1-12) filtering physically monthly IMGW-PIB files and the month
+        files of Gdańskie Wody, as in :func:`check_store`.
     stations : Iterable[str] or None, optional
         Station codes (ČHMÚ WIGOS identifiers, nine-digit codes of the IMGW-PIB
-        synop archives), as in :func:`check_store`; with ``pace_until`` the
+        synop archives, ``GDANSKIEWODY-<no>`` of the stored station list of
+        Gdańskie Wody), as in :func:`check_store`; with ``pace_until`` the
         stations of the harvest (None: every station of the provider's list).
     start, end : datetime.date or None, optional
         Capture datasets only: the first and last closed UTC day of the spool days
@@ -2000,9 +2239,9 @@ def sync_store(
         :func:`check_store`); if both ``output_dir`` and ``root`` are given
         (``details["reason"]="exclusive_options"``); if ``plan``, ``start``,
         ``end`` or ``pace_until`` is given with ``output_dir``
-        (``details["reason"]="store_only_option"``) or station sources or
-        captures are synchronized as plain files
-        (``details["reason"]="store_only_dataset"``).
+        (``details["reason"]="store_only_option"``) or station sources,
+        captures or the month files of Gdańskie Wody are synchronized as plain
+        files (``details["reason"]="store_only_dataset"``).
     ObserwatorError
         ``conflict`` in plain mode before any request (``output_exists``,
         ``duplicate_output_name``, ``output_in_store``; ``details["paths"]`` is
@@ -2019,7 +2258,9 @@ def sync_store(
         If the plan file cannot be read, the marker of ``root`` is unreadable or
         the lock file cannot be opened (``io_error``).
     ObserwatorStoreError
-        If ``root`` is not a supported Obserwator store.
+        If ``root`` is not a supported Obserwator store, or (``not_found``,
+        ``details.reason`` ``missing_source``) the month files of Gdańskie Wody
+        are synchronized into a raw root without its station list.
     """
     target = resolve_target(
         output_dir=output_dir,
@@ -2376,8 +2617,9 @@ def _plain_archives(
     Raises
     ------
     ObserwatorValidationError
-        If the selectors are invalid (see `_selection`), name station sources
-        (stored only, ``details.reason`` ``store_only_dataset``), a ČHMÚ
+        If the selectors are invalid (see `_selection`), name station sources or
+        the month files of Gdańskie Wody (stored only: the station list of a raw
+        root names them; ``details.reason`` ``store_only_dataset``), a ČHMÚ
         dataset of station-year or station-month files has no ``years`` (the
         store reads them from the server listing, which a plain write does not
         use), or the synop archives have neither ``stations`` nor ``months``.
@@ -2393,6 +2635,14 @@ def _plain_archives(
     if descriptors[0].archive_scope == CAPTURE_SCOPE:
         raise ObserwatorValidationError(
             message("sync.captures_store_only"),
+            details={"option": "datasets", "reason": "store_only_dataset"},
+        )
+    if _scope(descriptors[0]) == "months":
+        raise ObserwatorValidationError(
+            message(
+                "sync.months_store_only",
+                keys=", ".join(descriptor.key for descriptor in descriptors),
+            ),
             details={"option": "datasets", "reason": "store_only_dataset"},
         )
     if not candidates:
@@ -2458,7 +2708,8 @@ def _sync_plain(
     ObserwatorValidationError
         If ``plan``, ``start``, ``end`` or ``pace_until`` is given (they act on
         versions and the spool), ``datasets`` is missing, the selectors are invalid
-        or name station sources or captures (stored only).
+        or name station sources, captures or the month files of Gdańskie Wody
+        (stored only).
     ObserwatorError
         ``conflict`` before the first request (see ``download_archives``).
     """
@@ -2512,10 +2763,11 @@ def _sync_one(
     local = root / item.local_path if item.local_path is not None else None
     descriptor = get_dataset(item.archive.dataset)
     # Station metadata without an HTTP signal are compared after the download, and
-    # a file published by its listing alone (the telemetry) has no HEAD to compare.
+    # neither a file published by its listing alone (the telemetry) nor a month file
+    # gathered from an API's answers (Gdańskie Wody) has a HEAD to compare.
     unsigned = (
         descriptor.time_unit == "station_list" and descriptor.update_signal != "http"
-    ) or _scope(descriptor) == "listing"
+    ) or _scope(descriptor) in ("listing", "months")
     if item.status == "current" and not force:
         return _result(item, "unchanged", version=local)
     if item.status == "check_failed":

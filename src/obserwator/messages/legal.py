@@ -51,6 +51,21 @@ _TERMS_HYDRO = (
     "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
 )
 _TERMS_PMAXTP = f"Regulamin danych PMAXTP: {_PMAXTP_PAGE}"
+# Gdańskie Wody's lines are drafts (ADR-034): its regulamin is shown only to a
+# signed-in user, so neither the wording it requires nor its terms are known (the
+# providers plan's question 1, P9). `obserwator.attribution.provisional` marks them, and
+# no server serves the data they come with until the provider's terms replace them.
+_GDANSKIEWODY_SHORT = "Gdańskie Wody"
+_GDANSKIEWODY_NAME = f"{_GDANSKIEWODY_SHORT} Sp. z o.o."
+_GDANSKIEWODY_ATTRIBUTION = (
+    f"Źródło danych: {_GDANSKIEWODY_NAME}, https://pomiary.gdanskiewody.pl "
+    "(brzmienie robocze do czasu poznania regulaminu dostawcy)"
+)
+_GDANSKIEWODY_PROCESSED = "Dane Gdańskich Wód zostały przetworzone"
+_TERMS_GDANSKIEWODY = (
+    "Regulamin pomiary.gdanskiewody.pl: nieznany, widoczny tylko po zalogowaniu "
+    "(https://pomiary.gdanskiewody.pl/login)"
+)
 
 RETIRED_LINES = (
     "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl",
@@ -97,4 +112,15 @@ MESSAGES = {
     "imgw_terms_danepubliczne": Text(_TERMS_DANEPUBLICZNE, _TERMS_DANEPUBLICZNE),
     "imgw_terms_hydro": Text(_TERMS_HYDRO, _TERMS_HYDRO),
     "imgw_terms_pmaxtp": Text(_TERMS_PMAXTP, _TERMS_PMAXTP),
+    # Gdańskie Wody's names (ADR-034), then its line, processed line and terms line:
+    # drafts until its terms give their wording (Nogat DEV §20 holds no row of it, P9).
+    "gdanskiewody_name": Text(_GDANSKIEWODY_NAME, _GDANSKIEWODY_NAME),
+    "gdanskiewody_short_name": Text(_GDANSKIEWODY_SHORT, _GDANSKIEWODY_SHORT),
+    "gdanskiewody_attribution": Text(
+        _GDANSKIEWODY_ATTRIBUTION, _GDANSKIEWODY_ATTRIBUTION
+    ),
+    "gdanskiewody_processed_attribution": Text(
+        _GDANSKIEWODY_PROCESSED, _GDANSKIEWODY_PROCESSED
+    ),
+    "gdanskiewody_terms": Text(_TERMS_GDANSKIEWODY, _TERMS_GDANSKIEWODY),
 }

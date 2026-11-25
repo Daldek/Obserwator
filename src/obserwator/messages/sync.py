@@ -43,15 +43,23 @@ MESSAGES = {
         "Opcja months nie dotyczy zbiorów {keys}: years wybiera pliki miesięczne, "
         "każdy opublikowany miesiąc każdego roku",
     ),
+    "months_need_years": Text(
+        "The datasets {keys} need the option years: the years (and months) choose "
+        "their month files",
+        "Zbiory {keys} wymagają opcji years: lata (i miesiące) wybierają ich pliki "
+        "miesięczne",
+    ),
     "one_call_covers_datasets_one": Text(
         "One call covers datasets of one kind: national IMGW-PIB archives (without "
         "the option stations), IMGW-PIB's telemetry (without stations), the IMGW-PIB "
-        "synop station archives (stations optional) or ČHMÚ station files (with the "
-        "option stations); given {names}",
+        "synop station archives (stations optional), ČHMÚ station files (with the "
+        "option stations) or the month files of Gdańskie Wody (with the option "
+        "years); given {names}",
         "Jedno wywołanie obejmuje zbiory jednego rodzaju: archiwa krajowe IMGW-PIB "
         "(bez opcji stations), telemetrię IMGW-PIB (bez stations), archiwa stacji "
-        "synoptycznych IMGW-PIB (stations opcjonalne) albo pliki stacji ČHMÚ (z "
-        "opcją stations); podano {names}",
+        "synoptycznych IMGW-PIB (stations opcjonalne), pliki stacji ČHMÚ (z opcją "
+        "stations) albo pliki miesięczne Gdańskich Wód (z opcją years); podano "
+        "{names}",
     ),
     "plan_must_written_outside_store": Text(
         "The plan must be written outside the store: {target}",
@@ -174,6 +182,12 @@ MESSAGES = {
     "captures_store_only": Text(
         "Capture datasets are sealed only into a store; give root, not output_dir",
         "Zbiory zapisów zamyka się tylko w magazynie; podaj root, nie output_dir",
+    ),
+    "months_store_only": Text(
+        "The month files of {keys} are stored only in a store: the station list its "
+        "raw root holds names them; give root, not output_dir",
+        "Pliki miesięczne zbiorów {keys} zapisuje się tylko w magazynie: wskazuje je "
+        "lista stacji zapisana w surowym magazynie; podaj root, nie output_dir",
     ),
     "pace_until_not_harvested": Text(
         "pace_until harvests one dataset of pl.imgw.hydro_operational and "

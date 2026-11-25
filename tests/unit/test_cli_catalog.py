@@ -706,10 +706,12 @@ def test_cli_without_json_prints_the_main_fields_of_a_document(
         "store_schema": "obserwator-data/1",
         "problems": "—",
     }
-    assert lines[6:8] == ["providers: 2", "  id    country  name"]
+    # The id column is as wide as the longest id.
+    assert lines[6:8] == ["providers: 3", "  id" + " " * 12 + "country  name"]
     assert [line.split()[:2] for line in lines[8:]] == [
         ["IMGW", "PL"],
         ["CHMU", "CZ"],
+        ["GDANSKIEWODY", "PL"],
     ]
 
 

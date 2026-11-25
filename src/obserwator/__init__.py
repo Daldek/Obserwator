@@ -150,6 +150,8 @@ from obserwator.parsers import (
     parse_chmu_meteo_daily,
     parse_chmu_stations,
     parse_daily_csv,
+    parse_gdanskiewody_month,
+    parse_gdanskiewody_stations,
     parse_meteo_climate_daily,
     parse_meteo_precip_daily,
     parse_meteo_synop_daily,
@@ -352,6 +354,8 @@ __all__ = [
     "parse_chmu_groundwater",
     "parse_chmu_meteo_daily",
     "parse_chmu_stations",
+    "parse_gdanskiewody_stations",
+    "parse_gdanskiewody_month",
     "parse_series_export",
     # Dataset registry
     "License",
