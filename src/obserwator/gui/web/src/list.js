@@ -6,7 +6,7 @@
 // and the list, which keeps the stations without coordinates, marked; a click selects the
 // station and the map flies to it when it has a location. The filters choose the map's
 // stations too (`onMap`); the search is the list's. The kind switch offers groundwater
-// objects (ČHMÚ's bores and springs) only where the catalogs hold one (words.js
+// objects (ČHMÚ's bores and springs, PIG-PIB's points) only where the catalogs hold one (words.js
 // `shownKinds`). The class switch „Wszystkie | Służby | Inne źródła” (hydromet P11, P12)
 // shows only where the stations' sources hold both classes (words.js `shownClasses`) and
 // stays three buttons however many providers come; one provider is chosen by its chips,

@@ -35,7 +35,7 @@ from collections.abc import (
 from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 
 from anyio import CapacityLimiter, to_thread
@@ -64,6 +64,7 @@ from obserwator.attribution import (
     dataset_origin,
     dataset_origins,
     fillable,
+    filled,
     origins,
     provider_origin,
 )
@@ -139,6 +140,8 @@ from obserwator.instance import Instance
 from obserwator.messages import LANGS, Lang, localize, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
+from obserwator.store import read_meta
+from obserwator.store.catalog import _catalog_lines as _catalog_attribution
 from obserwator.store.series import _version_lines
 from obserwator.store.types import StationFeature
 
@@ -505,6 +508,30 @@ def _held_lines(dataset: str, paths: tuple[Path, ...]) -> Attribution:
     return _version_lines(get_dataset(dataset), paths)
 
 
+def _catalog_w(snapshot: Snapshot, provider: str) -> Attribution:
+    """
+    PIG-PIB's W of a provider's current catalog, filled; none of another provider.
+
+    PIG-PIB's W names the years and days of the station sources its catalog was built
+    from (ADR-035), as the catalog's sidecar records them (``extra.catalog``) and as
+    ``stations find`` and the stations file fill it; it joins the provider's lines,
+    where its filled W takes the place of the table's. Reads the sidecar once per
+    version (`_held_catalog_w`): call it in a worker thread.
+    """
+    version = snapshot.catalogs.get(provider)
+    if version is None or not fillable(get_provider(provider).license.attribution):
+        return Attribution()
+    return _held_catalog_w(provider, version.path)
+
+
+@functools.lru_cache(maxsize=16)
+def _held_catalog_w(provider: str, path: Path) -> Attribution:
+    """The filled W of a catalog version (`_catalog_w`), read once: none ever changes."""
+    sources = cast("list[dict[str, Any]]", read_meta(path).extra.get("catalog") or ())
+    lines = _catalog_attribution(get_provider(provider), {}, sources=sources)
+    return Attribution(filled(lines.attribution))
+
+
 # --- the session and the texts ------------------------------------------------------
 
 
@@ -515,7 +542,10 @@ def _session_datasets(
     The series datasets the GUI serves of the providers shown, in the registry's order.
 
     Each with its provider, the kind of its stations, its time step (``time_unit``),
-    its tier and its title and short label in ``lang`` without the words of its tier,
+    its tier, whether its series are unverified as a whole (``unverified``: a tier other
+    than ``verified`` and, of an hourly series, every input of that one tier, as
+    PIG-PIB's automatic hours; an hourly series of several tiers names each hour's own,
+    ADR-031) and its title and short label in ``lang`` without the words of its tier,
     which the page labels itself: the GUI catalog's (``words.dataset.<key>``), or, for
     a provider fed by files, which the catalog cannot know, its provider file's
     (ADR-033). A series of a private source is not served (`series_datasets`).
@@ -537,11 +567,14 @@ def _session_datasets(
         else:
             title = localize(file.dataset_title(descriptor.kind), lang)
             short = message("provider_files.short_daily", lang=lang)
+        inputs = {get_dataset(item).tier for item in descriptor.inputs or ()}
         found[key] = {
             "provider": descriptor.provider,
             "kind": descriptor.kind,
             "step": descriptor.time_unit,
             "tier": descriptor.tier,
+            "unverified": descriptor.tier != "verified"
+            and (descriptor.time_unit != "hour" or inputs == {descriptor.tier}),
             "title": str(title),
             "short": str(short),
         }
@@ -554,16 +587,20 @@ async def session(request: Request) -> Response:
     ``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus.
 
     ``providers`` describes each provider for the page (names, its country as an ISO
-    3166-1 alpha-2 code, the prefix of its keys, the origins of its lines and of the
-    border its stations were checked against, the class of its source, P11, and P8's
-    notice of a source of the class ``other`` in the page's language, null for a
-    national service) and ``datasets`` each series dataset served
-    (`_session_datasets`), so the page names no provider (P1); ``attribution`` holds the
-    lines of each origin, their order and the ``screen_lines`` the kit's strip shows
-    beside its own (each provider fed by files: its line, Nogat kit 1.2.0, ADR-033).
-    On an instance (ADR-025) only what it serves: its providers (the featured one
-    first), their datasets, the origins of their lines (the featured provider's lines
-    first in ``order``) and ``instance`` (`_instance_document`); null without one.
+    3166-1 alpha-2 code, the prefix of its keys, the families of its stations
+    (``kinds``), the origins of its lines and of the border its stations were checked
+    against, the class of its source, P11, and P8's notice of a source of the class
+    ``other`` in the page's language, null for a national service) and ``datasets`` each
+    series dataset served (`_session_datasets`), so the page names no provider (P1);
+    ``attribution`` holds the lines of each origin (PIG-PIB's W filled as its current
+    catalog's, `_catalog_w`), their order, the ``fillable`` formulas among them whose
+    filled lines take their place (ADR-035) and the ``screen_lines`` the kit's strip
+    shows beside its own (each provider fed by files: its line, Nogat kit 1.2.0,
+    ADR-033). ``root.analyses`` names the providers whose stations an analysis applies
+    to (`ANALYSES_SLOTS`). On an instance (ADR-025) only what it serves: its providers
+    (the featured one first), their datasets, the origins of their lines (the featured
+    provider's lines first in ``order``) and ``instance`` (`_instance_document`); null
+    without one.
     """
     params.only(request.query_params, ())
     state = _gui(request)
@@ -589,6 +626,19 @@ async def session(request: Request) -> Response:
         else tuple(get_provider(provider) for provider in instance.served)
     )
     datasets_shown = await _thread(lambda: _session_datasets(shown, lang))
+    catalog_w = await _thread(
+        lambda: {
+            provider_origin(provider.id): _catalog_w(snapshot, provider.id)
+            for provider in shown
+        }
+    )
+
+    def lines_of(origin: Origin) -> Attribution:
+        """An origin's lines, a provider's with the filled W of its catalog."""
+        lines = attribution(origin)
+        found = catalog_w.get(origin)
+        return lines | found if found else lines
+
     document = {
         "schema": SESSION_SCHEMA,
         "version": {"obserwator": state.version, "hydrolog": hydrolog},
@@ -619,23 +669,25 @@ async def session(request: Request) -> Response:
                 "name": provider.name,
                 "country": provider.country,
                 "key_prefix": provider.key_prefix,
+                "kinds": list(provider.adapter.kinds),
                 "origin": provider_origin(provider.id),
                 "border": border_origin(provider.id),
                 "source_class": provider.source_class,
                 "source_notice": None
                 if (notice := provider.adapter.source_notice) is None
                 else localize(notice, lang),
-                **attribution(provider_origin(provider.id)).fields(),
+                **lines_of(provider_origin(provider.id)).fields(),
             }
             for provider in shown
         },
         "datasets": datasets_shown,
         "attribution": {
-            "origins": {origin: attribution(origin).fields() for origin in served},
+            "origins": {origin: lines_of(origin).fields() for origin in served},
             "order": list(dict.fromkeys([*first.attribution, *every.attribution])),
             "terms_order": list(
                 dict.fromkeys([*first.terms_notice, *every.terms_notice])
             ),
+            "fillable": [line for line in every.attribution if fillable(line)],
             "screen_lines": [
                 file.screen_line()
                 for provider in shown
@@ -688,7 +740,8 @@ async def stations(request: Request) -> Response:
     The station layer: every station of the current catalogs and the series holding it.
 
     A request holding the layer's ETag gets ``304`` before anything is built; else the
-    answer built and gzipped once per layer (`GuiState.layer`).
+    answer built and gzipped once per layer (`GuiState.layer`). Its lines are those of
+    every station, PIG-PIB's W filled as its catalog's (`_catalog_w`).
     """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
@@ -703,6 +756,8 @@ async def stations(request: Request) -> Response:
             lines = lines | _station_origins(
                 feature.provider, feature.properties, location=True
             )
+        for provider in dict.fromkeys(f.provider for f in snapshot.features.values()):
+            lines = lines | _catalog_w(snapshot, provider)
         return {**snapshot.layer, **lines.fields()}
 
     bodies = await _thread(lambda: _gui(request).layer.bodies(etag, build))
@@ -715,7 +770,9 @@ async def station(request: Request) -> Response:
     One station: its catalog properties, the series holding it and their lines.
 
     ``subdaily`` says whether ``api/station/{code}/subdaily`` serves the station's
-    chart of „teraz” (O6, `_hourly_chart`), so the page asks it only then.
+    chart of „teraz” (O6, `_hourly_chart`), so the page asks it only then. The lines of
+    its catalog part fill PIG-PIB's W as its catalog's (`_catalog_w`), those of its
+    series as their versions' (`_served_w`).
     """
     params.only(request.query_params, ())
     snapshot = await _thread(lambda: _snapshot(request))
@@ -724,7 +781,10 @@ async def station(request: Request) -> Response:
     props = dict(feature.properties)
     held = snapshot.datasets_of(code)
     lon, lat = feature.geometry if feature.geometry else (None, None)
-    catalog = _station_origins(feature.provider, props, location=True, details=True)
+    own_w = await _thread(lambda: _catalog_w(snapshot, feature.provider))
+    catalog = (
+        _station_origins(feature.provider, props, location=True, details=True) | own_w
+    )
     series_lines = Attribution()
     for entry in held:
         series_lines = series_lines | attribution(*dataset_origins(entry["dataset"]))
@@ -1577,17 +1637,25 @@ def _stations_of(
 
 @_route
 async def stations_downloads(request: Request) -> Response:
-    """The stations of the current catalogs as files: each format, its command line."""
+    """
+    The stations of the current catalogs as files: each format, its command line.
+
+    Their lines are those of the stations chosen, PIG-PIB's W filled as its catalog's
+    (`_catalog_w`), as the file `export_stations` makes carries them.
+    """
     query = request.query_params
     params.only(query, ("provider", "kind"))
     provider, kind = _stations_query(query)
     snapshot = await _thread(lambda: _snapshot(request))
     chosen = _stations_of(snapshot, provider, kind)
+    held = {feature.provider for feature in chosen}
     lines = Attribution()
     for feature in chosen:
         lines = lines | _station_origins(
             feature.provider, feature.properties, location=True, details=True
         )
+    for found in await _thread(lambda: [_catalog_w(snapshot, p) for p in held]):
+        lines = lines | found
     selection = {
         key: value for key, value in (("provider", provider), ("kind", kind)) if value
     }
@@ -1603,7 +1671,6 @@ async def stations_downloads(request: Request) -> Response:
                 options if fmt == "geojson" else {**options, "format": fmt},
             ),
         }
-    held = {feature.provider for feature in chosen}
     document = {
         "provider": provider,
         "kind": kind,

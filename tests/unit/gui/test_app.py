@@ -197,8 +197,9 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert hydro["stations"] == 2
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
-    # The fixture root stores no analyses
-    assert root["analyses"] == {"IMGW": None, "CHMU": None, "PIG": None}
+    # The fixture root stores no analyses; no analysis applies to PIG-PIB's groundwater
+    # objects, so it has no analyses to store
+    assert root["analyses"] == {"IMGW": None, "CHMU": None}
     assert set(session["providers"]) == {"IMGW", "CHMU", "PIG"}
     assert session["providers"]["CHMU"]["attribution"] == list(
         attribution("chmu").attribution

@@ -15,8 +15,8 @@
 //   languages, looked up when a class is asked for.
 // The outlines are drawn here, the same on the map's canvas and in SVG; no path is copied.
 // Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own marks: a
-// hollow centre for a station that is only in the catalog, and for ČHMÚ's groundwater
-// objects (bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
+// hollow centre for a station that is only in the catalog, and for groundwater objects
+// (ČHMÚ's and PIG-PIB's bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
 // corners (viewBox 38 × 38) in a brown of its own, --station-groundwater, with the same
 // outline. A station is drawn by its kind and the class of its source, never by its
 // provider (ADR-025, erratum of 2026-11-21; hydromet P13): the outline tells the class,
