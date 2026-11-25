@@ -11,7 +11,12 @@ is ``off``, an area file that is missing, too large, no polygon or outside the W
 range, a logo that is no PNG, WebP or SVG, a regulamin without its title, any wrong value
 is ``validation_error`` naming the field in ``details.option`` (``instance.<field>``), so
 a server starts only from a valid description. Without the table there is no instance:
-the servers serve everything, as before.
+the servers serve everything, as before, but the providers off by default
+(`ProviderAdapter.served_by_default`: Gdańskie Wody, ADR-034), which an undeclared
+`Instance` leaves out (`default_instance`). A provider whose attribution lines are
+drafts (`obserwator.attribution.provisional`: its terms are not known) is never served:
+a state other than ``off`` for it is ``validation_error`` (``details.reason``
+``terms_unknown``), so both servers refuse to start (fail closed).
 
 `Instance` is the one filter of both servers (I3). `Instance.keeps` says whether a
 station of a catalog is served: its provider is not ``off`` and, with ``area_mode =
@@ -38,7 +43,13 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 from xml.etree import ElementTree
 
 from obserwator import _environment as environment
-from obserwator.datasets import _CATALOG_DATASETS, get_dataset, providers
+from obserwator.attribution import provisional
+from obserwator.datasets import (
+    _CATALOG_DATASETS,
+    ProviderDescriptor,
+    get_dataset,
+    providers,
+)
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message, reason
 
@@ -58,6 +69,7 @@ __all__ = [
     "Instance",
     "Logo",
     "Terms",
+    "default_instance",
     "instance_report",
     "load_instance",
     "parse_instance",
@@ -613,8 +625,9 @@ class Instance:
     Attributes
     ----------
     providers : Mapping of str to {"visible", "hidden", "off"}
-        The state of every provider of the registry (``visible`` unless the table
-        names another, I2), in registry order.
+        The state of every provider of the registry, in registry order: the one the
+        table names, else its default (I2): ``visible``, or ``off`` for a provider off
+        by default (`ProviderAdapter.served_by_default`, ADR-034).
     featured : str or None
         The featured provider (I6), never ``off``.
     others_opacity : float
@@ -632,6 +645,11 @@ class Instance:
         The operator's logo (I14).
     terms : Terms or None
         The operator's regulamin (I15).
+    declared : bool
+        Whether ``nogat.toml`` holds ``[obserwator.instance]``: False for the filter
+        both servers apply without it (`default_instance`), which leaves out only the
+        providers off by default; the operator's choices of the section (its strict
+        start checks, `report`, the page's instance) need a declared one.
     """
 
     providers: Mapping[str, ProviderState]
@@ -643,6 +661,7 @@ class Instance:
     title: str | None = None
     logo: Logo | None = None
     terms: Terms | None = None
+    declared: bool = True
     _codes: dict[tuple[object, ...], frozenset[str]] = field(
         default_factory=dict, repr=False, compare=False
     )
@@ -666,6 +685,21 @@ class Instance:
             ordered.remove(self.featured)
             ordered.insert(0, self.featured)
         return tuple(ordered)
+
+    @property
+    def complete(self) -> bool:
+        """
+        Whether every provider a search without a provider asks is served.
+
+        The providers served by default (`ProviderAdapter.served_by_default`) are what
+        a deployment without the section serves and what a search or a list that
+        names no provider covers: none of them is ``off``.
+        """
+        return all(
+            self.serves(provider)
+            for provider in self.providers
+            if _by_default(provider)
+        )
 
     @property
     def clips(self) -> bool:
@@ -912,6 +946,64 @@ def provider_of_code(code: str) -> str | None:
     return None
 
 
+def _by_default(provider: str) -> bool:
+    """Whether a provider (by id) is served by default (`ProviderAdapter.served_by_default`)."""
+    from obserwator.datasets import get_provider
+
+    return _default_state(get_provider(provider)) == "visible"
+
+
+def _default_state(provider: ProviderDescriptor) -> ProviderState:
+    """
+    A provider's state when the section names none (I2, ADR-034).
+
+    ``visible``, but ``off`` for a provider off by default and for one whose lines are
+    drafts (`obserwator.attribution.provisional`), which no server may serve.
+    """
+    adapter = provider.adapter
+    if not adapter.served_by_default or _provisional(provider):
+        return "off"
+    return "visible"
+
+
+def _provisional(provider: ProviderDescriptor) -> bool:
+    """Whether any attribution origin of a provider has draft lines (its terms unknown)."""
+    return any(provisional(origin) for origin in provider.adapter.origins)
+
+
+def _terms_unknown(
+    provider: ProviderDescriptor, state: str
+) -> ObserwatorValidationError:
+    """A served state of a provider whose terms are unknown: no server may start so."""
+    return ObserwatorValidationError(
+        message("instance.terms_unknown", provider=provider.short_name, state=state),
+        details={
+            "option": f"{SECTION}.providers.{provider.id}",
+            "value": state,
+            "reason": "terms_unknown",
+        },
+        hint=message("instance.terms_unknown_hint", provider=provider.id),
+    )
+
+
+def default_instance() -> Instance | None:
+    """
+    The servers' filter of a deployment without ``[obserwator.instance]`` (ADR-034).
+
+    Returns
+    -------
+    Instance or None
+        None while every provider is served by default (the servers serve
+        everything, as before ADR-034); else an undeclared `Instance` (``declared``
+        False) with each provider at its default state, which leaves the providers
+        off by default out of both servers and changes nothing else.
+    """
+    states = {provider.id: _default_state(provider) for provider in providers()}
+    if all(state == "visible" for state in states.values()):
+        return None
+    return Instance(providers=states, declared=False)
+
+
 def _text(table: Mapping[str, Any], name: str) -> str | None:
     """An optional text field."""
     value = table.get(name)
@@ -999,7 +1091,9 @@ def parse_instance(table: object, *, base: Path) -> Instance:
     ------
     ObserwatorValidationError
         The first problem, ``details.option`` naming the field (``instance.<field>``,
-        ``instance.providers.<id>`` for a provider's state).
+        ``instance.providers.<id>`` for a provider's state; ``details.reason``
+        ``terms_unknown`` for a state other than ``off`` of a provider whose terms
+        are not known, ADR-034).
     """
     if not isinstance(table, dict):
         raise ObserwatorValidationError(
@@ -1045,9 +1139,14 @@ def parse_instance(table: object, *, base: Path) -> Instance:
                 },
             )
     states: dict[str, ProviderState] = {
-        provider: cast(ProviderState, given.get(provider, "visible"))
-        for provider in known
+        provider.id: cast(ProviderState, given.get(provider.id))
+        if provider.id in given
+        else _default_state(provider)
+        for provider in providers()
     }
+    for provider in providers():
+        if states[provider.id] != "off" and _provisional(provider):
+            raise _terms_unknown(provider, states[provider.id])
     featured = _text(table, "featured_provider")
     if featured is not None:
         if featured not in known:
@@ -1109,10 +1208,11 @@ def parse_instance(table: object, *, base: Path) -> Instance:
 
 def load_instance() -> Instance | None:
     """
-    The deployment's ``[obserwator.instance]``, checked (I7); None without the table.
+    The deployment's ``[obserwator.instance]``, checked (I7).
 
     The file is ``nogat.toml`` of ``NOGAT_CONFIG`` or the user's configuration
     directory; a server calls this once as it starts and refuses to start on an error.
+    Without the table: `default_instance` (None, unless a provider is off by default).
 
     Raises
     ------
@@ -1122,7 +1222,7 @@ def load_instance() -> Instance | None:
     file = environment.config_file()
     table = file.sections.get(environment.TOOL, {}).get(SECTION)
     if table is None:
-        return None
+        return default_instance()
     return parse_instance(table, base=file.path.parent)
 
 
@@ -1145,4 +1245,4 @@ def instance_report() -> tuple[dict[str, object] | None, dict[str, object] | Non
             "option": exc.details.get("option", SECTION),
             "message": exc.detail,
         }
-    return (None if found is None else found.report()), None
+    return (None if found is None or not found.declared else found.report()), None

@@ -318,9 +318,10 @@ def _instance_document(
     ``start`` (``view`` and ``box`` [west, south, east, north] or null for the whole
     data set), ``area`` (``mode``, ``box``, ``bounds`` of the map in ``clip`` and the
     address of its ``outline``, `area_outline`) and whether ``pmaxtp`` and the
-    ``current`` data are served; null without ``[obserwator.instance]``.
+    ``current`` data are served; null without ``[obserwator.instance]`` (also while
+    the servers' own filter only leaves out the providers off by default, ADR-034).
     """
-    if instance is None:
+    if instance is None or not instance.declared:
         return None
     view, box = _start(instance, snapshot) if snapshot.error is None else ("all", None)
     area = instance.area
@@ -2053,7 +2054,9 @@ def build_app(
     if state is None:
         # A weak admin key: a warning here, an error at the start of an instance
         # (`GuiConfig.resolve`, ADR-025)
-        check_credentials("admin", strict=config.instance is not None)
+        check_credentials(
+            "admin", strict=config.instance is not None and config.instance.declared
+        )
         writes = config.writes_own_files
         if not writes:
             LOG.warning(

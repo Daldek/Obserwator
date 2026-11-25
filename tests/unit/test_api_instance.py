@@ -23,6 +23,7 @@ from obserwator.exceptions import (
     ObserwatorStoreError,
     ObserwatorValidationError,
 )
+from obserwator.instance import load_instance
 from obserwator.output import DATA_MARKER
 from obserwator.store import analysis_definitions, current_version, init_store
 from obserwator.store.types import PlanItem, StorePlan, page_cursor
@@ -438,7 +439,13 @@ def test_pmaxtp_off_answers_404_on_every_route_without_a_request(
         }
     assert imgw.traffic() == []
     assert list(empty_raw_root.rglob("cell.json")) == []
-    assert keys == [item.key for item in registry() if item.key != "pl.imgw.pmaxtp"]
+    served = load_instance()  # the providers off by default stay off (ADR-034)
+    assert served is not None
+    assert keys == [
+        item.key
+        for item in registry()
+        if served.serves(item.provider) and item.key != "pl.imgw.pmaxtp"
+    ]
 
 
 def test_pmaxtp_under_clip_serves_only_points_and_cells_inside(

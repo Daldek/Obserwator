@@ -128,7 +128,7 @@ def check_start(*, warn: bool = True) -> Instance | None:
         if root is not None and root.is_absolute():
             check_root_layout(root, kind)
     if instance is not None or warn:
-        check_credentials("token", strict=instance is not None)
+        check_credentials("token", strict=instance is not None and instance.declared)
     return instance
 
 
@@ -473,9 +473,14 @@ def _version_provider(parts: Sequence[str]) -> str | None:
 
 
 def _narrow(scope: Scope, options: dict[str, object]) -> None:
-    """Without ``provider`` and with a provider ``off``: the one provider served."""
+    """
+    Without ``provider`` and with a provider ``off``: the one provider served.
+
+    Only the providers a search without a provider asks count: one off by default
+    (ADR-034) is asked only where named, so it narrows nothing.
+    """
     instance = scope.instance
-    if "provider" in options or all(instance.serves(p) for p in instance.providers):
+    if "provider" in options or instance.complete:
         return
     served = instance.served
     if len(served) == 1:
@@ -594,11 +599,12 @@ def _scanned(scope: Scope, item: Any) -> bool:
     A version or problem of ``store scan``: by its provider.
 
     A problem that names no slot (an unknown directory, a stale staging directory)
-    names no provider either: kept only while every provider is served.
+    names no provider either: kept only while every provider served by default is
+    served (`Instance.complete`).
     """
     instance = scope.instance
     if item.provider is None:
-        return all(instance.serves(provider) for provider in instance.providers)
+        return instance.complete
     return instance.serves(item.provider)
 
 

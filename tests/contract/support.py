@@ -16,7 +16,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from datetime import date
 from pathlib import Path
 from signal import Signals
@@ -27,11 +27,20 @@ import httpx
 import pytest
 import respx
 
-from obserwator import archive_files, build_analyses, command_schema, current_version
+from obserwator import (
+    archive_files,
+    build_analyses,
+    command_schema,
+    current_version,
+    run_command,
+)
 from obserwator.attribution import Attribution, attribution
 from obserwator.commands import _input_schema, _input_schemas, _spec
-from obserwator.datasets import ArchiveFile
+from obserwator.config import settings
+from obserwator.datasets import ArchiveFile, get_dataset
+from obserwator.instance import Instance, load_instance
 from obserwator.messages import Lang
+from obserwator.store.types import cursor_index, page_cursor
 from obserwator.testing import fixture_files
 
 if TYPE_CHECKING:
@@ -525,6 +534,79 @@ def envelope_errors(document: Any) -> list[str]:
     if listed != ("page" in document):
         errors.append("$.page: exactly the list commands have a page")
     return errors
+
+
+def _serves_dataset(instance: Instance, item: dict[str, Any]) -> bool:
+    descriptor = get_dataset(item["key"])
+    return instance.serves(descriptor.provider) and (
+        descriptor.time_unit != "cell" or instance.pmaxtp
+    )
+
+
+# The lists the servers' filter reduces by the provider of an item alone, whatever a
+# root holds: the registry's datasets and providers.
+_SERVED_ITEMS: dict[str, Callable[[Instance, dict[str, Any]], bool]] = {
+    "datasets list": _serves_dataset,
+    "datasets providers": lambda instance, item: instance.serves(item["id"]),
+}
+
+
+def as_served(
+    command: str,
+    document: dict[str, Any],
+    options: Mapping[str, object] | None = None,
+) -> dict[str, Any]:
+    """
+    An envelope of Python or the CLI as both servers answer it (ADR-025, ADR-034).
+
+    The servers keep what `obserwator.instance.load_instance` serves: without
+    ``[obserwator.instance]`` every provider but those off by default
+    (`ProviderAdapter.served_by_default`). The registry's datasets and providers of a
+    provider not served are left out of ``datasets list`` and ``datasets
+    providers``, whose items kept are paged by the ``limit`` (default
+    ``OBSERWATOR_API_MAX_LIMIT``) and ``cursor`` of the request as the servers page
+    them, and out of the ``providers`` of ``store info``. Any other answer is
+    returned as given.
+
+    Parameters
+    ----------
+    command : str
+        The command of the envelope.
+    document : dict
+        The JSON envelope (any page of a list).
+    options : Mapping of str to object, optional
+        The options of the server's request in their JSON form.
+
+    Returns
+    -------
+    dict
+        The envelope the servers answer.
+    """
+    instance = load_instance()
+    result = document["result"]
+    if instance is None or result is None or document["check"]:
+        return document  # everything served, or no provider's items (a plan)
+    if command == "store info":
+        providers = [p for p in result["providers"] if instance.serves(p["id"])]
+        return {**document, "result": {**result, "providers": providers}}
+    kept = _SERVED_ITEMS.get(command)
+    if kept is None:
+        return document
+    given = dict(options or {})
+    limit = int(cast("int | str", given.pop("limit", settings.api_max_limit)))
+    cursor = cast("str | None", given.pop("cursor", None))
+    found = run_command(command, options=given).to_json()["result"]
+    whole = cast("list[dict[str, Any]]", found)
+    items = [item for item in whole if kept(instance, item)]
+    start = 0 if cursor is None else cursor_index(cursor)
+    end = min(start + limit, len(items))
+    more = end < len(items)
+    page = {
+        "total": len(items),
+        "next_cursor": page_cursor(end) if more else None,
+        "truncated": more,
+    }
+    return {**document, "result": items[start:end], "page": page}
 
 
 # --------------------------------------------------------------------------

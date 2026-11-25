@@ -223,8 +223,14 @@ def hydrolog(tmp_path_factory) -> tuple[str, ...]:
 
 
 def gui_config(root: Path, gui_dir: Path, **changes: Any) -> Any:
-    """Settings of a private GUI on ``root`` without basemap and Hydrolog."""
+    """
+    Settings of a private GUI on ``root`` without basemap and Hydrolog.
+
+    Its instance is the servers' filter of a deployment without ``[obserwator.instance]``
+    (`default_instance`): the providers off by default are not served (ADR-034).
+    """
     from obserwator.gui._config import GuiConfig
+    from obserwator.instance import default_instance
 
     config = GuiConfig(
         root=root,
@@ -234,6 +240,7 @@ def gui_config(root: Path, gui_dir: Path, **changes: Any) -> Any:
         request_window=60,
         gui={},
         operator=None,
+        instance=default_instance(),
     )
     return replace(config, **changes)
 

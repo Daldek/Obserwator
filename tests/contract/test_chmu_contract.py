@@ -386,6 +386,7 @@ def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
         assert [provider.id for provider in store_info(root).providers] == [
             "IMGW",
             "CHMU",
+            "GDANSKIEWODY",
         ]
 
     chmu = _scan(pl_cz, provider="CHMU")
@@ -1413,7 +1414,15 @@ def test_imgw_19_k1_chmu_commands_answer_alike_in_python_cli_rest_and_mcp(
     stream = ROUTES[run.command]["result"] == "stream"
     if MCP:
         assert_mcp_alike(answers["mcp"], run.command, options, python, printed, root)
-    assert_alike(run.command, python, printed, answers["rest"], root, raw_root=raw_root)
+    assert_alike(
+        run.command,
+        python,
+        printed,
+        answers["rest"],
+        root,
+        raw_root=raw_root,
+        requested=options,
+    )
     assert len({canonical(traffic) for traffic in requests.values()}) == 1
     if run.command == "store catalog":
         assert requests["python"] == []  # offline: the stored sources only

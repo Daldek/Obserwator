@@ -94,10 +94,22 @@ def refused(option: str):
 # --- the section -----------------------------------------------------------------------
 
 
-def test_without_the_section_there_is_no_instance(tmp_path, monkeypatch):
+def test_without_the_section_only_the_providers_off_by_default_are_left_out(
+    tmp_path, monkeypatch
+):
     deployment(tmp_path, monkeypatch, "[obserwator]\nport = 9000\n")
 
-    assert load_instance() is None
+    instance = load_instance()
+
+    # The servers' own filter (ADR-034): no operator's choice, so nothing to report.
+    assert instance is not None and not instance.declared
+    assert dict(instance.providers) == {
+        "IMGW": "visible",
+        "CHMU": "visible",
+        "GDANSKIEWODY": "off",
+    }
+    assert instance.complete and instance.served == ("IMGW", "CHMU")
+    assert (instance.featured, instance.area, instance.pmaxtp) == (None, None, True)
     report = environment_report()
     assert report["instance"] is None
     assert report["problems"] == []
@@ -122,7 +134,13 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
 
     assert instance is not None
     assert instance.title == "Wody Testowe"
-    assert dict(instance.providers) == {"IMGW": "hidden", "CHMU": "visible"}
+    assert dict(instance.providers) == {
+        "IMGW": "hidden",
+        "CHMU": "visible",
+        "GDANSKIEWODY": "off",
+    }
+    # Hidden is served: every provider served by default still is.
+    assert instance.declared and instance.complete
     assert instance.served == ("CHMU", "IMGW")
     assert (instance.featured, instance.start_view, instance.pmaxtp) == (
         "CHMU",
@@ -134,7 +152,11 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
     assert instance.logo is not None and instance.logo.media_type == "image/svg+xml"
     assert instance.terms is not None and instance.terms.text == TERMS
     report = environment_report()["instance"]
-    assert report["providers"] == {"IMGW": "hidden", "CHMU": "visible"}
+    assert report["providers"] == {
+        "IMGW": "hidden",
+        "CHMU": "visible",
+        "GDANSKIEWODY": "off",
+    }
     assert report["area"]["mode"] == "clip" and report["area"]["vertices"] == 5
     assert report["logo"]["media_type"] == "image/svg+xml"
     assert report["pmaxtp"] == "off"
@@ -147,7 +169,12 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
     instance = load_instance()
 
     assert instance is not None
-    assert dict(instance.providers) == {"IMGW": "visible", "CHMU": "visible"}
+    assert dict(instance.providers) == {
+        "IMGW": "visible",
+        "CHMU": "visible",
+        "GDANSKIEWODY": "off",
+    }
+    assert instance.complete
     assert (instance.start_view, instance.area, instance.pmaxtp) == ("all", None, True)
     assert not instance.clips
     assert instance.keeps(feature("149190310", "IMGW", None))
@@ -201,6 +228,27 @@ def test_a_wrong_section_is_refused_naming_its_field(
     problem = environment_report()["problems"][0]
     assert (problem["code"], problem["option"]) == ("invalid_instance", option)
     assert environment_report()["instance"] is None
+
+
+@pytest.mark.parametrize("state", ["visible", "hidden"])
+def test_a_provider_whose_terms_are_unknown_is_never_served(
+    tmp_path, monkeypatch, state
+):
+    deployment(
+        tmp_path,
+        monkeypatch,
+        f'[obserwator.instance.providers]\nGDANSKIEWODY = "{state}"\n',
+    )
+
+    error = refused("instance.providers.GDANSKIEWODY")
+
+    assert (error.details["value"], error.details["reason"]) == (state, "terms_unknown")
+    assert 'GDANSKIEWODY = "off"' in error.hint
+    problem = environment_report()["problems"][0]
+    assert (problem["code"], problem["option"]) == (
+        "invalid_instance",
+        "instance.providers.GDANSKIEWODY",
+    )
 
 
 def test_the_instance_table_must_be_a_table(tmp_path, monkeypatch):
