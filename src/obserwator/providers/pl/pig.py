@@ -53,6 +53,7 @@ from obserwator._parsing.pig import (
     AutoHours,
     PigPoint,
     auto_hours,
+    automatic_points,
     dst_start,
     level,
     pages,
@@ -78,6 +79,7 @@ from obserwator.exceptions import (
     ObserwatorConnectionError,
     ObserwatorDataError,
     ObserwatorValidationError,
+    io_error,
 )
 from obserwator.fetch import (
     _IDENTIFY,
@@ -90,7 +92,13 @@ from obserwator.fetch import (
 )
 from obserwator.messages import Message, message
 from obserwator.models import NormalizedRecord, StationListEntry
-from obserwator.providers.base import CheckScope, Kind, ProviderAdapter, SeriesContext
+from obserwator.providers.base import (
+    CheckScope,
+    Kind,
+    ProviderAdapter,
+    SeriesContext,
+    SourceAction,
+)
 from obserwator.store.catalog import (
     _Candidate,
     _catalog_lines,
@@ -110,6 +118,7 @@ if TYPE_CHECKING:
     from obserwator.captures import Spooled
     from obserwator.fetch import PacedSession
     from obserwator.store.catalog import CatalogBuild
+    from obserwator.store.series import _Version
     from obserwator.store.types import CatalogReport, NoticeHook
 
 __all__ = ["ADAPTER", "PigAdapter"]
@@ -263,21 +272,16 @@ def _first(items: Iterable[str], count: int = 5) -> str:
 # --- the points' capture of mwp_auto and the watermark ------------------------------
 
 
-def _capture_sidecars(raw: Path) -> list[dict[str, Any]]:
-    """
-    The sidecars of the current versions of the captures of ``mwp_auto``, newest first.
-
-    Each holds ``extra.capture`` with the night's ``watermark`` and ``count`` (W9).
-    """
+def _captures(raw: Path) -> Iterator[_Version]:
+    """The current version of each captured day of ``mwp_auto``, newest first."""
     # The store imports the adapters, so its reader is reached at call time.
     from obserwator.store.series import _pick_current, _read_versions
 
     descriptor = get_dataset(OPERATIONAL)
     assert descriptor.server_dir is not None
     base = raw / "archives" / "versions" / PurePosixPath(descriptor.server_dir)
-    found: list[dict[str, Any]] = []
     if not base.is_dir():
-        return found
+        return
     days = sorted(
         (entry.name for entry in base.iterdir() if entry.is_dir()), reverse=True
     )
@@ -289,8 +293,40 @@ def _capture_sidecars(raw: Path) -> list[dict[str, Any]]:
         relative = f"archives/versions/{descriptor.server_dir}/{day}"
         current = _pick_current(_read_versions(raw, relative, f"{day}.jsonl.gz"))
         if current is not None:
-            found.append(dict(current.meta))
-    return found
+            yield current
+
+
+def _capture_sidecars(raw: Path) -> list[dict[str, Any]]:
+    """
+    The sidecars of the current versions of the captures of ``mwp_auto``, newest first.
+
+    Each holds ``extra.capture`` with the night's ``watermark`` and ``count`` (W9).
+    """
+    return [dict(version.meta) for version in _captures(raw)]
+
+
+def _points_capture(raw: Path) -> tuple[_Version, frozenset[str]] | None:
+    """
+    The newest capture of ``mwp_auto`` that lists its automatic points, and their codes.
+
+    Each night's harvest asks layer 0 first (W9, `PigAdapter.harvest_requests`): the
+    current version of each captured day, newest first, until one holds that page
+    answered with its rows (`automatic_points`); None for a raw root without one.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If a capture cannot be read.
+    """
+    for version in _captures(raw):
+        try:
+            data = version.file.read_bytes()
+        except OSError as exc:
+            raise io_error(exc) from exc
+        codes = automatic_points(pages(data, filename=version.relative))
+        if codes is not None:
+            return version, codes
+    return None
 
 
 def _harvested_mark(raw: Path) -> tuple[int, int | None, str | None]:
@@ -326,6 +362,7 @@ class PigAdapter(ProviderAdapter):
     harvested = frozenset({OPERATIONAL})
     watermarked = frozenset({OPERATIONAL})
     station_sources = (STATIONS, STATIONS, STATIONS, STATIONS)
+    optional_sources = (OPERATIONAL,)
     kinds: tuple[Kind, ...] = ("groundwater",)
     archive_suffixes = (".gz",)
     sidecar_station = False
@@ -678,6 +715,45 @@ class PigAdapter(ProviderAdapter):
         """The points layer."""
         return [STATIONS]
 
+    def optional_action(
+        self,
+        key: str,
+        raw: Path,
+        recorded: Mapping[object, object],
+        /,
+        *,
+        catalog: bool,
+        cancelled: bool,
+    ) -> SourceAction:
+        """
+        The newest capture of the automatic points of ``mwp_auto`` (`_points_capture`).
+
+        ``current`` when it is the one the catalog recorded, also when neither has
+        one; ``newer`` when it appeared or changed, so that a night's new capture
+        calls for a new catalog with its ``automatic``; ``missing`` without a catalog.
+        """
+        if key not in self.optional_sources:
+            raise ValueError(f"{key} is no optional source of {self.provider_id}")
+        if cancelled:
+            return "unverifiable", message("common.cancelled")
+        source = get_dataset(OPERATIONAL).slug
+        captured = _points_capture(raw)
+        digest = None if captured is None else captured[0].sha256
+        status: Literal["current", "newer", "missing"]
+        if not catalog:
+            status = "missing"
+        elif recorded.get(source) == digest:
+            status = "current"
+        else:
+            status = "newer"
+        if captured is None:
+            return status, message(
+                "catalog.automatic_not_stored", source=source, dataset=OPERATIONAL
+            )
+        return status, message(
+            "catalog.source_detail", source=source, file=captured[0].relative
+        )
+
     def build_catalog(self, build: CatalogBuild, /) -> CatalogReport:
         """
         The catalog ``pig_stations`` from the stored points (W6).
@@ -686,8 +762,10 @@ class PigAdapter(ProviderAdapter):
         ``spring`` for „źródło”, ``bore`` for any other type), named by its locality,
         located by the answer's WGS84 point inside Poland's border (ADR-018) or the
         user file, with ``active`` („Tak”/„Nie”), ``elevation_m`` (the ground
-        elevation), ``established_year`` and ``hydrogeology``; a point of the hourly
-        series is ``automatic``. A code only in a series is a station without a name
+        elevation), ``established_year`` and ``hydrogeology``; ``automatic`` tells a
+        point that the newest capture of ``mwp_auto`` lists among its automatic points
+        (`_points_capture`, recorded among the sources), and is left out while the raw
+        root holds none. A code only in a series is a station without a name
         or location (``station_unknown``); a point whose CBDH number or place changed
         since the previous points version is named in ``station_identity_changed``.
         """
@@ -723,7 +801,23 @@ class PigAdapter(ProviderAdapter):
             )
         series, series_sources, _ = _series_codes(build.root, problems, provider=owner)
         records.extend(series_sources)
-        automatic = _automatic_codes(build.root)
+        captured = _points_capture(build.raw)
+        automatic = None if captured is None else captured[1]
+        if captured is not None:
+            version, listed = captured
+            records.append(
+                {
+                    "source": get_dataset(OPERATIONAL).slug,
+                    "url": _auto_url(_AUTO_POINTS),
+                    "file": version.relative,
+                    "fetched_at": version.meta["downloaded_at"],
+                    "sha256": version.sha256,
+                    "count": len(listed),
+                }
+            )
+            build.progress(
+                2, "done", message("catalog.source_read", server_path=version.relative)
+            )
         codes = set(points) | set(series.get("groundwater", ()))
         if (report := build.stopped()) is not None:
             return report
@@ -740,7 +834,7 @@ class PigAdapter(ProviderAdapter):
             feature, location = _feature(
                 code,
                 point=point,
-                automatic=code in automatic,
+                automatic=None if automatic is None else code in automatic,
                 candidates=candidates,
                 rejections=rejections,
             )
@@ -1217,27 +1311,6 @@ def _auto_state(context: SeriesContext | None) -> AutoHours:
     return state
 
 
-def _automatic_codes(root: Path) -> set[str]:
-    """The points of the current hourly series' newest month: the automatic points."""
-    from obserwator.store.series import _current_series, _series_versions
-
-    descriptor = get_dataset(SUBDAILY)
-    base = root / "series" / "versions" / descriptor.slug
-    if not base.is_dir():
-        return set()
-    months = sorted(entry.name for entry in base.iterdir() if entry.is_dir())
-    for month in reversed(months):
-        current = _current_series(_series_versions(root, descriptor, month))
-        if current is None:
-            continue
-        try:
-            stations = json.loads(current.path.read_bytes())["stations"]
-        except (OSError, ValueError, KeyError):
-            return set()
-        return set(stations) if isinstance(stations, dict) else set()
-    return set()
-
-
 def _identity_changes(root: Path, points: Mapping[str, PigPoint]) -> list[str]:
     """
     The points whose CBDH number or place changed since the current catalog (R4).
@@ -1293,15 +1366,20 @@ def _feature(
     code: str,
     *,
     point: PigPoint | None,
-    automatic: bool,
+    automatic: bool | None,
     candidates: list[_Candidate],
     rejections: list[str],
 ) -> tuple[dict[str, Any], str | None]:
-    """A point of the catalog and the source of its location, None without one."""
+    """
+    A point of the catalog and the source of its location, None without one.
+
+    ``automatic`` None (no capture of the automatic points) leaves it out of the
+    point's ``hydrogeology``.
+    """
     located = _locate(code, candidates, border=POLAND, rejections=rejections)
     geometry, location_source, uncertainty, reason = _placement(located, candidates)
     hydrogeology: dict[str, object] = dict(point.hydrogeology) if point else {}
-    if point is not None:
+    if point is not None and automatic is not None:
         hydrogeology["automatic"] = automatic
     properties: dict[str, Any] = {
         "station_code": code,

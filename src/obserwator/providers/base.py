@@ -233,7 +233,8 @@ class ProviderAdapter(Protocol):
     optional_sources : tuple of str
         Keys of station sources its catalog reads when the raw root holds them
         (IMGW-PIB: hydro.imgw.pl's station details, ADR-021; ČHMÚ: the list and the
-        current metadata of its groundwater objects, ADR-032).
+        current metadata of its groundwater objects, ADR-032; PIG-PIB: the night's
+        capture of ``mwp_auto``, whose layer 0 lists the automatic points, ADR-035).
     kinds : tuple of str
         The station families it publishes, in `obserwator.datasets.KINDS` order: a
         live search of another family asks it nothing (``hydro`` and ``meteo`` by
