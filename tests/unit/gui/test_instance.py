@@ -369,6 +369,7 @@ def test_the_kit_regulamin_of_an_instance_keeps_the_served_blocks_only(
     assert "IMGW-PIB: dane publiczne" not in page
     assert "IMGW-PIB: serwis hydrologiczny" not in page
     assert "opady maksymalne PMAXTP" not in page
+    assert "PIG-PIB: monitoring wód podziemnych" not in page
 
 
 def test_an_operator_regulamin_the_deployment_cannot_fill_is_refused(tmp_path):

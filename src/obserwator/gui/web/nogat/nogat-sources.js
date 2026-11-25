@@ -1,12 +1,12 @@
 // Nogat GUI kit: the providers' lines on screen (DEV-20.5, DEV-20.7, ECO-064, ECO-068).
 // <nogat-sources attribution='[…]' terms-notice='[…]' terms="regulamin.html"> once per
 // view: a compact strip with the lines the providers require on the product (S, P, PS,
-// PP) and the short forms CK, GK, SK and ZK of C, G, SG and Z, each once in the order of
-// DEV-20.4, and the button „Źródła i warunki”, which opens a dialog with every line and
-// the terms. `attribution` and `terms-notice` hold JSON arrays, the API's `attribution`
-// and `terms_notice`; the properties `attribution` and `termsNotice` take the arrays
-// themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked from
-// the dialog in a new tab, so the GUI's own tab and its session stay.
+// PP) and the short forms CK, WK, GK, SK and ZK of C, W, G, SG and Z, each once in the
+// order of DEV-20.4, and the button „Źródła i warunki”, which opens a dialog with every
+// line and the terms. `attribution` and `terms-notice` hold JSON arrays, the API's
+// `attribution` and `terms_notice`; the properties `attribution` and `termsNotice` take the
+// arrays themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked
+// from the dialog in a new tab, so the GUI's own tab and its session stay.
 // `screen-lines` (a JSON array; the property `screenLines` takes the array) declares more
 // lines for the strip (DEV-20.5, ECO-087), such as the line of a provider the element does
 // not know: `{text, short, links}` each, shown after the element's own lines in the order
@@ -29,6 +29,9 @@ export const LINES = {
   C: "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
   CK: "Źródło: ČHMÚ, CC BY 4.0",
   CP: "Dane ČHMÚ zostały przetworzone",
+  W: "Źródło danych: Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy (PIG-PIB), Monitoring Wód Podziemnych państwowej służby geologicznej (wytworzono `<period>`, pozyskano `<date>`), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+  WK: "Źródło: PIG-PIB, CC BY 4.0",
+  WP: "Dane PIG-PIB zostały przetworzone",
   G: "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, `<products>` (wytworzono `<period>`, pozyskano `<date>`); dane przetworzone",
   GK: "Źródło: GUGiK (`<products>`)",
   SG: "Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); dane przetworzone",
@@ -38,7 +41,7 @@ export const LINES = {
 };
 
 /** The full lines shown on screen, in the order of DEV-20.4, and the line each is shown as. */
-const SCREEN = { S: "S", P: "P", PS: "PS", PP: "PP", C: "CK", G: "GK", SG: "SK", Z: "ZK" };
+const SCREEN = { S: "S", P: "P", PS: "PS", PP: "PP", C: "CK", W: "WK", G: "GK", SG: "SK", Z: "ZK" };
 
 const LICENCE = "https://creativecommons.org/licenses/by/4.0/";
 
@@ -46,6 +49,10 @@ const LICENCE = "https://creativecommons.org/licenses/by/4.0/";
 const SHORT_LINKS = {
   CK: [
     ["ČHMÚ", "https://opendata.chmi.cz"],
+    ["CC BY 4.0", LICENCE],
+  ],
+  WK: [
+    ["PIG-PIB", "https://www.pgi.gov.pl/psh"],
     ["CC BY 4.0", LICENCE],
   ],
   SK: [["CC BY 4.0", LICENCE]],
@@ -148,7 +155,7 @@ function declared(value) {
 
 /**
  * The lines of the strip found among the full lines, in the order of DEV-20.4: the mark of
- * each full line shown and the text it is shown as, C, G, SG and Z in their short forms.
+ * each full line shown and the text it is shown as, C, W, G, SG and Z in their short forms.
  * The lines of one mark give one short form whose values join theirs with „, ”, each once,
  * so every G of the view gives one GK naming all their products.
  *
@@ -170,11 +177,12 @@ function onScreen(attribution) {
 
 /**
  * The marks of the full lines shown on screen, in the order of DEV-20.4; a line other than
- * S, P, PS, PP, C, G, SG and Z (M, CP, another provider's) stays in the dialog unless the
- * GUI declares it for the strip (`screen-lines`), which this function does not read.
+ * S, P, PS, PP, C, W, G, SG and Z (M, CP, WP, another provider's) stays in the dialog
+ * unless the GUI declares it for the strip (`screen-lines`), which this function does not
+ * read.
  *
  * @param {string[]} attribution the full lines a product carries
- * @returns {string[]} the marks, C, G, SG and Z standing for their short forms
+ * @returns {string[]} the marks, C, W, G, SG and Z standing for their short forms
  */
 export function screenMarks(attribution) {
   return onScreen(attribution).map(({ mark }) => mark);
