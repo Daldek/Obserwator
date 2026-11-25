@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 
+from obserwator._provider_files import CODE_GRAMMAR
 from obserwator.attribution import attribution
 from obserwator.datasets import (
     CAPTURE_SCOPE,
@@ -58,7 +59,7 @@ CHMU_KEYS = [
 
 
 def test_providers_follow_the_registry_table():
-    imgw, chmu, gdanskiewody = providers()
+    imgw, chmu, gdanskiewody, pig = providers()
     assert (imgw.id, imgw.short_name, imgw.country, imgw.key_prefix) == (
         "IMGW",
         "IMGW-PIB",
@@ -112,6 +113,14 @@ def test_providers_follow_the_registry_table():
     )
     assert gdanskiewody.credential is not None
     assert gdanskiewody.station_code_pattern == "^GDANSKIEWODY-[1-9][0-9]{0,2}$"
+    assert (pig.id, pig.short_name, pig.country, pig.key_prefix) == (
+        "PIG",
+        "PIG-PIB",
+        "PL",
+        "pl.pig",
+    )
+    assert pig.credential is None
+    assert pig.station_code_pattern == "^[1-9][0-9]{0,5}$"
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
@@ -145,7 +154,12 @@ def test_provider_lookup_by_id_or_key_prefix():
         with pytest.raises(ObserwatorValidationError) as error:
             get_provider(unknown)
         assert error.value.details["option"] == "provider"
-        assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY"]
+        assert error.value.details["allowed"] == [
+            "IMGW",
+            "CHMU",
+            "GDANSKIEWODY",
+            "PIG",
+        ]
 
 
 def test_registry_invariants_across_providers():
@@ -214,6 +228,7 @@ def test_registry_invariants_across_providers():
         },
         "CHMU": {"hydrology", "meteorology"},
         "GDANSKIEWODY": {"rest"},
+        "PIG": {"mwp", "mwp_auto"},
     }
     imgw, chmu = (
         re.compile(get_provider(p).station_code_pattern) for p in ("IMGW", "CHMU")
@@ -225,6 +240,28 @@ def test_registry_invariants_across_providers():
     for code in ("12345678", "0-203-1-cb900003", "0-203-1-", "149190310 "):
         assert not union.fullmatch(code)
         assert not imgw.fullmatch(code) and not chmu.fullmatch(code)
+    # Every provider's grammar, PIG-PIB's included, and the file-fed form
+    # <ID>-<code> (ADR-033) are disjoint: a code names one provider only.  A
+    # built-in code of the form <ID>-<code> carries its own provider's ID.
+    samples = {
+        "IMGW": ("149190310", "123456789"),
+        "CHMU": (A, B, M, "0-203-1-001000", "0-20000-0-11406"),
+        "GDANSKIEWODY": ("GDANSKIEWODY-1", "GDANSKIEWODY-999"),
+        "PIG": ("1", "6495", "999999"),
+    }
+    file_fed = re.compile(CODE_GRAMMAR)
+    grammars = {p.id: re.compile(p.station_code_pattern) for p in providers()}
+    assert set(samples) <= set(grammars)
+    for owner, codes in samples.items():
+        for code in codes:
+            assert union.fullmatch(code), code
+            assert {p for p, g in grammars.items() if g.fullmatch(code)} == {owner}
+            assert not file_fed.fullmatch(code) or code.startswith(f"{owner}-")
+    for code in ("RZGW-12", "MOJE-stacja_1"):
+        assert file_fed.fullmatch(code) and union.fullmatch(code)
+        assert not any(g.fullmatch(code) for g in grammars.values()), code
+    for code in ("0", "1234567", "012345"):
+        assert not any(g.fullmatch(code) for g in grammars.values()), code
 
 
 def test_content_forms_only_for_the_chmu_json_datasets():
@@ -245,6 +282,10 @@ def test_content_forms_only_for_the_chmu_json_datasets():
         "cz.chmu.groundwater_stations",
         "cz.chmu.groundwater_now",
         "cz.chmu.hydro_hourly",
+        "pl.pig.groundwater_stations",
+        "pl.pig.groundwater_readings",
+        "pl.pig.groundwater_chemistry",
+        "pl.pig.groundwater_watchlist",
     ]
 
 
@@ -495,6 +536,9 @@ def _every_file() -> list[ArchiveFile]:
             # Named by the station list a raw root holds (ADR-034), never by
             # archive_files: test_provider_gdanskiewody maps them back.
             continue
+        elif item.time_unit == "snapshot" and item.archive_scope == "country":
+            # One file holding the whole table.
+            files += archive_files(item.key)
         elif item.archive_scope == CAPTURE_SCOPE:
             # A sealed capture of a UTC day, also the first day of a year and a leap day.
             days = (date(2026, 11, 22), date(2027, 1, 1), date(2028, 2, 29))

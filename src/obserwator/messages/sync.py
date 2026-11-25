@@ -189,11 +189,49 @@ MESSAGES = {
         "Pliki miesięczne zbiorów {keys} zapisuje się tylko w magazynie: wskazuje je "
         "lista stacji zapisana w surowym magazynie; podaj root, nie output_dir",
     ),
+    "publication_store_only": Text(
+        "The tables {keys} are synchronized only into a store, whose check names the "
+        "file the service publishes now; datasets download writes them as plain "
+        "files; give root, not output_dir",
+        "Tabele {keys} synchronizuje się tylko do magazynu, którego sprawdzenie "
+        "wskazuje plik publikowany teraz przez serwis; jako zwykłe pliki zapisuje je "
+        "datasets download; podaj root, nie output_dir",
+    ),
+    "option_not_for_publication": Text(
+        "The option {option} does not apply to {keys}: the service publishes one "
+        "file at a time, which the check names",
+        "Opcja {option} nie dotyczy zbiorów {keys}: serwis publikuje jeden plik "
+        "naraz, który wskazuje sprawdzenie",
+    ),
+    "publication_not_named": Text(
+        "{key}: {error} (the file the service publishes now could not be named)",
+        "{key}: {error} (nie udało się wskazać pliku publikowanego teraz przez serwis)",
+    ),
+    "publication_no_signal": Text(
+        "no freshness signal: store sync downloads the file the service publishes "
+        "now and compares its content with the current version",
+        "brak sygnału aktualności: store sync pobiera plik publikowany teraz przez "
+        "serwis i porównuje jego treść z bieżącą wersją",
+    ),
+    "publication_moved": Text(
+        "{server_path}: the service publishes {published} now; nothing written, the "
+        "next check names it",
+        "{server_path}: serwis publikuje teraz {published}; nic nie zapisano, "
+        "następne sprawdzenie go wskaże",
+    ),
+    "not_captured": Text(
+        "{server_path}: not captured, and the service no longer publishes it; only "
+        "{provider} can give it now (on request)",
+        "{server_path}: nie pobrano, a serwis już go nie publikuje; teraz może go "
+        "udostępnić tylko {provider} (na wniosek)",
+    ),
     "pace_until_not_harvested": Text(
-        "pace_until harvests one dataset of pl.imgw.hydro_operational and "
-        "cz.chmu.hydro_recent in a call; given {keys}",
-        "pace_until pobiera jeden zbiór spośród pl.imgw.hydro_operational i "
-        "cz.chmu.hydro_recent na wywołanie; podano {keys}",
+        "pace_until harvests one dataset of pl.imgw.hydro_operational, "
+        "cz.chmu.hydro_recent and pl.pig.groundwater_operational in a call; given "
+        "{keys}",
+        "pace_until pobiera jeden zbiór spośród pl.imgw.hydro_operational, "
+        "cz.chmu.hydro_recent i pl.pig.groundwater_operational na wywołanie; podano "
+        "{keys}",
     ),
     "harvest_planned": Text(
         "{dataset}: its source is asked for the UTC days {start} to {end} "
@@ -202,6 +240,22 @@ MESSAGES = {
         "{dataset}: źródło jest pytane o doby UTC od {start} do {end} ({stations}) z "
         "odstępami do {until}, zanim bufor zostanie zamknięty razem z dobą "
         "dzisiejszą",
+    ),
+    "harvest_watermark_planned": Text(
+        "{dataset}: its source is asked for every row after the last OBJECTID the raw "
+        "root holds, whatever days they cover, spread until {until}, before its spool "
+        "is sealed with today's day",
+        "{dataset}: źródło jest pytane o każdy wiersz po ostatnim OBJECTID zapisanym "
+        "w surowym magazynie, niezależnie od dób, których dotyczy, z odstępami do "
+        "{until}, zanim bufor zostanie zamknięty razem z dobą dzisiejszą",
+    ),
+    "option_not_for_watermark": Text(
+        "The option {option} does not apply to {dataset}: its harvest asks for every "
+        "row after the last OBJECTID the raw root holds, whatever days and stations "
+        "they cover",
+        "Opcja {option} nie dotyczy zbioru {dataset}: jego pobór prosi o każdy wiersz "
+        "po ostatnim OBJECTID zapisanym w surowym magazynie, niezależnie od dób i "
+        "stacji, których dotyczy",
     ),
     "day_not_date": Text(
         "The option {name} must be a date (YYYY-MM-DD), not {value!r}",

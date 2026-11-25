@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, cast, overload
 
 from obserwator._parsing.meteo import DATASET_ATTRIBUTES
-from obserwator.attribution import Attribution
+from obserwator.attribution import Attribution, fillable
 from obserwator.config import store_root
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -60,7 +60,7 @@ from obserwator.store.reader import (
     read_series,
     read_series_index,
 )
-from obserwator.store.series import _lines, _pyarrow
+from obserwator.store.series import _lines, _pyarrow, _version_lines
 from obserwator.store.types import (
     Cancel,
     Meta,
@@ -167,15 +167,32 @@ def _needs_output(format: object, output: object) -> None:
         )
 
 
-def _license(descriptor: DatasetDescriptor, on_notice: NoticeHook | None) -> None:
+def _license(
+    descriptor: DatasetDescriptor, lines: Attribution, on_notice: NoticeHook | None
+) -> None:
+    """The ``license_terms`` notice of an export carrying ``lines`` (ADR-012)."""
     if on_notice is not None:
         on_notice(
             Notice(
                 "info",
                 "license_terms",
-                get_provider(descriptor.provider).license_notice(_lines(descriptor)),
+                get_provider(descriptor.provider).license_notice(lines),
             )
         )
+
+
+def _archive_attribution(descriptor: DatasetDescriptor, meta: Meta) -> Attribution:
+    """
+    The lines of an archive export: the dataset's, with the W its sidecar holds.
+
+    PIG-PIB's W names the version's years and download day (ADR-035), filled in the
+    sidecar's ``license.attribution`` by `obserwator.store.writer`; every other
+    dataset's lines are those of its origins.
+    """
+    lines = _lines(descriptor)
+    if fillable(descriptor.license.attribution):
+        lines |= Attribution((meta.license.attribution,))
+    return lines
 
 
 def _trailing(lines: tuple[str, ...], number: int, last: bool) -> str:
@@ -420,13 +437,13 @@ def _archive_row(
 
 
 def _archive_lines(
-    records: Iterator[NormalizedRecord], format: str
+    records: Iterator[NormalizedRecord], format: str, lines: Attribution
 ) -> tuple[tuple[str, ...], Iterator[str]]:
     """
     Header lines and lazy data lines of archive records; no records give no lines.
 
     The first JSONL object and the trailing CSV columns ``attribution`` and
-    ``terms_notice`` carry the lines of the dataset's provider (ADR-012).
+    ``terms_notice`` carry ``lines``, those of the archive (ADR-012).
     """
     first = next(records, None)
     if first is None:
@@ -437,7 +454,6 @@ def _archive_lines(
         yield from records
 
     descriptor = get_dataset(first.dataset)
-    lines = _lines(descriptor)
     if format == "jsonl":
         return (), (
             json.dumps(
@@ -591,9 +607,10 @@ def export_archive(
     # The current key: a sidecar of a renamed dataset keeps its old one (ADR-028).
     descriptor = get_dataset(meta.dataset_key or meta.dataset)
     target = _target(output, force=force)
-    head, rows = _archive_lines(records, format)
+    held = _archive_attribution(descriptor, meta)
+    head, rows = _archive_lines(records, format, held)
     _check_cancel(cancel)
-    _license(descriptor, on_notice)
+    _license(descriptor, held, on_notice)
     lines = _Lines(
         head,
         rows,
@@ -746,13 +763,15 @@ def _series_head(
     year_type: str,
     names: Sequence[str],
     *,
+    lines: Attribution,
     versions: Sequence[str] | None = None,
 ) -> dict[str, object]:
     """
     The fields of a series export before its data (JSON; Parquet metadata).
 
-    ``versions`` (a sub-daily series, ADR-031): the version of every month
-    exported, in month order, as ``series_versions``; ``version`` is the first.
+    ``lines`` are those of the versions exported (`_version_lines`). ``versions``
+    (a sub-daily series, ADR-031): the version of every month exported, in month
+    order, as ``series_versions``; ``version`` is the first.
     """
     return {
         "dataset": descriptor.key,
@@ -770,7 +789,7 @@ def _series_head(
             for name in names
         },
         "license": _license_json(descriptor.license),
-        **_lines(descriptor).fields(),
+        **lines.fields(),
     }
 
 
@@ -1109,7 +1128,9 @@ def export_series(
             )
         )
     _check_cancel(cancel)
-    _license(descriptor, on_notice)
+    # The lines the versions exported hold: PIG-PIB's W names their years and days.
+    lines = _version_lines(descriptor, versions)
+    _license(descriptor, lines, on_notice)
     columns = _series_columns(descriptor, names, chosen)
     done = message("export.series_exported", station=station)
     label = message("export.station_progress", station=station)
@@ -1118,7 +1139,7 @@ def export_series(
     if format == "parquet":
         assert target is not None  # _needs_output refused a Parquet without it
         head = _series_head(
-            descriptor, station, named[0], chosen, names, versions=months
+            descriptor, station, named[0], chosen, names, lines=lines, versions=months
         )
         report = _write((_series_parquet(head, columns, records),), target, cancel)
         if on_progress is not None:
@@ -1127,7 +1148,7 @@ def export_series(
         return report
     if format == "json":
         head = _series_head(
-            descriptor, station, named[0], chosen, names, versions=months
+            descriptor, station, named[0], chosen, names, lines=lines, versions=months
         )
         opening, data, closing = _series_json(head, columns, records)
         return _deliver(
@@ -1153,7 +1174,7 @@ def export_series(
                     [*(column.header for column in columns), *_ATTRIBUTION_COLUMNS]
                 ),
             ),
-            _csv_lines(_with_lines(rows, _lines(descriptor))),
+            _csv_lines(_with_lines(rows, lines)),
             total=len(records),
             label=label,
             on_progress=on_progress,
@@ -1536,7 +1557,13 @@ def _catalogs(
                 entry.version.parent.relative_to(base).as_posix(),
                 entry.meta,
                 tuple(sorted(chosen, key=lambda feature: feature.station_code)),
-                _catalog_lines(owner, {**located, **detailed}),
+                _catalog_lines(
+                    owner,
+                    {**located, **detailed},
+                    sources=cast(
+                        "list[dict[str, object]]", entry.meta.extra.get("catalog", ())
+                    ),
+                ),
             )
         )
     if not found:

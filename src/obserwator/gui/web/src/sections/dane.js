@@ -8,19 +8,21 @@
 // series for drawing within the range shown, so a ČHMÚ series since 1775 draws and zooms
 // at once; the table and the downloads keep every value. IMGW-PIB's monthly and half-year
 // characteristics are drawn as the band of the lowest and the highest value with the mean,
-// the half-years' with the dates of their extremes in the table. ČHMÚ's weekly
-// groundwater readings (ADR-032) stand at their own dates and are drawn as a daily series
-// whose line breaks only across a calendar week (Monday to Sunday) without a reading; their
-// table counts readings. An hourly series (ADR-031) is drawn as a daily one on a time axis
-// in the reader's time zone, its line broken at a skipped hour, each tier of its hours a
-// line of its own style named in the legend (an unverified one „dane operacyjne,
-// niezweryfikowane”) and marked in the table. Any provider's daily series is drawn and
-// tabulated alike (a provider fed by files among them); the title of a dataset whose series
-// are unverified as a whole is labelled so (`UnverifiedFlag`).
+// the half-years' with the dates of their extremes in the table. A series of readings
+// (`time_unit` week, ADR-032 D2: ČHMÚ's weekly groundwater readings, PIG-PIB's readings)
+// stands at its own dates and is drawn as a daily series whose line breaks only across a
+// calendar week (Monday to Sunday) without a reading; its table counts readings. An hourly
+// series (ADR-031) is drawn as a daily one on a time axis in the reader's time zone, its
+// line broken at a skipped hour, each tier of its hours a line of its own style named in
+// the legend (an unverified one „dane operacyjne, niezweryfikowane”) and marked in the
+// table; how the tiers are chosen is said only of one with several. Any provider's daily
+// series is drawn and tabulated alike (a provider fed by files among them); the title of a
+// dataset whose series are unverified as a whole is labelled so (`UnverifiedFlag`), and
+// its note (when ČHMÚ reads, PIG-PIB's quantities and hours) stands under its series.
 
 import { api } from "../api.js";
 import { Chart, dayNumber, fmt, fmtDate, fmtDateTime, hourNumber, html, isoOfDay, lang, t, tn, unit, useEffect, useMemo, useState } from "../lib.js";
-import { FLAGS, datasetShort, datasetTitle, flagName, periodName, variableInfo } from "../words.js";
+import { FLAGS, datasetNote, datasetShort, datasetTitle, flagName, periodName, unverified, variableInfo } from "../words.js";
 import { Seg, Table, UnverifiedFlag, YearRange } from "./common.js";
 
 /** Rows of a page of the daily table. */
@@ -279,7 +281,8 @@ function DailyTable({ prepared, names, units, window, yearType, weekly }) {
 
 /**
  * The meaning of the flags that the variables shown carry, beside their marks; of an hourly
- * series also of the unverified tiers its values have, and how the tiers are chosen.
+ * series also of the unverified tiers its values have, and, of one of several tiers, how
+ * the tiers are chosen (one unverified as a whole has one: PIG-PIB's hours).
  */
 function FlagNotes({ entry, data, prepared, names }) {
   const present = new Set();
@@ -291,13 +294,14 @@ function FlagNotes({ entry, data, prepared, names }) {
     if (prepared.hourly) for (const level of prepared.tiers[name]) if (level > 1) tiers.add(TIERS[level - 1]);
   }
   const shown = FLAGS.filter((flag) => present.has(flag));
-  const unverified = TIERS.filter((tier) => tiers.has(tier));
-  if (!shown.length && !prepared.hourly) return null;
+  const unverifiedTiers = TIERS.filter((tier) => tiers.has(tier));
+  const chosen = prepared.hourly && !unverified(entry.dataset);
+  if (!shown.length && !unverifiedTiers.length && !chosen) return null;
   const definition = (flag) => (flag === "missing" && prepared.hourly ? t("station.data.flag_def.missing_hour") : t(`station.data.flag_def.${flag}`));
   return html`<p class="note">
     ${shown.map((flag, index) => html`${index ? html`<br />` : null}<span class="flag">${flagName(flag)}</span> ${definition(flag)}`)}
-    ${unverified.map((tier, index) => html`${index || shown.length ? html`<br />` : null}<span class="flag">${t(`station.data.tier_short.${tier}`)}</span> ${t(`station.data.tier_def.${tier}`)}`)}
-    ${prepared.hourly ? html`${shown.length || unverified.length ? html`<br />` : null}${t("station.data.tiers_def")}` : null}
+    ${unverifiedTiers.map((tier, index) => html`${index || shown.length ? html`<br />` : null}<span class="flag">${t(`station.data.tier_short.${tier}`)}</span> ${t(`station.data.tier_def.${tier}`)}`)}
+    ${chosen ? html`${shown.length || unverifiedTiers.length ? html`<br />` : null}${t("station.data.tiers_def")}` : null}
   </p>`;
 }
 
@@ -526,11 +530,12 @@ function Dane({ station }) {
   const series = useSeries(station.code, key);
   if (!entry) return html`<p class="muted">${t("station.data.none")}</p>`;
   const data = series.data && series.data.dataset === key ? series.data : null;
-  // A weekly series (ČHMÚ's groundwater readings, ADR-032) and an hourly one (ADR-031) are
-  // drawn as a daily one
+  // A series of readings (ČHMÚ's weekly ones, PIG-PIB's, ADR-032 D2) and an hourly one
+  // (ADR-031) are drawn as a daily one
   const weekly = entry.time_unit === "week";
   const hourly = entry.time_unit === "hour";
   const daily = entry.time_unit === "day" || weekly || hourly;
+  const note = datasetNote(key);
   return html`<div>
     <div class="data-controls">
       ${datasets.length > 1
@@ -551,6 +556,7 @@ function Dane({ station }) {
           ${data.year_type === "hydrological" ? html`<p>${t("station.data.hydrological_def")}</p>` : daily ? html`<p>${t("station.data.calendar_def")}</p>` : null}
           ${weekly ? html`<p>${t("station.data.weekly_def")}</p>` : null}
           ${hourly ? html`<p>${t("station.data.hourly_def")}</p>` : null}
+          ${note ? html`<p data-part="dataset-note">${note}</p>` : null}
           <div class="ana-prov">
             <span class="prov">${t("sections.series_version", { version: data.version })}</span>
             <span class="prov">${data.year_type === "hydrological" ? t("station.data.stored_hydrological") : t("station.data.stored_calendar")}</span>

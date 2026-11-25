@@ -68,16 +68,12 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.none.catalogs": Text("Station catalogs", "Katalogi stacji"),
     # A provider's catalog, or every catalog of a class of sources (hydromet P12), with
-    # the kinds its stations are counted by
-    "station.none.catalog_kinds": Text(
-        "{name}: hydrological · meteorological",
-        "{name}: hydrologiczne · meteorologiczne",
-    ),
-    # Where the catalog holds groundwater objects (ADR-032)
-    "station.none.catalog_kinds_groundwater": Text(
-        "{name}: hydrological · meteorological · groundwater",
-        "{name}: hydrologiczne · meteorologiczne · podziemne",
-    ),
+    # the kinds its stations are counted by (`station.none.kind.*`, joined by „ · ”)
+    "station.none.catalog_kinds": Text("{name}: {kinds}", "{name}: {kinds}"),
+    "station.none.kind.hydro": Text("hydrological", "hydrologiczne"),
+    "station.none.kind.meteo": Text("meteorological", "meteorologiczne"),
+    # Groundwater objects (ČHMÚ's, ADR-032; PIG-PIB's points, ADR-035)
+    "station.none.kind.groundwater": Text("groundwater", "podziemne"),
     "station.none.catalog_version": Text(
         "catalog {version}, downloaded {when}", "katalog {version}, pobrany {when}"
     ),
@@ -118,16 +114,16 @@ MESSAGES: dict[str, Text] = {
         "The CSV has one row per station (UTF-8, comma as separator, decimal point). "
         "Every file carries the providers' lines: keep them when you use the data "
         "further.\n\n"
-        "Sources: IMGW-PIB and ČHMÚ (stations), GUGiK and ČÚZK (the state borders the "
-        "locations are checked against)",
+        "Sources: IMGW-PIB, ČHMÚ and PIG-PIB (stations), GUGiK and ČÚZK (the state "
+        "borders the locations are checked against)",
         "Stacje bieżących katalogów jako GeoJSON albo CSV, razem ze stacjami bez "
         "współrzędnych: dane katalogowe każdej stacji, jej położenie i zbiory danych, "
         "w których ma szeregi.\n\n"
         "CSV ma wiersz na stację (UTF-8, przecinek jako separator, kropka dziesiętna). "
         "Każdy plik niesie wiersze dostawców: zachowaj je przy dalszym wykorzystaniu "
         "danych.\n\n"
-        "Źródła: IMGW-PIB i ČHMÚ (stacje), GUGiK i ČÚZK (granice państw, którymi "
-        "sprawdzane są położenia)",
+        "Źródła: IMGW-PIB, ČHMÚ i PIG-PIB (stacje), GUGiK i ČÚZK (granice państw, "
+        "którymi sprawdzane są położenia)",
     ),
     "station.none.files_stations": Text("Stations in the file", "Stacje w pliku"),
     # The one provider the list's source type and dataset chips leave, else every one
@@ -164,6 +160,9 @@ MESSAGES: dict[str, Text] = {
     ),
     "station.info.meteo_kind.synop": Text("synoptic station", "stacja synoptyczna"),
     "station.info.groundwater_kind": Text("Type of object", "Rodzaj obiektu"),
+    # A PIG-PIB point (ADR-035): PSH's number and the type as PIG-PIB publishes it
+    "station.info.psh_number": Text("PSH number", "Numer PSH"),
+    "station.info.point_type": Text("Type as published", "Typ według dostawcy"),
     "station.info.active": Text("Active", "Czynna"),
     "station.info.yes": Text("yes", "tak"),
     "station.info.no": Text("no", "nie"),
@@ -217,6 +216,10 @@ MESSAGES: dict[str, Text] = {
     "station.info.source.cz.chmu.groundwater_stations": Text(
         "ČHMÚ's list of objects, groundwater", "wykaz obiektów ČHMÚ, wody podziemne"
     ),
+    "station.info.source.pl.pig.groundwater_stations": Text(
+        "PIG-PIB's monitoring points, groundwater",
+        "punkty monitoringu PIG-PIB, wody podziemne",
+    ),
     # The file of a ČHMÚ station's thresholds (``thresholds.source``), named as in
     # the catalog's ``sources``.
     "station.info.source.chmu_hydro_now": Text(
@@ -244,6 +247,7 @@ MESSAGES: dict[str, Text] = {
     "station.info.catchment_area": Text("Catchment area", "Powierzchnia zlewni"),
     "station.info.province": Text("Voivodeship", "Województwo"),
     "station.info.district": Text("County (powiat)", "Powiat"),
+    "station.info.commune": Text("Commune (gmina)", "Gmina"),
     "station.info.river_km": Text("River kilometre", "Kilometr rzeki"),
     "station.info.hydrographic_code": Text("Hydrographic code", "Kod hydrograficzny"),
     "station.info.river_order": Text(
@@ -254,6 +258,84 @@ MESSAGES: dict[str, Text] = {
         "czwarta kolumna wykazu stacji, bez przypisanego znaczenia (river_order)",
     ),
     "station.info.established": Text("Year established", "Rok założenia"),
+    # „Hydrogeologia”: a PIG-PIB point's description as published (ADR-035 W6), each
+    # row a key of the catalog's ``hydrogeology``
+    "station.info.hydrogeology": Text("Hydrogeology", "Hydrogeologia"),
+    "station.info.hydrogeology_info": Text(
+        "PIG-PIB's description of the point in its groundwater monitoring (Monitoring "
+        "Wód Podziemnych, MWP), as published: the character of the point (a confined "
+        "or an unconfined water table, or the yield of a spring), the stratigraphy, "
+        "lithology and medium of the aquifer, the depths of the bore, of the water "
+        "table struck and at rest and of the aquifer's top and bottom in metres below "
+        "the ground, the years observed, the groundwater body (JCWPd), the point's "
+        "numbers in PIG-PIB's databases and monitoring programmes, the administrative "
+        "units, the years of chemical analyses and whether the point measures "
+        "automatically every hour (as the night's capture of PIG-PIB's automatic "
+        "points lists it).\n\n"
+        "Sources: PIG-PIB, the service of the groundwater monitoring "
+        "(cbdgmapa.pgi.gov.pl)",
+        "Opis punktu w Monitoringu Wód Podziemnych (MWP) PIG-PIB, tak jak go publikuje: "
+        "charakter punktu (zwierciadło napięte albo swobodne, albo pomiar wydajności "
+        "źródła), stratygrafia, litologia i typ ośrodka warstwy wodonośnej, głębokości "
+        "otworu, zwierciadła nawierconego i ustalonego oraz stropu i spągu warstwy "
+        "wodonośnej w metrach pod powierzchnią terenu (m p.p.t.), lata obserwacji, "
+        "jednolita część wód podziemnych (JCWPd), numery punktu w bazach i programach "
+        "monitoringu PIG-PIB, jednostki administracyjne, lata analiz chemicznych i to, "
+        "czy punkt mierzy automatycznie co godzinę (według nocnego zapisu punktów "
+        "automatycznych PIG-PIB).\n\n"
+        "Źródła: PIG-PIB, serwis Monitoringu Wód Podziemnych (cbdgmapa.pgi.gov.pl)",
+    ),
+    "station.info.hydro.confinement": Text(
+        "Character of the point", "Charakter punktu"
+    ),
+    "station.info.hydro.stratigraphy": Text("Stratigraphy", "Stratygrafia"),
+    "station.info.hydro.lithology": Text("Lithology", "Litologia"),
+    "station.info.hydro.medium": Text("Aquifer medium", "Typ ośrodka"),
+    "station.info.hydro.bore_depth_m": Text("Depth of the bore", "Głębokość otworu"),
+    "station.info.hydro.final_depth_m": Text("Final depth", "Głębokość ostateczna"),
+    "station.info.hydro.water_struck_m": Text(
+        "Water table struck", "Zwierciadło nawiercone"
+    ),
+    "station.info.hydro.water_rest_m": Text(
+        "Water table at rest", "Zwierciadło ustalone"
+    ),
+    "station.info.hydro.screen_top_m": Text(
+        "Top of the aquifer", "Strop warstwy wodonośnej"
+    ),
+    "station.info.hydro.screen_bottom_m": Text(
+        "Bottom of the aquifer", "Spąg warstwy wodonośnej"
+    ),
+    "station.info.hydro.observed": Text("Years observed", "Lata obserwacji"),
+    "station.info.hydro.jcwpd": Text(
+        "Groundwater body (JCWPd)", "Jednolita część wód podziemnych (JCWPd)"
+    ),
+    "station.info.hydro.cbdh_number": Text("CBDH number", "Numer CBDH"),
+    "station.info.hydro.eu_code": Text("EU identifier", "Identyfikator UE"),
+    "station.info.hydro.chemical_number": Text(
+        "Number in the chemical status monitoring",
+        "Numer w monitoringu stanu chemicznego",
+    ),
+    "station.info.hydro.research_number": Text(
+        "Number in the research monitoring", "Numer w monitoringu badawczym"
+    ),
+    "station.info.hydro.research_monitoring": Text(
+        "Research monitoring", "Monitoring badawczy"
+    ),
+    "station.info.hydro.border_number": Text(
+        "Number in the border monitoring", "Numer w monitoringu granicznym"
+    ),
+    "station.info.hydro.pressure_number": Text(
+        "Number in the monitoring of areas under strong human pressure",
+        "Numer w monitoringu obszarów silnej antropopresji",
+    ),
+    "station.info.hydro.chemical_analyses": Text(
+        "Chemical analyses", "Analizy chemiczne"
+    ),
+    "station.info.hydro.automatic": Text(
+        "Automatic measurement", "Pomiar automatyczny"
+    ),
+    "station.info.since": Text("since {year}", "od {year}"),
+    "station.info.metres_below": Text("{value} m below ground", "{value} m p.p.t."),
     "station.info.levels": Text(
         "IMGW-PIB's levels and extremes", "Progi i stany ekstremalne IMGW-PIB"
     ),
@@ -656,11 +738,13 @@ MESSAGES: dict[str, Text] = {
         "Szereg jest publikowany według roku kalendarzowego; przełącznik wyżej liczy też "
         "lata hydrologiczne (od listopada do października).",
     ),
+    # A series of readings (`time_unit` week, ADR-032 D2): ČHMÚ's weekly ones, PIG-PIB's
+    # readings; when a provider reads is its dataset's note (`words.dataset.*.note`)
     "station.data.weekly_def": Text(
-        "Weekly readings stand at their own dates, mostly Wednesdays; the line breaks "
-        "across a calendar week (Monday to Sunday) without a reading.",
-        "Odczyty tygodniowe stoją w dniach pomiaru, zwykle w środy; linia przerywa się "
-        "w tygodniu kalendarzowym (od poniedziałku do niedzieli) bez odczytu.",
+        "Readings stand at their own dates; the line breaks across a calendar week "
+        "(Monday to Sunday) without a reading.",
+        "Odczyty stoją w dniach pomiaru; linia przerywa się w tygodniu kalendarzowym "
+        "(od poniedziałku do niedzieli) bez odczytu.",
     ),
     "station.data.hourly_def": Text(
         "Hourly values stand at full hours (UTC), shown in the time zone of your "
@@ -693,14 +777,16 @@ MESSAGES: dict[str, Text] = {
         "JSON and Parquet have the same columns, Parquet also their types. Every file "
         "carries the provider's lines and terms: keep them when you use the data "
         "further.\n\n"
-        "Sources: IMGW-PIB (danepubliczne.imgw.pl) or ČHMÚ (opendata.chmi.cz)",
+        "Sources: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz) or "
+        "PIG-PIB (cbdgmapa.pgi.gov.pl)",
         "Szereg stacji z całego okresu, w bieżącej wersji, jako CSV, JSON albo "
         "Parquet: data, rok i każda zmienna z jednostką i flagą.\n\n"
         "CSV to tekst do arkusza kalkulacyjnego (UTF-8, przecinek jako separator, "
         "kropka dziesiętna); JSON i Parquet mają te same kolumny, a Parquet także ich "
         "typy. Każdy plik niesie wiersze i warunki dostawcy: zachowaj je przy dalszym "
         "wykorzystaniu danych.\n\n"
-        "Źródła: IMGW-PIB (danepubliczne.imgw.pl) albo ČHMÚ (opendata.chmi.cz)",
+        "Źródła: IMGW-PIB (danepubliczne.imgw.pl), ČHMÚ (opendata.chmi.cz) albo "
+        "PIG-PIB (cbdgmapa.pgi.gov.pl)",
     ),
     "station.files.command_format": Text(
         "Format of the command line", "Format polecenia"

@@ -2,12 +2,12 @@
 // (api/downloads/{code}): each series in each format (`export_series`: CSV, JSON, Parquet)
 // and the stored analyses (`export_analyses`: JSON, CSV; each analysis also as its JSON
 // document `obserwator-analysis/1`, api/files/analysis), each with the equivalent command
-// line to copy and the provider's licence; a groundwater object has its series only, no
-// analysis applying to one (ADR-032); for a hydrological station of a national service the
-// hand-off of Q or H to Hydrolog (D13), whose provenance names the provider by Nogat's
-// registry, which has none of the providers fed by files. Every file and hand-off carries
-// the provider's lines and terms (Nogat DEV §20), the same the panel draws under the card
-// (part "series").
+// line to copy and the provider's licence with its terms (PIG-PIB's) or disclaimer
+// (ČHMÚ's); a groundwater object has its series only, no analysis applying to one
+// (ADR-032); for a hydrological station of a national service the hand-off of Q or H to
+// Hydrolog (D13), whose provenance names the provider by Nogat's registry, which has none
+// of the providers fed by files. Every file and hand-off carries the provider's lines and
+// terms (Nogat DEV §20), the same the panel draws under the card (part "series").
 
 import { copyText } from "../../nogat/nogat-handoff.js";
 import { api } from "../api.js";
@@ -53,13 +53,24 @@ export function Command({ line, label }) {
   </div>`;
 }
 
-/** The provider's terms or licence of a series or file, and ČHMÚ's disclaimer (also panel.js). */
-export function Licence({ licence }) {
+/**
+ * The provider's terms or licence of a series or file and the address of its `terms_url`:
+ * the provider's own terms („Regulamin PIG-PIB”) where a terms line of the file links it
+ * (PIG-PIB's RW), else ČHMÚ's disclaimer (also panel.js).
+ *
+ * @param {{licence: object|null, terms?: string[]}} props the entry's licence and its
+ *   terms lines (`terms_notice`)
+ * @returns {object|null}
+ */
+export function Licence({ licence, terms = [] }) {
   if (!licence || !licence.url) return null;
   const name = licence.id === licence.provider ? t("station.files.terms", { provider: licence.provider }) : t("station.files.licence", { licence: String(licence.id).replace(/-/g, " ") });
+  const own = licence.terms_url && terms.some((line) => line.includes(licence.terms_url));
   return html`<p class="licence muted">
     <a href=${licence.url} target="_blank" rel="noopener noreferrer">${name}</a>
-    ${licence.terms_url ? html`${" · "}<a href=${licence.terms_url} target="_blank" rel="noopener noreferrer">${t("station.files.disclaimer")}</a>` : null}
+    ${licence.terms_url
+      ? html`${" · "}<a href=${licence.terms_url} target="_blank" rel="noopener noreferrer">${own ? t("station.files.terms", { provider: licence.provider }) : t("station.files.disclaimer")}</a>`
+      : null}
   </p>`;
 }
 
@@ -81,7 +92,7 @@ function SeriesFiles({ entry }) {
       : null}
     <${Command} line=${format.command} />
     <p class="note">${t("station.files.version_note", { version: entry.version })}</p>
-    <${Licence} licence=${entry.licence} />
+    <${Licence} licence=${entry.licence} terms=${entry.terms_notice || []} />
   </${Section}>`;
 }
 

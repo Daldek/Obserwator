@@ -30,6 +30,11 @@ for byte equal to Nogat's `develop` at commit `f9a9677` (`tokens.css` apart from
 header).
 
 The GUI holds another copy of Nogat files, in `src/obserwator/gui/web/nogat/`: the files
-of Nogat's `design/kit/` listed in its `nogat-kit.json` (kit 1.1.0, copied from Nogat `998d05e`) and `marks/` of
-`design/marks/` (ADR-011, ADR-013).
+of Nogat's `design/kit/` listed in its `nogat-kit.json` and `marks/` of `design/marks/`
+(ADR-011, ADR-013). The kit's files are those of kit 1.3.0 at Nogat `ff18ee8`
+(`nogat-sources.js` with PIG-PIB's W, WP and WK, and the terms with the block `pig`,
+copied from there on 2026-11-25; the others unchanged since kit 1.1.0). Its
+`nogat-kit.json` is Nogat's at `ff18ee8` with the files the GUI does not use left out
+(the base maps, the charts and the command form of kit 1.3.0), so `drift` names it
+modified until the GUI copies them too.
 Nogat's `scripts/ecosystem.py drift` reports every copy as current, behind or modified.

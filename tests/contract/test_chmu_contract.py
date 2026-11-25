@@ -387,6 +387,7 @@ def test_imgw_15_k3_store_info_names_the_providers_and_the_scan_filters(pl_cz):
             "IMGW",
             "CHMU",
             "GDANSKIEWODY",
+            "PIG",
         ]
 
     chmu = _scan(pl_cz, provider="CHMU")

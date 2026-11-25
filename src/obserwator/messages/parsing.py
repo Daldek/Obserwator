@@ -236,4 +236,45 @@ MESSAGES = {
         "the name is no rest/measurements/<no>/<symbol>/<YYYY-MM>.json",
         "nazwa nie ma postaci rest/measurements/<no>/<symbol>/<YYYY-MM>.json",
     ),
+    # PIG-PIB's captures of ArcGIS pages (ADR-035): where and what is wrong.
+    "pig_invalid": Text(
+        "PIG-PIB's capture {filename} cannot be read at {where}: {problem}",
+        "Nie można odczytać zapisu PIG-PIB {filename} w miejscu {where}: {problem}",
+    ),
+    "pig_line": Text("line {number}", "wiersz {number}"),
+    "pig_row": Text(
+        "row {number} of the answer {address}", "wiersz {number} odpowiedzi {address}"
+    ),
+    "pig_not_object": Text(
+        "no answer of a capture (time, address, status, body)",
+        "to nie jest odpowiedź zapisu (czas, adres, status, treść)",
+    ),
+    "pig_seen_alone": Text(
+        "a repeated answer follows no answer of its address",
+        "powtórzona odpowiedź nie następuje po odpowiedzi z jej adresu",
+    ),
+    "pig_body_sha": Text(
+        "the body does not match its SHA-256", "treść nie zgadza się ze swoim SHA-256"
+    ),
+    "pig_no_attributes": Text("the row has no attributes", "wiersz nie ma atrybutów"),
+    "pig_not_number": Text(
+        "a finite number was expected, not {value!r}",
+        "oczekiwano skończonej liczby, a nie {value!r}",
+    ),
+    "pig_no_id": Text(
+        "the row names no point (a positive integer) or no time",
+        "wiersz nie wskazuje punktu (dodatniej liczby całkowitej) ani czasu",
+    ),
+    "pig_id_twice": Text(
+        "the point's ID is given twice with other attributes",
+        "ID punktu występuje dwa razy z innymi atrybutami",
+    ),
+    "pig_bad_day": Text(
+        "DATA_POMIARU {value!r} is no date YYYY-MM-DD",
+        "DATA_POMIARU {value!r} nie jest datą RRRR-MM-DD",
+    ),
+    "pig_two_readings": Text(
+        "the point {point} has two different readings of {day}",
+        "punkt {point} ma dwa różne pomiary z dnia {day}",
+    ),
 }

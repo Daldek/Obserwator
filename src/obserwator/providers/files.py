@@ -42,7 +42,7 @@ from obserwator.datasets import (
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import Message, message
 from obserwator.models import NormalizedRecord, StationListEntry
-from obserwator.providers.base import CheckScope, Kind, ProviderAdapter
+from obserwator.providers.base import CheckScope, Kind, ProviderAdapter, SeriesContext
 from obserwator.store.catalog import (
     _Candidate,
     _catalog_lines,
@@ -470,6 +470,7 @@ class FileFedAdapter(ProviderAdapter):
         carry: dict[str, date] | None,
         stations: Collection[str] | None = None,
         skipped_months: set[date] | None = None,
+        context: SeriesContext | None = None,
     ) -> Iterator[NormalizedRecord]:
         """
         One station's series file (``obserwator-series-csv`` or its Parquet).

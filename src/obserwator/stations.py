@@ -243,6 +243,7 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
         return None
     order = properties.get("river_order")
     groundwater = properties.get("groundwater_kind")
+    hydrogeology = properties.get("hydrogeology")
     return StationListEntry(
         kind=kind,
         station_code=feature.station_code,
@@ -262,6 +263,8 @@ def _catalog_entry(feature: StationFeature) -> StationListEntry | None:
             if groundwater == "spring"
             else None
         ),
+        # A PIG-PIB point's description as published (ADR-035 W6).
+        hydrogeology=dict(hydrogeology) if isinstance(hydrogeology, dict) else None,
     )
 
 

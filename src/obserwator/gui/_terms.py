@@ -30,7 +30,15 @@ from obserwator.messages import message
 
 _LOG = logging.getLogger(__name__)
 
-BLOCKS: tuple[str, ...] = ("imgw", "imgw-hydro", "pmaxtp", "chmu", "gugik", "cuzk")
+BLOCKS: tuple[str, ...] = (
+    "imgw",
+    "imgw-hydro",
+    "pmaxtp",
+    "chmu",
+    "pig",
+    "gugik",
+    "cuzk",
+)
 """The blocks of Obserwator's data sources, the packaged borders of PRG (GUGiK) and
 RÚIAN (ČÚZK) among them (ADR-018); ``osm`` joins them with a basemap."""
 PROVIDER_BLOCKS: Mapping[str, tuple[str, ...]] = {
@@ -45,6 +53,9 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "imgw-hydro",
         "pmaxtp",
         "chmu",
+        "camels-pl",
+        "e-obs",
+        "pig",
         "gugik",
         "cuzk",
         "copernicus",
@@ -53,7 +64,7 @@ KNOWN_BLOCKS: frozenset[str] = frozenset(
         "osm",
     }
 )
-"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 1.1.0)."""
+"""The blocks a GUI may list (Nogat's ``BLOCKS``, kit 1.3.0)."""
 PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "service_name",

@@ -12,6 +12,10 @@ offline. Both read and check every file before anything is written: a provider f
 with a problem, a missing or unreadable file, a station file or a series file that is
 not of the documented form, a series of a station of another kind or a station
 delivered once as CSV and once as Parquet are refused with ``validation_error``.
+
+The second form of the command, ``staging``, takes in a provider's interim capture
+instead: the runs of answers kept outside any store before the release that captures
+them (PIG-PIB's S0, ADR-035), into the raw root only (`obserwator.store.staging`).
 """
 
 from __future__ import annotations
@@ -131,6 +135,20 @@ def _provider(provider_file: object) -> tuple[ProviderDescriptor, ProviderFile]:
             },
         )
     return get_provider(found.id), found
+
+
+def _one_form(provider_file: object, staging: object) -> None:
+    """Refuse an import naming both a provider file and an interim capture, or neither."""
+    if (provider_file is None) == (staging is None):
+        raise ObserwatorValidationError(
+            message(
+                "commands.command_needs_exactly_one_group",
+                name="store import",
+                first="provider_file",
+                second="staging",
+            ),
+            details={"option": "provider_file" if staging is None else "staging"},
+        )
 
 
 def _refused(path: Path, option: str, text: Message) -> ObserwatorValidationError:
@@ -334,13 +352,14 @@ def import_files(
     /,
     *,
     raw_root: RootArg,
-    provider_file: PathArg,
+    provider_file: PathArg | None = None,
+    staging: PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
 ) -> ImportReport:
     """
-    Import the files of a provider fed by files into the raw root and the data root.
+    Import the files of a provider fed by files, or an interim capture, into the roots.
 
     The provider file (one of ``[obserwator] provider_files`` of ``nogat.toml``,
     ADR-033) names the station file and, per dataset, a directory of one file per
@@ -355,6 +374,12 @@ def import_files(
     replaced, so a station's last delivered series stays when the directory no longer
     holds its file.
 
+    With ``staging`` instead of ``provider_file``, the runs of a provider's interim
+    capture go into the raw root only (PIG-PIB's S0, ADR-035:
+    `obserwator.store.staging.import_staging`): each table of a run a version dated by
+    the run, the answers of the night's harvest one capture per UTC day; ``root`` is
+    not touched, the series and the catalog are built after it as after any night.
+
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
@@ -362,10 +387,13 @@ def import_files(
         when new or empty.
     raw_root : str, os.PathLike or StoreHandle
         The raw root the files are kept in; created with its marker when new or empty.
-    provider_file : str or os.PathLike
+    provider_file : str or os.PathLike or None, optional
         The provider file of the provider fed by files: one of the files
         ``[obserwator] provider_files`` lists, ``~`` expanded and a relative path
         relative to the directory of ``nogat.toml``, as there.
+    staging : str or os.PathLike or None, optional
+        Instead of ``provider_file``: the directory of the runs of an interim capture
+        (``<YYYY-MM-DDTHHMMSSZ>/manifest.jsonl``).
     on_progress : ProgressHook or None, optional
         Called after each file kept (``unit`` ``file``) and by the builds.
     on_notice : NoticeHook or None, optional
@@ -378,12 +406,15 @@ def import_files(
     Returns
     -------
     ImportReport
-        The raw version of every file, the builds and every version as ``files[]``.
+        The raw version of every file, the builds and every version as ``files[]``;
+        of an interim capture the version of each table of a run and of each capture
+        day, without builds.
 
     Raises
     ------
     ObserwatorValidationError
-        Before anything is written: a provider file of ``nogat.toml`` with a problem
+        Before anything is written: both or neither of ``provider_file`` and
+        ``staging``; a provider file of ``nogat.toml`` with a problem
         (its own ``details.option`` and ``details.path``); ``provider_file`` naming no
         file ``provider_files`` lists (``details.option`` ``provider_file``,
         ``details.reason`` ``not_listed``); a missing
@@ -392,7 +423,8 @@ def import_files(
         twice, a station file or series file that cannot be read as documented, a
         series of a station of another kind, or a station whose raw root keeps the
         other form of its series (``details.option`` the field of the provider file,
-        ``details.path`` the file).
+        ``details.path`` the file); an interim capture that cannot be read
+        (`obserwator.store.staging.import_staging`).
     ObserwatorStoreError
         If a root is one of the other kind (``store_unavailable``, ``wrong_root``) or
         has a layout without its marker.
@@ -402,6 +434,17 @@ def import_files(
         If a build cannot read what the raw root holds; ``io_error`` if a file cannot
         be read.
     """
+    _one_form(provider_file, staging)
+    if staging is not None:
+        from obserwator.store.staging import import_staging
+
+        return import_staging(
+            raw_root,
+            staging,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
     owner, found = _provider(provider_file)
     refuse_root(root, kind="data")
     lenient_store(root, kind="data")
@@ -509,7 +552,8 @@ def check_import(
     /,
     *,
     raw_root: RootArg,
-    provider_file: PathArg,
+    provider_file: PathArg | None = None,
+    staging: PathArg | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -526,12 +570,16 @@ def check_import(
         The data root; it need not exist.
     raw_root : str, os.PathLike or StoreHandle
         The raw root; it need not exist.
-    provider_file : str or os.PathLike
+    provider_file : str or os.PathLike or None, optional
         The provider file, as `import_files` takes it.
+    staging : str or os.PathLike or None, optional
+        Instead of ``provider_file``: the directory of an interim capture
+        (`obserwator.store.staging.check_staging` plans its import).
     on_progress : ProgressHook or None, optional
         Called once with the overall status.
     on_notice : NoticeHook or None, optional
-        Not called: a plan has no notices of its own.
+        Not called for a provider file: a plan has no notices of its own; of an
+        interim capture, what its runs leave out.
     cancel : Cancel or None, optional
         Polled before the files are compared; once it returns ``True`` the plan is
         ``cancelled`` without actions.
@@ -546,7 +594,8 @@ def check_import(
         or changed, ``current`` otherwise) and one ``store catalog`` action
         (``missing`` without a catalog, ``newer`` when the station file or a series
         changes, ``current`` otherwise). A root that a write turns away is planned as
-        one ``conflict`` action.
+        one ``conflict`` action. Of an interim capture, the actions of
+        `obserwator.store.staging.check_staging`.
 
     Raises
     ------
@@ -555,6 +604,17 @@ def check_import(
     ObserwatorStoreError
         If a root is one of the other kind or has a layout without its marker.
     """
+    _one_form(provider_file, staging)
+    if staging is not None:
+        from obserwator.store.staging import check_staging
+
+        return check_staging(
+            raw_root,
+            staging,
+            on_progress=on_progress,
+            on_notice=on_notice,
+            cancel=cancel,
+        )
     owner, found = _provider(provider_file)
     for value, kind in ((root, "data"), (raw_root, "raw")):
         refused = root_conflict_plan(

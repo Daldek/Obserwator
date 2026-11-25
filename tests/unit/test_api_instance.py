@@ -45,8 +45,12 @@ POINT = {
 }  # Warszawa: the recorded PMAXTP point
 CHMU_OFF = '[obserwator.instance.providers]\nCHMU = "off"\n'
 IMGW_OFF = '[obserwator.instance.providers]\nIMGW = "off"\n'
+# IMGW-PIB the one provider served (Gdańskie Wody is off by default).
+IMGW_ONLY = '[obserwator.instance.providers]\nCHMU = "off"\nPIG = "off"\n'
 # Every provider off: valid while PMAXTP is served.
-NONE_SERVED = '[obserwator.instance.providers]\nIMGW = "off"\nCHMU = "off"\n'
+NONE_SERVED = (
+    '[obserwator.instance.providers]\nIMGW = "off"\nCHMU = "off"\nPIG = "off"\n'
+)
 CURRENT = (
     "current hydro",
     "current meteo",
@@ -194,7 +198,7 @@ def uvicorn_calls(monkeypatch):
 def test_datasets_routes_list_and_page_only_the_providers_served(
     client, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    deploy(tmp_path, monkeypatch, IMGW_ONLY)
     served = [item.key for item in registry() if item.provider == "IMGW"]
 
     pages, cursor = [], None
@@ -264,7 +268,7 @@ def test_stations_find_names_the_one_provider_served(
     client, served, tmp_path, monkeypatch, imgw
 ):
     imgw.publish_catalog_sources()
-    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    deploy(tmp_path, monkeypatch, IMGW_ONLY)
 
     stored = client.get(path_of("stations find"), params={"source": "store"})
     live = client.get(path_of("stations find"), params={"kind": "hydro"})
@@ -331,7 +335,7 @@ def test_stations_find_under_clip_pages_only_the_stations_inside(
 def test_stations_export_holds_only_the_stations_served_and_their_lines(
     client, served, tmp_path, monkeypatch
 ):
-    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    deploy(tmp_path, monkeypatch, IMGW_ONLY)
     narrowed = client.get(path_of("stations export"))
     deploy(tmp_path, monkeypatch, area=CLIPPED)
     clipped = client.get(path_of("stations export"))
@@ -656,7 +660,7 @@ def chmu_plan(tmp_path):
 def test_store_routes_hide_and_refuse_an_off_provider_before_any_request(
     client, served, fixture_raw_root, tmp_path, monkeypatch, imgw, writable
 ):
-    deploy(tmp_path, monkeypatch, CHMU_OFF)
+    deploy(tmp_path, monkeypatch, IMGW_ONLY)
     slot = f"archive:{CHMU_DAILY}:H_{SPINDLER}_DQ_2023.json"
     archive = relative(current_version(fixture_raw_root, slot=slot), fixture_raw_root)
     missing = missing_version(archive)

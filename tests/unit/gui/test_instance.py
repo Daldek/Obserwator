@@ -64,7 +64,7 @@ def instance(tmp_path: Path, **table: object) -> Instance:
 
 
 def clipped(tmp_path: Path, **more: object) -> Instance:
-    """ČHMÚ featured, IMGW-PIB off, the area clipped, PMAXTP off, a title and a logo."""
+    """ČHMÚ featured, IMGW-PIB and PIG off, the area clipped, PMAXTP off, title, logo."""
     return instance(
         tmp_path,
         title="Wody Testowe",
@@ -74,7 +74,7 @@ def clipped(tmp_path: Path, **more: object) -> Instance:
         area="area.geojson",
         area_mode="clip",
         pmaxtp="off",
-        providers={"IMGW": "off"},
+        providers={"IMGW": "off", "PIG": "off"},
         **more,
     )
 
@@ -94,7 +94,7 @@ def test_without_an_instance_the_session_names_none(client):
     session = client.get("/api/session").json()
 
     assert session["instance"] is None
-    assert list(session["providers"]) == ["IMGW", "CHMU"]
+    assert list(session["providers"]) == ["IMGW", "CHMU", "PIG"]
     assert set(session["attribution"]["origins"]) == {
         "imgw",
         "imgw_hydro",
@@ -102,6 +102,7 @@ def test_without_an_instance_the_session_names_none(client):
         "chmu",
         "gugik",
         "cuzk",
+        "pig",
     }
 
 
@@ -368,6 +369,7 @@ def test_the_kit_regulamin_of_an_instance_keeps_the_served_blocks_only(
     assert "IMGW-PIB: dane publiczne" not in page
     assert "IMGW-PIB: serwis hydrologiczny" not in page
     assert "opady maksymalne PMAXTP" not in page
+    assert "PIG-PIB: monitoring wód podziemnych" not in page
 
 
 def test_an_operator_regulamin_the_deployment_cannot_fill_is_refused(tmp_path):

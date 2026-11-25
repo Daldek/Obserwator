@@ -12,16 +12,23 @@ import shutil
 import socket
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
 from obserwator._version import __version__
-from obserwator.attribution import attribution, dataset_origin
+from obserwator.attribution import (
+    attribution,
+    dataset_origin,
+    days_text,
+    fill,
+    fillable,
+    years_text,
+)
 from obserwator.datasets import (
     CAPTURE_SCOPE,
     CAPTURE_SUFFIX,
@@ -41,7 +48,7 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
     io_error,
 )
-from obserwator.fetch import DownloadResult
+from obserwator.fetch import DownloadResult, _archive_years
 from obserwator.messages import message, reason
 from obserwator.output import (
     DATA_MARKER,
@@ -1428,6 +1435,32 @@ def _content_fields(
     return {"content_sha256": content, "content_form": form}
 
 
+def _filling(
+    descriptor: DatasetDescriptor, years: Iterable[int], days: Iterable[date]
+) -> dict[str, str]:
+    """
+    ``period`` and ``date`` of a version's W (PIG-PIB, ADR-035); empty for other data.
+
+    The years of the data the version holds and the days of the captures it comes
+    from fill the placeholders of a license formula that has them (`fillable`).
+    """
+    if not fillable(descriptor.license.attribution):
+        return {}
+    return {"period": years_text(years), "date": days_text(days)}
+
+
+def _filled_license(
+    descriptor: DatasetDescriptor, filling: Mapping[str, str]
+) -> dict[str, str]:
+    """The ``license`` object of a sidecar, its formula filled (`_filling`)."""
+    document = _license_document(descriptor.license)
+    if filling:
+        document["attribution"] = fill(
+            document["attribution"], period=filling["period"], date=filling["date"]
+        )
+    return document
+
+
 def _tier_fields(descriptor: DatasetDescriptor) -> dict[str, str]:
     """
     ``tier`` and ``publication`` of a new version's sidecar (ADR-030 D6, ECO-085).
@@ -1445,6 +1478,40 @@ def _tier_fields(descriptor: DatasetDescriptor) -> dict[str, str]:
     return {"tier": descriptor.tier, "publication": publication(descriptor.key)}
 
 
+def _provenance(
+    provenance: Mapping[str, object] | None, reserved: tuple[str, ...]
+) -> dict[str, object]:
+    """
+    The fields a caller adds to a sidecar's ``extra``: where bytes kept elsewhere come from.
+
+    Raises
+    ------
+    ValueError
+        For a field the writer writes itself.
+    """
+    added = dict(provenance or {})
+    clash = sorted(set(added) & set(reserved))
+    if clash:
+        raise ValueError(f"provenance cannot replace extra.{clash[0]}")
+    return added
+
+
+def _place(source: Path, target: Path) -> None:
+    """
+    Put a finished file into a staging directory: a hard link, else a copy, fsynced.
+
+    A large capture is encoded into a file of the root's ``.incoming`` rather than
+    memory (S0's import, ADR-035), so it is linked into its version's staging.
+    """
+    try:
+        os.link(source, target)
+    except OSError:
+        with source.open("rb") as stream, target.open("xb") as out:
+            shutil.copyfileobj(stream, out, 1024 * 1024)
+            out.flush()
+            os.fsync(out.fileno())
+
+
 def _content_unchanged(
     root: Path,
     *,
@@ -1455,6 +1522,7 @@ def _content_unchanged(
     content: str,
     slot_dir: str,
     now: datetime,
+    as_of: datetime | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
 ) -> VersionResult | None:
@@ -1502,7 +1570,9 @@ def _content_unchanged(
     from obserwator.store.reader import _archive_slot, _reference_signal
 
     slot = _archive_slot(archive.server_path)
-    reference = None if slot is None else _reference_signal(root, slot=slot)
+    reference = (
+        None if slot is None else _reference_signal(root, slot=slot, as_of=as_of)
+    )
     if (
         reference is None
         or reference.version.meta is None
@@ -1586,6 +1656,8 @@ def write_archive(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    downloaded_at: datetime | None = None,
+    provenance: Mapping[str, object] | None = None,
 ) -> VersionResult:
     """
     Commit an archive and provenance together, without replacing existing versions.
@@ -1611,6 +1683,12 @@ def write_archive(
     records ``tier`` and ``publication``, the publication state of its source as
     the version is written (D6); a verified dataset's sidecar has neither.
 
+    A version of answers kept elsewhere before (S0's interim capture of PIG-PIB,
+    ``store import --staging``, ADR-035) is written as its run would have written it
+    then: ``downloaded_at`` dates the sidecar, the label and the observation, the
+    canonical content is compared with the version current at that time, and
+    ``provenance`` names the run in ``extra``.
+
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
@@ -1633,6 +1711,13 @@ def write_archive(
     cancel : Cancel or None, optional
         Polled before and after staging and before an observation is
         published; returning ``True`` aborts the write.
+    downloaded_at : datetime.datetime or None, optional
+        When the bytes came (aware), for answers kept elsewhere before; None for
+        now.
+    provenance : Mapping of str to object or None, optional
+        Fields added to the sidecar's ``extra``: where bytes kept elsewhere before
+        come from (S0's run, ``{"staging": {"run": …}}``); None for none. A field
+        the writer writes itself is refused (`ValueError`).
 
     Returns
     -------
@@ -1669,6 +1754,9 @@ def write_archive(
         If ``cancel`` returns ``True`` before publication.
     """
     handle = prepare_store(root, kind="raw")
+    if downloaded_at is not None:
+        _utc(downloaded_at)
+    added = _provenance(provenance, ("version", "period", "http", "kept_fields"))
     path = handle.root
     descriptor = get_dataset(archive.dataset)
     provider = get_provider(descriptor.provider)
@@ -1726,8 +1814,11 @@ def write_archive(
             stream.flush()
             os.fsync(stream.fileno())
         sha = digest.hexdigest()
-        now = datetime.now(UTC)
+        now = datetime.now(UTC) if downloaded_at is None else downloaded_at
         stamp = _utc(now)
+        # PIG-PIB's W (ADR-035): the years of the file's period, else of the
+        # download; the day of the download.
+        filling = _filling(descriptor, _archive_years(archive, now.year), (now.date(),))
         if response.last_modified:
             try:
                 published = parsedate_to_datetime(response.last_modified).astimezone(
@@ -1764,6 +1855,7 @@ def write_archive(
                 content=content,
                 slot_dir=slot_dir,
                 now=now,
+                as_of=downloaded_at,
                 on_notice=on_notice,
                 cancel=cancel,
             )
@@ -1803,7 +1895,7 @@ def write_archive(
             "country": provider.country,
             "provider": provider.id,
             "request": request,
-            "license": _license_document(descriptor.license),
+            "license": _filled_license(descriptor, filling),
             "downloaded_at": stamp,
             "sha256": sha,
             "size_bytes": len(response.data),
@@ -1823,6 +1915,7 @@ def write_archive(
                     if descriptor.kept_fields
                     else {}
                 ),
+                **added,
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)
@@ -1857,7 +1950,10 @@ def write_archive(
             # The lines of the dataset's origin; the station metadata kept of an
             # answer with operational data are processed data.
             lines = attribution(
-                dataset_origin(descriptor.key), processed=bool(descriptor.kept_fields)
+                dataset_origin(descriptor.key),
+                processed=bool(descriptor.kept_fields),
+                period=filling.get("period"),
+                date=filling.get("date"),
             )
             on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
         return VersionResult(
@@ -1873,11 +1969,13 @@ def write_capture(
     /,
     *,
     archive: ArchiveFile,
-    data: bytes,
+    data: bytes | Path,
     answers: int,
+    extra: Mapping[str, object] | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    provenance: Mapping[str, object] | None = None,
 ) -> VersionResult:
     """
     Commit the sealed capture of one dataset and UTC day as an archive version (D3).
@@ -1891,8 +1989,11 @@ def write_capture(
     is another version of the slot, told apart by its SHA-256; bytes a version of
     the slot already has are ``unchanged``. The sidecar's ``sha256`` is the stored
     file's; ``extra.http`` is the source's address without a signal,
-    ``extra.capture`` the number of answers, and ``tier`` and ``publication`` are
-    those of D6.
+    ``extra.capture`` the number of answers and what the provider adds
+    (`obserwator.providers.base.ProviderAdapter.capture_extra`), and ``tier`` and
+    ``publication`` are those of D6. A license formula with placeholders (PIG-PIB's
+    W, ADR-035) is filled with the years of the ``period`` of ``extra`` (else the
+    day's year) and the day.
 
     Parameters
     ----------
@@ -1901,10 +2002,15 @@ def write_capture(
     archive : ArchiveFile
         The file of the day (`obserwator.datasets._capture_file`) of a capture
         dataset.
-    data : bytes
-        The sealed answers.
+    data : bytes or pathlib.Path
+        The sealed answers, or a finished file of them (written and fsynced, below
+        the root's ``.incoming``): a large day is encoded into a file rather than
+        memory (`obserwator.store.captures.encode_into`, S0's import, ADR-035).
     answers : int
         How many answers they hold.
+    extra : Mapping of str to object or None, optional
+        The provider's fields of ``extra.capture`` (PIG-PIB's ``period``, ``watermark``
+        and ``count``); None for none.
     on_progress : ProgressHook or None, optional
         Called once with a ``new`` progress event after publication.
     on_notice : NoticeHook or None, optional
@@ -1912,6 +2018,10 @@ def write_capture(
         directory removed and the ``license_terms`` notice after publication.
     cancel : Cancel or None, optional
         Polled before and after staging; returning ``True`` aborts the write.
+    provenance : Mapping of str to object or None, optional
+        Fields added to the sidecar's ``extra`` (S0's runs whose answers the day
+        holds: ``{"staging": {"runs": […]}}``); None for none. A field the writer
+        writes itself is refused (`ValueError`).
 
     Returns
     -------
@@ -1931,6 +2041,7 @@ def write_capture(
         If ``cancel`` returns ``True`` before publication.
     """
     handle = prepare_store(root, kind="raw")
+    kept = _provenance(provenance, ("version", "period", "http", "capture"))
     path = handle.root
     descriptor = get_dataset(archive.dataset)
     if (
@@ -1954,14 +2065,26 @@ def write_capture(
     staging = incoming / f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex}"
     staging.mkdir()
     try:
-        _write_new(staging / filename, data)
-        sha = hashlib.sha256(data).hexdigest()
+        if isinstance(data, Path):
+            _place(data, staging / filename)
+            sha = _sha256_file(staging / filename)
+            size = (staging / filename).stat().st_size
+        else:
+            _write_new(staging / filename, data)
+            sha = hashlib.sha256(data).hexdigest()
+            size = len(data)
         for old_file, old_meta in _existing(slot, filename, archive=True):
             if old_meta["sha256"] == sha:
                 old_label = old_meta["extra"]["version"]["label"]
                 return VersionResult("unchanged", old_file, sha, old_label)
         if cancel is not None and cancel():
             raise ObserwatorCancelledError(message("writer.archive_write_cancelled"))
+        added = dict(extra or {})
+        filling = _filling(
+            descriptor,
+            _capture_years(added, archive.period_start),
+            (archive.period_start,),
+        )
         meta = {
             "schema": "obserwator-meta/1",
             "producer": "obserwator",
@@ -1974,10 +2097,10 @@ def write_capture(
                 "year": archive.year,
                 "month": archive.month,
             },
-            "license": _license_document(descriptor.license),
+            "license": _filled_license(descriptor, filling),
             "downloaded_at": _utc(datetime.now(UTC)),
             "sha256": sha,
-            "size_bytes": len(data),
+            "size_bytes": size,
             **_tier_fields(descriptor),
             "extra": {
                 "version": {"label": label, "label_source": "downloaded"},
@@ -1995,7 +2118,8 @@ def write_capture(
                     "last_modified": None,
                     "content_length": None,
                 },
-                "capture": {"answers": answers},
+                "capture": {"answers": answers, **added},
+                **kept,
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)
@@ -2028,9 +2152,31 @@ def write_capture(
                 )
             )
         if on_notice is not None:
-            lines = attribution(dataset_origin(descriptor.key), processed=False)
+            lines = attribution(
+                dataset_origin(descriptor.key),
+                processed=False,
+                period=filling.get("period"),
+                date=filling.get("date"),
+            )
             on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
         return VersionResult("new", target / filename, sha, label)
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def _capture_years(extra: Mapping[str, object], day: date) -> tuple[int, ...]:
+    """
+    The years of a capture's data: of its ``period``, else of its day.
+
+    ``period`` is the first and last UTC day of the hours its answers hold
+    (`ProviderAdapter.capture_extra`).
+    """
+    period = extra.get("period")
+    if isinstance(period, list | tuple) and len(period) == 2:
+        try:
+            first, last = (date.fromisoformat(str(item)) for item in period)
+        except ValueError:
+            return (day.year,)
+        return tuple(range(first.year, last.year + 1))
+    return (day.year,)

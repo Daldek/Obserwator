@@ -13,21 +13,31 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 import time
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta, tzinfo
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from io import BytesIO
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from urllib.parse import urlencode
 from zipfile import BadZipFile, ZipFile
 
 import httpx
 from pydantic import ValidationError
 
 from obserwator._version import __version__
-from obserwator.attribution import attribution, dataset_origin
+from obserwator.attribution import (
+    attribution,
+    dataset_origin,
+    days_text,
+    fillable,
+    provider_origin,
+    years_text,
+)
 from obserwator.datasets import (
     ArchiveFile,
     MonthsArg,
@@ -96,13 +106,20 @@ _NOT_PUBLISHED = (404, 410)
 
 @dataclass(frozen=True)
 class DownloadResult:
-    """Archive bytes and provenance from a single HTTP GET."""
+    """
+    Archive bytes and provenance from a single HTTP GET (or one run's answers).
+
+    ``archive`` names the file the bytes turned out to be when the provider names a
+    file by its content: PIG-PIB's readings by the calendar month of their rows
+    (ADR-035); None for the file asked.
+    """
 
     data: bytes
     url: str
     etag: str | None
     last_modified: str | None
     content_length: int | None
+    archive: ArchiveFile | None = None
 
 
 def _download_result(
@@ -1076,6 +1093,101 @@ def _zipped(archive: ArchiveFile) -> bool:
     return archive.server_path.lower().endswith(".zip")
 
 
+def _by_runs(archive: ArchiveFile) -> bool:
+    """
+    Whether an archive is the file a service publishes now, made by its adapter's run.
+
+    PIG-PIB's tables (check scope ``publication``, ADR-035): the pages of one run of
+    ArcGIS queries in Obserwator's container of answers (`ProviderAdapter.download`),
+    never one GET.
+    """
+    descriptor = get_dataset(archive.dataset)
+    adapter = get_provider(descriptor.provider).adapter
+    return adapter.check_scope(descriptor) == "publication"
+
+
+def _run_response(
+    client: httpx.Client,
+    archive: ArchiveFile,
+    *,
+    cancel: Cancel | None,
+    runs: dict[str, DownloadResult | ObserwatorError],
+) -> DownloadResult:
+    """
+    The bytes of the file a service publishes now: its adapter's run (`_by_runs`).
+
+    One run per dataset and download: ``runs`` keeps each dataset's result (or the
+    failure), so the other candidate files of the dataset (the months of a year of
+    PIG-PIB's readings) ask nothing more.
+
+    Raises
+    ------
+    ObserwatorConnectionError
+        ``source_unavailable``: the run failed, or (``details.reason``
+        ``other_file``) the service publishes another file now (PIG-PIB's readings
+        of another month than the one asked).
+    ObserwatorDataError
+        If the run's answers cannot be read.
+    ObserwatorCancelledError
+        If ``cancel`` stops the run.
+    """
+    if archive.dataset not in runs:
+        descriptor = get_dataset(archive.dataset)
+        try:
+            runs[archive.dataset] = get_provider(descriptor.provider).adapter.download(
+                archive, client=client, cancel=cancel
+            )
+        except ObserwatorCancelledError:
+            raise
+        except ObserwatorError as exc:
+            runs[archive.dataset] = exc
+    response = runs[archive.dataset]
+    if isinstance(response, ObserwatorError):
+        raise response
+    named = response.archive
+    if named is not None and named.server_path != archive.server_path:
+        raise ObserwatorConnectionError(
+            message(
+                "fetch.other_file_published",
+                asked=archive.server_path,
+                published=named.server_path,
+            ),
+            details={
+                "url": archive.url,
+                "reason": "other_file",
+                "published": named.server_path,
+            },
+        )
+    return response
+
+
+def _archive_years(archive: ArchiveFile, fallback: int) -> tuple[int, ...]:
+    """The years of an archive's data: of its period, else its year, else ``fallback``."""
+    if archive.period_start is not None and archive.period_end is not None:
+        return tuple(range(archive.period_start.year, archive.period_end.year + 1))
+    return (fallback if archive.year is None else archive.year,)
+
+
+def _w_filling(
+    files: Iterable[ArchiveFile], day: date
+) -> tuple[str | None, str | None]:
+    """
+    ``period`` and ``date`` of PIG-PIB's W of files written on ``day`` (ADR-035).
+
+    The years of the files whose license formula has placeholders (`fillable`) and
+    the day; None and None when no file has them.
+    """
+    years = {
+        year
+        for archive in files
+        if fillable(get_dataset(archive.dataset).license.attribution)
+        for year in _archive_years(archive, day.year)
+    }
+    if not years:
+        return None, None
+    return years_text(years), days_text((day,))
+
+
 def _download_files(
     dataset: str,
     /,
@@ -1160,13 +1272,18 @@ def _download_loop(
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
+    filling: tuple[str | None, str | None] = (None, None),
 ) -> tuple[list[DownloadItem], list[FileResult]]:
     """
     Download every archive with ``save`` and report each file as an item.
 
     A failed file becomes a ``failed`` item and the others are still
-    downloaded; a ČHMÚ candidate the server answers with HTTP 404 or 410 is a
+    downloaded; a ČHMÚ candidate the server answers with HTTP 404 or 410, and a
+    file the service does not publish now (PIG-PIB's readings of another month or
+    none, ``details.reason`` ``other_file`` or ``nothing_published``), is a
     successful ``not_published`` item; ``cancel`` is polled before every file.
+    ``filling`` is the period and the date of PIG-PIB's W in the ``license_terms``
+    notice (`_w_filling`).
     """
     # store.types is imported lazily: the obserwator.store package imports this module.
     from obserwator.store.types import DownloadItem, Notice, Progress
@@ -1174,7 +1291,10 @@ def _download_loop(
     items: list[DownloadItem] = []
     written: list[FileResult] = []
     licensed: set[str] = set()
-    listed = any(_origin(archive)[1] for archive in files)
+    listed = any(
+        _origin(archive)[1] or _origin(archive)[0].adapter.identifies
+        for archive in files
+    )
     with httpx.Client(
         timeout=timeout,
         follow_redirects=True,
@@ -1205,6 +1325,10 @@ def _download_loop(
                 if per_station and exc.details.get("status") in _NOT_PUBLISHED:
                     item = DownloadItem(
                         slot, archive.url, "not_published", None, UNPUBLISHED, None
+                    )
+                elif exc.details.get("reason") in ("other_file", "nothing_published"):
+                    item = DownloadItem(
+                        slot, archive.url, "not_published", None, exc.detail, None
                     )
                 else:
                     item = DownloadItem(
@@ -1250,8 +1374,14 @@ def _download_loop(
             if item.path is not None and provider.id not in licensed:
                 licensed.add(provider.id)
                 if on_notice is not None:
+                    lines = attribution(
+                        provider_origin(provider.id),
+                        processed=False,
+                        period=filling[0],
+                        date=filling[1],
+                    )
                     on_notice(
-                        Notice("info", "license_terms", provider.license_notice())
+                        Notice("info", "license_terms", provider.license_notice(lines))
                     )
     return items, written
 
@@ -1273,9 +1403,11 @@ def _download_plain(
     (`refuse_directory`), then the full target list with the directory's
     ``ATTRIBUTION.txt``, both before the first request (`plan_plain`,
     `plan_attribution`, `refuse`); each file is streamed to the staging
-    directory, verified and moved into place with ``os.replace``. Once a file
-    is written, the attribution file gets the lines of the verbatim files
-    (ADR-012) and is the last entry of the returned files.
+    directory, verified and moved into place with ``os.replace`` (the file a
+    service publishes now, PIG-PIB's tables, is its adapter's run of queries,
+    `_run_response`). Once a file is written, the attribution file gets the lines
+    of the verbatim files (ADR-012; PIG-PIB's W with the years of the files and
+    the day) and is the last entry of the returned files.
 
     Raises
     ------
@@ -1288,9 +1420,12 @@ def _download_plain(
         If the output directory cannot be created.
     """
     refuse_directory(directory)
+    period, day = _w_filling(files, datetime.now(UTC).date())
     lines = attribution(
         *dict.fromkeys(dataset_origin(archive.dataset) for archive in files),
         processed=False,
+        period=period,
+        date=day,
     )
     attribution_entry = plan_attribution(directory, lines)
     refuse(
@@ -1301,16 +1436,21 @@ def _download_plain(
             *([] if attribution_entry is None else [attribution_entry]),
         ]
     )
+    runs: dict[str, DownloadResult | ObserwatorError] = {}
     with Staging(directory) as staging:
 
         def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-            staged, size, sha256 = _stage(
-                client,
-                archive,
-                staging,
-                source=_server(archive),
-                zipped=_zipped(archive),
-            )
+            if _by_runs(archive):
+                response = _run_response(client, archive, cancel=cancel, runs=runs)
+                staged, size, sha256 = staging.write((response.data,))
+            else:
+                staged, size, sha256 = _stage(
+                    client,
+                    archive,
+                    staging,
+                    source=_server(archive),
+                    zipped=_zipped(archive),
+                )
             target = directory.joinpath(*archive.server_path.split("/"))
             return staging.commit(staged, target, size, sha256)
 
@@ -1321,6 +1461,7 @@ def _download_plain(
             on_progress=on_progress,
             on_notice=on_notice,
             cancel=cancel,
+            filling=(period, day),
         )
     if written and (noted := write_attribution(directory, lines)) is not None:
         written = [*written, noted]
@@ -1339,8 +1480,9 @@ def _download_store(
     """
     Publish the archives as versions in the store at ``root`` (``write_archive``).
 
-    Every file is fetched (there is no freshness check) and gets the status of
-    its version: ``new``, ``unchanged`` or ``relabeled``.
+    Every file is fetched (there is no freshness check; the file a service
+    publishes now, PIG-PIB's tables, by its adapter's run, `_run_response`) and
+    gets the status of its version: ``new``, ``unchanged`` or ``relabeled``.
 
     Raises
     ------
@@ -1354,6 +1496,7 @@ def _download_store(
     from obserwator.store.writer import prepare_store, write_archive
 
     handle = prepare_store(root)
+    runs: dict[str, DownloadResult | ObserwatorError] = {}
 
     def forward(notice: Notice) -> None:
         # The license notice is sent once per provider by the loop.
@@ -1361,11 +1504,15 @@ def _download_store(
             on_notice(notice)
 
     def save(client: httpx.Client, archive: ArchiveFile) -> FileResult:
-        response = _archive_response(
-            client,
-            archive.url,
-            source=_server(archive),
-            zipped=_zipped(archive),
+        response = (
+            _run_response(client, archive, cancel=cancel, runs=runs)
+            if _by_runs(archive)
+            else _archive_response(
+                client,
+                archive.url,
+                source=_server(archive),
+                zipped=_zipped(archive),
+            )
         )
         version = write_archive(
             handle, archive=archive, response=response, on_notice=forward, cancel=cancel
@@ -1381,6 +1528,7 @@ def _download_store(
         on_progress=on_progress,
         on_notice=on_notice,
         cancel=cancel,
+        filling=_w_filling(files, datetime.now(UTC).date()),
     )
 
 
@@ -1422,7 +1570,13 @@ def download_archives(
     item. The files of ``pl.imgw.actinometric`` are found in the server's
     folder index before the first file is fetched (ADR-023): every station,
     the year folders of the selected years and the files outside the year
-    folders. Only names ending with ``.zip`` must be ZIP archives.
+    folders. Only names ending with ``.zip`` must be ZIP archives. PIG-PIB's tables
+    (``pl.pig.groundwater_readings``, ``…_chemistry``, ``…_watchlist``, ADR-035)
+    are the pages of one run of ArcGIS queries in Obserwator's container of
+    answers, as their service publishes them now: a month of readings the service
+    no longer holds (another month published) is a successful ``not_published``
+    item, and ``ATTRIBUTION.txt`` carries PIG-PIB's W with the years of the files
+    and the day.
 
     Parameters
     ----------
@@ -1431,7 +1585,8 @@ def download_archives(
     years : YearsArg or None, optional
         Archive years: a number, a range ``"a-b"``, a list ``"a,b"`` or an
         iterable of these. Required except for ``cz.chmu.meteo_daily``, which
-        rejects it.
+        rejects it, and PIG-PIB's chemistry and watch list (one file each, no
+        years).
     months : MonthsArg or None, optional
         Months 1-12 of physically monthly files; None selects all months.
         Rejected for ČHMÚ datasets; for the per-station synop archives of
@@ -1673,11 +1828,22 @@ class PacedRequest:
         station's other requests of the run.
     headers : Mapping of str to str, optional
         Request headers (the user agent a source needs).
+    data : Mapping of str to str or None, optional
+        A form: the request is a POST of it (an ArcGIS query, whose long address
+        answers 404, ADR-035); None for a GET.
+    follow : callable or None, optional
+        Called with the answer of an answered request: the next request it asks for
+        (the next page of a harvest by ``OBJECTID`` watermark, ADR-035), asked right
+        after it, or None; None for a request without one.
     """
 
     url: str
     station: str
     headers: Mapping[str, str] = MappingProxyType({})
+    data: Mapping[str, str] | None = None
+    follow: Callable[[httpx.Response], PacedRequest | None] | None = field(
+        default=None, compare=False
+    )
 
 
 @dataclass(frozen=True)
@@ -1844,9 +2010,14 @@ class PacedSession:
         remaining = (self.deadline - self._last).total_seconds()
         return max(MIN_SPACING, remaining / (left + 1))
 
-    def _ask(self, url: str, headers: Mapping[str, str]) -> tuple[httpx.Response, bool]:
+    def _ask(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        data: Mapping[str, str] | None = None,
+    ) -> tuple[httpx.Response, bool]:
         """
-        One attempt: the GET, counted, its answer to the spool.
+        One attempt: the GET (or the POST of a form), counted, its answer to the spool.
 
         Returns the answer and whether the spool kept it (always True for an
         address of no capture dataset). A request without an answer raises the
@@ -1861,7 +2032,11 @@ class PacedSession:
         self._last = self.clock.now()
         self.requests += 1
         try:
-            response = self._client.get(url, headers=dict(headers))
+            response = (
+                self._client.get(url, headers=dict(headers))
+                if data is None
+                else self._client.post(url, data=dict(data), headers=dict(headers))
+            )
         except httpx.RequestError as exc:
             self._failures += 1
             if self._failures >= CONNECTION_FAILURES:
@@ -1881,6 +2056,7 @@ class PacedSession:
         *,
         headers: Mapping[str, str] | None = None,
         left: int | None = None,
+        data: Mapping[str, str] | None = None,
     ) -> tuple[httpx.Response, bool, int]:
         """
         One request of the run: paced, asked again after 429 or 5xx.
@@ -1893,6 +2069,8 @@ class PacedSession:
             Request headers besides gzip's.
         left : int or None, optional
             The requests left to the deadline, this one included (`spacing`).
+        data : Mapping of str to str or None, optional
+            A form to POST (an ArcGIS query); None for a GET.
 
         Returns
         -------
@@ -1910,13 +2088,13 @@ class PacedSession:
         if self._last is not None:
             self._wait_until(self._last + timedelta(seconds=self.spacing(left)))
         sent = dict(headers or {})
-        response, kept = self._ask(url, sent)
+        response, kept = self._ask(url, sent, data)
         attempts = 1
         for pause in BACKOFF:
             if not _backs_off(response.status_code):
                 break
             self._wait_until(self.clock.now() + timedelta(seconds=pause))
-            response, again = self._ask(url, sent)
+            response, again = self._ask(url, sent, data)
             kept, attempts = kept and again, attempts + 1
         return response, kept, attempts
 
@@ -1969,7 +2147,9 @@ class PacedSession:
         A station refused after the backoff is skipped: its later requests are not
         asked and the spread is computed without them. After `CONNECTION_FAILURES`
         connection failures in a row the rest is ``stopped``; after a cancel,
-        ``cancelled``.
+        ``cancelled``. A request with a ``follow`` that was answered with a success
+        is followed right away by the request it gives (the pages of a harvest by
+        watermark), which joins the spread from then on.
 
         Parameters
         ----------
@@ -1982,19 +2162,18 @@ class PacedSession:
         Returns
         -------
         list of PacedOutcome
-            One per request, in order.
+            One per request asked or planned, followed ones included, in order.
         """
         # store.types is imported lazily: the obserwator.store package imports this module.
         from obserwator.store.types import Progress
 
-        positions: dict[str, list[int]] = {}
-        for index, request in enumerate(requests):
-            positions.setdefault(request.station, []).append(index)
+        pending = deque(requests)
         outcomes: list[PacedOutcome] = []
         skipped: dict[str, PacedOutcome] = {}
         left = len(requests)
         ended: Literal["stopped", "cancelled"] | None = None
-        for index, request in enumerate(requests):
+        while pending:
+            request = pending.popleft()
             if ended is not None:
                 outcome = PacedOutcome(
                     request,
@@ -2012,12 +2191,12 @@ class PacedSession:
                     error_code=_UNAVAILABLE,
                 )
             else:
-                outcome = self._one(request, left)
+                outcome, response = self._one(request, left)
                 left -= 1
                 if outcome.status == "skipped":
                     skipped[request.station] = outcome
                     left -= sum(
-                        1 for later in positions[request.station] if later > index
+                        1 for later in pending if later.station == request.station
                     )
                 elif outcome.status == "cancelled":
                     ended = "cancelled"
@@ -2025,12 +2204,22 @@ class PacedSession:
                     ended, self.stopped = "stopped", True
                     # The third failure itself is a failed request.
                     outcome = replace(outcome, status="failed")
+                elif (
+                    outcome.status == "answered"
+                    and request.follow is not None
+                    and response is not None
+                    and response.is_success
+                ):
+                    following = request.follow(response)
+                    if following is not None:
+                        pending.appendleft(following)
+                        left += 1
             outcomes.append(outcome)
             if on_progress is not None:
                 on_progress(
                     Progress(
-                        index + 1,
-                        len(requests),
+                        len(outcomes),
+                        len(outcomes) + len(pending),
                         "request",
                         outcome.status,
                         message(
@@ -2048,11 +2237,13 @@ class PacedSession:
             return message("common.cancelled")
         return message("fetch.paced_run_stopped", failures=CONNECTION_FAILURES)
 
-    def _one(self, request: PacedRequest, left: int) -> PacedOutcome:
-        """Ask one planned request (see `run`)."""
+    def _one(
+        self, request: PacedRequest, left: int
+    ) -> tuple[PacedOutcome, httpx.Response | None]:
+        """Ask one planned request (see `run`): its outcome and its last answer."""
         try:
             response, kept, attempts = self.get(
-                request.url, headers=request.headers, left=left
+                request.url, headers=request.headers, left=left, data=request.data
             )
         except ObserwatorCancelledError:
             return PacedOutcome(
@@ -2060,7 +2251,7 @@ class PacedSession:
                 "cancelled",
                 error=message("common.cancelled"),
                 error_code="cancelled",
-            )
+            ), None
         except _Stopped as exc:
             error = _source_error(exc.failure, request.url, source=self.source)
             return PacedOutcome(
@@ -2070,7 +2261,7 @@ class PacedSession:
                 asked_at=self._last,
                 error=error.detail,
                 error_code=_UNAVAILABLE,
-            )
+            ), None
         except httpx.RequestError as exc:
             error = _source_error(exc, request.url, source=self.source)
             return PacedOutcome(
@@ -2080,7 +2271,7 @@ class PacedSession:
                 asked_at=self._last,
                 error=error.detail,
                 error_code=_UNAVAILABLE,
-            )
+            ), None
         status = response.status_code
         if _backs_off(status):
             text = message(
@@ -2092,14 +2283,16 @@ class PacedSession:
             )
             return PacedOutcome(
                 request, "skipped", status, attempts, self._last, text, _UNAVAILABLE
-            )
+            ), response
         if not kept:
             text = message("fetch.paced_not_kept", url=request.url)
             return PacedOutcome(
                 request, "failed", status, attempts, self._last, text, "io_error"
-            )
+            ), response
         if response.is_success or status in _NOT_PUBLISHED:
-            return PacedOutcome(request, "answered", status, attempts, self._last)
+            return PacedOutcome(
+                request, "answered", status, attempts, self._last
+            ), response
         text = message(
             "fetch.server_returned_http",
             source=self.source,
@@ -2108,7 +2301,7 @@ class PacedSession:
         )
         return PacedOutcome(
             request, "failed", status, attempts, self._last, text, _UNAVAILABLE
-        )
+        ), response
 
 
 def _stamp(moment: datetime | None) -> str:
@@ -2116,3 +2309,294 @@ def _stamp(moment: datetime | None) -> str:
     if moment is None:
         return "—"
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ============================================================================
+# ArcGIS REST queries of PIG-PIB (ADR-035)
+# ============================================================================
+
+ARCGIS_PAGE = 1000
+"""Rows of one page of an ArcGIS query: the services' ``maxRecordCount`` (ADR-035)."""
+ARCGIS_SPACING = 2.0
+"""The shortest spacing of two requests to PIG-PIB's services, in seconds (W11)."""
+
+
+@dataclass(frozen=True)
+class ArcgisAnswer:
+    """
+    One answer of an ArcGIS query, as it came (ADR-035).
+
+    Attributes
+    ----------
+    address : str
+        The query's URL with its form as the query string (`arcgis_address`): what a
+        capture keeps of it.
+    received_at : datetime.datetime
+        When it came (UTC).
+    status : int
+        Its HTTP status.
+    content : bytes
+        Its body as it came.
+    """
+
+    address: str
+    received_at: datetime
+    status: int
+    content: bytes
+
+
+def arcgis_address(url: str, form: Mapping[str, str], /) -> str:
+    """
+    The address of an ArcGIS query: its URL with its form as the query string.
+
+    Parameters
+    ----------
+    url : str
+        The ``…/MapServer/<layer>/query`` URL.
+    form : Mapping of str to str
+        The parameters POSTed, in their order.
+
+    Returns
+    -------
+    str
+        ``<url>?<form>``, URL-encoded.
+    """
+    return f"{url}?{urlencode(list(form.items()))}"
+
+
+class _Spacing:
+    """
+    One request of a server at a time, at least a spacing apart (PIG-PIB, W11).
+
+    Shared by every request of a process, so the downloads of one sync are paced as
+    one run; time is the run's clock (`_clock`), as `PacedSession` keeps it.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last: datetime | None = None
+
+    def wait(self, seconds: float) -> None:
+        """Sleep until ``seconds`` after the previous request, then claim it."""
+        with self._lock:
+            clock = _clock()
+            if self._last is not None:
+                elapsed = max((clock.now() - self._last).total_seconds(), 0.0)
+                if elapsed < seconds:
+                    clock.sleep(seconds - elapsed)
+            self._last = clock.now()
+
+
+_ARCGIS = _Spacing()
+
+
+def arcgis_query(
+    client: httpx.Client,
+    url: str,
+    form: Mapping[str, str],
+    /,
+    *,
+    source: str,
+    cancel: Cancel | None = None,
+) -> tuple[ArcgisAnswer, dict[str, Any]]:
+    """
+    One ArcGIS query: a POST of its form, paced, asked again after 429 or 5xx.
+
+    A long address answers 404 at PIG-PIB's services, so every query is a POST.
+    Requests to the services are at least `ARCGIS_SPACING` seconds apart in a
+    process; an answer 429 or 5xx is asked again after each wait of `BACKOFF`.
+
+    Parameters
+    ----------
+    client : httpx.Client
+        The client of the run (``obserwator/<version>``, gzip).
+    url : str
+        The ``…/MapServer/<layer>/query`` URL.
+    form : Mapping of str to str
+        The query's parameters, in their order.
+    source : str
+        The server's name in the texts of a failure.
+    cancel : callable or None, optional
+        Polled before each request.
+
+    Returns
+    -------
+    tuple of (ArcgisAnswer, dict)
+        The answer as it came and its JSON object.
+
+    Raises
+    ------
+    ObserwatorConnectionError
+        ``source_unavailable``: no answer, an HTTP error still after the backoff, an
+        answer that is no JSON (an access block's HTML page; ``details.reason``
+        ``not_json``) or an ArcGIS error ``{"error": …}`` answered with HTTP 200
+        (``provider_error``, with ``provider_code`` and ``provider_text``).
+    ObserwatorCancelledError
+        If ``cancel`` returned True.
+    """
+    address = arcgis_address(url, form)
+    clock = _clock()
+    for pause in (*BACKOFF, None):
+        if cancel is not None and cancel():
+            raise ObserwatorCancelledError(message("common.cancelled"))
+        _ARCGIS.wait(ARCGIS_SPACING)
+        try:
+            response = client.post(url, data=dict(form))
+        except httpx.HTTPError as exc:
+            raise _source_error(exc, address, source=source) from exc
+        if pause is None or not _backs_off(response.status_code):
+            break
+        clock.sleep(pause)
+    answer = ArcgisAnswer(
+        address, clock.now().astimezone(UTC), response.status_code, response.content
+    )
+    if not response.is_success:
+        status = response.status_code
+        raise ObserwatorConnectionError(
+            message(
+                "fetch.server_returned_http", source=source, status=status, url=address
+            ),
+            details={"url": address, "reason": "http_status", "status": status},
+        )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ObserwatorConnectionError(
+            message("fetch.arcgis_not_json", source=source, url=address),
+            details={"url": address, "reason": "not_json"},
+        ) from exc
+    if not isinstance(payload, dict) or "error" in payload:
+        error = payload.get("error") if isinstance(payload, dict) else None
+        code = error.get("code") if isinstance(error, dict) else None
+        text = str(error.get("message") or "") if isinstance(error, dict) else ""
+        raise ObserwatorConnectionError(
+            message(
+                "fetch.arcgis_error",
+                source=source,
+                code=code,
+                text=text[:200],
+                url=address,
+            ),
+            details={
+                "url": address,
+                "reason": "provider_error",
+                "provider_code": code,
+                "provider_text": text[:200],
+            },
+        )
+    return answer, payload
+
+
+def _arcgis_run(
+    client: httpx.Client,
+    url: str,
+    *,
+    where: str,
+    geometry: bool,
+    source: str,
+    cancel: Cancel | None,
+) -> tuple[list[ArcgisAnswer], object, object, int]:
+    """One run of `arcgis_pages`: its answers, the counts before and after, the rows."""
+    count = {"where": where, "returnCountOnly": "true", "f": "json"}
+    answer, payload = arcgis_query(client, url, count, source=source, cancel=cancel)
+    answers, before, rows = [answer], payload.get("count"), 0
+    while True:
+        form = {
+            "where": where,
+            "outFields": "*",
+            "orderByFields": "OBJECTID",
+            "resultOffset": str(rows),
+            "resultRecordCount": str(ARCGIS_PAGE),
+            "returnGeometry": "true" if geometry else "false",
+            "f": "json",
+        }
+        if geometry:
+            form["outSR"] = "4326"
+        answer, payload = arcgis_query(client, url, form, source=source, cancel=cancel)
+        answers.append(answer)
+        features = payload.get("features")
+        if not isinstance(features, list):
+            raise ObserwatorConnectionError(
+                message("fetch.arcgis_not_page", source=source, url=answer.address),
+                details={"url": answer.address, "reason": "provider_error"},
+            )
+        rows += len(features)
+        if not features or (
+            len(features) < ARCGIS_PAGE and not payload.get("exceededTransferLimit")
+        ):
+            break
+    answer, payload = arcgis_query(client, url, count, source=source, cancel=cancel)
+    answers.append(answer)
+    return answers, before, payload.get("count"), rows
+
+
+def arcgis_pages(
+    client: httpx.Client,
+    url: str,
+    /,
+    *,
+    where: str = "1=1",
+    geometry: bool = False,
+    source: str,
+    cancel: Cancel | None = None,
+) -> list[ArcgisAnswer]:
+    """
+    Every row of an ArcGIS layer or table in one run, as it came (ADR-035 W4).
+
+    The count (``returnCountOnly``) before, the pages in ``OBJECTID`` order by
+    ``resultOffset``, `ARCGIS_PAGE` rows each, until a page is short, then the count
+    after; each a paced POST (`arcgis_query`). A run whose counts differ from each
+    other or from the rows read is asked once again; a second such run fails and
+    nothing of it may be written.
+
+    Parameters
+    ----------
+    client : httpx.Client
+        The client of the run.
+    url : str
+        The ``…/MapServer/<layer>/query`` URL.
+    where : str, optional
+        The query's clause; every row by default.
+    geometry : bool, optional
+        Whether the rows carry their geometry, asked in WGS84 (``outSR=4326``).
+    source : str
+        The server's name in the texts of a failure.
+    cancel : callable or None, optional
+        Polled before each request.
+
+    Returns
+    -------
+    list of ArcgisAnswer
+        The answers of the complete run in order: the count before, the pages and
+        the count after.
+
+    Raises
+    ------
+    ObserwatorConnectionError
+        ``source_unavailable``: a query failed (`arcgis_query`), an answer was no
+        page, or the rows changed during both runs (``details.reason``
+        ``count_changed``, with ``before``, ``after`` and ``rows``).
+    ObserwatorCancelledError
+        If ``cancel`` returned True.
+    """
+    before: object = None
+    after: object = None
+    rows = 0
+    for _ in range(2):
+        answers, before, after, rows = _arcgis_run(
+            client, url, where=where, geometry=geometry, source=source, cancel=cancel
+        )
+        if before == after == rows:
+            return answers
+    raise ObserwatorConnectionError(
+        message(
+            "fetch.arcgis_count_changed", url=url, before=before, after=after, rows=rows
+        ),
+        details={
+            "url": url,
+            "reason": "count_changed",
+            "before": before,
+            "after": after,
+            "rows": rows,
+        },
+    )

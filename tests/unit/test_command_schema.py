@@ -43,14 +43,23 @@ ARCHIVE_KEYS = [
 ]
 # Files store check/sync keep as archive versions: those of every series, ČHMÚ's
 # groundwater months and statistics (ADR-032), IMGW-PIB's telemetry and ČHMÚ's
-# validated hourly files (ADR-030); an hourly series of the tiers has none, it is
-# built from them (ADR-031).
+# validated hourly files (ADR-030), PIG-PIB's chemistry and watchlist tables (ADR-035);
+# an hourly series of the tiers has none, it is built from them (ADR-031).
 STORED_KEYS = [
     d.key
     for d in datasets()
     if d.in_store
     and d.time_unit
-    in ("day", "week", "month", "half_year", "statistics", "ten_minutes", "hour")
+    in (
+        "day",
+        "week",
+        "month",
+        "half_year",
+        "statistics",
+        "ten_minutes",
+        "hour",
+        "snapshot",
+    )
     and d.archive_scope != CAPTURE_SCOPE
     and d.inputs is None
 ]
@@ -121,7 +130,7 @@ def test_option_types_rules_and_interfaces_map_to_the_input_schema():
         },
         "limit": {"type": "integer", "minimum": 1},
         "cursor": {"type": "string", "minLength": 1},
-        "provider": {"enum": ["IMGW", "CHMU", "GDANSKIEWODY"]},
+        "provider": {"enum": ["IMGW", "CHMU", "GDANSKIEWODY", "PIG"]},
         "bbox": {
             "type": "array",
             "items": {"type": "number", "minimum": -180.0, "maximum": 180.0},

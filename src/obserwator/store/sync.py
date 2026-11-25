@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
-from typing import Literal, NamedTuple, cast
+from typing import Literal, NamedTuple, NoReturn, cast
 from urllib.parse import unquote, urlsplit
 
 import httpx
@@ -732,7 +732,8 @@ def _harvest_codes(
     ObserwatorValidationError
         If the call names more than one dataset or one no adapter harvests
         (``details.reason`` ``not_harvested``), gives ``years`` or ``months``
-        (``captures``) or a station code outside the provider's grammar.
+        (``captures``), a station code outside the provider's grammar, or stations
+        of a harvest by watermark (``watermark``).
     """
     keys = [descriptor.key for descriptor in captures]
     if len(captures) > 1 or not _harvested(captures[0]):
@@ -748,7 +749,22 @@ def _harvest_codes(
             )
     if stations is None:
         return ()
+    if _watermarked(captures[0]):
+        _refuse_watermark(captures[0], "stations")
     return _parse_stations(stations, get_provider(captures[0].provider))
+
+
+def _watermarked(descriptor: DatasetDescriptor) -> bool:
+    """Whether a harvest dataset is asked by watermark (`ProviderAdapter.watermarked`)."""
+    return descriptor.key in get_provider(descriptor.provider).adapter.watermarked
+
+
+def _refuse_watermark(descriptor: DatasetDescriptor, option: str) -> NoReturn:
+    """Refuse an option a harvest by watermark takes none of: days, stations."""
+    raise ObserwatorValidationError(
+        message("sync.option_not_for_watermark", option=option, dataset=descriptor.key),
+        details={"option": option, "value": None, "reason": "watermark"},
+    )
 
 
 def _day_bound(name: str, value: object, last: date) -> date | None:
@@ -842,6 +858,16 @@ def _harvest_action(
     days: tuple[date, date],
 ) -> PlanAction:
     """The plan's ``store sync`` action of a harvest: its source is asked first."""
+    if _watermarked(descriptor):
+        return PlanAction(
+            _SYNC,
+            "missing",
+            message(
+                "sync.harvest_watermark_planned",
+                dataset=descriptor.key,
+                until=pace_until,
+            ),
+        )
     return PlanAction(
         _SYNC,
         "missing",
@@ -1073,20 +1099,25 @@ def _selection(
         Wody (named by the stored station list, ADR-034) the station codes (none
         for every station of the list) and no candidates (see `_months_request`)
         with no archives, for country datasets (IMGW-PIB, its telemetry
-        included) no codes, no candidates and the archives, for station sources
-        (lists and station metadata, ADR-015) no codes, no candidates and their
-        files with a fixed name, or for capture datasets (ADR-030 D3, sealed
-        from the spool) the codes of a harvest (``pace_until``,
-        `_harvest_codes`: none for every station), no candidates and no files,
-        and the days of the harvest (`_capture_days`).
+        included) no codes, no candidates and the archives, for the datasets a
+        service publishes one file at a time (scope ``publication``, PIG-PIB's
+        tables, ADR-035) nothing (the check names the file by a request), for
+        station sources (lists and station metadata, ADR-015) no codes, no
+        candidates and their files with a fixed name, or for capture datasets
+        (ADR-030 D3, sealed from the spool) the codes of a harvest
+        (``pace_until``, `_harvest_codes`: none for every station), no candidates
+        and no files, and the days of the harvest (`_capture_days`; a harvest by
+        watermark takes the default days, its rows whatever days they cover).
 
     Raises
     ------
     ObserwatorValidationError
         If a selector is invalid for the datasets (see the callers),
         ``pace_until`` is no ``HH:MM`` or names no single harvest dataset, or
-        ``start`` and ``end`` are invalid (`_capture_days`) or name no capture
-        dataset (``details.reason`` ``not_capture``).
+        ``start`` and ``end`` are invalid (`_capture_days`), name no capture
+        dataset (``details.reason`` ``not_capture``) or a harvest by watermark
+        (``watermark``), or ``years``, ``months`` or ``stations`` are given for a
+        dataset of the scope ``publication`` (``publication``).
     """
     if not isinstance(datasets, str):
         datasets = tuple(datasets)
@@ -1096,6 +1127,8 @@ def _selection(
     if captures is not None:
         if pace_until is not None:
             codes = _harvest_codes(captures, years, months, stations)
+            if _watermarked(captures[0]) and (start is not None or end is not None):
+                _refuse_watermark(captures[0], "start" if start is not None else "end")
             days = _capture_days(start, end, harvest=True)
             return _Selection(captures, codes, {}, [], days)
         for name, given in (
@@ -1167,6 +1200,22 @@ def _selection(
     if scopes == {"months"}:
         codes, candidates = _months_request(descriptors, years, months, stations)
         return _Selection(descriptors, codes, candidates, [])
+    if scopes == {"publication"}:
+        for name, given in (
+            ("years", years),
+            ("months", months),
+            ("stations", stations),
+        ):
+            if given is not None:
+                raise ObserwatorValidationError(
+                    message(
+                        "sync.option_not_for_publication",
+                        option=name,
+                        keys=", ".join(item.key for item in descriptors),
+                    ),
+                    details={"option": name, "value": None, "reason": "publication"},
+                )
+        return _Selection(descriptors, (), {}, [])
     return _Selection(
         descriptors, (), {}, _country_archives(descriptors, years, months, stations)
     )
@@ -1233,7 +1282,16 @@ def check_store(
     without a stored version, ``current`` when its current version was downloaded
     once its month had settled (`ProviderAdapter.settled`: six hours after the
     provider's last day of the month), else ``newer`` (an open or unsettled month,
-    fetched again by every sync).
+    fetched again by every sync). PIG-PIB's tables (``pl.pig.groundwater_readings``,
+    ``…_chemistry``, ``…_watchlist``; check scope ``publication``, ADR-035) are the
+    one file its service publishes now: the readings named by one statistics query
+    (the calendar month of their rows, ``MWP_<YYYY-MM>.jsonl.gz``, or with a
+    ``window_unexpected`` warning their first and last day), the others by their
+    fixed name; without an HTTP signal a stored file is ``unverifiable`` (the sync
+    downloads it and compares its content) and a file without a version is
+    ``missing``. Every month between the first and the last stored readings without
+    a version is a ``not_captured`` warning and an ``unverifiable`` action: the
+    service no longer publishes it.
 
     Parameters
     ----------
@@ -1244,9 +1302,10 @@ def check_store(
         kind: IMGW-PIB country archives, IMGW-PIB's telemetry, the IMGW-PIB synop
         archives, ČHMÚ station files (also those no series reads: ČHMÚ's
         groundwater ``recent`` and ``characteristic``, ADR-032, and its validated
-        hourly files) or the month files of Gdańskie Wody; or station sources;
-        or capture datasets (no ``years``, ``months`` or ``stations``, except
-        ``stations`` of a harvest). A bare string is rejected.
+        hourly files) or the month files of Gdańskie Wody, or PIG-PIB's tables
+        (no ``years``, ``months`` or ``stations``); or station sources; or capture
+        datasets (no ``years``, ``months`` or ``stations``, except ``stations`` of
+        a harvest that is not asked by watermark). A bare string is rejected.
     years : YearsArg or None, optional
         Years to check (hydrological or calendar, as defined by each dataset):
         ``2024``, ``"2020-2023"``, ``"2020,2022"`` or a collection of such
@@ -1276,12 +1335,14 @@ def check_store(
         UTC) of the spool days checked, None for no bound (every closed day);
         with ``pace_until`` also the days the harvest asks for: ``end`` by default
         the last closed day, ``start`` by default ``end`` and at most
-        `obserwator.captures.HARVEST_DAYS` (40) days before today (ADR-030 D9).
+        `obserwator.captures.HARVEST_DAYS` (40) days before today (ADR-030 D9);
+        refused for a harvest by watermark (``pl.pig.groundwater_operational``).
     pace_until : str or None, optional
         ``HH:MM`` (local time) of a ``store sync`` that harvests one capture
         dataset first (`sync_store`): the plan adds today's spool day and the
-        harvest's action; only for ``pl.imgw.hydro_operational`` and
-        ``cz.chmu.hydro_recent``.
+        harvest's action; only for ``pl.imgw.hydro_operational``,
+        ``cz.chmu.hydro_recent`` and ``pl.pig.groundwater_operational`` (asked by
+        watermark: every row after the last ``OBJECTID`` the raw root holds).
     plan : str, os.PathLike or None, optional
         File to save the plan to (``obserwator-plan/1``, see `StorePlan.to_json`); it
         must lie outside the store in an existing directory.
@@ -1317,7 +1378,9 @@ def check_store(
         (`check_series`) reports (ADR-017). ``requests`` counts the requests
         made by the check (``"made"``) and the HEAD and GET of every ``newer``
         and ``missing`` item (``"planned"``; for a month file of Gdańskie Wody
-        the GET of each of its days up to today).
+        the GET of each of its days up to today; for a file of the scope
+        ``publication`` to download, ``missing`` or ``unverifiable``, the three
+        requests of a run of one page: the counts before and after and the page).
 
     Raises
     ------
@@ -1338,8 +1401,10 @@ def check_store(
         (``details.reason`` ``not_harvested``), ``start`` or ``end`` is no date, a
         day not closed yet (``day_not_closed``) or given for no capture dataset
         (``not_capture``), ``end`` is before ``start``, a harvest's ``start`` lies
-        more than 40 days back (``harvest_reach``), or ``plan`` lies inside the
-        store or in a missing directory.
+        more than 40 days back (``harvest_reach``), a harvest by watermark gets
+        ``start``, ``end`` or ``stations`` (``watermark``), PIG-PIB's tables get
+        ``years``, ``months`` or ``stations`` (``publication``), or ``plan`` lies
+        inside the store or in a missing directory.
     ObserwatorDataError
         If the station list of Gdańskie Wody the raw root holds cannot be read.
     """
@@ -1418,6 +1483,7 @@ def check_store(
             monthly.to_json(target)
         return monthly
     listed = sources or scope == "stations"
+    publication = scope == "publication"
     made = 0
 
     def count(_request: httpx.Request) -> None:
@@ -1427,11 +1493,20 @@ def check_store(
     with httpx.Client(
         timeout=DEFAULT_TIMEOUT,
         follow_redirects=True,
-        headers=_IDENTIFY if listed else None,
+        headers=_IDENTIFY if listed or publication else None,
         event_hooks={"request": [count]},
     ) as client:
         if sources:
             items, actions, cancelled = _check_sources(
+                client,
+                path,
+                descriptors,
+                on_progress=on_progress,
+                on_notice=on_notice,
+                cancel=cancel,
+            )
+        elif publication:
+            items, actions, cancelled = _check_publication(
                 client,
                 path,
                 descriptors,
@@ -1484,8 +1559,10 @@ def check_store(
             )
             actions = []
     # Every newer or missing item is a GET, after a HEAD unless the listing is its
-    # only signal (the telemetry).
-    requests = 1 if scope == "listing" else 2
+    # only signal (the telemetry); a file of the scope ``publication`` to download is
+    # at least a run of one page (the counts before and after and the page).
+    requests = 1 if scope == "listing" else 3 if publication else 2
+    downloaded = ("missing", "unverifiable") if publication else ("newer", "missing")
     result = StorePlan(
         schema="obserwator-plan/1",
         root=path,
@@ -1496,8 +1573,7 @@ def check_store(
         cancelled=cancelled,
         requests={
             "made": made,
-            "planned": requests
-            * sum(item.status in ("newer", "missing") for item in items),
+            "planned": requests * sum(item.status in downloaded for item in items),
         },
     )
     if target is not None:
@@ -2008,6 +2084,101 @@ def _check_source(client: httpx.Client, root: Path, archive: ArchiveFile) -> Pla
     )
 
 
+def _check_publication(
+    client: httpx.Client,
+    root: Path,
+    descriptors: list[DatasetDescriptor],
+    *,
+    on_progress: ProgressHook | None,
+    on_notice: NoticeHook | None,
+    cancel: Cancel | None,
+) -> tuple[list[PlanItem], list[PlanAction], bool]:
+    """
+    Check the datasets a service publishes one file at a time (scope ``publication``).
+
+    The adapter names the file published now (`ProviderAdapter.published`: PIG-PIB's
+    readings by one statistics query, its other tables by their fixed name) and
+    gives the warnings of its naming. There is no HTTP signal: a stored file is
+    ``unverifiable`` (the sync downloads it and compares its content), a file
+    without a version ``missing``, and a request that fails one ``check_failed``
+    action. Each file no capture can fill any more
+    (`ProviderAdapter.publication_gaps`: a month between the first and the last
+    stored readings without a version, ADR-035 W5) is one ``unverifiable`` action
+    and a ``not_captured`` warning.
+    """
+    items: list[PlanItem] = []
+    actions: list[PlanAction] = []
+    cancelled = False
+    for index, descriptor in enumerate(descriptors, start=1):
+        cancelled = cancelled or (cancel is not None and cancel())
+        provider = get_provider(descriptor.provider)
+        if not cancelled:
+            try:
+                archive, notices = provider.adapter.published(descriptor, client=client)
+            except ObserwatorError as exc:
+                archive, notices = None, ()
+                # The detail tells a failed request from bad data (`_failure_code`),
+                # also in a plan file read back.
+                error = (
+                    message(
+                        "sync.connection_error",
+                        source=provider.adapter.server_name,
+                        reason=reason(exc),
+                    )
+                    if exc.code == "source_unavailable"
+                    else reason(exc)
+                )
+                actions.append(
+                    PlanAction(
+                        _SYNC,
+                        "check_failed",
+                        message(
+                            "sync.publication_not_named",
+                            key=descriptor.key,
+                            error=error,
+                        ),
+                    )
+                )
+                _announce_actions(actions[-1:], on_notice=on_notice)
+            for notice in notices:
+                if on_notice is not None:
+                    on_notice(notice)
+            if archive is not None:
+                try:
+                    local = _current_version(root, archive)
+                except ObserwatorDataError as exc:
+                    item = _item(archive, "check_failed", error=reason(exc))
+                else:
+                    item = (
+                        _item(archive, "missing")
+                        if local is None
+                        else _item(
+                            archive,
+                            "unverifiable",
+                            local=local,
+                            error=message("sync.publication_no_signal"),
+                        )
+                    )
+                items.append(item)
+                _announce(
+                    item,
+                    index,
+                    len(descriptors),
+                    on_progress=on_progress,
+                    on_notice=on_notice,
+                )
+        for gap in provider.adapter.publication_gaps(descriptor, root):
+            text = message(
+                "sync.not_captured",
+                server_path=gap.server_path,
+                provider=provider.short_name,
+            )
+            actions.append(PlanAction(_SYNC, "unverifiable", text))
+            if on_notice is not None:
+                on_notice(Notice("warning", "not_captured", text))
+    return items, actions, cancelled
+
+
 def _download(
     archive: ArchiveFile,
     /,
@@ -2125,7 +2296,13 @@ def sync_store(
     fails, a station skipped after the backoff, a run stopped by three connection
     failures in a row and a station list that cannot be read are each one
     ``failed`` result without a slot, so a partial harvest ends ``partial``;
-    ``harvest`` reports the counts and times.
+    ``harvest`` reports the counts and times. PIG-PIB's automatic measurements
+    (``pl.pig.groundwater_operational``, ADR-035 W9) are asked by watermark
+    instead, without days or stations: the automatic points, the table's count and
+    every row after the last ``OBJECTID`` of the raw root's newest capture, page by
+    page from the last ``OBJECTID`` of the one before, then the stored hour 02 of
+    each summer-time start day among them; the sealed version records its
+    ``watermark``, ``count`` and ``period`` in ``extra.capture``.
 
     A run that seals captures (a capture dataset, a harvest or a plan holding
     capture days) holds the lock of ADR-030 D10 for its whole run, the harvest
@@ -2147,12 +2324,17 @@ def sync_store(
     today (UTC), one request at a time (ADR-034), and one asked once its month
     settled carries that time as its ``Last-Modified``, so the same bytes stored
     earlier give a ``relabeled`` version and the month is ``current`` from then
-    on. ``check_failed`` items are never downloaded. An ``unverifiable`` item is
-    downloaded (then deduplicated by SHA-256) only in a sync without a
-    supplied plan; from a supplied plan it stays ``unchanged`` with a
-    ``source_unverifiable`` warning. An unpublished item (``"not published"``)
-    stays ``unchanged``. Failures of single archives are reported per slot,
-    not raised.
+    on. PIG-PIB's tables have no signal either: each sync downloads the file the
+    service publishes now (one run of paged queries) and compares its content
+    (``pig-json/1``), so an equal run is ``unchanged``; a run that names another
+    file than the plan's (a new month) is ``stale_plan``, and a new version of a
+    month that held one is followed by a ``month_republished`` warning counting
+    the readings changed, added and removed. ``check_failed`` items are never
+    downloaded. An ``unverifiable`` item is downloaded (then deduplicated by
+    SHA-256) only in a sync without a supplied plan; from a supplied plan it stays
+    ``unchanged`` with a ``source_unverifiable`` warning. An unpublished item
+    (``"not published"``) stays ``unchanged``. Failures of single archives are
+    reported per slot, not raised.
 
     With ``output_dir`` (plain mode, DEV-19.1) the selected archives are
     written as ordinary files ``<output_dir>/<server_path>`` like
@@ -2162,7 +2344,9 @@ def sync_store(
     versions, DEV-19.17). ČHMÚ station files need ``years`` in plain mode,
     because the years of a store sync come from the server listing; the
     station sources of the catalogs and the month files of Gdańskie Wody, which
-    the station list of a raw root names, are stored only in a store.
+    the station list of a raw root names, are stored only in a store, as are
+    PIG-PIB's tables, whose file the check names (``datasets download`` writes
+    them as plain files).
 
     Parameters
     ----------
@@ -2199,9 +2383,11 @@ def sync_store(
         :func:`check_store`. Store mode only, without ``plan``.
     pace_until : str or None, optional
         ``HH:MM`` (24 h, local time): harvest one dataset of
-        ``pl.imgw.hydro_operational`` and ``cz.chmu.hydro_recent`` before sealing
-        it, the requests spread to that time of the local day (one already passed
-        means the minimum spacing of 5 s). Store mode only, without ``plan``.
+        ``pl.imgw.hydro_operational``, ``cz.chmu.hydro_recent`` and
+        ``pl.pig.groundwater_operational`` (by watermark, without ``start``,
+        ``end`` or ``stations``) before sealing it, the requests spread to that time
+        of the local day (one already passed means the minimum spacing of 5 s).
+        Store mode only, without ``plan``.
     plan : StorePlan, str, os.PathLike or None, optional
         Plan from :func:`check_store`, or the path of its ``obserwator-plan/1`` JSON file.
         Must refer to the same store root. Store mode only.
@@ -2210,9 +2396,10 @@ def sync_store(
         :func:`check_store`.
     on_notice : NoticeHook or None, optional
         Receives warnings and errors (``stale_plan``, ``source_unverifiable``,
-        ``archive_failed``, a harvest's ``harvest_failed``) and notices of the
-        writer (e.g. ``content_unchanged``) and of a harvest (``harvest_done``,
-        info).
+        ``archive_failed``, a harvest's ``harvest_failed``, PIG-PIB's
+        ``not_captured``, ``window_unexpected``, ``month_republished`` and
+        ``rows_removed``) and notices of the writer (e.g. ``content_unchanged``) and
+        of a harvest (``harvest_done``, info).
     cancel : Cancel or None, optional
         Polled while the lock is waited for and before each archive; once it
         returns ``True`` the remaining items end as ``cancelled``.
@@ -2578,6 +2765,7 @@ def _harvest_plan(
         on_progress=on_progress,
         on_notice=on_notice,
         cancel=cancel,
+        raw=root,
     )
     items, cancelled = check_captures(
         root,
@@ -2617,12 +2805,14 @@ def _plain_archives(
     Raises
     ------
     ObserwatorValidationError
-        If the selectors are invalid (see `_selection`), name station sources or
+        If the selectors are invalid (see `_selection`), name station sources,
         the month files of Gdańskie Wody (stored only: the station list of a raw
-        root names them; ``details.reason`` ``store_only_dataset``), a ČHMÚ
-        dataset of station-year or station-month files has no ``years`` (the
-        store reads them from the server listing, which a plain write does not
-        use), or the synop archives have neither ``stations`` nor ``months``.
+        root names them; ``details.reason`` ``store_only_dataset``) or PIG-PIB's
+        tables (stored only: the check names the file the service publishes now;
+        ``datasets download`` writes them as plain files), a ČHMÚ dataset of
+        station-year or station-month files has no ``years`` (the store reads
+        them from the server listing, which a plain write does not use), or the
+        synop archives have neither ``stations`` nor ``months``.
     """
     descriptors, _, candidates, archives, _ = _selection(
         datasets, years, months, stations
@@ -2641,6 +2831,14 @@ def _plain_archives(
         raise ObserwatorValidationError(
             message(
                 "sync.months_store_only",
+                keys=", ".join(descriptor.key for descriptor in descriptors),
+            ),
+            details={"option": "datasets", "reason": "store_only_dataset"},
+        )
+    if _scope(descriptors[0]) == "publication":
+        raise ObserwatorValidationError(
+            message(
+                "sync.publication_store_only",
                 keys=", ".join(descriptor.key for descriptor in descriptors),
             ),
             details={"option": "datasets", "reason": "store_only_dataset"},
@@ -2763,11 +2961,13 @@ def _sync_one(
     local = root / item.local_path if item.local_path is not None else None
     descriptor = get_dataset(item.archive.dataset)
     # Station metadata without an HTTP signal are compared after the download, and
-    # neither a file published by its listing alone (the telemetry) nor a month file
-    # gathered from an API's answers (Gdańskie Wody) has a HEAD to compare.
+    # neither a file published by its listing alone (the telemetry), a month file
+    # gathered from an API's answers (Gdańskie Wody) nor the file a service publishes
+    # now (PIG-PIB's tables, compared by content) has a HEAD to compare.
+    publication = _scope(descriptor) == "publication"
     unsigned = (
         descriptor.time_unit == "station_list" and descriptor.update_signal != "http"
-    ) or _scope(descriptor) in ("listing", "months")
+    ) or _scope(descriptor) in ("listing", "months", "publication")
     if item.status == "current" and not force:
         return _result(item, "unchanged", version=local)
     if item.status == "check_failed":
@@ -2820,8 +3020,22 @@ def _sync_one(
             if on_notice is not None:
                 on_notice(Notice("warning", "stale_plan", text))
             return _result(item, "stale_plan", version=local, error=text)
+    previous: bytes | None = None
     try:
         response = _download(item.archive, client=client, cancel=cancel)
+        named = response.archive
+        if named is not None and named.server_path != item.archive.server_path:
+            # The service published another file since the check (a new month).
+            text = message(
+                "sync.publication_moved",
+                server_path=item.archive.server_path,
+                published=named.server_path,
+            )
+            if on_notice is not None:
+                on_notice(Notice("warning", "stale_plan", text))
+            return _result(item, "stale_plan", version=local, error=text)
+        if publication and local is not None:
+            previous = local.read_bytes()
         written = write_archive(
             root,
             archive=item.archive,
@@ -2846,4 +3060,19 @@ def _sync_one(
             error=reason(exc),
             error_code=exc.code if isinstance(exc, ObserwatorError) else "io_error",
         )
+    if previous is not None and written.status == "new" and on_notice is not None:
+        # A new version of a slot that held one (PIG-PIB's month republished, W5).
+        adapter = get_provider(descriptor.provider).adapter
+        try:
+            notices = adapter.replaced(item.archive, previous, response.data)
+        except ObserwatorDataError as exc:
+            notices = (
+                Notice(
+                    "warning",
+                    "archive_failed",
+                    f"{item.archive.server_path}: {reason(exc)}",
+                ),
+            )
+        for notice in notices:
+            on_notice(notice)
     return _result(item, written.status, version=written.path)

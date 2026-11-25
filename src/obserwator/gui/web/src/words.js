@@ -5,11 +5,12 @@
 // render time: the texts change with the language. The providers and their series datasets
 // are the session's (api/session `providers` and `datasets`, in the order of the registry),
 // which main.js hands over with `setRegistry` once it answers: a provider's names, its
-// country, the class of its source with P8's notice of another source, and the origins of
-// its lines; a dataset's provider, kind, time step, tier and, where the catalog has no
-// words of its own (a provider fed by files), its title and short label in the page's
-// language. The page groups the providers by the class of their source, never by their
-// ids (hydromet P1, P11, P12: `classGroups`).
+// country, the families of its stations, the class of its source with P8's notice of
+// another source, and the origins of its lines; a dataset's provider, kind, time step,
+// tier, whether its series are unverified as a whole and, where the catalog has no words
+// of its own (a provider fed by files), its title and short label in the page's language.
+// The page groups the providers by the class of their source, never by their ids
+// (hydromet P1, P11, P12: `classGroups`).
 
 import { has, t } from "./i18n.js";
 
@@ -136,6 +137,19 @@ export function classGroups(providers, featured = null) {
 export const KINDS = Object.freeze(["hydro", "meteo", "groundwater"]);
 
 /**
+ * The families of a provider's stations (the session's `kinds`, its adapter's), in their
+ * order: PIG-PIB's points are groundwater objects alone; every kind until the session
+ * names the provider.
+ *
+ * @param {string} id
+ * @returns {string[]} kinds, in their order
+ */
+export function providerKinds(id) {
+  const provider = providerOf(id);
+  return provider && Array.isArray(provider.kinds) ? KINDS.filter((kind) => provider.kinds.includes(kind)) : [...KINDS];
+}
+
+/**
  * The kinds the views offer and name (the switch „Rodzaj stacji”, the legend, the stations
  * of each catalog): hydrological and meteorological always, groundwater only where the
  * stations hold a groundwater object, so a deployment without one looks as before.
@@ -162,9 +176,10 @@ export function groundwaterKindName(kind) {
  * order of the registry; none until the session answers.
  *
  * @returns {Record<string, {provider: string, kind: string, step: string, tier: string,
- *   title: string, short: string}>} by key: its provider, the kind of its stations, its time
- *   step ("day", "week", "month", "half_year", "hour"), its tier ("verified", "telemetry",
- *   "operational") and its title and short label in the page's language
+ *   unverified: boolean, title: string, short: string}>} by key: its provider, the kind of
+ *   its stations, its time step ("day", "week", "month", "half_year", "hour"), its tier
+ *   ("verified", "telemetry", "operational"), whether its series are unverified as a whole
+ *   (`unverified`) and its title and short label in the page's language
  */
 export function seriesDatasets() {
   return registry.datasets;
@@ -188,13 +203,25 @@ export function datasetShort(key) {
 }
 
 /**
+ * The note of a dataset under its series, what its provider says of its values (when
+ * ČHMÚ reads, PIG-PIB's quantities, its 06:00 UTC reading and its hours); null for a
+ * dataset without one.
+ */
+export function datasetNote(key) {
+  const name = `words.dataset.${slug(key)}.note`;
+  return has(name) ? t(name) : null;
+}
+
+/**
  * Whether a dataset's series are operational data, unverified, as a whole (hydromet P11,
- * Nogat DEV-20.8): its tier is not "verified". An hourly series is not: each of its hours
- * carries its own tier, which its chart and table name (ADR-031).
+ * Nogat DEV-20.8): the session's `unverified`, a tier other than "verified" and, of an
+ * hourly series, every input of that one tier (PIG-PIB's automatic hours). An hourly
+ * series of several tiers is not: each of its hours carries its own tier, which its chart
+ * and table name (ADR-031).
  */
 export function unverified(key) {
   const dataset = datasetOf(key);
-  return dataset !== null && dataset.tier !== "verified" && dataset.step !== "hour";
+  return dataset !== null && dataset.unverified === true;
 }
 
 /** Whether a dataset holds daily hydrological series: a provider's `<key prefix>.hydro_daily`. */
@@ -231,6 +258,7 @@ const DIGITS = {
   P_day: 1,
   P_night: 1,
   H_asl: 2,
+  depth_to_water: 2,
   spring_yield: 2,
 };
 

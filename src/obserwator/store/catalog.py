@@ -31,7 +31,10 @@ from obserwator.attribution import (
     Attribution,
     attribution,
     border_origin,
+    days_text,
+    fillable,
     provider_origin,
+    years_text,
 )
 from obserwator.datasets import (
     _CATALOG_DATASETS,
@@ -849,7 +852,10 @@ def _catalog_meteo_kinds(path: Path, meta: Mapping[str, Any]) -> dict[str, objec
 
 
 def _catalog_lines(
-    provider: ProviderDescriptor, used: Mapping[str, int]
+    provider: ProviderDescriptor,
+    used: Mapping[str, int],
+    *,
+    sources: Iterable[Mapping[str, Any]] = (),
 ) -> Attribution:
     """
     The lines of a provider's catalog (ADR-012, ADR-018, ADR-021).
@@ -862,15 +868,45 @@ def _catalog_lines(
     static file, written from the hydro.imgw.pl map, or from the meteorological
     station pages of hydro.imgw.pl, or any station details of hydro.imgw.pl
     (``used[DETAILS_SOURCE]``, ``used[METEO_DETAILS_SOURCE]``, the numbers of
-    stations with them) adds its lines.
+    stations with them) adds its lines. ``sources``, the catalog's source records
+    (``extra.catalog`` of its sidecar), fill a license formula that names the years
+    and the UTC days of the station sources read (PIG-PIB's W, ADR-035); every other
+    provider's lines stay as they are.
     """
     from obserwator.providers.pl.imgw import DETAILS_SOURCE, METEO_DETAILS_SOURCE
 
-    lines = attribution(provider_origin(provider.id), border_origin(provider.id))
-    sources = ("static", METEO_DETAILS, DETAILS_SOURCE, METEO_DETAILS_SOURCE)
-    if any(used.get(source) for source in sources):
+    filled: dict[str, str] = {}
+    if fillable(provider.license.attribution):
+        fetched = _fetched(sources)
+        if fetched:
+            filled = {
+                "period": years_text(moment.year for moment in fetched),
+                "date": days_text(moment.date() for moment in fetched),
+            }
+    lines = attribution(
+        provider_origin(provider.id),
+        border_origin(provider.id),
+        period=filled.get("period"),
+        date=filled.get("date"),
+    )
+    hydro = ("static", METEO_DETAILS, DETAILS_SOURCE, METEO_DETAILS_SOURCE)
+    if any(used.get(source) for source in hydro):
         lines |= attribution("imgw_hydro")
     return lines
+
+
+def _fetched(sources: Iterable[Mapping[str, Any]]) -> list[datetime]:
+    """The UTC times the station sources of a catalog were downloaded (``fetched_at``)."""
+    found = []
+    for record in sources:
+        fetched = record.get("fetched_at")
+        if not isinstance(fetched, str):
+            continue
+        try:
+            found.append(datetime.fromisoformat(fetched).astimezone(UTC))
+        except ValueError:
+            continue
+    return found
 
 
 def _catalog_license(provider: ProviderDescriptor, lines: Attribution) -> License:

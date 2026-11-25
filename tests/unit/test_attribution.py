@@ -1,9 +1,9 @@
 """The attribution lines and the terms lines of provider data (ADR-012, Nogat DEV §20).
 
-The texts are a legal contract: the IMGW-PIB terms, the PMAXTP terms, CC BY 4.0 of ČHMÚ
-and ČÚZK and GUGiK's conditions of reuse prescribe them, so one test pins them byte for
-byte against the table of Nogat DEV §20 (G and Z with the products and days of the
-packaged borders, ADR-018); every other test takes them from `obserwator.attribution`.
+The texts are a legal contract: the IMGW-PIB terms, the PMAXTP terms, CC BY 4.0 of ČHMÚ,
+PIG-PIB and ČÚZK and GUGiK's conditions of reuse prescribe them, so one test pins them
+byte for byte against the table of Nogat DEV §20 (G and Z with the products and days of
+the packaged borders, ADR-018); every other test takes them from `obserwator.attribution`.
 One test per surface family proves that a product with provider data carries them: CSV,
 JSONL, Parquet, the JSON documents of the store, the envelope, REST, MCP, the
 ``ATTRIBUTION.txt`` of a plain write and the human CLI output. Offline: the fixture store
@@ -87,7 +87,7 @@ def table_of(lines) -> list[dict[str, str]]:
 # --------------------------------------------------------------------------
 
 
-def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
+def test_the_fifteen_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
     imgw = "Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy"
     imgw_of = (
         "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
@@ -112,6 +112,14 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
             f"https://opendata.chmi.cz, licencja CC BY 4.0 ({licence})"
         ),
         "CP": "Dane ČHMÚ zostały przetworzone",
+        # <period> the years of the data, <date> the days of their capture (ADR-035)
+        "W": (
+            "Źródło danych: Państwowy Instytut Geologiczny – Państwowy Instytut "
+            "Badawczy (PIG-PIB), Monitoring Wód Podziemnych państwowej służby "
+            "geologicznej (wytworzono <period>, pozyskano <date>), licencja CC BY 4.0 "
+            f"({licence})"
+        ),
+        "WP": "Dane PIG-PIB zostały przetworzone",
         # <period> the year of creation, <date> the day of the download of the file
         "G": (
             "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono "
@@ -126,13 +134,29 @@ def test_the_twelve_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
             "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
         ),
         "RK": f"Regulamin danych PMAXTP: {pmaxtp}",
+        "RW": (
+            "Regulamin danych PIG-PIB: https://www.pgi.gov.pl/rejestry-i-bazy-danych-"
+            "geologicznych/zasady-korzystania-z-isp.html"
+        ),
     }
+    # P8's notice of the class "other" follows PIG-PIB's lines (ADR-034 D10).
+    notice = str(message("datasets.source_notice_pig", lang="pl"))
 
     every = attribution(*STANDARD)
+    filled = attribution("pig", processed=False, period="2025–2026", date="2026-11-25")
 
-    marks = ("S", "P", "PS", "PP", "M", "C", "CP", "G", "Z")
-    assert every.attribution == tuple(table[mark] for mark in marks)
-    assert every.terms_notice == tuple(table[mark] for mark in ("RD", "RH", "RK"))
+    marks = ("S", "P", "PS", "PP", "M", "C", "CP", "W", "WP")
+    assert every.attribution == (
+        *(table[mark] for mark in marks),
+        notice,
+        table["G"],
+        table["Z"],
+    )
+    assert every.terms_notice == tuple(table[mark] for mark in ("RD", "RH", "RK", "RW"))
+    assert filled.attribution == (
+        table["W"].replace("<period>", "2025–2026").replace("<date>", "2026-11-25"),
+        notice,
+    )
 
 
 def test_gdanskiewody_drafts_follow_the_lines_and_the_terms_of_the_standard():
@@ -157,8 +181,8 @@ def test_gdanskiewody_drafts_follow_the_lines_and_the_terms_of_the_standard():
 
 
 def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs():
-    s, p, ps, pp, m, c, cp, g, z = attribution(*STANDARD).attribution
-    rd, rh, rk = attribution(*STANDARD).terms_notice
+    s, p, ps, pp, m, c, cp, w, wp, wn, g, z = attribution(*STANDARD).attribution
+    rd, rh, rk, rw = attribution(*STANDARD).terms_notice
 
     assert [
         (attribution(origin, processed=False), attribution(origin))
@@ -168,6 +192,7 @@ def test_a_verbatim_copy_carries_the_source_lines_and_processed_data_add_theirs(
         (Attribution((s,), (rh,)), Attribution((s, p), (rh,))),
         (Attribution((ps, m), (rk,)), Attribution((ps, pp, m), (rk,))),
         (Attribution((c,)), Attribution((c, cp))),
+        (Attribution((w, wn), (rw,)), Attribution((w, wp, wn), (rw,))),
         # The packaged borders exist only processed: G and Z say so themselves
         (Attribution((g,)), Attribution((g,))),
         (Attribution((z,)), Attribution((z,))),
@@ -180,6 +205,7 @@ def test_lines_merge_once_in_the_order_of_the_standard_and_round_trip():
     reversed_merge = (
         attribution("cuzk")
         | attribution("gugik")
+        | attribution("pig")
         | attribution("chmu")
         | attribution("pmaxtp")
         | attribution("imgw_hydro")

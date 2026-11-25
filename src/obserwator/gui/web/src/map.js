@@ -11,8 +11,8 @@
 // - „Stacje”: every located station of the catalogs in hydro.imgw.pl's symbols
 //   (symbols.js): a triangle for a hydrological station, a circle for a meteorological
 //   one, in the colours hydro.imgw.pl gives a station of each kind in its legend, whoever
-//   provides it, and the GUI's own brown diamond for ČHMÚ's groundwater objects (bores and
-//   springs, ADR-032), which the legend names only where a catalog holds one (`kinds`); a
+//   provides it, and the GUI's own brown diamond for groundwater objects (ČHMÚ's bores and
+//   springs, ADR-032; PIG-PIB's points, ADR-035), which the legend names only where a catalog holds one (`kinds`); a
 //   hollow centre when the station is only in the catalog, inactive ones faded; the
 //   outline tells the class of the station's source (hydromet P13): solid for a national
 //   meteorological and hydrological service, dashed for any other, which the legend names

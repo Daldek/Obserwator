@@ -192,6 +192,14 @@ _GDANSKIEWODY_KEYS = [
     "pl.gdanskiewody.hydro_daily",
     "pl.gdanskiewody.meteo_daily",
 ]
+_PIG_KEYS = [
+    "pl.pig.groundwater_stations",
+    "pl.pig.groundwater_readings",
+    "pl.pig.groundwater_chemistry",
+    "pl.pig.groundwater_watchlist",
+    "pl.pig.groundwater_operational",
+    "pl.pig.groundwater_subdaily",
+]
 
 
 def test_registry_has_the_imgw_descriptors_with_spec_fields():
@@ -264,9 +272,8 @@ def test_get_dataset_unknown_lists_allowed_keys():
     with pytest.raises(ObserwatorValidationError) as exc:
         get_dataset("hydro/tygodniowe")
     assert exc.value.code == "validation_error"
-    assert (
-        exc.value.details["allowed"]
-        == [row[0] for row in _REGISTRY] + _CHMU_KEYS + _GDANSKIEWODY_KEYS
+    assert exc.value.details["allowed"] == (
+        [row[0] for row in _REGISTRY] + _CHMU_KEYS + _GDANSKIEWODY_KEYS + _PIG_KEYS
     )
 
 
@@ -338,7 +345,8 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
     # (recent) are the data of other tiers served; ČHMÚ's hourly set is verified.
     # ADR-031: an hourly series of the tiers has the lowest tier of its inputs.
     # ADR-034: Gdańskie Wody's measurements and series are operational, its station
-    # list verified.
+    # list verified. ADR-035: PIG-PIB's automatic measurements and their hourly series
+    # are operational, its points, readings and chemistry verified.
     served = datasets()
     assert {
         d.key: (d.tier, d.time_unit, d.archive_scope)
@@ -367,6 +375,8 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
         ),
         "pl.gdanskiewody.hydro_daily": ("operational", "day", "station_element_month"),
         "pl.gdanskiewody.meteo_daily": ("operational", "day", "station_element_month"),
+        "pl.pig.groundwater_operational": ("operational", "hour", "country_day"),
+        "pl.pig.groundwater_subdaily": ("operational", "hour", "country"),
     }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
     assert [(item["key"], item["tier"]) for item in listed["result"]] == [

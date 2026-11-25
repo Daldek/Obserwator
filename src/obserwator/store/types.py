@@ -1108,8 +1108,9 @@ class StationFeature:
     Attributes
     ----------
     station_code : str
-        Station code (``STATION_CODE_PATTERN``: nine IMGW-PIB digits or a
-        WIGOS identifier).
+        Station code (``STATION_CODE_PATTERN``: nine IMGW-PIB digits, a WIGOS
+        identifier, the ``ID`` of a PIG-PIB point or a prefixed
+        ``<PREFIX>-<code>``).
     geometry : tuple of (float, float) or None
         Location as ``(lon, lat)`` in WGS84, or None when unknown.
     properties : Mapping of str to str, int, float, bool, Mapping or None
@@ -1117,7 +1118,9 @@ class StationFeature:
         source, activity, etc.); simple values, except the SPA thresholds of
         a ČHMÚ hydro station, ``"thresholds"``: an object (``source``,
         ``type``, ``H`` and ``Q`` with ``unit``, ``drought``, ``spa1``,
-        ``spa2``, ``spa3`` and ``q50``) or None.
+        ``spa2``, ``spa3`` and ``q50``) or None, and the hydrogeological
+        description of a PIG-PIB point, ``"hydrogeology"``: an object of simple
+        values (ADR-035 W6) or None.
     provider : str, optional
         ``ProviderDescriptor.id`` of the catalog the station comes from.
     """

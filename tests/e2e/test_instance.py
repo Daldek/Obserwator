@@ -608,13 +608,19 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
     expect(dialog).to_be_visible()
     expect(dialog).not_to_contain_text("IMGW")
     page.keyboard.press("Escape")
-    # the panel without a station counts and lists the catalogs of ČHMÚ alone
+    # the panel without a station lists the stored analyses of the providers served whose
+    # stations an analysis applies to: ČHMÚ, never IMGW-PIB (off) nor PIG-PIB (on by
+    # default, groundwater objects alone)
     panel = page.locator("#panel-right")
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_count(1)
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_attribute(
-        "data-provider", "CHMU"
-    )
+    served = panel.locator("[data-part=analyses] tr[data-provider]")
+    expect(served).to_have_count(1)
+    assert [row.get_attribute("data-provider") for row in served.all()] == ["CHMU"]
     expect(panel.locator(".no-station")).not_to_contain_text("IMGW")
+    # its catalogs table names each provider served by the kinds it publishes: PIG-PIB,
+    # without a catalog in this root, by its groundwater objects alone
+    expect(panel.locator("[data-part=catalogs] tr.in-class th")).to_contain_text(
+        ["ČHMÚ: hydrologiczne · meteorologiczne", "PIG-PIB: podziemne"]
+    )
 
 
 def test_the_regulamin_link_opens_the_operators_regulamin(open_page, operator_url):

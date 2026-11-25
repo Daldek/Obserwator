@@ -81,7 +81,7 @@ from obserwator.fetch import (
 )
 from obserwator.messages import Message, message
 from obserwator.models import NormalizedRecord, StationListEntry
-from obserwator.providers.base import CheckScope, Kind, ProviderAdapter
+from obserwator.providers.base import CheckScope, Kind, ProviderAdapter, SeriesContext
 from obserwator.store.catalog import (
     _Candidate,
     _catalog_lines,
@@ -705,6 +705,7 @@ class GdanskieWodyAdapter(ProviderAdapter):
         carry: dict[str, date] | None,
         stations: Collection[str] | None = None,
         skipped_months: set[date] | None = None,
+        context: SeriesContext | None = None,
     ) -> Iterator[NormalizedRecord]:
         """
         The daily values of a month file by the provider's day (P5, ADR-034 D5).
@@ -744,7 +745,12 @@ class GdanskieWodyAdapter(ProviderAdapter):
         return variable is not None and variable in series.variables
 
     def hourly_points(
-        self, archive: ArchiveFile, data: bytes, /
+        self,
+        archive: ArchiveFile,
+        data: bytes,
+        /,
+        *,
+        context: SeriesContext | None = None,
     ) -> Iterator[tuple[str, str, list[tuple[object, object]]]]:
         """
         Every hour of a month file: its station, its variable and the hours' points.

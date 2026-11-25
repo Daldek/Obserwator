@@ -362,8 +362,10 @@ MESSAGES = {
         "niedozwolone dla innych zbiorów pl.imgw.*",
     ),
     "provider_help": Text(
-        "Data provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
-        "Dostawca danych: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Data provider, an id of datasets providers (e.g. IMGW for IMGW-PIB, CHMU for "
+        "ČHMÚ, PIG for PIG-PIB); none = all providers",
+        "Dostawca danych, identyfikator z datasets providers (np. IMGW dla IMGW-PIB, "
+        "CHMU dla ČHMÚ, PIG dla PIG-PIB); brak = wszyscy dostawcy",
     ),
     "variables_help": Text(
         "Comma-separated dataset variables, e.g. H,Q (default: all)",
@@ -710,10 +712,14 @@ MESSAGES = {
     "store_import_description": Text(
         "Import the files of a provider fed by files. Offline: each file its provider "
         "file names goes into the raw root as it came, then its series and its catalog "
-        "are built into the data root.",
+        "are built into the data root. With staging instead, a provider's interim "
+        "capture (PIG-PIB's S0) goes into the raw root, each run as the store would "
+        "have kept it that day.",
         "Zaimportuj pliki dostawcy zasilanego plikami. Offline: każdy plik wskazany w "
         "jego pliku dostawcy trafia do katalogu surowego taki, jaki przyszedł, a potem "
-        "jego szeregi i katalog stacji są budowane w katalogu danych.",
+        "jego szeregi i katalog stacji są budowane w katalogu danych. Z opcją staging "
+        "do katalogu surowego trafia zamiast tego przechwytywanie tymczasowe dostawcy "
+        "(S0 PIG-PIB), każdy przebieg tak, jak magazyn zachowałby go tego dnia.",
     ),
     "store_export_description": Text(
         "Export the records of one archive version as CSV or JSONL. Offline, SHA-256 "
@@ -955,10 +961,11 @@ MESSAGES = {
         "months i stations)",
     ),
     "store_catalog_provider_help": Text(
-        "Catalog provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); one catalog version of "
-        "one provider per call",
-        "Dostawca katalogu: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); jedna wersja katalogu "
-        "jednego dostawcy na wywołanie",
+        "Catalog provider, an id of datasets providers (e.g. IMGW for IMGW-PIB, CHMU "
+        "for ČHMÚ, PIG for PIG-PIB); one catalog version of one provider per call",
+        "Dostawca katalogu, identyfikator z datasets providers (np. IMGW dla IMGW-PIB, "
+        "CHMU dla ČHMÚ, PIG dla PIG-PIB); jedna wersja katalogu jednego dostawcy na "
+        "wywołanie",
     ),
     "store_import_provider_file_help": Text(
         "Provider file of a provider fed by files: one of the files [obserwator] "
@@ -967,6 +974,14 @@ MESSAGES = {
         "Plik dostawcy zasilanego plikami: jeden z plików, które wymienia [obserwator] "
         "provider_files w nogat.toml; ścieżka względna leży w katalogu nogat.toml",
     ),
+    "store_import_staging_help": Text(
+        "Instead of provider_file: the directory of a provider's interim capture "
+        "(PIG-PIB's S0), runs <YYYY-MM-DDTHHMMSSZ>/ with manifest.jsonl; only the raw "
+        "root is written",
+        "Zamiast provider_file: katalog przechwytywania tymczasowego dostawcy (S0 "
+        "PIG-PIB), przebiegi <YYYY-MM-DDTHHMMSSZ>/ z manifest.jsonl; zapisywany jest "
+        "tylko katalog surowy",
+    ),
     "store_import_rule": Text(
         "every file is read and checked before anything is written; a provider file "
         "that nogat.toml does not list or that has a problem, a missing file or a file "
@@ -974,6 +989,16 @@ MESSAGES = {
         "każdy plik jest czytany i sprawdzany, zanim cokolwiek zostanie zapisane; plik "
         "dostawcy, którego nogat.toml nie wymienia albo który ma problem, brakujący plik "
         "albo plik w nieopisanej postaci są odrzucane (validation_error)",
+    ),
+    "store_import_staging_rule": Text(
+        "with staging, a file that does not match its manifest's size and SHA-256 is "
+        "refused before anything is written; a table's run is kept only when complete, "
+        "an answer that is not 200 is left out, and a second import of the same runs "
+        "is unchanged",
+        "z opcją staging plik niezgodny z rozmiarem i SHA-256 w manifeście jest "
+        "odrzucany, zanim cokolwiek zostanie zapisane; przebieg tabeli jest zachowywany "
+        "tylko pełny, odpowiedź inna niż 200 jest pomijana, a drugi import tych samych "
+        "przebiegów daje unchanged",
     ),
     "store_catalog_user_locations_help": Text(
         "User's UTF-8 CSV file with the columns "

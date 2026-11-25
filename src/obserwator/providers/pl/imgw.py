@@ -78,6 +78,7 @@ from obserwator.providers.base import (
     Kind,
     PolledSource,
     ProviderAdapter,
+    SeriesContext,
     SourceAction,
 )
 from obserwator.stations import (
@@ -1352,6 +1353,7 @@ class ImgwAdapter(ProviderAdapter):
         stations: Sequence[str] | None,
         session: PacedSession,
         on_notice: NoticeHook | None,
+        raw: Path | None = None,
     ) -> tuple[PacedRequest, ...]:
         """
         hydro-back's hourly series of every station of its map, or of ``stations``.
@@ -1735,6 +1737,7 @@ class ImgwAdapter(ProviderAdapter):
         carry: dict[str, date] | None,
         stations: Collection[str] | None = None,
         skipped_months: set[date] | None = None,
+        context: SeriesContext | None = None,
     ) -> Iterator[NormalizedRecord]:
         """The hydrological, daily meteorological and synop archives."""
         if archive.dataset in _HYDRO_PARSED:

@@ -35,6 +35,7 @@ from obserwator.providers.cz.chmu import ADAPTER as _CHMU
 from obserwator.providers.files import adapters as _file_adapters
 from obserwator.providers.pl.gdanskiewody import ADAPTER as _GDANSKIEWODY
 from obserwator.providers.pl.imgw import ADAPTER as _IMGW
+from obserwator.providers.pl.pig import ADAPTER as _PIG
 
 __all__ = [
     "Answer",
@@ -52,6 +53,7 @@ _ADAPTERS: Mapping[str, ProviderAdapter] = MappingProxyType(
             _IMGW,
             _CHMU,
             _GDANSKIEWODY,
+            _PIG,
             *_file_adapters(provider_files().files),
         )
     }

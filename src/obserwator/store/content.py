@@ -11,13 +11,16 @@ renamed only through `CONTENT_FORM_ALIASES` (ADR-028).
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import math
+import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal
+from urllib.parse import urlsplit
 
 from obserwator.exceptions import ObserwatorDataError, ObserwatorValidationError
 from obserwator.messages import message
@@ -32,16 +35,22 @@ class ContentForm:
     ----------
     id : str
         Identifier written as ``content_form``, e.g. ``"chmu-json/1"``.
-    method : {"json-jcs"}
-        Canonicalization: a JSON document without the volatile fields,
-        serialized by RFC 8785 (JCS).
+    method : {"json-jcs", "pig-rows"}
+        Canonicalization: ``json-jcs`` a JSON document without the volatile fields,
+        serialized by RFC 8785 (JCS); ``pig-rows`` the rows of a capture of ArcGIS
+        query pages (PIG-PIB, ADR-035): every feature of every answer 200 with
+        ``features`` in the gzip-compressed JSON Lines of answers, without the volatile
+        fields of its attributes (and, of the points layer ``mwp/MapServer/0``, without
+        the latest reading it repeats from the readings table), sorted by their JCS
+        text and serialized by JCS as one array, so neither the paging, the order of
+        the pages nor a renumbering of ``OBJECTID`` changes it.
     volatile_fields : tuple of str
-        Keys of the top-level object removed before hashing; nested fields
-        are never removed.
+        Keys removed before hashing: of the top-level object (``json-jcs``) or of
+        each row's attributes (``pig-rows``); nested fields are never removed.
     """
 
     id: str
-    method: Literal["json-jcs"]
+    method: Literal["json-jcs", "pig-rows"]
     volatile_fields: tuple[str, ...]
 
 
@@ -50,9 +59,15 @@ CONTENT_FORMS: Mapping[str, ContentForm] = MappingProxyType(
         "chmu-json/1": ContentForm(
             "chmu-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
         ),
+        "pig-json/1": ContentForm("pig-json/1", "pig-rows", ("OBJECTID",)),
     }
 )
 """Released canonical forms keyed by identifier (closed, append-only)."""
+
+# ``pig-rows``: the fields of PIG-PIB's points layer that repeat each point's latest
+# reading from the readings table, so a new month alone makes no new points version.
+_PIG_POINTS = "/hydrogeologia/mwp/MapServer/0/"
+_PIG_LATEST = ("DATA_POMIARU", "GLEBOKOSC_ZWIERCIADLA", "WYDAJNOSC")
 
 CONTENT_FORM_ALIASES: Mapping[str, str] = MappingProxyType(
     {"chmi-json/1": "chmu-json/1"}
@@ -120,6 +135,8 @@ def content_sha256(data: bytes, /, *, form: str) -> str:
                 "allowed": list(CONTENT_FORMS),
             },
         )
+    if content_form.method == "pig-rows":
+        return hashlib.sha256(_pig_rows(data, content_form)).hexdigest()
     document = _parse(data)
     if not isinstance(document, dict):
         raise ObserwatorDataError(message("content.root_value_json_document_not"))
@@ -136,6 +153,65 @@ def content_sha256(data: bytes, /, *, form: str) -> str:
             message("content.json_document_nested_too_deeply")
         ) from exc
     return hashlib.sha256(canonical).hexdigest()
+
+
+def _pig_rows(data: bytes, form: ContentForm) -> bytes:
+    """
+    The canonical rows of a capture of ArcGIS query pages (``pig-rows``).
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the bytes are no gzip-compressed JSON Lines of answers, or a page holds no
+        JSON object.
+    """
+    try:
+        text = gzip.decompress(data).decode("utf-8")
+    except (OSError, EOFError, UnicodeDecodeError, zlib.error) as exc:
+        raise ObserwatorDataError(
+            message("content.capture_not_readable", reason=str(exc))
+        ) from exc
+    rows: list[str] = []
+    for line in text.split("\n"):
+        if not line:
+            continue
+        record = _parse(line.encode("utf-8"))
+        if not isinstance(record, dict) or record.get("status") != 200.0:
+            continue
+        body = record.get("body")
+        if not isinstance(body, str):
+            # A ``seen`` answer repeats the one before from its address.
+            continue
+        page = _parse(body.encode("utf-8"))
+        features = page.get("features") if isinstance(page, dict) else None
+        if not isinstance(features, list):
+            continue
+        address = record.get("address")
+        points = isinstance(address, str) and _PIG_POINTS in urlsplit(address).path
+        dropped = (*form.volatile_fields, *(_PIG_LATEST if points else ()))
+        for feature in features:
+            if not isinstance(feature, dict):
+                raise ObserwatorDataError(message("content.page_row_not_object"))
+            attributes = feature.get("attributes")
+            row: dict[str, object] = {
+                "attributes": {
+                    key: value
+                    for key, value in (
+                        attributes.items() if isinstance(attributes, dict) else ()
+                    )
+                    if key not in dropped
+                }
+            }
+            if "geometry" in feature:
+                row["geometry"] = feature["geometry"]
+            rows.append(_serialize(row))
+    rows.sort()
+    try:
+        return ("[" + ",".join(rows) + "]").encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ObserwatorDataError(
+            message("content.json_string_contains_unpaired_utf")
+        ) from exc
 
 
 def _parse(data: bytes) -> object:

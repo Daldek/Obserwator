@@ -138,8 +138,9 @@ def test_catalog_has_37_commands_and_datasets_providers_lists_every_provider():
         "IMGW",
         "CHMU",
         "GDANSKIEWODY",
+        "PIG",
     ]
-    assert (listed.result, listed.page.total) == (providers(), 3)
+    assert (listed.result, listed.page.total) == (providers(), 4)
     assert [action.status for action in planned.result.actions] == ["current"]
     chmu = run_command("datasets list", options={"provider": "CHMU"}).result
     assert [descriptor.key for descriptor in chmu] == [
@@ -171,11 +172,11 @@ def _values(option):
 def test_command_schema_publishes_provider_stations_and_their_rules():
     for name in ("datasets list", "stations find", "store scan"):
         provider = _options(name)["provider"]
-        assert _values(provider) == ["IMGW", "CHMU", "GDANSKIEWODY"]
+        assert _values(provider) == ["IMGW", "CHMU", "GDANSKIEWODY", "PIG"]
         assert "default" not in provider
     catalog = _options("store catalog")["provider"]
     assert (_values(catalog), catalog["default"]) == (
-        ["IMGW", "CHMU", "GDANSKIEWODY"],
+        ["IMGW", "CHMU", "GDANSKIEWODY", "PIG"],
         "IMGW",
     )
     for name in ("datasets files", "datasets download", "store check", "store sync"):

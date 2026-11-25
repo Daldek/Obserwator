@@ -22,6 +22,9 @@ uvicorn in a thread, on a free port of 127.0.0.1:
 * ``admin_site``: the GUI on the fixture root as ``gui_url`` but its own server, with the
   admin key `ADMIN_KEY` set and its own directory (``feedback.jsonl``, ``stats.jsonl``)
   given to the test, for the admin panel of Nogat DEV-15.13.
+* ``groundwater_url``, ``groundwater_pl_url``: read-only data roots of the variants
+  ``groundwater`` (ČHMÚ's groundwater objects, ADR-032) and ``groundwater_pl`` (also
+  PIG-PIB's points, readings and hours, ADR-035), the rest as ``gui_url``.
 * ``operator_url``, ``hidden_url``, ``featured_url``, ``no_pmaxtp_url``: the fixture root
   on operators' instances (``[obserwator.instance]``, ADR-025) with their files beside
   ``nogat.toml``: `OPERATOR_INSTANCE` (public, its title, logo and regulamin, ČHMÚ
@@ -399,6 +402,27 @@ def groundwater_url(tmp_path_factory) -> Iterator[str]:
     base = tmp_path_factory.mktemp("gui-groundwater")
     roots = build_fixture_store(
         base / "raw", data_root=base / "data", variant="groundwater"
+    )
+    root = roots.data.root
+    _read_only(root)
+    with _start(root, base / "work") as server:
+        yield server.url
+    _read_only(root, writable=True)
+
+
+@pytest.fixture(scope="session")
+def groundwater_pl_url(tmp_path_factory) -> Iterator[str]:
+    """
+    The GUI on a read-only data root of the variant ``groundwater_pl``, not public.
+
+    ``groundwater`` and PIG-PIB's recorded points, October 2026's readings, a night's
+    capture of ``mwp_auto``, both series and the PIG catalog (ADR-035).
+    """
+    from obserwator.testing import build_fixture_store
+
+    base = tmp_path_factory.mktemp("gui-groundwater-pl")
+    roots = build_fixture_store(
+        base / "raw", data_root=base / "data", variant="groundwater_pl"
     )
     root = roots.data.root
     _read_only(root)

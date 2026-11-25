@@ -69,6 +69,7 @@ def test_only_gdanskie_wody_needs_a_key_and_the_registry_names_its_variables():
         "IMGW": None,
         "CHMU": None,
         PROVIDER: ProviderCredential("GDANSKIE_WODY"),
+        "PIG": None,
     }
     report = environment_report()
     assert [
@@ -93,6 +94,7 @@ def test_only_gdanskie_wody_needs_a_key_and_the_registry_names_its_variables():
             "variable": VARIABLE,
             "file_variable": FILE_VARIABLE,
         },
+        "PIG": None,
     }
 
 
