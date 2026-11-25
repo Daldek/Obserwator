@@ -66,6 +66,21 @@ _TERMS_GDANSKIEWODY = (
     "Regulamin pomiary.gdanskiewody.pl: nieznany, widoczny tylko po zalogowaniu "
     "(https://pomiary.gdanskiewody.pl/login)"
 )
+# PIG-PIB (ADR-035): W, WP and the terms line RW of Nogat DEV-20.13, quoted from the
+# table of provider lines; `obserwator.attribution` fills W's ``period`` (the years of
+# the readings or hours of a product) and ``date`` (the days of the captures it read).
+_PIG_SHORT = "PIG-PIB"
+_PIG_NAME = "Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy"
+_PIG_ATTRIBUTION = (
+    f"Źródło danych: {_PIG_NAME} ({_PIG_SHORT}), Monitoring Wód Podziemnych państwowej "
+    "służby geologicznej (wytworzono {period}, pozyskano {date}), licencja CC BY 4.0 "
+    "(https://creativecommons.org/licenses/by/4.0/)"
+)
+_PIG_PROCESSED = "Dane PIG-PIB zostały przetworzone"
+_TERMS_PIG = (
+    "Regulamin danych PIG-PIB: "
+    "https://www.pgi.gov.pl/rejestry-i-bazy-danych-geologicznych/zasady-korzystania-z-isp.html"
+)
 
 RETIRED_LINES = (
     "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl",
@@ -123,4 +138,11 @@ MESSAGES = {
         _GDANSKIEWODY_PROCESSED, _GDANSKIEWODY_PROCESSED
     ),
     "gdanskiewody_terms": Text(_TERMS_GDANSKIEWODY, _TERMS_GDANSKIEWODY),
+    # PIG-PIB's names, W (with its period and date filled per product), WP and RW of
+    # Nogat DEV-20.13 (ADR-035).
+    "pig_name": Text(_PIG_NAME, _PIG_NAME),
+    "pig_short_name": Text(_PIG_SHORT, _PIG_SHORT),
+    "pig_attribution": Text(_PIG_ATTRIBUTION, _PIG_ATTRIBUTION),
+    "pig_processed_attribution": Text(_PIG_PROCESSED, _PIG_PROCESSED),
+    "pig_terms": Text(_TERMS_PIG, _TERMS_PIG),
 }
