@@ -281,6 +281,10 @@ Changes since 3.2.1, in 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` st
   (`zoneinfo`), and Windows has no time zone database of its own, so the import ended in
   `ZoneInfoNotFoundError`; `tzdata` is now a runtime dependency on Windows
   (`sys_platform == 'win32'`).
+- **The GUI's welcome window stays closed after a reload right after closing it.** Its closing
+  was remembered on the dialog's `close` event, a task later, which a reload or a followed link
+  could pre-empt, so the window opened again; the button, ×, a click beside it and Escape
+  (`cancel`) now remember it as they close it.
 - **The weekly definition in the GUI is no longer ČHMÚ's:** „zwykle w środy” moved into the note
   of ČHMÚ's weekly dataset, since PIG-PIB's weekly readings fall on Mondays (ADR-035 D12).
 - **`store catalog --provider` and the providers' option help** named only IMGW-PIB and ČHMÚ,
