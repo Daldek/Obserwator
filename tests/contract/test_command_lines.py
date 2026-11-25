@@ -4,7 +4,9 @@ An example call of the catalog (``examples`` of `command_schema`) is a
 canonical line: ``parse_command`` reads it into a call of its command whose options
 pass ``validate_command``, ``format_command`` writes that call as the same line in
 every environment (its POSIX paths absolute there, on Windows with the drive of the
-working directory), and its result excerpt names only fields of the command's result.
+working directory, a ``--provider-file`` with that of the directory of ``nogat.toml``,
+against which it is resolved), and its result excerpt names only fields of the
+command's result.
 
 A sample is a valid call of a catalog command: the options of every command in
 ``tests.unit.test_commands`` and of the ČHMÚ calls in ``tests.unit.test_commands_chmu``,
@@ -31,6 +33,7 @@ from obserwator import (
     parse_command,
     validate_command,
 )
+from obserwator.datasets import provider_files
 from obserwator.output import OutputReport
 from obserwator.store.types import StorePlan
 from tests.contract.support import input_schemas
@@ -78,9 +81,19 @@ def test_every_catalog_command_has_an_example_call():
 
 def native(line: str) -> str:
     """``line`` with each POSIX path as `format_command` writes it here: absolute."""
-    return re.sub(
-        r"(?<= )/\S*", lambda path: shlex.quote(str(Path(path[0]).absolute())), line
-    )
+
+    def absolute(path: re.Match[str]) -> str:
+        given = Path(path[0])
+        option = line[: path.start()].split()[-1]
+        return shlex.quote(
+            str(
+                provider_files().resolve(given)
+                if option == "--provider-file"
+                else given.absolute()
+            )
+        )
+
+    return re.sub(r"(?<= )/\S*", absolute, line)
 
 
 @pytest.mark.parametrize(("meta", "example"), CATALOG_EXAMPLES)
