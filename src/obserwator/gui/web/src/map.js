@@ -606,6 +606,7 @@ export function StationMap({ stations, byCode, kinds, classes, selected, fly, vi
     if (!ready || !map || basemapUrl === undefined) return undefined;
     let live = true;
     let loaded = false;
+    let failed = false;
     const borders = (state) => {
       setBackground(state);
       addBorders(map, palette()).catch((error) => console.warn(error));
@@ -613,10 +614,14 @@ export function StationMap({ stations, byCode, kinds, classes, selected, fly, vi
     const onData = (event) => {
       if (event.sourceId === "basemap" && event.tile) loaded = true;
     };
-    // A basemap none of whose tiles loads (offline, blocked) gives way to the borders;
-    // a single failing tile of a basemap that loads does not
+    // A basemap none of whose tiles loads (offline, blocked) gives way to the borders, once
+    // every tile of the view has answered (the map is idle); a failing tile, even the first
+    // to answer, does not while another of the view loads
     const onError = (event) => {
-      if (!live || loaded || event.sourceId !== "basemap") return;
+      if (event.sourceId === "basemap") failed = true;
+    };
+    const onIdle = () => {
+      if (!live || loaded || !failed) return;
       live = false;
       removeBasemap(map);
       borders("failed");
@@ -626,6 +631,7 @@ export function StationMap({ stations, byCode, kinds, classes, selected, fly, vi
     } else {
       map.on("data", onData);
       map.on("error", onError);
+      map.on("idle", onIdle);
       loadBasemapSource(basemap).then(
         (source) => {
           if (!live) return;
@@ -643,6 +649,7 @@ export function StationMap({ stations, byCode, kinds, classes, selected, fly, vi
       live = false;
       map.off("data", onData);
       map.off("error", onError);
+      map.off("idle", onIdle);
     };
   }, [ready, basemapUrl]);
 

@@ -179,6 +179,15 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   and its draft lines), shorter in both languages to stay within 16 KiB (no Plan column, the
   variables in one code span, the CLI-output line merged).
 
+### Fixed
+
+- **The map's basemap is no longer dropped for one failed tile.** When the first basemap tile to
+  answer was an error, the GUI took the basemap out for good and drew the packaged borders, even
+  if the view's other tiles would have loaded. A failed tile now only marks the basemap; once the
+  map is idle (every tile of the view has answered) the borders replace it, with „Podkład mapy
+  się nie wczytał” in the legend, only if none of its tiles loaded. `tests/e2e/test_map.py`
+  checks both on a server with a basemap (`basemap_url`).
+
 ## [3.2.1] - 2026-11-24
 
 Changes since 3.2.0, in 3.2.1: one defect fix, released from `hotfix/3.2.1` off `main` (REL-2.4).
