@@ -277,6 +277,10 @@ Changes since 3.2.1, in 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` st
 
 ### Fixed
 
+- **`import obserwator` on Windows.** PIG-PIB's parser reads its times in `Europe/Warsaw`
+  (`zoneinfo`), and Windows has no time zone database of its own, so the import ended in
+  `ZoneInfoNotFoundError`; `tzdata` is now a runtime dependency on Windows
+  (`sys_platform == 'win32'`).
 - **The weekly definition in the GUI is no longer ČHMÚ's:** „zwykle w środy” moved into the note
   of ČHMÚ's weekly dataset, since PIG-PIB's weekly readings fall on Mondays (ADR-035 D12).
 - **`store catalog --provider` and the providers' option help** named only IMGW-PIB and ČHMÚ,
