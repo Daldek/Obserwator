@@ -44,6 +44,7 @@ from obserwator.attribution import (
     border_origin,
     carried,
     dataset_origins,
+    fill,
     fillable,
     filled,
     provider_origin,
@@ -3412,6 +3413,36 @@ def _import_lines(options: Options, result: object) -> Attribution:
     return lines
 
 
+def _found_w(provider: str, root: object) -> Attribution:
+    """
+    PIG-PIB's W of the stations a search found (ADR-035).
+
+    A store search (``root``) read the provider's current catalog: its W names the
+    years and days of the station sources it was built from, as `store catalog`'s
+    does; a live search (``root`` None) asked the points now: its W names the day of
+    the search and its year.
+    """
+    descriptor = get_provider(provider)
+    formula = descriptor.license.attribution
+    if root is None:
+        today = datetime.now(UTC).date()
+        return Attribution(
+            (fill(formula, period=str(today.year), date=today.isoformat()),)
+        )
+    try:
+        entry = _store.current_version(
+            cast(PathArg, root), slot=f"catalog:{_CATALOG_DATASETS[provider]}"
+        )
+    except ObserwatorStoreError:
+        return Attribution()
+    if entry is None or entry.meta is None:
+        return Attribution()
+    sources = cast("list[dict[str, Any]]", entry.meta.extra.get("catalog") or ())
+    return Attribution(
+        filled(_catalog_attribution(descriptor, {}, sources=sources).attribution)
+    )
+
+
 def _stations_lines(options: Options, result: object) -> Attribution:
     """
     Lines of the providers of the stations found.
@@ -3419,12 +3450,16 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     A store search reads the current catalogs, whose locations were checked
     against the packaged borders (ADR-018): their lines join those of the
     providers. The ``static`` locations of IMGW-PIB stations in the catalog come
-    from hydro.imgw.pl; those add its lines.
+    from hydro.imgw.pl; those add its lines. PIG-PIB's W is filled (`_found_w`).
     """
     entries = cast(Sequence[StationListEntry], result)
     owners = dict.fromkeys(entry.provider for entry in entries)
     lines = attribution(*(provider_origin(owner) for owner in owners))
-    if options.get("source") != "store":
+    store = options.get("source") == "store"
+    for owner in owners:
+        if fillable(get_provider(owner).license.attribution):
+            lines |= _found_w(owner, options["root"] if store else None)
+    if not store:
         return lines
     lines |= attribution(*(border_origin(owner) for owner in owners))
     for owner in owners:
