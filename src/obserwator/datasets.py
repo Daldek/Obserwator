@@ -27,7 +27,7 @@ from obserwator.attribution import (
     provider_origin,
 )
 from obserwator.exceptions import ObserwatorValidationError
-from obserwator.messages import Message, message
+from obserwator.messages import Message, localize, message
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
 
 if TYPE_CHECKING:
@@ -44,7 +44,8 @@ STATION_CODE_PATTERN = (
 )
 """
 Station code of any provider: nine IMGW-PIB digits, a WIGOS identifier (ČHMÚ) or
-``<id>-<code>`` of a provider fed by files (ADR-033).
+``<id>-<code>``: ``GDANSKIEWODY-<no>`` (ADR-034) or that of a provider fed by files
+(ADR-033).
 """
 
 DATASET_KEY_PATTERN = r"^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$"
@@ -390,8 +391,11 @@ class DatasetDescriptor:
         What one source file covers: ``"country"`` the whole country,
         ``"station_year"`` one station and year, ``"station_month"`` one station and
         calendar month, ``"station"`` one station (ADR-032), ``"station_element"``
-        the whole history of one station and element, ``"country_day"`` the answers
-        of one UTC day for the whole network (a capture version, ADR-030).
+        the whole history of one station and element, ``"station_element_month"`` one
+        station, element and calendar month (Gdańskie Wody's answers of the month's
+        days gathered into one file, ADR-034), ``"country_day"`` the answers of one
+        UTC day for the whole network (a capture version, ADR-030); of a series built
+        from ``inputs``, the scope of their files.
     variable_notes : Mapping of str to str, optional
         Convention of each variable (English catalog messages), e.g. the day of
         a sum; the series metadata keeps the English text.
@@ -424,10 +428,13 @@ class DatasetDescriptor:
         ``inputs`` (ADR-031): it may hold operational hours, and each of its
         points carries its own tier.
     inputs : tuple of str or None, optional
-        The datasets a sub-daily series is built from (ADR-031), highest tier
-        first: a point of one replaces that of a later one; None for every other
-        dataset (an optional field of ``obserwator-dataset/1``, written only when
-        set).
+        The datasets a series is built from, when it has no files of its own: of a
+        sub-daily series (ADR-031), highest tier first, a point of one replacing that
+        of a later one; of Gdańskie Wody's daily series (ADR-034), its month files,
+        whose daily values its parser gives. The provider's adapter says which of
+        their files a series reads (`ProviderAdapter.series_reads`). None for every
+        other dataset (an optional field of ``obserwator-dataset/1``, written only
+        when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -465,6 +472,7 @@ class DatasetDescriptor:
         "station_month",
         "station",
         "station_element",
+        "station_element_month",
         "country_day",
     ] = "country"
     variable_notes: Mapping[str, str] = field(default_factory=dict)
@@ -602,6 +610,91 @@ _IMGW_SEMIANNUAL_NOTES = {
     for name, statistic in _IMGW_STATISTICS.items()
 }
 _IMGW_SNOW_COVER = message("datasets.note_imgw_snow_cover")
+# Gdańskie Wody (ADR-034): the variables of its quantities (`obserwator._parsing.
+# gdanskiewody.QUANTITIES`), with the units of the provider's public tables (checked
+# 2026-11-25); the water level in m a.s.l. is H_asl (plan P7). A day has no direction of
+# the wind, and its air temperature is the mean of the provider's day.
+_GDANSKIEWODY = "GDANSKIEWODY"
+_GDANSKIEWODY_STATIONS = "pl.gdanskiewody.station_list"
+_GDANSKIEWODY_MEASUREMENTS = "pl.gdanskiewody.measurements"
+_GDANSKIEWODY_FIRST_YEAR = 2005
+_GDANSKIEWODY_CODE = r"GDANSKIEWODY-[1-9][0-9]{0,2}"
+_GDANSKIEWODY_LICENSE = License(
+    "gdanskiewody-terms-unknown",
+    message("legal.gdanskiewody_attribution"),
+    "https://pomiary.gdanskiewody.pl/account/signup",
+)
+_GDANSKIEWODY_HYDRO = {"H_asl": "m", "Q": "m3/s", "T": "degC"}
+_GDANSKIEWODY_METEO_HOURLY = {
+    "P": "mm",
+    "Tair": "degC",
+    "wind_speed": "m/s",
+    "wind_direction": "deg",
+    "pressure": "hPa",
+    "humidity": "%",
+    "irradiance": "W/m2",
+}
+_GDANSKIEWODY_METEO_DAILY = {
+    "P": "mm",
+    "Tmean": "degC",
+    "wind_speed": "m/s",
+    "pressure": "hPa",
+    "humidity": "%",
+    "irradiance": "W/m2",
+}
+
+
+def _gdanskiewody_series(
+    kind: Kind,
+    time_unit: Literal["hour", "day"],
+    variables: Mapping[str, str],
+    title: Message,
+) -> DatasetDescriptor:
+    """
+    A series of Gdańskie Wody, built from the stored month files (ADR-034).
+
+    The hourly series (ADR-031) holds each hour the provider labels with its start;
+    the daily one the sum (``P``) or the mean of the 24 hours of the provider's day,
+    06:00 to 05:59 UTC (P5, `obserwator._parsing.gdanskiewody.daily_records`).
+    """
+    daily = time_unit == "day"
+    notes = {
+        name: message(
+            (
+                "datasets.note_gdanskiewody_daily_sum"
+                if name == "P"
+                else "datasets.note_gdanskiewody_daily_mean"
+            )
+            if daily
+            else (
+                "datasets.note_gdanskiewody_h_asl"
+                if name == "H_asl"
+                else "datasets.note_gdanskiewody_hourly"
+            )
+        )
+        for name in variables
+    }
+    return DatasetDescriptor(
+        key=f"pl.gdanskiewody.{kind}_{'daily' if daily else 'hourly'}",
+        slug=f"gdanskiewody_{kind}_{'daily' if daily else 'hourly'}",
+        kind=kind,
+        title=title,
+        server_dir=None,
+        parser="parse_gdanskiewody_month" if daily else None,
+        variables=dict(variables),
+        time_unit=time_unit,
+        year_type="calendar",
+        first_year=_GDANSKIEWODY_FIRST_YEAR,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+        archive_scope="station_element_month",
+        variable_notes=notes,
+        tier="operational",
+        inputs=(_GDANSKIEWODY_MEASUREMENTS,),
+    )
 
 
 _DATASETS: tuple[DatasetDescriptor, ...] = (
@@ -1686,6 +1779,70 @@ _DATASETS: tuple[DatasetDescriptor, ...] = (
         tier="operational",
         inputs=("cz.chmu.hydro_hourly", "cz.chmu.hydro_recent"),
     ),
+    # Gdańskie Wody (ADR-034): the provider's station list, the month files of each
+    # station's quantity gathered from its answers of a day (plan P6) and the series
+    # built from them, hourly (ADR-031) and of the provider's day (P5). Raw data
+    # without verification by the provider's word (tier ``operational``).
+    DatasetDescriptor(
+        key=_GDANSKIEWODY_STATIONS,
+        slug="gdanskiewody_station_list",
+        kind=None,
+        title=message("datasets.title_gdanskiewody_station_list"),
+        server_dir="rest",
+        parser="parse_gdanskiewody_stations",
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+    ),
+    DatasetDescriptor(
+        key=_GDANSKIEWODY_MEASUREMENTS,
+        slug="gdanskiewody_measurements",
+        kind=None,
+        title=message("datasets.title_gdanskiewody_measurements"),
+        server_dir="rest/measurements",
+        parser=None,
+        variables={**_GDANSKIEWODY_HYDRO, **_GDANSKIEWODY_METEO_HOURLY},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=_GDANSKIEWODY_FIRST_YEAR,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+        archive_scope="station_element_month",
+        tier="operational",
+    ),
+    _gdanskiewody_series(
+        "hydro",
+        "hour",
+        _GDANSKIEWODY_HYDRO,
+        message("datasets.title_gdanskiewody_hydro_hourly"),
+    ),
+    _gdanskiewody_series(
+        "meteo",
+        "hour",
+        _GDANSKIEWODY_METEO_HOURLY,
+        message("datasets.title_gdanskiewody_meteo_hourly"),
+    ),
+    _gdanskiewody_series(
+        "hydro",
+        "day",
+        _GDANSKIEWODY_HYDRO,
+        message("datasets.title_gdanskiewody_hydro_daily"),
+    ),
+    _gdanskiewody_series(
+        "meteo",
+        "day",
+        _GDANSKIEWODY_METEO_DAILY,
+        message("datasets.title_gdanskiewody_meteo_daily"),
+    ),
 )
 # Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
@@ -1850,8 +2007,11 @@ def _load_files() -> LoadedFiles:
         ),
         variables=_daily_variables(),
     )
+    # P8: every provider fed by files is of the class "other" (no national service),
+    # and its notice follows its lines in every product (the Polish text, as the lines).
+    notice = localize(message("datasets.source_notice_other"), "pl")
     for provider in loaded.files:
-        declare_origin(provider.acronym, provider.line, provider.processed)
+        declare_origin(provider.acronym, provider.line, provider.processed, notice)
     return loaded
 
 
@@ -1889,6 +2049,24 @@ _PROVIDERS: tuple[ProviderDescriptor, ...] = (
         notice=message("datasets.provider_notice_chmu"),
         station_code_pattern=rf"^{_WIGOS_CODE}$",
         datasets=tuple(item.key for item in _DATASETS if item.provider == "CHMU"),
+    ),
+    # Gdańskie Wody (ADR-034): an API with a key (P3), terms not known yet, so its
+    # lines are drafts (`obserwator.attribution.provisional`) and no server serves it.
+    ProviderDescriptor(
+        id=_GDANSKIEWODY,
+        short_name=message("legal.gdanskiewody_short_name"),
+        name=message("legal.gdanskiewody_name"),
+        country="PL",
+        key_prefix="pl.gdanskiewody",
+        base_url="https://pomiary.gdanskiewody.pl/",
+        license=_GDANSKIEWODY_LICENSE,
+        processed_attribution=message("legal.gdanskiewody_processed_attribution"),
+        notice=message("datasets.provider_notice_gdanskiewody"),
+        station_code_pattern=rf"^{_GDANSKIEWODY_CODE}$",
+        datasets=tuple(
+            item.key for item in _DATASETS if item.provider == _GDANSKIEWODY
+        ),
+        credential=ProviderCredential("GDANSKIE_WODY"),
     ),
 )
 _PROVIDERS = _PROVIDERS + tuple(_file_provider(item) for item in _FILES.files)
@@ -2588,6 +2766,7 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.meteo_now": (),
         "cz.chmu.groundwater_stations": ("meta1.json",),
         "cz.chmu.groundwater_now": ("meta1.json",),
+        _GDANSKIEWODY_STATIONS: ("stations",),
         # The station file of each provider fed by files (ADR-033).
         **{
             f"{provider.key_prefix}.station_list": (STATIONS_FILE,)

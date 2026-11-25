@@ -7,7 +7,7 @@ System consists of six main components:
 1. **Python Library** (v3.2.0)
    - the package `obserwator` (installed from Git by its tag, README "Install") for integration with external projects
    - Sync and async functions for live data and archive downloads (`DownloadResult`, `download_archives`)
-   - Provider registry (`IMGW` — IMGW-PIB, `CHMU` — ČHMÚ, ADR-003, ADR-028) and dataset registry (49 descriptors: 33 `pl.imgw.*`, nine of them captures, one the monthly telemetry and one an hourly series, and 16 `cz.chmu.*`, two of them captures and one an hourly series, with slugs and legacy aliases, each with its tier; one more declared ahead of the step that serves it, offered by no surface, ADR-030), IMGW-PIB and ČHMÚ parsers with value flags
+   - Provider registry (`IMGW` — IMGW-PIB, `CHMU` — ČHMÚ, ADR-003, ADR-028; `GDANSKIEWODY` — Gdańskie Wody, the registry's first provider of the source class `other`, off by default, ADR-034) and dataset registry (55 descriptors: 33 `pl.imgw.*`, nine of them captures, one the monthly telemetry and one an hourly series, 16 `cz.chmu.*`, two of them captures and one an hourly series, and 6 `pl.gdanskiewody.*`, its station list, month files and four series built from them, with slugs and legacy aliases, each with its tier; one more declared ahead of the step that serves it, offered by no surface, ADR-030), IMGW-PIB, ČHMÚ and Gdańskie Wody parsers with value flags
    - Command catalog (`obserwator.commands`): 37 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); English texts with a Polish variant (ADR-006), declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Providers fed by files (ADR-033): an operator's own network declared in a provider file listed by `[obserwator] provider_files` of `nogat.toml`, served by one adapter (`providers/files.py`) and imported by `store import --provider-file`
    - Captures (ADR-030): every answer of a source of current data, whichever interface asked, is kept as it came in the capture spool `<state_dir>/obserwator/captures` (one file per answer, never in a root); `current poll` asks each polled source at most once per its declared interval; `store sync --pace-until` harvests hydro-back's hourly series or ČHMÚ's `recent` day files of the last closed UTC day through `fetch.PacedSession` (spread to a deadline, at least 5 s apart, backoff, gzip), then seals
@@ -17,7 +17,7 @@ System consists of six main components:
    - Raw root (marker `obserwator-store.json`): append-only, immutable versions of IMGW-PIB and ČHMÚ archives with provenance sidecars, the station sources of the catalogs, the captures of current data sealed from the spool (one version per dataset and UTC day) and the PMAXTP cells; the downloads and the sealing write only here
    - Data root (marker `obserwator-data.json`): Parquet station series, `stations.geojson` per provider and the stations' analyses computed by Hydrolog's program and stored as its answers (ADR-016; Obserwator computes no number), built from the raw root, which the builders only read
    - Default roots in the user data directory (`<data_dir>/obserwator-raw` and `<data_dir>/obserwator`), or `--root`, `OBSERWATOR_RAW_ROOT` and `OBSERWATOR_ROOT`, `[obserwator] raw_root` and `root` (and `--raw-root` of a build); readable offline, also from network shares
-   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support, ADR-015 raw data only in `store sync`, ADR-016 stored analyses computed by Hydrolog, ADR-017 the data root, ADR-021 station details of hydro.imgw.pl, ADR-030 captures and the operational tier); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
+   - Decision records: `docs/DECISIONS.md` (ADR-001 store, ADR-002 interfaces, ADR-003 ČHMÚ provider and open `/1` domains, ADR-004 agent support, ADR-015 raw data only in `store sync`, ADR-016 stored analyses computed by Hydrolog, ADR-017 the data root, ADR-021 station details of hydro.imgw.pl, ADR-029 provider adapters, ADR-030 captures and the operational tier, ADR-033 providers fed by files, ADR-034 Gdańskie Wody and the source classes); contracts: `docs/superpowers/specs/2026-10-17-versioned-store-design.md`, `2026-10-18-chmi-provider-design.md`, `2026-10-19-agent-support-design.md`
 
 3. **Backend (FastAPI)** [optional: `obserwator[api]`]
    - Routes `/api/v1/<group>/<command>` generated from the command catalog (33 commands; the local-only commands `datasets download`, `store init` and `current poll` have no route)
@@ -33,7 +33,7 @@ System consists of six main components:
 
 5. **GUI** [optional: `obserwator[gui]`; the command also needs `obserwator[cli]`]
    - `obserwator gui serve` (ADR-013): a Starlette app of its own on 127.0.0.1:8060 with a private API relative to its page; Nogat's GUI platform finds it through the entry point `nogat.gui`
-   - Every station of IMGW-PIB and ČHMÚ on a MapLibre map, the station panel (description, IMGW-PIB's levels and extremes of a hydrological station (ADR-021), current IMGW-PIB values, the hourly chart of a hydrological station's stored hours and live tail (O6), series chart and table, Hydrolog's analyses, downloads), PMAXTP of a point; Preact + htm without a build step
+   - Every station of the providers served on a MapLibre map (IMGW-PIB, ČHMÚ, providers fed by files; Gdańskie Wody is off by default), the outline telling the source class (solid grey for a national service, dashed for another source) and the list filtered by class (ADR-034 D12), the station panel (description, IMGW-PIB's levels and extremes of a hydrological station (ADR-021), current IMGW-PIB values, the hourly chart of a hydrological station's stored hours and live tail (O6), series chart and table, Hydrolog's analyses, downloads), PMAXTP of a point; Preact + htm without a build step
    - Reads the data root read-only through public functions, Hydrolog's stored analyses (ADR-016) among it; IMGW-PIB's current data, the live tails of the hourly chart in „teraz” (either provider) and PMAXTP pass through the server's memory, and every answer of the current data and of the live tails also goes to the capture spool (ADR-030 D7); a person's choices are computed by Hydrolog's program on request
    - A public deployment adds a rate limit, daily statistics, „Zgłoś uwagę”, the regulamin and the admin panel `admin/` with a key of its own (ADR-020); the logs are Nogat's, as the REST server's (ADR-019); an operator's instance (ADR-025) filters every route with the REST server's predicate and adds its title, logo, area and regulamin
 
@@ -52,6 +52,11 @@ System consists of six main components:
 │ danepubliczne.imgw.pl, hydro.imgw.pl,│ │ opendata.chmi.cz (historical,    │
 │ hydro-back.imgw.pl, klimat.imgw.pl   │ │ historical_csv, metadata, now)   │
 └──────────────────────────────────────┘ └──────────────────────────────────┘
+┌──────────────────────────────────────┐
+│ Gdańskie Wody (class other, off by   │
+│ default; ADR-034): an API with a key,│
+│ pomiary.gdanskiewody.pl/rest         │
+└──────────────────────────────────────┘
                               ▲            ▲
                               │ HTTP (URL generation, live proxy, listing/HEAD/GET
                               │ for the store; one request at a time)
@@ -183,7 +188,7 @@ Relative to the page, so the app works at `/` and under any prefix (Nogat's GUI 
 
 ### Data Flow
 - **Data root**, read-only (`_root.py`): the current catalog of each provider, the current series of each dataset and the current stored analyses of each provider through `current_version`, `read_catalog`, `read_series_index`, `read_series` and `export_stations`; the current versions are asked again at most once a minute, in the background (the first read alone is a request's own; the requests take the last snapshot while one re-read runs), so a new build shows without a restart (new stored analyses alone keep the station layer and its ETag); in memory the station layer, a summary of each series index (its ranges without a value counted, not kept), the most recent series documents (at most 32 and 2 million cells) and 4 stations files; what a large read keeps is copied once the read is over, and pyarrow's Parquet modules are imported when the root is made, so that no read leaves memory behind (ADR-027); answers carry a strong ETag (the versions, the query and a token of the run) and `Cache-Control: no-cache`.
-- **Instance** (`obserwator.instance`, ADR-025): with `[obserwator.instance]`, `Instance.reduce` reduces each read of the data root, so the station layer, its ETag and every station route agree; a provider `off`, a station outside a clipped area and PMAXTP `off` are not served, IMGW-PIB's current data only while IMGW-PIB is; `api/session` gives the page the title, logo, featured provider, `others_opacity`, start view and area.
+- **Instance** (`obserwator.instance`, ADR-025): with `[obserwator.instance]`, `Instance.reduce` reduces each read of the data root, so the station layer, its ETag and every station route agree; a provider `off`, a station outside a clipped area and PMAXTP `off` are not served, IMGW-PIB's current data only while IMGW-PIB is; `api/session` gives the page the title, logo, featured provider, `others_opacity`, start view and area. Without the section both servers apply `default_instance()`, which leaves out only the providers off by default (Gdańskie Wody, ADR-034 D11) and keeps the session's `instance` null.
 - **The page** (`_page.py`): `index.html` is served rendered, its own files at `v/<build>/` (a digest of `theme-init.js`, `src/`, `css/`, `nogat/` and `vendor/`, so a release has new addresses and the browser keeps each file for a year), MapLibre's module, worker, stylesheet and glyphs at `vendor/…?v=<version>` of `vendor/vendor.json`, and a `modulepreload` of every module `src/main.js` imports statically, so the start asks for all of them at once; `theme-init.js` asks for `api/texts`, `api/session` and `api/stations` before the modules load (`src/start.js`).
 - **Live data** (`_live.py`), in memory only: snapshots of IMGW-PIB's current data (water states, hydro, meteo, synop), each fetched on demand at most once per 10 minutes, one request per source at a time and the sources of one answer at the same time, an expired one served while its refresh runs in a background thread, the last kept when a fetch fails; `api/current` and `api/current/{code}` answer `304` to the ETag of their snapshots; PMAXTP per method and point at four decimals for 24 hours, at most 1,000 points, one live request at a time; every request to IMGW-PIB is an app record `upstream_fetch`. Every answer of the current data the snapshots fetch also goes, as it came, to the capture spool `<state_dir>/obserwator/captures` (the library's fetchers hand it to the provider's adapter, ADR-030 D7); a spool that cannot be written is one warning record and the snapshot is served all the same. The GUI writes no root.
 - **Live tails** (`LiveTail` of `_live.py`, O6; ADR-013 and ADR-030 errata of 2026-11-23): `api/station/{code}/subdaily` reads a station's months of the hourly series from the first of its range on (`DataRoot.series_document(since=…)`, in the bounded cache of the series documents) and, while the newest stored hour is older than the current one, asks the provider for the hours after it through its adapter (`ProviderAdapter.live_tail`: hydro-back's hourly series with `hoursInterval` up to 1,000, or ČHMÚ's `now` file), whose answers go to the spool of `ProviderAdapter.live_source`; `store.subdaily.tail_hours` reads their full hours. One tail per station, kept 10 minutes while it reaches the newest stored hour (a failure 60 s), at most 500 stations, one request per station at a time and one live request of the server behind its own limiter; each request is an app record `upstream_fetch`. A station whose hourly series or live source is `private` (`[obserwator.capture]`, read on every request) is `not_found` before any request, and its station document says `subdaily: false`.
@@ -262,6 +267,7 @@ Results: `structuredContent` = envelope `obserwator-result/1` (the CLI `--json` 
   series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/series.json + .meta.json + stations/<code>.parquet   # a month of a sub-daily series: slot series:<key>:<YYYY-MM> (ADR-031)
   stations/versions/imgw_stations/<label>_<sha8>/stations.geojson + .meta.json   # IMGW-PIB catalog
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson + .meta.json   # ČHMÚ catalog
+  stations/versions/<acronym>_stations/<label>_<sha8>/stations.geojson + .meta.json   # another provider's catalog (gdanskiewody, ADR-034; a provider file's acronym, ADR-033)
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + .meta.json + stations/<code>.json + stations/<code>/<id>.json  # Hydrolog's answers (ADR-016)
   .incoming/<host>_<pid>_<token>/                       # staging; leftovers >24 h cleaned (an interrupted analyses build's stations resumed first)
 ```
@@ -297,9 +303,9 @@ Every writing command has one of two ways of writing, with the same names in Pyt
 keep          ── every answer of a capture source on any request path (fetch._get, _archive_response, stations._station_details) ──▶ ProviderAdapter.capture → the spool in state_dir (never a root; a failure is one warning record)
 poll_current  ── one GET per polled source, skipped while its declared interval has not passed ──▶ the spool only (current poll, the hourly timer)
 harvest       ── store sync --pace-until: the adapter's harvest_requests (station list through the session) ──▶ PacedSession.run, one GET at a time to the deadline ──▶ the spool (HarvestReport)
-check_store   ── raw root; IMGW-PIB: listing + HEAD (synop archives: the folder index names the files, ADR-022; the telemetry: the datastore's listing `POST getFilesList` alone); ČHMÚ: one directory listing (no HEAD/GET); station sources: lists by HEAD, `now` metadata and hydro.imgw.pl details unverifiable; captures: the closed UTC days of the spool against the raw root (with pace_until today's too), no request ──▶ StorePlan (obserwator-plan/1, saved outside the roots; series_state {})
+check_store   ── raw root; IMGW-PIB: listing + HEAD (synop archives: the folder index names the files, ADR-022; the telemetry: the datastore's listing `POST getFilesList` alone); ČHMÚ: one directory listing (no HEAD/GET); Gdańskie Wody: the month files the stored station list names, against the clock (`ProviderAdapter.settled`), no request (ADR-034 D6); station sources: lists by HEAD, `now` metadata and hydro.imgw.pl details unverifiable; captures: the closed UTC days of the spool against the raw root (with pace_until today's too), no request ──▶ StorePlan (obserwator-plan/1, saved outside the roots; series_state {})
 sync_store    ── HEAD again (none for the telemetry); changed → stale_plan; GET only new/missing ──▶ archive versions only, in the raw root (ČHMÚ: content_unchanged + observation; ADR-015); captures: each closed day (and today after a harvest) sealed into one version, then its spool files removed (ADR-030)
-build_series  ── current archive versions of the raw root (read-only) → Parquet snapshot in the data root (`unchanged` if the current series version has the same inputs); ČHMÚ and IMGW-PIB synop: per-station periods (a synop station's yearly archive supersedes its records in the monthly files of that year); a sub-daily series (store/subdaily.py, ADR-031): one version per month from the full hours of the closed UTC days of the captures, the telemetry and ČHMÚ's validated hours, the highest tier of each station, variable and hour
+build_series  ── current archive versions of the raw root (read-only) → Parquet snapshot in the data root (`unchanged` if the current series version has the same inputs); ČHMÚ and IMGW-PIB synop: per-station periods (a synop station's yearly archive supersedes its records in the monthly files of that year); a sub-daily series (store/subdaily.py, ADR-031): one version per month from the full hours of the closed UTC days of the captures, the telemetry and ČHMÚ's validated hours, the highest tier of each station, variable and hour; Gdańskie Wody's series from its month files (ADR-034 D8): the daily ones by the provider's day through its parser, the hourly ones one version per month through `ProviderAdapter.hourly_points`
 build_catalog ── one provider, offline: the station sources stored in the raw root (lists and `now` metadata; missing → not_found; IMGW-PIB's hydro.imgw.pl details optional, ADR-021) + static/user locations + series indexes of the data root → stations.geojson in the data root
 build_analyses ── current series and catalogs of the data root → Hydrolog's batch in a separate process → one analyses version per provider in the data root (ADR-016); a meteo station's daily record joins its synop, climate and precipitation series by day and variable (ADR-022)
 read_*        ── offline, read-only, each in the root of its kind; problems reported as StoreEntry(kind="problem"), observations as kind="observation"
@@ -350,18 +356,19 @@ IMGW-PIB archives are inconsistent between years; parsers auto-detect the format
 ### Input (from the sources)
 - IMGW-PIB: ZIP archives with CSV files; JSON from the real-time API and PMAXTP
 - ČHMÚ: JSON per station and year (hydro), CSV per station and element (meteo), JSON metadata with an envelope, nginx directory listings (HTML)
+- Gdańskie Wody: JSON of an API with a key (`Authorization: Bearer`): the station list and one station's quantity over one provider's day; every error an HTTP 200 answer that says so in its body (ADR-034)
 
 ### Output (to clients)
 - JSON envelope `obserwator-result/1` (CLI stdout with `--json`, REST body, MCP `structuredContent`); without `--json` the CLI prints a short summary for a person; errors as CLI JSON line, `application/problem+json` or MCP tool error
 - Generated URLs (for direct IMGW-PIB and ČHMÚ downloads)
-- Store products: Parquet series, GeoJSON (RFC 7946) station catalogs, CSV export with units and the provider's attribution (IMGW-PIB terms or ČHMÚ CC BY 4.0), JSONL archive export; in the raw root the captures of current data (gzip-compressed JSON Lines of the answers as they came)
+- Store products: Parquet series, GeoJSON (RFC 7946) station catalogs, CSV export with units and the provider's attribution (IMGW-PIB terms, ČHMÚ CC BY 4.0, Gdańskie Wody's draft lines with the notice of a source of the class `other`), JSONL archive export; in the raw root the captures of current data (gzip-compressed JSON Lines of the answers as they came)
 - Agent guide: `AGENTS.md` and `llms.txt` (markdown, `text/markdown` in REST)
 - The GUI: its page and private JSON API (`obserwator-gui-session/1`, `obserwator-analysis/1`, `nogat-handoff/1`) and the files of the exports above (section 5)
 
 ### GIS Integration
 - `stations.geojson` with WGS84 points per provider (stations without a valid location keep `geometry: null` and a reason; ČHMÚ hydro stations carry SPA `thresholds`, IMGW-PIB hydro stations the details of hydro.imgw.pl: gauge zero, river km, catchment area, warning and alarm levels, absolute extremes; ADR-021)
 - A location counts only in its provider's country (ADR-018): inside the packaged state border of Poland (PRG of GUGiK) or Czechia (RÚIAN of ČÚZK), built by `scripts/build_borders.py` and read by `obserwator._borders`, or nearer to it than its 50 m simplification tolerance plus the location's uncertainty (at least 150 m); else `location_missing_reason="outside_country"`. The border's line (G of GUGiK, Z of ČÚZK) joins the attribution of the catalog and of every product of it
-- The GUI's map (MapLibre GL JS) draws the stations of both catalogs, IMGW-PIB's current measurements and the PMAXTP point (section 5)
+- The GUI's map (MapLibre GL JS) draws the stations of every served catalog (the outline by source class), IMGW-PIB's current measurements and the PMAXTP point (section 5)
 - ~~WFS/WMS integration~~ - not implemented
 
 ---
@@ -427,12 +434,12 @@ Obserwator/
 │   ├── fetch.py          # PUBLIC: fetch_* (live), download_archives, download_* -> DownloadResult; PacedSession (the harvests' pacing, backoff and gzip)
 │   ├── captures.py       # PUBLIC: poll_current; the capture spool, [obserwator.capture], the hourly poll, the night's harvest (ADR-030)
 │   ├── models.py         # PUBLIC: Data models incl. NormalizedRecord, Measurement
-│   ├── stations.py       # PUBLIC: find_stations (IMGW-PIB and ČHMÚ)
+│   ├── stations.py       # PUBLIC: find_stations (IMGW-PIB and ČHMÚ; Gdańskie Wody where named)
 │   ├── exceptions.py     # PUBLIC: Custom exceptions + ERROR_CODES (title as a catalog message)
 │   ├── error_report.py   # PUBLIC: obserwator-error/1 document (ErrorReport, error_report) and hints
 │   ├── messages/         # Message catalog: message(), Message, localize(), Text(en, pl) per area (ADR-006); gui/: the GUI's texts
 │   ├── urls.py           # PUBLIC: IMGW URL constants, build_pmaxtp_url, build_api_url
-│   ├── parsers.py        # PUBLIC: Parser re-exports (IMGW-PIB hydro/meteo, ČHMÚ, station lists)
+│   ├── parsers.py        # PUBLIC: Parser re-exports (IMGW-PIB hydro/meteo, ČHMÚ, Gdańskie Wody, station lists)
 │   ├── datasets.py       # PUBLIC: Provider and dataset registry, archive_files, YearsArg/MonthsArg
 │   ├── coverage.py       # PUBLIC: summarize_coverage
 │   ├── commands.py       # PUBLIC: Command catalog, command_schema, run_command
@@ -445,8 +452,8 @@ Obserwator/
 │   ├── config.py         # Settings (incl. hydrolog_command)
 │   ├── _hydrolog.py      # Hydrolog's program: `commands batch` in a separate process (ADR-016)
 │   ├── _data/            # Poland and Czechia borders (PRG of GUGiK, RÚIAN of ČÚZK; ADR-018), agents/ templates, packaged fixtures, recordings, contract schemas
-│   ├── _parsing/         # common.py, hydro.py, meteo.py, stations.py, chmu.py
-│   ├── providers/        # One adapter per provider behind ProviderAdapter (ADR-029): base.py, pl/imgw.py, cz/chmu.py
+│   ├── _parsing/         # common.py, hydro.py, meteo.py, stations.py, chmu.py, files.py, gdanskiewody.py
+│   ├── providers/        # One adapter per provider behind ProviderAdapter (ADR-029): base.py, pl/imgw.py, cz/chmu.py, pl/gdanskiewody.py (ADR-034), files.py (ADR-033)
 │   ├── store/            # types, writer (the store's one canonical JSON, new-file write, file checksum and archive slot directory), content, sync, captures (the sealing of the capture spool, ADR-030), series, catalog, pmaxtp, reader, export, plain (plan of a plain write), analyses and analysis_registry (ADR-016)
 │   ├── api/              # REST API [optional]
 │   │   ├── main.py       # FastAPI app (/health, /api/v1, /llms.txt, /docs, /mcp; GET / redirects to /docs)

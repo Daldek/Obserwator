@@ -2875,8 +2875,16 @@ def _archive_call(
             options["months"] = [archive.month]
     else:
         options["stations"] = [archive.station_code]
-        if descriptor.archive_scope in ("station_year", "station_month"):
+        if descriptor.archive_scope in (
+            "station_year",
+            "station_month",
+            "station_element_month",
+        ):
             options["years"] = [archive.year]
+        if descriptor.archive_scope == "station_element_month":
+            # Gdańskie Wody's month file (ADR-034): its station's month, every
+            # quantity the stored station list gives it.
+            options["months"] = [archive.month]
     try:
         _, _, candidates, archives, _ = _sync._selection(
             options["datasets"],

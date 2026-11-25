@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from obserwator.messages import Message
     from obserwator.models import NormalizedRecord, StationListEntry
     from obserwator.store.catalog import CatalogBuild
-    from obserwator.store.types import CatalogReport, NoticeHook
+    from obserwator.store.types import CatalogReport, NoticeHook, PlanAction
 
 __all__ = [
     "Answer",
@@ -56,7 +56,7 @@ __all__ = [
     "SourceAction",
 ]
 
-CheckScope = Literal["country", "folders", "stations", "listing"]
+CheckScope = Literal["country", "folders", "stations", "listing", "months"]
 """
 How ``store check`` finds and checks the files of a measurement dataset.
 
@@ -66,7 +66,12 @@ HEAD; ``folders``: files named in the index of each folder of the selected years
 directory of the station files (`ProviderAdapter.listed_station`), which is their
 signal; ``listing``: files enumerated offline and published when the provider's
 listing of their directory names them (`ProviderAdapter.listing`), without any HTTP
-signal: a stored file is current, as published once (IMGW-PIB's telemetry).
+signal: a stored file is current, as published once (IMGW-PIB's telemetry);
+``months``: a station's month files gathered from an API's answers, named by the
+station list the raw root holds (`ProviderAdapter.month_files`) and checked against
+the clock without a request: a version downloaded once its month had settled
+(`ProviderAdapter.settled`) is current, an earlier one is fetched again (the provider
+``GDANSKIEWODY``, ADR-034).
 """
 
 SourceAction = tuple[Literal["current", "newer", "missing", "unverifiable"], "Message"]
@@ -140,8 +145,9 @@ class ProviderAdapter(Protocol):
     `publication_default` (``private``), `server_name`, `groups`, `identifies`,
     `optional_sources`, `dataset_origin`, `station_origins`, `indexed`, `index_files`,
     `station_key`, `archive_station`, `download`, `folders`, `listed_station`,
-    `listing`, `station_file`, `optional_action`, `location_files`, `harvest_requests`
-    and `live_tail`.
+    `listing`, `month_files`, `settled`, `held_period`, `station_file`,
+    `optional_action`, `location_files`, `harvest_requests`, `live_tail`,
+    `series_reads` and `hourly_points`.
 
     Attributes
     ----------
@@ -202,6 +208,18 @@ class ProviderAdapter(Protocol):
         IMGW-PIB, ČHMÚ), or ``other`` (an office, a company, a university, an
         operator's own network). A label of the operator, never a claim of WMO
         compliance.
+    source_notice : Message or None
+        P8's notice of a provider of the class ``other``: a catalog message saying
+        that its data do not come from a national hydro-meteorological service and,
+        where the provider says so, that they are unverified, in the provider's own
+        words. Every product with its data carries it after the provider's lines
+        (`obserwator.attribution`), and the GUI's station panel shows it beside the
+        class badge; None for an ``nmhs`` provider (the default).
+    served_by_default : bool
+        Whether the servers serve the provider when ``[obserwator.instance.providers]``
+        names no state for it, and a search that names no provider asks it: True by
+        default; False for a provider the author keeps ``off`` until he decides what
+        it serves (Gdańskie Wody, ADR-034), which is then used only where named.
     provider_file : ProviderFile or None
         The provider file of a provider fed by files (ADR-033): its data come from the
         files it names, imported by ``store import``, never from a server; None for a
@@ -224,6 +242,8 @@ class ProviderAdapter(Protocol):
     archive_suffixes: tuple[str, ...]
     sidecar_station: bool
     source_class: Literal["nmhs", "other"] = "nmhs"
+    source_notice: Message | None = None
+    served_by_default: bool = True
     provider_file: ProviderFile | None = None
 
     @property
@@ -603,6 +623,92 @@ class ProviderAdapter(Protocol):
         """
         raise ValueError(f"{descriptor.key}: no listing of {directory}")
 
+    def month_files(
+        self,
+        descriptor: DatasetDescriptor,
+        raw: Path,
+        /,
+        *,
+        years: YearsArg,
+        months: MonthsArg | None,
+        stations: Iterable[str] | None,
+        today: date,
+    ) -> tuple[tuple[ArchiveFile, ...], tuple[PlanAction, ...]]:
+        """
+        The month files of a selection of a dataset checked by ``months``.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset whose `check_scope` is ``months``.
+        raw : pathlib.Path
+            The raw root, whose station list names the stations and what they measure.
+        years : YearsArg
+            The selected years.
+        months : MonthsArg or None
+            The selected months of each year; None for every one.
+        stations : iterable of str or None
+            The selected stations; None for every one of the stored list.
+        today : datetime.date
+            Today (UTC): a month that has not begun is no file.
+
+        Returns
+        -------
+        tuple
+            The files, and the ``store sync`` actions of what cannot be named (a
+            station the stored list does not hold).
+
+        Raises
+        ------
+        ObserwatorStoreError
+            ``not_found`` (``missing_source``) without the station list in the raw
+            root.
+        ValueError
+            For a dataset not checked by months (the default: every one).
+        """
+        raise ValueError(f"{descriptor.key}: {self.provider_id} has no month files")
+
+    def settled(self, archive: ArchiveFile, /) -> datetime:
+        """
+        When a version of a month file stops changing: a later download is current.
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A file of `month_files`.
+
+        Returns
+        -------
+        datetime.datetime
+            The time (UTC) from which a stored version is final.
+
+        Raises
+        ------
+        ValueError
+            For a file not checked by months (the default: every one).
+        """
+        raise ValueError(f"{archive.dataset}: {self.provider_id} has no month files")
+
+    def held_period(self, archive: ArchiveFile, /) -> tuple[date, date]:
+        """
+        The first and last UTC day whose hours a file of the provider may hold.
+
+        A sub-daily series reads a file for each month of these days (ADR-031).
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A dated file of one of the provider's datasets.
+
+        Returns
+        -------
+        tuple of datetime.date
+            Its period by default (Gdańskie Wody's provider days end at 05:00 UTC of
+            the next day).
+        """
+        assert archive.period_start is not None and archive.period_end is not None
+        return archive.period_start, archive.period_end
+
     # --- station sources ---------------------------------------------------------
 
     def station_file(
@@ -848,6 +954,52 @@ class ProviderAdapter(Protocol):
             If the file cannot be parsed.
         """
         ...
+
+    def series_reads(self, series: DatasetDescriptor, archive: ArchiveFile, /) -> bool:
+        """
+        Whether a series built from ``inputs`` reads one of their files (ADR-034).
+
+        Parameters
+        ----------
+        series : DatasetDescriptor
+            A series dataset with ``inputs``.
+        archive : ArchiveFile
+            A stored file of one of its inputs.
+
+        Returns
+        -------
+        bool
+            True by default (every file); Gdańskie Wody's month file only for a series
+            holding the variable of its quantity.
+        """
+        return True
+
+    def hourly_points(
+        self, archive: ArchiveFile, data: bytes, /
+    ) -> Iterator[tuple[str, str, list[tuple[object, object]]]]:
+        """
+        The hours of a stored input file of a sub-daily series (ADR-031, ADR-034).
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A file of an input dataset that is no capture.
+        data : bytes
+            Its content.
+
+        Returns
+        -------
+        Iterator of (str, str, list)
+            Per station and variable, the ``(time, value)`` points (ISO 8601 times
+            with a zone).
+
+        Raises
+        ------
+        ValueError
+            For a dataset the adapter reads no hours of (the default: every one; the
+            store reads IMGW-PIB's and ČHMÚ's inputs itself).
+        """
+        raise ValueError(f"{archive.dataset}: {self.provider_id} gives no hours")
 
     # --- captures ------------------------------------------------------------------
 

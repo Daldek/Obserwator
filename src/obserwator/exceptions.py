@@ -34,6 +34,7 @@ ErrorCode = Literal[
     "io_error",
     "cancelled",
     "forbidden",
+    "no_data",
     "unsupported",
     "method_not_allowed",
     "internal_error",
@@ -87,6 +88,9 @@ ERROR_CODES: Mapping[ErrorCode, ErrorSpec] = MappingProxyType(
             ErrorSpec("io_error", message("errors.title_io_error"), 9, 500),
             ErrorSpec("cancelled", message("errors.title_cancelled"), 130, None),
             ErrorSpec("forbidden", message("errors.title_forbidden"), 12, 403),
+            # The request is valid, the source has no data of it (Nogat's registry):
+            # Gdańskie Wody's station does not measure the quantity (P4, ADR-034).
+            ErrorSpec("no_data", message("errors.title_no_data"), 14, 404),
             ErrorSpec("unsupported", message("errors.title_unsupported"), 15, 422),
             ErrorSpec(
                 "method_not_allowed",

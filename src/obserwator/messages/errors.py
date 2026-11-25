@@ -6,6 +6,7 @@ MESSAGES = {
     # Titles of the registry (``ERROR_CODES``; the title of a problem document).
     "title_validation_error": Text("Invalid input", "Nieprawidłowe dane wejściowe"),
     "title_not_found": Text("Not found", "Nie znaleziono"),
+    "title_no_data": Text("No data", "Brak danych"),
     "title_conflict": Text("State conflict", "Konflikt stanu"),
     "title_source_unavailable": Text(
         "Data source unavailable", "Źródło danych niedostępne"

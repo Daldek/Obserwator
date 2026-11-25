@@ -55,6 +55,7 @@ from tests.contract.support import (
     RABA,
     V3,
     FakeImgw,
+    as_served,
     canonical,
     cli_words,
     command_document,
@@ -420,8 +421,15 @@ def compact(document: object) -> str:
     return json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
 
-def assert_alike(command, python, printed, answered, root, *, raw_root=None):
-    """Python envelope = CLI stdout = REST body (canonical JSON; streams: bytes)."""
+def assert_alike(
+    command, python, printed, answered, root, *, raw_root=None, requested=None
+):
+    """
+    Python envelope = CLI stdout = REST body (canonical JSON; streams: bytes).
+
+    ``requested`` holds the options of the REST request, as the servers' filter pages
+    a list over the items it keeps (`as_served`).
+    """
     if ROUTES[command]["result"] == "stream" and not python.check:
         data = "".join(python.result).encode("utf-8")
         assert printed.exit_code == 0, printed.output
@@ -442,8 +450,11 @@ def assert_alike(command, python, printed, answered, root, *, raw_root=None):
         return
     local = python.to_json(root=root)
     # REST hides every server directory (T21): the root, and the temporary directory
-    # of the series files whose paths Hydrolog's stored envelopes echo.
-    served = hide_server_paths(python.to_json(root=root, server=True))
+    # of the series files whose paths Hydrolog's stored envelopes echo; it serves
+    # what the servers' filter keeps (a provider off by default, ADR-034).
+    served = as_served(
+        command, hide_server_paths(python.to_json(root=root, server=True)), requested
+    )
     assert envelope_errors(local) == []
     assert envelope_errors(served) == []
     assert printed.exit_code == EXIT_CODES[python.status], printed.output
@@ -452,8 +463,11 @@ def assert_alike(command, python, printed, answered, root, *, raw_root=None):
     assert answered.status_code == 200, answered.text
     assert answered.headers["content-type"] == "application/json"
     assert canonical(answered.json()) == canonical(served)
-    if root is None:  # no root to write as "." in REST: the very same bytes
-        assert printed.stdout_bytes == answered.content + b"\n"
+    if root is None:  # no root to write as "." in REST: the bytes the CLI prints
+        expected = compact(served).encode("utf-8") + b"\n"
+        if served == local:
+            expected = printed.stdout_bytes
+        assert answered.content + b"\n" == expected
     else:  # REST never shows the server's roots (spec §13.1 p. 4)
         assert in_json(str(root)) not in answered.text
         if raw_root is not None:
@@ -520,7 +534,15 @@ def test_every_rest_command_answers_alike_in_python_cli_and_rest(
                 written_trees[interface] = trees(roots)
 
         python, printed, answered = (answers[i] for i in INTERFACES)
-        assert_alike(command, python, printed, answered, root, raw_root=raw_root)
+        assert_alike(
+            command,
+            python,
+            printed,
+            answered,
+            root,
+            raw_root=raw_root,
+            requested=options,
+        )
         assert requests["python"] == requests["cli"] == requests["rest"]
         if writes:
             assert (
@@ -621,12 +643,14 @@ def test_same_limit_and_cursor_give_the_same_page_in_every_interface(
         answer(i, command, paged, root, cli=cli, rest=rest) for i in INTERFACES
     )
 
-    documents = [python.to_json(root=root), json.loads(printed.stdout), answered.json()]
-    assert [envelope_errors(document) for document in documents] == [[], [], []]
+    documents = [python.to_json(root=root), json.loads(printed.stdout)]
+    page = answered.json()
+    assert [envelope_errors(d) for d in (*documents, page)] == [[], [], []]
     assert len({canonical(d["result"]) for d in documents}) == 1
     assert len({canonical(d["page"]) for d in documents}) == 1
-    (document, *_) = documents
-    everything = whole.to_json(root=root)["result"]
+    (document, _) = documents
+    whole_document = whole.to_json(root=root)
+    everything = whole_document["result"]
     assert len(everything) > 3
     assert document["result"] == everything[start : start + limit]
     more = start + limit < len(everything)
@@ -635,6 +659,9 @@ def test_same_limit_and_cursor_give_the_same_page_in_every_interface(
         "next_cursor": page_cursor(start + limit) if more else None,
         "truncated": more,
     }
+    # The servers page the items their filter keeps (ADR-034).
+    served = as_served(command, document, paged)
+    assert (page["result"], page["page"]) == (served["result"], served["page"])
 
 
 @pytest.mark.parametrize(("command", "options", "stored"), PAGED)
@@ -643,8 +670,11 @@ def test_following_next_cursor_gives_every_item_once_in_order(
 ):
     root = served_root if stored else None
     monkeypatch.setattr(server, "root", root)
-    everything = run_command(command, options=rooted(options, root)).to_json(
-        root=root, server=True
+    everything = as_served(
+        command,
+        run_command(command, options=rooted(options, root)).to_json(
+            root=root, server=True
+        ),
     )["result"]
 
     collected, paged = [], {**options, "limit": 3}
@@ -827,6 +857,18 @@ def _forbidden(setting: Setting) -> Scenario:
     return Scenario("series build", {"dataset": PRECIP}, setting.roots(), ("rest",))
 
 
+def _no_data(setting: Setting) -> Scenario:
+    # Only Gdańskie Wody reports it (a station that does not measure the quantity),
+    # off by default and asked only with a key; a refusal below a command is alike.
+    refusal = ObserwatorError(
+        "Stacja nie mierzy tej wielkości",
+        code="no_data",
+        details={"reason": "not_measured"},
+    )
+    setting.raising(store, "store_info", refusal)
+    return Scenario("store info", {}, setting.roots())
+
+
 def _unsupported(setting: Setting) -> Scenario:
     # No catalog command refuses a combination itself (command_for_version is
     # Python only); a refusal raised below a command is reported alike.
@@ -862,6 +904,7 @@ SCENARIOS = {
     "io_error": _io_error,
     "cancelled": _cancelled,
     "forbidden": _forbidden,
+    "no_data": _no_data,
     "unsupported": _unsupported,
     "method_not_allowed": _method_not_allowed,
     "internal_error": _internal_error,

@@ -67,14 +67,16 @@ MESSAGES: dict[str, Text] = {
         "Nie można odczytać katalogu danych: {message}",
     ),
     "station.none.catalogs": Text("Station catalogs", "Katalogi stacji"),
-    "station.none.provider_kinds": Text(
-        "{provider}: hydrological · meteorological",
-        "{provider}: hydrologiczne · meteorologiczne",
+    # A provider's catalog, or every catalog of a class of sources (hydromet P12), with
+    # the kinds its stations are counted by
+    "station.none.catalog_kinds": Text(
+        "{name}: hydrological · meteorological",
+        "{name}: hydrologiczne · meteorologiczne",
     ),
-    # A provider whose catalog holds groundwater objects (ADR-032)
-    "station.none.provider_kinds_groundwater": Text(
-        "{provider}: hydrological · meteorological · groundwater",
-        "{provider}: hydrologiczne · meteorologiczne · podziemne",
+    # Where the catalog holds groundwater objects (ADR-032)
+    "station.none.catalog_kinds_groundwater": Text(
+        "{name}: hydrological · meteorological · groundwater",
+        "{name}: hydrologiczne · meteorologiczne · podziemne",
     ),
     "station.none.catalog_version": Text(
         "catalog {version}, downloaded {when}", "katalog {version}, pobrany {when}"
@@ -128,11 +130,16 @@ MESSAGES: dict[str, Text] = {
         "sprawdzane są położenia)",
     ),
     "station.none.files_stations": Text("Stations in the file", "Stacje w pliku"),
+    # The one provider the list's source type and dataset chips leave, else every one
+    "station.none.files_provider": Text("Provider", "Dostawca"),
+    "station.none.files_provider_all": Text("All", "Wszyscy"),
     "station.none.files_note": Text(
-        "The file takes only the list's provider and kind: the dataset chips and "
-        "“active only” do not narrow it.",
-        "Plik uwzględnia tylko dostawcę i rodzaj wybrane na liście: chipy zbiorów i "
-        "„tylko czynne” go nie zawężają.",
+        "The file takes the list's station kind, and a provider only where the source "
+        "type and the dataset chips leave one: the chips' datasets and “active only” do "
+        "not narrow it.",
+        "Plik uwzględnia rodzaj stacji wybrany na liście, a dostawcę tylko wtedy, gdy "
+        "rodzaj źródła i chipy zbiorów zostawiają jednego: zbiory chipów i „tylko "
+        "czynne” go nie zawężają.",
     ),
     "station.none.files_cli": Text(
         "{format} from the command line", "{format} z wiersza poleceń"

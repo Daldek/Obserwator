@@ -7,17 +7,19 @@ a command, a line of the CLI, an export, a stored series, catalog or PMAXTP cell
 plain download, a web page. Every product takes its lines from here, and the
 texts come from the one catalog area ``legal`` (`obserwator.messages.legal`):
 
-==========  ==================================================================
-Origin      Data
-==========  ==================================================================
-imgw        IMGW-PIB archives and current data of danepubliczne.imgw.pl
-imgw_hydro  operational data, station locations and station details of
-            hydro.imgw.pl (and of its backend hydro-back.imgw.pl)
-pmaxtp      PMAXTP of powietrze.imgw.pl and klimat.imgw.pl (own terms)
-chmu        ČHMÚ open data (CC BY 4.0)
-gugik       the state border of Poland from PRG of GUGiK (ADR-018)
-cuzk        the state border of Czechia from RÚIAN of ČÚZK (CC BY 4.0, ADR-018)
-==========  ==================================================================
+============  ================================================================
+Origin        Data
+============  ================================================================
+imgw          IMGW-PIB archives and current data of danepubliczne.imgw.pl
+imgw_hydro    operational data, station locations and station details of
+              hydro.imgw.pl (and of its backend hydro-back.imgw.pl)
+pmaxtp        PMAXTP of powietrze.imgw.pl and klimat.imgw.pl (own terms)
+chmu          ČHMÚ open data (CC BY 4.0)
+gugik         the state border of Poland from PRG of GUGiK (ADR-018)
+cuzk          the state border of Czechia from RÚIAN of ČÚZK (CC BY 4.0, ADR-018)
+gdanskiewody  Gdańskie Wody's measurements of pomiary.gdanskiewody.pl (ADR-034):
+              drafts of its lines while its terms are unknown (`provisional`)
+============  ================================================================
 
 A verbatim copy of a provider file carries the source lines (IMGW-PIB ``S``,
 PMAXTP ``PS`` and ``M``, ČHMÚ ``C``); data that were parsed, harmonised,
@@ -41,6 +43,14 @@ the line of its provider file and its optional processed line (`declare_origin`)
 lines follow every line of the standard (S … Z), in the order the deployment declares
 them, its text before its processed line (DEV-20.4 and Nogat's table of provider lines,
 P9).
+
+A provider of the class ``other`` (Nogat plan 2026-11-20, P8, P11; Gdańskie Wody and
+every provider fed by files) has one more line after its own: its notice that the data
+do not come from a national hydro-meteorological service (and, in the provider's words,
+that they are unverified where it says so). It is no line of DEV §20, yet every product
+with the provider's data carries it beside them, so a file keeps the distinction after
+it leaves the GUI. Gdańskie Wody's lines are drafts until its terms are known
+(`provisional`, ADR-034): no server serves its data.
 """
 
 from __future__ import annotations
@@ -51,7 +61,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from obserwator._borders import CZECHIA, POLAND, border
-from obserwator.messages import message
+from obserwator.messages import localize, message
 from obserwator.messages.legal import RETIRED_LINES
 
 if TYPE_CHECKING:
@@ -69,6 +79,7 @@ __all__ = [
     "declare_origin",
     "origins",
     "provider_origin",
+    "provisional",
 ]
 
 Origin = str
@@ -76,7 +87,15 @@ Origin = str
 Origin of provider data with its own attribution and terms: one of `ORIGINS` or the
 acronym of a provider fed by files (`declare_origin`).
 """
-ORIGINS: tuple[Origin, ...] = ("imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk")
+ORIGINS: tuple[Origin, ...] = (
+    "imgw",
+    "imgw_hydro",
+    "pmaxtp",
+    "chmu",
+    "gugik",
+    "cuzk",
+    "gdanskiewody",
+)
 """Every origin of the packaged providers and borders, in the order of their lines."""
 
 # Plain text: the legal wordings are one text in every language.
@@ -90,9 +109,15 @@ _CP = str(message("legal.chmu_processed_attribution"))
 _RD = str(message("legal.imgw_terms_danepubliczne"))
 _RH = str(message("legal.imgw_terms_hydro"))
 _RK = str(message("legal.imgw_terms_pmaxtp"))
+# Gdańskie Wody (ADR-034): drafts of its line, its processed line and its terms line,
+# and P8's notice of a provider of the class "other" in its words (always Polish).
+_GW = str(message("legal.gdanskiewody_attribution"))
+_GWP = str(message("legal.gdanskiewody_processed_attribution"))
+_GWN = localize(message("datasets.source_notice_gdanskiewody"), "pl")
+_RG = str(message("legal.gdanskiewody_terms"))
 
 # The order of DEV-20.7 (terms lines); `_attribution_order` gives that of DEV-20.4.
-_TERMS_ORDER = (_RD, _RH, _RK)
+_TERMS_ORDER = (_RD, _RH, _RK, _RG)
 # Lines earlier versions of the standard required (ECO-065), never carried on.
 _RETIRED = frozenset(RETIRED_LINES)
 # CP of a product written before ECO-071 began so and named the processing in
@@ -105,7 +130,12 @@ _LINES: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] =
     "imgw_hydro": ((_S,), (_P,), (_RH,)),
     "pmaxtp": ((_PS, _M), (_PP,), (_RK,)),
     "chmu": ((_C,), (_CP,), ()),
+    # P8's notice is carried with the data, verbatim or processed, after the lines.
+    "gdanskiewody": ((_GW, _GWN), (_GWP,), (_RG,)),
 }
+# The origins whose lines are drafts: the provider's terms, and so the wording they
+# require, are not known yet (ADR-034). No server serves the data of such an origin.
+_PROVISIONAL: frozenset[Origin] = frozenset({"gdanskiewody"})
 # The origin of the data of each packaged border.
 _BORDER_ORIGINS: dict[str, Origin] = {POLAND: "gugik", CZECHIA: "cuzk"}
 # The origins of the providers fed by files, in the order the deployment declares them
@@ -113,7 +143,12 @@ _BORDER_ORIGINS: dict[str, Origin] = {POLAND: "gugik", CZECHIA: "cuzk"}
 _DECLARED: dict[Origin, tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = {}
 
 
-def declare_origin(origin: Origin, line: str, processed: str | None = None) -> None:
+def declare_origin(
+    origin: Origin,
+    line: str,
+    processed: str | None = None,
+    notice: str | None = None,
+) -> None:
     """
     Declare the origin of a provider fed by files and its lines (ADR-033).
 
@@ -128,6 +163,10 @@ def declare_origin(origin: Origin, line: str, processed: str | None = None) -> N
         The line every product with its data carries.
     processed : str or None, optional
         The line a product of its processed data carries after ``line``.
+    notice : str or None, optional
+        P8's notice of a provider of the class ``other`` (its adapter's
+        ``source_notice`` in Polish), which every product with its data carries after
+        its lines, verbatim or processed.
 
     Raises
     ------
@@ -136,7 +175,11 @@ def declare_origin(origin: Origin, line: str, processed: str | None = None) -> N
     """
     if origin in ORIGINS or origin in _DECLARED:
         raise ValueError(f"The origin {origin!r} is taken")
-    _DECLARED[origin] = ((line,), (processed,) if processed else (), ())
+    _DECLARED[origin] = (
+        (line, notice) if notice else (line,),
+        (processed,) if processed else (),
+        (),
+    )
     _attribution_order.cache_clear()
 
 
@@ -150,6 +193,28 @@ def origins() -> tuple[Origin, ...]:
         The origins in the order of their lines.
     """
     return ORIGINS + tuple(_DECLARED)
+
+
+def provisional(origin: Origin, /) -> bool:
+    """
+    Whether the lines of an origin are drafts: its provider's terms are not known yet.
+
+    Gdańskie Wody's regulamin is shown only to a signed-in user (ADR-034, the providers
+    plan's question 1): its line, processed line and terms line are drafts until the
+    terms give their wording. Its data are stored and read by the CLI and the library
+    with these drafts, and no server serves them (`obserwator.instance`).
+
+    Parameters
+    ----------
+    origin : str
+        An origin of `origins`.
+
+    Returns
+    -------
+    bool
+        True for an origin whose lines are drafts; False for every other.
+    """
+    return origin in _PROVISIONAL
 
 
 @cache
@@ -180,14 +245,22 @@ def _attribution_order() -> tuple[str, ...]:
     """
     The attribution lines in the order of DEV-20.4: S, P, PS, PP, M, C, CP, G, Z.
 
-    The lines of the providers fed by files follow, in the order they were declared,
-    each text before its processed line (`declare_origin`).
+    Gdańskie Wody's drafts follow (Nogat's table of provider lines holds no row of it
+    yet), then the lines of the providers fed by files, in the order they were
+    declared (`declare_origin`): of each its text, its processed line, then P8's
+    notice of its class, each line once.
     """
     borders = _border_lines()
-    declared = tuple(
-        line for source, extra, _ in _DECLARED.values() for line in (*source, *extra)
+    after = tuple(
+        line
+        for source, extra, _ in (_LINES["gdanskiewody"], *_DECLARED.values())
+        for line in (*source[:1], *extra, *source[1:])
     )
-    return (_S, _P, _PS, _PP, _M, _C, _CP, borders["gugik"], borders["cuzk"], *declared)
+    return tuple(
+        dict.fromkeys(
+            (_S, _P, _PS, _PP, _M, _C, _CP, borders["gugik"], borders["cuzk"], *after)
+        )
+    )
 
 
 def _lines(origin: Origin) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Literal, cast, overload
 
 from obserwator._version import __version__
+from obserwator.attribution import provisional
 from obserwator.commands import (
     _input_schemas,
     _root_kind,
@@ -283,6 +284,14 @@ def _principles(lang: Lang) -> str:
 
 
 def _providers(lang: Lang) -> str:
+    """
+    One line per provider: its keys, station codes and license.
+
+    Where they apply, the line adds the variable of its API key
+    (`ProviderDescriptor.credential`), that it is off by default
+    (`ProviderAdapter.served_by_default`) and that its attribution lines are drafts
+    (`obserwator.attribution.provisional`).
+    """
     lines = []
     for owner in providers():
         label = (
@@ -290,7 +299,7 @@ def _providers(lang: Lang) -> str:
             if owner.short_name == owner.id
             else f"{_code(owner.id)} ({owner.short_name})"
         )
-        lines.append(
+        parts = [
             message(
                 "agent_guide.provider_line",
                 lang=lang,
@@ -300,7 +309,20 @@ def _providers(lang: Lang) -> str:
                 station=_code(owner.station_code_pattern),
                 license=f"[{owner.license.id}]({owner.license.url})",
             )
-        )
+        ]
+        if owner.credential is not None:
+            parts.append(
+                message(
+                    "agent_guide.provider_key",
+                    lang=lang,
+                    variable=_code(owner.credential.variable),
+                )
+            )
+        if not owner.adapter.served_by_default:
+            parts.append(message("agent_guide.provider_off", lang=lang))
+        if any(provisional(origin) for origin in owner.adapter.origins):
+            parts.append(message("agent_guide.provider_drafts", lang=lang))
+        lines.append(", ".join(parts))
     return "\n".join(lines)
 
 
@@ -330,7 +352,7 @@ _FIRST_VARIABLES = 3
 
 def _variables(variables: Iterable[str], lang: Lang) -> str:
     """
-    Variable names as code; ``X_min``, ``X_mean`` and ``X_max`` fold into braces.
+    Variable names in one code span; ``X_min``, ``X_mean`` and ``X_max`` fold into braces.
 
     A list longer than ``_SHOWN_VARIABLES`` names its first ones and the number
     of all, so one dataset (the 37 of ``pl.imgw.meteo_synop_daily``) does not
@@ -346,8 +368,8 @@ def _variables(variables: Iterable[str], lang: Lang) -> str:
     ):
         return _code(f"{{{','.join(bases)}}}_{{{','.join(_STATISTICS)}}}")
     if len(names) <= _SHOWN_VARIABLES:
-        return ", ".join(_code(name) for name in names)
-    shown = ", ".join(_code(name) for name in names[:_FIRST_VARIABLES])
+        return _code(", ".join(names))
+    shown = _code(", ".join(names[:_FIRST_VARIABLES]))
     more = message("agent_guide.more_variables", lang=lang, count=len(names))
     return f"{shown}, {more}"
 
@@ -402,7 +424,7 @@ def _notes(schema: Mapping[str, Any], lang: Lang) -> str:
     """Bracketed marks of a command: options writing a file, a check, no REST route."""
     meta = schema["x-obserwator"]
     marks = [
-        f"{_code(name)}: {message(_MARKS[prop['x-obserwator-writes']], lang=lang)}"
+        f"{name}: {message(_MARKS[prop['x-obserwator-writes']], lang=lang)}"
         for name, prop in schema["properties"].items()
         if "x-obserwator-writes" in prop
     ]
@@ -502,7 +524,6 @@ def _flags(schemas: Iterable[Mapping[str, Any]], lang: Lang) -> str:
             toggles=toggles,
             switches=_listed(kinds["switch"]),
         ),
-        message("agent_guide.flags_output", lang=lang),
         message(
             "agent_guide.flags_environment",
             lang=lang,

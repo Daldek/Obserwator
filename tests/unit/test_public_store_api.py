@@ -100,6 +100,9 @@ SPEC_FUNCTIONS = (
     "import_files",
     "check_import",
     "parse_series_export",
+    # ADR-034: Gdańskie Wody's station list and month files.
+    "parse_gdanskiewody_stations",
+    "parse_gdanskiewody_month",
 )
 SPEC_TYPES = (
     "PathArg",

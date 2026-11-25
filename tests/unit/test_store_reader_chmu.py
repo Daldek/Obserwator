@@ -82,7 +82,11 @@ def test_store_info_lists_the_providers_of_the_registry(tmp_path):
     for path in (root, tmp_path / "brak"):
         info = store_info(path)
         assert info.providers == providers()
-        assert [provider.id for provider in info.providers] == ["IMGW", "CHMU"]
+        assert [provider.id for provider in info.providers] == [
+            "IMGW",
+            "CHMU",
+            "GDANSKIEWODY",
+        ]
 
 
 def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path):
@@ -127,7 +131,7 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     ]
     with pytest.raises(ObserwatorValidationError) as error:
         iter_store(root, provider="SHMU")
-    assert error.value.details["allowed"] == ["IMGW", "CHMU"]
+    assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY"]
 
 
 def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path):

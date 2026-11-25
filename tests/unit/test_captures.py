@@ -65,8 +65,12 @@ PRIVATE_BY_DEFAULT = {
     "pl.imgw.hydro_operational",
     "pl.imgw.meteo_operational",
     "pl.imgw.meteo_states_current",
+    "pl.gdanskiewody.measurements",
 }
-"""hydro.imgw.pl and its backend, whose regulamin allows private use only (D5)."""
+"""
+hydro.imgw.pl and its backend, whose regulamin allows private use only (D5), and
+Gdańskie Wody, whose terms are not known yet (ADR-034).
+"""
 
 
 def at(hour, minute=0, second=0, *, day=DAY):

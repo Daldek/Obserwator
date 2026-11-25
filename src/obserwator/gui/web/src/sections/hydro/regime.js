@@ -6,7 +6,7 @@
 // „Q | H” switch where the station has both) over the whole record or the years the person
 // chooses. Every number is Hydrolog's; the page only places the dates on the circle.
 
-import { Chart, fmt, html, t, tn, useMemo } from "../../lib.js";
+import { BadgeLine, Chart, fmt, html, t, tn, useMemo } from "../../lib.js";
 import { periodName } from "../../words.js";
 import { Figures, Notices, Section, Seg, Table, useAnalysis } from "../common.js";
 import { DOY_TICKS, HYDRO_MONTHS, Option, ROMAN, UNITS, VariableSeg, Years, date, digitsOf, doyLabel, fmtV, recordYears, useOptions, withUnit } from "./util.js";
@@ -141,6 +141,7 @@ function Circle({ result, name }) {
   const ticks = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334].map((day, at) => ({ angle: (2 * Math.PI * day) / 365, label: ROMAN[at] }));
   const mean = position((2 * Math.PI * (result.mean_day - 0.5)) / 365.25, result.concentration * R);
   return html`<figure class="hy-circle">
+    <${BadgeLine} />
     <svg viewBox="0 0 200 200" role="img" aria-label=${t("hydro.regime.circle_label", { name })}>
       <circle class="hy-circle-ring" cx=${c} cy=${c} r=${R} />
       <circle class="hy-circle-ring inner" cx=${c} cy=${c} r=${R / 2} />

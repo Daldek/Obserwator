@@ -200,6 +200,8 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
     for owner in providers():
         assert f"`{owner.key_prefix}.*`" in guide
         assert owner.station_code_pattern in guide
+        if owner.credential is not None:
+            assert f"`{owner.credential.variable}`" in guide
 
 
 @pytest.mark.parametrize("lang", ["pl", "en"])

@@ -33,6 +33,22 @@ MESSAGES = {
         "Wyróżniony dostawca {provider} jest wyłączony (off) w "
         "[obserwator.instance.providers]; wyróżniony dostawca jest visible albo hidden",
     ),
+    # A provider whose terms are unknown and whose lines are drafts (ADR-034): no
+    # server may serve it, so a state other than "off" refuses the start.
+    "terms_unknown": Text(
+        "{provider} cannot be {state} in [obserwator.instance.providers]: its terms of "
+        "use are not known yet and its attribution lines are drafts, so no server "
+        "serves its data",
+        "{provider} nie może być {state} w [obserwator.instance.providers]: jego "
+        "warunki korzystania nie są jeszcze znane, a linie atrybucji są robocze, więc "
+        "żaden serwer nie udostępnia jego danych",
+    ),
+    "terms_unknown_hint": Text(
+        'Set {provider} = "off" or leave it out of [obserwator.instance.providers]; '
+        "the CLI and the library read its data",
+        'Ustaw {provider} = "off" albo pomiń go w [obserwator.instance.providers]; '
+        "jego dane czytają CLI i biblioteka",
+    ),
     "nothing_served": Text(
         "Every provider is off and pmaxtp is off: the instance would serve nothing",
         "Każdy dostawca jest wyłączony i pmaxtp jest wyłączone: instancja nie "

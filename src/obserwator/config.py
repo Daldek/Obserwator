@@ -243,6 +243,13 @@ class Settings(BaseSettings):
     # `analyses build` stores its results; the GUI runs it for a person's choices.
     hydrolog_command: str | None = None
 
+    # The pause between two requests of Gdańskie Wody's API, in seconds
+    # (OBSERWATOR_GDANSKIE_WODY_REQUEST_INTERVAL, [obserwator]
+    # gdanskie_wody_request_interval; Nogat plan 2026-11-20, P10, ADR-034): its requests
+    # are sequential, at most one a second by default; a deployment may slow them down,
+    # never speed them up.
+    gdanskie_wody_request_interval: float = Field(default=1.0, ge=1.0)
+
     @classmethod
     def settings_customise_sources(
         cls,

@@ -58,7 +58,7 @@ CHMU_KEYS = [
 
 
 def test_providers_follow_the_registry_table():
-    imgw, chmu = providers()
+    imgw, chmu, gdanskiewody = providers()
     assert (imgw.id, imgw.short_name, imgw.country, imgw.key_prefix) == (
         "IMGW",
         "IMGW-PIB",
@@ -104,6 +104,14 @@ def test_providers_follow_the_registry_table():
     assert imgw.datasets == tuple(
         item.key for item in datasets() if item.key.startswith("pl.imgw.")
     )
+    # ADR-034: Gdańskie Wody, the first provider that is no national service, last.
+    assert (gdanskiewody.id, gdanskiewody.country, gdanskiewody.key_prefix) == (
+        "GDANSKIEWODY",
+        "PL",
+        "pl.gdanskiewody",
+    )
+    assert gdanskiewody.credential is not None
+    assert gdanskiewody.station_code_pattern == "^GDANSKIEWODY-[1-9][0-9]{0,2}$"
 
 
 def test_license_notice_is_the_attribution_then_the_notice_in_the_language_asked():
@@ -137,7 +145,7 @@ def test_provider_lookup_by_id_or_key_prefix():
         with pytest.raises(ObserwatorValidationError) as error:
             get_provider(unknown)
         assert error.value.details["option"] == "provider"
-        assert error.value.details["allowed"] == ["IMGW", "CHMU"]
+        assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY"]
 
 
 def test_registry_invariants_across_providers():
@@ -205,8 +213,11 @@ def test_registry_invariants_across_providers():
             "Arch",
         },
         "CHMU": {"hydrology", "meteorology"},
+        "GDANSKIEWODY": {"rest"},
     }
-    imgw, chmu = (re.compile(p.station_code_pattern) for p in providers())
+    imgw, chmu = (
+        re.compile(get_provider(p).station_code_pattern) for p in ("IMGW", "CHMU")
+    )
     union = re.compile(STATION_CODE_PATTERN)
     for code in ("149190310", A, B, M, "0-20000-0-11406", "0-203-0-42106052001"):
         assert bool(imgw.fullmatch(code)) != bool(chmu.fullmatch(code)), code
@@ -480,6 +491,10 @@ def _every_file() -> list[ArchiveFile]:
                 files.append(daily)
         elif item.server_dir is None:
             continue
+        elif item.archive_scope == "station_element_month":
+            # Named by the station list a raw root holds (ADR-034), never by
+            # archive_files: test_provider_gdanskiewody maps them back.
+            continue
         elif item.archive_scope == CAPTURE_SCOPE:
             # A sealed capture of a UTC day, also the first day of a year and a leap day.
             days = (date(2026, 11, 22), date(2027, 1, 1), date(2028, 2, 29))
@@ -513,7 +528,9 @@ def _every_file() -> list[ArchiveFile]:
 def test_reverse_mapping_recreates_every_file():
     files = _every_file()
     assert {file.dataset for file in files} == {
-        item.key for item in datasets() if item.server_dir is not None
+        item.key
+        for item in datasets()
+        if item.server_dir is not None and item.archive_scope != "station_element_month"
     }
     for file in files:
         assert _archive_from_path(file.dataset, file.server_path) == file

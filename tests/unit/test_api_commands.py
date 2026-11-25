@@ -24,7 +24,6 @@ from obserwator.commands import (
     run_command,
 )
 from obserwator.config import Settings, settings, store_root
-from obserwator.datasets import datasets as registry
 from obserwator.exceptions import ERROR_CODES
 from obserwator.messages import localize
 from obserwator.stations import HYDRO_MAP_API_URL
@@ -43,6 +42,7 @@ from tests.contract.support import (
     V3,
     FakeImgw,
     archive_bytes,
+    as_served,
     input_schema,
     input_schemas,
     schema_errors,
@@ -472,12 +472,11 @@ def test_api_get_route_answers_the_run_command_envelope(
         options["root"] = root
     if input_schema(command)["x-obserwator"]["result"] == "list":
         options.setdefault("limit", 1000)
-
     response = client.get(path_of(command), params=query)
 
     assert response.status_code == 200, response.text
     expected = run_command(command, options=options).to_json(root=root, server=True)
-    assert response.json() == expected
+    assert response.json() == as_served(command, expected, query)
     assert str(served.parent) not in response.text
     assert str(Path.cwd()) not in response.text
 
@@ -639,11 +638,17 @@ def test_api_sync_rejects_a_foreign_or_invalid_plan(
 # --------------------------------------------------------------------------
 
 
+def served_datasets():
+    """How many datasets the servers list: those of the providers they serve."""
+    whole = run_command("datasets list", options={}).to_json()
+    return int(as_served("datasets list", whole)["page"]["total"])
+
+
 def test_api_list_limit_defaults_to_and_is_capped_by_the_server_maximum(
     client, monkeypatch
 ):
     monkeypatch.setattr(settings, "api_max_limit", 3)
-    total = len(registry())
+    total = served_datasets()
 
     default = client.get("/api/v1/datasets/list").json()
     last = client.get(
@@ -664,7 +669,7 @@ def test_api_list_limit_defaults_to_and_is_capped_by_the_server_maximum(
 
 
 def test_api_list_next_cursor_answers_the_next_page(client):
-    total = len(registry())
+    total = served_datasets()
     limit = (total + 1) // 2
     first = client.get("/api/v1/datasets/list", params={"limit": limit}).json()
     second = client.get(

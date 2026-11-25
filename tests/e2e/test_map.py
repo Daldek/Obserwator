@@ -249,29 +249,31 @@ def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, c
         wait_listed(page, codes(chosen))
         wait_drawn(page, ["stations"], codes(chosen, located=True))
 
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="ČHMÚ"
-    ).click()
-    check([s for s in catalog if s["provider"] == "CHMU"])
+    # national services alone: no class switch (P12); a provider is chosen by its chips
+    expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
         "radio", name="Meteorologiczne"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMU" and s["kind"] == "meteo"])
-    # a dataset's chip under another provider is not offered; back to every provider
+    check([s for s in catalog if s["kind"] == "meteo"])
+    chip = page.get_by_role("button", name="Dane meteorologiczne dobowe (ČHMÚ)")
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "true")
+    check([s for s in catalog if "cz.chmu.meteo_daily" in s["datasets"]])
+    # a dataset's chip of another kind is not offered
     expect(
-        page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
+        page.get_by_role("button", name="Dane hydrologiczne dobowe (ČHMÚ)")
     ).to_have_count(0)
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="Wszyscy"
+    page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
+        "radio", name="Wszystkie"
     ).click()
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "false")
+    check(catalog)
     chip = page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
     chip.click()
     expect(chip).to_have_attribute("aria-pressed", "true")
     check([s for s in catalog if "pl.imgw.meteo_precip_daily" in s["datasets"]])
     chip.click()
-    page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
-        "radio", name="Wszystkie"
-    ).click()
     check(catalog)
     page.get_by_role("checkbox", name="tylko czynne").check()
     inactive = codes([s for s in catalog if not s["active"]])

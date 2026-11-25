@@ -167,8 +167,14 @@ def _search_options(
 
 
 def _owners(provider: str | None) -> tuple[ProviderDescriptor, ...]:
-    """Providers of a search: every provider for None, else the named one."""
-    return providers() if provider is None else (get_provider(provider),)
+    """
+    Providers of a search: the named one, else every provider served by default.
+
+    A provider off by default (Gdańskie Wody, ADR-034) is asked only where named.
+    """
+    if provider is not None:
+        return (get_provider(provider),)
+    return tuple(item for item in providers() if item.adapter.served_by_default)
 
 
 def _inside(entry: StationListEntry, area: Area) -> bool:

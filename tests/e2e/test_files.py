@@ -7,8 +7,8 @@ fixture root (`obserwator.run_command`), makes that very file; each stored analy
 downloads under the name the server gives it (Nogat DEV-19.21); the hand-off of the daily
 series to Hydrolog, saved or copied, is a `nogat-handoff/1` valid against Nogat's schema
 that holds the series' days with values, saved as `obserwator_handoff_<subject>.json`; and
-„Pobierz listę stacji” of the panel without a station gives the stations of the list's
-provider and kind as `export_stations` makes them.
+„Pobierz listę stacji” of the panel without a station gives the stations of the list's kind
+and of the one provider its chips leave as `export_stations` makes them.
 """
 
 from __future__ import annotations
@@ -43,11 +43,13 @@ WAIT = 20_000
 HANDOFF_SCHEMA = (
     Path(__file__).resolve().parents[2] / "schemas" / "nogat" / "handoff-1.schema.json"
 )
-RADIOS = {
-    "pl": {"CHMU": "ČHMÚ", "meteo": "Meteorologiczne"},
-    "en": {"CHMU": "ČHMÚ", "meteo": "Meteorological"},
+RADIOS = {"pl": {"meteo": "Meteorologiczne"}, "en": {"meteo": "Meteorological"}}
+"""The labels of the list's kind chosen in a test."""
+CHIPS = {
+    "pl": {"CHMU": "Dane meteorologiczne dobowe (ČHMÚ)"},
+    "en": {"CHMU": "Daily meteorological data (ČHMÚ)"},
 }
-"""The labels of the list's provider and kind filters chosen in a test."""
+"""The chips that leave one provider, chosen in a test: its meteorological series."""
 
 
 def files_card(open_page: Any, code: str) -> Any:
@@ -238,13 +240,14 @@ def test_the_station_list_files_are_the_export_of_the_list_selection(
         if phone:
             page.locator(toggle.format("left")).click()
         stations = page.locator("#panel-left")
-        for value in (provider, kind):
-            if value:
-                choice = stations.get_by_role(
-                    "radio", name=RADIOS[lang][value], exact=True
-                )
-                choice.click()
-                expect(choice).to_have_attribute("aria-checked", "true")
+        if kind:
+            choice = stations.get_by_role("radio", name=RADIOS[lang][kind], exact=True)
+            choice.click()
+            expect(choice).to_have_attribute("aria-checked", "true")
+        if provider:
+            chip = stations.get_by_role("button", name=CHIPS[lang][provider])
+            chip.click()
+            expect(chip).to_have_attribute("aria-pressed", "true")
         if phone:
             page.keyboard.press("Escape")
     if phone:

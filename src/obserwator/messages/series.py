@@ -115,6 +115,10 @@ MESSAGES = {
         "No archives of the dataset {dataset} in the store",
         "Brak archiwów zbioru {dataset} w magazynie",
     ),
+    "no_input_files": Text(
+        "The raw root holds no file of {inputs} that {key} is built from",
+        "Katalog surowy nie zawiera plików {inputs}, z których powstaje {key}",
+    ),
     "series_inputs_unchanged": Text(
         "The series {slug} has unchanged inputs",
         "Szereg {slug} bez zmian wejść",

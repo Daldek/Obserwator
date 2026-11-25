@@ -1,12 +1,15 @@
-// Words of the store's keys in the page's language, shared by the views: providers, station
-// kinds (and what a groundwater object is), datasets, variables, flags and IMGW-PIB's
-// half-years. Every word is an entry of the catalog (`gui.words.*`); providers' short names
-// stay as they publish them. Call these at render time: the texts change with the language.
-// The providers and their series datasets are the session's (api/session `providers` and
-// `datasets`, in the order of the registry), which main.js hands over with `setRegistry`
-// once it answers: a provider's names, the class of its source and the origins of its
-// lines; a dataset's provider, kind, time step, tier and, where the catalog has no words of
-// its own (a provider fed by files), its title and short label in the page's language.
+// Words of the store's keys in the page's language, shared by the views: providers, the
+// classes of their sources, countries, station kinds (and what a groundwater object is),
+// datasets, variables, flags and IMGW-PIB's half-years. Every word is an entry of the
+// catalog (`gui.words.*`); providers' short names stay as they publish them. Call these at
+// render time: the texts change with the language. The providers and their series datasets
+// are the session's (api/session `providers` and `datasets`, in the order of the registry),
+// which main.js hands over with `setRegistry` once it answers: a provider's names, its
+// country, the class of its source with P8's notice of another source, and the origins of
+// its lines; a dataset's provider, kind, time step, tier and, where the catalog has no
+// words of its own (a provider fed by files), its title and short label in the page's
+// language. The page groups the providers by the class of their source, never by their
+// ids (hydromet P1, P11, P12: `classGroups`).
 
 import { has, t } from "./i18n.js";
 
@@ -27,10 +30,12 @@ export function setRegistry(session) {
  * A provider as the session describes it.
  *
  * @param {string} id e.g. "IMGW"
- * @returns {{short_name: string, name: string, key_prefix: string, origin: string, border:
- *   string, source_class: string}|null} its short and full name, the prefix of its dataset
- *   keys, the origin of its lines, the origin of the border its stations were checked
- *   against and the class of its source; null while the session does not name it
+ * @returns {{short_name: string, name: string, country: string, key_prefix: string, origin:
+ *   string, border: string, source_class: string, source_notice: string|null}|null} its
+ *   short and full name, its country (ISO 3166-1 alpha-2), the prefix of its dataset keys,
+ *   the origin of its lines, the origin of the border its stations were checked against,
+ *   the class of its source and, of a source of the class "other", P8's notice in the
+ *   page's language (null for a national service); null while the session does not name it
  */
 export function providerOf(id) {
   return Object.hasOwn(registry.providers, id) ? registry.providers[id] : null;
@@ -68,6 +73,63 @@ export function providerFullName(id) {
 export function sourceClass(id) {
   const provider = providerOf(id);
   return provider ? provider.source_class : null;
+}
+
+/** The classes of the providers' sources (hydromet P11) in the page's order: national services, then other sources. */
+export const SOURCE_CLASSES = Object.freeze(["nmhs", "other"]);
+
+/**
+ * The classes the stations' sources hold, in their order: the class switch of „Stacje”
+ * and the legend's outlines name them only where both are held, since one class alone
+ * separates nothing.
+ *
+ * @param {object[]} stations stations of api/stations
+ * @returns {string[]} classes, in their order
+ */
+export function shownClasses(stations) {
+  const held = new Set(stations.map((station) => sourceClass(station.provider)));
+  return SOURCE_CLASSES.filter((cls) => held.has(cls));
+}
+
+/** A class of sources as a heading: "Hydrological and meteorological services" or "Other sources". */
+export function sourceClassName(cls) {
+  return word(`words.source_class.${cls}`, cls || "–");
+}
+
+/** A country by its ISO 3166-1 alpha-2 code ("Poland" for "PL"): the catalog's word, else the code. */
+export function countryName(code) {
+  return code ? word(`words.country.${String(code).toLowerCase()}`, code) : "–";
+}
+
+/** Providers' short names are sorted as Polish, whatever the page's language. */
+const nameOrder = new Intl.Collator("pl", { sensitivity: "base", numeric: true });
+
+/**
+ * Providers grouped by the class of their source (hydromet P12), as the station list's
+ * dataset chips and the panel without a station show them: one group per class holding a
+ * provider, the featured provider's class first, else national services before other
+ * sources; within a class the featured provider first (ADR-025, I6), then by country and
+ * short name. A provider the session does not name has no class: its group comes last.
+ *
+ * @param {string[]} providers ids
+ * @param {string|null} [featured] the instance's featured provider
+ * @returns {{cls: string|null, providers: string[]}[]} the groups in order
+ */
+export function classGroups(providers, featured = null) {
+  const first = featured ? sourceClass(featured) : null;
+  const rank = (cls) => (cls !== null && cls === first ? -1 : SOURCE_CLASSES.includes(cls) ? SOURCE_CLASSES.indexOf(cls) : SOURCE_CLASSES.length);
+  const country = (id) => (providerOf(id) || {}).country || "";
+  const sorted = [...providers].sort(
+    (a, b) => Number(b === featured) - Number(a === featured) || country(a).localeCompare(country(b)) || nameOrder.compare(providerName(a), providerName(b)),
+  );
+  const groups = [];
+  for (const id of sorted) {
+    const cls = sourceClass(id);
+    const group = groups.find((item) => item.cls === cls);
+    if (group) group.providers.push(id);
+    else groups.push({ cls, providers: [id] });
+  }
+  return groups.sort((a, b) => rank(a.cls) - rank(b.cls));
 }
 
 /** The station kinds in their order (`obserwator.datasets.KINDS`). */

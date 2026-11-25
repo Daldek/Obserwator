@@ -13,7 +13,10 @@
 //   one, in the colours hydro.imgw.pl gives a station of each kind in its legend, whoever
 //   provides it, and the GUI's own brown diamond for ČHMÚ's groundwater objects (bores and
 //   springs, ADR-032), which the legend names only where a catalog holds one (`kinds`); a
-//   hollow centre when the station is only in the catalog, inactive ones faded;
+//   hollow centre when the station is only in the catalog, inactive ones faded; the
+//   outline tells the class of the station's source (hydromet P13): solid for a national
+//   meteorological and hydrological service, dashed for any other, which the legend names
+//   only where a catalog holds a station of another source (`classes`);
 // - „Pomiary bieżące”: only IMGW-PIB's current measurements (api/current through
 //   current.js), hydrological stations filled by their water state and meteorological ones
 //   by their precipitation, as hydro.imgw.pl fills them;
@@ -34,10 +37,11 @@
 // (`startBox`: its featured provider's stations or its area) unless the address names a
 // station or a PMAXTP point or the map has moved first; it draws the outline of the area
 // (api/area) over the background and under the stations, and in `clip` stays within the
-// area's bounds; the featured provider's stations lie on top and, while „Pokaż inne
-// źródła” is off, the other providers' are drawn smaller and at the instance's
-// `others_opacity` (`fade`), and the legend names the featured provider's stations apart
-// from „Pozostałe źródła”.
+// area's bounds; the featured provider's stations lie on top and, while „Pokaż
+// pozostałych dostawców” is off, the class switch on „Wszystkie” and no dataset chip
+// chosen (instance.js `fadesOthers`), the other providers' are drawn smaller and at the
+// instance's `others_opacity` (`fade`), and the legend names the featured provider's
+// stations apart from „Pozostałe źródła”.
 
 import { get } from "./api.js";
 import { REFRESH_MS, clock, measuredAt } from "./current.js";
@@ -60,7 +64,7 @@ import {
 } from "./symbols.js";
 import { isPhone } from "./ui/sheet.js";
 import { useDark } from "./ui/theme.js";
-import { groundwaterKindName, kindName, providerName } from "./words.js";
+import { SOURCE_CLASSES, groundwaterKindName, kindName, providerName, sourceClass } from "./words.js";
 
 // The vendored libraries' versions the page names (<meta name="obserwator-vendor">, from
 // vendor/vendor.json, gui/_page.py): MapLibre's module and the glyphs are asked for at the
@@ -99,8 +103,9 @@ const ICON_RATIO = 4;
 /** hydro.imgw.pl's 16 px from zoom 7 (where it opens), smaller over the whole of Poland and Czechia. */
 const ICON_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 0.6, 6, 0.8, 7, 1];
 const SELECTED_SIZE = ["interpolate", ["linear"], ["zoom"], 4, 1.5, 7, 2];
-/** A station of a provider beside the featured one while „Pokaż inne źródła” is off (I6):
- * ICON_SIZE times FADED_SIZE, its opacity times the instance's `others_opacity`. */
+/** A station of a provider beside the featured one while the list asks for no other
+ * provider (instance.js `fadesOthers`, I6): ICON_SIZE times FADED_SIZE, its opacity times
+ * the instance's `others_opacity`. */
 const FADED = ["==", ["get", "dim"], 1];
 const FADED_SIZE = 0.7;
 const SHRINK = ["case", FADED, FADED_SIZE, 1];
@@ -290,9 +295,12 @@ function paintBackground(map, colors) {
 
 // --- the symbols (symbols.js) ----------------------------------------------------------------
 
-/** The image of a station in the view „Stacje”: the shape of its kind and whether it has series. */
-function stationIcon(kind, data) {
-  return `st-${kindShape(kind)}-${data ? 1 : 0}`;
+/**
+ * The image of a station in the view „Stacje”: the shape of its kind, whether it has series
+ * and the class of its source, whose outline it draws (hydromet P13), never its provider.
+ */
+function stationIcon(kind, data, source) {
+  return `st-${kindShape(kind)}-${data ? 1 : 0}-${source === "other" ? "other" : "nmhs"}`;
 }
 
 /** Every image the map draws: its name and look. */
@@ -300,7 +308,9 @@ function looks() {
   const out = [];
   for (const kind of Object.keys(SHAPES)) {
     for (const data of [true, false]) {
-      out.push({ name: stationIcon(kind, data), shape: kind, color: KIND_COLORS[kind], hollow: !data });
+      for (const source of SOURCE_CLASSES) {
+        out.push({ name: stationIcon(kind, data, source), shape: kind, color: KIND_COLORS[kind], hollow: !data, source });
+      }
     }
   }
   for (const state of HYDRO_STATES) {
@@ -358,7 +368,7 @@ function stationFeatures(stations, featured, fade) {
     features.push(
       point(station.lon, station.lat, {
         code: station.code,
-        icon: stationIcon(station.kind, data),
+        icon: stationIcon(station.kind, data, sourceClass(station.provider)),
         active: station.active ? 1 : 0,
         rank: (first ? 4 : 0) + (data ? 2 : 0) + (station.active ? 1 : 0),
         dim: fade && featured !== null && !first ? 1 : 0,
@@ -459,7 +469,7 @@ function repaintLayers(map, colors) {
 /**
  * The map.
  *
- * @param {{stations: object[], byCode: Map<string, object>, kinds: string[],
+ * @param {{stations: object[], byCode: Map<string, object>, kinds: string[], classes: string[],
  *   selected: string|null, fly: {code: string, n: number}|null,
  *   view: "stations"|"current"|"pmaxtp",
  *   current: {doc: object|null, error: Error|null, loading: boolean},
@@ -469,9 +479,11 @@ function repaintLayers(map, colors) {
  *   startBox: number[]|null, onSelect: (code: string) => void,
  *   onPick: (point: {lat: number, lon: number}) => void}} props
  *   the stations drawn in „Stacje” (already filtered), all stations by code (the tooltip),
- *   the kinds the legend names (words.js `shownKinds`), the selected one, a request to fly
- *   to a station, the view, the current measurements (current.js), the point picked for
- *   PMAXTP and a request to fly to it, whether the packaged borders are the background,
+ *   the kinds the legend names (words.js `shownKinds`), the classes of the stations' sources
+ *   (words.js `shownClasses`: the legend explains the outlines where a station of another
+ *   source is held), the selected one, a request to fly to a station, the view, the current
+ *   measurements (current.js), the point picked for PMAXTP and a request to fly to it,
+ *   whether the packaged borders are the background,
  *   where the basemap's credit goes while the basemap is drawn, api/session (null until it
  *   answers: its `basemap`), what the deployment shows (instance.js `scopeOf`, null until
  *   the session answers: the instance's featured provider and area), whether the other
@@ -479,7 +491,7 @@ function repaintLayers(map, colors) {
  *   (null: none, or the address names a place), the selection's and the pick's handlers
  * @returns {object} the map with its legend and its zoom buttons
  */
-export function StationMap({ stations, byCode, kinds, selected, fly, view, current, pick, pickFly, onBorders, onCredit, session, scope, fade, startBox, onSelect, onPick }) {
+export function StationMap({ stations, byCode, kinds, classes, selected, fly, view, current, pick, pickFly, onBorders, onCredit, session, scope, fade, startBox, onSelect, onPick }) {
   const box = useRef(null);
   const mapRef = useRef(null);
   const handlers = useRef({});
@@ -772,7 +784,7 @@ export function StationMap({ stations, byCode, kinds, selected, fly, view, curre
           </div>`
         : null}
       ${tipBody ? html`<${Tip} x=${tip.x} y=${tip.y} stage=${box.current}>${tipBody}</${Tip}>` : null}
-      <${Legend} view=${view} background=${background} current=${current} scope=${scope} fade=${fade} area=${area !== null} kinds=${kinds} />
+      <${Legend} view=${view} background=${background} current=${current} scope=${scope} fade=${fade} area=${area !== null} kinds=${kinds} classes=${classes} />
       ${ready ? html`<${ZoomButtons} map=${mapRef.current} />` : null}
     </div>
   </div>`;
@@ -849,43 +861,62 @@ function MeteoTip({ row, station }) {
   `;
 }
 
-/** A station's symbol of size `size` for each kind named, each with its name. */
-function KindItems({ kinds, opacity = null, size = 14 }) {
+/**
+ * A station's symbol of size `size` for each kind named, each with its name; `source` the
+ * class of the sources whose outline they draw (null: a service's solid outline).
+ */
+function KindItems({ kinds, source = null, opacity = null, size = 14 }) {
   return kinds.map(
-    (kind) => html`<li key=${kind}><${SymbolIcon} shape=${kind} color=${KIND_COLORS[kind]} opacity=${opacity} size=${size} className="st-sym" />${kindName(kind)}</li>`,
+    (kind) => html`<li key=${kind}><${SymbolIcon} shape=${kind} color=${KIND_COLORS[kind]} source=${source} opacity=${opacity} size=${size} className="st-sym" />${kindName(kind)}</li>`,
   );
+}
+
+/** The outline of each class of sources (hydromet P13): a service's solid, another source's dashed. */
+function ClassItems() {
+  return html`<ul class="legend-list legend-classes">
+    <li><${StationSymbol} kind="hydro" data=${true} source="nmhs" />${t("stations.legend.source_nmhs")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} source="other" />${t("stations.legend.source_other")}</li>
+  </ul>`;
 }
 
 /**
  * The symbols of „Stacje”: one per kind of station named (groundwater only where a catalog
  * holds a groundwater object, with the note that its diamond is the GUI's own), whoever
- * provides it. While the other providers' stations are faded beside the featured one
- * (`fade`), the featured provider's stations are one group and, while another provider is
- * shown, „Pozostałe źródła” another, drawn as the map draws them (smaller, at the
- * instance's `others_opacity`); no word of a view the instance does not serve.
+ * provides it, and where a catalog holds a station of another source the outline of each
+ * class of sources (hydromet P13), every symbol drawn with the outline of the one class
+ * held, else a service's. While the other providers' stations are faded beside the
+ * featured one (`fade`), the featured provider's stations are one group and, while another
+ * provider is shown, „Pozostałe źródła” another, drawn as the map draws them (smaller, at
+ * the instance's `others_opacity`, dashed where every one of them is another source); no
+ * word of a view the instance does not serve.
  *
- * @param {{scope: object|null, fade: boolean, kinds: string[]}} props what the deployment
- *   shows (null until the session answers), whether the other providers' stations are
- *   faded and the kinds named (words.js `shownKinds`)
+ * @param {{scope: object|null, fade: boolean, kinds: string[], classes: string[]}} props
+ *   what the deployment shows (null until the session answers), whether the other
+ *   providers' stations are faded, the kinds named (words.js `shownKinds`) and the classes
+ *   of the stations' sources (words.js `shownClasses`)
  */
-function StationsLegend({ scope, fade, kinds }) {
+function StationsLegend({ scope, fade, kinds, classes = [] }) {
   const featured = fade && scope ? scope.featured : null;
-  const other = featured ? scope.providers.find((id) => id !== featured && !scope.hidden.includes(id)) : null;
-  const marks = html`<li><${StationSymbol} kind="hydro" data=${false} />${t("stations.catalog_only")}</li>
-    <li><${StationSymbol} kind="hydro" data=${true} active=${false} />${t("stations.legend.inactive")}</li>
-    <li><${StationSymbol} kind="hydro" data=${true} size=${24} />${t("stations.legend.selected")}</li>`;
+  const rest = featured ? scope.providers.filter((id) => id !== featured && !scope.hidden.includes(id)) : [];
+  const only = classes.length === 1 ? classes[0] : null;
+  const marks = html`<li><${StationSymbol} kind="hydro" data=${false} source=${only} />${t("stations.catalog_only")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} active=${false} source=${only} />${t("stations.legend.inactive")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} source=${only} size=${24} />${t("stations.legend.selected")}</li>`;
+  const outlines = classes.includes("other") ? html`<${ClassItems} />` : null;
   const note = html`<p class="legend-note">${t(!scope || scope.views.includes("current") ? "stations.legend.stations_note" : "stations.legend.symbols_note")}</p>
     ${kinds.includes("groundwater") ? html`<p class="legend-note">${t("stations.legend.groundwater_note")}</p>` : null}`;
   if (!featured) {
-    return html`<ul class="legend-list two"><${KindItems} kinds=${kinds} />${marks}</ul>${note}`;
+    return html`<ul class="legend-list two"><${KindItems} kinds=${kinds} source=${only} />${marks}</ul>${outlines}${note}`;
   }
+  const restSource = rest.length && rest.every((id) => sourceClass(id) === "other") ? "other" : null;
   return html`<p class="legend-title">${t("stations.legend.featured", { provider: providerName(featured) })}</p>
-    <ul class="legend-list two"><${KindItems} kinds=${kinds} /></ul>
-    ${other
+    <ul class="legend-list two"><${KindItems} kinds=${kinds} source=${sourceClass(featured)} /></ul>
+    ${rest.length
       ? html`<p class="legend-title">${t("stations.legend.others")}</p>
-          <ul class="legend-list two"><${KindItems} kinds=${kinds} opacity=${othersOpacity(scope)} size=${Number((14 * FADED_SIZE).toFixed(1))} /></ul>`
+          <ul class="legend-list two"><${KindItems} kinds=${kinds} source=${restSource} opacity=${othersOpacity(scope)} size=${Number((14 * FADED_SIZE).toFixed(1))} /></ul>`
       : null}
     <ul class="legend-list two legend-marks">${marks}</ul>
+    ${outlines}
     ${note}`;
 }
 
@@ -945,14 +976,14 @@ function PmaxtpLegend() {
     <p class="legend-note">${t("stations.legend.pmaxtp_note", { bounds: boundsLabel() })}</p>`;
 }
 
-function Legend({ view, background, current, scope, fade, area, kinds }) {
+function Legend({ view, background, current, scope, fade, area, kinds, classes }) {
   // On a phone the legend starts folded: the map is small
   const [open, setOpen] = useState(() => !isPhone());
   return html`<div class=${`map-legend${open ? "" : " closed"}`}>
     <button type="button" class="legend-toggle" aria-expanded=${String(open)} onClick=${() => setOpen(!open)}>${t("stations.legend.title")}</button>
     ${open
       ? html`<div class="legend-body">
-          ${view === "current" ? html`<${CurrentLegend} current=${current} />` : view === "pmaxtp" ? html`<${PmaxtpLegend} />` : html`<${StationsLegend} scope=${scope} fade=${fade} kinds=${kinds} />`}
+          ${view === "current" ? html`<${CurrentLegend} current=${current} />` : view === "pmaxtp" ? html`<${PmaxtpLegend} />` : html`<${StationsLegend} scope=${scope} fade=${fade} kinds=${kinds} classes=${classes} />`}
           ${area ? html`<ul class="legend-list legend-more"><li><i class="legend-area"></i>${t("stations.legend.area")}</li></ul>` : null}
           ${background === "borders" ? html`<p class="legend-note">${t("stations.legend.borders")}</p>` : null}
           ${background === "failed" ? html`<p class="legend-note">${t("stations.legend.basemap_failed")}</p>` : null}

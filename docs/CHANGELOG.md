@@ -6,7 +6,7 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P8, P11, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033). `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
+Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
 
 ### Added
 
@@ -61,6 +61,68 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   dataset is labelled „dane operacyjne, niezweryfikowane” in the record and by its series. A
   station without current data answers `gui.errors.no_current_provider` (it replaces
   `no_current_chmu`). The hand-off to Hydrolog stays IMGW-PIB's and ČHMÚ's.
+- **Gdańskie Wody (ADR-034 D1 to D3, D9; the plan's step 5).** The provider `GDANSKIEWODY`
+  (short name „Gdańskie Wody”, Gdańskie Wody Sp. z o.o., `PL`, key prefix `pl.gdanskiewody`,
+  adapter `obserwator.providers.pl.gdanskiewody`, source class `other`): the hourly values of 131
+  stations of the Gdańsk agglomeration (rain gauges, water-level gauges, weather and water-quality
+  stations) from `https://pomiary.gdanskiewody.pl/rest/`, raw data without verification by the
+  provider's word; station codes `GDANSKIEWODY-<no>`. Its key is `OBSERWATOR_GDANSKIE_WODY_API_KEY`
+  or the file of `OBSERWATOR_GDANSKIE_WODY_API_KEY_FILE` (P3), sent as `Authorization: Bearer` and
+  reported `present`/`missing` by `config show`; its requests go one at a time, at least
+  `OBSERWATOR_GDANSKIE_WODY_REQUEST_INTERVAL` seconds apart (`gdanskie_wody_request_interval`,
+  default and minimum 1.0; P10), both in `.env.example`. Six datasets: the station source
+  `pl.gdanskiewody.station_list`, the month files `pl.gdanskiewody.measurements` and the series
+  `pl.gdanskiewody.hydro_hourly`, `meteo_hourly`, `hydro_daily` and `meteo_daily`. Variables: `H_asl`
+  [m] (the level in metres above sea level, never `H`), `Q`, `T`, `P`, `Tair` and `Tmean`,
+  `wind_speed`, `wind_direction` [deg], `pressure` [hPa], `humidity` and `irradiance` [W/m2], with
+  the units of the provider's public tables; the water-quality quantities are kept and read by no
+  series. Its catalog `stations/versions/gdanskiewody_stations` (`store catalog --provider
+  GDANSKIEWODY`) comes from the stored list. The intake note `docs/providers/gdanskiewody.md`
+  answers every row of the plan's intake with its date and evidence; the terms stay unknown.
+- **Month files named by the stored station list (ADR-034 D6).** `pl.gdanskiewody.measurements`
+  keeps one file per station, quantity and calendar month,
+  `rest/measurements/<no>/<symbol>/<YYYY-MM>.json` (`archive_scope` `station_element_month`, tier
+  `operational`, from 2005): the answers of the month's days up to today (UTC) in canonical JSON.
+  `store check|sync --datasets pl.gdanskiewody.measurements --years … [--months …] [--stations …]`
+  (check scope `months`, `ProviderAdapter.month_files`) names the files from the station list the
+  raw root holds: without it `not_found` (`missing_source`), without `--years` `validation_error`,
+  a code the list does not hold one `store sync` action `unverifiable`. A check makes no request:
+  a file is `missing`, `current` once a version was downloaded after its month settled (12:00 UTC
+  of the next month's first day) or `newer`; a month downloaded from then on carries that time as
+  its `Last-Modified`, so equal bytes are `relabeled` and the month is `current`. `datasets
+  files|download` refuse the dataset (`stored_list`), and so does a plain `store sync`
+  (`store_only_dataset`); `command_for_version` of a month file is `store sync --stations <code>
+  --years <year> --months <month>`.
+- **Hours labelled by their start, days of the provider (ADR-034 D4, D5, D8).** The plan's open
+  question 2, answered on 2026-11-25: a label names the UTC hour it starts (its value changed
+  while the hour ran). The hourly series hold every hour as labelled, the hour in progress as a
+  running partial value, one version per calendar month (`series build --start/--end`); the
+  daily series hold the provider's day D (06:00 of D to 05:59 of D+1, UTC): the sum of `P`, the
+  mean of the others, three decimals, `missing` without all 24 hours. Both read the month files
+  (`inputs`), never one series the other, and `ProviderAdapter.series_reads` gives each series
+  the files of its variables only (a hydrological station's rain lies in `meteo_*`).
+- **The error code `no_data` (ADR-034 D7).** The code of Nogat's registry joins `ERROR_CODES`
+  (exit 14, HTTP 404, title „No data” / „Brak danych”; both copies of `contract_schemas.json`).
+  Gdańskie Wody reports its errors in HTTP 200 answers: `-100` is `forbidden`
+  (`invalid_credentials`), `-11` `not_found` (`unknown_station`), `-12` and `-13` `no_data`
+  (`not_measured`), `-2` and `-3` `validation_error` (`bad_request`), any other code
+  `source_unavailable` (`provider_error`).
+- **Public parsers `parse_gdanskiewody_stations` and `parse_gdanskiewody_month`** (`obserwator.parsers`
+  and the package root): the station list as `StationListEntry` rows, and a stored month file
+  (named `rest/measurements/<no>/<symbol>/<YYYY-MM>.json`) as the daily records of the provider's
+  day; a day outside the named month is `data_error`.
+- **The source classes in the GUI (ADR-034 D12; the plan's P11 to P13).** The class switch „Rodzaj
+  źródła” (Wszystkie / Służby / Inne źródła; `NO_FILTERS.class` `all`, `nmhs`, `other`) replaces the
+  provider switch and shows when the stations hold both classes; the dataset chips stand under
+  the class headings „Służby hydrologiczno-meteorologiczne” and „Inne źródła” with each provider
+  headed `<short name> · <country>` (country headings in a class of more than six providers). A
+  symbol's outline tells the class: solid grey for a national service, dashed (5/3, width 2.6)
+  for another source (icons `st-<kind>-<0|1>-<nmhs|other>`), both in the legend whenever another
+  source is held. A station of another source opens with the chip „Inne źródło” and its
+  provider's notice, and every chart and table of its cards carries the chip on screen (not in
+  PNG exports); without a station the panel counts the stations by class. `api/session`'s
+  `providers[id]` gains `country` and `source_notice`. New catalog keys: `stations.list.class*`,
+  `stations.legend.source_*`, `words.source_class.*`, `words.country.*`.
 
 ### Changed
 
@@ -79,6 +141,43 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   area.”, then the providers it searches, now with the providers fed by files), `commands list`
   and `commands guide` (their words moved to the next sentence). The station option's help names
   `<ID>-<code>`.
+- **The author's decision of 2026-11-25: Gdańskie Wody built, nothing downloaded, off (ADR-034 D1,
+  D9, D11).** The provider is off in both servers by default (`ProviderAdapter.served_by_default`
+  False): without `[obserwator.instance]` they apply an undeclared `Instance`
+  (`instance.default_instance()`, `declared` False) that leaves out only such providers, with no
+  strict start check of the section and `instance` null in `config show` and `api/session`; a
+  station search without a provider does not ask it, and REST narrows a call without `provider`
+  and keeps the problems of `store scan` without a provider by `Instance.complete`. While its
+  terms are unknown its lines are drafts (`obserwator.attribution.provisional`), any state but
+  `off` in `[obserwator.instance.providers]` refuses the start (`validation_error`,
+  `details.reason` `terms_unknown`; `config show` reports `invalid_instance`), and its source
+  `pl.gdanskiewody.measurements` is `private` in `[obserwator.capture]`. No history was
+  downloaded: a backfill waits for the range the author names and for the provider's consent.
+- **P8's notice in every product of a provider of the class `other` (ADR-034 D10; ADR-012 and
+  ADR-033 errata).** The notice that the data do not come from a national hydro-meteorological
+  service (`ProviderAdapter.source_notice`; Gdańskie Wody's adds that it publishes them as raw
+  data without verification) is one more attribution line after the provider's own in
+  envelopes, CLI summaries, exports, stored series and catalogs, for the providers fed by files
+  too (`declare_origin(…, notice=)`); before, only the GUI showed a note.
+- **„Pokaż pozostałych dostawców” and fading (ADR-025 and ADR-013 errata of 2026-11-25).** „Pokaż
+  inne źródła” of an operator's instance is „Pokaż pozostałych dostawców” („Show the other
+  providers”) with the same role; a hidden provider also shows while a class is chosen, and the
+  providers beside the featured one are not faded while a dataset is chosen by its chip. ČHMÚ's
+  stations keep a solid outline, as a national service. Without a session the page takes the
+  providers from the stations (no IMGW-PIB and ČHMÚ fallback). Catalog keys renamed:
+  `stations.list.provider*` → `station.none.files_provider*`, `station.none.provider_kinds*` →
+  `station.none.catalog_kinds*` (with `{name}`).
+- **The provider protocol (ADR-029 erratum of 2026-11-25).** `ProviderAdapter` gains
+  `source_class`, `source_notice` and `served_by_default`, the check scope `months` with
+  `month_files` and `settled`, and `held_period`, `series_reads` and `hourly_points`, each with a
+  default that leaves IMGW-PIB and ČHMÚ unchanged. `DatasetDescriptor.inputs` also names the files
+  a daily series' parser reads (ADR-031 erratum), and `archive_scope` gains
+  `station_element_month`.
+- **`AGENTS.md` and `llms.txt`** carry Gdańskie Wody's facts (`*.station_list` among the station
+  sources; `GDANSKIEWODY-<no>` and `pl.*` in the stations, years and months bullets; the provider
+  line names `OBSERWATOR_GDANSKIE_WODY_API_KEY`, off by default in the servers and `stations find`,
+  and its draft lines), shorter in both languages to stay within 16 KiB (no Plan column, the
+  variables in one code span, the CLI-output line merged).
 
 ## [3.2.1] - 2026-11-24
 

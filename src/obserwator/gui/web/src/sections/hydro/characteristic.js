@@ -8,7 +8,7 @@
 // warning and alarm levels (hydro.imgw.pl, current values, pl.imgw.hydro_details) are shown
 // in „Informacje o stacji” and are not used here.
 
-import { Chart, dayNumber, fmt, html, lang, t, tn, unit, useMemo } from "../../lib.js";
+import { BadgeLine, Chart, dayNumber, fmt, html, lang, t, tn, unit, useMemo } from "../../lib.js";
 import { periodName } from "../../words.js";
 import { Figures, Notices, Section, Seg, Table, useAnalysis } from "../common.js";
 import {
@@ -57,7 +57,7 @@ function Matrix({ main, alt, computed, period, variable }) {
     <strong>${fmtV(values[key], variable)}</strong>
     ${other && html`<small class="hy-alt" title=${altTitle}>${fmtV(other[key], variable)}</small>`}
   </td>`;
-  return html`<div class="table-wrap"><table class="tbl hy-matrix">
+  return html`<${BadgeLine} /><div class="table-wrap"><table class="tbl hy-matrix">
     <thead><tr><th scope="col"></th>${["col_max", "col_mean", "col_min"].map((col) => html`<th scope="col">${t(`hydro.characteristic.${col}`)}</th>`)}</tr></thead>
     <tbody>${ROWS.map(([row, ...keys]) => html`<tr><th scope="row">${t(`hydro.characteristic.${row}`)}</th>${keys.map(cell)}</tr>`)}</tbody>
   </table></div>`;

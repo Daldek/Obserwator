@@ -4,7 +4,7 @@
 // field of Hydrolog's result; the page picks, sorts for display, formats and draws (the
 // colour of an SPI bar follows McKee's fixed limits).
 
-import { Chart, dayNumber, fmt, html, lang, t, tn, useEffect, useMemo, useState } from "../../lib.js";
+import { BadgeLine, Chart, dayNumber, fmt, html, lang, t, tn, useEffect, useMemo, useState } from "../../lib.js";
 import { Figures, Notices, Section, Seg, Table } from "../common.js";
 import {
   ClassLegend,
@@ -255,7 +255,7 @@ function RelativeTable({ r, classes }) {
     const index = RELATIVE.indexOf(row.precipitation_class);
     return html`<td class=${classCls("dw", index)} title=${index < 0 ? "" : classes[index]}>${fmt(row.percent_of_normal, 0)}</td>`;
   };
-  return html`<div class="table-wrap"><table class="tbl me-heat">
+  return html`<${BadgeLine} /><div class="table-wrap"><table class="tbl me-heat">
       <thead><tr><th scope="col">${t("meteo.common.year")}</th>${order.map((m) => html`<th scope="col">${ROMAN[m - 1]}</th>`)}<th scope="col">${t("meteo.common.year")}</th></tr></thead>
       <tbody>${shown.map((year) => {
         const index = RELATIVE.indexOf(year.precipitation_class);
