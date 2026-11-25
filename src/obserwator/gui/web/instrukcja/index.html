@@ -908,6 +908,15 @@
   <pre class="cmd cli-line"><code>obserwator analyses export --station 149190310 --format csv --output obserwator_analyses_149190310.csv</code></pre>
   <p>Każde polecenie wypisuje też wiersze dostawcy i jego warunki, a <code>--help</code> opisuje wszystkie opcje.</p>
 
+  <h3 id="csv-excel">Plik CSV w arkuszu Excel</h3>
+  <p>Pliki CSV Obserwatora mają kodowanie UTF-8, przecinek jako separator kolumn i kropkę jako separator dziesiętny. Excel z polskimi ustawieniami otwiera taki plik dwukrotnym kliknięciem źle: polskie litery są przekłamane, a wiersz trafia do jednej kolumny albo liczby stają się tekstem. Wczytaj go więc przez import:</p>
+  <ol>
+    <li>W pustym skoroszycie wybierz „Dane” → „Z tekstu/CSV” i wskaż plik.</li>
+    <li>W polu „Pochodzenie pliku” wybierz „65001: Unicode (UTF-8)”, a w polu „Ogranicznik” „Przecinek”.</li>
+    <li>Gdy liczby z kropką nie są rozpoznane, wybierz „Przekształć dane”, a w edytorze Power Query przy kolumnie liczbowej „Zmień typ” → „Używanie ustawień regionalnych…” z ustawieniami „Angielski (Stany Zjednoczone)”.</li>
+  </ol>
+  <p>LibreOffice Calc pyta o te ustawienia przy otwarciu pliku: zestaw znaków „Unicode (UTF-8)”, separator „Przecinek”, a w „Opcjach innych” język „Angielski (USA)”, aby kropka była separatorem dziesiętnym.</p>
+
   <h3 id="czytanie">Czytanie plików: pandas, R, DuckDB</h3>
   <p>Python z biblioteką pandas: średni przepływ każdego roku z pliku CSV i wiersze dostawcy z metadanych pliku Parquet.</p>
   <pre class="cmd"><code>import json
@@ -1079,6 +1088,7 @@ ORDER BY year;</code></pre>
     <div><dt>SYNOP</dt><dd>Depesza synoptyczna: raport stacji synoptycznej o pogodzie w terminie obserwacji.</dd></div>
     <div><dt>WGS84, UTC</dt><dd>Układ współrzędnych geograficznych map i GPS oraz uniwersalny czas koordynowany (w Polsce zimą UTC+1, latem UTC+2).</dd></div>
     <div><dt>Katalog danych, wersja szeregu</dt><dd>Zbiór danych Obserwatora na serwerze: katalogi stacji, szeregi i wyniki analiz. Każde odświeżenie danych tworzy nową wersję szeregu, a strona pokazuje bieżącą.</dd></div>
+    <div><dt>CSV</dt><dd>Plik tekstowy z wartościami rozdzielonymi przecinkami, w kodowaniu UTF-8 i z kropką dziesiętną; jak otworzyć go w arkuszu Excel, opisuje <a href="#csv-excel">rozdział 06</a>.</dd></div>
     <div><dt>Flagi</dt><dd>Oznaczenie wartości w szeregu: „wartość”, „brak” (dzień bez wartości), „brak zjawiska” (np. dzień bez opadu zapisany jako 0) i „suma z kilku dni” (opad z kilku dni podany w ostatnim z nich).</dd></div>
   </dl>
   <p class="back"><a href="#toc-title">↑ Spis treści</a></p>
