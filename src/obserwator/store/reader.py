@@ -151,6 +151,8 @@ _SAME_CONTENT = re.compile(r"^[^/]+_[0-9a-f]{8}$")
 _LABEL_SOURCES = ("last_modified", "downloaded", "inputs")
 _PERIODS = ("winter", "summer", "annual")
 _SCALARS = (str, int, float, bool, type(None))
+_NESTED = {"thresholds": 2, "hydrogeology": 1}
+"""The station properties that are objects, with the depth of their objects."""
 # The calendar month of a version of a sub-daily series: the directory of its versions
 # and the selector of its slot, ``series:<key>:<YYYY-MM>`` (ADR-031).
 _MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
@@ -2122,9 +2124,10 @@ def _catalog_features(path: Path) -> tuple[StationFeature, ...]:
             ):
                 raise ValueError(message("reader.invalid_station_object", code=code))
             properties = feature["properties"]
-            # ČHMÚ hydro stations carry the SPA thresholds as an object (§7.4).
+            # Objects: ČHMÚ hydro stations' SPA thresholds (§7.4), PIG-PIB points'
+            # hydrogeological description (ADR-035 W6).
             if not isinstance(properties, dict) or not all(
-                _plain(value, depth=2 if key == "thresholds" else 0)
+                _plain(value, depth=_NESTED.get(key, 0))
                 for key, value in properties.items()
             ):
                 raise ValueError(
@@ -2168,7 +2171,8 @@ def read_catalog(
     Stations without geometry are included. The ``stations.geojson`` bytes are
     verified against the SHA-256 and size recorded in the sidecar, and
     ``StationFeature.provider`` comes from the sidecar. ČHMÚ hydro stations
-    carry their SPA thresholds as the object ``properties["thresholds"]``.
+    carry their SPA thresholds as the object ``properties["thresholds"]``, PIG-PIB's
+    points their hydrogeological description as ``properties["hydrogeology"]``.
 
     Parameters
     ----------

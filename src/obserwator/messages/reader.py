@@ -393,9 +393,9 @@ MESSAGES = {
     ),
     "properties_station_must_simple_values": Text(
         "the properties of the station {code} must be simple values (thresholds: an "
-        "object of thresholds)",
+        "object of thresholds; hydrogeology: an object of simple values)",
         "właściwości stacji {code} muszą być wartościami prostymi (thresholds: "
-        "obiektem progów)",
+        "obiektem progów; hydrogeology: obiektem wartości prostych)",
     ),
     "station_code_station_differs_from": Text(
         "station_code of the station {code} differs from the id",
