@@ -29,6 +29,9 @@ uvicorn in a thread, on a free port of 127.0.0.1:
   `HIDDEN_INSTANCE` (ČHMÚ featured, IMGW-PIB hidden, the same area in focus, the map
   starting on it), `FEATURED_INSTANCE` (ČHMÚ featured beside a visible IMGW-PIB drawn at
   `FEATURED_OTHERS_OPACITY`, nothing else) and `NO_PMAXTP_INSTANCE` (every provider served, PMAXTP off).
+* ``basemap_url``: the fixture root as ``gui_url`` with the basemap `BASEMAP` (a TileJSON
+  on an origin no request leaves the machine for: the test answers it and its tiles
+  through Playwright's routes).
 
 A server without ``OBSERWATOR_HYDROLOG_COMMAND`` finds no ``hydrolog`` on ``PATH`` either:
 it computes nothing for its whole life.
@@ -111,6 +114,8 @@ others_opacity = {FEATURED_OTHERS_OPACITY}
 NO_PMAXTP_INSTANCE = """[obserwator.instance]
 pmaxtp = "off"
 """
+BASEMAP = "https://tiles.e2e.test/planet.json"
+"""The basemap of ``basemap_url``: its TileJSON, whose tiles stay on its origin."""
 
 _CSP_LISTENER = """
 document.addEventListener("securitypolicyviolation", (event) => {
@@ -276,6 +281,7 @@ def _start(
     hydrolog: str | None = None,
     recorded: bool = True,
     instance: str | None = None,
+    basemap: str = "none",
 ) -> _Server:
     """A GUI server on ``root``; its own files under ``work``, an instance's beside them."""
     from obserwator.gui._app import build_app
@@ -298,7 +304,7 @@ def _start(
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("NOGAT_CONFIG", str(toml))
         # An empty value is ignored by the settings (env_ignore_empty): "none" is no basemap
-        patch.setenv("OBSERWATOR_GUI_BASEMAP_URL", "none")
+        patch.setenv("OBSERWATOR_GUI_BASEMAP_URL", basemap)
         patch.delenv("OBSERWATOR_ROOT", raising=False)
         if instance is not None:
             # An instance refuses a weak admin key (ADR-025): these servers have none
@@ -370,6 +376,14 @@ def gui_url(gui_root, tmp_path_factory) -> Iterator[str]:
     hydrolog = os.environ.get("OBSERWATOR_HYDROLOG_COMMAND") or None
     work = tmp_path_factory.mktemp("gui-private")
     with _start(gui_root, work, hydrolog=hydrolog) as server:
+        yield server.url
+
+
+@pytest.fixture(scope="session")
+def basemap_url(gui_root, tmp_path_factory) -> Iterator[str]:
+    """The GUI on the fixture root with the basemap `BASEMAP`, not public."""
+    work = tmp_path_factory.mktemp("gui-basemap")
+    with _start(gui_root, work, basemap=BASEMAP) as server:
         yield server.url
 
 
