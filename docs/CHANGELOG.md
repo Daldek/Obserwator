@@ -10,6 +10,10 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
 
 ### Added
 
+- **Guide: opening a CSV file in Excel (#14).** The GUI guide gains section 06 „Plik CSV w arkuszu
+  Excel” (`#csv-excel`): Obserwator's CSV is UTF-8, comma-separated, dot decimal; import it via
+  Dane → Z tekstu/CSV with UTF-8 (65001) and the comma delimiter, or in LibreOffice Calc. The
+  glossary entry „CSV” links to it.
 - **Providers fed by files (ADR-033 D1 to D3, D7, D8; I13).** `[obserwator] provider_files` of
   `nogat.toml` lists provider files, TOML files whose paths are relative to the directory of
   `nogat.toml` (paths inside a file to that file). A provider file declares `id`
