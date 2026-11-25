@@ -308,13 +308,38 @@ def _scan_inputs(
     root: Path, descriptor: DatasetDescriptor
 ) -> tuple[list[_Input], list[str]]:
     """
-    Current version of every archive slot of a dataset, plus unreadable slots.
+    Current version of every archive slot a series reads, plus unreadable slots.
+
+    The slots of the dataset's own server directory; of a daily series built from
+    another dataset's files (``inputs``: Gdańskie Wody's ``*_daily``, ADR-034 D8), those
+    of each input dataset, read as the slots of a dataset with its own directory,
+    keeping only the files the provider gives the series
+    (`ProviderAdapter.series_reads`: a month file of a quantity whose daily variable
+    the series holds, never a water-quality file); a file left out is never opened.
+    """
+    inputs: list[_Input] = []
+    problems: list[str] = []
+    for key in descriptor.inputs or (descriptor.key,):
+        found, failed = _dataset_inputs(root, get_dataset(key), descriptor)
+        inputs.extend(found)
+        problems.extend(failed)
+    inputs.sort(key=lambda item: item.version.slot)
+    return inputs, problems
+
+
+def _dataset_inputs(
+    root: Path, source: DatasetDescriptor, series: DatasetDescriptor
+) -> tuple[list[_Input], list[str]]:
+    """
+    Current version of every archive slot of ``source`` that ``series`` reads.
 
     The files of another stored dataset in the same server directory (ČHMÚ's daily
-    and weekly groundwater files, ADR-032) are not the dataset's slots.
+    and weekly groundwater files, ADR-032) are not the dataset's slots; of a series
+    built from ``inputs``, neither are the files its provider does not give it.
     """
-    assert descriptor.server_dir is not None
-    base = root / "archives" / "versions" / PurePosixPath(descriptor.server_dir)
+    assert source.server_dir is not None
+    top = root / "archives" / "versions"
+    base = top / PurePosixPath(source.server_dir)
     if not base.exists():
         return [], []
     slots: dict[Path, str] = {}
@@ -324,18 +349,26 @@ def _scan_inputs(
         item.key
         for item in datasets()
         if item.in_store
-        and item.key != descriptor.key
-        and item.server_dir == descriptor.server_dir
+        and item.key != source.key
+        and item.server_dir == source.server_dir
+    )
+    reads = (
+        None
+        if series.inputs is None
+        else get_provider(series.provider).adapter.series_reads
     )
     inputs: list[_Input] = []
     problems: list[str] = []
     for slot_dir in sorted(slots):
-        if siblings:
-            folder = slot_dir.parent.relative_to(root / "archives" / "versions")
+        if siblings or reads is not None:
+            folder = slot_dir.parent.relative_to(top)
             server_path = f"{folder.as_posix()}/{slots[slot_dir]}"
-            if _archive_from_path(descriptor.key, server_path) is None and any(
+            named = _archive_from_path(source.key, server_path)
+            if named is None and any(
                 _archive_from_path(key, server_path) is not None for key in siblings
             ):
+                continue
+            if named is not None and reads is not None and not reads(series, named):
                 continue
         slot = slot_dir.relative_to(root).as_posix()
         try:
@@ -346,7 +379,7 @@ def _scan_inputs(
             # (ADR-028).
             stored = current.meta.get("dataset")
             if not isinstance(stored, str) or resolve_dataset_key(stored) != (
-                descriptor.key
+                source.key
             ):
                 raise ObserwatorDataError(
                     message(
@@ -354,7 +387,7 @@ def _scan_inputs(
                         relative=current.relative,
                     )
                 )
-            archive = _restore_archive(descriptor.key, current.meta)
+            archive = _restore_archive(source.key, current.meta)
             if _archive_slot_dir(archive.server_path) != slot:
                 raise ObserwatorDataError(
                     message(
@@ -367,8 +400,21 @@ def _scan_inputs(
             problems.append(reason(exc))
             continue
         inputs.append(_Input(archive, current))
-    inputs.sort(key=lambda item: item.version.slot)
     return inputs, problems
+
+
+def _no_archives(descriptor: DatasetDescriptor, dataset: str) -> str:
+    """
+    Why a build of ``dataset`` has nothing to read: no archive of it in the raw root.
+
+    Of a series built from ``inputs`` (Gdańskie Wody's daily series), no file of them
+    that it reads: they are what ``store sync`` stores.
+    """
+    if descriptor.inputs is None:
+        return message("series.no_archives_of_dataset", dataset=dataset)
+    return message(
+        "series.no_input_files", key=descriptor.key, inputs=", ".join(descriptor.inputs)
+    )
 
 
 def _manifest(inputs: Iterable[_Input]) -> tuple[tuple[str, str], ...]:
@@ -703,12 +749,13 @@ def _read_inputs(
     Without a subset every input. Otherwise the archives whose period meets a
     chosen year (a file without a period, a ČHMÚ station's whole record,
     always) and, of the files of one station, those of the chosen stations:
-    a ČHMÚ file by its station code, an IMGW-PIB synop file by the station
-    number (the last three digits of a code); a file of the whole country
-    holds every station. Of a dataset whose archives leave something to the
-    next (`CARRY_DATASETS`: the missing days of IMGW-PIB's precipitation,
-    `normalize_in_sequence`'s ``carry``) the archive before a chosen one is
-    read too; its own records lie outside the chosen years.
+    a ČHMÚ file or a month file of Gdańskie Wody by its station code, an
+    IMGW-PIB synop file by the station number (the last three digits of a
+    code); a file of the whole country holds every station. Of a dataset whose
+    archives leave something to the next (`CARRY_DATASETS`: the missing days of
+    IMGW-PIB's precipitation, `normalize_in_sequence`'s ``carry``) the archive
+    before a chosen one is read too; its own records lie outside the chosen
+    years.
     """
     if subset is None:
         return inputs
@@ -766,8 +813,8 @@ def check_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions the build reads; only read.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
-        dataset.
+        Full key (``pl.imgw.*``, ``cz.chmu.*`` or ``pl.gdanskiewody.*``) of a
+        measurement series dataset.
     stations : iterable of str or None, optional
         The stations of a subset, as in :func:`build_series`.
     years : YearsArg or None, optional
@@ -914,7 +961,7 @@ def check_series(
             PlanAction(
                 "series build",
                 "missing",
-                message("series.no_archives_of_dataset", dataset=dataset)
+                _no_archives(descriptor, dataset)
                 if not inputs
                 else message("series.no_archives_of_subset", key=descriptor.key),
             )
@@ -1298,6 +1345,7 @@ def _spill_station_file(
     kept: Callable[[NormalizedRecord], bool] | None = None,
     subset: SeriesSubset | None = None,
     windows: Sequence[_Span] | None = None,
+    by_records: bool = False,
 ) -> None:
     """
     Spill the records of one per-station file and add its known period.
@@ -1309,7 +1357,10 @@ def _spill_station_file(
     archives of IMGW-PIB, named by the station's number, and the running
     year's monthly files of the whole country) covers its period for every
     station it holds; a record whose station number and year are in
-    ``superseded`` is left out. A subset (ADR-026) spills only the records
+    ``superseded`` is left out. ``by_records`` gives a dated file the days from
+    its first to its last record instead of its period: a month file of a series
+    built from ``inputs`` (Gdańskie Wody's, ADR-034 D8) asked while its month runs
+    holds only the days asked so far. A subset (ADR-026) spills only the records
     ``kept`` takes, and gives its stations the known periods cut to the
     ``windows`` of its years.
     """
@@ -1342,7 +1393,11 @@ def _spill_station_file(
             and station not in subset.stations
         ):
             continue
-        if archive.period_start is not None and archive.period_end is not None:
+        if (
+            not by_records
+            and archive.period_start is not None
+            and archive.period_end is not None
+        ):
             spans[station].extend(_cut([_archive_span(archive)], windows))
         elif days is not None:
             spans[station].extend(_cut([(days[0], days[1])], windows))
@@ -1463,18 +1518,26 @@ def build_series(
     and covered alone, so memory stays bounded by one station and a queue of
     parsed records, not by the dataset. An unreadable input or conflicting
     values fail the whole build; an incomplete snapshot is never published.
+    A daily series built from another dataset's files (``inputs``: Gdańskie
+    Wody's ``pl.gdanskiewody.hydro_daily`` and ``pl.gdanskiewody.meteo_daily``,
+    ADR-034 D8) reads the slots of its input instead, only the files its provider
+    gives it (`ProviderAdapter.series_reads`: the month files of the quantities
+    whose daily variable it holds, never a water-quality file), each parsed by
+    its own dataset's parser (the daily value of the provider's day, plan P5).
 
-    Datasets of per-station files (``cz.chmu.*``, ADR-003 D10) also record the
-    known periods of every station in ``stations[<code>].periods``: the
-    calendar years of its station-year files, or the first to last row of
-    each station-element file, merged. Gaps are counted only on those days, so
-    a year whose file is not published is unknown, not a gap; the dataset
-    ``periods`` are the union of the station periods. Meteorological stations
-    get the ``<V>_quality`` and ``<V>_source_flag`` Parquet columns, inputs of
-    a dataset with a canonical form carry ``content_sha256`` and
-    ``content_form`` in ``extra.source_files`` (whose ``file`` is relative to
-    the raw root), and the sidecar names the provider of the dataset with its
-    processed-data attribution.
+    Datasets of per-station files (``cz.chmu.*``, ADR-003 D10, and Gdańskie
+    Wody's daily series) also record the known periods of every station in
+    ``stations[<code>].periods``: the calendar years of its station-year files,
+    or the first to last row of each station-element file and of each month
+    file of Gdańskie Wody (a month asked while it runs holds only the days
+    asked so far), merged. Gaps are counted only on those days, so a year whose
+    file is not published is unknown, not a gap; the dataset ``periods`` are the
+    union of the station periods. Meteorological stations get the
+    ``<V>_quality`` and ``<V>_source_flag`` Parquet columns, inputs of a dataset
+    with a canonical form carry ``content_sha256`` and ``content_form`` in
+    ``extra.source_files`` (whose ``file`` is relative to the raw root), and the
+    sidecar names the provider of the dataset with its processed-data
+    attribution.
 
     ``stations`` or ``years`` build a subset (ADR-026): only the archives that
     hold them are read (``source_files``; of IMGW-PIB's daily precipitation
@@ -1492,8 +1555,9 @@ def build_series(
     never a subset beside its full series; a full build after a subset
     becomes current as any newer build.
 
-    A sub-daily series (`obserwator.datasets.monthly_series`, ADR-031) has no
-    archives of its own: one version per calendar month,
+    A sub-daily series (`obserwator.datasets.monthly_series`, ADR-031: the
+    ``hydro_subdaily`` of IMGW-PIB and ČHMÚ, Gdańskie Wody's ``hydro_hourly`` and
+    ``meteo_hourly``) has no archives of its own: one version per calendar month,
     ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``, holds the full hours
     of the datasets of its ``inputs`` in that month, the first input with a
     value winning each station, variable and hour (`obserwator.store.subdaily`).
@@ -1510,8 +1574,8 @@ def build_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions are read; never written.
     dataset : str
-        Full key (``pl.imgw.*`` or ``cz.chmu.*``) of a measurement series
-        dataset.
+        Full key (``pl.imgw.*``, ``cz.chmu.*`` or ``pl.gdanskiewody.*``) of a
+        measurement series dataset.
     stations : iterable of str or None, optional
         Build only these stations (codes of the dataset's provider; duplicates
         are merged). A station the archives read do not hold is named in a
@@ -1623,7 +1687,7 @@ def build_series(
     if not inputs:
         return _report(
             "failed",
-            problems=[message("series.no_archives_of_dataset", dataset=dataset)],
+            problems=[_no_archives(descriptor, dataset)],
         )
     read = _read_inputs(inputs, descriptor, subset)
     if not read:
@@ -1667,8 +1731,10 @@ def build_series(
 
     known = _KnownUnits(descriptor.time_unit)
     # Per-station files (ČHMÚ, ADR-003 D10; the synop archives of IMGW-PIB,
-    # ADR-022): known periods of every station.
+    # ADR-022; Gdańskie Wody's month files, ADR-034 D8): known periods of every
+    # station, of a month file the days its answers hold.
     per_station = descriptor.archive_scope != "country"
+    by_records = descriptor.inputs is not None
     spans: dict[str, list[tuple[date, date]]] = defaultdict(list)
     superseded = _superseded(inputs) if per_station else set()
     # What an archive leaves to the next of the same dataset (missing days of IMGW-PIB
@@ -1730,6 +1796,7 @@ def build_series(
                         kept=kept,
                         subset=subset,
                         windows=windows,
+                        by_records=by_records,
                     )
                 else:
                     for record in records:

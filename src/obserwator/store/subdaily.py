@@ -1,8 +1,9 @@
 """
 The hourly series of the tiers: one version per calendar month (ADR-031).
 
-A sub-daily series (`obserwator.datasets.monthly_series`: ``pl.imgw.hydro_subdaily``
-and ``cz.chmu.hydro_subdaily``) has no files of its own. The version of a month M,
+A sub-daily series (`obserwator.datasets.monthly_series`: ``pl.imgw.hydro_subdaily``,
+``cz.chmu.hydro_subdaily`` and Gdańskie Wody's ``pl.gdanskiewody.hydro_hourly`` and
+``pl.gdanskiewody.meteo_hourly``) has no files of its own. The version of a month M,
 ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``, holds the full hours (UTC) of
 the datasets of its ``inputs`` (highest tier first) in M, read from the current
 versions of the raw root (the plan's D9):
@@ -13,7 +14,14 @@ versions of the raw root (the plan's D9):
   day (closed days: today's hours, the 10-minute tail and the forecasts never enter),
   the latest answer of an hour winning within the dataset;
 - IMGW-PIB's telemetry: the zip of M, its rows at minute 00 (``999`` is no value);
-- ČHMÚ's validated hours: the file of every station of the year of M.
+- ČHMÚ's validated hours: the file of every station of the year of M;
+- Gdańskie Wody's month files (ADR-034 D8): those of M and of the month before, whose
+  last provider day runs to 05:00 UTC of M's first day (`ProviderAdapter.held_period`);
+  every hour of their answers at the UTC start of its label, as the provider's adapter
+  reads them (`ProviderAdapter.hourly_points`), and only the files of the quantities
+  whose variable the series holds (`ProviderAdapter.series_reads`): the precipitation
+  of a hydrological station lies in the meteorological series, the water quality in
+  none.
 
 Per station, variable and hour the first input of ``inputs`` with a value wins and
 the tier of its dataset labels the point, even where the values differ; a lower tier
@@ -42,7 +50,7 @@ import uuid
 import zipfile
 import zlib
 from array import array
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -213,17 +221,30 @@ class _Slot:
 
 
 def _held_months(source: DatasetDescriptor, archive: ArchiveFile) -> tuple[_Month, ...]:
-    """The months a file may hold hours of: of its period; of a capture day, its reach."""
-    assert archive.period_start is not None and archive.period_end is not None
-    start, end = archive.period_start, archive.period_end
+    """
+    The months a file may hold hours of.
+
+    Of a capture day, its reach (the 43 days before it); of another file, the days
+    its provider says it holds (`ProviderAdapter.held_period`): its period, of a month
+    file of Gdańskie Wody also the next month's first day.
+    """
     if source.archive_scope == CAPTURE_SCOPE:
-        start, end = start - timedelta(days=_REACH), start - timedelta(days=1)
+        assert archive.period_start is not None
+        day = archive.period_start
+        return tuple(_months(day - timedelta(days=_REACH), day - timedelta(days=1)))
+    start, end = get_provider(source.provider).adapter.held_period(archive)
     return tuple(_months(start, end))
 
 
 def _slots(raw: Path, descriptor: DatasetDescriptor) -> list[_Slot]:
-    """Every slot of the inputs of a sub-daily series, in ``inputs`` and slot order."""
+    """
+    Every slot of the inputs of a sub-daily series, in ``inputs`` and slot order.
+
+    Only the files the provider gives the series (`ProviderAdapter.series_reads`: of
+    Gdańskie Wody's month files, those of a quantity whose variable it holds).
+    """
     top = raw / "archives" / "versions"
+    reads = get_provider(descriptor.provider).adapter.series_reads
     found: list[_Slot] = []
     for order, key in enumerate(descriptor.inputs or ()):
         source = get_dataset(key)
@@ -239,10 +260,13 @@ def _slots(raw: Path, descriptor: DatasetDescriptor) -> list[_Slot]:
         for slot_dir in sorted(names):
             folder = slot_dir.parent.relative_to(top).as_posix()
             archive = _archive_from_path(key, f"{folder}/{names[slot_dir]}")
-            # The files of another dataset of the directory are no input of this one.
-            if archive is None or (
-                _archive_slot_dir(archive.server_path)
+            # The files of another dataset of the directory are no input of this one,
+            # nor are those its provider does not give the series.
+            if (
+                archive is None
+                or _archive_slot_dir(archive.server_path)
                 != slot_dir.relative_to(raw).as_posix()
+                or not reads(descriptor, archive)
             ):
                 continue
             found.append(_Slot(source, order, archive, _held_months(source, archive)))
@@ -317,11 +341,16 @@ class _Tier:
 
 @dataclass(frozen=True)
 class _Reading:
-    """What the parsers of an input need: the month, the station grammar, its address."""
+    """
+    What the parsers of an input need: the month, the station grammar, its address.
+
+    ``variables`` are those of the series: a file's other variables stay out.
+    """
 
     month: _Month
     code: re.Pattern[str]
     address: str
+    variables: Collection[str]
 
 
 def _full_hour(text: object) -> datetime | None:
@@ -616,7 +645,31 @@ def _chmu_hourly(item: _Input, data: bytes, reading: _Reading, tier: _Tier) -> b
     return held
 
 
-# The parsers of the answers of a capture dataset and of the files of the others.
+def _provider_hours(item: _Input, data: bytes, reading: _Reading, tier: _Tier) -> bool:
+    """
+    The hours the provider's adapter reads of a file (`ProviderAdapter.hourly_points`).
+
+    Gdańskie Wody's month file (ADR-034 D4): every hour of its answers at the UTC
+    start of its label, null no value. A variable the series does not hold and a
+    station outside the provider's grammar stay out.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the file cannot be read.
+    """
+    adapter = get_provider(get_dataset(item.archive.dataset).provider).adapter
+    held = False
+    for station, variable, points in adapter.hourly_points(item.archive, data):
+        if variable not in reading.variables or not reading.code.fullmatch(station):
+            continue
+        if _put_points(tier, station, variable, points, reading, before=None):
+            held = True
+    return held
+
+
+# The parsers of the answers of a capture dataset and of the files of the others; the
+# files of a dataset without one give the hours its provider reads (`_provider_hours`).
 _ANSWER_PARSERS: Final[Mapping[str, Callable[[Spooled, _Reading, _Tier], bool]]] = (
     MappingProxyType(
         {"pl.imgw.hydro_operational": _hydro_back, "cz.chmu.hydro_recent": _chmu_recent}
@@ -760,7 +813,8 @@ def _parse(item: _Input, slot: _Slot, tier: _Tier, reading: _Reading) -> bool:
             )
         )
     if slot.source.archive_scope != CAPTURE_SCOPE:
-        return _FILE_PARSERS[slot.source.key](item, data, reading, tier)
+        parse_file = _FILE_PARSERS.get(slot.source.key, _provider_hours)
+        return parse_file(item, data, reading, tier)
     parse = _ANSWER_PARSERS[slot.source.key]
     held = False
     for answer in _answers(item, data):
@@ -845,7 +899,12 @@ class _Inputs:
             if cancel is not None and cancel():
                 result.cancelled = True
                 return result
-            reading = _Reading(month, self._code, _source_address(slot.source))
+            reading = _Reading(
+                month,
+                self._code,
+                _source_address(slot.source),
+                self.descriptor.variables,
+            )
             try:
                 if _parse(item, slot, result.tiers[slot.order], reading):
                     result.contributors.append(item)
@@ -1337,8 +1396,9 @@ def build_months(
         Both: every month from the month of ``start`` to that of ``end``, each
         reported (a month whose inputs hold no value fails, its problem naming
         it). Otherwise the months an input may hold (the 43 days before a capture
-        day, the month of a telemetry zip, the year of a ČHMÚ file), within the
-        bound given; a month whose inputs hold no value is skipped.
+        day, the month of a telemetry zip, the year of a ČHMÚ file, the month of a
+        file of Gdańskie Wody and the next one), within the bound given; a month
+        whose inputs hold no value is skipped.
     on_progress : ProgressHook or None, optional
         Called after each input read and each station file written, once for an
         unchanged month and after each month (unit ``month``).
