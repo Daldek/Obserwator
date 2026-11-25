@@ -6,7 +6,7 @@ follow [SemVer](https://semver.org/). Every change of the public API and of the 
 
 ## [Unreleased]
 
-Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
+Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. PIG-PIB's groundwater monitoring joins them (Nogat plan `2026-11-24-pig-groundwater.md`, ADR-035): each monthly publication of its readings and every hourly row of its automatic points captured before the service replaces them, the catalog `pig_stations`, the readings and hourly series, the GUI's „Podziemne” with PIG-PIB's points and the import of the interim capture S0. `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
 
 ### Added
 
@@ -123,6 +123,75 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   PNG exports); without a station the panel counts the stations by class. `api/session`'s
   `providers[id]` gains `country` and `source_notice`. New catalog keys: `stations.list.class*`,
   `stations.legend.source_*`, `words.source_class.*`, `words.country.*`.
+- **PIG-PIB groundwater (ADR-035 W1 to W3, W10; Nogat plan `2026-11-24-pig-groundwater.md`,
+  ECO-092).** The provider `PIG` (short name „PIG-PIB”, Państwowy Instytut Geologiczny – Państwowy
+  Instytut Badawczy, `PL`, key prefix `pl.pig`, adapter `obserwator.providers.pl.pig`, source
+  class `other` with P8's notice in its words, served by default): the Monitoring Wód Podziemnych
+  of the state geological service from the open ArcGIS REST services
+  `cbdgmapa.pgi.gov.pl/arcgis/rest/services/hydrogeologia/{mwp,mwp_auto}/MapServer`, CC BY 4.0 by
+  dane.gov.pl's dataset 170. Six datasets: `pl.pig.groundwater_stations` (3,505 points, a station
+  source), `pl.pig.groundwater_readings` (the month the service holds, `week`),
+  `pl.pig.groundwater_chemistry` and `pl.pig.groundwater_watchlist` (stored raw only), all
+  `verified`; `pl.pig.groundwater_operational` (the automatic points' hourly depths, „bez
+  walidacji”, `operational`, `public` by default in `[obserwator.capture]`) and the hourly series
+  `pl.pig.groundwater_subdaily`. Station codes are PIG-PIB's `ID`, `^[1-9][0-9]{0,5}$`. The intake
+  note `docs/providers/pig.md` answers every row of the intake with its date and evidence.
+- **Each publication kept before the service replaces it (ADR-035 W4, W5, D2, D3).** A sync of an
+  `mwp` dataset pages its layer or table in one run (counts before and after, `resultOffset`,
+  POST, at least 2 s apart; a count that changes is retried once, then `partial` with nothing
+  written) and keeps the run's answers in Obserwator's container, one version per run unless its
+  content equals the current one (`pig-json/1`, new content form: the rows without `OBJECTID` and
+  paging). The readings are one file per calendar month of their rows, `MWP_<YYYY-MM>.jsonl.gz`,
+  named by one statistics query (check scope `publication`: `unverifiable` once stored, `missing`
+  before; `years`, `months` and `stations` refused); other spans `MWP_<first>_<last>` with
+  `window_unexpected`; a month republished with other rows is a new version with
+  `month_republished` counting the readings changed, added and removed; `store check` names each
+  month between captured ones without a version `not_captured`. An `{"error"}` answer or one that
+  is not JSON is `source_unavailable`, nothing written.
+- **The night's harvest by watermark (ADR-035 W9, D4).** `store sync --datasets
+  pl.pig.groundwater_operational --pace-until HH:MM` asks the automatic points, the table's count
+  and every row appended after the last `OBJECTID` the raw root holds, page by page, and the page
+  of the stored hour 02 of each summer-time start day among them; it refuses `--start`, `--end`
+  and `--stations` (reason `watermark`) and keeps no state file: the watermark, the count and the
+  period of the rows are in the capture's sidecar (`extra.capture`). A count smaller than before
+  is the notice `rows_removed`.
+- **The catalog `pig_stations` and two series (ADR-035 W6 to W8, D6 to D8).** `store catalog
+  --provider PIG` builds the points with kind `groundwater` (`spring` for „źródło”, `bore`
+  otherwise), `active`, `elevation_m`, the server's WGS84 location and `hydrogeology` (the type as
+  published, confinement, stratigraphy, lithology, depths, years observed, JCWPd, the PSH, CBDH
+  and EU numbers, `automatic` from the night's capture of `mwp_auto`'s points); notices
+  `station_unknown` and `station_identity_changed`. `pl.pig.groundwater_readings` holds
+  `depth_to_water` [m] (new variable, negative above the ground), `H_asl` = ground elevation −
+  depth to the centimetre and `spring_yield` at each 06:00 UTC reading, coverage by calendar weeks
+  of the captured months. `pl.pig.groundwater_subdaily` holds the automatic points' hours, the
+  stored wall-clock time read as UTC and floored to the hour, one version per month, never joined
+  to the readings; notices `hour_revised`, `hour_unresolved` and `hour_future`.
+- **`store import --staging DIR` (ADR-035 W15, D11).** Takes PIG-PIB's interim capture (the plan's
+  S0) into the raw root: every file checked against its manifest's size and SHA-256 before any
+  write, each complete table run a version dated by its run (compared with the version current
+  then, so a second import is `unchanged`), the harvest's answers merged into the capture of their
+  UTC day; `--check` plans it; no series or catalog is built. `staging` is no REST parameter.
+  Notices `staging_left_out`, `staging_failed`, `staging_incomplete`, `staging_open`.
+- **PIG-PIB's lines W, WP and RW (ADR-035 W14, D5; Nogat DEV §20, DEV-20.13).** W names the period
+  of the data and the day they were obtained (`<period>`, `<date>`), filled in every product from
+  the versions it reads (`attribution.fill`, `fillable`, `filled`) and merged into one line where
+  a product reads several; WP is fixed; RW links PIG-PIB's terms of reuse. Every envelope, export,
+  stored series and catalog, `ATTRIBUTION.txt` and GUI view with its data carries them.
+- **PIG-PIB in the GUI (ADR-035 W12, D12).** Its points in „Podziemne” beside ČHMÚ's objects with
+  the dashed outline, the panel's „Numer PSH”, „Typ według dostawcy” and a section
+  „Hydrogeologia”, „Dane” with „Odczyty” (`H_asl` first for a bore, `spring_yield` for a spring)
+  and „Godzinowe” labelled „dane operacyjne, niezweryfikowane”, the strip's WK and the dialog's W,
+  WP and RW with W filled, „Regulamin PIG-PIB” in „Pobierz”; the guide's chapter on PIG-PIB. The
+  private session gains `providers[id].kinds`, `datasets[key].unverified` and
+  `attribution.fillable`.
+- **The telemetry timer asks PIG-PIB (ADR-035 W11, D13).** `deploy/obserwator-jobs.sh telemetry`
+  syncs PIG-PIB's points and readings every day (the service holds one month of readings), its
+  chemistry and watch list on Mondays, builds its catalog while the points are held and its
+  readings series when the points or the readings got a new version; the night harvests `mwp_auto`
+  first, until 02:45, and builds its hourly series.
+- **Fixture variant `groundwater_pl`** (`obserwator.testing.build_fixture_store`): `groundwater`
+  plus PIG-PIB's points, October 2026's readings, a night's harvest, both series and the catalog
+  from answers recorded on 2026-11-24 and 2026-11-25 (`pig_recordings.json`, 11 points).
 
 ### Changed
 
@@ -178,6 +247,37 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   line names `OBSERWATOR_GDANSKIE_WODY_API_KEY`, off by default in the servers and `stations find`,
   and its draft lines), shorter in both languages to stay within 16 KiB (no Plan column, the
   variables in one code span, the CLI-output line merged).
+- **A bare code of one to six digits names PIG-PIB (ADR-035 D14).** `STATION_CODE_PATTERN`, the
+  station keys and catalog fields of both copies of `contract_schemas.json` and both export
+  schemas accept `^[1-9][0-9]{0,5}$`; such a code, refused before, is now a PIG-PIB point. A
+  station search without a provider also searches PIG-PIB's points.
+- **The provider protocol (ADR-029 erratum of 2026-11-25; ADR-035 D15).** `ProviderAdapter` gains
+  the check scope `publication` with `published`, `publication_gaps` and `replaced`,
+  `series_sources`, `series_read`, `capture_extra`, `run_file`, `harvest_answer`, the attributes
+  `watermarked` and `staged`, `SeriesContext` for `normalize` and `hourly_points`, and
+  `harvest_requests(raw=)`, each with a default that leaves the other providers unchanged.
+  `obserwator.fetch` gains an ArcGIS client (`arcgis_query`, `arcgis_pages`), POST and follow-up
+  requests in `PacedRequest` and `DownloadResult.archive`; `write_archive(downloaded_at=,
+  provenance=)`, `write_capture(data=Path, extra=)` and `captures.encode_into`/`Sealer` are new.
+- **The GUI's analyses table lists only providers whose kinds an analysis applies to** (ADR-035
+  D12): PIG-PIB has none; the panel without a station counts each provider's catalog by the kinds
+  it publishes („PIG-PIB: podziemne …”).
+- **Nogat's kit 1.3.0 files (Nogat `ff18ee8`):** `nogat-sources.js` with W, WP and WK, and the
+  regulamin's template and operator's draft with the block `pig`; `nogat-kit.json` lists the 11
+  kit files Obserwator holds. The regulamin keeps the block `pig` while PIG-PIB is served.
+- **`AGENTS.md` and `llms.txt`** name PIG-PIB's watermark harvest among the captures
+  (`pl.*_{current,operational}`) and `years` for `pl.{imgw,gdanskiewody}.*` only; shorter to stay
+  within 16 KiB (the first precipitation step starts with `precip_daily`; a repeated rule on exit
+  codes removed). The option help of `--provider` names the ids of `datasets providers` (IMGW,
+  CHMU, PIG) instead of IMGW-PIB and ČHMÚ only.
+
+### Fixed
+
+- **The weekly definition in the GUI is no longer ČHMÚ's:** „zwykle w środy” moved into the note
+  of ČHMÚ's weekly dataset, since PIG-PIB's weekly readings fall on Mondays (ADR-035 D12).
+- **`store catalog --provider` and the providers' option help** named only IMGW-PIB and ČHMÚ,
+  though Gdańskie Wody's catalog was built the same way; they now name the ids of `datasets
+  providers`.
 
 ## [3.2.1] - 2026-11-24
 

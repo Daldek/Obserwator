@@ -362,8 +362,10 @@ MESSAGES = {
         "niedozwolone dla innych zbiorów pl.imgw.*",
     ),
     "provider_help": Text(
-        "Data provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); none = all providers",
-        "Dostawca danych: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); brak = wszyscy dostawcy",
+        "Data provider, an id of datasets providers (e.g. IMGW for IMGW-PIB, CHMU for "
+        "ČHMÚ, PIG for PIG-PIB); none = all providers",
+        "Dostawca danych, identyfikator z datasets providers (np. IMGW dla IMGW-PIB, "
+        "CHMU dla ČHMÚ, PIG dla PIG-PIB); brak = wszyscy dostawcy",
     ),
     "variables_help": Text(
         "Comma-separated dataset variables, e.g. H,Q (default: all)",
@@ -959,10 +961,11 @@ MESSAGES = {
         "months i stations)",
     ),
     "store_catalog_provider_help": Text(
-        "Catalog provider: IMGW (IMGW-PIB) or CHMU (ČHMÚ); one catalog version of "
-        "one provider per call",
-        "Dostawca katalogu: IMGW (IMGW-PIB) albo CHMU (ČHMÚ); jedna wersja katalogu "
-        "jednego dostawcy na wywołanie",
+        "Catalog provider, an id of datasets providers (e.g. IMGW for IMGW-PIB, CHMU "
+        "for ČHMÚ, PIG for PIG-PIB); one catalog version of one provider per call",
+        "Dostawca katalogu, identyfikator z datasets providers (np. IMGW dla IMGW-PIB, "
+        "CHMU dla ČHMÚ, PIG dla PIG-PIB); jedna wersja katalogu jednego dostawcy na "
+        "wywołanie",
     ),
     "store_import_provider_file_help": Text(
         "Provider file of a provider fed by files: one of the files [obserwator] "
