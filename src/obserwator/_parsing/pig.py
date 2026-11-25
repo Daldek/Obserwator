@@ -736,13 +736,15 @@ def auto_hours(
 
     Each row of a page 200 of table 2 gives its point's stored hour (`stored_hour`)
     and value (null: no value). A row whose hour lies after the time of its answer
-    stays in the capture and out of the series; the build of its own month counts
-    it in ``state.future`` (every build counts it when ``month`` is None). Of two
-    rows of one point and hour the later ``OBJECTID`` is kept, and rows that differ
-    are noted in ``state.revised``. A row of a summer-time start day at the shared
-    stored hour 01 is hour 02 when the capture's page of that day's stored hour 02
-    holds its ``OBJECTID``, else hour 01; without such a page it is left out and its
-    point and day noted in ``state.unresolved``.
+    stays in the capture and out of the series, and belongs to no month a build
+    reads: the build of the month of the capture's last hour (the end of the
+    capture's period, `ProviderAdapter.capture_extra`; without one, the day before
+    its answers) counts it in ``state.future``, every build when ``month`` is None.
+    Of two rows of one point and hour the later ``OBJECTID`` is kept, and rows that
+    differ are noted in ``state.revised``. A row of a summer-time start day at the
+    shared stored hour 01 is hour 02 when the capture's page of that day's stored
+    hour 02 holds its ``OBJECTID``, else hour 01; without such a page it is left out
+    and its point and day noted in ``state.unresolved``.
 
     Parameters
     ----------
@@ -769,6 +771,9 @@ def auto_hours(
     second = _dst_pages(answers)
     touched: set[tuple[str, datetime]] = set()
     rows: list[tuple[int, str, datetime, float | None]] = []
+    future = 0
+    last: date | None = None
+    reach: date | None = None
     for page in answers:
         features = page.features
         if features is None or page.layer != "mwp_auto/2":
@@ -791,6 +796,11 @@ def auto_hours(
                 raise _fail(filename, where, message("parsing.pig_no_id"))
             value = _number(attributes.get("VALUE"), filename, where)
             hour = stored_hour(epoch)
+            if hour > limit:
+                future += 1
+                reach = reach or (limit - timedelta(days=1)).date()
+                continue
+            last = hour.date() if last is None else max(last, hour.date())
             day = _collision(epoch)
             if day is not None:
                 # A pair of another month is no business of this one's build.
@@ -803,10 +813,10 @@ def auto_hours(
                     hour += timedelta(hours=1)
             if month is not None and not month[0] <= hour.date() <= month[1]:
                 continue
-            if hour > limit:
-                state.future += 1
-                continue
             rows.append((objectid, str(point), hour, value))
+    told = last or reach
+    if future and (month is None or (told and month[0] <= told <= month[1])):
+        state.future += future
     rows.sort(key=lambda row: row[0])
     for objectid, point, hour, value in rows:
         key = (point, hour)
