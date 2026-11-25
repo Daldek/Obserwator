@@ -17,14 +17,17 @@
 #              hold, ADR-035).
 #   telemetry  06:45 local: IMGW-PIB's monthly telemetry of the current year (and
 #              of the year before in January), the hourly series of each month
-#              whose zip it stored, and the listing check of ČHMÚ's validated
-#              hourly year.
+#              whose zip it stored, the listing check of ČHMÚ's validated hourly
+#              year, then PIG-PIB's points and readings (on Mondays also its
+#              chemistry and watch list), its station catalog while the points
+#              are held and its readings series when either got a new version
+#              (ADR-035).
 #   current    hourly at :15: `obserwator current poll`.
 #   --start    night only: the first UTC day of both harvests (at most 40 days
 #              back), in place of the day after the last whole harvest.
 #   --check    pass --check to every command: plans only, nothing written, no
-#              harvest recorded (the telemetry's months are built only after a
-#              sync that stored their zips).
+#              harvest recorded, nothing built by the telemetry (its builds
+#              follow what a sync stored).
 #
 # Environment:
 #   OBSERWATOR            the program (default: obserwator on PATH)
@@ -59,6 +62,12 @@ HARVESTS=(
 SEALED=pl.imgw.hydro_current,pl.imgw.meteo_current,pl.imgw.meteo_synop_current,pl.imgw.warnings_hydro_current,pl.imgw.warnings_meteo_current,pl.imgw.hydro_states_current,pl.imgw.meteo_operational,pl.imgw.meteo_states_current,cz.chmu.hydro_current
 # obserwator.captures.HARVEST_DAYS: the earliest --start is today (UTC) minus 40 days.
 HARVEST_DAYS=40
+# --- the telemetry's PIG-PIB datasets (ADR-035, W11): the service holds one month
+# of readings and replaces it about monthly, so they are asked every day ---
+PIG_STATIONS=pl.pig.groundwater_stations
+PIG_READINGS=pl.pig.groundwater_readings
+# Asked on Mondays only: they change about yearly.
+PIG_MONDAYS=pl.pig.groundwater_chemistry,pl.pig.groundwater_watchlist
 # ------------------------------------------------------------------------------
 
 OBSERWATOR=${OBSERWATOR:-obserwator}
@@ -153,6 +162,25 @@ for item in result.get("items") or ():
 '
 }
 
+# "<dataset> <status>" of each item of the `store sync --json` envelopes read.
+synced() {
+  python3 -c '
+import json, sys
+
+for line in sys.stdin:
+    if not line.startswith("{"):
+        continue
+    try:
+        result = json.loads(line).get("result") or {}
+    except (ValueError, AttributeError):
+        continue
+    for item in result.get("items") or ():
+        parts = str(item.get("slot") or "").split(":")
+        if len(parts) > 2:
+            print(parts[1], item.get("status"))
+'
+}
+
 telemetry() {
   local year month years out stored
   year=$(date +%Y)
@@ -181,6 +209,34 @@ telemetry() {
   else
     say "cz.chmu.hydro_hourly: CHMU_HOURLY_STATIONS is not set, its check is skipped"
   fi
+  pig
+}
+
+# PIG-PIB's monitoring (ADR-035, W11).
+pig() {
+  local readings=$PIG_READINGS out dataset status catalog="" series=""
+  [[ $(date +%u) == 1 ]] && readings+=,$PIG_MONDAYS
+  out=$(mktemp) || { say "no temporary file"; return 1; }
+  # A station source is synchronized in a call of its own.
+  step "$OBSERWATOR" store sync --datasets "$PIG_STATIONS" --json "${check[@]}" >"$out"
+  step "$OBSERWATOR" store sync --datasets "$readings" --json "${check[@]}" >>"$out"
+  cat "$out"
+  if ((${#check[@]} == 0)); then
+    while read -r dataset status; do
+      case $dataset:$status in
+      # The catalog also takes `automatic` from the newest night's capture of
+      # mwp_auto, a new version every night: it is built whenever the points are
+      # held, and an equal catalog is `unchanged`.
+      "$PIG_STATIONS":new | "$PIG_STATIONS":relabeled) catalog=1 series=1 ;;
+      "$PIG_STATIONS":unchanged) catalog=1 ;;
+      # H_asl reads the points version, so new points build the series too.
+      "$PIG_READINGS":new | "$PIG_READINGS":relabeled) series=1 ;;
+      esac
+    done < <(synced <"$out")
+    [[ -n $catalog ]] && step "$OBSERWATOR" store catalog --provider PIG
+    [[ -n $series ]] && step "$OBSERWATOR" series build --dataset "$PIG_READINGS"
+  fi
+  rm -f "$out"
 }
 
 current() {

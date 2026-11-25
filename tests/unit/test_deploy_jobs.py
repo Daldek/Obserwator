@@ -4,7 +4,7 @@
 the units in ``deploy/systemd/``. The jobs run with a stub of the program: the
 night's catch-up decides the days each harvest asks for and the hourly series it
 builds (ADR-031), and the telemetry builds the months whose zips the stub's
-envelope says it stored.
+envelope says it stored, and PIG-PIB's catalog and readings series (ADR-035).
 """
 
 import json
@@ -31,8 +31,8 @@ posix_tools = pytest.mark.skipif(
 STUB = """\
 #!/bin/sh
 printf '%s\\n' "$*" >> "$STUB_LOG"
-if [ -n "$STUB_OUT" ]; then
-  case "$*" in "store sync --datasets pl.imgw.hydro_telemetry"*) cat "$STUB_OUT" ;; esac
+if [ "$1 $2 $3" = "store sync --datasets" ] && [ -f "$STUB_OUT/$4.json" ]; then
+  cat "$STUB_OUT/$4.json"
 fi
 if [ -n "$STUB_FAIL" ]; then
   case "$*" in *"$STUB_FAIL"*) exit "$STUB_CODE" ;; esac
@@ -77,7 +77,7 @@ def test_the_night_seals_every_served_capture_dataset_once():
     assert set(harvested) | set(sealed) == served
 
 
-def _job(tmp_path, job, *args, fail="", code=10, out=""):
+def _job(tmp_path, job, *args, fail="", code=10, weekday=None):
     stub = tmp_path / "obserwator"
     if not stub.exists():
         stub.write_text(STUB, "utf-8")
@@ -91,8 +91,20 @@ def _job(tmp_path, job, *args, fail="", code=10, out=""):
         "STUB_LOG": str(log),
         "STUB_FAIL": fail,
         "STUB_CODE": str(code),
-        "STUB_OUT": out,
+        "STUB_OUT": str(tmp_path / "out"),
     }
+    if weekday is not None:
+        # `date +%u` answers the day of the week asked for; any other call is date's.
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        shim = bin_dir / "date"
+        shim.write_text(
+            f'#!/bin/sh\n[ "$1" = +%u ] && {{ echo {weekday}; exit 0; }}\n'
+            f'exec {shutil.which("date")} "$@"\n',
+            "utf-8",
+        )
+        shim.chmod(0o755)
+        env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     done = subprocess.run(
         ["bash", str(JOBS), job, *args],
         env=env,
@@ -102,6 +114,21 @@ def _job(tmp_path, job, *args, fail="", code=10, out=""):
     )
     calls = log.read_text("utf-8").splitlines() if log.exists() else []
     return done, calls
+
+
+def _answers(tmp_path, datasets, items):
+    """The stub's ``store sync --json`` envelope for ``--datasets <datasets>``."""
+    envelope = {
+        "schema": "obserwator-result/1",
+        "status": "ok",
+        "result": {
+            "schema": "obserwator-sync-report/1",
+            "items": [{"slot": slot, "status": status} for slot, status in items],
+        },
+    }
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    (out / f"{datasets}.json").write_text(json.dumps(envelope) + "\n", "utf-8")
 
 
 def _night(tmp_path, *args, fail="", code=10):
@@ -223,20 +250,12 @@ def test_the_telemetry_builds_the_hourly_series_of_each_month_it_stored(tmp_path
         ("2026/Hydro_2026-09.zip", "unchanged"),
         ("2026/Hydro_2026-02.zip", "new"),
     ]
-    envelope = {
-        "schema": "obserwator-result/1",
-        "status": "ok",
-        "result": {
-            "schema": "obserwator-sync-report/1",
-            "items": [
-                {"slot": f"archive:pl.imgw.hydro_telemetry:{name}", "status": status}
-                for name, status in items
-            ],
-        },
-    }
-    out = tmp_path / "sync.json"
-    out.write_text(json.dumps(envelope) + "\n", "utf-8")
-    done, calls = _job(tmp_path, "telemetry", out=str(out))
+    _answers(
+        tmp_path,
+        "pl.imgw.hydro_telemetry",
+        [(f"archive:pl.imgw.hydro_telemetry:{name}", status) for name, status in items],
+    )
+    done, calls = _job(tmp_path, "telemetry")
     assert done.returncode == 0, done.stdout
     assert calls[0].startswith("store sync --datasets pl.imgw.hydro_telemetry --years")
     assert calls[0].endswith(" --json")
@@ -248,9 +267,78 @@ def test_the_telemetry_builds_the_hourly_series_of_each_month_it_stored(tmp_path
         " --start 2026-02-01 --end 2026-02-28",
     ]
     # A checked run plans the sync only: no zip was stored.
-    done, calls = _job(tmp_path, "telemetry", "--check", out=str(out))
+    done, calls = _job(tmp_path, "telemetry", "--check")
     assert done.returncode == 0
     assert not [call for call in calls if call.startswith("series build")]
+
+
+STATIONS = "pl.pig.groundwater_stations"
+READINGS = "pl.pig.groundwater_readings"
+MONDAYS = "pl.pig.groundwater_chemistry,pl.pig.groundwater_watchlist"
+POINTS = f"archive:{STATIONS}:MWP_points.jsonl.gz"
+OCTOBER = f"archive:{READINGS}:MWP_2026-10.jsonl.gz"
+
+
+def _pig_calls(calls):
+    return [call for call in calls if "pig" in call or "PIG" in call]
+
+
+@posix_tools
+def test_the_telemetry_asks_pig_pib_every_day_and_its_tables_on_mondays(tmp_path):
+    # The readings exist at the source for one month: asked every day, the points
+    # in a call of their own (a station source); chemistry and watch list Mondays.
+    _answers(tmp_path, STATIONS, [(POINTS, "unchanged")])
+    _answers(tmp_path, READINGS, [(OCTOBER, "unchanged")])
+    done, calls = _job(tmp_path, "telemetry", weekday=2)
+    assert done.returncode == 0, done.stdout
+    # The points are held: the catalog takes the night's automatic points; the
+    # readings series is not rebuilt without a new version.
+    assert _pig_calls(calls) == [
+        f"store sync --datasets {STATIONS} --json",
+        f"store sync --datasets {READINGS} --json",
+        "store catalog --provider PIG",
+    ]
+    _answers(tmp_path, f"{READINGS},{MONDAYS}", [(OCTOBER, "unchanged")])
+    done, calls = _job(tmp_path, "telemetry", weekday=1)
+    assert _pig_calls(calls)[1] == f"store sync --datasets {READINGS},{MONDAYS} --json"
+
+
+@posix_tools
+@pytest.mark.parametrize(
+    ("points", "readings", "built"),
+    [
+        # A new month, or the month republished: the series; the points held.
+        (
+            "unchanged",
+            "new",
+            ["store catalog --provider PIG", f"series build --dataset {READINGS}"],
+        ),
+        # New points: the catalog, and the series, whose H_asl reads them.
+        (
+            "new",
+            "unchanged",
+            ["store catalog --provider PIG", f"series build --dataset {READINGS}"],
+        ),
+        # The points' sync failed: no catalog (it would fail without a points
+        # version); a new month still builds the series.
+        ("failed", "new", [f"series build --dataset {READINGS}"]),
+        ("failed", "failed", []),
+    ],
+)
+def test_the_telemetry_builds_pig_pib_on_what_its_syncs_stored(
+    tmp_path, points, readings, built
+):
+    _answers(tmp_path, STATIONS, [(POINTS, points)])
+    _answers(tmp_path, READINGS, [(OCTOBER, readings)])
+    done, calls = _job(tmp_path, "telemetry", weekday=3)
+    assert done.returncode == 0, done.stdout
+    assert _pig_calls(calls)[2:] == built
+    # A checked run plans the syncs only.
+    done, calls = _job(tmp_path, "telemetry", "--check", weekday=3)
+    assert _pig_calls(calls) == [
+        f"store sync --datasets {STATIONS} --json --check",
+        f"store sync --datasets {READINGS} --json --check",
+    ]
 
 
 # --- the units ------------------------------------------------------------------
