@@ -34,6 +34,13 @@ _ICONS = """() => {
   const features = map.queryRenderedFeatures({ layers: ['stations'] });
   return [...new Set(features.map((feature) => feature.properties.icon))].sort();
 }"""
+# The codes the stations' layer draws, each once, sorted
+_DRAWN = """() => {
+  const map = document.querySelector('.map').maplibre;
+  if (!map || !map.getLayer('stations')) return [];
+  const features = map.queryRenderedFeatures({ layers: ['stations'] });
+  return [...new Set(features.map((feature) => feature.properties.code))].sort();
+}"""
 
 
 def stations(base: str) -> list[dict[str, Any]]:
@@ -58,6 +65,22 @@ def wait_listed(page: Any, codes: list[str]) -> None:
             timeout=10_000,
         )
     assert listed(page) == sorted(codes)
+
+
+def wait_drawn(page: Any, codes: list[str]) -> None:
+    """
+    Wait until the map draws exactly these stations.
+
+    The list follows the kind switch at once, the map only once MapLibre's worker has
+    tiled the source's new data: until then it still draws the stations of before.
+    """
+    with contextlib.suppress(PlaywrightTimeout):
+        page.wait_for_function(
+            f"(codes) => JSON.stringify(({_DRAWN})()) === JSON.stringify(codes)",
+            arg=sorted(codes),
+            timeout=15_000,
+        )
+    assert page.evaluate(_DRAWN) == sorted(codes)
 
 
 def card(page: Any, section: str) -> Any:
@@ -103,11 +126,7 @@ def test_podziemne_keeps_the_groundwater_objects_drawn_as_brown_diamonds(
     expect(page.locator(f'.st-item[data-code="{SPRING}"] .st-facts')).to_contain_text(
         "źródło"
     )
-    page.wait_for_function(
-        "() => { const map = document.querySelector('.map').maplibre;"
-        " return map && map.queryRenderedFeatures({ layers: ['stations'] }).length > 0; }",
-        timeout=15_000,
-    )
+    wait_drawn(page, objects)
     assert set(page.evaluate(_ICONS)) <= {"st-groundwater-0", "st-groundwater-1"}
     legend = page.locator(".map-legend")
     diamond = legend.locator("li", has_text="wód podziemnych").locator("svg.sym")

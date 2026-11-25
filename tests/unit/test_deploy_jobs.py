@@ -272,6 +272,13 @@ def test_every_unit_verifies_once_its_paths_are_given(tmp_path):
         text=True,
         check=False,
     )
-    assert (
-        done.returncode == 0 and not done.stdout.strip() and not done.stderr.strip()
-    ), done
+    # verify also loads the host's own units (default.target and what it pulls in),
+    # and a runner's image may warn about those (`CPUAccounting=` removed in systemd
+    # 258); only the lines about the units under test count.
+    names = [str(tmp_path), *(u.name for u in units)]
+    ours = [
+        line
+        for line in (done.stdout + done.stderr).splitlines()
+        if any(name in line for name in names)
+    ]
+    assert done.returncode == 0 and not ours, done

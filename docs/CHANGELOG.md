@@ -80,6 +80,18 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
   and `commands guide` (their words moved to the next sentence). The station option's help names
   `<ID>-<code>`.
 
+## [3.2.1] - 2026-11-24
+
+Changes since 3.2.0, in 3.2.1: one defect fix, released from `hotfix/3.2.1` off `main` (REL-2.4).
+
+### Fixed
+
+- **„Progi i dni poza nimi” after „Zmienna” switches to Q (feedback 10 of 2026-11-23).** The
+  section drew the daily chart from the series of the previous variable until the new one
+  answered, so a station with thresholds of both H and Q failed with „Sekcja nie działa:
+  can't access property 0, values is undefined”. The chart now waits for the chosen
+  variable's series.
+
 ## [3.2.0] - 2026-11-23
 
 Changes since 3.1.0, in 3.2.0 (Nogat plans `2026-11-16-operational-series.md` and `2026-11-20-hydromet-providers.md`, approved 2026-11-23): provider adapters, provider credentials, captures of every answer of current data, the operational tier with IMGW-PIB's telemetry and ČHMÚ's validated hourly set, hourly series, ČHMÚ's groundwater, the meteorological station details of hydro.imgw.pl, the hourly chart of the current readings, and the deployment's timers and backups. Deployment order (ECO-085; the plan's step D1): Archiwista 0.4.0 is deployed before Obserwator 3.2.0 writes captures or hourly series to a root Archiwista shares; the sources of hydro.imgw.pl's backend stay `private` by default (`[obserwator.capture]`), so REST and the GUI serve neither their captures nor IMGW-PIB's hourly series until the operator sets them `public`.
