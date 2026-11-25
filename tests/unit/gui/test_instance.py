@@ -64,7 +64,7 @@ def instance(tmp_path: Path, **table: object) -> Instance:
 
 
 def clipped(tmp_path: Path, **more: object) -> Instance:
-    """ČHMÚ featured, IMGW-PIB off, the area clipped, PMAXTP off, a title and a logo."""
+    """ČHMÚ featured, IMGW-PIB and PIG off, the area clipped, PMAXTP off, title, logo."""
     return instance(
         tmp_path,
         title="Wody Testowe",
@@ -74,7 +74,7 @@ def clipped(tmp_path: Path, **more: object) -> Instance:
         area="area.geojson",
         area_mode="clip",
         pmaxtp="off",
-        providers={"IMGW": "off"},
+        providers={"IMGW": "off", "PIG": "off"},
         **more,
     )
 
@@ -94,7 +94,7 @@ def test_without_an_instance_the_session_names_none(client):
     session = client.get("/api/session").json()
 
     assert session["instance"] is None
-    assert list(session["providers"]) == ["IMGW", "CHMU"]
+    assert list(session["providers"]) == ["IMGW", "CHMU", "PIG"]
     assert set(session["attribution"]["origins"]) == {
         "imgw",
         "imgw_hydro",
@@ -102,6 +102,7 @@ def test_without_an_instance_the_session_names_none(client):
         "chmu",
         "gugik",
         "cuzk",
+        "pig",
     }
 
 

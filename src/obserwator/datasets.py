@@ -40,12 +40,14 @@ MonthsArg = int | str | Iterable[int | str]
 """Months 1-12: ``3``, ``"3"``, ``"1,2"`` or ``[1, "2"]``."""
 
 STATION_CODE_PATTERN = (
-    rf"^([0-9]{{9}}|0-[0-9]{{1,5}}-[0-9]{{1,5}}-[0-9A-Z]{{1,16}}|{CODE_GRAMMAR})$"
+    rf"^([0-9]{{9}}|0-[0-9]{{1,5}}-[0-9]{{1,5}}-[0-9A-Z]{{1,16}}|[1-9][0-9]{{0,5}}"
+    rf"|{CODE_GRAMMAR})$"
 )
 """
-Station code of any provider: nine IMGW-PIB digits, a WIGOS identifier (ČHMÚ) or
+Station code of any provider: nine IMGW-PIB digits, a WIGOS identifier (ČHMÚ), the
+``ID`` of a PIG-PIB point (one to six digits without a leading zero, ADR-035) or
 ``<id>-<code>``: ``GDANSKIEWODY-<no>`` (ADR-034) or that of a provider fed by files
-(ADR-033).
+(ADR-033). The grammars are disjoint, so a code names its provider.
 """
 
 DATASET_KEY_PATTERN = r"^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$"
@@ -641,6 +643,36 @@ _GDANSKIEWODY_METEO_DAILY = {
     "pressure": "hPa",
     "humidity": "%",
     "irradiance": "W/m2",
+}
+# PIG-PIB (ADR-035): the groundwater monitoring of the state geological service
+# (Monitoring Wód Podziemnych) of cbdgmapa.pgi.gov.pl's ArcGIS services
+# ``hydrogeologia/mwp`` (the points and the MWP database) and ``hydrogeologia/mwp_auto``
+# (the automatic measurements), CC BY 4.0 by dane.gov.pl's dataset 170. Its W line has
+# a period and a date filled per product (`obserwator.attribution`); the license's
+# formula keeps the placeholders of the standard's table.
+_PIG = "PIG"
+_PIG_STATIONS = "pl.pig.groundwater_stations"
+_PIG_READINGS = "pl.pig.groundwater_readings"
+_PIG_OPERATIONAL = "pl.pig.groundwater_operational"
+_PIG_CODE = r"[1-9][0-9]{0,5}"
+# The canonical form of a capture of ArcGIS pages: the rows without OBJECTID and paging
+# (`obserwator.store.content.CONTENT_FORMS["pig-json/1"]`).
+_PIG_JSON = "pig-json/1"
+_PIG_VOLATILE = ("OBJECTID",)
+_PIG_LICENSE = License(
+    "CC-BY-4.0",
+    message("legal.pig_attribution", period="<period>", date="<date>"),
+    "https://creativecommons.org/licenses/by/4.0/",
+    "https://www.pgi.gov.pl/rejestry-i-bazy-danych-geologicznych/zasady-korzystania-z-isp.html",
+)
+_PIG_READING_NOTES = {
+    "depth_to_water": message("datasets.note_pig_depth_to_water"),
+    "H_asl": message("datasets.note_pig_h_asl"),
+    "spring_yield": message("datasets.note_pig_spring_yield"),
+}
+_PIG_HOURLY_NOTES = {
+    "depth_to_water": message("datasets.note_pig_hourly_depth"),
+    "H_asl": message("datasets.note_pig_hourly_h_asl"),
 }
 
 
@@ -1843,6 +1875,128 @@ _DATASETS: tuple[DatasetDescriptor, ...] = (
         _GDANSKIEWODY_METEO_DAILY,
         message("datasets.title_gdanskiewody_meteo_daily"),
     ),
+    # PIG-PIB (ADR-035): the points, the readings and the two tables of the MWP
+    # database (verified: PIG-PIB checks them before they enter it), each version the
+    # capture of one run's pages, compared by content (``pig-json/1``), the readings
+    # one file per calendar month of their rows; the automatic hourly measurements of
+    # ``mwp_auto`` (operational, „bez walidacji”), harvested each night by ``OBJECTID``
+    # watermark into the night's capture, and the hourly series built from them.
+    DatasetDescriptor(
+        key=_PIG_STATIONS,
+        slug="pig_groundwater_stations",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_stations"),
+        server_dir="mwp/MapServer/0",
+        parser="parse_pig_stations",
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key=_PIG_READINGS,
+        slug="pig_groundwater_readings",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_readings"),
+        server_dir="mwp/MapServer/1",
+        parser="parse_pig_readings",
+        variables={"depth_to_water": "m", "H_asl": "m", "spring_yield": "l/s"},
+        time_unit="week",
+        year_type="hydrological",
+        first_year=1965,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        variable_notes=_PIG_READING_NOTES,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_chemistry",
+        slug="pig_groundwater_chemistry",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_chemistry"),
+        server_dir="mwp/MapServer/2",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_watchlist",
+        slug="pig_groundwater_watchlist",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_watchlist"),
+        server_dir="mwp/MapServer/3",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key=_PIG_OPERATIONAL,
+        slug="pig_groundwater_operational",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_operational"),
+        server_dir="mwp_auto/MapServer",
+        parser=None,
+        variables={"depth_to_water": "m"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        archive_scope="country_day",
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_subdaily",
+        slug="pig_groundwater_subdaily",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_subdaily"),
+        server_dir=None,
+        parser=None,
+        variables={"depth_to_water": "m", "H_asl": "m"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=2015,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        variable_notes=_PIG_HOURLY_NOTES,
+        tier="operational",
+        inputs=(_PIG_OPERATIONAL,),
+    ),
 )
 # Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
@@ -2067,6 +2221,21 @@ _PROVIDERS: tuple[ProviderDescriptor, ...] = (
             item.key for item in _DATASETS if item.provider == _GDANSKIEWODY
         ),
         credential=ProviderCredential("GDANSKIE_WODY"),
+    ),
+    # PIG-PIB (ADR-035): the state geological service's groundwater monitoring, open
+    # ArcGIS REST without a key, CC BY 4.0 by dane.gov.pl's dataset 170.
+    ProviderDescriptor(
+        id=_PIG,
+        short_name=message("legal.pig_short_name"),
+        name=message("legal.pig_name"),
+        country="PL",
+        key_prefix="pl.pig",
+        base_url="https://cbdgmapa.pgi.gov.pl/arcgis/rest/services/hydrogeologia/",
+        license=_PIG_LICENSE,
+        processed_attribution=message("legal.pig_processed_attribution"),
+        notice=message("datasets.provider_notice_pig"),
+        station_code_pattern=rf"^{_PIG_CODE}$",
+        datasets=tuple(item.key for item in _DATASETS if item.provider == _PIG),
     ),
 )
 _PROVIDERS = _PROVIDERS + tuple(_file_provider(item) for item in _FILES.files)
@@ -2767,6 +2936,8 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.groundwater_stations": ("meta1.json",),
         "cz.chmu.groundwater_now": ("meta1.json",),
         _GDANSKIEWODY_STATIONS: ("stations",),
+        # The capture of the pages of PIG-PIB's points layer (ADR-035).
+        _PIG_STATIONS: ("MWP_points.jsonl.gz",),
         # The station file of each provider fed by files (ADR-033).
         **{
             f"{provider.key_prefix}.station_list": (STATIONS_FILE,)

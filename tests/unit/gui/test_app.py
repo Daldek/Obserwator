@@ -198,18 +198,32 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
     # The fixture root stores no analyses
-    assert root["analyses"] == {"IMGW": None, "CHMU": None}
-    assert set(session["providers"]) == {"IMGW", "CHMU"}
+    assert root["analyses"] == {"IMGW": None, "CHMU": None, "PIG": None}
+    assert set(session["providers"]) == {"IMGW", "CHMU", "PIG"}
     assert session["providers"]["CHMU"]["attribution"] == list(
         attribution("chmu").attribution
     )
-    # national services: their countries, and no notice of another source (P8, P11)
+    # national services: their countries, and no notice of another source (P8, P11);
+    # PIG-PIB, a geological survey, is another source and says so in its own words
+    pig_notice = message("datasets.source_notice_pig").localized("pl")
     assert {
         provider: (found["country"], found["source_class"], found["source_notice"])
         for provider, found in session["providers"].items()
-    } == {"IMGW": ("PL", "nmhs", None), "CHMU": ("CZ", "nmhs", None)}
+    } == {
+        "IMGW": ("PL", "nmhs", None),
+        "CHMU": ("CZ", "nmhs", None),
+        "PIG": ("PL", "other", pig_notice),
+    }
     origins = session["attribution"]["origins"]
-    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
+    assert set(origins) == {
+        "imgw",
+        "imgw_hydro",
+        "pmaxtp",
+        "chmu",
+        "gugik",
+        "cuzk",
+        "pig",
+    }
     assert session["basemap"] is None
     assert session["terms"] is None
     assert session["operator_email"] is None

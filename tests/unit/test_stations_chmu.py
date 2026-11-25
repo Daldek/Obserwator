@@ -21,6 +21,7 @@ from obserwator.fetch import DownloadResult
 from obserwator.messages import message
 from obserwator.stations import find_stations, find_stations_async
 from obserwator.store import init_store, write_archive
+from obserwator.testing import _PigService
 from tests.unit.test_store_catalog_chmu import (
     BASE_URL,
     CASES,
@@ -154,17 +155,19 @@ def test_live_query_matches_names_rivers_and_code_prefixes(router, query, codes)
     assert [station.station_code for station in found] == codes
 
 
-def test_without_provider_both_providers_are_searched_in_registry_order(router):
+def test_without_provider_the_providers_are_searched_in_registry_order(router):
     serve(router, *NOW)
     router.get(IMGW_HYDRO).respond(content=IMGW_HYDRO_CSV.encode("cp1250"))
     router.get(IMGW_METEO).respond(content=IMGW_METEO_CSV.encode("cp1250"))
     router.get(IMGW_API + "hydro").respond(json=[])
     router.get(IMGW_API + "meteo").respond(json=[])
+    router.route(host="cbdgmapa.pgi.gov.pl").mock(side_effect=_PigService())
 
     found = find_stations(query="ra")
 
     # "ra" is in RABA GÓRNA (IMGW-PIB), Srážková Lhota (ČHMÚ, without diacritics) and
-    # the bore Rakousy (ČHMÚ's groundwater, after the meteo stations).
+    # the bore Rakousy (ČHMÚ's groundwater, after the meteo stations); PIG-PIB's
+    # recorded points, searched too, hold none; Gdańskie Wody is off by default.
     assert [(s.provider, s.kind, s.station_code) for s in found] == [
         ("IMGW", "hydro", "149190310"),
         ("IMGW", "meteo", "249190310"),

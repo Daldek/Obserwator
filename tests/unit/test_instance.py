@@ -107,8 +107,9 @@ def test_without_the_section_only_the_providers_off_by_default_are_left_out(
         "IMGW": "visible",
         "CHMU": "visible",
         "GDANSKIEWODY": "off",
+        "PIG": "visible",
     }
-    assert instance.complete and instance.served == ("IMGW", "CHMU")
+    assert instance.complete and instance.served == ("IMGW", "CHMU", "PIG")
     assert (instance.featured, instance.area, instance.pmaxtp) == (None, None, True)
     report = environment_report()
     assert report["instance"] is None
@@ -138,10 +139,11 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
         "IMGW": "hidden",
         "CHMU": "visible",
         "GDANSKIEWODY": "off",
+        "PIG": "visible",
     }
     # Hidden is served: every provider served by default still is.
     assert instance.declared and instance.complete
-    assert instance.served == ("CHMU", "IMGW")
+    assert instance.served == ("CHMU", "IMGW", "PIG")
     assert (instance.featured, instance.start_view, instance.pmaxtp) == (
         "CHMU",
         "featured",
@@ -156,6 +158,7 @@ def test_a_section_resolves_with_its_defaults_and_relative_paths(tmp_path, monke
         "IMGW": "hidden",
         "CHMU": "visible",
         "GDANSKIEWODY": "off",
+        "PIG": "visible",
     }
     assert report["area"]["mode"] == "clip" and report["area"]["vertices"] == 5
     assert report["logo"]["media_type"] == "image/svg+xml"
@@ -173,6 +176,7 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
         "IMGW": "visible",
         "CHMU": "visible",
         "GDANSKIEWODY": "off",
+        "PIG": "visible",
     }
     assert instance.complete
     assert (instance.start_view, instance.area, instance.pmaxtp) == ("all", None, True)
@@ -211,7 +215,7 @@ def test_a_bare_section_serves_everything_from_the_whole_extent(tmp_path, monkey
         (f'title = "{"x" * 81}"\n', "instance.title"),
         (
             'pmaxtp = "off"\n[obserwator.instance.providers]\n'
-            'IMGW = "off"\nCHMU = "off"\n',
+            'IMGW = "off"\nCHMU = "off"\nPIG = "off"\n',
             "instance.providers",
         ),
         ('area = "missing.geojson"\n', "instance.area"),

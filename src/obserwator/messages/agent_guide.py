@@ -51,16 +51,18 @@ MESSAGES = {
     ),
     # Braces of a key pattern are doubled: the text is a format string.
     "captures": Text(
-        "Captures (`pl.imgw.*_{{current,operational}}`, "
+        "Captures (`pl.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, unverified, one version a UTC day): "
         "`store sync` alone (`start`/`end`: closed UTC days); `pace_until` first "
         "harvests them (default yesterday) of `pl.imgw.hydro_operational` or "
-        "`cz.chmu.hydro_recent`.",
-        "Zapisy (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_recent`, of `pl.pig.groundwater_operational` from its "
+        "watermark.",
+        "Zapisy (`pl.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, niezweryfikowane, wersja na dobę UTC): "
         "`store sync` osobno (`start`/`end`: zakończone doby UTC); `pace_until` "
         "najpierw pobiera je (domyślnie wczoraj) dla `pl.imgw.hydro_operational` "
-        "albo `cz.chmu.hydro_recent`.",
+        "albo `cz.chmu.hydro_recent`, dla `pl.pig.groundwater_operational` od jego "
+        "znacznika.",
     ),
     "outside_store": Text(
         "Download only (`datasets download`):",
@@ -167,12 +169,10 @@ MESSAGES = {
         "kilka trafień → zapytaj użytkownika; kod wybranej stacji to `KOD_STACJI`.",
     ),
     "flow_precipitation_choose_dataset": Text(
-        "Choose `pl.imgw.meteo_precip_daily` (precipitation stations, `P`) or "
-        "`pl.imgw.meteo_climate_daily` (climate stations, `P`, temperatures): the "
+        "Start with `pl.imgw.meteo_precip_daily` (precipitation stations, `P`): the "
         "station list does not tell a station's network.",
-        "Wybierz `pl.imgw.meteo_precip_daily` (stacje opadowe, `P`) albo "
-        "`pl.imgw.meteo_climate_daily` (stacje klimatyczne, `P`, temperatury): lista "
-        "stacji nie mówi, w której sieci jest stacja.",
+        "Zacznij od `pl.imgw.meteo_precip_daily` (stacje opadowe, `P`): lista stacji "
+        "nie mówi, w której sieci jest stacja.",
     ),
     "flow_precipitation_plan": Text(
         "plan: files and bytes; the archives cover the whole country, so tell the "

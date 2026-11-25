@@ -86,6 +86,7 @@ def test_store_info_lists_the_providers_of_the_registry(tmp_path):
             "IMGW",
             "CHMU",
             "GDANSKIEWODY",
+            "PIG",
         ]
 
 
@@ -131,7 +132,7 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     ]
     with pytest.raises(ObserwatorValidationError) as error:
         iter_store(root, provider="SHMU")
-    assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY"]
+    assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY", "PIG"]
 
 
 def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path):

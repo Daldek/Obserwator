@@ -50,10 +50,11 @@ def _utc_today() -> date:
 
 def _night_datasets() -> tuple[list[str], list[str]]:
     text = JOBS.read_text("utf-8")
+    watermarked = re.search(r'^WATERMARKED="(\S+) ', text, re.MULTILINE)
     block = re.search(r"^HARVESTS=\((.*?)^\)", text, re.DOTALL | re.MULTILINE)
     sealed = re.search(r"^SEALED=(\S+)$", text, re.MULTILINE)
-    assert block and sealed
-    harvested = [
+    assert watermarked and block and sealed
+    harvested = [watermarked.group(1)] + [
         line.split()[0].strip('"')
         for line in block.group(1).split("\n")
         if line.strip()
@@ -66,7 +67,11 @@ def test_the_night_seals_every_served_capture_dataset_once():
     # declared one makes the sealing call fail (unknown dataset).
     harvested, sealed = _night_datasets()
     served = {d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE}
-    assert harvested == ["pl.imgw.hydro_operational", "cz.chmu.hydro_recent"]
+    assert harvested == [
+        "pl.pig.groundwater_operational",
+        "pl.imgw.hydro_operational",
+        "cz.chmu.hydro_recent",
+    ]
     assert not set(harvested) & set(sealed)
     assert len(sealed) == len(set(sealed))
     assert set(harvested) | set(sealed) == served
@@ -119,19 +124,26 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
     yesterday = _utc_today() - timedelta(days=1)
     done, calls = _night(tmp_path)
     assert done.returncode == 0, done.stdout
-    assert calls[0].startswith(
-        "store sync --datasets pl.imgw.hydro_operational --pace-until 05:00"
+    # PIG-PIB's harvest first, from its watermark: no days, no stamp (ADR-035).
+    assert calls[0] == (
+        "store sync --datasets pl.pig.groundwater_operational --pace-until 02:45"
     )
     assert calls[1].startswith(
+        "store sync --datasets pl.imgw.hydro_operational --pace-until 05:00"
+    )
+    assert calls[2].startswith(
         "store sync --datasets cz.chmu.hydro_recent --pace-until 06:30"
     )
-    assert calls[2].startswith("store sync --datasets pl.imgw.hydro_current,")
+    assert calls[3].startswith("store sync --datasets pl.imgw.hydro_current,")
     assert _harvest_days(calls, "pl.imgw.hydro_operational") == (str(yesterday),) * 2
     assert _stamp(tmp_path, "cz.chmu.hydro_recent").read_text().strip() == str(
         yesterday
     )
-    # After the sealing, the hourly series of the months of each harvest's days.
-    assert calls[3:] == [
+    assert not _stamp(tmp_path, "pl.pig.groundwater_operational").exists()
+    # After the sealing, the hourly series: every month of PIG-PIB's captures, then
+    # the months of each other harvest's days.
+    assert calls[4] == "series build --dataset pl.pig.groundwater_subdaily"
+    assert calls[5:] == [
         f"series build --dataset {series} --start {yesterday} --end {yesterday}"
         for series in ("pl.imgw.hydro_subdaily", "cz.chmu.hydro_subdaily")
     ]
@@ -153,18 +165,18 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
         str(yesterday),
     )
     assert "beyond the source's reach" in done.stdout
-    assert calls[3:] == [
+    assert calls[5:] == [
         "series build --dataset pl.imgw.hydro_subdaily"
         f" --start {yesterday - timedelta(days=2)} --end {yesterday}",
         "series build --dataset cz.chmu.hydro_subdaily"
         f" --start {_utc_today() - timedelta(days=40)} --end {yesterday}",
     ]
 
-    # Harvested already (a catch-up after a run by hand): no request and no build,
-    # the sealing runs.
+    # Harvested already (a catch-up after a run by hand): no request and no build of
+    # those, PIG-PIB's harvest from its watermark, the sealing and its series run.
     done, calls = _night(tmp_path)
     assert done.returncode == 0
-    assert len(calls) == 1 and calls[0].startswith(
+    assert len(calls) == 3 and calls[1].startswith(
         "store sync --datasets pl.imgw.hydro_current,"
     )
 
@@ -181,8 +193,8 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
     # again; the ČHMÚ harvest, the sealing and the hourly series of what it got still
     # run; the exit is the failure's.
     assert done.returncode == 10
-    assert len(calls) == 5
-    assert calls[3] == (
+    assert len(calls) == 7
+    assert calls[5] == (
         "series build --dataset pl.imgw.hydro_subdaily"
         f" --start {yesterday - timedelta(days=1)} --end {yesterday}"
     )
@@ -196,7 +208,7 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
 def test_a_checked_night_records_no_harvest(tmp_path):
     done, calls = _night(tmp_path, "--check")
     assert done.returncode == 0
-    assert all(call.endswith("--check") for call in calls) and len(calls) == 5
+    assert all(call.endswith("--check") for call in calls) and len(calls) == 7
     assert not _stamp(tmp_path, "pl.imgw.hydro_operational").exists()
     done, calls = _night(tmp_path, "--start", "2026-13-01")
     assert done.returncode == 64 and not calls

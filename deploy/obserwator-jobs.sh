@@ -7,11 +7,14 @@
 #        obserwator-jobs.sh telemetry [--check]
 #        obserwator-jobs.sh current [--check]
 #
-#   night      02:30 local: the harvest of pl.imgw.hydro_operational until 05:00,
-#              then of cz.chmu.hydro_recent until 06:30, each for the UTC days
-#              since its last whole harvest, then the sealing of every other
-#              capture dataset's closed UTC days, then the build of the hourly
-#              series of the months those harvests asked for (ADR-031).
+#   night      02:30 local: the harvest of pl.pig.groundwater_operational from the
+#              watermark its raw root holds until 02:45, then of
+#              pl.imgw.hydro_operational until 05:00, then of cz.chmu.hydro_recent
+#              until 06:30, the last two for the UTC days since their last whole
+#              harvest, then the sealing of every other capture dataset's closed
+#              UTC days, then the build of the hourly series of the months those
+#              harvests asked for (ADR-031; PIG-PIB's: every month its captures
+#              hold, ADR-035).
 #   telemetry  06:45 local: IMGW-PIB's monthly telemetry of the current year (and
 #              of the year before in January), the hourly series of each month
 #              whose zip it stored, and the listing check of ČHMÚ's validated
@@ -41,8 +44,12 @@ set -uo pipefail
 
 # --- the night's datasets (ADR-030): the served capture datasets of the registry,
 # the declared ones left out; tests/unit/test_deploy_jobs.py keeps them equal ---
-# Each harvest: dataset, the local time its requests are spread to, and the hourly
-# series built of its days after the sealing (ADR-031).
+# PIG-PIB's harvest (ADR-035) goes first: the watermark of its last capture names the
+# rows to ask, so it takes no days and keeps no state. Dataset, the local time its
+# requests are spread to, and its hourly series.
+WATERMARKED="pl.pig.groundwater_operational 02:45 pl.pig.groundwater_subdaily"
+# Each harvest by days: dataset, the local time its requests are spread to, and the
+# hourly series built of its days after the sealing (ADR-031).
 HARVESTS=(
   "pl.imgw.hydro_operational 05:00 pl.imgw.hydro_subdaily"
   "cz.chmu.hydro_recent 06:30 cz.chmu.hydro_subdaily"
@@ -90,6 +97,8 @@ night() {
   stamps="$(state_dir)/obserwator/timers" || { say "state_dir unknown"; return 1; }
   end=$(date -u -d yesterday +%F)
   earliest=$(date -u -d "-$HARVEST_DAYS days" +%F)
+  read -r dataset until series <<<"$WATERMARKED"
+  step "$OBSERWATOR" store sync --datasets "$dataset" --pace-until "$until" "${check[@]}"
   for entry in "${HARVESTS[@]}"; do
     read -r dataset until series <<<"$entry"
     stamp=$stamps/$dataset.harvested
@@ -116,7 +125,10 @@ night() {
     fi
   done
   step "$OBSERWATOR" store sync --datasets "$SEALED" "${check[@]}"
-  # The hourly series (ADR-031): the months of the days each harvest asked for.
+  # The hourly series (ADR-031): every month PIG-PIB's captures hold, then the months
+  # of the days each other harvest asked for.
+  read -r _ _ series <<<"$WATERMARKED"
+  step "$OBSERWATOR" series build --dataset "$series" "${check[@]}"
   for build in "${builds[@]}"; do
     read -r series start <<<"$build"
     step "$OBSERWATOR" series build --dataset "$series" --start "$start" --end "$end" \

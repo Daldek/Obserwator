@@ -286,7 +286,7 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
     "datasets list": [({"kind": "both"}, "kind"), ({"limit": 0}, "limit")],
     "datasets files": [
         ({"dataset": "pl.imgw.pmaxtp", "years": [2024]}, "dataset"),
-        ({"dataset": DAILY, "years": [2024], "stations": ["1491"]}, "stations"),
+        ({"dataset": DAILY, "years": [2024], "stations": ["01491"]}, "stations"),
         ({"dataset": DAILY, "years": [2024], "months": [13]}, "months"),
     ],
     "datasets download": [
@@ -332,7 +332,7 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
             {"root": ROOT, "datasets": ["pl.imgw.hydro_phenomena"], "years": [2024]},
             "datasets",
         ),
-        ({"root": ROOT, "datasets": [DAILY], "stations": ["1491"]}, "stations"),
+        ({"root": ROOT, "datasets": [DAILY], "stations": ["01491"]}, "stations"),
     ],
     "store sync": [
         ({"root": ROOT}, "plan"),
@@ -348,11 +348,11 @@ INVALID: dict[str, list[tuple[dict[str, object], str]]] = {
     ],
     "series build": [
         ({"root": ROOT, "dataset": "pl.imgw.hydro_stations"}, "dataset"),
-        ({"root": ROOT, "dataset": DAILY, "stations": ["1491"]}, "stations"),
+        ({"root": ROOT, "dataset": DAILY, "stations": ["01491"]}, "stations"),
         ({"root": ROOT, "dataset": DAILY, "years": "2024-2020"}, "years"),
     ],
     "series select": [
-        ({"root": ROOT, "dataset": DAILY, "stations": ["1491"]}, "stations"),
+        ({"root": ROOT, "dataset": DAILY, "stations": ["01491"]}, "stations"),
         ({"root": ROOT, "dataset": DAILY}, "stations"),
     ],
     "series read": [
