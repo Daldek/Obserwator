@@ -80,6 +80,23 @@ def groundwater_roots(tmp_path_factory):
     )
 
 
+@pytest.fixture(scope="session")
+def groundwater_pl_roots(tmp_path_factory):
+    """
+    The ``groundwater_pl`` roots of ``obserwator.testing``, built once per session.
+
+    ``groundwater`` and PIG-PIB's recorded points, October 2026's readings, a
+    night's capture of ``mwp_auto``, both series and the PIG catalog (ADR-035);
+    never written, a test copies them to mutate.
+    """
+    from obserwator.testing import build_fixture_store
+
+    base = tmp_path_factory.mktemp("fixture-groundwater-pl")
+    return build_fixture_store(
+        base / "raw", data_root=base / "data", variant="groundwater_pl"
+    )
+
+
 # Sample PMAXTP API response
 @pytest.fixture
 def pmaxtp_api_response():

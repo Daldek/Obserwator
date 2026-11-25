@@ -15,22 +15,25 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 import threading
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, tzinfo
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal, Self, get_args
 from unittest import mock
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
 import httpx
 
+from obserwator import captures as _captures
+from obserwator import fetch as _fetch
 from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -47,13 +50,20 @@ from obserwator.store import (
     sync_store,
     write_archive,
 )
+from obserwator.store import captures as _store_captures
+from obserwator.store import writer as _writer
 from obserwator.store.types import PathArg, StoreHandle
 from obserwator.store.writer import _canonical
 
 __all__ = ["FixtureRoots", "FixtureVariant", "build_fixture_store", "fixture_files"]
 
 FixtureVariant = Literal[
-    "complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"
+    "complete",
+    "corrupt",
+    "unknown_schema",
+    "complete_pl_cz",
+    "groundwater",
+    "groundwater_pl",
 ]
 
 _RECORDINGS = ("recordings.json", "builder_recordings.json")
@@ -527,6 +537,23 @@ def build_fixture_store(
     * the list (``cz.chmu.groundwater_stations``) and the current metadata
       (``cz.chmu.groundwater_now``) of the two objects, cut to their rows.
 
+    ``groundwater_pl`` is ``groundwater`` plus PIG-PIB (ADR-035): the real rows of
+    its ArcGIS services in ``pig_recordings.json`` (eleven points), answered with
+    ArcGIS's semantics and synchronized by `sync_store` on a clock that starts at
+    the probe's capture, 2026-11-24 22:16 UTC, and moves only when a paced request
+    waits (no request sleeps, and the raw versions are dated by that clock):
+
+    * the points (``pl.pig.groundwater_stations``), October 2026's readings
+      (``pl.pig.groundwater_readings``, ``MWP_2026-10.jsonl.gz``, with the one
+      reading of 9390, a point missing from the points) and the night's capture of
+      ``pl.pig.groundwater_operational`` of 2026-11-24 (the harvest by watermark
+      from ``OBJECTID`` 0, with the stored hour 02 of 2026-03-29);
+    * the readings series ``pig_groundwater_readings``, the hourly series
+      ``pig_groundwater_subdaily`` (the months 2026-03, 2026-10 and 2026-11) and
+      the PIG catalog ``stations/versions/pig_stations/`` (among them the
+      automatic bore 6495 „Olszyc Szlachecki”, the weekly bore 853 „Tucznawa” and
+      the spring 1247 „Falsztyn”).
+
     Parameters
     ----------
     root : str or os.PathLike
@@ -534,7 +561,7 @@ def build_fixture_store(
     data_root : str or os.PathLike
         Directory of the data root, outside ``root``; it must not exist or be
         an empty directory.
-    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"}, optional
+    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater", "groundwater_pl"}, optional
         Fixture variant to build.
 
     Returns
@@ -622,8 +649,10 @@ def build_fixture_store(
         sidecar.write_bytes(sidecar.read_bytes()[: sidecar.stat().st_size // 2])
     elif variant == "unknown_schema":
         _add_unknown_version(data.root)
-    elif variant in ("complete_pl_cz", "groundwater"):
-        _add_chmu(raw, data, groundwater=variant == "groundwater")
+    elif variant in ("complete_pl_cz", "groundwater", "groundwater_pl"):
+        _add_chmu(raw, data, groundwater=variant != "complete_pl_cz")
+        if variant == "groundwater_pl":
+            _add_pig(raw, data)
     return FixtureRoots(raw, data)
 
 
@@ -864,3 +893,110 @@ class _PigService:
             "fields": described,
             "features": [{"attributes": attributes}],
         }
+
+
+# --- PIG-PIB's part of the variant groundwater_pl (ADR-035) -------------------------
+
+_PIG_POINTS = "pl.pig.groundwater_stations"
+_PIG_READINGS = "pl.pig.groundwater_readings"
+_PIG_OPERATIONAL = "pl.pig.groundwater_operational"
+_PIG_SUBDAILY = "pl.pig.groundwater_subdaily"
+_PIG_CAPTURED = datetime(2026, 11, 24, 22, 16, tzinfo=UTC)
+"""When the probe captured the recorded answers: where the clock of the part starts."""
+_PIG_PACE = timedelta(minutes=2)
+"""How long the night's harvest of the part is spread over (``--pace-until``)."""
+
+
+class _PigClock:
+    """The clock of PIG-PIB's part: it moves only when a paced request waits."""
+
+    def __init__(self, moment: datetime) -> None:
+        self.moment = moment
+
+    def now(self) -> datetime:
+        """The current time, UTC."""
+        return self.moment
+
+    def sleep(self, seconds: float, /) -> None:
+        """Move on by ``seconds`` at once."""
+        self.moment += timedelta(seconds=seconds)
+
+
+def _following(clock: _PigClock) -> type[datetime]:
+    """`datetime` whose ``now`` is ``clock``'s: the writer's dates of the part."""
+
+    class _Now(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Self:
+            """``clock``'s time in ``tz``."""
+            moment = clock.now()
+            return cls.combine(moment.date(), moment.timetz()).astimezone(tz)
+
+    return _Now
+
+
+@contextmanager
+def _pig_answered(clock: _PigClock) -> Iterator[None]:
+    """
+    PIG-PIB's services answered by `_PigService` on ``clock``, the spool a scratch one.
+
+    Every synchronous httpx request to PIG-PIB's host is answered from the recorded
+    rows and any other fails as a connection error. The paced requests and the
+    capture spool follow ``clock``, whose waits move it at once; the night's answers
+    go to a spool of their own, never the one of ``state_dir`` (ADR-030 D7), whose
+    day the run seals; the writer dates the versions by ``clock``. Process-global:
+    patched under ``_HTTP_LOCK``.
+    """
+    service = _PigService()
+    host = httpx.URL(service._base).host
+
+    def handle(self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        if request.url.host != host:
+            raise httpx.ConnectError(
+                message(
+                    "testing.no_recorded_response",
+                    method=request.method,
+                    url=request.url,
+                ),
+                request=request,
+            )
+        return service(request)
+
+    with ExitStack() as stack:
+        stack.enter_context(_HTTP_LOCK)
+        spool = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        for owner, name, value in (
+            (httpx.HTTPTransport, "handle_request", handle),
+            (_fetch, "_clock", lambda: clock),
+            (_fetch, "_ARCGIS", _fetch._Spacing()),
+            (_captures, "_now", clock.now),
+            (_captures, "spool_root", lambda: spool),
+            (_store_captures, "spool_root", lambda: spool),
+            (_writer, "datetime", _following(clock)),
+        ):
+            stack.enter_context(mock.patch.object(owner, name, value))
+        yield
+
+
+def _add_pig(raw: StoreHandle, data: StoreHandle) -> None:
+    """
+    PIG-PIB's part of ``groundwater_pl``: its datasets synchronized, then built.
+
+    `sync_store` of the points and of the readings, then the night's harvest of
+    ``mwp_auto`` by watermark (``pace_until`` two minutes on, its day sealed), each
+    new, on a clock that starts at the probe's capture (`_pig_answered`); then the
+    readings series, the hourly series and the PIG catalog, each built new.
+    """
+    clock = _PigClock(_PIG_CAPTURED)
+    with _pig_answered(clock):
+        for key in (_PIG_POINTS, _PIG_READINGS):
+            report = sync_store(raw, datasets=[key])
+            _expect(key, ", ".join(item.status for item in report.items), "new")
+        until = (clock.now() + _PIG_PACE).astimezone().strftime("%H:%M")
+        night = sync_store(raw, datasets=[_PIG_OPERATIONAL], pace_until=until)
+        _expect(_PIG_OPERATIONAL, ", ".join(item.status for item in night.items), "new")
+        for key in (_PIG_READINGS, _PIG_SUBDAILY):
+            series = build_series(data, raw_root=raw, dataset=key)
+            _expect(f"{key}: series", series.status, "new")
+        catalog = build_catalog(data, raw_root=raw, provider="PIG")
+        _expect("PIG-PIB station catalog", catalog.status, "new")
