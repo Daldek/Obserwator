@@ -53,6 +53,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     _capture_file,
     get_dataset,
+    get_provider,
 )
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -433,8 +434,10 @@ def seal_day(
 
     The day's readable spool files and the answers of the slot's current version
     are joined (each answer once) and written as one version
-    (`obserwator.store.writer.write_capture`) unless the current version holds
-    every answer already (``unchanged``); then the sealed spool files are removed.
+    (`obserwator.store.writer.write_capture`, with what the provider adds to its
+    ``extra.capture``: `ProviderAdapter.capture_extra`, PIG-PIB's watermark) unless
+    the current version holds every answer already (``unchanged``); then the sealed
+    spool files are removed.
 
     Parameters
     ----------
@@ -472,11 +475,15 @@ def seal_day(
             assert entry.version is not None
             status, version = "unchanged", entry.version
         else:
+            sealed = list(merged.values())
             written = write_capture(
                 root,
                 archive=archive,
-                data=encode(merged.values()),
+                data=encode(sealed),
                 answers=len(merged),
+                extra=get_provider(descriptor.provider).adapter.capture_extra(
+                    descriptor.key, sealed
+                ),
                 on_progress=on_progress,
                 on_notice=on_notice,
                 cancel=cancel,

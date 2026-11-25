@@ -12,16 +12,23 @@ import shutil
 import socket
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
 from obserwator._version import __version__
-from obserwator.attribution import attribution, dataset_origin
+from obserwator.attribution import (
+    attribution,
+    dataset_origin,
+    days_text,
+    fill,
+    fillable,
+    years_text,
+)
 from obserwator.datasets import (
     CAPTURE_SCOPE,
     CAPTURE_SUFFIX,
@@ -41,7 +48,7 @@ from obserwator.exceptions import (
     ObserwatorValidationError,
     io_error,
 )
-from obserwator.fetch import DownloadResult
+from obserwator.fetch import DownloadResult, _archive_years
 from obserwator.messages import message, reason
 from obserwator.output import (
     DATA_MARKER,
@@ -1428,6 +1435,32 @@ def _content_fields(
     return {"content_sha256": content, "content_form": form}
 
 
+def _filling(
+    descriptor: DatasetDescriptor, years: Iterable[int], days: Iterable[date]
+) -> dict[str, str]:
+    """
+    ``period`` and ``date`` of a version's W (PIG-PIB, ADR-035); empty for other data.
+
+    The years of the data the version holds and the days of the captures it comes
+    from fill the placeholders of a license formula that has them (`fillable`).
+    """
+    if not fillable(descriptor.license.attribution):
+        return {}
+    return {"period": years_text(years), "date": days_text(days)}
+
+
+def _filled_license(
+    descriptor: DatasetDescriptor, filling: Mapping[str, str]
+) -> dict[str, str]:
+    """The ``license`` object of a sidecar, its formula filled (`_filling`)."""
+    document = _license_document(descriptor.license)
+    if filling:
+        document["attribution"] = fill(
+            document["attribution"], period=filling["period"], date=filling["date"]
+        )
+    return document
+
+
 def _tier_fields(descriptor: DatasetDescriptor) -> dict[str, str]:
     """
     ``tier`` and ``publication`` of a new version's sidecar (ADR-030 D6, ECO-085).
@@ -1728,6 +1761,9 @@ def write_archive(
         sha = digest.hexdigest()
         now = datetime.now(UTC)
         stamp = _utc(now)
+        # PIG-PIB's W (ADR-035): the years of the file's period, else of the
+        # download; the day of the download.
+        filling = _filling(descriptor, _archive_years(archive, now.year), (now.date(),))
         if response.last_modified:
             try:
                 published = parsedate_to_datetime(response.last_modified).astimezone(
@@ -1803,7 +1839,7 @@ def write_archive(
             "country": provider.country,
             "provider": provider.id,
             "request": request,
-            "license": _license_document(descriptor.license),
+            "license": _filled_license(descriptor, filling),
             "downloaded_at": stamp,
             "sha256": sha,
             "size_bytes": len(response.data),
@@ -1857,7 +1893,10 @@ def write_archive(
             # The lines of the dataset's origin; the station metadata kept of an
             # answer with operational data are processed data.
             lines = attribution(
-                dataset_origin(descriptor.key), processed=bool(descriptor.kept_fields)
+                dataset_origin(descriptor.key),
+                processed=bool(descriptor.kept_fields),
+                period=filling.get("period"),
+                date=filling.get("date"),
             )
             on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
         return VersionResult(
@@ -1875,6 +1914,7 @@ def write_capture(
     archive: ArchiveFile,
     data: bytes,
     answers: int,
+    extra: Mapping[str, object] | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
@@ -1891,8 +1931,11 @@ def write_capture(
     is another version of the slot, told apart by its SHA-256; bytes a version of
     the slot already has are ``unchanged``. The sidecar's ``sha256`` is the stored
     file's; ``extra.http`` is the source's address without a signal,
-    ``extra.capture`` the number of answers, and ``tier`` and ``publication`` are
-    those of D6.
+    ``extra.capture`` the number of answers and what the provider adds
+    (`obserwator.providers.base.ProviderAdapter.capture_extra`), and ``tier`` and
+    ``publication`` are those of D6. A license formula with placeholders (PIG-PIB's
+    W, ADR-035) is filled with the years of the ``period`` of ``extra`` (else the
+    day's year) and the day.
 
     Parameters
     ----------
@@ -1905,6 +1948,9 @@ def write_capture(
         The sealed answers.
     answers : int
         How many answers they hold.
+    extra : Mapping of str to object or None, optional
+        The provider's fields of ``extra.capture`` (PIG-PIB's ``period``, ``watermark``
+        and ``count``); None for none.
     on_progress : ProgressHook or None, optional
         Called once with a ``new`` progress event after publication.
     on_notice : NoticeHook or None, optional
@@ -1962,6 +2008,12 @@ def write_capture(
                 return VersionResult("unchanged", old_file, sha, old_label)
         if cancel is not None and cancel():
             raise ObserwatorCancelledError(message("writer.archive_write_cancelled"))
+        added = dict(extra or {})
+        filling = _filling(
+            descriptor,
+            _capture_years(added, archive.period_start),
+            (archive.period_start,),
+        )
         meta = {
             "schema": "obserwator-meta/1",
             "producer": "obserwator",
@@ -1974,7 +2026,7 @@ def write_capture(
                 "year": archive.year,
                 "month": archive.month,
             },
-            "license": _license_document(descriptor.license),
+            "license": _filled_license(descriptor, filling),
             "downloaded_at": _utc(datetime.now(UTC)),
             "sha256": sha,
             "size_bytes": len(data),
@@ -1995,7 +2047,7 @@ def write_capture(
                     "last_modified": None,
                     "content_length": None,
                 },
-                "capture": {"answers": answers},
+                "capture": {"answers": answers, **added},
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)
@@ -2028,9 +2080,31 @@ def write_capture(
                 )
             )
         if on_notice is not None:
-            lines = attribution(dataset_origin(descriptor.key), processed=False)
+            lines = attribution(
+                dataset_origin(descriptor.key),
+                processed=False,
+                period=filling.get("period"),
+                date=filling.get("date"),
+            )
             on_notice(Notice("info", _ATTRIBUTION_CODE, provider.license_notice(lines)))
         return VersionResult("new", target / filename, sha, label)
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def _capture_years(extra: Mapping[str, object], day: date) -> tuple[int, ...]:
+    """
+    The years of a capture's data: of its ``period``, else of its day.
+
+    ``period`` is the first and last UTC day of the hours its answers hold
+    (`ProviderAdapter.capture_extra`).
+    """
+    period = extra.get("period")
+    if isinstance(period, list | tuple) and len(period) == 2:
+        try:
+            first, last = (date.fromisoformat(str(item)) for item in period)
+        except ValueError:
+            return (day.year,)
+        return tuple(range(first.year, last.year + 1))
+    return (day.year,)

@@ -43,7 +43,8 @@ def test_released_form_is_frozen():
     released = {
         "chmu-json/1": ContentForm(
             "chmu-json/1", "json-jcs", ("zaznamID", "datumVytvoreni")
-        )
+        ),
+        "pig-json/1": ContentForm("pig-json/1", "pig-rows", ("OBJECTID",)),
     }
     assert released == CONTENT_FORMS
 
@@ -203,4 +204,4 @@ def test_bytes_violating_the_form_are_a_data_error(data):
 def test_unknown_form_is_a_validation_error():
     with pytest.raises(ObserwatorValidationError) as error:
         content_sha256(b"{}", form="chmu-json/9")
-    assert error.value.details["allowed"] == ["chmu-json/1"]
+    assert error.value.details["allowed"] == ["chmu-json/1", "pig-json/1"]

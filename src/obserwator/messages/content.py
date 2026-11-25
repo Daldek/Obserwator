@@ -39,4 +39,12 @@ MESSAGES = {
         "the number {literal} is outside the IEEE 754 double range",
         "liczba {literal} poza zakresem IEEE 754 double",
     ),
+    "capture_not_readable": Text(
+        "the capture is no gzip-compressed JSON Lines of answers: {reason}",
+        "zapis nie jest skompresowanym gzip plikiem JSON Lines odpowiedzi: {reason}",
+    ),
+    "page_row_not_object": Text(
+        "a row of an ArcGIS page is not a JSON object",
+        "wiersz strony ArcGIS nie jest obiektem JSON",
+    ),
 }

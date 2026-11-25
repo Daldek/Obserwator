@@ -1113,7 +1113,12 @@ def _archive_slot(server_path: str) -> str | None:
                 continue
             valid = True
         else:
-            valid = "/" in selector
+            # A selector with a folder (IMGW-PIB), or a file its adapter names
+            # directly in the directory (PIG-PIB's tables, ADR-035).
+            valid = (
+                "/" in selector
+                or _archive_from_path(descriptor.key, server_path) is not None
+            )
         if not valid or ":" in selector:
             return None
         return f"archive:{descriptor.key}:{selector}"

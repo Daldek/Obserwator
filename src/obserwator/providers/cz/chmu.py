@@ -80,6 +80,7 @@ from obserwator.providers.base import (
     CheckScope,
     Kind,
     ProviderAdapter,
+    SeriesContext,
     SourceAction,
 )
 from obserwator.store.catalog import (
@@ -907,6 +908,7 @@ class ChmuAdapter(ProviderAdapter):
         stations: Sequence[str] | None,
         session: PacedSession,
         on_notice: NoticeHook | None,
+        raw: Path | None = None,
     ) -> tuple[PacedRequest, ...]:
         """
         The ``recent`` day file of every station and day, ``start`` to ``end``.
@@ -1173,6 +1175,7 @@ class ChmuAdapter(ProviderAdapter):
         carry: dict[str, date] | None,
         stations: Collection[str] | None = None,
         skipped_months: set[date] | None = None,
+        context: SeriesContext | None = None,
     ) -> Iterator[NormalizedRecord]:
         """The daily hydro JSON, the groundwater JSON and the daily meteo CSV of one station."""
         if archive.dataset == "cz.chmu.hydro_daily":
