@@ -24,7 +24,14 @@ import shlex
 import shutil
 import tempfile
 import weakref
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
@@ -56,6 +63,7 @@ from obserwator.attribution import (
     border_origin,
     dataset_origin,
     dataset_origins,
+    fillable,
     origins,
     provider_origin,
 )
@@ -131,6 +139,7 @@ from obserwator.instance import Instance
 from obserwator.messages import LANGS, Lang, localize, message
 from obserwator.messages.gui import MESSAGES as TEXTS
 from obserwator.nogat_logging import AccessLog, ServerLog
+from obserwator.store.series import _version_lines
 from obserwator.store.types import StationFeature
 
 LOG = logging.getLogger(__name__)
@@ -462,6 +471,40 @@ def _station_origins(
     )
 
 
+def _served_w(
+    snapshot: Snapshot, dataset: str, *, labels: Iterable[str] | None = None
+) -> Attribution:
+    """
+    The lines the served versions of a dataset's series hold, of PIG-PIB's only.
+
+    PIG-PIB's W names the years and days of each version (ADR-035), so its lines are
+    those the current versions were written with (`_version_lines`): of an hourly
+    series the months whose labels ``labels`` gives, every month without it. Every
+    other dataset gives none (its lines are its origins'). Reads ``series.json`` once
+    per version (`_held_lines`): call it in a worker thread.
+    """
+    descriptor = get_dataset(dataset)
+    served = snapshot.series.get(dataset)
+    if served is None or not fillable(descriptor.license.attribution):
+        return Attribution()
+    if served.months:
+        chosen = None if labels is None else frozenset(labels)
+        paths = tuple(
+            month.version.path
+            for month in served.months
+            if chosen is None or month.version.label in chosen
+        )
+    else:
+        paths = (served.version.path,)
+    return _held_lines(descriptor.key, paths) if paths else Attribution()
+
+
+@functools.lru_cache(maxsize=64)
+def _held_lines(dataset: str, paths: tuple[Path, ...]) -> Attribution:
+    """The lines series versions hold (`_version_lines`), read once: none ever changes."""
+    return _version_lines(get_dataset(dataset), paths)
+
+
 # --- the session and the texts ------------------------------------------------------
 
 
@@ -685,6 +728,12 @@ async def station(request: Request) -> Response:
     series_lines = Attribution()
     for entry in held:
         series_lines = series_lines | attribution(*dataset_origins(entry["dataset"]))
+    if held:
+        served = await _thread(
+            lambda: [_served_w(snapshot, entry["dataset"]) for entry in held]
+        )
+        for lines in served:
+            series_lines = series_lines | lines
     chart = _serves_chart(feature)
     document = {
         "code": code,
@@ -794,9 +843,10 @@ async def series(request: Request) -> Response:
     document, base = await _thread(
         lambda: _gui(request).root.series_document(dataset, code)
     )
+    lines = await _thread(lambda: _served_w(snapshot, dataset))
     body = {
         **_slice(document, variables, start, end),
-        **attribution(*dataset_origins(dataset)).fields(),
+        **(attribution(*dataset_origins(dataset)) | lines).fields(),
     }
     return json_response(
         request, body, etag=_etag(request, base, variables, start, end)
@@ -1181,6 +1231,11 @@ async def subdaily(request: Request) -> Response:
         }
         if times:
             origins.append(dataset_origin(live))
+    lines = attribution(*origins)
+    if shown:
+        lines |= await _thread(
+            lambda: _served_w(snapshot, dataset, labels=stored["versions"])
+        )
     body = {
         "station": code,
         "provider": feature.provider,
@@ -1189,7 +1244,7 @@ async def subdaily(request: Request) -> Response:
         "units": dict(descriptor.variables),
         "stored": stored,
         "live": recent,
-        **attribution(*origins).fields(),
+        **lines.fields(),
     }
     etag = _etag(
         request,
@@ -1363,6 +1418,12 @@ async def downloads(request: Request) -> Response:
     snapshot = await _thread(lambda: _snapshot(request))
     code = _station(request, snapshot)
     files = []
+    served_w = await _thread(
+        lambda: {
+            entry["dataset"]: _served_w(snapshot, entry["dataset"])
+            for entry in snapshot.datasets_of(code)
+        }
+    )
     for entry in snapshot.datasets_of(code):
         dataset = entry["dataset"]
         descriptor = get_dataset(dataset)
@@ -1389,7 +1450,7 @@ async def downloads(request: Request) -> Response:
                     "url": descriptor.license.url,
                     "terms_url": descriptor.license.terms_url,
                 },
-                **attribution(*dataset_origins(dataset)).fields(),
+                **(attribution(*dataset_origins(dataset)) | served_w[dataset]).fields(),
             }
         )
     stored = await _thread(lambda: state.analyses.list(code))

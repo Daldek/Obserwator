@@ -75,8 +75,10 @@ class _KnownUnits:
     Daily and monthly archives carry every variable, so any record of any station
     in a calendar month marks that month as published. Semi-annual archives are
     separate per parameter, so a period of a hydrological year is published for
-    a variable only when some record carries that variable there. Units without
-    any record stay unknown and are never gaps.
+    a variable only when some record carries that variable there. A weekly
+    dataset's unit is a calendar week named by its Monday (ADR-032): a week with a
+    day in a published month is known. Units without any record stay unknown and
+    are never gaps.
     """
 
     def __init__(self, time_unit: str) -> None:
@@ -140,6 +142,21 @@ class _KnownUnits:
         if self._time_unit == "month":
             return [month for month in months if first < month < last and absent(month)]
         result: list[date] = []
+        if self._time_unit == "week":
+            read = {
+                _week(day)
+                for day, measurement in values.items()
+                if measurement.value is not None
+            }
+            for month in months:
+                week = _week(max(first, month))
+                end = min(last, _next_month(month) - timedelta(days=1))
+                while week <= end:
+                    # A week across two published months is named once.
+                    if week not in read and (not result or result[-1] != week):
+                        result.append(week)
+                    week += timedelta(days=7)
+            return result
         for month in months:
             day = max(first, month)
             end = min(last, _next_month(month) - timedelta(days=1))

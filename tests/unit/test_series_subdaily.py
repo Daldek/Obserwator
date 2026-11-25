@@ -745,6 +745,7 @@ def test_the_hourly_series_are_built_by_series_build_never_synced_or_downloaded(
         CHMU,
         "pl.gdanskiewody.hydro_hourly",
         "pl.gdanskiewody.meteo_hourly",
+        "pl.pig.groundwater_subdaily",
     }
     assert hourly <= choices["series build"]
     for name in ("datasets files", "datasets download", "store check", "store sync"):

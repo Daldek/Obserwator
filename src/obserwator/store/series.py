@@ -19,11 +19,11 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from obserwator._parsing import CARRY_DATASETS, normalize_in_sequence
 from obserwator._version import __version__
-from obserwator.attribution import Attribution, attribution, dataset_origins
+from obserwator.attribution import Attribution, attribution, dataset_origins, fillable
 from obserwator.datasets import (
     STATION_CODE_PATTERN,
     ArchiveFile,
@@ -31,6 +31,7 @@ from obserwator.datasets import (
     YearsArg,
     _archive_from_path,
     _license_document,
+    _station_files,
     builds_series,
     datasets,
     get_dataset,
@@ -70,6 +71,7 @@ from obserwator.store.writer import (
     _canonical,
     _canonical_text,
     _cleanup,
+    _filling,
     _fsync_dir,
     _is_register,
     _publish_dir,
@@ -83,6 +85,9 @@ from obserwator.store.writer import (
     root_conflict_plan,
     version_file,
 )
+
+if TYPE_CHECKING:
+    from obserwator.providers.base import SeriesContext
 
 SERIES_SCHEMA: Final = "obserwator-series/1"
 SeriesState = Literal["current", "outdated", "missing"]
@@ -403,6 +408,41 @@ def _dataset_inputs(
     return inputs, problems
 
 
+def _source_inputs(
+    root: Path, descriptor: DatasetDescriptor
+) -> tuple[list[_Input], list[str]]:
+    """
+    The current version of each station source a series reads beside its inputs.
+
+    The files of the provider's `ProviderAdapter.series_sources` (PIG-PIB's points,
+    whose ground elevation gives ``H_asl``, ADR-035): each is an input of the version
+    (``source_files``, the manifest), so a new version of one rebuilds the series. A
+    source without a version is left out; an unreadable one, or one of another
+    dataset, is a problem as an unreadable input is.
+    """
+    inputs: list[_Input] = []
+    problems: list[str] = []
+    for key in get_provider(descriptor.provider).adapter.series_sources(descriptor):
+        for archive in _station_files(key):
+            try:
+                current = _current_version(root, archive)
+                if current is None:
+                    continue
+                stored = current.meta.get("dataset")
+                if not isinstance(stored, str) or resolve_dataset_key(stored) != key:
+                    raise ObserwatorDataError(
+                        message(
+                            "series.version_belongs_another_dataset",
+                            relative=current.relative,
+                        )
+                    )
+            except (ObserwatorError, ValueError, KeyError, TypeError) as exc:
+                problems.append(reason(exc))
+                continue
+            inputs.append(_Input(archive, current))
+    return inputs, problems
+
+
 def _no_archives(descriptor: DatasetDescriptor, dataset: str) -> str:
     """
     Why a build of ``dataset`` has nothing to read: no archive of it in the raw root.
@@ -649,20 +689,21 @@ def _series_versions(
 def _reusable(
     version: _SeriesVersion,
     manifest: tuple[tuple[str, str], ...],
-    descriptor: DatasetDescriptor,
+    lines: Attribution,
     subset: SeriesSubset | None,
 ) -> bool:
     """
     Whether a series version stays current: the same inputs, lines and subset.
 
-    A version written before the series carried the provider's attribution
-    lines (ADR-012) is rebuilt once, so the store's products carry them; one whose
-    CP names the processing (before ECO-071) stays current, as it holds CP. A
-    subset is never the full series, nor another subset (ADR-026).
+    ``lines`` are those a build of ``manifest`` writes (`_lines`). A version written
+    before the series carried the provider's attribution lines (ADR-012) is rebuilt
+    once, so the store's products carry them; one whose CP names the processing
+    (before ECO-071) stays current, as it holds CP. A subset is never the full
+    series, nor another subset (ADR-026).
     """
     return (
         version.manifest == manifest
-        and version.lines == _lines(descriptor)
+        and version.lines == lines
         and version.subset == subset
     )
 
@@ -698,6 +739,7 @@ def _series_state(
     root: Path,
     descriptor: DatasetDescriptor,
     inputs: list[_Input],
+    lines: Attribution,
     subset: SeriesSubset | None,
     *,
     reliable: bool = True,
@@ -707,7 +749,7 @@ def _series_state(
         return "missing"
     return (
         "current"
-        if reliable and _reusable(current, _manifest(inputs), descriptor, subset)
+        if reliable and _reusable(current, _manifest(inputs), lines, subset)
         else "outdated"
     )
 
@@ -837,10 +879,11 @@ def check_series(
         Plan of the data root whose items are the current input archive
         versions the build reads (status ``current``, ``local_path`` relative
         to the raw root, HTTP signals copied from their sidecars, the station
-        of a per-station file in ``station_code``), whose ``series_state`` maps
-        the dataset slug to ``current``, ``outdated`` or ``missing``, and whose
-        ``series build`` actions carry the series status (``current``,
-        ``newer`` for an outdated series, or ``missing``), one
+        of a per-station file in ``station_code``), with the station sources it
+        reads beside them (PIG-PIB's points, `ProviderAdapter.series_sources`),
+        whose ``series_state`` maps the dataset slug to ``current``, ``outdated``
+        or ``missing``, and whose ``series build`` actions carry the series status
+        (``current``, ``newer`` for an outdated series, or ``missing``), one
         ``check_failed`` action per unreadable slot and a ``missing`` action
         when the raw root holds no archive of the dataset (or of the subset).
         A subset that the data root refuses beside the full series of the
@@ -910,10 +953,14 @@ def check_series(
                 "obserwator-plan/1", path, datetime.now(UTC), (), {}, (action,)
             )
     inputs, problems = _scan_inputs(raw, descriptor)
+    sources, failed = _source_inputs(raw, descriptor)
+    problems.extend(failed)
     read = _read_inputs(inputs, descriptor, subset)
+    # The station sources are read only with inputs to read (`build_series`).
+    used = [*read, *sources] if read else []
     items: list[PlanItem] = []
     cancelled = False
-    for index, item in enumerate(read, start=1):
+    for index, item in enumerate(used, start=1):
         if not cancelled and cancel is not None and cancel():
             cancelled = True
         http = item.version.http
@@ -934,13 +981,14 @@ def check_series(
             on_progress(
                 Progress(
                     index,
-                    len(read),
+                    len(used),
                     "archive",
                     "current",
                     message("series.input_progress", relative=item.version.relative),
                 )
             )
-    state = _series_state(path, descriptor, read, subset, reliable=not problems)
+    lines = _series_lines(descriptor, read, sources, subset)
+    state = _series_state(path, descriptor, used, lines, subset, reliable=not problems)
     detail = {
         "current": message("series.series_current", slug=descriptor.slug),
         "outdated": message("series.series_needs_rebuild", slug=descriptor.slug),
@@ -1247,7 +1295,9 @@ def _row_keys(station: _Station, time_unit: str) -> list[tuple[_Key, int]]:
     return keys
 
 
-def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) -> Any:
+def _station_table(
+    pa: Any, station: _Station, descriptor: DatasetDescriptor, lines: Attribution
+) -> Any:
     keys = _row_keys(station, descriptor.time_unit)
     flags = pa.array(_FLAGS, pa.string())
     columns: dict[str, Any] = {
@@ -1295,11 +1345,17 @@ def _station_table(pa: Any, station: _Station, descriptor: DatasetDescriptor) ->
                 [station.occurrences.get(key, {}).get(variable) for key, _ in keys],
                 pa.int32(),
             )
-    return pa.table(columns).replace_schema_metadata(_table_metadata(descriptor))
+    return pa.table(columns).replace_schema_metadata(_table_metadata(descriptor, lines))
 
 
-def _table_metadata(descriptor: DatasetDescriptor) -> dict[str, str]:
-    """The schema metadata of a station file: schema, dataset, units and the lines."""
+def _table_metadata(
+    descriptor: DatasetDescriptor, lines: Attribution
+) -> dict[str, str]:
+    """
+    The schema metadata of a station file: schema, dataset, units and the lines.
+
+    ``lines`` are those of the version the file belongs to (`_lines`).
+    """
     metadata = {
         "obserwator_schema": SERIES_SCHEMA,
         "dataset": descriptor.key,
@@ -1309,19 +1365,105 @@ def _table_metadata(descriptor: DatasetDescriptor) -> dict[str, str]:
         metadata["variable_notes"] = _canonical_text(dict(descriptor.variable_notes))
     # The lines of the provider as JSON arrays (ADR-012, Nogat DEV-20.5).
     metadata.update(
-        (name, _canonical_text(value))
-        for name, value in _lines(descriptor).fields().items()
+        (name, _canonical_text(value)) for name, value in lines.fields().items()
     )
     return metadata
 
 
-def _lines(descriptor: DatasetDescriptor) -> Attribution:
+def _lines(
+    descriptor: DatasetDescriptor,
+    /,
+    *,
+    years: Iterable[int] = (),
+    days: Iterable[date] = (),
+) -> Attribution:
     """
     The lines of a series: data parsed, harmonised and reformatted (ADR-012).
 
-    A sub-daily series has the lines of every dataset it is built from (ADR-031).
+    A sub-daily series has the lines of every dataset it is built from (ADR-031). A
+    dataset whose license formula names when its data were created and acquired
+    (PIG-PIB's W, `obserwator.attribution.fillable`, ADR-035) has it filled with
+    ``years``, those of the data a version holds, and ``days``, the UTC days its
+    source files were downloaded, when both are given; without them, and for every
+    other dataset, the lines are those of its origins.
     """
-    return attribution(*dataset_origins(descriptor.key))
+    chosen, downloaded = tuple(years), tuple(days)
+    filling = _filling(descriptor, chosen, downloaded) if chosen and downloaded else {}
+    return attribution(
+        *dataset_origins(descriptor.key),
+        period=filling.get("period"),
+        date=filling.get("date"),
+    )
+
+
+def _span_years(spans: Iterable[_Span]) -> set[int]:
+    """The calendar years of closed date ranges."""
+    return {year for start, end in spans for year in range(start.year, end.year + 1)}
+
+
+def _downloaded_days(inputs: Iterable[_Input]) -> set[date]:
+    """The UTC days the versions of ``inputs`` were downloaded (``downloaded_at``)."""
+    return {_downloaded(item.version.meta).astimezone(UTC).date() for item in inputs}
+
+
+def _series_lines(
+    descriptor: DatasetDescriptor,
+    read: Sequence[_Input],
+    sources: Sequence[_Input],
+    subset: SeriesSubset | None,
+) -> Attribution:
+    """
+    The lines of a series version built from ``read`` and the station ``sources``.
+
+    PIG-PIB's W (ADR-035) names the calendar years of the periods read, cut to a
+    subset's years, and the days of every version among the ``source_files``.
+    """
+    spans = _cut(
+        (
+            (item.archive.period_start, item.archive.period_end)
+            for item in read
+            if item.archive.period_start is not None
+            and item.archive.period_end is not None
+        ),
+        _windows(descriptor, subset),
+    )
+    return _lines(
+        descriptor,
+        years=_span_years(spans),
+        days=_downloaded_days([*read, *sources]),
+    )
+
+
+def _version_lines(
+    descriptor: DatasetDescriptor, versions: Iterable[Path]
+) -> Attribution:
+    """
+    The lines a product made of stored series versions carries (ADR-012, ADR-035).
+
+    Of a dataset whose W names its data's period and date (PIG-PIB's), the lines the
+    versions hold (``series.json``), merged into one W spanning them all; of every
+    other dataset, and of versions holding none, the lines of its origins (`_lines`),
+    whatever lines an older version was written with.
+
+    Raises
+    ------
+    OSError
+        If a version cannot be read.
+    ValueError
+        If a version's ``series.json`` is no JSON object.
+    """
+    if not fillable(descriptor.license.attribution):
+        return _lines(descriptor)
+    held = Attribution()
+    for path in versions:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError(message("reader.series_json_not_object"))
+        held |= Attribution(
+            tuple(document.get("attribution", ())),
+            tuple(document.get("terms_notice", ())),
+        )
+    return held or _lines(descriptor)
 
 
 def _archive_span(archive: ArchiveFile) -> tuple[date, date]:
@@ -1425,6 +1567,89 @@ def _superseded(inputs: Iterable[_Input]) -> set[tuple[str, int]]:
             for year in range(archive.period_start.year, archive.period_end.year + 1)
         )
     return covered
+
+
+def _newest_first(descriptor: DatasetDescriptor) -> bool:
+    """
+    Whether the newest input holding a station's date gives it (ADR-035 W7).
+
+    The files of a dataset checked by ``publication`` are what one service published
+    at the time of each version (PIG-PIB's readings: a month, or a window of days
+    when a publication spans other than one month), so two files may hold one date:
+    the version downloaded last wins and the others stay. Every other dataset keeps
+    its files apart, so a date held twice with other values is a conflict.
+    """
+    try:
+        scope = get_provider(descriptor.provider).adapter.check_scope(descriptor)
+    except ValueError:  # a provider fed by files has no check (ADR-033)
+        return False
+    return scope == "publication"
+
+
+def _by_precedence(inputs: Iterable[_Input]) -> list[_Input]:
+    """The inputs newest first: ``downloaded_at``, then path (W7's precedence)."""
+    return sorted(
+        inputs,
+        key=lambda item: (_downloaded(item.version.meta), item.version.relative),
+        reverse=True,
+    )
+
+
+def _overlapping(inputs: Sequence[_Input]) -> frozenset[int]:
+    """The indices of the inputs whose period meets another input's period."""
+    spans = sorted(
+        (item.archive.period_start, item.archive.period_end, index)
+        for index, item in enumerate(inputs)
+        if item.archive.period_start is not None and item.archive.period_end is not None
+    )
+    found: set[int] = set()
+    for position, (_, end, index) in enumerate(spans):
+        for start, _, other in spans[position + 1 :]:
+            if start > end:
+                break
+            found.update((index, other))
+    return frozenset(found)
+
+
+def _unseen(
+    records: Iterable[NormalizedRecord], seen: set[tuple[str, date]]
+) -> Iterator[NormalizedRecord]:
+    """The records of station dates a newer input did not give, noted in ``seen``."""
+    for record in records:
+        key = (record.station_code, record.date)
+        if key not in seen:
+            seen.add(key)
+            yield record
+
+
+def _series_context(
+    sources: Iterable[_Input], on_notice: NoticeHook | None
+) -> SeriesContext:
+    """
+    What a build gives the parsers beside each file: the station sources read.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If a source does not match its sidecar's checksum.
+    OSError
+        If a source cannot be read.
+    """
+    # The adapters import the store, so the protocol's module is reached at call time.
+    from obserwator.providers.base import SeriesContext
+
+    found: dict[str, bytes] = {}
+    for item in sources:
+        data = item.version.file.read_bytes()
+        if hashlib.sha256(data).hexdigest() != item.version.sha256:
+            raise ObserwatorDataError(
+                message(
+                    "series.checksum_does_not_match_sidecar",
+                    relative=item.version.relative,
+                )
+            )
+        found[item.archive.dataset] = data
+    return SeriesContext(sources=found, on_notice=on_notice)
 
 
 def _coverage_index(coverage: Iterable[StationCoverage]) -> dict[str, dict[str, Any]]:
@@ -1539,6 +1764,20 @@ def build_series(
     sidecar names the provider of the dataset with its processed-data
     attribution.
 
+    A provider's station sources (`ProviderAdapter.series_sources`: PIG-PIB's
+    points, whose ground elevation gives ``H_asl``, ADR-035) are read beside the
+    inputs, handed to the parsers and counted among the inputs (``source_files``,
+    the manifest), so a new version of one rebuilds the series. The files of a
+    dataset checked by ``publication`` may hold one date twice (PIG-PIB's readings:
+    a window of days beside a month): the version downloaded last gives a
+    station's date and the others stay (W7). A weekly series of files of the whole
+    country (PIG-PIB's readings) knows the calendar weeks of the periods read, the
+    months captured: a week inside them without a reading is a gap, a month never
+    captured is unknown. A dataset whose W names when its data were created and
+    acquired (PIG-PIB's) has it filled in ``series.json``, the station files and
+    the sidecar's licence: the calendar years of the periods read and the UTC days
+    its ``source_files`` were downloaded.
+
     ``stations`` or ``years`` build a subset (ADR-026): only the archives that
     hold them are read (``source_files``; of IMGW-PIB's daily precipitation
     also the archive before a chosen one, for the missing days it leaves to
@@ -1574,8 +1813,8 @@ def build_series(
     raw_root : str, os.PathLike or StoreHandle
         Raw root whose current archive versions are read; never written.
     dataset : str
-        Full key (``pl.imgw.*``, ``cz.chmu.*`` or ``pl.gdanskiewody.*``) of a
-        measurement series dataset.
+        Full key (``pl.imgw.*``, ``cz.chmu.*``, ``pl.gdanskiewody.*`` or
+        ``pl.pig.*``) of a measurement series dataset.
     stations : iterable of str or None, optional
         Build only these stations (codes of the dataset's provider; duplicates
         are merged). A station the archives read do not hold is named in a
@@ -1598,8 +1837,11 @@ def build_series(
         Receives ``archive_failed`` errors for unreadable inputs, a
         ``leftover_incoming`` warning for every removed staging directory older
         than 24 hours, a ``stations_missing`` warning for chosen stations the
-        archives read do not hold and the ``license_terms`` notice when a new
-        version is created.
+        archives read do not hold, the warnings of the provider's parsers once the
+        inputs are read (`ProviderAdapter.series_read`: PIG-PIB's
+        ``station_unknown``, its hours ``hour_revised``, ``hour_unresolved`` and
+        ``hour_future``) and the ``license_terms`` notice when a new version is
+        created.
     cancel : Cancel or None, optional
         Polled between steps; once it returns ``True`` the build stops with a
         ``cancelled`` report and nothing is published.
@@ -1677,12 +1919,16 @@ def build_series(
         if full is not None:
             raise _beside_full(path, descriptor, full)
     inputs, problems = _scan_inputs(raw, descriptor)
+    station_sources, failed = _source_inputs(raw, descriptor)
+    problems.extend(failed)
     if problems:
         for problem in problems:
             if on_notice is not None:
                 on_notice(Notice("warning", "archive_failed", problem))
         return _report(
-            "failed", sources=[item.version.file for item in inputs], problems=problems
+            "failed",
+            sources=[item.version.file for item in (*inputs, *station_sources)],
+            problems=problems,
         )
     if not inputs:
         return _report(
@@ -1695,10 +1941,12 @@ def build_series(
             "failed",
             problems=[message("series.no_archives_of_subset", key=descriptor.key)],
         )
-    sources = [item.version.file for item in read]
-    manifest = _manifest(read)
+    used = [*read, *station_sources]
+    sources = [item.version.file for item in used]
+    manifest = _manifest(used)
+    lines = _series_lines(descriptor, read, station_sources, subset)
     current = _current_series(_series_versions(path, descriptor))
-    if current is not None and _reusable(current, manifest, descriptor, subset):
+    if current is not None and _reusable(current, manifest, lines, subset):
         series = json.loads(current.path.read_text(encoding="utf-8"))
         recorded = [
             raw / PurePosixPath(source["file"])
@@ -1730,6 +1978,7 @@ def build_series(
     )
 
     known = _KnownUnits(descriptor.time_unit)
+    adapter = get_provider(descriptor.provider).adapter
     # Per-station files (ČHMÚ, ADR-003 D10; the synop archives of IMGW-PIB,
     # ADR-022; Gdańskie Wody's month files, ADR-034 D8): known periods of every
     # station, of a month file the days its answers hold.
@@ -1762,10 +2011,28 @@ def build_series(
 
     kept = None if subset is None else wanted
     skipped: set[date] = set()
+    # The units files of the whole country know: those their records show, but of a
+    # weekly series (PIG-PIB's readings, ADR-035 W7) the calendar weeks of the periods
+    # read, the months captured.
+    country: _KnownUnits | _KnownSpans = (
+        _KnownSpans(
+            _merge_spans(_cut((_archive_span(item.archive) for item in read), windows)),
+            descriptor.time_unit,
+        )
+        if not per_station and descriptor.time_unit == "week"
+        else known
+    )
+    # Files of what a service published at each time (W7): read newest first, a
+    # station's date given by the newest of the overlapping files that hold it.
+    newest = _newest_first(descriptor)
+    order = _by_precedence(read) if newest else read
+    overlapping = _overlapping(order) if newest else frozenset()
+    seen: set[tuple[str, date]] = set()
     with tempfile.TemporaryDirectory(prefix="obserwator-series-") as local:
         spill = _Spill(Path(local), descriptor)
         try:
-            for index, item in enumerate(read, start=1):
+            context = _series_context(station_sources, on_notice)
+            for index, item in enumerate(order, start=1):
                 if cancelled():
                     return _report("cancelled", sources=sources)
                 data = item.version.file.read_bytes()
@@ -1784,7 +2051,10 @@ def build_series(
                     carry=carry,
                     stations=chosen,
                     skipped_months=skipped,
+                    context=context,
                 )
+                if index - 1 in overlapping:
+                    records = _unseen(records, seen)
                 if per_station:
                     monthly = item.archive.month is not None
                     _spill_station_file(
@@ -1807,7 +2077,7 @@ def build_series(
                     on_progress(
                         Progress(
                             index,
-                            len(read),
+                            len(order),
                             "archive",
                             "parsed",
                             message(
@@ -1816,6 +2086,7 @@ def build_series(
                         )
                     )
             spill.flush()
+            adapter.series_read(context, descriptor.key)
         except (ObserwatorDataError, ObserwatorValidationError, OSError) as exc:
             if on_notice is not None:
                 on_notice(Notice("warning", "archive_failed", reason(exc)))
@@ -1865,14 +2136,14 @@ def build_series(
                     if on_notice is not None:
                         on_notice(Notice("warning", "archive_failed", reason(exc)))
                     return _report("failed", sources=sources, problems=[reason(exc)])
-                table = _station_table(pa, station, descriptor)
+                table = _station_table(pa, station, descriptor, lines)
                 periods = station_periods[code] if per_station else None
                 coverage = _station_coverage(
                     code,
                     station.values,
                     descriptor=descriptor,
                     known=(
-                        known
+                        country
                         if periods is None
                         else _KnownSpans(periods, descriptor.time_unit)
                     ),
@@ -1901,7 +2172,6 @@ def build_series(
                         )
                     )
             _fsync_dir(staging / "stations")
-            lines = _lines(descriptor)
             series = {
                 "schema": SERIES_SCHEMA,
                 "dataset": descriptor.key,
@@ -1941,6 +2211,7 @@ def build_series(
             license_info["attribution"] = ". ".join(lines.attribution)
             # Inputs of a dataset with a canonical form carry its content sum (pins
             # ``input`` restorable by content, ADR-003 D17); others keep 3.0.0 bytes.
+            # The station sources the parsers read are inputs too (ADR-035).
             source_files = [
                 {
                     "name": item.version.file.name,
@@ -1949,7 +2220,7 @@ def build_series(
                     "label": item.version.label,
                     **_content_fields(item.version.meta),
                 }
-                for item in sorted(read, key=lambda entry: entry.version.relative)
+                for item in sorted(used, key=lambda entry: entry.version.relative)
             ]
 
             def sidecar(version_label: str) -> dict[str, Any]:

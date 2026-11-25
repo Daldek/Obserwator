@@ -44,6 +44,8 @@ from obserwator.attribution import (
     border_origin,
     carried,
     dataset_origins,
+    fillable,
+    filled,
     provider_origin,
 )
 from obserwator.config import store_root
@@ -81,7 +83,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import LANGS, Lang, localize, message, reason
 from obserwator.models import StationListEntry
-from obserwator.output import DATA_MARKER, STORE_MARKER
+from obserwator.output import ATTRIBUTION_FILE, DATA_MARKER, STORE_MARKER
 from obserwator.store import analyses as _analyses
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
@@ -90,6 +92,7 @@ from obserwator.store import sync as _sync
 from obserwator.store import writer as _writer
 from obserwator.store.analysis_registry import analysis_definitions, get_definition
 from obserwator.store.catalog import _NESTED_CATALOGS, CATALOG_FILE
+from obserwator.store.catalog import _catalog_lines as _catalog_attribution
 from obserwator.store.plain import plain_actions
 from obserwator.store.pmaxtp import CELL_FILE, RESPONSE_FILE
 from obserwator.store.types import (
@@ -3235,15 +3238,61 @@ def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
     )
 
 
+def _held_w(versions: Iterable[tuple[str, Path | None]]) -> Attribution:
+    """
+    PIG-PIB's W as the sidecars of stored versions fill it (ADR-035).
+
+    ``versions`` are (dataset key, version path) pairs; of a dataset whose license
+    formula names its data's years and download day (`fillable`) the sidecar's
+    ``license.attribution`` is that W filled (`obserwator.store.writer`), of every other
+    dataset nothing is read.
+    """
+    lines = Attribution()
+    for key, version in versions:
+        if version is None or not fillable(get_dataset(key).license.attribution):
+            continue
+        lines |= Attribution((_reader.read_meta(version).license.attribution,))
+    return lines
+
+
+def _slot_key(slot: str) -> str:
+    """The dataset key of an archive slot, ``archive:<key>:…``."""
+    return slot.split(":")[1]
+
+
 def _series_lines(options: Options, result: object) -> Attribution:
-    """Processed lines of the series a series command reads or builds."""
+    """
+    Processed lines of the series a series command reads or builds.
+
+    PIG-PIB's W names the years and days of the versions (ADR-035): those a build
+    reports, or those the reader reads (`_series_paths`).
+    """
+    root = options.get("root")
     if options.get("dataset") is not None:
-        return _of_datasets([str(options["dataset"])])
-    series = _reader._series_path(
-        cast(PathArg, options["version"]), root=options.get("root"), dataset=None
-    )
-    meta = _reader.read_meta(series)
-    return _of_datasets([meta.dataset_key or meta.dataset])
+        key = get_dataset(str(options["dataset"])).key
+    else:
+        series = _reader._series_path(
+            cast(PathArg, options["version"]), root=root, dataset=None
+        )
+        meta = _reader.read_meta(series)
+        key = get_dataset(meta.dataset_key or meta.dataset).key
+    lines = _of_datasets([key])
+    descriptor = get_dataset(key)
+    if not fillable(descriptor.license.attribution):
+        return lines
+    if isinstance(result, SeriesReport):
+        months = result.months or (result,)
+        versions = [month.version for month in months if month.version is not None]
+    else:
+        _, found = _reader._series_paths(
+            options.get("version"),
+            root=root,
+            dataset=None if options.get("version") is not None else key,
+            start=options.get("start"),
+            end=options.get("end"),
+        )
+        versions = list(found)
+    return lines | _series._version_lines(descriptor, versions)
 
 
 def _archive_lines(options: Options, result: object) -> Attribution:
@@ -3251,13 +3300,32 @@ def _archive_lines(options: Options, result: object) -> Attribution:
     source = Path(cast(PathArg, options["version"])).expanduser()
     if options.get("root") is not None:
         source = _reader._open(options["root"]) / source
-    meta = _reader.read_meta(_reader._archive_main(source))
-    return _of_datasets([meta.dataset_key or meta.dataset])
+    main = _reader._archive_main(source)
+    meta = _reader.read_meta(main)
+    key = meta.dataset_key or meta.dataset
+    return _of_datasets([key]) | _held_w([(key, main)])
 
 
 def _download_lines(options: Options, result: object) -> Attribution:
-    """Lines of the verbatim files of ``datasets download``."""
-    return _of_datasets([str(options["dataset"])], processed=False)
+    """
+    Lines of the verbatim files of ``datasets download``.
+
+    PIG-PIB's W as written beside the files: in the directory's ``ATTRIBUTION.txt``,
+    or in the sidecars of the store's versions (ADR-035).
+    """
+    lines = _of_datasets([str(options["dataset"])], processed=False)
+    report = cast(DownloadReport, result)
+    if report.mode == "store":
+        return lines | _held_w(
+            (_slot_key(item.slot), item.path)
+            for item in report.items
+            if item.status == "downloaded"
+        )
+    for file in report.files:
+        if file.path.name == ATTRIBUTION_FILE:
+            written = file.path.read_text(encoding="utf-8").splitlines()
+            lines |= Attribution(filled(written))
+    return lines
 
 
 def _sync_lines(options: Options, result: object) -> Attribution:
@@ -3267,19 +3335,23 @@ def _sync_lines(options: Options, result: object) -> Attribution:
     A sync writes raw data only (ADR-015): the provider's files verbatim, except
     the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
     which are processed data. A harvest's answers are kept verbatim (ADR-030 D9),
-    so its dataset's lines stand even when no day was sealed.
+    so its dataset's lines stand even when no day was sealed. PIG-PIB's W is that
+    of the versions written (`_held_w`).
     """
     report = cast(SyncReport, result)
-    keys = [
-        slot.split(":")[1]
+    written = [
+        (_slot_key(slot), item.version)
         for item in report.items
         if (slot := item.slot) is not None and slot.startswith("archive:")
     ]
+    keys = [key for key, _ in written]
     if report.harvest is not None:
         keys.append(report.harvest.dataset)
     kept = [key for key in keys if get_dataset(key).kept_fields]
     verbatim = [key for key in keys if key not in kept]
-    return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
+    return (
+        _of_datasets(verbatim, processed=False) | _of_datasets(kept) | _held_w(written)
+    )
 
 
 def _poll_lines(options: Options, result: object) -> Attribution:
@@ -3298,13 +3370,17 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     (``location_source`` "static") or has the station details of its pages
     (``details_source``, ADR-021); the strings the document was written with are
     not trusted, since a catalog written before ECO-065 holds retired lines.
+    PIG-PIB's W names the years and days of the station sources its sidecar records.
     """
     report = cast(CatalogReport, result)
     if report.version is None:
         return Attribution()
     document = json.loads(report.version.read_bytes())
-    lines = attribution(
-        provider_origin(report.provider), border_origin(report.provider)
+    sources = _reader.read_meta(report.version).extra.get("catalog")
+    lines = _catalog_attribution(
+        get_provider(report.provider),
+        {},
+        sources=cast("list[dict[str, Any]]", sources or ()),
     )
     adapter = get_provider(report.provider).adapter
     return lines | attribution(
