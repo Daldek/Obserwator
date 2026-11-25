@@ -1,4 +1,4 @@
-# Obserwator — guide for agents (version 3.2.0)
+# Obserwator — guide for agents (version 3.2.1)
 
 > Generated from the command catalog: `obserwator commands guide --format agents`. Do not edit by hand.
 

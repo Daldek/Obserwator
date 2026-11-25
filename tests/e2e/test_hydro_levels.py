@@ -173,6 +173,24 @@ def test_choosing_the_years_refits_the_rating_curve(
     provenance(card, "hydrometrics rating-curve", stored=False)
 
 
+def test_switching_the_levels_to_discharge_draws_the_discharge(
+    open_page: Any, analysis_url: str
+) -> None:
+    # Feedback 10 of 2026-11-23: after „Zmienna” switched to Q, the chart drew the stored
+    # H series under Q's levels before Q's answered, and the section failed
+    card = section(open_page, analysis_url, KLODZKO, "characteristic")
+    levels = card.locator("section.ana", has=card.page.locator("ul.hy-levels"))
+    levels.locator('svg[aria-label="H dobowe z progami"]').wait_for(timeout=WAIT)
+    levels.locator('[role="radio"]', has_text=re.compile(r"^Q ·")).click()
+
+    levels.locator('svg[aria-label="Q dobowe z progami"]').wait_for(timeout=WAIT)
+    events = analysis(analysis_url, KLODZKO, "threshold_events.Q.swx")
+    assert number(figure(levels, "Próg")) == pytest.approx(
+        events["threshold"], rel=0.01
+    )
+    assert card.page.get_by_text("Sekcja nie działa").count() == 0
+
+
 def test_a_flood_quantile_equals_hydrologs_own_call(
     open_page: Any, analysis_url: str, tmp_path: Path
 ) -> None:
