@@ -43,14 +43,17 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, S
 from datetime import UTC, date, timedelta
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import httpx
 
 from obserwator._borders import POLAND
 from obserwator._parsing.pig import (
+    _DST_WHERE,
     DST_CLAUSE,
     PROVIDER,
     AutoHours,
+    Page,
     PigPoint,
     auto_hours,
     dst_start,
@@ -325,6 +328,7 @@ class PigAdapter(ProviderAdapter):
     identifies = True
     harvested = frozenset({OPERATIONAL})
     watermarked = frozenset({OPERATIONAL})
+    staged = True
     station_sources = (STATIONS, STATIONS, STATIONS, STATIONS)
     kinds: tuple[Kind, ...] = ("groundwater",)
     archive_suffixes = (".gz",)
@@ -605,16 +609,15 @@ class PigAdapter(ProviderAdapter):
         data = _spooled(answers)
         named: ArchiveFile | None = None
         if descriptor.key == READINGS:
-            period = readings_period(
-                read_readings(data, filename=PurePosixPath(archive.server_path).name)
+            named = self.run_file(
+                descriptor, data, filename=PurePosixPath(archive.server_path).name
             )
-            if period is None:
+            if named is None:
                 url = _query_url(descriptor)
                 raise ObserwatorConnectionError(
                     message("pig.no_readings", url=url),
                     details={"url": url, "reason": "nothing_published"},
                 )
-            named = _readings_file(descriptor, *period)
         return DownloadResult(
             data=data,
             url=_query_url(descriptor),
@@ -623,6 +626,31 @@ class PigAdapter(ProviderAdapter):
             content_length=None,
             archive=named,
         )
+
+    def run_file(
+        self, descriptor: DatasetDescriptor, data: bytes, /, *, filename: str
+    ) -> ArchiveFile | None:
+        """
+        The file a run of a table's pages is kept as (W4, W5).
+
+        The readings: the calendar month of their rows, or for rows of more or less
+        than one month ``MWP_<first>_<last>``; None without a row. The points
+        (``MWP_points.jsonl.gz``), the chemistry and the watch list: their one file.
+        None for the hourly table, kept as captures.
+
+        Raises
+        ------
+        ObserwatorDataError
+            If the readings' rows cannot be read.
+        """
+        if descriptor.key == READINGS:
+            period = readings_period(read_readings(data, filename=filename))
+            return None if period is None else _readings_file(descriptor, *period)
+        if descriptor.key == STATIONS:
+            return self.station_file(descriptor, _POINTS_FILE)
+        if descriptor.key in _FIXED:
+            return _fixed_file(descriptor, _FIXED[descriptor.key])
+        return None
 
     # --- station sources -------------------------------------------------------------
 
@@ -970,30 +998,44 @@ class PigAdapter(ProviderAdapter):
     # --- captures and the harvest --------------------------------------------------------
 
     def capture_extra(
-        self, key: str, answers: Sequence[Spooled], /
+        self, key: str, answers: Iterable[Spooled], /
     ) -> Mapping[str, object]:
         """
         Of a capture of ``mwp_auto``: the days of its rows' hours, its watermark, its count.
 
         ``period`` the first and last UTC day of the stored hours of its rows (the
         rows after their answer's time left out), ``watermark`` the last ``OBJECTID``
-        of its pages asked by watermark, ``count`` the table's count it was told.
+        of its pages asked by watermark, ``count`` the table's count it was told
+        (``where`` ``1=1``, not a summer-time hour's). The answers are read one at a
+        time (a day of S0's backfill holds about 500 MB of them).
         """
         if key != OPERATIONAL:
             return {}
-        found = [
-            page for page in pages_of(answers) if page.layer == f"mwp_auto/{_AUTO_ROWS}"
-        ]
-        days: list[date] = []
+        rows = f"mwp_auto/{_AUTO_ROWS}"
+        first: date | None = None
+        last: date | None = None
         mark: int | None = None
         count: int | None = None
-        for page in found:
-            payload = page.payload if page.status == 200 else None
+        for answer in answers:
+            page = Page(answer.time, answer.address, answer.status, None)
+            if answer.status != 200 or page.layer != rows:
+                continue
+            try:
+                payload = json.loads(answer.content)
+            except ValueError:
+                continue
             if not isinstance(payload, dict):
                 continue
-            if isinstance(payload.get("count"), int) and "returnCountOnly" in page.form:
+            form = page.form
+            where = form.get("where", "")
+            if (
+                isinstance(payload.get("count"), int)
+                and form.get("returnCountOnly") == "true"
+                and where == "1=1"
+            ):
                 count = payload["count"]
-            ids: list[int] = []
+            watermarked = _WATERMARK.fullmatch(where) is not None
+            received = page.received
             for feature in payload.get("features") or ():
                 attributes = (
                     feature.get("attributes") if isinstance(feature, dict) else None
@@ -1003,20 +1045,44 @@ class PigAdapter(ProviderAdapter):
                 epoch, objectid = attributes.get("TIME"), attributes.get("OBJECTID")
                 if isinstance(epoch, int) and not isinstance(epoch, bool):
                     hour = stored_hour(epoch)
-                    if hour <= page.received:
-                        days.append(hour.date())
-                if isinstance(objectid, int):
-                    ids.append(objectid)
-            if ids and _WATERMARK.fullmatch(page.form.get("where", "")):
-                mark = max(ids) if mark is None else max(mark, *ids)
+                    if hour <= received:
+                        day = hour.date()
+                        first = day if first is None else min(first, day)
+                        last = day if last is None else max(last, day)
+                if watermarked and isinstance(objectid, int):
+                    mark = objectid if mark is None else max(mark, objectid)
         extra: dict[str, object] = {}
-        if days:
-            extra["period"] = [min(days).isoformat(), max(days).isoformat()]
+        if first is not None and last is not None:
+            extra["period"] = [first.isoformat(), last.isoformat()]
         if mark is not None:
             extra["watermark"] = mark
         if count is not None:
             extra["count"] = count
         return extra
+
+    def harvest_answer(self, key: str, address: str, /) -> bool:
+        """
+        Of ``mwp_auto``: whether an answer is one the night's harvest asks for (W9).
+
+        Any query of the automatic points (layer 0); of the hourly table its count
+        (``where`` ``1=1``), its rows after a watermark (``OBJECTID > N``) and the
+        stored hour 02 of a summer-time start day (`DST_CLAUSE`). Not the services'
+        and layers' descriptions, nor the table's rows by another clause (the
+        probe's stored day 2026-11-23, which S0's backfill took again).
+        """
+        if key != OPERATIONAL:
+            return False
+        parts = urlsplit(address)
+        bare = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        if bare == _auto_url(_AUTO_POINTS):
+            return True
+        if bare != _auto_url(_AUTO_ROWS):
+            return False
+        form = dict(parse_qsl(parts.query, keep_blank_values=True))
+        where = form.get("where", "")
+        if where == "1=1":
+            return form.get("returnCountOnly") == "true"
+        return bool(_WATERMARK.fullmatch(where) or _DST_WHERE.fullmatch(where))
 
     def harvest_requests(
         self,
@@ -1167,20 +1233,6 @@ def _json(response: httpx.Response) -> Any:
         return response.json()
     except ValueError:
         return None
-
-
-def pages_of(answers: Iterable[Spooled]) -> list[Any]:
-    """The answers of a capture as pages (`obserwator._parsing.pig.Page`)."""
-    from obserwator._parsing.pig import Page
-
-    found = []
-    for answer in answers:
-        try:
-            payload = json.loads(answer.content)
-        except ValueError:
-            payload = None
-        found.append(Page(answer.time, answer.address, answer.status, payload))
-    return found
 
 
 def _ground(

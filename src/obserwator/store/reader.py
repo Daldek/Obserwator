@@ -1757,8 +1757,14 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     return _current(_open(root, kind=_SLOT_ROOTS.get(word)), slot)
 
 
-def _current(path: Path, slot: str) -> StoreEntry | None:
-    """`current_version` of a slot in an opened root."""
+def _current(path: Path, slot: str, as_of: datetime | None = None) -> StoreEntry | None:
+    """
+    `current_version` of a slot in an opened root.
+
+    With ``as_of`` (aware), the version current at that time: of the versions
+    downloaded then or before, the one `current_version` would pick (an import of
+    answers kept elsewhere compares with it, ADR-035); None without one.
+    """
     kind, directory, name, options = _slot_location(path, slot)
     if not directory.is_dir():
         return None
@@ -1779,6 +1785,8 @@ def _current(path: Path, slot: str) -> StoreEntry | None:
                 message("reader.corrupt_version_slot", slot=slot, problem=entry.problem)
             )
         meta = entry.meta
+        if as_of is not None and meta.downloaded_at > as_of:
+            continue
         versions.append(
             (
                 entry.version,
@@ -1934,14 +1942,19 @@ class _Reference:
     observation: Path | None
 
 
-def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
+def _reference_signal(
+    root: RootArg, /, *, slot: str, as_of: datetime | None = None
+) -> _Reference | None:
     """
     Signal the next download of an archive slot is compared with (ADR-003 D18).
 
     The newest observation of the current version (by ``seen_at``, then file
     name) gives the signal; observations of older versions are history. Without
     such an observation the signal is the version's ``extra.http`` and
-    ``size_bytes``, exactly as in a slot without a register.
+    ``size_bytes``, exactly as in a slot without a register. With ``as_of`` the
+    slot is read as it stood then: the version current at that time (`_current`)
+    and its observations seen then or before (an import of answers kept elsewhere,
+    each dated by its run, ADR-035).
 
     Parameters
     ----------
@@ -1949,6 +1962,8 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
         Raw root directory or an open handle of one.
     slot : str
         Archive slot ``archive:<key>:<selector>``.
+    as_of : datetime.datetime or None, optional
+        An aware time the slot is read at; None for now.
 
     Returns
     -------
@@ -1970,12 +1985,15 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
         raise _invalid_slot(
             slot, message("reader.reference_signal_exists_only_archive")
         )
-    entry = current_version(root, slot=slot)
+    entry = _current(_open(root, kind=_SLOT_ROOTS["archive"]), slot, as_of)
     if entry is None or entry.version is None or entry.meta is None:
         return None
     current = entry.version.parent
     register = current.parent / _OBSERVATIONS
     newest: tuple[tuple[str, str], Observation, Path] | None = None
+    seen_by = (
+        None if as_of is None else as_of.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
     for child in sorted(register.iterdir()) if _is_register(register) else ():
         if not _OBSERVATION_FILE.fullmatch(child.name) or not (
             child.is_symlink() or child.is_file()
@@ -1987,7 +2005,9 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
                     "symlink", message("reader.symbolic_link_instead_observation")
                 )
             observation = _load_observation(child)
-            if observation.same_content_as != current.name:
+            if observation.same_content_as != current.name or (
+                seen_by is not None and observation.seen_at > seen_by
+            ):
                 continue
             _check_observation(
                 child, observation, slot.split(":")[1], {current.name: entry.meta}.get

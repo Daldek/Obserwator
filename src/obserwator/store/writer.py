@@ -1478,6 +1478,40 @@ def _tier_fields(descriptor: DatasetDescriptor) -> dict[str, str]:
     return {"tier": descriptor.tier, "publication": publication(descriptor.key)}
 
 
+def _provenance(
+    provenance: Mapping[str, object] | None, reserved: tuple[str, ...]
+) -> dict[str, object]:
+    """
+    The fields a caller adds to a sidecar's ``extra``: where bytes kept elsewhere come from.
+
+    Raises
+    ------
+    ValueError
+        For a field the writer writes itself.
+    """
+    added = dict(provenance or {})
+    clash = sorted(set(added) & set(reserved))
+    if clash:
+        raise ValueError(f"provenance cannot replace extra.{clash[0]}")
+    return added
+
+
+def _place(source: Path, target: Path) -> None:
+    """
+    Put a finished file into a staging directory: a hard link, else a copy, fsynced.
+
+    A large capture is encoded into a file of the root's ``.incoming`` rather than
+    memory (S0's import, ADR-035), so it is linked into its version's staging.
+    """
+    try:
+        os.link(source, target)
+    except OSError:
+        with source.open("rb") as stream, target.open("xb") as out:
+            shutil.copyfileobj(stream, out, 1024 * 1024)
+            out.flush()
+            os.fsync(out.fileno())
+
+
 def _content_unchanged(
     root: Path,
     *,
@@ -1488,6 +1522,7 @@ def _content_unchanged(
     content: str,
     slot_dir: str,
     now: datetime,
+    as_of: datetime | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
 ) -> VersionResult | None:
@@ -1535,7 +1570,9 @@ def _content_unchanged(
     from obserwator.store.reader import _archive_slot, _reference_signal
 
     slot = _archive_slot(archive.server_path)
-    reference = None if slot is None else _reference_signal(root, slot=slot)
+    reference = (
+        None if slot is None else _reference_signal(root, slot=slot, as_of=as_of)
+    )
     if (
         reference is None
         or reference.version.meta is None
@@ -1619,6 +1656,8 @@ def write_archive(
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    downloaded_at: datetime | None = None,
+    provenance: Mapping[str, object] | None = None,
 ) -> VersionResult:
     """
     Commit an archive and provenance together, without replacing existing versions.
@@ -1644,6 +1683,12 @@ def write_archive(
     records ``tier`` and ``publication``, the publication state of its source as
     the version is written (D6); a verified dataset's sidecar has neither.
 
+    A version of answers kept elsewhere before (S0's interim capture of PIG-PIB,
+    ``store import --staging``, ADR-035) is written as its run would have written it
+    then: ``downloaded_at`` dates the sidecar, the label and the observation, the
+    canonical content is compared with the version current at that time, and
+    ``provenance`` names the run in ``extra``.
+
     Parameters
     ----------
     root : str, os.PathLike or StoreHandle
@@ -1666,6 +1711,13 @@ def write_archive(
     cancel : Cancel or None, optional
         Polled before and after staging and before an observation is
         published; returning ``True`` aborts the write.
+    downloaded_at : datetime.datetime or None, optional
+        When the bytes came (aware), for answers kept elsewhere before; None for
+        now.
+    provenance : Mapping of str to object or None, optional
+        Fields added to the sidecar's ``extra``: where bytes kept elsewhere before
+        come from (S0's run, ``{"staging": {"run": …}}``); None for none. A field
+        the writer writes itself is refused (`ValueError`).
 
     Returns
     -------
@@ -1702,6 +1754,9 @@ def write_archive(
         If ``cancel`` returns ``True`` before publication.
     """
     handle = prepare_store(root, kind="raw")
+    if downloaded_at is not None:
+        _utc(downloaded_at)
+    added = _provenance(provenance, ("version", "period", "http", "kept_fields"))
     path = handle.root
     descriptor = get_dataset(archive.dataset)
     provider = get_provider(descriptor.provider)
@@ -1759,7 +1814,7 @@ def write_archive(
             stream.flush()
             os.fsync(stream.fileno())
         sha = digest.hexdigest()
-        now = datetime.now(UTC)
+        now = datetime.now(UTC) if downloaded_at is None else downloaded_at
         stamp = _utc(now)
         # PIG-PIB's W (ADR-035): the years of the file's period, else of the
         # download; the day of the download.
@@ -1800,6 +1855,7 @@ def write_archive(
                 content=content,
                 slot_dir=slot_dir,
                 now=now,
+                as_of=downloaded_at,
                 on_notice=on_notice,
                 cancel=cancel,
             )
@@ -1859,6 +1915,7 @@ def write_archive(
                     if descriptor.kept_fields
                     else {}
                 ),
+                **added,
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)
@@ -1912,12 +1969,13 @@ def write_capture(
     /,
     *,
     archive: ArchiveFile,
-    data: bytes,
+    data: bytes | Path,
     answers: int,
     extra: Mapping[str, object] | None = None,
     on_progress: ProgressHook | None = None,
     on_notice: NoticeHook | None = None,
     cancel: Cancel | None = None,
+    provenance: Mapping[str, object] | None = None,
 ) -> VersionResult:
     """
     Commit the sealed capture of one dataset and UTC day as an archive version (D3).
@@ -1944,8 +2002,10 @@ def write_capture(
     archive : ArchiveFile
         The file of the day (`obserwator.datasets._capture_file`) of a capture
         dataset.
-    data : bytes
-        The sealed answers.
+    data : bytes or pathlib.Path
+        The sealed answers, or a finished file of them (written and fsynced, below
+        the root's ``.incoming``): a large day is encoded into a file rather than
+        memory (`obserwator.store.captures.encode_into`, S0's import, ADR-035).
     answers : int
         How many answers they hold.
     extra : Mapping of str to object or None, optional
@@ -1958,6 +2018,10 @@ def write_capture(
         directory removed and the ``license_terms`` notice after publication.
     cancel : Cancel or None, optional
         Polled before and after staging; returning ``True`` aborts the write.
+    provenance : Mapping of str to object or None, optional
+        Fields added to the sidecar's ``extra`` (S0's runs whose answers the day
+        holds: ``{"staging": {"runs": […]}}``); None for none. A field the writer
+        writes itself is refused (`ValueError`).
 
     Returns
     -------
@@ -1977,6 +2041,7 @@ def write_capture(
         If ``cancel`` returns ``True`` before publication.
     """
     handle = prepare_store(root, kind="raw")
+    kept = _provenance(provenance, ("version", "period", "http", "capture"))
     path = handle.root
     descriptor = get_dataset(archive.dataset)
     if (
@@ -2000,8 +2065,14 @@ def write_capture(
     staging = incoming / f"{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex}"
     staging.mkdir()
     try:
-        _write_new(staging / filename, data)
-        sha = hashlib.sha256(data).hexdigest()
+        if isinstance(data, Path):
+            _place(data, staging / filename)
+            sha = _sha256_file(staging / filename)
+            size = (staging / filename).stat().st_size
+        else:
+            _write_new(staging / filename, data)
+            sha = hashlib.sha256(data).hexdigest()
+            size = len(data)
         for old_file, old_meta in _existing(slot, filename, archive=True):
             if old_meta["sha256"] == sha:
                 old_label = old_meta["extra"]["version"]["label"]
@@ -2029,7 +2100,7 @@ def write_capture(
             "license": _filled_license(descriptor, filling),
             "downloaded_at": _utc(datetime.now(UTC)),
             "sha256": sha,
-            "size_bytes": len(data),
+            "size_bytes": size,
             **_tier_fields(descriptor),
             "extra": {
                 "version": {"label": label, "label_source": "downloaded"},
@@ -2048,6 +2119,7 @@ def write_capture(
                     "content_length": None,
                 },
                 "capture": {"answers": answers, **added},
+                **kept,
             },
         }
         _write_json(staging / f"{filename}.meta.json", meta)

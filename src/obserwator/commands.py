@@ -1154,8 +1154,15 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
                 "provider_file",
                 "path",
                 message("commands.store_import_provider_file_help"),
-                required=True,
                 path_role="input",
+            ),
+            # An operator's local directory (S0's staging, ADR-035): no REST parameter.
+            _option(
+                "staging",
+                "path",
+                message("commands.store_import_staging_help"),
+                path_role="input",
+                rest="local",
             ),
         ),
         function="import_files",
@@ -1164,7 +1171,11 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         store_only=True,
         check="check_import",
         method="POST",
-        rules=(message("commands.store_import_rule"),),
+        one_of=(("provider_file",), ("staging",)),
+        rules=(
+            message("commands.store_import_rule"),
+            message("commands.store_import_staging_rule"),
+        ),
         writes="add",
     ),
     _command(
@@ -1491,13 +1502,32 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
     The ``dataset``/``datasets`` choices keep the provider's keys and the
     ``provider`` option is fixed to it (required, its only choice, no
     default), so every call valid in the narrowed catalog concerns the
-    provider alone. ``store import`` is offered for a provider fed by files
-    only (ADR-033).
+    provider alone. ``store import`` is offered for a provider fed by files, with
+    its provider file (ADR-033), and for one with an interim capture, with its
+    staging (ADR-035).
     """
     if _GROUP_PROVIDERS.get(command.name.split(" ", 1)[0], owner.id) != owner.id:
         return None
-    if command.function == "import_files" and owner.adapter.provider_file is None:
-        return None
+    if command.function == "import_files":
+        form = (
+            "provider_file"
+            if owner.adapter.provider_file is not None
+            else "staging"
+            if owner.adapter.staged
+            else None
+        )
+        if form is None:
+            return None
+        other = {"provider_file", "staging"} - {form}
+        command = replace(
+            command,
+            options=tuple(
+                replace(option, required=True) if option.name == form else option
+                for option in command.options
+                if option.name not in other
+            ),
+            one_of=(),
+        )
     options: list[CommandOption] = []
     for option in command.options:
         narrowed = option
@@ -3399,13 +3429,18 @@ def _import_lines(options: Options, result: object) -> Attribution:
 
     The provider's files in the raw root are copies as they came (its line); its
     series and its catalog are processed data, the catalog's locations checked against
-    the packaged border of its country (`_catalog_lines`).
+    the packaged border of its country (`_catalog_lines`). Of an interim capture
+    (PIG-PIB's S0, ADR-035) W is that of the versions it holds (`_held_w`).
     """
     report = cast(ImportReport, result)
     if not report.items:
         return Attribution()
     origin = provider_origin(report.provider)
-    lines = attribution(origin, processed=False)
+    lines = attribution(origin, processed=False) | _held_w(
+        (_slot_key(slot), item.version)
+        for item in report.items
+        if (slot := item.slot) is not None and slot.startswith("archive:")
+    )
     if any(item.version is not None for item in report.series):
         lines |= attribution(origin)
     if report.catalog is not None:

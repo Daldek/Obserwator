@@ -177,14 +177,14 @@ class ProviderAdapter(Protocol):
     inherit the defaults of the optional members: `current` (no live current data),
     `polled` (no source of the hourly poll), `harvested` and `watermarked` (no
     harvest), `live_source` (no live tail), `credential` (none), `capture` (the
-    capture spool),
+    capture spool), `staged` (no interim capture),
     `publication_default` (``private``), `server_name`, `groups`, `identifies`,
     `optional_sources`, `dataset_origin`, `station_origins`, `indexed`, `index_files`,
     `station_key`, `archive_station`, `download`, `folders`, `listed_station`,
     `listing`, `month_files`, `settled`, `held_period`, `station_file`,
     `optional_action`, `location_files`, `harvest_requests`, `live_tail`,
     `series_reads`, `hourly_points`, `series_read`, `published`, `publication_gaps`,
-    `replaced`, `series_sources` and `capture_extra`.
+    `replaced`, `series_sources`, `capture_extra`, `run_file` and `harvest_answer`.
 
     Attributes
     ----------
@@ -266,6 +266,11 @@ class ProviderAdapter(Protocol):
         The provider file of a provider fed by files (ADR-033): its data come from the
         files it names, imported by ``store import``, never from a server; None for a
         provider with a server (the default).
+    staged : bool
+        Whether ``store import --staging`` takes in the provider's interim capture:
+        the answers of its services kept outside any store, run by run, before the
+        release that captures them (S0 of PIG-PIB, ADR-035 W15; `run_file`,
+        `harvest_answer`); False by default.
     """
 
     provider_id: str
@@ -288,6 +293,7 @@ class ProviderAdapter(Protocol):
     source_notice: Message | None = None
     served_by_default: bool = True
     provider_file: ProviderFile | None = None
+    staged: bool = False
 
     @property
     def provider(self) -> ProviderDescriptor:
@@ -1220,7 +1226,7 @@ class ProviderAdapter(Protocol):
         return write_spool(answer)
 
     def capture_extra(
-        self, key: str, answers: Sequence[Spooled], /
+        self, key: str, answers: Iterable[Spooled], /
     ) -> Mapping[str, object]:
         """
         What the provider adds to ``extra.capture`` of a capture version's sidecar.
@@ -1236,8 +1242,9 @@ class ProviderAdapter(Protocol):
         ----------
         key : str
             A capture dataset of the provider.
-        answers : sequence of Spooled
-            The answers of the version.
+        answers : iterable of Spooled
+            The answers of the version, read once in order (a day of S0's backfill
+            holds about 500 MB of them: one at a time, never all at once).
 
         Returns
         -------
@@ -1248,6 +1255,63 @@ class ProviderAdapter(Protocol):
             (ADR-035 W9).
         """
         return {}
+
+    def run_file(
+        self, descriptor: DatasetDescriptor, data: bytes, /, *, filename: str
+    ) -> ArchiveFile | None:
+        """
+        The file a run of a dataset's answers is kept as, named by what they hold.
+
+        A provider whose datasets are kept as runs of answers (Obserwator's container
+        of answers, `obserwator.store.captures.encode`) names the file of one run
+        here: what its download names and what ``store import --staging`` writes a
+        run of its interim capture as (`staged`).
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset of the provider.
+        data : bytes
+            The run's answers in Obserwator's container.
+        filename : str
+            What the answers are called in errors.
+
+        Returns
+        -------
+        ArchiveFile or None
+            None by default and for answers that hold nothing to keep; PIG-PIB's:
+            the readings' calendar month (or first and last day) by their rows, the
+            points' and the other tables' one file (ADR-035 W4, W5).
+
+        Raises
+        ------
+        ObserwatorDataError
+            If the answers cannot be read.
+        """
+        return None
+
+    def harvest_answer(self, key: str, address: str, /) -> bool:
+        """
+        Whether an answer of a capture dataset is one its harvest asks for.
+
+        ``store import --staging`` keeps only those of a run of the interim capture
+        (`staged`) in the run day's capture (ADR-035 W15).
+
+        Parameters
+        ----------
+        key : str
+            A capture dataset of the provider.
+        address : str
+            The address asked (of a POST, its URL with the form as the query).
+
+        Returns
+        -------
+        bool
+            True by default; PIG-PIB's ``mwp_auto``: the automatic points (layer
+            0), and of the hourly table the table's count, the rows after a
+            watermark and the stored hour 02 of a summer-time start day (W9).
+        """
+        return True
 
     def publication_default(self, key: str, /) -> Literal["public", "private"]:
         """

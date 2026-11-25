@@ -122,6 +122,7 @@ tests/
 ├── fixtures/operational/    # Answers recorded on 2026-11-23 for ADR-030's harvests (recordings.json: address, status, headers, file, SHA-256): hydro-back's series, the telemetry's listings and a cut zip, ČHMÚ's now metadata, recent, now and hourly files; october/: a harvest of October 2026 for 151160060 and 150160180 and the October telemetry cut to them (ADR-031)
 ├── fixtures/hydrolog/       # Recorded Hydrolog of the stored analyses (fake_hydrolog.py, answers.json)
 ├── fixtures/export_golden/  # Golden files of archive export (CSV with CRLF, JSONL)
+├── fixtures/pig_staging/    # A cut of PIG-PIB's interim capture S0 as kept (ADR-035): the probe's watch-list page and a description, S0's equal run of it, a watermark page with the answer 503 after it, a summer-time hour 02 and a timed-out request; manifest lines verbatim
 ├── unit/
 │   ├── test_fetch*.py, test_models.py, test_parsers.py, test_stations*.py, test_urls.py
 │   ├── test_datasets*.py, test_coverage*.py, test_download_archives*.py, test_parsing_chmu.py
@@ -129,6 +130,7 @@ tests/
 │   ├── test_parsing_gdanskiewody.py, test_provider_gdanskiewody.py   # Gdańskie Wody (ADR-034): parsers and adapter on its recorded answers
 │   ├── test_store_sync_gdanskiewody.py, test_series_gdanskiewody.py  # Gdańskie Wody: month files of store check|sync on a fake clock, its hourly and daily series
 │   ├── test_store_sync_pig.py, test_provider_pig.py, test_series_pig.py   # PIG-PIB (ADR-035): store check|sync and the harvest by watermark on a fake clock; the readings' days, the points and their search; the readings and hourly series
+│   ├── test_store_staging.py                           # PIG-PIB's interim capture S0 (ADR-035): store import --staging of runs written as S0 and the probe wrote them, and of a cut of the real staging (fixtures/pig_staging)
 │   ├── test_store_*.py, test_series_export.py          # store: writer, sync, series, catalog, pmaxtp, reader, export, content, captures, harvests
 │   ├── test_series_subdaily.py, test_store_reader_subdaily.py   # hourly series (ADR-031): builder on October 2026, months, precedence; readers, exports, REST
 │   ├── test_captures.py, test_paced.py, test_provider_credentials.py   # capture spool and hourly poll (ADR-030), paced harvests, providers' credentials
