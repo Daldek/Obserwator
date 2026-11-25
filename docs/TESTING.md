@@ -92,6 +92,8 @@ The fixtures of `tests/e2e/conftest.py`: `gui_url` (the fixture root of both pro
 
 Fixture variants of `obserwator.testing.build_fixture_store` (CODEBASE „Offline fixture roots”): `complete` (IMGW-PIB), `complete_pl_cz` (with ČHMÚ's hydro and meteo stations), `corrupt`, `unknown_schema` and `groundwater` (ADR-032 D9): `complete_pl_cz` plus real files and server headers recorded on 2026-11-23 (`chmu_groundwater_recordings.json`): the bore `0-203-1-VP0624` „Rakousy” and the spring `0-203-1-PP0744` „Želechy”, their daily files of 2024, the weekly files of 2012 (bore) and 2014 (spring), the bore's `recent` month 2026-10, the characteristics of both, the object list and the `now` metadata cut to the rows of the two objects, the series `chmu_groundwater_daily` and `chmu_groundwater_weekly` and one ČHMÚ catalog with hydro, meteo and groundwater stations; `complete` and `complete_pl_cz` stay byte-identical. Its tests: `tests/unit/test_groundwater_chmu.py`, `tests/unit/test_fixture_builder_chmu.py` (the variant and its recordings), `tests/unit/gui/test_groundwater.py` and `tests/e2e/test_groundwater.py`.
 
+The variant `groundwater_pl` (ADR-035) is `groundwater` plus PIG-PIB's real rows recorded on 2026-11-24 and 2026-11-25 (`pig_recordings.json`, eleven points), answered with ArcGIS's semantics by `obserwator.testing._PigService` and synchronized on a clock that starts at the probe's capture and moves only when a paced request waits: the points, October 2026's readings, the night's capture of `mwp_auto` of 2026-11-24 (with the stored hour 02 of 2026-03-29), the series `pig_groundwater_readings` and `pig_groundwater_subdaily` (2026-03, 2026-10, 2026-11) and the PIG catalog; `complete`, `complete_pl_cz` and `groundwater` stay byte-identical. Its tests: `tests/unit/test_provider_pig.py`, `tests/unit/test_series_pig.py` (on the session fixture `groundwater_pl_roots` and roots of their own) and `tests/unit/test_fixture_builder_pig.py`.
+
 ## Tests (from README)
 
 Test instructions from the README (moved unchanged).
@@ -126,11 +128,12 @@ tests/
 │   ├── test_groundwater_chmu.py                        # ČHMÚ groundwater: parser, weekly coverage, sync, series, catalog, exports
 │   ├── test_parsing_gdanskiewody.py, test_provider_gdanskiewody.py   # Gdańskie Wody (ADR-034): parsers and adapter on its recorded answers
 │   ├── test_store_sync_gdanskiewody.py, test_series_gdanskiewody.py  # Gdańskie Wody: month files of store check|sync on a fake clock, its hourly and daily series
+│   ├── test_store_sync_pig.py, test_provider_pig.py, test_series_pig.py   # PIG-PIB (ADR-035): store check|sync and the harvest by watermark on a fake clock; the readings' days, the points and their search; the readings and hourly series
 │   ├── test_store_*.py, test_series_export.py          # store: writer, sync, series, catalog, pmaxtp, reader, export, content, captures, harvests
 │   ├── test_series_subdaily.py, test_store_reader_subdaily.py   # hourly series (ADR-031): builder on October 2026, months, precedence; readers, exports, REST
 │   ├── test_captures.py, test_paced.py, test_provider_credentials.py   # capture spool and hourly poll (ADR-030), paced harvests, providers' credentials
 │   ├── test_deploy_*.py                                # the deployment: the night's jobs, systemd units, obserwator-backup.sh
-│   ├── test_fixture_builder*.py                        # obserwator.testing (complete, complete_pl_cz, groundwater)
+│   ├── test_fixture_builder*.py                        # obserwator.testing (complete, complete_pl_cz, groundwater, groundwater_pl)
 │   ├── test_commands*.py, test_command_schema.py       # command catalog, command_schema
 │   ├── test_catalog_effects.py, test_catalog_i18n.py   # command effects, English descriptions
 │   ├── test_agent_guide.py                             # AGENTS.md and llms.txt (drift test)
