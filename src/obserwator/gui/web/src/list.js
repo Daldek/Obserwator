@@ -1,28 +1,60 @@
 // The left panel „Stacje” (plan D10): search by name, river or code ignoring case and
 // diacritics (as `obserwator stations find` does: a fragment of the name or the river, a
-// prefix of the code), filters by provider, kind, the datasets holding the station (chips,
-// any of those chosen) and „tylko czynne” (checked on a first visit, the person's choice
-// remembered), the counts „na mapie N · bez współrzędnych M”
+// prefix of the code), filters by the class of the stations' sources, kind, the datasets
+// holding the station (chips, any of those chosen) and „tylko czynne” (checked on a first
+// visit, the person's choice remembered), the counts „na mapie N · bez współrzędnych M”
 // and the list, which keeps the stations without coordinates, marked; a click selects the
 // station and the map flies to it when it has a location. The filters choose the map's
 // stations too (`onMap`); the search is the list's. The kind switch offers groundwater
 // objects (ČHMÚ's bores and springs) only where the catalogs hold one (words.js
-// `shownKinds`). On an operator's instance (ADR-025, instance.js) the switch and the chips
-// name only the providers served, the featured one first, whose stations lead the list
-// (`featuredFirst`); „Pokaż inne źródła” (off on every visit) puts a hidden provider's
-// stations back, which also choosing it in the switch does.
+// `shownKinds`). The class switch „Wszystkie | Służby | Inne źródła” (hydromet P11, P12)
+// shows only where the stations' sources hold both classes (words.js `shownClasses`) and
+// stays three buttons however many providers come; one provider is chosen by its chips,
+// which stand under their provider's name and country („IMGW-PIB · PL”), the providers
+// under the heading of their class where the chips shown hold both classes, sorted by
+// country, then name, and under country headings where one class holds more of them than
+// fit the panel (`COUNTRY_HEADINGS_ABOVE`). On an operator's instance (ADR-025,
+// instance.js) the chips name only the providers served, the featured one first, whose
+// stations lead the list (`featuredFirst`); „Pokaż pozostałych dostawców” (off on every
+// visit) puts a hidden provider's stations back, which also choosing a class does.
 
 import { leftOut } from "./instance.js";
 import { fmt, html, t, tn, useEffect, useMemo, useRef, useState } from "./lib.js";
 import { StationSymbol } from "./symbols.js";
 import { Seg } from "./ui/seg.js";
-import { datasetShort, datasetTitle, groundwaterKindName, kindName, providerName, seriesDatasets } from "./words.js";
+import {
+  classGroups,
+  countryName,
+  datasetShort,
+  datasetTitle,
+  groundwaterKindName,
+  kindName,
+  providerName,
+  providerOf,
+  seriesDatasets,
+  sourceClass,
+  sourceClassName,
+} from "./words.js";
 
 /** The words of each kind in the switch „Rodzaj stacji”: catalog keys. */
 const KIND_LABELS = { hydro: "stations.list.kind_hydro", meteo: "stations.list.kind_meteo", groundwater: "stations.list.kind_groundwater" };
 
-/** The filters of „Wyczyść filtry”, which keeps „Pokaż inne źródła” as it is: every station of the catalogs. */
-export const NO_FILTERS = Object.freeze({ query: "", provider: "all", kind: "all", datasets: Object.freeze([]), active: false, others: false });
+/** The words of the class switch „Wszystkie | Służby | Inne źródła”: catalog keys. */
+const CLASS_LABELS = { all: "stations.list.class_all", nmhs: "stations.list.class_nmhs", other: "stations.list.class_other" };
+
+/**
+ * The most providers of one class whose chips fit the panel without country headings
+ * (hydromet P12): six, each its heading and a row or two of chips, take about a third of
+ * the left panel of a laptop's screen; a class with more stands under the headings of its
+ * providers' countries.
+ */
+export const COUNTRY_HEADINGS_ABOVE = 6;
+
+/**
+ * The filters of „Wyczyść filtry”, which keeps „Pokaż pozostałych dostawców” as it is: every
+ * station of the catalogs. `class` is "all", "nmhs" or "other" (words.js `SOURCE_CLASSES`).
+ */
+export const NO_FILTERS = Object.freeze({ query: "", class: "all", kind: "all", datasets: Object.freeze([]), active: false, others: false });
 
 /** localStorage key of the person's „tylko czynne” choice: "1" checked, "0" not. */
 export const ACTIVE_KEY = "obserwator-active-only";
@@ -102,18 +134,47 @@ export function featuredFirst(stations, featured) {
   return [...stations.filter((station) => station.provider === featured), ...stations.filter((station) => station.provider !== featured)];
 }
 
+/** Whether a provider's source is of the class chosen in the switch ("all": every one). */
+function ofClass(provider, filters) {
+  return filters.class === "all" || sourceClass(provider) === filters.class;
+}
+
 /**
- * Whether the map shows a station under the filters (provider, kind, datasets, active) and
- * the instance (a hidden provider, `leftOut`); the search is the list's only.
+ * Whether the map shows a station under the filters (the class of its source, kind,
+ * datasets, active) and the instance (a hidden provider, `leftOut`); the search is the
+ * list's only.
  */
 export function onMap(station, filters, scope) {
-  if (filters.provider !== "all" && station.provider !== filters.provider) return false;
+  if (!ofClass(station.provider, filters)) return false;
   if (leftOut(station.provider, filters, scope)) return false;
   if (filters.kind !== "all" && station.kind !== filters.kind) return false;
   if (filters.active && !station.active) return false;
   const chosen = filters.datasets || [];
   if (chosen.length && !station.datasets.some((key) => chosen.includes(key))) return false;
   return true;
+}
+
+/**
+ * The one provider whose stations the class switch, the dataset chips and the instance
+ * leave, for „Pobierz listę stacji” (panel.js `NoStation`); null where they leave more than
+ * one, whose file then holds every provider's stations. The kind is the file's own filter,
+ * and „tylko czynne” narrows no file.
+ *
+ * @param {object[]} stations stations of prepareStations
+ * @param {object} filters the list's filters (NO_FILTERS' fields)
+ * @param {object} scope what the deployment shows (instance.js `scopeOf`)
+ * @returns {string|null} the provider's id
+ */
+export function chosenProvider(stations, filters, scope) {
+  const chosen = filters.datasets || [];
+  let found = null;
+  for (const station of stations) {
+    if (station.provider === found || !ofClass(station.provider, filters) || leftOut(station.provider, filters, scope)) continue;
+    if (chosen.length && !station.datasets.some((key) => chosen.includes(key))) continue;
+    if (found !== null) return null;
+    found = station.provider;
+  }
+  return found;
 }
 
 function matches(station, filters, needle, scope) {
@@ -141,9 +202,9 @@ function datasetsOf(stations) {
   return [...found.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
 }
 
-/** Whether a dataset's chip belongs under the provider and kind chosen; a hidden provider's not while it is left out. */
+/** Whether a dataset's chip belongs under the class and kind chosen; a hidden provider's not while it is left out. */
 function offered(entry, filters, scope) {
-  return (filters.provider === "all" || entry.provider === filters.provider) && (filters.kind === "all" || entry.kind === filters.kind) && !leftOut(entry.provider, filters, scope);
+  return ofClass(entry.provider, filters) && (filters.kind === "all" || entry.kind === filters.kind) && !leftOut(entry.provider, filters, scope);
 }
 
 /** Bring a station's row into the list's view when its scrolling box shows (not a closed sheet). */
@@ -161,35 +222,79 @@ function reveal(item) {
   else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight + 8;
 }
 
-/** The chips of the datasets that hold stations, grouped by provider in the order of the switch. */
+/** A provider's country by the session (ISO 3166-1 alpha-2), null while it names none. */
+function countryOf(provider) {
+  const found = providerOf(provider);
+  return (found && found.country) || null;
+}
+
+/**
+ * The providers of a class in the parts the chips show: one part without a heading, or,
+ * where they are more than COUNTRY_HEADINGS_ABOVE, a part per country in their order.
+ *
+ * @param {string[]} providers in their order (words.js `classGroups`)
+ * @returns {{country: string|null, providers: string[]}[]}
+ */
+function countryParts(providers) {
+  if (providers.length <= COUNTRY_HEADINGS_ABOVE) return [{ country: null, providers }];
+  const parts = [];
+  for (const provider of providers) {
+    const country = countryOf(provider);
+    const part = parts.find((item) => item.country === country);
+    if (part) part.providers.push(provider);
+    else parts.push({ country, providers: [provider] });
+  }
+  return parts;
+}
+
+/** One provider's chips under its name and country („IMGW-PIB · PL”). */
+function ProviderChips({ provider, entries, filters, onToggle }) {
+  const country = countryOf(provider);
+  const source = sourceClass(provider);
+  return html`<div class="ds-group">
+    <span class="ds-provider">${country ? `${providerName(provider)} · ${country}` : providerName(provider)}</span>
+    <span class="ds-chips">
+      ${entries.map((entry) => {
+        const on = filters.datasets.includes(entry.key);
+        const title = datasetTitle(entry.key);
+        return html`<button
+          type="button"
+          key=${entry.key}
+          class=${on ? "chip ds-chip on" : "chip ds-chip"}
+          aria-pressed=${String(on)}
+          aria-label=${title}
+          title=${title}
+          onClick=${() => onToggle(entry.key)}
+        >
+          <${StationSymbol} kind=${entry.kind} data=${true} source=${source} size=${11} />${datasetShort(entry.key)}
+        </button>`;
+      })}
+    </span>
+  </div>`;
+}
+
+/**
+ * The chips of the datasets that hold stations, by the class of their providers' sources
+ * (each class under its heading where the chips shown hold both), then by provider
+ * (words.js `classGroups`: the featured one first, then by country and short name).
+ */
 function DatasetChips({ entries, filters, scope, onToggle }) {
-  const providers = [...new Set([...scope.providers, ...entries.map((entry) => entry.provider)])];
-  const groups = providers
-    .map((provider) => [provider, entries.filter((entry) => entry.provider === provider && offered(entry, filters, scope))])
-    .filter(([, shown]) => shown.length);
-  if (!groups.length) return null;
+  const shownOf = (provider) => entries.filter((entry) => entry.provider === provider && offered(entry, filters, scope));
+  const providers = [...new Set([...scope.providers, ...entries.map((entry) => entry.provider)])].filter((provider) => shownOf(provider).length);
+  if (!providers.length) return null;
+  const groups = classGroups(providers, scope.featured);
+  const headed = groups.length > 1;
   return html`<div class="ds-filter" role="group" aria-label=${t("stations.list.datasets")}>
     <span class="ds-title">${t("stations.list.datasets")}</span>
     ${groups.map(
-      ([provider, shown]) => html`<div class="ds-group" key=${provider}>
-        <span class="ds-provider">${providerName(provider)}</span>
-        <span class="ds-chips">
-          ${shown.map((entry) => {
-            const on = filters.datasets.includes(entry.key);
-            const title = datasetTitle(entry.key);
-            return html`<button
-              type="button"
-              key=${entry.key}
-              class=${on ? "chip ds-chip on" : "chip ds-chip"}
-              aria-pressed=${String(on)}
-              aria-label=${title}
-              title=${title}
-              onClick=${() => onToggle(entry.key)}
-            >
-              <${StationSymbol} kind=${entry.kind} data=${true} size=${11} />${datasetShort(entry.key)}
-            </button>`;
-          })}
-        </span>
+      (group) => html`<div class="ds-class" key=${group.cls || "-"} data-class=${group.cls || null}>
+        ${headed ? html`<span class="ds-class-title">${sourceClassName(group.cls)}</span>` : null}
+        ${countryParts(group.providers).map(
+          (part) => html`${part.country ? html`<span class="ds-country">${countryName(part.country)}</span>` : null}
+            ${part.providers.map(
+              (provider) => html`<${ProviderChips} key=${provider} provider=${provider} entries=${shownOf(provider)} filters=${filters} onToggle=${onToggle} />`,
+            )}`,
+        )}
       </div>`,
     )}
   </div>`;
@@ -217,14 +322,16 @@ function StationSub({ station }) {
 /**
  * The panel's body.
  *
- * @param {{stations: object[], kinds: string[], filters: object, scope: object, onFilters:
- *   (next: object) => void, selected: string|null, onSelect: (code: string, options: {fly:
- *   boolean}) => void}} props the stations of prepareStations, the kinds offered (words.js
- *   `shownKinds`), the filters (NO_FILTERS' fields), what the deployment shows (instance.js
- *   `scopeOf`), the filters' handler, the selected station and the selection's handler
+ * @param {{stations: object[], kinds: string[], classes: string[], filters: object, scope:
+ *   object, onFilters: (next: object) => void, selected: string|null, onSelect: (code:
+ *   string, options: {fly: boolean}) => void}} props the stations of prepareStations, the
+ *   kinds offered (words.js `shownKinds`), the classes of the stations' sources (words.js
+ *   `shownClasses`: the class switch shows only with both), the filters (NO_FILTERS'
+ *   fields), what the deployment shows (instance.js `scopeOf`), the filters' handler, the
+ *   selected station and the selection's handler
  * @returns {object}
  */
-export function StationList({ stations, kinds, filters, scope, onFilters, selected, onSelect }) {
+export function StationList({ stations, kinds, classes = [], filters, scope, onFilters, selected, onSelect }) {
   const [shown, setShown] = useState(PAGE);
   const list = useRef(null);
   const needle = fold(filters.query.trim());
@@ -234,7 +341,7 @@ export function StationList({ stations, kinds, filters, scope, onFilters, select
   const change = (next) => {
     setShown(PAGE);
     if (next.active !== filters.active) rememberActive(next.active);
-    // A dataset chosen under another provider or kind, or of a provider left out again, is
+    // A dataset chosen under another class or kind, or of a provider left out again, is
     // dropped with its chip
     const chosen = (next.datasets || []).filter((key) => {
       const entry = datasets.find((item) => item.key === key);
@@ -244,7 +351,7 @@ export function StationList({ stations, kinds, filters, scope, onFilters, select
   };
   const set = (key) => (value) => change({ ...filters, [key]: value });
   const toggle = (key) => change({ ...filters, datasets: filters.datasets.includes(key) ? filters.datasets.filter((item) => item !== key) : [...filters.datasets, key] });
-  const filtered = filters.provider !== "all" || filters.kind !== "all" || filters.active || filters.datasets.length > 0 || filters.query.trim() !== "";
+  const filtered = filters.class !== "all" || filters.kind !== "all" || filters.active || filters.datasets.length > 0 || filters.query.trim() !== "";
   // „N stacji · na mapie N · bez współrzędnych M”, wrapped only between its parts
   const counts = [
     html`<strong>${fmt(found.length)}</strong> ${tn("stations.list.found", found.length)}`,
@@ -271,14 +378,17 @@ export function StationList({ stations, kinds, filters, scope, onFilters, select
       />
     </label>
     <div class="filters">
-      <${Seg}
-        full
-        tiny
-        label=${t("stations.list.provider")}
-        value=${filters.provider}
-        onChange=${set("provider")}
-        items=${[{ value: "all", label: t("stations.list.provider_all") }, ...scope.providers.map((id) => ({ value: id, label: providerName(id) }))]}
-      />
+      ${classes.length > 1
+        ? html`<${Seg}
+            full
+            tiny
+            className="classes"
+            label=${t("stations.list.class")}
+            value=${filters.class}
+            onChange=${set("class")}
+            items=${["all", ...classes].map((value) => ({ value, label: t(CLASS_LABELS[value]) }))}
+          />`
+        : null}
       <${Seg}
         full
         tiny
@@ -308,7 +418,7 @@ export function StationList({ stations, kinds, filters, scope, onFilters, select
                 aria-current=${station.code === selected ? "true" : undefined}
                 onClick=${() => onSelect(station.code, { fly: true })}
               >
-                <${StationSymbol} kind=${station.kind} data=${station.datasets.length > 0} active=${station.active} />
+                <${StationSymbol} kind=${station.kind} data=${station.datasets.length > 0} active=${station.active} source=${sourceClass(station.provider)} />
                 <span class="st-name">${station.name || station.code}</span>
                 <code class="st-code">${station.code}</code>
                 <${StationSub} station=${station} />

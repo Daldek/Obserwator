@@ -1,4 +1,4 @@
-"""Words of the store's keys shared by the views: providers, station kinds, datasets, variables."""
+"""Words of the store's keys shared by the views: providers, the classes of their sources, countries, station kinds, datasets, variables."""
 
 from obserwator.messages import Text
 
@@ -10,6 +10,16 @@ MESSAGES: dict[str, Text] = {
     "words.provider.chmu": Text(
         "Czech Hydrometeorological Institute", "Czeski Instytut Hydrometeorologiczny"
     ),
+    # The classes of the providers' sources (hydromet P11), as headings: the operator, not
+    # a certificate of quality
+    "words.source_class.nmhs": Text(
+        "Hydrological and meteorological services",
+        "Służby hydrologiczno-meteorologiczne",
+    ),
+    "words.source_class.other": Text("Other sources", "Inne źródła"),
+    # The countries of the providers (ISO 3166-1 alpha-2, lower case), as headings
+    "words.country.pl": Text("Poland", "Polska"),
+    "words.country.cz": Text("Czechia", "Czechy"),
     "words.kind.hydro": Text("hydrological", "hydrologiczna"),
     "words.kind.meteo": Text("meteorological", "meteorologiczna"),
     # ČHMÚ's groundwater objects (ADR-032): their family, and what an object is

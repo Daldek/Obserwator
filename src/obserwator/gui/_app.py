@@ -510,9 +510,11 @@ async def session(request: Request) -> Response:
     """
     ``obserwator-gui-session/1``: versions, the data root, providers, basemap, menus.
 
-    ``providers`` describes each provider for the page (names, the prefix of its keys,
-    the origins of its lines and of the border its stations were checked against, the
-    class of its source, P11) and ``datasets`` each series dataset served
+    ``providers`` describes each provider for the page (names, its country as an ISO
+    3166-1 alpha-2 code, the prefix of its keys, the origins of its lines and of the
+    border its stations were checked against, the class of its source, P11, and P8's
+    notice of a source of the class ``other`` in the page's language, null for a
+    national service) and ``datasets`` each series dataset served
     (`_session_datasets`), so the page names no provider (P1); ``attribution`` holds the
     lines of each origin, their order and the ``screen_lines`` the kit's strip shows
     beside its own (each provider fed by files: its line, Nogat kit 1.2.0, ADR-033).
@@ -572,10 +574,14 @@ async def session(request: Request) -> Response:
             provider.id: {
                 "short_name": provider.short_name,
                 "name": provider.name,
+                "country": provider.country,
                 "key_prefix": provider.key_prefix,
                 "origin": provider_origin(provider.id),
                 "border": border_origin(provider.id),
                 "source_class": provider.source_class,
+                "source_notice": None
+                if (notice := provider.adapter.source_notice) is None
+                else localize(notice, lang),
                 **attribution(provider_origin(provider.id)).fields(),
             }
             for provider in shown

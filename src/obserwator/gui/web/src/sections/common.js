@@ -12,10 +12,12 @@
 //
 // The view's strip shows the lines of the results a card shows: a card's body sits in a
 // `ResultLines` provider whose value is called with each document with lines its sections get.
+// Every table, like every chart, carries the badge the panel gives (`BadgeLine` of
+// charts/chart.js: the class of a station of another source, hydromet P11).
 
 import { api } from "../api.js";
 import { has } from "../i18n.js";
-import { createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, useState } from "../lib.js";
+import { BadgeLine, createContext, fmt, fmtDateTime, html, t, tn, useContext, useEffect, useState } from "../lib.js";
 import { unverified } from "../words.js";
 
 /**
@@ -298,7 +300,8 @@ export function YearRange({ first, last, from, to, onApply, label, recommend = t
 }
 
 /**
- * A plain table.
+ * A plain table, under the badge of the station's class where the panel gives one
+ * (`BadgeLine`).
  *
  * @param {{columns: {key: string, label: string, digits?: number, format?: (v, row) => string}[],
  *   rows: object[], className?: string, max?: number}} props `max` rows shown before „Pokaż wszystkie”
@@ -308,7 +311,7 @@ export function Table({ columns, rows, className, max = 0 }) {
   const shown = max && !all ? rows.slice(0, max) : rows;
   const cell = (c, row) =>
     c.format ? c.format(row[c.key], row) : typeof row[c.key] === "number" ? fmt(row[c.key], c.digits ?? 2) : row[c.key] ?? "–";
-  return html`<div class="table-wrap"><table class=${className || "tbl"}>
+  return html`<${BadgeLine} /><div class="table-wrap"><table class=${className || "tbl"}>
       <thead><tr>${columns.map((c) => html`<th scope="col">${c.label}</th>`)}</tr></thead>
       <tbody>${shown.map((row) => html`<tr>${columns.map((c) => html`<td>${cell(c, row)}</td>`)}</tr>`)}</tbody>
     </table>

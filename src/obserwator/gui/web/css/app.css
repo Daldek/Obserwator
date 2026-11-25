@@ -474,6 +474,9 @@ pre.code .arg { display: inline-block; max-width: 100%; vertical-align: top; }
 
 /* ---------- Without a station ---------- */
 .no-station .params th { width: 64%; }
+/* A class of sources counted above its providers (hydromet P12) */
+.no-station .params .class-row th, .no-station .params .class-row td { color: var(--text); font-weight: var(--weight-bold); }
+.no-station .params.compact .in-class th { padding-left: var(--space-3); }
 
 /* ---------- „Zgłoś uwagę”: a native modal <dialog> (after Hydrolog's GUI) and the toasts ---------- */
 dialog.modal {
