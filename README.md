@@ -1,11 +1,12 @@
 # Obserwator: hydrological and meteorological data of Poland and Czechia for hydrology, GIS and AI agents
 
-Obserwator downloads the public hydrological and meteorological data of IMGW-PIB (Poland) and ČHMÚ (Czechia) and the PMAXTP maximum precipitation of IMGW-PIB to plain files or a versioned store, and builds station series, station catalogs and Hydrolog's station analyses from them. Python library, CLI, REST API, MCP server and web GUI.
+Obserwator downloads the public hydrological and meteorological data of IMGW-PIB (Poland) and ČHMÚ (Czechia) and the PMAXTP maximum precipitation of IMGW-PIB to plain files or a versioned store, and builds station series, station catalogs and Hydrolog's station analyses from them; it also reads Gdańskie Wody's measurements of the Gdańsk agglomeration, the first provider that is no national service, off in the servers until its terms are known. Python library, CLI, REST API, MCP server and web GUI.
 
 ## When to use
 
-- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data and the monthly hydrological telemetry; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily and validated hourly station data and groundwater readings, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 49 datasets, 33 of IMGW-PIB and 16 of ČHMÚ, captures of current data and hourly series among them.
+- Download the archives of IMGW-PIB's public data service (daily, monthly and semi-annual hydrological data and the monthly hydrological telemetry; climate, precipitation and synoptic meteorological data) and ČHMÚ's daily and validated hourly station data and groundwater readings, as plain files or as immutable versions with SHA-256, HTTP headers and licence in a sidecar; the registry has 55 datasets, 33 of IMGW-PIB, 16 of ČHMÚ and 6 of Gdańskie Wody, captures of current data and hourly series among them.
 - Read current water levels, meteorological and synoptic measurements and warnings of IMGW-PIB, every answer kept as it came and sealed into the raw root day by day (captures, `obserwator current poll` hourly), and find IMGW-PIB and ČHMÚ stations by name, river or code.
+- Keep Gdańskie Wody's hourly measurements (rain, water level in m a.s.l., flow, weather) month by month with its API key, and build its hourly series and the daily values of its own day; its terms of use are unknown, so it is off in both servers, its lines are drafts and no history is downloaded until the author names the range ([USAGE.md "Gdańskie Wody (Gdańsk)"](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md#gdańskie-wody-gdańsk), ADR-034).
 - Get the PMAXTP maximum precipitation (quantiles, confidence bounds, errors) of a point in Poland.
 - Build daily, weekly and hourly station series (Parquet) and station catalogs (GeoJSON) offline from the downloaded archives and captures, and export them as CSV, JSON, JSONL or Parquet with the providers' attribution lines.
 - Store the analyses Hydrolog computes for every station (87: characteristic levels and discharges, frequencies, regimes, trends, precipitation indices) next to the series, and browse stations, series, analyses and a station's hourly readings on a map in the web GUI.
@@ -145,13 +146,13 @@ The CLI command is `obserwator <group> <name>`, the MCP tool `obserwator_<group>
 | Task | CLI command | Python function | Data source and licence |
 |---|---|---|---|
 | Datasets and providers of the registry (offline) | `datasets list`, `datasets providers` | `datasets`, `providers` | none |
-| URLs of a dataset's files (offline) | `datasets files` | `archive_files` | IMGW-PIB, ČHMÚ |
+| URLs of a dataset's files (offline) | `datasets files` | `archive_files` | IMGW-PIB, ČHMÚ (Gdańskie Wody's files come from its stored station list: `store check`) |
 | Plain download of a dataset | `datasets download` | `download_archives` | IMGW-PIB public data terms; ČHMÚ CC BY 4.0 |
-| Find stations; export the catalogs | `stations find`, `stations export` | `find_stations`, `export_stations` | IMGW-PIB, ČHMÚ |
+| Find stations; export the catalogs | `stations find`, `stations export` | `find_stations`, `export_stations` | IMGW-PIB, ČHMÚ; Gdańskie Wody where named (`--provider GDANSKIEWODY`, its API key) |
 | Current measurements and warnings of IMGW-PIB | `current hydro`, `current meteo`, `current synop`, `current warnings`, `current hydro-states` | `fetch_hydro_current`, `fetch_meteo_current`, `fetch_synop`, `fetch_warnings`, `fetch_hydro_states` | IMGW-PIB public data terms; hydro.imgw.pl terms for `hydro-states` |
 | PMAXTP of a point; its cell in the raw root | `pmaxtp fetch`, `pmaxtp url`, `pmaxtp check`, `pmaxtp sync`, `pmaxtp read` | `fetch_pmaxtp`, `build_pmaxtp_url`, `check_pmaxtp`, `sync_pmaxtp`, `read_pmaxtp` | IMGW-PIB klimat.imgw.pl terms |
-| Versioned archives in the raw root | `store init`, `store info`, `store scan`, `store check`, `store sync`, `store export` | `init_store`, `store_info`, `iter_store`, `check_store`, `sync_store`, `export_archive` | IMGW-PIB, ČHMÚ |
-| Station catalog of a provider (offline) | `store catalog` | `build_catalog` | IMGW-PIB, ČHMÚ, hydro.imgw.pl; borders PRG (GUGiK) and RÚIAN (ČÚZK) |
+| Versioned archives in the raw root | `store init`, `store info`, `store scan`, `store check`, `store sync`, `store export` | `init_store`, `store_info`, `iter_store`, `check_store`, `sync_store`, `export_archive` | IMGW-PIB, ČHMÚ, Gdańskie Wody (terms unknown) |
+| Station catalog of a provider (offline) | `store catalog` | `build_catalog` | IMGW-PIB, ČHMÚ, hydro.imgw.pl, Gdańskie Wody; borders PRG (GUGiK) and RÚIAN (ČÚZK) |
 | Import a provider fed by files (offline) | `store import` | `import_files` | the operator's files and the licence its provider file declares |
 | Station series (offline) | `series build`, `series select`, `series read`, `series summary`, `series export` | `build_series`, `select_series`, `read_series`, `summarize_series`, `export_series` | the archives of the raw root |
 | Stations' analyses computed by Hydrolog | `analyses build`, `analyses list`, `analyses read`, `analyses export` | `build_analyses`, `list_analyses`, `read_analysis`, `export_analyses` | the series of the data root |
@@ -225,14 +226,15 @@ An error is an `obserwator-error/1` document with `code`, `title`, `message`, `h
 |---|---|---|
 | `validation_error` | 2 | an option is wrong or missing: fix `details.option` as `hint` says |
 | `conflict` | 4 | the target is taken (`details.reason`, for example `output_exists`): `--force` replaces plain files |
-| `source_unavailable` | 5 | network, HTTP or timeout at IMGW-PIB or ČHMÚ: retry the same call later |
+| `source_unavailable` | 5 | network, HTTP or timeout at IMGW-PIB, ČHMÚ or Gdańskie Wody: retry the same call later |
 | `store_unavailable` | 8 | no root, no marker or a root of the other kind (`details.reason`: `not_configured`, `no_marker`, `wrong_root`): run `store init` or pass the right `--root` |
 | `missing_dependency` | 6 | an extra is not installed: install the extra the hint names |
-| `forbidden` | 12 | MCP only: a root outside `--allow-dir` |
+| `forbidden` | 12 | a root outside MCP's `--allow-dir`, or a provider's API key missing or refused (`details.reason` `missing_credentials`, `invalid_credentials`): set the variable the hint names |
+| `no_data` | 14 | the source has no data of a valid request (`details.reason`, e.g. `not_measured`: the Gdańskie Wody station does not measure the quantity) |
 
 ## Data and licensing
 
-Obserwator does not distribute IMGW-PIB or ČHMÚ data; every download and write is a decision of the user or the administrator.
+Obserwator does not distribute IMGW-PIB, ČHMÚ or Gdańskie Wody data; every download and write is a decision of the user or the administrator.
 
 | Source | Data | Terms |
 |---|---|---|
@@ -240,6 +242,7 @@ Obserwator does not distribute IMGW-PIB or ČHMÚ data; every download and write
 | IMGW-PIB, `klimat.imgw.pl/opady-maksymalne` | PMAXTP | cite IMGW-PIB and the monograph of the PMAXTP project (ed. B. Ozga-Zieliński, IMGW-PIB, Warsaw 2022, CC BY 4.0); mark processed data ([terms](https://klimat.imgw.pl/opady-maksymalne/)) |
 | IMGW-PIB, `hydro-back.imgw.pl` (backend of `hydro.imgw.pl`) | station map with coordinates, water states, station details (`pl.imgw.hydro_details`), meteorological stations' coordinates and elevation (`pl.imgw.meteo_details`) | private use only; the source and processed-data lines plus the line naming the service; water states are shown as current, and every answer is also kept as a capture, which a server serves only when its operator sets it `public` in `[obserwator.capture]` (ADR-030; `private` by default) ([terms](https://hydro.imgw.pl/#/regulamin)) |
 | ČHMÚ, `opendata.chmi.cz` | daily hydrological and meteorological archives, station metadata | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): credit ČHMÚ, give the licence, mark changes ([terms](https://www.chmi.cz/vylou%C4%8Den%C3%AD-odpov%C4%9Bdnosti)) |
+| Gdańskie Wody Sp. z o.o., `pomiary.gdanskiewody.pl` | hourly measurements of the Gdańsk agglomeration through its API, with a free key (ADR-034) | **unknown**: the regulamin is shown only after sign-in. Until it is known, products carry draft lines and the notice that the data do not come from a national service and are raw, unverified data; both servers keep the provider off and refuse any other state (`terms_unknown`) ([intake note](https://github.com/Daldek/Obserwator/blob/main/docs/providers/gdanskiewody.md)) |
 | GUGiK (PRG), ČÚZK (RÚIAN, CC BY 4.0) | the state borders bundled in `src/obserwator/_data/` for position checks (ADR-018) | the lines G and Z of Nogat DEV §20 |
 | An operator's provider fed by files (ADR-033) | the station file and daily series its provider file names | the licence (`[license]`) and attribution line (`[attribution]`) its operator declares; every product with its data carries that line, after the standard's |
 
@@ -256,7 +259,7 @@ Data is written only where the user says: `--output-dir` (plain files), `--root`
 | [USAGE.md](https://github.com/Daldek/Obserwator/blob/main/docs/USAGE.md) | task-oriented guide to the library, the CLI, REST, the GUI and the MCP server; configuration, the versioned store, Docker, server logs |
 | [ARCHITECTURE.md](https://github.com/Daldek/Obserwator/blob/main/docs/ARCHITECTURE.md) | layers, store layout, data flow, CI/CD |
 | [CODEBASE.md](https://github.com/Daldek/Obserwator/blob/main/docs/CODEBASE.md) | public API, command catalog, option and error tables, data formats |
-| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-032 |
+| [DECISIONS.md](https://github.com/Daldek/Obserwator/blob/main/docs/DECISIONS.md) | architecture decision records ADR-001 to ADR-034 |
 | [PRD.md](https://github.com/Daldek/Obserwator/blob/main/docs/PRD.md) | product requirements and scope |
 | [CHANGELOG.md](https://github.com/Daldek/Obserwator/blob/main/docs/CHANGELOG.md) | changes per release, including the breaking changes and the migration from IMGWTools 2.1.1 |
 
