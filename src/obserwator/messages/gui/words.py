@@ -1,4 +1,4 @@
-"""Words of the store's keys shared by the views: providers, station kinds, datasets, variables."""
+"""Words of the store's keys shared by the views: providers, the classes of their sources, countries, station kinds, datasets, variables."""
 
 from obserwator.messages import Text
 
@@ -10,10 +10,24 @@ MESSAGES: dict[str, Text] = {
     "words.provider.chmu": Text(
         "Czech Hydrometeorological Institute", "Czeski Instytut Hydrometeorologiczny"
     ),
+    "words.provider.pig": Text(
+        "Polish Geological Institute – National Research Institute",
+        "Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy",
+    ),
+    # The classes of the providers' sources (hydromet P11), as headings: the operator, not
+    # a certificate of quality
+    "words.source_class.nmhs": Text(
+        "Hydrological and meteorological services",
+        "Służby hydrologiczno-meteorologiczne",
+    ),
+    "words.source_class.other": Text("Other sources", "Inne źródła"),
+    # The countries of the providers (ISO 3166-1 alpha-2, lower case), as headings
+    "words.country.pl": Text("Poland", "Polska"),
+    "words.country.cz": Text("Czechia", "Czechy"),
     "words.kind.hydro": Text("hydrological", "hydrologiczna"),
     "words.kind.meteo": Text("meteorological", "meteorologiczna"),
-    # ČHMÚ's groundwater objects (ADR-032): their family, and what an object is
-    # (``groundwater_kind`` of the catalog, ČHMÚ's OBJECT_TYPE)
+    # Groundwater objects, ČHMÚ's (ADR-032) and PIG-PIB's points (ADR-035): their family,
+    # and what an object is (``groundwater_kind`` of the catalog)
     "words.kind.groundwater": Text("groundwater", "wód podziemnych"),
     "words.groundwater_kind.bore": Text("borehole", "otwór obserwacyjny"),
     "words.groundwater_kind.spring": Text("spring", "źródło"),
@@ -63,15 +77,62 @@ MESSAGES: dict[str, Text] = {
         "Weekly groundwater data (ČHMÚ)", "Dane tygodniowe wód podziemnych (ČHMÚ)"
     ),
     "words.dataset.cz_chmu_groundwater_weekly.short": Text("Weekly", "Tygodniowe"),
+    # A dataset's note, under its series in „Dane pomiarowo-obserwacyjne”
+    "words.dataset.cz_chmu_groundwater_weekly.note": Text(
+        "ČHMÚ takes its weekly readings mostly on Wednesdays.",
+        "ČHMÚ wykonuje odczyty tygodniowe zwykle w środy.",
+    ),
     "words.dataset.cz_chmu_hydro_subdaily.title": Text(
         "Hourly hydrological data (ČHMÚ)", "Dane hydrologiczne godzinowe (ČHMÚ)"
     ),
     "words.dataset.cz_chmu_hydro_subdaily.short": Text("Hourly", "Godzinowe"),
+    # PIG-PIB's readings and the hours of its automatic points (ADR-035)
+    "words.dataset.pl_pig_groundwater_readings.title": Text(
+        "Groundwater readings (PIG-PIB)", "Odczyty wód podziemnych (PIG-PIB)"
+    ),
+    "words.dataset.pl_pig_groundwater_readings.short": Text("Readings", "Odczyty"),
+    "words.dataset.pl_pig_groundwater_readings.note": Text(
+        "PIG-PIB's readings of its groundwater monitoring (MWP), each at its own date: "
+        "the measurement of 06:00 UTC, daily where it is automatic and every Monday "
+        "where it is manual. depth_to_water is the depth of the water table below the "
+        "ground as published (m below ground): negative where the water stands above "
+        "the ground. H_asl = ground elevation − depth_to_water, in metres above sea "
+        "level, from the ground elevation of the station catalog: as accurate as that "
+        "elevation (to the centimetre, the decimetre or the metre by point), and "
+        "PIG-PIB names no vertical datum. spring_yield is the yield of a spring.",
+        "Odczyty z Monitoringu Wód Podziemnych (MWP) PIG-PIB, każdy w dniu pomiaru: "
+        "pomiar z godz. 6:00 UTC, codzienny tam, gdzie jest automatyczny, i w każdy "
+        "poniedziałek tam, gdzie jest ręczny. depth_to_water to głębokość zwierciadła "
+        "wody pod powierzchnią terenu, jak publikuje ją PIG-PIB (m p.p.t.): ujemna, gdy "
+        "woda stoi nad powierzchnią terenu. H_asl = rzędna terenu − depth_to_water, w m "
+        "n.p.m., z rzędną terenu z katalogu stacji: dokładna jak ta rzędna (do "
+        "centymetra, decymetra albo metra, zależnie od punktu), a PIG-PIB nie podaje "
+        "układu wysokości. spring_yield to wydajność źródła.",
+    ),
+    "words.dataset.pl_pig_groundwater_subdaily.title": Text(
+        "Hourly groundwater data (PIG-PIB)", "Dane godzinowe wód podziemnych (PIG-PIB)"
+    ),
+    "words.dataset.pl_pig_groundwater_subdaily.short": Text("Hourly", "Godzinowe"),
+    "words.dataset.pl_pig_groundwater_subdaily.note": Text(
+        "The hourly measurements of PIG-PIB's automatic points as published without "
+        "validation (mwp_auto), harvested every night: each value at a full hour, UTC "
+        "(the logger's time cut to the hour); depth_to_water and H_asl as in the "
+        "readings. They are never joined to the readings: a point's reading is its "
+        "value of 06:00 UTC, checked and rounded to the centimetre.",
+        "Pomiary godzinowe punktów automatycznych PIG-PIB, publikowane bez walidacji "
+        "(mwp_auto) i pobierane co noc: każda wartość o pełnej godzinie UTC (czas "
+        "rejestratora obcięty do godziny); depth_to_water i H_asl jak w odczytach. Nie "
+        "są łączone z odczytami: odczyt punktu to jego wartość z godz. 6:00 UTC, "
+        "sprawdzona i zaokrąglona do centymetra.",
+    ),
     "words.variable.h": Text("water level", "stan wody"),
     "words.variable.q": Text("discharge", "przepływ"),
     "words.variable.t": Text("water temperature", "temperatura wody"),
     "words.variable.h_asl": Text(
         "groundwater level above sea level", "rzędna zwierciadła wody"
+    ),
+    "words.variable.depth_to_water": Text(
+        "depth to water", "głębokość do zwierciadła wody"
     ),
     "words.variable.spring_yield": Text("spring yield", "wydajność źródła"),
     "words.variable.tmax": Text("maximum temperature", "temperatura maksymalna"),

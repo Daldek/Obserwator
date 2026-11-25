@@ -15,11 +15,14 @@
 //   languages, looked up when a class is asked for.
 // The outlines are drawn here, the same on the map's canvas and in SVG; no path is copied.
 // Where hydro.imgw.pl has no counterpart the shapes stay and this GUI adds its own marks: a
-// hollow centre for a station that is only in the catalog, and for ČHMÚ's groundwater
-// objects (bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
+// hollow centre for a station that is only in the catalog, and for groundwater objects
+// (ČHMÚ's and PIG-PIB's bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
 // corners (viewBox 38 × 38) in a brown of its own, --station-groundwater, with the same
-// outline. A station is drawn by its kind alone, whoever provides it: no provider has a
-// symbol of its own (ADR-025, erratum of 2026-11-21).
+// outline. A station is drawn by its kind and the class of its source, never by its
+// provider (ADR-025, erratum of 2026-11-21; hydromet P13): the outline tells the class,
+// solid grey for a national meteorological and hydrological service, as hydro.imgw.pl draws
+// every station, and dashed (`DASH`) and a little wider for any other source. Two outline
+// styles stay readable at 16 px, a third would not.
 
 import { fmt, html, t } from "./lib.js";
 
@@ -163,6 +166,14 @@ export function kindShape(kind) {
   return Object.hasOwn(SHAPES, kind) ? kind : "hydro";
 }
 
+/** The dashes of the outline of another source's station [units]: 5 drawn, 3 left out (hydromet P13). */
+export const DASH = Object.freeze([5, 3]);
+
+/** Whether the class of a station's source draws the dashed outline: every class but a national service's ("nmhs"). */
+function dashed(source) {
+  return source === "other";
+}
+
 /**
  * The paths of a symbol: the filled body (even-odd, so a hole stays empty) and the edges.
  *
@@ -178,19 +189,23 @@ function symbolPaths(shape, hollow) {
  * Draw a symbol on a canvas at `scale` pixels per unit, the box's top left at the origin.
  *
  * @param {CanvasRenderingContext2D} context
- * @param {{shape: "hydro"|"meteo"|"groundwater", fill: string, outline: string, hollow?: boolean}} look
- *   colours as CSS colours
+ * @param {{shape: "hydro"|"meteo"|"groundwater", fill: string, outline: string, hollow?: boolean,
+ *   source?: string|null}} look colours as CSS colours; `source` the class of the station's
+ *   source (words.js `sourceClass`): "other" is outlined dashed, 2.6 units wide, any other
+ *   solid, 2 units wide
  * @param {number} scale
  */
 export function drawSymbol(context, look, scale) {
   const paths = symbolPaths(look.shape, Boolean(look.hollow));
+  const other = dashed(look.source);
   context.save();
   context.scale(scale, scale);
   context.fillStyle = look.fill;
   context.fill(new Path2D(paths.body), "evenodd");
   context.strokeStyle = look.outline;
   context.lineJoin = "round";
-  context.lineWidth = 2;
+  context.lineWidth = other ? 2.6 : 2;
+  context.setLineDash(other ? DASH : []);
   for (const edge of paths.edges) context.stroke(new Path2D(edge));
   context.restore();
 }
@@ -199,16 +214,17 @@ export function drawSymbol(context, look, scale) {
  * A symbol as SVG, for the legend, the list, the tooltip and the panel: the map's drawing.
  *
  * @param {{shape?: "hydro"|"meteo"|"groundwater", color: string, hollow?: boolean, faded?: boolean,
- *   opacity?: number, size?: number, className?: string, label?: string}} props `color`
- *   names the CSS variable of the fill; `faded` draws an inactive station; `opacity`
- *   draws the symbol at that opacity (0–1), as the map draws the stations it fades beside
- *   a featured provider; `size` is the height [px]; `label` makes it an image with that
- *   name, otherwise it is hidden from assistive technology
+ *   source?: string|null, opacity?: number, size?: number, className?: string, label?: string}}
+ *   props `color` names the CSS variable of the fill; `faded` draws an inactive station;
+ *   `source` the class of the station's source, "other" outlined dashed (css/map.css
+ *   `.sym.dashed`); `opacity` draws the symbol at that opacity (0–1), as the map draws the
+ *   stations it fades beside a featured provider; `size` is the height [px]; `label` makes
+ *   it an image with that name, otherwise it is hidden from assistive technology
  */
-export function SymbolIcon({ shape = "hydro", color, hollow = false, faded = false, opacity = null, size = SYMBOL_PX, className, label }) {
+export function SymbolIcon({ shape = "hydro", color, hollow = false, faded = false, source = null, opacity = null, size = SYMBOL_PX, className, label }) {
   const box = SHAPES[shape];
   const paths = symbolPaths(shape, hollow);
-  const classes = ["sym", shape, hollow ? "hollow" : "", faded ? "faded" : "", className || ""].filter(Boolean).join(" ");
+  const classes = ["sym", shape, hollow ? "hollow" : "", dashed(source) ? "dashed" : "", faded ? "faded" : "", className || ""].filter(Boolean).join(" ");
   return html`<svg
     class=${classes}
     width=${((size * box.width) / box.height).toFixed(1)}
@@ -228,10 +244,11 @@ export function SymbolIcon({ shape = "hydro", color, hollow = false, faded = fal
  * A station's symbol in the view „Stacje”, as the map draws it: for the list, the dataset
  * filter and the legend.
  *
- * @param {{kind: string, data: boolean, active?: boolean, size?: number}} props
- *   `data` whether the store holds a series of the station (else a hollow centre)
+ * @param {{kind: string, data: boolean, active?: boolean, source?: string|null, size?: number}} props
+ *   `data` whether the store holds a series of the station (else a hollow centre); `source`
+ *   the class of its source (words.js `sourceClass`), never its provider
  */
-export function StationSymbol({ kind, data, active = true, size = 14 }) {
+export function StationSymbol({ kind, data, active = true, source = null, size = 14 }) {
   const shape = kindShape(kind);
-  return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} faded=${!active} size=${size} className="st-sym" />`;
+  return html`<${SymbolIcon} shape=${shape} color=${KIND_COLORS[shape]} hollow=${!data} faded=${!active} source=${source} size=${size} className="st-sym" />`;
 }

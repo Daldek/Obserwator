@@ -1,12 +1,18 @@
 """Archive parsing for IMGW-PIB ZIP/CSV files and ČHMÚ JSON/CSV files."""
 
+from __future__ import annotations
+
 from collections.abc import Collection, Iterator
 from datetime import date
+from typing import TYPE_CHECKING
 
 from obserwator.datasets import ArchiveFile, get_dataset, get_provider
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.messages import message
 from obserwator.models import NormalizedRecord
+
+if TYPE_CHECKING:
+    from obserwator.providers.base import SeriesContext
 
 CARRY_DATASETS = frozenset({"pl.imgw.meteo_precip_daily"})
 """Datasets whose archives leave something to the next one (``carry``)."""
@@ -68,6 +74,7 @@ def normalize_in_sequence(
     carry: dict[str, date] | None,
     stations: Collection[str] | None = None,
     skipped_months: set[date] | None = None,
+    context: SeriesContext | None = None,
 ) -> Iterator[NormalizedRecord]:
     """
     `normalize_archive` of one of a dataset's archives parsed in date order.
@@ -89,6 +96,9 @@ def normalize_in_sequence(
     ``skipped_months`` then receives the first day of every calendar month the
     records of the skipped rows would have covered: the months the archive
     publishes, which the records of the chosen stations alone may not show.
+    ``context`` is what a series build gives the parser beside the archive (the
+    station sources of `ProviderAdapter.series_sources`: PIG-PIB's points, whose
+    ground elevation gives ``H_asl``, ADR-035).
     """
     try:
         descriptor = get_dataset(archive.dataset)
@@ -105,4 +115,5 @@ def normalize_in_sequence(
         carry=carry,
         stations=stations,
         skipped_months=skipped_months,
+        context=context,
     )

@@ -4,7 +4,7 @@
 
 import { api } from "../../api.js";
 import { fmt, fmtDate, html, t, unit, useEffect, useState } from "../../lib.js";
-import { variableInfo } from "../../words.js";
+import { hydroDaily, variableInfo } from "../../words.js";
 import { Seg, YearRange } from "../common.js";
 import { HandoffButtons } from "../handoff.js";
 
@@ -25,8 +25,6 @@ export function doyLabel(day) {
   return `${whole - MONTH_STARTS[at] + 1} ${HYDRO_MONTHS[at]}`;
 }
 
-/** The daily hydrological datasets, IMGW-PIB's first (a station has one of them). */
-export const HYDRO_DAILY = ["pl.imgw.hydro_daily", "cz.chmu.hydro_daily"];
 /** IMGW-PIB's half-year and annual characteristics. */
 export const HALF_YEARS = "pl.imgw.hydro_semiannual";
 
@@ -80,9 +78,9 @@ export function hydroYear(iso) {
   return +iso.slice(5, 7) >= 11 ? year + 1 : year;
 }
 
-/** The station's daily hydrological dataset (`pl.imgw.hydro_daily` or `cz.chmu.hydro_daily`), or null. */
+/** The station's daily hydrological dataset (its provider's `<key prefix>.hydro_daily`, words.js `hydroDaily`), or null. */
 export function dailyDataset(station) {
-  const found = (station.datasets || []).find((item) => HYDRO_DAILY.includes(item.dataset));
+  const found = (station.datasets || []).find((item) => hydroDaily(item.dataset));
   return found ? found.dataset : null;
 }
 

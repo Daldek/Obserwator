@@ -11,20 +11,28 @@ MESSAGES: dict[str, Text] = {
         "Search stations by name, river or code",
         "Szukaj stacji po nazwie, rzece albo kodzie",
     ),
-    "stations.list.provider": Text("Provider", "Dostawca"),
-    "stations.list.provider_all": Text("All", "Wszyscy"),
+    # The class switch of the sources (hydromet P11, P12), shown only where the stations'
+    # sources hold both classes: national services and every other source
+    "stations.list.class": Text("Source type", "Rodzaj źródła"),
+    "stations.list.class_all": Text("All", "Wszystkie"),
+    "stations.list.class_nmhs": Text("Services", "Służby"),
+    "stations.list.class_other": Text("Other sources", "Inne źródła"),
     "stations.list.kind": Text("Station kind", "Rodzaj stacji"),
     "stations.list.kind_all": Text("All", "Wszystkie"),
     "stations.list.kind_hydro": Text("Hydrological", "Hydrologiczne"),
     "stations.list.kind_meteo": Text("Meteorological", "Meteorologiczne"),
-    # Offered only where a catalog holds ČHMÚ's groundwater objects (ADR-032)
+    # Offered only where a catalog holds groundwater objects (ČHMÚ's, ADR-032; PIG-PIB's
+    # points, ADR-035)
     "stations.list.kind_groundwater": Text("Groundwater", "Podziemne"),
     "stations.list.datasets": Text(
         "Series in the data root", "Szeregi w katalogu danych"
     ),
     "stations.list.active_only": Text("active only", "tylko czynne"),
-    # „Pokaż inne źródła” of an operator's instance (ADR-025): the other providers back
-    "stations.list.others": Text("Show other sources", "Pokaż inne źródła"),
+    # „Pokaż pozostałych dostawców” of an operator's instance (ADR-025, I6): the providers
+    # beside the featured one back at full strength, a hidden one too
+    "stations.list.others": Text(
+        "Show the other providers", "Pokaż pozostałych dostawców"
+    ),
     "stations.list.found.one": Text("station", "stacja"),
     "stations.list.found.few": Text("stations", "stacje"),
     "stations.list.found.many": Text("stations", "stacji"),
@@ -103,6 +111,13 @@ MESSAGES: dict[str, Text] = {
     "stations.legend.selected": Text("selected", "wybrana"),
     "stations.legend.others": Text("Other sources", "Pozostałe źródła"),
     "stations.legend.area": Text("service area", "obszar serwisu"),
+    # The outline of the class of a station's source (hydromet P13), where a catalog holds
+    # a station of another source
+    "stations.legend.source_nmhs": Text(
+        "Hydrological and meteorological service",
+        "Służba hydrologiczno-meteorologiczna",
+    ),
+    "stations.legend.source_other": Text("Other source", "Inne źródło"),
     "stations.legend.stations_note": Text(
         "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl; the view "
         "“Current measurements” shows the water state and the precipitation.",
@@ -114,9 +129,9 @@ MESSAGES: dict[str, Text] = {
         "Kształty i kolory stacji jak na mapie hydro.imgw.pl (IMGW-PIB).",
     ),
     "stations.legend.groundwater_note": Text(
-        "The diamond of a groundwater object (ČHMÚ's boreholes and springs) is "
-        "Obserwator's own: hydro.imgw.pl has no such stations.",
-        "Romb obiektu wód podziemnych (otwory obserwacyjne i źródła ČHMÚ) to znak "
+        "The diamond of a groundwater object (a borehole or a spring) is Obserwator's "
+        "own: hydro.imgw.pl has no such stations.",
+        "Romb obiektu wód podziemnych (otworu obserwacyjnego albo źródła) to znak "
         "Obserwatora: hydro.imgw.pl nie ma takich stacji.",
     ),
     "stations.legend.hydro_title": Text(

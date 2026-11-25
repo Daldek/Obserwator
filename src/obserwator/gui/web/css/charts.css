@@ -23,6 +23,11 @@
 .chart svg:focus { outline: none; }
 .chart svg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
 
+/* The badge above a chart or a table of the station panel (chart.js `BadgeLine`): the class
+   of a station of another source (hydromet P11), kept by a screenshot of either */
+.data-badge { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+.data-badge .chip { font-size: var(--text-xs); }
+
 /* Grid, axes, texts */
 .chart .grid line { stroke: var(--line); stroke-width: 1; }
 .chart .grid.v line { stroke-dasharray: 2 4; }

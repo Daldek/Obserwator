@@ -13,7 +13,7 @@ MESSAGES = {
     ),
     "effect_read": Text(
         "Read — no network, no writes",
-        "Odczyt — bez sieci i bez zapisu",
+        "Odczyt — bez sieci i zapisu",
     ),
     "effect_network": Text(
         "Network — connects to a source, writes nothing",
@@ -44,23 +44,25 @@ MESSAGES = {
         "lokalna",
     ),
     "station_sources": Text(
-        "Station sources (`*_stations`, `*_now`, `pl.imgw.*_details`): `store "
-        "sync` alone.",
-        "Źródła stacji (`*_stations`, `*_now`, `pl.imgw.*_details`): `store sync` "
-        "osobno.",
+        "Station sources (`*_stations`, `*_now`, `*.station_list`, "
+        "`pl.imgw.*_details`): `store sync` alone.",
+        "Źródła stacji (`*_stations`, `*_now`, `*.station_list`, "
+        "`pl.imgw.*_details`): `store sync` osobno.",
     ),
     # Braces of a key pattern are doubled: the text is a format string.
     "captures": Text(
-        "Captures (`pl.imgw.*_{{current,operational}}`, "
+        "Captures (`pl.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, unverified, one version a UTC day): "
         "`store sync` alone (`start`/`end`: closed UTC days); `pace_until` first "
         "harvests them (default yesterday) of `pl.imgw.hydro_operational` or "
-        "`cz.chmu.hydro_recent`.",
-        "Zapisy (`pl.imgw.*_{{current,operational}}`, "
+        "`cz.chmu.hydro_recent`, of `pl.pig.groundwater_operational` from its "
+        "watermark.",
+        "Zapisy (`pl.*_{{current,operational}}`, "
         "`cz.chmu.hydro_{{current,recent}}`, niezweryfikowane, wersja na dobę UTC): "
         "`store sync` osobno (`start`/`end`: zakończone doby UTC); `pace_until` "
         "najpierw pobiera je (domyślnie wczoraj) dla `pl.imgw.hydro_operational` "
-        "albo `cz.chmu.hydro_recent`.",
+        "albo `cz.chmu.hydro_recent`, dla `pl.pig.groundwater_operational` od jego "
+        "znacznika.",
     ),
     "outside_store": Text(
         "Download only (`datasets download`):",
@@ -96,10 +98,9 @@ MESSAGES = {
         "bez porażek",
     ),
     "status_partial": Text(
-        "some items failed — read `items[].status` and `error_code`; the others are "
-        "done",
-        "część pozycji nieudana — przeczytaj `items[].status` i `error_code`; "
-        "pozostałe są gotowe",
+        "some items failed — read `items[].status`, `error_code`; the others are done",
+        "część pozycji nieudana — czytaj `items[].status`, `error_code`; reszta jest "
+        "gotowa",
     ),
     "status_failed": Text(
         "no item succeeded (in a plan: `check_failed`); the envelope is complete",
@@ -111,15 +112,15 @@ MESSAGES = {
     ),
     "rule_learn_commands": Text(
         "**Learn the commands:** `obserwator commands list --json`, then `obserwator "
-        "commands schema --command … --json`; REST `GET /api/v1/commands/list` and "
-        "`/schema`; in MCP `obserwator_commands_list` and `obserwator_commands_schema`. "
-        "Options are in `options`; rules they do not express are in `rules`, effects in "
-        "`effects` (`writes`, `network`, `idempotent`).",
-        "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
-        "commands schema --command … --json`; REST `GET /api/v1/commands/list` i `/schema`; "
-        "w MCP `obserwator_commands_list` i `obserwator_commands_schema`. Opcje są w "
-        "`options`; reguły, których nie wyrażają, są w `rules`, skutki w `effects` "
+        "commands schema --command … --json` (REST `GET /api/v1/commands/list`, "
+        "`/schema`; MCP `obserwator_commands_list`, `obserwator_commands_schema`): "
+        "options in `options`, other rules in `rules`, effects in `effects` "
         "(`writes`, `network`, `idempotent`).",
+        "**Poznaj komendy:** `obserwator commands list --json`, potem `obserwator "
+        "commands schema --command … --json` (REST `GET /api/v1/commands/list`, "
+        "`/schema`; MCP `obserwator_commands_list`, `obserwator_commands_schema`): "
+        "opcje w `options`, inne reguły w `rules`, skutki w `effects` (`writes`, "
+        "`network`, `idempotent`).",
     ),
     "rule_check_first": Text(
         "**Check without writing:** `--check` (CLI), `?check=true` (REST, POST), "
@@ -143,12 +144,12 @@ MESSAGES = {
         "read` (`limit`/`cursor`), `pmaxtp read`.",
     ),
     "rule_decide_by_codes": Text(
-        "**Decide by codes:** `code`, `status`, `items[].status`, `error_code`; the "
-        "`message` text is for humans, the `hint` names the option or command that "
-        "fixes the error.",
+        "**Decide by codes:** `code`, `status`, `items[].status`, `error_code`; "
+        "`message` is for humans, `hint` names the option or command that fixes the "
+        "error.",
         "**Decyduj po kodach:** `code`, `status`, `items[].status`, `error_code`; "
-        "tekst `message` jest dla człowieka, `hint` wskazuje opcję albo komendę, "
-        "która naprawia błąd.",
+        "`message` jest dla człowieka, `hint` wskazuje opcję albo komendę naprawiającą "
+        "błąd.",
     ),
     "symbol_station_code": Text(
         "STATION_CODE",
@@ -168,18 +169,16 @@ MESSAGES = {
         "kilka trafień → zapytaj użytkownika; kod wybranej stacji to `KOD_STACJI`.",
     ),
     "flow_precipitation_choose_dataset": Text(
-        "Choose the dataset: `pl.imgw.meteo_precip_daily` (precipitation stations, "
-        "`P`) or `pl.imgw.meteo_climate_daily` (climate stations, `P` and "
-        "temperatures) — the station list does not tell the network of a station.",
-        "Wybierz zbiór: `pl.imgw.meteo_precip_daily` (stacje opadowe, `P`) albo "
-        "`pl.imgw.meteo_climate_daily` (stacje klimatyczne, `P` i temperatury) — "
-        "lista stacji nie mówi, w której sieci jest stacja.",
+        "Start with `pl.imgw.meteo_precip_daily` (precipitation stations, `P`): the "
+        "station list does not tell a station's network.",
+        "Zacznij od `pl.imgw.meteo_precip_daily` (stacje opadowe, `P`): lista stacji "
+        "nie mówi, w której sieci jest stacja.",
     ),
     "flow_precipitation_plan": Text(
-        "plan: the number of files and bytes; the archives cover the whole country, "
-        "so tell the user the size.",
-        "plan: liczba plików i bajtów; archiwa obejmują cały kraj, więc podaj "
-        "użytkownikowi rozmiar.",
+        "plan: files and bytes; the archives cover the whole country, so tell the "
+        "user the size.",
+        "plan: pliki i bajty; archiwa obejmują cały kraj, więc podaj użytkownikowi "
+        "rozmiar.",
     ),
     "flow_after_consent": Text(
         "after the user agrees.",
@@ -194,8 +193,8 @@ MESSAGES = {
         "`pl.imgw.meteo_{{climate,synop}}_daily` in turn; missing from all → tell "
         "the user, do not substitute another station.",
         "brak stacji → powtórz kroki 3–6 z `pl.imgw.meteo_{{climate,synop}}_daily` "
-        "po kolei; brak we wszystkich → powiedz to użytkownikowi, nie podstawiaj "
-        "innej stacji.",
+        "po kolei; brak we wszystkich → powiedz użytkownikowi, nie podstawiaj innej "
+        "stacji.",
     ),
     "flow_czech_discharge_title": Text(
         "Daily discharge of a Czech station (ČHMÚ)",
@@ -226,6 +225,18 @@ MESSAGES = {
         "- {label} — {country}: klucze {keys}, kod stacji {station}, licencja "
         "{license}",
     ),
+    "provider_key": Text(
+        "API key from {variable}",
+        "klucz API z {variable}",
+    ),
+    "provider_off": Text(
+        "off by default (servers, `stations find`)",
+        "domyślnie wyłączony (serwery, `stations find`)",
+    ),
+    "provider_drafts": Text(
+        "draft attribution lines",
+        "szkice linii atrybucji",
+    ),
     "flags_lists": Text(
         "- Lists ({lists}): comma-separated values (`--months 1,2`) or a repeated "
         "flag (`-s A -s B`). Years ({years}): `2024`, `2020-2023` or "
@@ -235,23 +246,17 @@ MESSAGES = {
         "albo `2018,2020-2023`. Daty ({dates}): ISO `RRRR-MM-DD`.",
     ),
     "flags_switches": Text(
-        "- Switches on by default: {toggles} (`--no-…` turns it off); the other "
-        "boolean flags ({switches}) take no value and turn their option on.",
-        "- Przełączniki domyślnie włączone: {toggles} (`--no-…` wyłącza); pozostałe "
-        "flagi logiczne ({switches}) nie mają wartości i włączają swoją opcję.",
-    ),
-    "flags_output": Text(
-        "- CLI output: with `--json` stdout is the envelope in one JSON line — parse "
-        "only that; without it, a summary for a person in the language of `--lang`.",
-        "- Wyjście CLI: z `--json` stdout to koperta w jednej linii JSON — parsuj tylko "
-        "ją; bez niego podsumowanie dla człowieka w języku `--lang`.",
+        "- On by default: {toggles} (`--no-…` turns it off); the other boolean flags "
+        "({switches}) take no value and turn their option on.",
+        "- Domyślnie włączone: {toggles} (`--no-…` wyłącza); inne flagi logiczne "
+        "({switches}) są bez wartości i włączają swoją opcję.",
     ),
     "flags_environment": Text(
         "- Environment: `OBSERWATOR_ROOT` — the data root, the default `--root`, else "
         "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — the raw root, the default "
         "`--raw-root` and `--root` of {raw}, else `<data_dir>/obserwator-raw` (CLI, "
-        "MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help, of the "
-        "progress lines and the default `--lang` (`pl`, `en`).",
+        "MCP stdio; {roots}); `OBSERWATOR_LANG` — the language of the CLI help and "
+        "progress lines, the default `--lang` (`pl`, `en`).",
         "- Środowisko: `OBSERWATOR_ROOT` — katalog danych, domyślne `--root`, inaczej "
         "`<data_dir>/obserwator`; `OBSERWATOR_RAW_ROOT` — katalog surowy, domyślne "
         "`--raw-root` i `--root` {raw}, inaczej `<data_dir>/obserwator-raw` "

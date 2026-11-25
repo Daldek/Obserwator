@@ -1,11 +1,12 @@
 // „Informacje o stacji” (GUI plan D11): the catalog's properties of the station (its kind
-// and, of a groundwater object, whether a bore or a spring, its location with the source
-// and the uncertainty, elevation, gauge zero with its datum, river kilometre, catchment
-// area, voivodeship and county, hydrographic code, year established), IMGW-PIB's warning
-// and alarm levels and absolute extremes of a hydrological station (hydro.imgw.pl,
-// ADR-021), ČHMÚ's thresholds of a hydrological station and the coverage of each dataset
-// and variable in the data root. The panel draws the catalog's lines under the card (part
-// "catalog").
+// and, of a groundwater object, whether a bore or a spring, of a PIG-PIB point PSH's number
+// and its type as published, its location with the source and the uncertainty, elevation,
+// gauge zero with its datum, river kilometre, catchment area, voivodeship and county,
+// hydrographic code, year established), IMGW-PIB's warning and alarm levels and absolute
+// extremes of a hydrological station (hydro.imgw.pl, ADR-021), ČHMÚ's thresholds of a
+// hydrological station, a PIG-PIB point's hydrogeology as published (ADR-035) and the
+// coverage of each dataset and variable in the data root. The panel draws the catalog's
+// lines under the card (part "catalog").
 
 import { has } from "../i18n.js";
 import { fmt, fmtDate, fmtDateTime, html, t, unit } from "../lib.js";
@@ -22,6 +23,26 @@ const LEVELS = [
   { key: "minimum", value: "absolute_min_level_cm", dates: "absolute_min_level_dates" },
   { key: "maximum", value: "absolute_max_level_cm", dates: "absolute_max_level_dates" },
 ];
+
+/**
+ * The rows of a PIG-PIB point's hydrogeology (ADR-035 W6), keys of the catalog's
+ * `hydrogeology` in the order shown: a text as published, a depth below the ground [m] or
+ * a number; the years observed, the administrative units and whether automatic apart.
+ */
+const HYDROGEOLOGY = [
+  { key: "confinement" },
+  { key: "stratigraphy" },
+  { key: "lithology" },
+  { key: "medium" },
+  { key: "bore_depth_m", depth: true },
+  { key: "final_depth_m", depth: true },
+  { key: "water_struck_m", depth: true },
+  { key: "water_rest_m", depth: true },
+  { key: "screen_top_m", depth: true },
+  { key: "screen_bottom_m", depth: true },
+];
+/** The numbers of a PIG-PIB point in PIG-PIB's databases and monitoring programmes. */
+const HYDROGEOLOGY_NUMBERS = ["jcwpd", "cbdh_number", "eu_code", "chemical_number", "research_number", "research_monitoring", "border_number", "pressure_number"];
 
 function Row({ label, value, sub }) {
   return html`<tr><th scope="row">${label}</th><td>${value ?? "–"}${sub ? html`<span class="row-sub">${sub}</span>` : null}</td></tr>`;
@@ -61,6 +82,7 @@ function variableCell(name, cov) {
 
 function Catalog({ station }) {
   const p = station.properties;
+  const hydro = p.hydrogeology || {};
   const located = station.lon !== null && station.lat !== null;
   const where = located
     ? p.location_uncertainty_m
@@ -77,13 +99,20 @@ function Catalog({ station }) {
         <${Row} label=${t("station.info.kind")} value=${kindName(p.kind)} />
         ${p.meteo_kind ? html`<${Row} label=${t("station.info.meteo_station")} value=${meteoKind(p.meteo_kind)} />` : null}
         ${p.groundwater_kind ? html`<${Row} label=${t("station.info.groundwater_kind")} value=${groundwaterKindName(p.groundwater_kind)} />` : null}
+        ${hydro.psh_number ? html`<${Row} label=${t("station.info.psh_number")} value=${html`<code>${hydro.psh_number}</code>`} />` : null}
+        ${hydro.point_type ? html`<${Row} label=${t("station.info.point_type")} value=${hydro.point_type} />` : null}
         <${Row} label=${t("station.info.active")} value=${p.active ? t("station.info.yes") : t("station.info.no")} />
         <${Row}
           label=${t("station.info.location")}
           value=${located ? `${fmt(station.lat, 5)}° N, ${fmt(station.lon, 5)}° E` : t("station.info.no_location")}
           sub=${located ? where : missingReason(p.location_missing_reason)}
         />
-        ${given(p.elevation_m) ? html`<${Row} label=${t("station.info.elevation")} value=${t("station.info.metres_asl", { value: fmt(p.elevation_m, 1) })} />` : null}
+        ${given(p.elevation_m)
+          ? html`<${Row}
+              label=${t("station.info.elevation")}
+              value=${t("station.info.metres_asl", { value: p.kind === "groundwater" ? ownDecimals(p.elevation_m, 2) : fmt(p.elevation_m, 1) })}
+            />`
+          : null}
         ${given(p.gauge_zero_m)
           ? html`<${Row}
               label=${t("station.info.gauge_zero")}
@@ -106,11 +135,15 @@ function Catalog({ station }) {
   </${Section}>`;
 }
 
+/** A number to its own decimals, at most `most`. */
+function ownDecimals(value, most) {
+  const decimals = (String(value).split(".")[1] || "").length;
+  return fmt(value, Math.min(decimals, most));
+}
+
 /** A threshold as ČHMÚ gives it: its own decimals, at most three. */
 function asGiven(value) {
-  if (!given(value)) return "–";
-  const decimals = (String(value).split(".")[1] || "").length;
-  return fmt(value, Math.min(decimals, 3));
+  return given(value) ? ownDecimals(value, 3) : "–";
 }
 
 /** IMGW-PIB's warning and alarm levels and absolute extremes; nothing without a value. */
@@ -154,6 +187,42 @@ function Thresholds({ thresholds }) {
   </${Section}>`;
 }
 
+/** The years a point was observed: from – to, or since its first. */
+function observedYears(first, last) {
+  if (given(first) && given(last)) return `${first}–${last}`;
+  return given(first) ? t("station.info.since", { year: first }) : `–${last}`;
+}
+
+/**
+ * A PIG-PIB point's hydrogeology as PIG-PIB publishes it (ADR-035 W6): the character of
+ * the point and its aquifer, its depths below the ground, the years observed, its numbers,
+ * the administrative units, the chemical analyses and whether it measures automatically
+ * (as the night's capture of the automatic points lists it; no row without one). Only the
+ * rows the point has.
+ */
+function Hydrogeology({ hydro }) {
+  const rows = [];
+  const row = (label, value) => rows.push(html`<${Row} label=${label} value=${value} />`);
+  for (const { key, depth } of HYDROGEOLOGY) {
+    if (given(hydro[key])) row(t(`station.info.hydro.${key}`), depth ? t("station.info.metres_below", { value: ownDecimals(hydro[key], 2) }) : hydro[key]);
+  }
+  if (given(hydro.observed_from) || given(hydro.observed_to)) row(t("station.info.hydro.observed"), observedYears(hydro.observed_from, hydro.observed_to));
+  for (const key of HYDROGEOLOGY_NUMBERS) if (given(hydro[key])) row(t(`station.info.hydro.${key}`), String(hydro[key]));
+  if (given(hydro.voivodeship)) row(t("station.info.province"), hydro.voivodeship);
+  if (given(hydro.county)) row(t("station.info.district"), hydro.county);
+  if (given(hydro.commune)) row(t("station.info.commune"), hydro.commune);
+  if (given(hydro.chemical_analyses)) row(t("station.info.hydro.chemical_analyses"), hydro.chemical_analyses);
+  if (typeof hydro.automatic === "boolean") row(t("station.info.hydro.automatic"), hydro.automatic ? t("station.info.yes") : t("station.info.no"));
+  if (!rows.length) return null;
+  return html`<${Section} title=${t("station.info.hydrogeology")} info=${t("station.info.hydrogeology_info")} guide="pig">
+    <table class="params" data-part="hydrogeology">
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  </${Section}>`;
+}
+
 function Coverage({ station }) {
   if (!station.datasets.length) {
     return html`<${Section} title=${t("station.info.coverage")}><p class="muted">${t("station.info.no_series")}</p></${Section}>`;
@@ -183,11 +252,12 @@ function Coverage({ station }) {
 }
 
 function Stacja({ station }) {
-  const thresholds = station.properties.thresholds;
+  const { thresholds, hydrogeology } = station.properties;
   return html`
     <${Catalog} station=${station} />
     ${station.properties.kind === "hydro" ? html`<${Levels} properties=${station.properties} />` : null}
     ${thresholds && typeof thresholds === "object" ? html`<${Thresholds} thresholds=${thresholds} />` : null}
+    ${hydrogeology && typeof hydrogeology === "object" ? html`<${Hydrogeology} hydro=${hydrogeology} />` : null}
     <${Coverage} station=${station} />
   `;
 }

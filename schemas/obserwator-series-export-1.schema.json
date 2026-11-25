@@ -32,7 +32,7 @@
     "station": {
       "description": "Station code: nine IMGW-PIB digits or a WIGOS identifier",
       "type": "string",
-      "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
+      "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}|[1-9][0-9]{0,5})$"
     },
     "series_version": {
       "description": "The series version exported, its directory relative to the root (the form of --version)",

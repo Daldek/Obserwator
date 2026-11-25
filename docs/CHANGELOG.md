@@ -4,6 +4,300 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [3.3.0] - 2026-11-25
+
+Changes since 3.2.1, in 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. PIG-PIB's groundwater monitoring joins them (Nogat plan `2026-11-24-pig-groundwater.md`, ADR-035): each monthly publication of its readings and every hourly row of its automatic points captured before the service replaces them, the catalog `pig_stations`, the readings and hourly series, the GUI's „Podziemne” with PIG-PIB's points and the import of the interim capture S0.
+
+### Added
+
+- **Guide: opening a CSV file in Excel (#14).** The GUI guide gains section 06 „Plik CSV w arkuszu
+  Excel” (`#csv-excel`): Obserwator's CSV is UTF-8, comma-separated, dot decimal; import it via
+  Dane → Z tekstu/CSV with UTF-8 (65001) and the comma delimiter, or in LibreOffice Calc. The
+  glossary entry „CSV” links to it.
+- **Providers fed by files (ADR-033 D1 to D3, D7, D8; I13).** `[obserwator] provider_files` of
+  `nogat.toml` lists provider files, TOML files whose paths are relative to the directory of
+  `nogat.toml` (paths inside a file to that file). A provider file declares `id`
+  (`[A-Z][A-Z0-9]{1,15}`), `short_name`, `name`, `country` (`PL` or `CZ`), `source_class`
+  (`other`), `tier` (`verified`, `telemetry` or `operational`, default `operational`),
+  `publication` (`public` or `private`, default `private`, not with `verified`) and `stations`
+  (a GeoJSON station file); `[license]` `id`, `url`, `terms_url`; `[attribution]` `line`,
+  `processed`, `short`, `links`; and its daily datasets `[datasets.<hydro|meteo|groundwater>_daily]`
+  with `directory`, `variables` (`{name = unit}`, the registry's daily variables and units) and
+  `year_type`. Each adds a provider to the registry, served by one `FileFedAdapter` (ADR-029):
+  datasets `<cc>.<acronym>.station_list` and `<cc>.<acronym>.<kind>_daily`, station codes
+  `<ID>-<code>`, the catalog `stations/versions/<acronym>_stations`, and its attribution line
+  after the standard's lines in every product with its data. The station file has the documented
+  properties (`station_code`, `kind`, `name` required); a series file is one station's daily
+  series in the form of `series export` (`obserwator-series-csv`) or its Parquet. Both are read
+  strictly (`parse_series_export` and the station-file reader). A file with a problem registers
+  nothing and fails closed (below).
+- **`store import --provider-file PATH` (ADR-033 D4, D5): the 37th command.** `import_files`
+  (check `check_import`; `POST /api/v1/store/import`, MCP `obserwator_store_import`) reads and
+  checks every file a provider file names before it writes, keeps each in the raw root as it
+  came (`archives/versions/files/<acronym>/…`), then builds the provider's series and catalog
+  into the data root, offline; `--check` plans it. The path must be one of the files
+  `provider_files` lists (a relative path lies in the directory of `nogat.toml`); any other is
+  `validation_error` with `details.reason` `not_listed` before anything is read. A second run is
+  all `unchanged`; a failed build after the files were kept makes the envelope `partial`.
+  `command_for_version` refuses a raw version of such a provider (`command_not_rebuildable`),
+  and its datasets are no choices of `datasets files|download` and `store check|sync`.
+  `stations find`, `series *`, `store scan` and `stations export` take its provider and codes
+  like IMGW-PIB's and ČHMÚ's.
+- **`config show`: the section `provider_files` (ADR-033 D8).** `obserwator-config/1` gains
+  `provider_files`, `[{path, provider}]` (`provider` null for a file with a problem), and the
+  problem `invalid_provider_file` (`option` `provider_file.<field>`, `path`, `message`);
+  `provider_files` is no longer an ignored key. The REST server and the GUI refuse to start
+  while a provider file has a problem.
+- **P15 on every surface (ADR-033 D6; ADR-030 D5 erratum).** A dataset of a provider file of a
+  tier other than `verified` is a source of `[obserwator.capture]` whose default is the file's
+  `publication`. While it is `private` the GUI serves none of its series, and REST refuses
+  `series/versions/<slug>/…` and a `dataset` naming it (`not_found`, `details.reason`
+  `private`); the GUI now also leaves out every other private series with a publication state
+  (the sub-daily series). A daily series of an unverified source records `tier` and
+  `publication` in its sidecar; verified series keep their bytes.
+- **The GUI's session describes providers and datasets (ADR-033 D9).** `api/session` gains
+  `providers[id].key_prefix`, `origin`, `border` and `source_class`, `datasets` (each served
+  series dataset with `provider`, `kind`, `step`, `tier`, `title`, `short`) and
+  `attribution.screen_lines` (the declared line of each provider fed by files shown); the page
+  takes names, catalog origins, dataset titles and the hand-off to Hydrolog from it instead of
+  fixed IMGW-PIB and ČHMÚ tables. A station of the source class `other` shows the chip „Inne
+  źródło” with the note that its data do not come from a national service, and an unverified
+  dataset is labelled „dane operacyjne, niezweryfikowane” in the record and by its series. A
+  station without current data answers `gui.errors.no_current_provider` (it replaces
+  `no_current_chmu`). The hand-off to Hydrolog stays IMGW-PIB's and ČHMÚ's.
+- **Gdańskie Wody (ADR-034 D1 to D3, D9; the plan's step 5).** The provider `GDANSKIEWODY`
+  (short name „Gdańskie Wody”, Gdańskie Wody Sp. z o.o., `PL`, key prefix `pl.gdanskiewody`,
+  adapter `obserwator.providers.pl.gdanskiewody`, source class `other`): the hourly values of 131
+  stations of the Gdańsk agglomeration (rain gauges, water-level gauges, weather and water-quality
+  stations) from `https://pomiary.gdanskiewody.pl/rest/`, raw data without verification by the
+  provider's word; station codes `GDANSKIEWODY-<no>`. Its key is `OBSERWATOR_GDANSKIE_WODY_API_KEY`
+  or the file of `OBSERWATOR_GDANSKIE_WODY_API_KEY_FILE` (P3), sent as `Authorization: Bearer` and
+  reported `present`/`missing` by `config show`; its requests go one at a time, at least
+  `OBSERWATOR_GDANSKIE_WODY_REQUEST_INTERVAL` seconds apart (`gdanskie_wody_request_interval`,
+  default and minimum 1.0; P10), both in `.env.example`. Six datasets: the station source
+  `pl.gdanskiewody.station_list`, the month files `pl.gdanskiewody.measurements` and the series
+  `pl.gdanskiewody.hydro_hourly`, `meteo_hourly`, `hydro_daily` and `meteo_daily`. Variables: `H_asl`
+  [m] (the level in metres above sea level, never `H`), `Q`, `T`, `P`, `Tair` and `Tmean`,
+  `wind_speed`, `wind_direction` [deg], `pressure` [hPa], `humidity` and `irradiance` [W/m2], with
+  the units of the provider's public tables; the water-quality quantities are kept and read by no
+  series. Its catalog `stations/versions/gdanskiewody_stations` (`store catalog --provider
+  GDANSKIEWODY`) comes from the stored list. The intake note `docs/providers/gdanskiewody.md`
+  answers every row of the plan's intake with its date and evidence; the terms stay unknown.
+- **Month files named by the stored station list (ADR-034 D6).** `pl.gdanskiewody.measurements`
+  keeps one file per station, quantity and calendar month,
+  `rest/measurements/<no>/<symbol>/<YYYY-MM>.json` (`archive_scope` `station_element_month`, tier
+  `operational`, from 2005): the answers of the month's days up to today (UTC) in canonical JSON.
+  `store check|sync --datasets pl.gdanskiewody.measurements --years … [--months …] [--stations …]`
+  (check scope `months`, `ProviderAdapter.month_files`) names the files from the station list the
+  raw root holds: without it `not_found` (`missing_source`), without `--years` `validation_error`,
+  a code the list does not hold one `store sync` action `unverifiable`. A check makes no request:
+  a file is `missing`, `current` once a version was downloaded after its month settled (12:00 UTC
+  of the next month's first day) or `newer`; a month downloaded from then on carries that time as
+  its `Last-Modified`, so equal bytes are `relabeled` and the month is `current`. `datasets
+  files|download` refuse the dataset (`stored_list`), and so does a plain `store sync`
+  (`store_only_dataset`); `command_for_version` of a month file is `store sync --stations <code>
+  --years <year> --months <month>`.
+- **Hours labelled by their start, days of the provider (ADR-034 D4, D5, D8).** The plan's open
+  question 2, answered on 2026-11-25: a label names the UTC hour it starts (its value changed
+  while the hour ran). The hourly series hold every hour as labelled, the hour in progress as a
+  running partial value, one version per calendar month (`series build --start/--end`); the
+  daily series hold the provider's day D (06:00 of D to 05:59 of D+1, UTC): the sum of `P`, the
+  mean of the others, three decimals, `missing` without all 24 hours. Both read the month files
+  (`inputs`), never one series the other, and `ProviderAdapter.series_reads` gives each series
+  the files of its variables only (a hydrological station's rain lies in `meteo_*`).
+- **The error code `no_data` (ADR-034 D7).** The code of Nogat's registry joins `ERROR_CODES`
+  (exit 14, HTTP 404, title „No data” / „Brak danych”; both copies of `contract_schemas.json`).
+  Gdańskie Wody reports its errors in HTTP 200 answers: `-100` is `forbidden`
+  (`invalid_credentials`), `-11` `not_found` (`unknown_station`), `-12` and `-13` `no_data`
+  (`not_measured`), `-2` and `-3` `validation_error` (`bad_request`), any other code
+  `source_unavailable` (`provider_error`).
+- **Public parsers `parse_gdanskiewody_stations` and `parse_gdanskiewody_month`** (`obserwator.parsers`
+  and the package root): the station list as `StationListEntry` rows, and a stored month file
+  (named `rest/measurements/<no>/<symbol>/<YYYY-MM>.json`) as the daily records of the provider's
+  day; a day outside the named month is `data_error`.
+- **The source classes in the GUI (ADR-034 D12; the plan's P11 to P13).** The class switch „Rodzaj
+  źródła” (Wszystkie / Służby / Inne źródła; `NO_FILTERS.class` `all`, `nmhs`, `other`) replaces the
+  provider switch and shows when the stations hold both classes; the dataset chips stand under
+  the class headings „Służby hydrologiczno-meteorologiczne” and „Inne źródła” with each provider
+  headed `<short name> · <country>` (country headings in a class of more than six providers). A
+  symbol's outline tells the class: solid grey for a national service, dashed (5/3, width 2.6)
+  for another source (icons `st-<kind>-<0|1>-<nmhs|other>`), both in the legend whenever another
+  source is held. A station of another source opens with the chip „Inne źródło” and its
+  provider's notice, and every chart and table of its cards carries the chip on screen (not in
+  PNG exports); without a station the panel counts the stations by class. `api/session`'s
+  `providers[id]` gains `country` and `source_notice`. New catalog keys: `stations.list.class*`,
+  `stations.legend.source_*`, `words.source_class.*`, `words.country.*`.
+- **PIG-PIB groundwater (ADR-035 W1 to W3, W10; Nogat plan `2026-11-24-pig-groundwater.md`,
+  ECO-092).** The provider `PIG` (short name „PIG-PIB”, Państwowy Instytut Geologiczny – Państwowy
+  Instytut Badawczy, `PL`, key prefix `pl.pig`, adapter `obserwator.providers.pl.pig`, source
+  class `other` with P8's notice in its words, served by default): the Monitoring Wód Podziemnych
+  of the state geological service from the open ArcGIS REST services
+  `cbdgmapa.pgi.gov.pl/arcgis/rest/services/hydrogeologia/{mwp,mwp_auto}/MapServer`, CC BY 4.0 by
+  dane.gov.pl's dataset 170. Six datasets: `pl.pig.groundwater_stations` (3,505 points, a station
+  source), `pl.pig.groundwater_readings` (the month the service holds, `week`),
+  `pl.pig.groundwater_chemistry` and `pl.pig.groundwater_watchlist` (stored raw only), all
+  `verified`; `pl.pig.groundwater_operational` (the automatic points' hourly depths, „bez
+  walidacji”, `operational`, `public` by default in `[obserwator.capture]`) and the hourly series
+  `pl.pig.groundwater_subdaily`. Station codes are PIG-PIB's `ID`, `^[1-9][0-9]{0,5}$`. The intake
+  note `docs/providers/pig.md` answers every row of the intake with its date and evidence.
+- **Each publication kept before the service replaces it (ADR-035 W4, W5, D2, D3).** A sync of an
+  `mwp` dataset pages its layer or table in one run (counts before and after, `resultOffset`,
+  POST, at least 2 s apart; a count that changes is retried once, then `partial` with nothing
+  written) and keeps the run's answers in Obserwator's container, one version per run unless its
+  content equals the current one (`pig-json/1`, new content form: the rows without `OBJECTID` and
+  paging). The readings are one file per calendar month of their rows, `MWP_<YYYY-MM>.jsonl.gz`,
+  named by one statistics query (check scope `publication`: `unverifiable` once stored, `missing`
+  before; `years`, `months` and `stations` refused); other spans `MWP_<first>_<last>` with
+  `window_unexpected`; a month republished with other rows is a new version with
+  `month_republished` counting the readings changed, added and removed; `store check` names each
+  month between captured ones without a version `not_captured`. An `{"error"}` answer or one that
+  is not JSON is `source_unavailable`, nothing written.
+- **The night's harvest by watermark (ADR-035 W9, D4).** `store sync --datasets
+  pl.pig.groundwater_operational --pace-until HH:MM` asks the automatic points, the table's count
+  and every row appended after the last `OBJECTID` the raw root holds, page by page, and the page
+  of the stored hour 02 of each summer-time start day among them; it refuses `--start`, `--end`
+  and `--stations` (reason `watermark`) and keeps no state file: the watermark, the count and the
+  period of the rows are in the capture's sidecar (`extra.capture`). A count smaller than before
+  is the notice `rows_removed`.
+- **The catalog `pig_stations` and two series (ADR-035 W6 to W8, D6 to D8).** `store catalog
+  --provider PIG` builds the points with kind `groundwater` (`spring` for „źródło”, `bore`
+  otherwise), `active`, `elevation_m`, the server's WGS84 location and `hydrogeology` (the type as
+  published, confinement, stratigraphy, lithology, depths, years observed, JCWPd, the PSH, CBDH
+  and EU numbers, `automatic` from the night's capture of `mwp_auto`'s points); notices
+  `station_unknown` and `station_identity_changed`. `pl.pig.groundwater_readings` holds
+  `depth_to_water` [m] (new variable, negative above the ground), `H_asl` = ground elevation −
+  depth to the centimetre and `spring_yield` at each 06:00 UTC reading, coverage by calendar weeks
+  of the captured months. `pl.pig.groundwater_subdaily` holds the automatic points' hours, the
+  stored wall-clock time read as UTC and floored to the hour, one version per month, never joined
+  to the readings; notices `hour_revised`, `hour_unresolved` and `hour_future`.
+- **`store import --staging DIR` (ADR-035 W15, D11).** Takes PIG-PIB's interim capture (the plan's
+  S0) into the raw root: every file checked against its manifest's size and SHA-256 before any
+  write, each complete table run a version dated by its run (compared with the version current
+  then, so a second import is `unchanged`), the harvest's answers merged into the capture of their
+  UTC day; `--check` plans it; no series or catalog is built. `staging` is no REST parameter.
+  Notices `staging_left_out`, `staging_failed`, `staging_incomplete`, `staging_open`.
+- **PIG-PIB's lines W, WP and RW (ADR-035 W14, D5; Nogat DEV §20, DEV-20.13).** W names the period
+  of the data and the day they were obtained (`<period>`, `<date>`), filled in every product from
+  the versions it reads (`attribution.fill`, `fillable`, `filled`) and merged into one line where
+  a product reads several; WP is fixed; RW links PIG-PIB's terms of reuse. Every envelope, export,
+  stored series and catalog, `ATTRIBUTION.txt` and GUI view with its data carries them.
+- **PIG-PIB in the GUI (ADR-035 W12, D12).** Its points in „Podziemne” beside ČHMÚ's objects with
+  the dashed outline, the panel's „Numer PSH”, „Typ według dostawcy” and a section
+  „Hydrogeologia”, „Dane” with „Odczyty” (`H_asl` first for a bore, `spring_yield` for a spring)
+  and „Godzinowe” labelled „dane operacyjne, niezweryfikowane”, the strip's WK and the dialog's W,
+  WP and RW with W filled, „Regulamin PIG-PIB” in „Pobierz”; the guide's chapter on PIG-PIB. The
+  private session gains `providers[id].kinds`, `datasets[key].unverified` and
+  `attribution.fillable`.
+- **The telemetry timer asks PIG-PIB (ADR-035 W11, D13).** `deploy/obserwator-jobs.sh telemetry`
+  syncs PIG-PIB's points and readings every day (the service holds one month of readings), its
+  chemistry and watch list on Mondays, builds its catalog while the points are held and its
+  readings series when the points or the readings got a new version; the night harvests `mwp_auto`
+  first, until 02:45, and builds its hourly series.
+- **Fixture variant `groundwater_pl`** (`obserwator.testing.build_fixture_store`): `groundwater`
+  plus PIG-PIB's points, October 2026's readings, a night's harvest, both series and the catalog
+  from answers recorded on 2026-11-24 and 2026-11-25 (`pig_recordings.json`, 11 points).
+
+### Changed
+
+- **Nogat's kit 1.2.0 (ECO-086, ECO-087; Nogat `6cc9d9e`).** `nogat-sources.js` shows the lines
+  a GUI declares in `screen-lines`, so the strip shows a provider file's line (its `short` form
+  where it has one); the regulamin's template and the operator's draft gain the blocks
+  `camels-pl` and `e-obs` (regulamin 1.0). Copied byte for byte with `nogat-kit.json`.
+- **The contract schemas take the codes of a provider fed by files.** The station keys and
+  files of `obserwator-series/1` and the `id` and `station_code` of a catalog feature also
+  accept `<ID>-<code>` (`STATION_CODE_PATTERN`), and `location_source` also
+  `<cc>.<acronym>.station_list`; both copies of `contract_schemas.json` stay byte-identical.
+- **REST hides the directory of `nogat.toml`** in its answers like the other server
+  directories (the provider files of `store import`).
+- **Shorter first sentences of three command descriptions**, so `AGENTS.md` stays within
+  16 KiB in both languages: `stations find` („Find stations by name, river, code prefix or
+  area.”, then the providers it searches, now with the providers fed by files), `commands list`
+  and `commands guide` (their words moved to the next sentence). The station option's help names
+  `<ID>-<code>`.
+- **The author's decision of 2026-11-25: Gdańskie Wody built, nothing downloaded, off (ADR-034 D1,
+  D9, D11).** The provider is off in both servers by default (`ProviderAdapter.served_by_default`
+  False): without `[obserwator.instance]` they apply an undeclared `Instance`
+  (`instance.default_instance()`, `declared` False) that leaves out only such providers, with no
+  strict start check of the section and `instance` null in `config show` and `api/session`; a
+  station search without a provider does not ask it, and REST narrows a call without `provider`
+  and keeps the problems of `store scan` without a provider by `Instance.complete`. While its
+  terms are unknown its lines are drafts (`obserwator.attribution.provisional`), any state but
+  `off` in `[obserwator.instance.providers]` refuses the start (`validation_error`,
+  `details.reason` `terms_unknown`; `config show` reports `invalid_instance`), and its source
+  `pl.gdanskiewody.measurements` is `private` in `[obserwator.capture]`. No history was
+  downloaded: a backfill waits for the range the author names and for the provider's consent.
+- **P8's notice in every product of a provider of the class `other` (ADR-034 D10; ADR-012 and
+  ADR-033 errata).** The notice that the data do not come from a national hydro-meteorological
+  service (`ProviderAdapter.source_notice`; Gdańskie Wody's adds that it publishes them as raw
+  data without verification) is one more attribution line after the provider's own in
+  envelopes, CLI summaries, exports, stored series and catalogs, for the providers fed by files
+  too (`declare_origin(…, notice=)`); before, only the GUI showed a note.
+- **„Pokaż pozostałych dostawców” and fading (ADR-025 and ADR-013 errata of 2026-11-25).** „Pokaż
+  inne źródła” of an operator's instance is „Pokaż pozostałych dostawców” („Show the other
+  providers”) with the same role; a hidden provider also shows while a class is chosen, and the
+  providers beside the featured one are not faded while a dataset is chosen by its chip. ČHMÚ's
+  stations keep a solid outline, as a national service. Without a session the page takes the
+  providers from the stations (no IMGW-PIB and ČHMÚ fallback). Catalog keys renamed:
+  `stations.list.provider*` → `station.none.files_provider*`, `station.none.provider_kinds*` →
+  `station.none.catalog_kinds*` (with `{name}`).
+- **The provider protocol (ADR-029 erratum of 2026-11-25).** `ProviderAdapter` gains
+  `source_class`, `source_notice` and `served_by_default`, the check scope `months` with
+  `month_files` and `settled`, and `held_period`, `series_reads` and `hourly_points`, each with a
+  default that leaves IMGW-PIB and ČHMÚ unchanged. `DatasetDescriptor.inputs` also names the files
+  a daily series' parser reads (ADR-031 erratum), and `archive_scope` gains
+  `station_element_month`.
+- **`AGENTS.md` and `llms.txt`** carry Gdańskie Wody's facts (`*.station_list` among the station
+  sources; `GDANSKIEWODY-<no>` and `pl.*` in the stations, years and months bullets; the provider
+  line names `OBSERWATOR_GDANSKIE_WODY_API_KEY`, off by default in the servers and `stations find`,
+  and its draft lines), shorter in both languages to stay within 16 KiB (no Plan column, the
+  variables in one code span, the CLI-output line merged).
+- **A bare code of one to six digits names PIG-PIB (ADR-035 D14).** `STATION_CODE_PATTERN`, the
+  station keys and catalog fields of both copies of `contract_schemas.json` and both export
+  schemas accept `^[1-9][0-9]{0,5}$`; such a code, refused before, is now a PIG-PIB point. A
+  station search without a provider also searches PIG-PIB's points.
+- **The provider protocol (ADR-029 erratum of 2026-11-25; ADR-035 D15).** `ProviderAdapter` gains
+  the check scope `publication` with `published`, `publication_gaps` and `replaced`,
+  `series_sources`, `series_read`, `capture_extra`, `run_file`, `harvest_answer`, the attributes
+  `watermarked` and `staged`, `SeriesContext` for `normalize` and `hourly_points`, and
+  `harvest_requests(raw=)`, each with a default that leaves the other providers unchanged.
+  `obserwator.fetch` gains an ArcGIS client (`arcgis_query`, `arcgis_pages`), POST and follow-up
+  requests in `PacedRequest` and `DownloadResult.archive`; `write_archive(downloaded_at=,
+  provenance=)`, `write_capture(data=Path, extra=)` and `captures.encode_into`/`Sealer` are new.
+- **The GUI's analyses table lists only providers whose kinds an analysis applies to** (ADR-035
+  D12): PIG-PIB has none; the panel without a station counts each provider's catalog by the kinds
+  it publishes („PIG-PIB: podziemne …”).
+- **Nogat's kit 1.3.0 files (Nogat `ff18ee8`):** `nogat-sources.js` with W, WP and WK, and the
+  regulamin's template and operator's draft with the block `pig`; `nogat-kit.json` lists the 11
+  kit files Obserwator holds. The regulamin keeps the block `pig` while PIG-PIB is served.
+- **`AGENTS.md` and `llms.txt`** name PIG-PIB's watermark harvest among the captures
+  (`pl.*_{current,operational}`) and `years` for `pl.{imgw,gdanskiewody}.*` only; shorter to stay
+  within 16 KiB (the first precipitation step starts with `precip_daily`; a repeated rule on exit
+  codes removed). The option help of `--provider` names the ids of `datasets providers` (IMGW,
+  CHMU, PIG) instead of IMGW-PIB and ČHMÚ only.
+
+### Fixed
+
+- **`import obserwator` on Windows.** PIG-PIB's parser reads its times in `Europe/Warsaw`
+  (`zoneinfo`), and Windows has no time zone database of its own, so the import ended in
+  `ZoneInfoNotFoundError`; `tzdata` is now a runtime dependency on Windows
+  (`sys_platform == 'win32'`).
+- **The GUI's welcome window stays closed after a reload right after closing it.** Its closing
+  was remembered on the dialog's `close` event, a task later, which a reload or a followed link
+  could pre-empt, so the window opened again; the button, ×, a click beside it and Escape
+  (`cancel`) now remember it as they close it.
+- **The weekly definition in the GUI is no longer ČHMÚ's:** „zwykle w środy” moved into the note
+  of ČHMÚ's weekly dataset, since PIG-PIB's weekly readings fall on Mondays (ADR-035 D12).
+- **`store catalog --provider` and the providers' option help** named only IMGW-PIB and ČHMÚ,
+  though Gdańskie Wody's catalog was built the same way; they now name the ids of `datasets
+  providers`.
+
+- **The map's basemap is no longer dropped for one failed tile.** When the first basemap tile to
+  answer was an error, the GUI took the basemap out for good and drew the packaged borders, even
+  if the view's other tiles would have loaded. A failed tile now only marks the basemap; once the
+  map is idle (every tile of the view has answered) the borders replace it, with „Podkład mapy
+  się nie wczytał” in the legend, only if none of its tiles loaded. `tests/e2e/test_map.py`
+  checks both on a server with a basemap (`basemap_url`).
+
 ## [3.2.1] - 2026-11-24
 
 Changes since 3.2.0, in 3.2.1: one defect fix, released from `hotfix/3.2.1` off `main` (REL-2.4).

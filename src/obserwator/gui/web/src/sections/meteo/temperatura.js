@@ -7,7 +7,7 @@
 // number is a field of Hydrolog's result: the page picks, sorts for display, formats and
 // draws; the harmonics Hydrolog fitted are evaluated at the chart's days (drawing).
 
-import { Chart, fmt, html, t, tn, useMemo, useState } from "../../lib.js";
+import { BadgeLine, Chart, fmt, html, t, tn, useMemo, useState } from "../../lib.js";
 import { Figures, Notices, Section, Seg, Table, YearRange } from "../common.js";
 import { Stripes } from "./stripes.js";
 import {
@@ -67,7 +67,7 @@ function anomalyCls(value) {
 }
 
 function AnomalyTable({ years }) {
-  return html`<div class="table-wrap"><table class="tbl me-heat">
+  return html`<${BadgeLine} /><div class="table-wrap"><table class="tbl me-heat">
     <thead><tr><th scope="col">${t("meteo.common.year")}</th>${ROMAN.map((m) => html`<th scope="col">${m}</th>`)}</tr></thead>
     <tbody>${years.map((year) => {
       const months = byMonth(year.months);
@@ -501,7 +501,7 @@ function Hydrothermal({ state }) {
     />
     <${Chart} spec=${spec} />
     <h4 class="me-sub">${t("meteo.hydrothermal.months_table", { first: ROMAN[months[0] - 1] || "", last: ROMAN[months[months.length - 1] - 1] || "" })}</h4>
-    <div class="table-wrap"><table class="tbl me-heat">
+    <${BadgeLine} /><div class="table-wrap"><table class="tbl me-heat">
       <thead><tr>
         <th scope="col">${t("meteo.common.year")}</th>
         ${months.map((m) => html`<th scope="col">${ROMAN[m - 1]}</th>`)}
@@ -521,7 +521,7 @@ function Hydrothermal({ state }) {
     ${rows.length > RECENT ? html`<p class="muted me-caption">${t("meteo.hydrothermal.last_years", { shown: RECENT, count: rows.length })}</p>` : null}
     <${ClassLegend} names=${K_CLASSES.map(className)} palette="k9" />
     <h4 class="me-sub">${t("meteo.hydrothermal.frequency")}</h4>
-    <div class="table-wrap"><table class="tbl me-heat">
+    <${BadgeLine} /><div class="table-wrap"><table class="tbl me-heat">
       <thead><tr>
         <th scope="col">${t("meteo.common.month")}</th>
         ${K_CLASSES.map((name, at) => html`<th scope="col" class=${classCls("k9", at)} title=${className(name)}>${at + 1}</th>`)}

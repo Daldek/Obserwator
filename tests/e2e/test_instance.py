@@ -31,7 +31,9 @@ from tests.e2e.conftest import (
 expect = pytest.importorskip("playwright.sync_api").expect
 PlaywrightTimeout = pytest.importorskip("playwright.sync_api").TimeoutError
 
-OTHERS = "Pokaż inne źródła"
+OTHERS = "Pokaż pozostałych dostawców"
+IMGW_DAILY = "Dane hydrologiczne dobowe (IMGW-PIB)"
+"""The chip of IMGW-PIB's daily hydrological series, which chooses IMGW-PIB."""
 AREA_BOX = [
     min(x for x, _ in INSTANCE_AREA),
     min(y for _, y in INSTANCE_AREA),
@@ -169,15 +171,15 @@ def inside(inner: list[float], outer: list[float], slack: float = 1e-6) -> bool:
     )
 
 
-def providers_switch(page: Any) -> list[str]:
-    group = page.get_by_role("radiogroup", name="Dostawca")
-    names: list[str] = group.get_by_role("radio").all_inner_texts()
-    return names
-
-
 def chip_groups(page: Any) -> list[str]:
     names: list[str] = page.locator(".ds-group .ds-provider").all_inner_texts()
     return names
+
+
+def no_class_switch(page: Any) -> None:
+    """National services alone: no class switch, no class heading over the chips (P12)."""
+    expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
+    expect(page.locator(".ds-class-title")).to_have_count(0)
 
 
 # --- without an instance ---------------------------------------------------------------
@@ -191,7 +193,9 @@ def test_without_an_instance_the_page_shows_everything_as_before(open_page, gui_
     expect(
         page.get_by_role("radiogroup", name="Widok mapy").get_by_role("radio")
     ).to_have_text(["Stacje", "Pomiary bieżące", "PMAXTP"])
-    assert providers_switch(page) == ["Wszyscy", "IMGW-PIB", "ČHMÚ"]
+    expect(page.locator(".stations .st-item").first).to_be_visible()
+    no_class_switch(page)
+    assert chip_groups(page) == ["ČHMÚ · CZ", "IMGW-PIB · PL"]
     expect(page.locator(".check-row input[type=checkbox]")).to_have_count(1)
     expect(page.get_by_role("checkbox", name=OTHERS)).to_have_count(0)
     expect(page.locator(".topbar .operator")).to_have_count(0)
@@ -325,7 +329,7 @@ def test_a_map_moved_before_the_session_answers_keeps_its_place(browser, hidden_
     assert errors == []
 
 
-# --- the featured provider and „Pokaż inne źródła” -----------------------------------------
+# --- the featured provider and „Pokaż pozostałych dostawców” ---------------------------------
 
 
 def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_shown(
@@ -337,9 +341,9 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     assert chmu and imgw
     page = open_page(base=featured_url)
     ready(page)
-    assert providers_switch(page) == ["Wszyscy", "ČHMÚ", "IMGW-PIB"]
-    assert chip_groups(page) == ["ČHMÚ", "IMGW-PIB"]
     rows = wait_listed(page, shown(stations))
+    no_class_switch(page)
+    assert chip_groups(page) == ["ČHMÚ · CZ", "IMGW-PIB · PL"]
     assert {
         stations[code]["provider"] for code in rows[: len(shown(stations, "CHMU"))]
     } == {"CHMU"}
@@ -383,7 +387,7 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
         groups.nth(n).locator("svg.sym").first.bounding_box()["height"] for n in (0, 1)
     ]
     assert heights[1] < 0.8 * heights[0]
-    # „Pokaż inne źródła”: every station at full strength, ČHMÚ's still on top
+    # „Pokaż pozostałych dostawców”: every station at full strength, ČHMÚ's still on top
     others.check()
     page.wait_for_function(
         "() => document.querySelector('.map').maplibre"
@@ -397,18 +401,22 @@ def test_the_featured_providers_stations_lie_on_top_and_the_others_fade_until_sh
     )
     expect(legend.locator(".legend-title")).to_have_count(0)
     expect(legend).not_to_contain_text("Pozostałe źródła")
-    # IMGW-PIB chosen in the switch: its stations alone, at full strength
+    # IMGW-PIB chosen by a chip: the stations of its series alone, at full strength
     others.uncheck()
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="IMGW-PIB"
-    ).click()
-    wait_source(page, imgw)
+    daily = located(
+        stations,
+        {c for c in imgw if "pl.imgw.hydro_daily" in stations[c]["datasets"]},
+    )
+    assert daily
+    page.get_by_role("button", name=IMGW_DAILY).click()
+    wait_source(page, daily)
     page.wait_for_function(
         "(n) => { const found = document.querySelector('.map').maplibre"
         ".queryRenderedFeatures({ layers: ['stations'] });"
         " return found.length === n && found.every((f) => f.layer.paint['icon-opacity'] === 1); }",
-        arg=len(imgw),
+        arg=len(daily),
     )
+    expect(legend.locator(".legend-title")).to_have_count(0)
     # not remembered: the next visit starts with it off
     again = open_page(base=featured_url)
     expect(again.get_by_role("checkbox", name=OTHERS)).not_to_be_checked()
@@ -421,19 +429,20 @@ def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden
     assert located(stations, imgw)
     page = open_page(base=hidden_url)
     ready(page)
-    # left out of the list, the map and the chips; the switch names it after ČHMÚ
+    # left out of the list, the map and the chips; no switch names it
     wait_listed(page, chmu)
     wait_source(page, located(stations, chmu))
-    assert providers_switch(page) == ["Wszyscy", "ČHMÚ", "IMGW-PIB"]
-    assert chip_groups(page) == ["ČHMÚ"]
+    no_class_switch(page)
+    assert chip_groups(page) == ["ČHMÚ · CZ"]
     expect(
         page.get_by_role("radiogroup", name="Widok mapy").get_by_role("radio")
     ).to_have_count(3)
-    # „Pokaż inne źródła”: back in the list after ČHMÚ's and on the map at full strength
+    # „Pokaż pozostałych dostawców”: back in the list after ČHMÚ's and on the map at full
+    # strength
     page.get_by_role("checkbox", name=OTHERS).check()
     rows = wait_listed(page, chmu | imgw)
     assert set(rows[: len(chmu)]) == chmu
-    assert chip_groups(page) == ["ČHMÚ", "IMGW-PIB"]
+    assert chip_groups(page) == ["ČHMÚ · CZ", "IMGW-PIB · PL"]
     found = wait_source(page, located(stations, chmu | imgw))
     assert {found[code]["dim"] for code in found} == {0}
     page.evaluate(_WHOLE)
@@ -443,15 +452,17 @@ def test_a_hidden_provider_shows_only_when_chosen_or_asked_for(open_page, hidden
         " return codes.every((code) => drawn.includes(code)); }",
         arg=sorted(located(stations, imgw)),
     )
-    # off again, then IMGW-PIB chosen in the switch: its stations alone
+    # IMGW-PIB chosen by a chip: the stations of its series alone; hidden again, its
+    # chip is dropped with it
+    daily = {c for c in imgw if "pl.imgw.hydro_daily" in stations[c]["datasets"]}
+    assert daily
+    page.get_by_role("button", name=IMGW_DAILY).click()
+    wait_listed(page, daily)
+    wait_source(page, located(stations, daily))
     page.get_by_role("checkbox", name=OTHERS).uncheck()
     wait_listed(page, chmu)
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="IMGW-PIB"
-    ).click()
-    wait_listed(page, imgw)
-    wait_source(page, located(stations, imgw))
-    assert chip_groups(page) == ["IMGW-PIB"]
+    assert chip_groups(page) == ["ČHMÚ · CZ"]
+    expect(page.get_by_role("button", name=IMGW_DAILY)).to_have_count(0)
     # a link to a station of the hidden provider shows the other providers' stations
     code = min(located(stations, imgw))
     linked = open_page(f"?station={code}", base=hidden_url)
@@ -597,13 +608,19 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
     expect(dialog).to_be_visible()
     expect(dialog).not_to_contain_text("IMGW")
     page.keyboard.press("Escape")
-    # the panel without a station counts and lists the catalogs of ČHMÚ alone
+    # the panel without a station lists the stored analyses of the providers served whose
+    # stations an analysis applies to: ČHMÚ, never IMGW-PIB (off) nor PIG-PIB (on by
+    # default, groundwater objects alone)
     panel = page.locator("#panel-right")
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_count(1)
-    expect(panel.locator("[data-part=analyses] tr[data-provider]")).to_have_attribute(
-        "data-provider", "CHMU"
-    )
+    served = panel.locator("[data-part=analyses] tr[data-provider]")
+    expect(served).to_have_count(1)
+    assert [row.get_attribute("data-provider") for row in served.all()] == ["CHMU"]
     expect(panel.locator(".no-station")).not_to_contain_text("IMGW")
+    # its catalogs table names each provider served by the kinds it publishes: PIG-PIB,
+    # without a catalog in this root, by its groundwater objects alone
+    expect(panel.locator("[data-part=catalogs] tr.in-class th")).to_contain_text(
+        ["ČHMÚ: hydrologiczne · meteorologiczne", "PIG-PIB: podziemne"]
+    )
 
 
 def test_the_regulamin_link_opens_the_operators_regulamin(open_page, operator_url):

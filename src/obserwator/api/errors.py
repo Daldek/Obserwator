@@ -29,6 +29,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from obserwator._jsonable import jsonable
 from obserwator.config import settings
+from obserwator.datasets import provider_files
 from obserwator.error_report import error_hint
 from obserwator.exceptions import (
     ERROR_CODES,
@@ -163,6 +164,7 @@ def _server_directories() -> list[Path]:
         settings.data_dir,
         settings.cache_dir,
         Path(tempfile.gettempdir()),
+        provider_files().base,
         working,
     ):
         if directory is None or (working is None and not directory.is_absolute()):
@@ -179,7 +181,8 @@ def hide_server_paths(value: object) -> object:
     The hidden directories are ``OBSERWATOR_ROOT``, ``OBSERWATOR_RAW_ROOT``,
     ``OBSERWATOR_USER_LOCATIONS_DIR``, ``OBSERWATOR_REFERENCE_DIR``,
     ``OBSERWATOR_DATA_DIR``, ``OBSERWATOR_CACHE_DIR``, the temporary
-    directory and the working directory of the server process (also in their
+    directory, the directory of ``nogat.toml`` (the provider files of ``store
+    import``, ADR-033) and the working directory of the server process (also in their
     resolved form). The most nested
     directory is rewritten first, so ``<dir>/x`` becomes ``x`` and a bare
     ``<dir>`` becomes ``.``, as in the envelope of `CommandResult.to_json`

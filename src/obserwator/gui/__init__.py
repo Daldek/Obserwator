@@ -163,7 +163,7 @@ def serve(
         "request_limit": config.request_limit,
         "request_window": config.request_window,
         "instance": None
-        if config.instance is None
+        if config.instance is None or not config.instance.declared
         else {
             "key": config.instance.key,
             "providers": dict(config.instance.providers),

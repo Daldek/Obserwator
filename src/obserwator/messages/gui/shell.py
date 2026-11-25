@@ -79,10 +79,12 @@ MESSAGES: dict[str, Text] = {
     # DEV-20.5) and, in a public deployment, the kit's „Regulamin serwisu” (DEV-15.7)
     "shell.welcome.title": Text("Welcome to Obserwator", "Witaj w Obserwatorze"),
     "shell.welcome.intro": Text(
-        "Obserwator shows the hydrological and meteorological stations of IMGW-PIB and"
-        " ČHMÚ on a map: choose one to see its measurements, analyses and files.",
+        "Obserwator shows on a map the hydrological and meteorological stations of"
+        " IMGW-PIB and ČHMÚ, and PIG-PIB's groundwater monitoring points: choose one to"
+        " see its measurements, analyses and files.",
         "Obserwator pokazuje na mapie stacje hydrologiczne i meteorologiczne IMGW-PIB"
-        " i ČHMÚ: wybierz stację, aby zobaczyć jej pomiary, analizy i pliki.",
+        " i ČHMÚ oraz punkty monitoringu wód podziemnych PIG-PIB: wybierz stację, aby"
+        " zobaczyć jej pomiary, analizy i pliki.",
     ),
     "shell.welcome.intro_instance": Text(
         "Obserwator shows hydrological and meteorological stations on a map: choose one"

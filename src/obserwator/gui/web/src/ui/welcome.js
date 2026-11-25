@@ -52,7 +52,11 @@ export function WelcomeDialog({ session }) {
     if (start.current) start.current.focus();
   }, [session, texts]);
 
+  // Remembered as it closes, never on the dialog's `close` event: that comes a task later,
+  // which a reload or a link followed right after the click may never run. Escape closes
+  // it through `cancel`, fired before the dialog closes.
   const close = () => {
+    remember();
     if (dialog.current && dialog.current.open) dialog.current.close();
   };
   // A click on the dialog itself, not on its content, which fills it, is on the backdrop
@@ -74,7 +78,7 @@ export function WelcomeDialog({ session }) {
       first.focus();
     }
   };
-  return html`<dialog class="modal welcome" ref=${dialog} aria-labelledby="welcome-title" onClick=${onClick} onKeyDown=${onKeyDown} onClose=${remember}>
+  return html`<dialog class="modal welcome" ref=${dialog} aria-labelledby="welcome-title" onClick=${onClick} onKeyDown=${onKeyDown} onCancel=${remember}>
     <div class="modal-head">
       <h2 id="welcome-title">${t("shell.welcome.title")}</h2>
       <button class="btn ghost sm icon" type="button" aria-label=${t("shell.welcome.close")} title=${t("shell.welcome.close")} onClick=${close}>

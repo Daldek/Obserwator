@@ -14,19 +14,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import tempfile
 import threading
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta, tzinfo
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal, Self, get_args
 from unittest import mock
+from urllib.parse import parse_qsl
+from zoneinfo import ZoneInfo
 
 import httpx
 
+from obserwator import captures as _captures
+from obserwator import fetch as _fetch
 from obserwator.datasets import archive_files, get_dataset
 from obserwator.exceptions import (
     ObserwatorDataError,
@@ -43,13 +50,20 @@ from obserwator.store import (
     sync_store,
     write_archive,
 )
+from obserwator.store import captures as _store_captures
+from obserwator.store import writer as _writer
 from obserwator.store.types import PathArg, StoreHandle
 from obserwator.store.writer import _canonical
 
 __all__ = ["FixtureRoots", "FixtureVariant", "build_fixture_store", "fixture_files"]
 
 FixtureVariant = Literal[
-    "complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"
+    "complete",
+    "corrupt",
+    "unknown_schema",
+    "complete_pl_cz",
+    "groundwater",
+    "groundwater_pl",
 ]
 
 _RECORDINGS = ("recordings.json", "builder_recordings.json")
@@ -208,15 +222,18 @@ def fixture_files() -> Traversable:
     ``builder_recordings.json``, ``chmu_recordings.json``,
     ``chmu_catalog_recordings.json``, ``chmu_builder_recordings.json``,
     ``chmu_groundwater_recordings.json``, ``hydro_details_recordings.json`` and
-    ``meteo_details_recordings.json`` (real answers of hydro.imgw.pl's backend) and
+    ``meteo_details_recordings.json`` (real answers of hydro.imgw.pl's backend),
     ``contract_recordings.json`` (live endpoints of the interface contract tests),
+    ``pig_recordings.json`` (real rows of PIG-PIB's ArcGIS services ``mwp`` and
+    ``mwp_auto``, cut to a few points, answered by the private ``_PigService``),
     and ``contract_schemas.json`` (JSON Schemas with examples of the store documents
     ``obserwator-store/1`` ... ``obserwator-pmaxtp/1``, the envelope
     ``obserwator-result/1`` and the error documents ``problem+json`` and
     ``obserwator-error/1``). Data are short synthetic samples with fictional station
     codes, not real yearbooks, except the recorded answers of hydro.imgw.pl's backend
     and ČHMÚ's groundwater files: the real files of two objects with the server's
-    headers, their listings and object lists cut to the real rows of them.
+    headers, their listings and object lists cut to the real rows of them, and
+    PIG-PIB's recorded rows.
 
     Returns
     -------
@@ -520,6 +537,23 @@ def build_fixture_store(
     * the list (``cz.chmu.groundwater_stations``) and the current metadata
       (``cz.chmu.groundwater_now``) of the two objects, cut to their rows.
 
+    ``groundwater_pl`` is ``groundwater`` plus PIG-PIB (ADR-035): the real rows of
+    its ArcGIS services in ``pig_recordings.json`` (eleven points), answered with
+    ArcGIS's semantics and synchronized by `sync_store` on a clock that starts at
+    the probe's capture, 2026-11-24 22:16 UTC, and moves only when a paced request
+    waits (no request sleeps, and the raw versions are dated by that clock):
+
+    * the points (``pl.pig.groundwater_stations``), October 2026's readings
+      (``pl.pig.groundwater_readings``, ``MWP_2026-10.jsonl.gz``, with the one
+      reading of 9390, a point missing from the points) and the night's capture of
+      ``pl.pig.groundwater_operational`` of 2026-11-24 (the harvest by watermark
+      from ``OBJECTID`` 0, with the stored hour 02 of 2026-03-29);
+    * the readings series ``pig_groundwater_readings``, the hourly series
+      ``pig_groundwater_subdaily`` (the months 2026-03, 2026-10 and 2026-11) and
+      the PIG catalog ``stations/versions/pig_stations/`` (among them the
+      automatic bore 6495 „Olszyc Szlachecki”, the weekly bore 853 „Tucznawa” and
+      the spring 1247 „Falsztyn”).
+
     Parameters
     ----------
     root : str or os.PathLike
@@ -527,7 +561,7 @@ def build_fixture_store(
     data_root : str or os.PathLike
         Directory of the data root, outside ``root``; it must not exist or be
         an empty directory.
-    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater"}, optional
+    variant : {"complete", "corrupt", "unknown_schema", "complete_pl_cz", "groundwater", "groundwater_pl"}, optional
         Fixture variant to build.
 
     Returns
@@ -615,6 +649,354 @@ def build_fixture_store(
         sidecar.write_bytes(sidecar.read_bytes()[: sidecar.stat().st_size // 2])
     elif variant == "unknown_schema":
         _add_unknown_version(data.root)
-    elif variant in ("complete_pl_cz", "groundwater"):
-        _add_chmu(raw, data, groundwater=variant == "groundwater")
+    elif variant in ("complete_pl_cz", "groundwater", "groundwater_pl"):
+        _add_chmu(raw, data, groundwater=variant != "complete_pl_cz")
+        if variant == "groundwater_pl":
+            _add_pig(raw, data)
     return FixtureRoots(raw, data)
+
+
+# --- PIG-PIB's ArcGIS services, answered from recorded rows (tests only) -----------
+
+_PIG_RECORDINGS = "pig_recordings.json"
+_PIG_ZONE = ZoneInfo("Europe/Warsaw")
+"""The zone by which ``mwp_auto`` converts its stored times to epochs (W9)."""
+_PIG_STORED = "%Y-%m-%d %H:%M:%S"
+_PIG_PATH = re.compile(r"([a-z_]+/MapServer/[0-9]+)/query")
+_PIG_AFTER = re.compile(r"OBJECTID > ([0-9]+)")
+_PIG_TIME = re.compile(
+    r"TIME >= TIMESTAMP '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})' AND "
+    r"TIME < TIMESTAMP '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})'"
+)
+_PIG_PAGE = 1000
+_PIG_ERROR: dict[str, object] = {
+    "error": {"code": 400, "message": "Unable to complete operation.", "details": []}
+}
+"""The answer (HTTP 200) of the services to a query they cannot complete."""
+
+
+@dataclass
+class _ArcgisTable:
+    """
+    One layer or table of an ArcGIS service, as recorded.
+
+    Attributes
+    ----------
+    head : dict
+        A recorded page answer's keys other than ``features`` and
+        ``exceededTransferLimit`` (``fields``, ``spatialReference``…).
+    rows : list of dict
+        Its features as recorded (``attributes``, ``geometry``). A row of
+        ``mwp_auto``'s table 2 may carry the attribute ``_stored``, its stored wall
+        time ``YYYY-MM-DD HH:MM:SS``, which is never served.
+    """
+
+    head: dict[str, Any]
+    rows: list[dict[str, Any]]
+
+
+def _pig_document() -> dict[str, Any]:
+    """``pig_recordings.json``, parsed afresh."""
+    document: dict[str, Any] = json.loads(
+        fixture_files().joinpath(_PIG_RECORDINGS).read_text(encoding="utf-8")
+    )
+    return document
+
+
+def _pig_tables_of(document: Mapping[str, Any]) -> dict[str, _ArcgisTable]:
+    return {
+        name: _ArcgisTable(table["head"], table["rows"])
+        for name, table in document["tables"].items()
+    }
+
+
+def _pig_tables() -> dict[str, _ArcgisTable]:
+    """
+    The recorded tables of PIG-PIB's services, a fresh copy on each call.
+
+    Returns
+    -------
+    dict of str to _ArcgisTable
+        By ``<service>/MapServer/<n>``: ``mwp/MapServer/0`` (points),
+        ``mwp/MapServer/1`` (readings), ``mwp_auto/MapServer/0`` (automatic points)
+        and ``mwp_auto/MapServer/2`` (hourly rows).
+    """
+    return _pig_tables_of(_pig_document())
+
+
+def _pig_stored(row: Mapping[str, Any]) -> datetime:
+    """A row's stored wall time: its ``_stored``, else its epoch's Warsaw wall time."""
+    attributes = row["attributes"]
+    stored = attributes.get("_stored")
+    if isinstance(stored, str):
+        return datetime.strptime(stored, _PIG_STORED)
+    wall = datetime.fromtimestamp(attributes["TIME"] / 1000, tz=_PIG_ZONE)
+    return wall.replace(tzinfo=None)
+
+
+def _pig_value(row: Mapping[str, Any], name: str) -> object:
+    """An attribute as a statistic sees it: ``TIME`` the stored time unconverted."""
+    if name == "TIME":
+        stored = _pig_stored(row).replace(tzinfo=UTC)
+        return int(stored.timestamp()) * 1000
+    return row["attributes"].get(name)
+
+
+class _PigService:
+    """
+    PIG-PIB's ArcGIS ``query`` endpoints answered from rows, with ArcGIS semantics.
+
+    Usable as a respx ``side_effect`` and as an `httpx.MockTransport` handler. A POST
+    form (or a GET query string) to ``<base_url><service>/MapServer/<n>/query``
+    is answered over that table's rows: ``returnCountOnly=true`` by the count,
+    ``outStatistics`` (``min``/``max`` of fields) by one feature of the statistics,
+    otherwise by a page of the rows in ``OBJECTID`` order (``resultOffset``,
+    ``resultRecordCount``, ``exceededTransferLimit`` only while rows remain, the
+    geometry only with ``returnGeometry=true``). ``where`` is ``1=1``,
+    ``OBJECTID > N`` or a ``TIME`` range of two ``TIMESTAMP``s compared with the
+    stored times (W9); any other query is answered by ArcGIS's error object with
+    HTTP 200.
+
+    Parameters
+    ----------
+    tables : Mapping of str to _ArcgisTable or None, optional
+        The tables by ``<service>/MapServer/<n>``; the recorded ones by default.
+
+    Attributes
+    ----------
+    tables : dict of str to _ArcgisTable
+        The tables answered from; tests may change them between requests.
+    requests : list of tuple
+        Every request answered, in order: its path below the base URL (e.g.
+        ``mwp/MapServer/1/query``) and its form.
+    """
+
+    def __init__(self, tables: Mapping[str, _ArcgisTable] | None = None) -> None:
+        document = _pig_document()
+        self._base = str(document["base_url"])
+        self.tables: dict[str, _ArcgisTable] = (
+            _pig_tables_of(document) if tables is None else dict(tables)
+        )
+        self.requests: list[tuple[str, dict[str, str]]] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request (HTTP 200, JSON)."""
+        address = str(request.url.copy_with(query=None))
+        form = dict(request.url.params)
+        if request.method == "POST":
+            body = request.read().decode("utf-8")
+            form.update(parse_qsl(body, keep_blank_values=True))
+        path = (
+            address.removeprefix(self._base) if address.startswith(self._base) else ""
+        )
+        self.requests.append((path, form))
+        content = json.dumps(
+            self._answer(path, form), ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json; charset=UTF-8"},
+            content=content,
+            request=request,
+        )
+
+    def _answer(self, path: str, form: Mapping[str, str]) -> object:
+        match = _PIG_PATH.fullmatch(path)
+        table = self.tables.get(match[1]) if match else None
+        if table is None:
+            return _PIG_ERROR
+        fields = {field["name"]: field for field in table.head.get("fields", ())}
+        rows = self._where(table, fields, form.get("where", ""))
+        if rows is None:
+            return _PIG_ERROR
+        if form.get("returnCountOnly") == "true":
+            return {"count": len(rows)}
+        if "outStatistics" in form:
+            return self._statistics(fields, rows, form["outStatistics"])
+        try:
+            offset = int(form.get("resultOffset", "0"))
+            count = int(form.get("resultRecordCount", str(_PIG_PAGE)))
+        except ValueError:
+            return _PIG_ERROR
+        if offset < 0 or count < 1:
+            return _PIG_ERROR
+        geometry = form.get("returnGeometry") == "true"
+        features = []
+        for row in rows[offset : offset + count]:
+            feature: dict[str, Any] = {
+                "attributes": {
+                    name: value
+                    for name, value in row["attributes"].items()
+                    if name != "_stored"
+                }
+            }
+            if geometry and "geometry" in row:
+                feature["geometry"] = row["geometry"]
+            features.append(feature)
+        page: dict[str, Any] = {**table.head, "features": features}
+        if offset + count < len(rows):
+            page["exceededTransferLimit"] = True
+        return page
+
+    @staticmethod
+    def _where(
+        table: _ArcgisTable, fields: Mapping[str, Any], where: str
+    ) -> list[dict[str, Any]] | None:
+        """The rows a ``where`` selects in ``OBJECTID`` order; None if not understood."""
+        rows = sorted(table.rows, key=lambda row: int(row["attributes"]["OBJECTID"]))
+        if where == "1=1":
+            return rows
+        if after := _PIG_AFTER.fullmatch(where):
+            last = int(after[1])
+            return [row for row in rows if row["attributes"]["OBJECTID"] > last]
+        if (between := _PIG_TIME.fullmatch(where)) and "TIME" in fields:
+            start, end = (
+                datetime.strptime(text, _PIG_STORED) for text in between.groups()
+            )
+            return [row for row in rows if start <= _pig_stored(row) < end]
+        return None
+
+    @staticmethod
+    def _statistics(
+        fields: Mapping[str, Any], rows: list[dict[str, Any]], text: str
+    ) -> object:
+        """The answer of ``outStatistics``: one feature of every statistic asked."""
+        try:
+            asked = json.loads(text)
+        except ValueError:
+            return _PIG_ERROR
+        if not isinstance(asked, list) or not asked:
+            return _PIG_ERROR
+        attributes: dict[str, object] = {}
+        described: list[dict[str, object]] = []
+        for statistic in asked:
+            if not isinstance(statistic, dict):
+                return _PIG_ERROR
+            kind = statistic.get("statisticType")
+            field = statistic.get("onStatisticField")
+            name = statistic.get("outStatisticFieldName")
+            if kind not in ("min", "max") or not isinstance(field, str):
+                return _PIG_ERROR
+            if field not in fields or not isinstance(name, str) or not name:
+                return _PIG_ERROR
+            values: list[Any] = [
+                value for row in rows if (value := _pig_value(row, field)) is not None
+            ]
+            pick = min if kind == "min" else max
+            attributes[name] = pick(values) if values else None
+            described.append(
+                {"name": name, "type": fields[field]["type"], "alias": name}
+            )
+        return {
+            "displayFieldName": "",
+            "fieldAliases": {item["name"]: item["name"] for item in described},
+            "fields": described,
+            "features": [{"attributes": attributes}],
+        }
+
+
+# --- PIG-PIB's part of the variant groundwater_pl (ADR-035) -------------------------
+
+_PIG_POINTS = "pl.pig.groundwater_stations"
+_PIG_READINGS = "pl.pig.groundwater_readings"
+_PIG_OPERATIONAL = "pl.pig.groundwater_operational"
+_PIG_SUBDAILY = "pl.pig.groundwater_subdaily"
+_PIG_CAPTURED = datetime(2026, 11, 24, 22, 16, tzinfo=UTC)
+"""When the probe captured the recorded answers: where the clock of the part starts."""
+_PIG_PACE = timedelta(minutes=2)
+"""How long the night's harvest of the part is spread over (``--pace-until``)."""
+
+
+class _PigClock:
+    """The clock of PIG-PIB's part: it moves only when a paced request waits."""
+
+    def __init__(self, moment: datetime) -> None:
+        self.moment = moment
+
+    def now(self) -> datetime:
+        """The current time, UTC."""
+        return self.moment
+
+    def sleep(self, seconds: float, /) -> None:
+        """Move on by ``seconds`` at once."""
+        self.moment += timedelta(seconds=seconds)
+
+
+def _following(clock: _PigClock) -> type[datetime]:
+    """`datetime` whose ``now`` is ``clock``'s: the writer's dates of the part."""
+
+    class _Now(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Self:
+            """``clock``'s time in ``tz``."""
+            moment = clock.now()
+            return cls.combine(moment.date(), moment.timetz()).astimezone(tz)
+
+    return _Now
+
+
+@contextmanager
+def _pig_answered(clock: _PigClock) -> Iterator[None]:
+    """
+    PIG-PIB's services answered by `_PigService` on ``clock``, the spool a scratch one.
+
+    Every synchronous httpx request to PIG-PIB's host is answered from the recorded
+    rows and any other fails as a connection error. The paced requests and the
+    capture spool follow ``clock``, whose waits move it at once; the night's answers
+    go to a spool of their own, never the one of ``state_dir`` (ADR-030 D7), whose
+    day the run seals; the writer dates the versions by ``clock``. Process-global:
+    patched under ``_HTTP_LOCK``.
+    """
+    service = _PigService()
+    host = httpx.URL(service._base).host
+
+    def handle(self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        if request.url.host != host:
+            raise httpx.ConnectError(
+                message(
+                    "testing.no_recorded_response",
+                    method=request.method,
+                    url=request.url,
+                ),
+                request=request,
+            )
+        return service(request)
+
+    with ExitStack() as stack:
+        stack.enter_context(_HTTP_LOCK)
+        spool = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        for owner, name, value in (
+            (httpx.HTTPTransport, "handle_request", handle),
+            (_fetch, "_clock", lambda: clock),
+            (_fetch, "_ARCGIS", _fetch._Spacing()),
+            (_captures, "_now", clock.now),
+            (_captures, "spool_root", lambda: spool),
+            (_store_captures, "spool_root", lambda: spool),
+            (_writer, "datetime", _following(clock)),
+        ):
+            stack.enter_context(mock.patch.object(owner, name, value))
+        yield
+
+
+def _add_pig(raw: StoreHandle, data: StoreHandle) -> None:
+    """
+    PIG-PIB's part of ``groundwater_pl``: its datasets synchronized, then built.
+
+    `sync_store` of the points and of the readings, then the night's harvest of
+    ``mwp_auto`` by watermark (``pace_until`` two minutes on, its day sealed), each
+    new, on a clock that starts at the probe's capture (`_pig_answered`); then the
+    readings series, the hourly series and the PIG catalog, each built new.
+    """
+    clock = _PigClock(_PIG_CAPTURED)
+    with _pig_answered(clock):
+        for key in (_PIG_POINTS, _PIG_READINGS):
+            report = sync_store(raw, datasets=[key])
+            _expect(key, ", ".join(item.status for item in report.items), "new")
+        until = (clock.now() + _PIG_PACE).astimezone().strftime("%H:%M")
+        night = sync_store(raw, datasets=[_PIG_OPERATIONAL], pace_until=until)
+        _expect(_PIG_OPERATIONAL, ", ".join(item.status for item in night.items), "new")
+        for key in (_PIG_READINGS, _PIG_SUBDAILY):
+            series = build_series(data, raw_root=raw, dataset=key)
+            _expect(f"{key}: series", series.status, "new")
+        catalog = build_catalog(data, raw_root=raw, provider="PIG")
+        _expect("PIG-PIB station catalog", catalog.status, "new")

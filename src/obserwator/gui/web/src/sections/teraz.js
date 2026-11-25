@@ -14,17 +14,18 @@
 // the tier's style, and the hours after it that the provider gives now (the live tail,
 // green), H with IMGW-PIB's warning and alarm levels, Q or T on a switch, over 3, 7 or 30
 // days or every stored hour; a reading that stands alone (a daily water temperature) is a
-// point. A ČHMÚ station has no current values: a hydrological one shows its chart where it
-// is served, else the section says so in the words of the server's answer
-// (`errors.no_current_chmu`) without asking it. The lines and terms of every answer (Nogat
-// DEV §20: S, P of danepubliczne.imgw.pl, H of hydro.imgw.pl, C and CP of ČHMÚ, those of
-// each tier of the chart) go to the view's strip (`ResultLines`).
+// point. A station of another provider (ČHMÚ, a provider fed by files) has no current
+// values: a hydrological one shows its chart where it is served, else the section says so
+// in the words of the server's answer (`errors.no_current_provider`, naming the provider)
+// without asking it. The lines and terms of every answer (Nogat DEV §20: S, P of
+// danepubliczne.imgw.pl, H of hydro.imgw.pl, C and CP of ČHMÚ, those of each tier of the
+// chart) go to the view's strip (`ResultLines`).
 
 import { api } from "../api.js";
 import { clock, measuredAt } from "../current.js";
 import { Chart, fmt, fmtDate, hourNumber, html, isoOfDay, lang, t, unit, useContext, useEffect, useMemo, useState } from "../lib.js";
 import { SymbolIcon, hydroState, meteoClass } from "../symbols.js";
-import { variableInfo } from "../words.js";
+import { providerName, variableInfo } from "../words.js";
 import { Figures, ResultLines, Section, Seg } from "./common.js";
 
 const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
@@ -325,9 +326,10 @@ function Teraz({ station }) {
   }, [report, state.doc]);
   const refresh = html`<button type="button" class="btn sm" disabled=${state.loading} onClick=${() => setRound(round + 1)}>${t("station.now.refresh")}</button>`;
   if (!imgw) {
+    const provider = providerName(station.provider);
     return chart
       ? html`<${NowChart} station=${station} round=${round} /><div class="btn-row">${refresh}</div>`
-      : html`<p class="note-box">${t("errors.no_current_chmu")} ${t("station.now.chmu_note")}</p>`;
+      : html`<p class="note-box">${t("errors.no_current_provider", { provider })} ${t("station.now.provider_note", { provider })}</p>`;
   }
   const doc = state.doc;
   const hydro = station.properties.kind === "hydro";

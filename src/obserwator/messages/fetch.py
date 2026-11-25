@@ -123,4 +123,31 @@ MESSAGES = {
         "The capture spool did not keep the answer of {url}",
         "Bufor zapisów nie przyjął odpowiedzi z {url}",
     ),
+    # The file a service publishes now (PIG-PIB's tables, ADR-035) is another one.
+    "other_file_published": Text(
+        "{asked}: the service publishes {published} now, so the file asked is not "
+        "published",
+        "{asked}: serwis publikuje teraz {published}, więc żądanego pliku nie "
+        "opublikowano",
+    ),
+    # PIG-PIB's ArcGIS queries (ADR-035): an answer that is no query's.
+    "arcgis_not_json": Text(
+        "The {source} server answered no JSON (an access block page?): {url}",
+        "Serwer {source} nie odpowiedział JSON-em (strona blokady dostępu?): {url}",
+    ),
+    "arcgis_error": Text(
+        "The {source} server answered an error {code}: {text} ({url})",
+        "Serwer {source} odpowiedział błędem {code}: {text} ({url})",
+    ),
+    "arcgis_not_page": Text(
+        "The {source} server answered no page of rows: {url}",
+        "Serwer {source} nie odpowiedział stroną wierszy: {url}",
+    ),
+    "arcgis_count_changed": Text(
+        "The rows of {url} changed during the run, twice: {before} before, {rows} "
+        "read, {after} after; nothing was written, the next run asks again",
+        "Wiersze {url} zmieniły się w trakcie pobierania, dwukrotnie: {before} przed, "
+        "{rows} odczytanych, {after} po; nic nie zapisano, następne uruchomienie "
+        "zapyta ponownie",
+    ),
 }

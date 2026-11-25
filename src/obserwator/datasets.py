@@ -10,10 +10,24 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Literal
 from urllib.parse import quote
 
-from obserwator._environment import PREFIX
-from obserwator.attribution import Attribution, attribution, provider_origin
+from obserwator._environment import PREFIX, config_file
+from obserwator._provider_files import (
+    CODE_GRAMMAR,
+    STATIONS_FILE,
+    FileDataset,
+    LoadedFiles,
+    ProviderFile,
+    load_provider_files,
+)
+from obserwator.attribution import (
+    ORIGINS,
+    Attribution,
+    attribution,
+    declare_origin,
+    provider_origin,
+)
 from obserwator.exceptions import ObserwatorValidationError
-from obserwator.messages import Message, message
+from obserwator.messages import Message, localize, message
 from obserwator.urls import IMGW_PUBLIC_DATA_URL
 
 if TYPE_CHECKING:
@@ -25,8 +39,16 @@ YearsArg = int | str | Iterable[int | str]
 MonthsArg = int | str | Iterable[int | str]
 """Months 1-12: ``3``, ``"3"``, ``"1,2"`` or ``[1, "2"]``."""
 
-STATION_CODE_PATTERN = r"^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
-"""Station code of any provider: nine IMGW-PIB digits or a WIGOS identifier (ČHMÚ)."""
+STATION_CODE_PATTERN = (
+    rf"^([0-9]{{9}}|0-[0-9]{{1,5}}-[0-9]{{1,5}}-[0-9A-Z]{{1,16}}|[1-9][0-9]{{0,5}}"
+    rf"|{CODE_GRAMMAR})$"
+)
+"""
+Station code of any provider: nine IMGW-PIB digits, a WIGOS identifier (ČHMÚ), the
+``ID`` of a PIG-PIB point (one to six digits without a leading zero, ADR-035) or
+``<id>-<code>``: ``GDANSKIEWODY-<no>`` (ADR-034) or that of a provider fed by files
+(ADR-033). The grammars are disjoint, so a code names its provider.
+"""
 
 DATASET_KEY_PATTERN = r"^[a-z]{2}\.[a-z][a-z0-9]*\.[a-z][a-z0-9_]*$"
 """Dataset key ``<country>.<key prefix>.<name>[_<variant>]`` of any provider (IMGW-20)."""
@@ -299,6 +321,21 @@ class ProviderDescriptor:
         """
         return self.id.lower()
 
+    @property
+    def source_class(self) -> Literal["nmhs", "other"]:
+        """
+        Who operates the provider's network (Nogat plan 2026-11-20, P11).
+
+        Returns
+        -------
+        {"nmhs", "other"}
+            ``nmhs`` for a national meteorological and hydrological service
+            (IMGW-PIB, ČHMÚ), ``other`` for every other operator, a provider fed by
+            files among them (ADR-033); its adapter's ``source_class``. A property,
+            so the ``obserwator-provider/1`` document is unchanged.
+        """
+        return self.adapter.source_class
+
 
 @dataclass(frozen=True)
 class DatasetDescriptor:
@@ -356,8 +393,11 @@ class DatasetDescriptor:
         What one source file covers: ``"country"`` the whole country,
         ``"station_year"`` one station and year, ``"station_month"`` one station and
         calendar month, ``"station"`` one station (ADR-032), ``"station_element"``
-        the whole history of one station and element, ``"country_day"`` the answers
-        of one UTC day for the whole network (a capture version, ADR-030).
+        the whole history of one station and element, ``"station_element_month"`` one
+        station, element and calendar month (Gdańskie Wody's answers of the month's
+        days gathered into one file, ADR-034), ``"country_day"`` the answers of one
+        UTC day for the whole network (a capture version, ADR-030); of a series built
+        from ``inputs``, the scope of their files.
     variable_notes : Mapping of str to str, optional
         Convention of each variable (English catalog messages), e.g. the day of
         a sum; the series metadata keeps the English text.
@@ -390,10 +430,13 @@ class DatasetDescriptor:
         ``inputs`` (ADR-031): it may hold operational hours, and each of its
         points carries its own tier.
     inputs : tuple of str or None, optional
-        The datasets a sub-daily series is built from (ADR-031), highest tier
-        first: a point of one replaces that of a later one; None for every other
-        dataset (an optional field of ``obserwator-dataset/1``, written only when
-        set).
+        The datasets a series is built from, when it has no files of its own: of a
+        sub-daily series (ADR-031), highest tier first, a point of one replacing that
+        of a later one; of Gdańskie Wody's daily series (ADR-034), its month files,
+        whose daily values its parser gives. The provider's adapter says which of
+        their files a series reads (`ProviderAdapter.series_reads`). None for every
+        other dataset (an optional field of ``obserwator-dataset/1``, written only
+        when set).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-dataset/1"
@@ -431,6 +474,7 @@ class DatasetDescriptor:
         "station_month",
         "station",
         "station_element",
+        "station_element_month",
         "country_day",
     ] = "country"
     variable_notes: Mapping[str, str] = field(default_factory=dict)
@@ -568,9 +612,124 @@ _IMGW_SEMIANNUAL_NOTES = {
     for name, statistic in _IMGW_STATISTICS.items()
 }
 _IMGW_SNOW_COVER = message("datasets.note_imgw_snow_cover")
+# Gdańskie Wody (ADR-034): the variables of its quantities (`obserwator._parsing.
+# gdanskiewody.QUANTITIES`), with the units of the provider's public tables (checked
+# 2026-11-25); the water level in m a.s.l. is H_asl (plan P7). A day has no direction of
+# the wind, and its air temperature is the mean of the provider's day.
+_GDANSKIEWODY = "GDANSKIEWODY"
+_GDANSKIEWODY_STATIONS = "pl.gdanskiewody.station_list"
+_GDANSKIEWODY_MEASUREMENTS = "pl.gdanskiewody.measurements"
+_GDANSKIEWODY_FIRST_YEAR = 2005
+_GDANSKIEWODY_CODE = r"GDANSKIEWODY-[1-9][0-9]{0,2}"
+_GDANSKIEWODY_LICENSE = License(
+    "gdanskiewody-terms-unknown",
+    message("legal.gdanskiewody_attribution"),
+    "https://pomiary.gdanskiewody.pl/account/signup",
+)
+_GDANSKIEWODY_HYDRO = {"H_asl": "m", "Q": "m3/s", "T": "degC"}
+_GDANSKIEWODY_METEO_HOURLY = {
+    "P": "mm",
+    "Tair": "degC",
+    "wind_speed": "m/s",
+    "wind_direction": "deg",
+    "pressure": "hPa",
+    "humidity": "%",
+    "irradiance": "W/m2",
+}
+_GDANSKIEWODY_METEO_DAILY = {
+    "P": "mm",
+    "Tmean": "degC",
+    "wind_speed": "m/s",
+    "pressure": "hPa",
+    "humidity": "%",
+    "irradiance": "W/m2",
+}
+# PIG-PIB (ADR-035): the groundwater monitoring of the state geological service
+# (Monitoring Wód Podziemnych) of cbdgmapa.pgi.gov.pl's ArcGIS services
+# ``hydrogeologia/mwp`` (the points and the MWP database) and ``hydrogeologia/mwp_auto``
+# (the automatic measurements), CC BY 4.0 by dane.gov.pl's dataset 170. Its W line has
+# a period and a date filled per product (`obserwator.attribution`); the license's
+# formula keeps the placeholders of the standard's table.
+_PIG = "PIG"
+_PIG_STATIONS = "pl.pig.groundwater_stations"
+_PIG_READINGS = "pl.pig.groundwater_readings"
+_PIG_OPERATIONAL = "pl.pig.groundwater_operational"
+_PIG_CODE = r"[1-9][0-9]{0,5}"
+# The canonical form of a capture of ArcGIS pages: the rows without OBJECTID and paging
+# (`obserwator.store.content.CONTENT_FORMS["pig-json/1"]`).
+_PIG_JSON = "pig-json/1"
+_PIG_VOLATILE = ("OBJECTID",)
+_PIG_LICENSE = License(
+    "CC-BY-4.0",
+    message("legal.pig_attribution", period="<period>", date="<date>"),
+    "https://creativecommons.org/licenses/by/4.0/",
+    "https://www.pgi.gov.pl/rejestry-i-bazy-danych-geologicznych/zasady-korzystania-z-isp.html",
+)
+_PIG_READING_NOTES = {
+    "depth_to_water": message("datasets.note_pig_depth_to_water"),
+    "H_asl": message("datasets.note_pig_h_asl"),
+    "spring_yield": message("datasets.note_pig_spring_yield"),
+}
+_PIG_HOURLY_NOTES = {
+    "depth_to_water": message("datasets.note_pig_hourly_depth"),
+    "H_asl": message("datasets.note_pig_hourly_h_asl"),
+}
 
 
-_DATASETS = (
+def _gdanskiewody_series(
+    kind: Kind,
+    time_unit: Literal["hour", "day"],
+    variables: Mapping[str, str],
+    title: Message,
+) -> DatasetDescriptor:
+    """
+    A series of Gdańskie Wody, built from the stored month files (ADR-034).
+
+    The hourly series (ADR-031) holds each hour the provider labels with its start;
+    the daily one the sum (``P``) or the mean of the 24 hours of the provider's day,
+    06:00 to 05:59 UTC (P5, `obserwator._parsing.gdanskiewody.daily_records`).
+    """
+    daily = time_unit == "day"
+    notes = {
+        name: message(
+            (
+                "datasets.note_gdanskiewody_daily_sum"
+                if name == "P"
+                else "datasets.note_gdanskiewody_daily_mean"
+            )
+            if daily
+            else (
+                "datasets.note_gdanskiewody_h_asl"
+                if name == "H_asl"
+                else "datasets.note_gdanskiewody_hourly"
+            )
+        )
+        for name in variables
+    }
+    return DatasetDescriptor(
+        key=f"pl.gdanskiewody.{kind}_{'daily' if daily else 'hourly'}",
+        slug=f"gdanskiewody_{kind}_{'daily' if daily else 'hourly'}",
+        kind=kind,
+        title=title,
+        server_dir=None,
+        parser="parse_gdanskiewody_month" if daily else None,
+        variables=dict(variables),
+        time_unit=time_unit,
+        year_type="calendar",
+        first_year=_GDANSKIEWODY_FIRST_YEAR,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+        archive_scope="station_element_month",
+        variable_notes=notes,
+        tier="operational",
+        inputs=(_GDANSKIEWODY_MEASUREMENTS,),
+    )
+
+
+_DATASETS: tuple[DatasetDescriptor, ...] = (
     DatasetDescriptor(
         key="pl.imgw.hydro_daily",
         slug="imgw_hydro_daily",
@@ -1652,6 +1811,192 @@ _DATASETS = (
         tier="operational",
         inputs=("cz.chmu.hydro_hourly", "cz.chmu.hydro_recent"),
     ),
+    # Gdańskie Wody (ADR-034): the provider's station list, the month files of each
+    # station's quantity gathered from its answers of a day (plan P6) and the series
+    # built from them, hourly (ADR-031) and of the provider's day (P5). Raw data
+    # without verification by the provider's word (tier ``operational``).
+    DatasetDescriptor(
+        key=_GDANSKIEWODY_STATIONS,
+        slug="gdanskiewody_station_list",
+        kind=None,
+        title=message("datasets.title_gdanskiewody_station_list"),
+        server_dir="rest",
+        parser="parse_gdanskiewody_stations",
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+    ),
+    DatasetDescriptor(
+        key=_GDANSKIEWODY_MEASUREMENTS,
+        slug="gdanskiewody_measurements",
+        kind=None,
+        title=message("datasets.title_gdanskiewody_measurements"),
+        server_dir="rest/measurements",
+        parser=None,
+        variables={**_GDANSKIEWODY_HYDRO, **_GDANSKIEWODY_METEO_HOURLY},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=_GDANSKIEWODY_FIRST_YEAR,
+        update_signal="none",
+        license=_GDANSKIEWODY_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_GDANSKIEWODY,
+        archive_scope="station_element_month",
+        tier="operational",
+    ),
+    _gdanskiewody_series(
+        "hydro",
+        "hour",
+        _GDANSKIEWODY_HYDRO,
+        message("datasets.title_gdanskiewody_hydro_hourly"),
+    ),
+    _gdanskiewody_series(
+        "meteo",
+        "hour",
+        _GDANSKIEWODY_METEO_HOURLY,
+        message("datasets.title_gdanskiewody_meteo_hourly"),
+    ),
+    _gdanskiewody_series(
+        "hydro",
+        "day",
+        _GDANSKIEWODY_HYDRO,
+        message("datasets.title_gdanskiewody_hydro_daily"),
+    ),
+    _gdanskiewody_series(
+        "meteo",
+        "day",
+        _GDANSKIEWODY_METEO_DAILY,
+        message("datasets.title_gdanskiewody_meteo_daily"),
+    ),
+    # PIG-PIB (ADR-035): the points, the readings and the two tables of the MWP
+    # database (verified: PIG-PIB checks them before they enter it), each version the
+    # capture of one run's pages, compared by content (``pig-json/1``), the readings
+    # one file per calendar month of their rows; the automatic hourly measurements of
+    # ``mwp_auto`` (operational, „bez walidacji”), harvested each night by ``OBJECTID``
+    # watermark into the night's capture, and the hourly series built from them.
+    DatasetDescriptor(
+        key=_PIG_STATIONS,
+        slug="pig_groundwater_stations",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_stations"),
+        server_dir="mwp/MapServer/0",
+        parser="parse_pig_stations",
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key=_PIG_READINGS,
+        slug="pig_groundwater_readings",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_readings"),
+        server_dir="mwp/MapServer/1",
+        parser="parse_pig_readings",
+        variables={"depth_to_water": "m", "H_asl": "m", "spring_yield": "l/s"},
+        time_unit="week",
+        year_type="hydrological",
+        first_year=1965,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        variable_notes=_PIG_READING_NOTES,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_chemistry",
+        slug="pig_groundwater_chemistry",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_chemistry"),
+        server_dir="mwp/MapServer/2",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_watchlist",
+        slug="pig_groundwater_watchlist",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_watchlist"),
+        server_dir="mwp/MapServer/3",
+        parser=None,
+        variables={},
+        time_unit="snapshot",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        content_form=_PIG_JSON,
+        volatile_fields=_PIG_VOLATILE,
+    ),
+    DatasetDescriptor(
+        key=_PIG_OPERATIONAL,
+        slug="pig_groundwater_operational",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_operational"),
+        server_dir="mwp_auto/MapServer",
+        parser=None,
+        variables={"depth_to_water": "m"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=None,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        archive_scope="country_day",
+        tier="operational",
+    ),
+    DatasetDescriptor(
+        key="pl.pig.groundwater_subdaily",
+        slug="pig_groundwater_subdaily",
+        kind="groundwater",
+        title=message("datasets.title_pig_groundwater_subdaily"),
+        server_dir=None,
+        parser=None,
+        variables={"depth_to_water": "m", "H_asl": "m"},
+        time_unit="hour",
+        year_type="calendar",
+        first_year=2015,
+        update_signal="none",
+        license=_PIG_LICENSE,
+        legacy_alias=None,
+        in_store=True,
+        provider=_PIG,
+        variable_notes=_PIG_HOURLY_NOTES,
+        tier="operational",
+        inputs=(_PIG_OPERATIONAL,),
+    ),
 )
 # Datasets declared ahead of the step that serves them (ADR-030 D8): in the registry
 # with their tier, listed by ``datasets(pending=True)`` only. No command, MCP tool,
@@ -1683,8 +2028,153 @@ _PENDING = (
         tier="operational",
     ),
 )
+
+# Providers fed by files (ADR-033; Nogat plan 2026-11-21, I13): an operator's own
+# network declared in the provider files ``nogat.toml`` lists, read once as the
+# registry is imported (`obserwator._provider_files`). A valid file adds a provider
+# after the packaged ones, with its station file and its daily datasets after theirs,
+# and declares the origin of its lines (`obserwator.attribution.declare_origin`); a
+# file with a problem adds nothing (`provider_file_problems`).
+_FILES_DIRECTORY = "files"
+"""The directory of the raw root below ``archives/versions`` of every provider fed by files."""
+
+
+def _daily_variables() -> dict[str, dict[str, str]]:
+    """The variables of the daily series of each kind of station, with their units."""
+    found: dict[str, dict[str, str]] = {}
+    for descriptor in _DATASETS:
+        if (
+            descriptor.time_unit == "day"
+            and descriptor.kind is not None
+            and descriptor.parser is not None
+        ):
+            for name, unit in descriptor.variables.items():
+                found.setdefault(descriptor.kind, {}).setdefault(name, unit)
+    return found
+
+
+def _file_title(provider: ProviderFile, dataset: FileDataset) -> Message:
+    """The title of a dataset of a provider fed by files, with its tier when unverified."""
+    title = provider.dataset_title(dataset.kind)
+    if provider.tier == "verified":
+        return title
+    return message("provider_files.title_unverified", title=title)
+
+
+def _file_datasets(provider: ProviderFile) -> tuple[DatasetDescriptor, ...]:
+    """
+    The datasets of a provider fed by files: its station file, then its daily series.
+
+    Their files lie in the raw root below ``files/<acronym>/`` (`_FILES_DIRECTORY`):
+    ``station_list/stations.geojson`` and ``<name>/<station code>.csv`` (or
+    ``.parquet``), one file per station with its whole record.
+    """
+    licence = License(
+        provider.license_id, provider.line, provider.license_url, provider.terms_url
+    )
+    base = f"{_FILES_DIRECTORY}/{provider.acronym}"
+    stations = DatasetDescriptor(
+        key=f"{provider.key_prefix}.station_list",
+        slug=f"{provider.acronym}_station_list",
+        kind=None,
+        title=message(
+            "provider_files.title_station_list", provider=provider.short_name
+        ),
+        server_dir=f"{base}/station_list",
+        parser=None,
+        variables={},
+        time_unit="station_list",
+        year_type="none",
+        first_year=None,
+        update_signal="none",
+        license=licence,
+        legacy_alias=None,
+        in_store=True,
+        provider=provider.id,
+    )
+    return (
+        stations,
+        *(
+            DatasetDescriptor(
+                key=f"{provider.key_prefix}.{dataset.name}",
+                slug=f"{provider.acronym}_{dataset.name}",
+                kind=dataset.kind,
+                title=_file_title(provider, dataset),
+                server_dir=f"{base}/{dataset.name}",
+                parser="parse_series_export",
+                variables=dict(dataset.variables),
+                time_unit="day",
+                year_type=dataset.year_type,
+                first_year=None,
+                update_signal="none",
+                license=licence,
+                legacy_alias=None,
+                in_store=True,
+                provider=provider.id,
+                archive_scope="station",
+                tier=provider.tier,
+            )
+            for dataset in provider.datasets
+        ),
+    )
+
+
+def _file_provider(provider: ProviderFile) -> ProviderDescriptor:
+    """The registry entry of a provider fed by files."""
+    return ProviderDescriptor(
+        id=provider.id,
+        short_name=provider.short_name,
+        name=provider.name,
+        country=provider.country,
+        key_prefix=provider.key_prefix,
+        base_url="",
+        license=License(
+            provider.license_id, provider.line, provider.license_url, provider.terms_url
+        ),
+        processed_attribution=provider.processed or "",
+        notice=message(
+            "provider_files.provider_notice",
+            license=provider.license_id,
+            url=provider.license_url,
+        ),
+        station_code_pattern=provider.station_code_pattern,
+        datasets=tuple(item.key for item in _file_datasets(provider)),
+    )
+
+
+def _load_files() -> LoadedFiles:
+    """
+    Read the provider files of ``nogat.toml`` and declare the origins of their lines.
+
+    A provider file may take no id of a packaged provider (nor its old ids) and no
+    name of an attribution origin.
+    """
+    loaded = load_provider_files(
+        config_file(),
+        reserved=frozenset(
+            (
+                *ORIGINS,
+                "imgw",
+                "chmu",
+                *(alias.lower() for alias in PROVIDER_ID_ALIASES),
+            )
+        ),
+        variables=_daily_variables(),
+    )
+    # P8: every provider fed by files is of the class "other" (no national service),
+    # and its notice follows its lines in every product (the Polish text, as the lines).
+    notice = localize(message("datasets.source_notice_other"), "pl")
+    for provider in loaded.files:
+        declare_origin(provider.acronym, provider.line, provider.processed, notice)
+    return loaded
+
+
+_FILES = _load_files()
+_DATASETS = _DATASETS + tuple(
+    descriptor for item in _FILES.files for descriptor in _file_datasets(item)
+)
 _REGISTRY = _DATASETS + _PENDING
-_PROVIDERS = (
+_PROVIDERS: tuple[ProviderDescriptor, ...] = (
     ProviderDescriptor(
         id="IMGW",
         short_name="IMGW-PIB",
@@ -1714,7 +2204,41 @@ _PROVIDERS = (
         station_code_pattern=rf"^{_WIGOS_CODE}$",
         datasets=tuple(item.key for item in _DATASETS if item.provider == "CHMU"),
     ),
+    # Gdańskie Wody (ADR-034): an API with a key (P3), terms not known yet, so its
+    # lines are drafts (`obserwator.attribution.provisional`) and no server serves it.
+    ProviderDescriptor(
+        id=_GDANSKIEWODY,
+        short_name=message("legal.gdanskiewody_short_name"),
+        name=message("legal.gdanskiewody_name"),
+        country="PL",
+        key_prefix="pl.gdanskiewody",
+        base_url="https://pomiary.gdanskiewody.pl/",
+        license=_GDANSKIEWODY_LICENSE,
+        processed_attribution=message("legal.gdanskiewody_processed_attribution"),
+        notice=message("datasets.provider_notice_gdanskiewody"),
+        station_code_pattern=rf"^{_GDANSKIEWODY_CODE}$",
+        datasets=tuple(
+            item.key for item in _DATASETS if item.provider == _GDANSKIEWODY
+        ),
+        credential=ProviderCredential("GDANSKIE_WODY"),
+    ),
+    # PIG-PIB (ADR-035): the state geological service's groundwater monitoring, open
+    # ArcGIS REST without a key, CC BY 4.0 by dane.gov.pl's dataset 170.
+    ProviderDescriptor(
+        id=_PIG,
+        short_name=message("legal.pig_short_name"),
+        name=message("legal.pig_name"),
+        country="PL",
+        key_prefix="pl.pig",
+        base_url="https://cbdgmapa.pgi.gov.pl/arcgis/rest/services/hydrogeologia/",
+        license=_PIG_LICENSE,
+        processed_attribution=message("legal.pig_processed_attribution"),
+        notice=message("datasets.provider_notice_pig"),
+        station_code_pattern=rf"^{_PIG_CODE}$",
+        datasets=tuple(item.key for item in _DATASETS if item.provider == _PIG),
+    ),
 )
+_PROVIDERS = _PROVIDERS + tuple(_file_provider(item) for item in _FILES.files)
 # Lookup by id and by key prefix.
 _PROVIDER_BY_NAME = {
     name: provider
@@ -1749,9 +2273,45 @@ def providers() -> tuple[ProviderDescriptor, ...]:
     Returns
     -------
     tuple of ProviderDescriptor
-        ``IMGW``, then ``CHMU`` (a fixed order).
+        ``IMGW``, then ``CHMU`` (a fixed order), then the providers fed by files of
+        ``nogat.toml`` in the order of its ``provider_files`` (ADR-033).
     """
     return _PROVIDERS
+
+
+def provider_files() -> LoadedFiles:
+    """
+    The provider files ``nogat.toml`` lists, as the registry read them (ADR-033).
+
+    Read once, when this module was imported: a change of a file is seen by the next
+    process.
+
+    Returns
+    -------
+    LoadedFiles
+        The files listed, the valid ones (each a provider of `providers`) and the
+        problem of each other (an `ObserwatorValidationError` naming the field in
+        ``details.option`` and the file in ``details.path``), which ``config show``
+        reports and which refuses the start of both servers and every ``store
+        import``.
+    """
+    return _FILES
+
+
+def check_provider_files() -> None:
+    """
+    Refuse a deployment whose provider files cannot all be used (fail closed, ADR-033).
+
+    Raises
+    ------
+    ObserwatorValidationError
+        The first problem of `provider_files`.
+    """
+    if _FILES.problems:
+        problem = _FILES.problems[0]
+        raise ObserwatorValidationError(
+            problem.detail, details=problem.details, hint=problem.hint
+        )
 
 
 def get_provider(provider: str, /) -> ProviderDescriptor:
@@ -2375,6 +2935,14 @@ _STATION_FILES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "cz.chmu.meteo_now": (),
         "cz.chmu.groundwater_stations": ("meta1.json",),
         "cz.chmu.groundwater_now": ("meta1.json",),
+        _GDANSKIEWODY_STATIONS: ("stations",),
+        # The capture of the pages of PIG-PIB's points layer (ADR-035).
+        _PIG_STATIONS: ("MWP_points.jsonl.gz",),
+        # The station file of each provider fed by files (ADR-033).
+        **{
+            f"{provider.key_prefix}.station_list": (STATIONS_FILE,)
+            for provider in _FILES.files
+        },
     }
 )
 
@@ -2394,10 +2962,14 @@ def _station_file(descriptor: DatasetDescriptor, name: str) -> ArchiveFile | Non
 def _station_files(dataset: str, /) -> tuple[ArchiveFile, ...]:
     """The files with a fixed name of a station-source dataset (none for ``cz.chmu.meteo_now``)."""
     descriptor = get_dataset(dataset)
-    return tuple(
-        _archive(descriptor, f"{descriptor.server_dir}/{name}", None)
-        for name in _STATION_FILES[descriptor.key]
-    )
+    found: list[ArchiveFile] = []
+    for name in _STATION_FILES[descriptor.key]:
+        # Each provider's adapter names its files (a provider fed by files, the path
+        # of the operator's file).
+        archive = _station_file(descriptor, name)
+        assert archive is not None  # a fixed name is a file of the dataset
+        found.append(archive)
+    return tuple(found)
 
 
 def station_source_files(*, provider: str = "IMGW") -> tuple[ArchiveFile, ArchiveFile]:

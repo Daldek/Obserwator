@@ -15,6 +15,7 @@ from obserwator.config import (
     check_root_layout,
     store_root,
 )
+from obserwator.datasets import check_provider_files
 from obserwator.exceptions import ObserwatorValidationError
 from obserwator.instance import Instance, load_instance
 from obserwator.messages import message
@@ -73,8 +74,10 @@ class GuiConfig:
         public and serves ``regulamin.html`` (DEV-15.7); None otherwise.
     instance : Instance or None
         The deployment's ``[obserwator.instance]``, checked (ADR-025): what the GUI
-        serves, its featured provider, area, start view, title, logo and regulamin;
-        None without the section (everything is served, as before).
+        serves, its featured provider, area, start view, title, logo and regulamin.
+        Without the section the servers' own filter (`load_instance`, ADR-034): an
+        undeclared instance that leaves out the providers off by default; None only
+        while no provider is off by default (everything is served, as before).
     """
 
     root: Path
@@ -119,13 +122,16 @@ class GuiConfig:
         Raises
         ------
         ObserwatorError
-            ``validation_error`` for an unusable setting: the basemap's address, any
-            problem of ``[obserwator.instance]`` (`load_instance`) and, with that
-            section, a weak admin key (`check_credentials`) or an operator's regulamin
-            the deployment cannot fill; ``store_unavailable`` for a data root of a
-            layout this version does not read (`check_root_layout`). The server does
-            not start (ADR-025, I7, I10, I12).
+            ``validation_error`` for an unusable setting: a provider file of
+            ``nogat.toml`` that cannot be used (`check_provider_files`, ADR-033), the
+            basemap's address, any problem of ``[obserwator.instance]``
+            (`load_instance`) and, with that section, a weak admin key
+            (`check_credentials`) or an operator's regulamin the deployment cannot
+            fill; ``store_unavailable`` for a data root of a layout this version does
+            not read (`check_root_layout`). The server does not start (ADR-025, I7,
+            I10, I12).
         """
+        check_provider_files()
         settings = Settings()
         chosen = (
             root if root is not None else store_root(kind="data").root
@@ -147,7 +153,9 @@ class GuiConfig:
             )
         instance = load_instance()
         check_root_layout(chosen.absolute())
-        if instance is not None:
+        # The strict checks belong to an operator's declared section, not to the
+        # filter of the providers off by default (ADR-034).
+        if instance is not None and instance.declared:
             check_credentials("admin", strict=True)
         operator = environment.operator()
         config = cls(

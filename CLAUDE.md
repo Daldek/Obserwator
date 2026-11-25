@@ -4,7 +4,7 @@ Instructions for Claude Code (claude.ai/code) working in this repository. Refere
 
 ## 1. Project
 
-Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.2.1, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog`, `_borders`, `_http_headers` and `_file_names` for settings, JSON, Hydrolog's program, the packaged borders, and the security headers and download names (Nogat DEV-19.21) shared with the REST server). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v3.3.0, profiles `tool` and `app`) is a Python library, CLI (`obserwator`), REST API, MCP server and web GUI (`obserwator gui serve`, extra `gui`, ADR-013) for public hydro-meteorological data of IMGW-PIB (Poland) and, since 3.0.0, ČHMÚ (Czechia), of an operator's own networks declared in provider files beside `nogat.toml` (ADR-033), of Gdańskie Wody, the first provider that is no national service (ADR-034; off in the servers by default, its terms unknown), and of PIG-PIB's groundwater monitoring, each monthly publication kept before its service replaces it (ADR-035), with an optional versioned local store in two roots: a raw root of the downloaded source archives and a data root of the series, catalogs and analyses built from them (ADR-017). Python, CLI, REST and MCP are generated from one command catalog (`obserwator.commands`, ADR-002); the GUI reads data only through public functions (it uses the internal helpers `_environment`, `_jsonable`, `_hydrolog`, `_borders`, `_http_headers` and `_file_names` for settings, JSON, Hydrolog's program, the packaged borders, and the security headers and download names (Nogat DEV-19.21) shared with the REST server). Overview: [README.md](README.md); architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 2. Critical rules
 
@@ -14,7 +14,7 @@ Obserwator (distribution `obserwator`, installed from Git by tag, not on PyPI; v
 - Keep the contract Python = CLI = REST = MCP (`tests/contract/`); one option name per parameter, one envelope `obserwator-result/1`, one error registry `ERROR_CODES`.
 - Never run tests with the global Python (a non-editable `obserwator` there shadows `src/`): use `uv run`.
 - `OBSERWATOR_STORE_WRITE_TOKEN` is a credential: from the environment or `.env` only, never from `nogat.toml`, never printed. So is the GUI's admin key (Nogat DEV-15.13, ADR-020): `OBSERWATOR_ADMIN_API_KEY` or the file named by `OBSERWATOR_ADMIN_API_KEY_FILE`, read on every admin request, never generated, logged or taken from `nogat.toml`; it is not one of the REST API keys of `obserwator admin`.
-- A data provider's API key is a credential too (Nogat plan 2026-11-20, P3, P4): a provider whose requests need one declares `ProviderDescriptor.credential` (`ProviderCredential`), and its key comes from `OBSERWATOR_<STEM>_API_KEY` or the file of `…_API_KEY_FILE` through `config.provider_key` only (environment or `.env`, never `nogat.toml`, never logged, never in a URL, envelope or sidecar); `config show` reports it `present`/`missing`. A missing key is `forbidden` with `details.reason` `missing_credentials`, a refused one `invalid_credentials` (`config.credential_error`), each with `details.provider` and a hint naming the variable.
+- A data provider's API key is a credential too (Nogat plan 2026-11-20, P3, P4): a provider whose requests need one declares `ProviderDescriptor.credential` (`ProviderCredential`; Gdańskie Wody's stem `GDANSKIE_WODY`), and its key comes from `OBSERWATOR_<STEM>_API_KEY` or the file of `…_API_KEY_FILE` through `config.provider_key` only (environment or `.env`, never `nogat.toml`, never logged, never in a URL, envelope or sidecar); `config show` reports it `present`/`missing`. A missing key is `forbidden` with `details.reason` `missing_credentials`, a refused one `invalid_credentials` (`config.credential_error`), each with `details.provider` and a hint naming the variable. Tests never ask a provider with a key outside `@pytest.mark.live` tests that skip without it.
 - Text for a person (an error `detail`, a notice, a progress or plan line, a printed line, a command description or option help) is never inline: it is an entry of `obserwator.messages.<area>` (`Text(en, pl)`, English first) rendered by `message("<area>.<name>", value=…)` (ADR-006); `tests/unit/test_messages.py` checks both languages, the call sites and that no Polish literal is left outside the catalog.
 - Every functional change updates the Markdown docs, docstrings and OpenAPI where affected; no change without tests.
 - Approvals (DEV-3.3): without the author's approval in the current session never merge a pull request, create or move tags, publish a release, force-push a shared branch or rewrite the history of `main`/`develop`. A change of a public interface or across more than one module starts with a plan approved by the author (DEV-17.4).
@@ -44,17 +44,18 @@ Extras: `obserwator[cli|api|store|mcp|gui|pandas|full]` (install lines in the RE
 ```
 src/obserwator/
 ├── __init__.py, fetch.py, models.py, stations.py, datasets.py, urls.py, parsers.py   # PUBLIC API (single __all__)
-├── commands.py           # command catalog (36 commands), run_command, command_schema
+├── commands.py           # command catalog (37 commands), run_command, command_schema
 ├── agent_guide.py        # AGENTS.md / llms.txt generator, MCP instructions
 ├── coverage.py, exceptions.py (ERROR_CODES), error_report.py, output.py, testing.py, config.py, reference_data.py
 ├── captures.py           # captures of current data (ADR-030): the spool in state_dir, [obserwator.capture], current poll
 ├── nogat_logging.py      # Nogat's server logs: reference module, byte copy, never edited (ADR-019)
 ├── attribution.py        # provider attribution lines and terms notice of every product (ADR-012)
-├── providers/            # one adapter per provider behind the ProviderAdapter protocol (ADR-029): pl/imgw.py, cz/chmu.py
+├── providers/            # one adapter per provider behind the ProviderAdapter protocol (ADR-029): pl/imgw.py, cz/chmu.py, pl/gdanskiewody.py (Gdańskie Wody, ADR-034), pl/pig.py (PIG-PIB, ADR-035), files.py (every provider fed by files, ADR-033)
+├── _provider_files.py    # provider files of [obserwator] provider_files in nogat.toml (ADR-033): load_provider_files, ProviderFile
 ├── messages/             # message catalog: English text with a Polish variant per key (ADR-006); gui/ = the GUI's texts
-├── _parsing/             # IMGW-PIB and ČHMÚ file parsers
+├── _parsing/             # IMGW-PIB, ČHMÚ, Gdańskie Wody and PIG-PIB file parsers; files.py: the station and series files of a provider fed by files
 ├── _data/                # borders, agents/ templates, packaged fixtures
-├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, captures (sealing the spool, ADR-030), series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
+├── store/                # versioned store, raw and data roots (ADR-017): writer, sync, captures (sealing the spool, ADR-030), files (store import, ADR-033), staging (store import --staging, ADR-035), series, catalog, pmaxtp, reader, export, analyses (Hydrolog's results, ADR-016)
 ├── api/                  # FastAPI REST (routes generated from the catalog)   [obserwator[api]]
 ├── cli/                  # Typer CLI (_dispatch.py = only catalog adapter)    [obserwator[cli]]
 ├── mcp/                  # MCP adapter (stdio and /mcp)                       [obserwator[mcp]]
@@ -74,7 +75,8 @@ Full tree with module descriptions: [docs/CODEBASE.md](docs/CODEBASE.md) ("Packa
 | Public API, command catalog, option and error tables, data sources and formats, configuration variables, deployment | [docs/CODEBASE.md](docs/CODEBASE.md) |
 | Running tests, test layout, markers | [docs/TESTING.md](docs/TESTING.md), plan in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) |
 | Product goals and requirements | [docs/PRD.md](docs/PRD.md) |
-| Why a design was chosen (ADR-001..032) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Why a design was chosen (ADR-001..035) | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| A provider's intake: terms, access, errors, stations, quantities, evidence | `docs/providers/` (one note per provider, e.g. [docs/providers/gdanskiewody.md](docs/providers/gdanskiewody.md)) |
 | Current state, next steps, open questions | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Release history, closed backlog, cross-project analysis | [docs/HISTORY.md](docs/HISTORY.md) |
 | What changed in a release, breaking list, migration tables | [docs/CHANGELOG.md](docs/CHANGELOG.md) |

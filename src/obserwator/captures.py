@@ -677,7 +677,9 @@ def keep_response(response: httpx.Response, /) -> Path | None:
 
     Called by the request paths of ``obserwator.fetch`` with every answer they
     receive (its status included) before it is checked; an answer of an archive or
-    a station list is no capture and is left alone.
+    a station list is no capture and is left alone. The address of a POST of a form
+    (an ArcGIS query of PIG-PIB, ADR-035) is its URL with the form as the query, so
+    the pages of one query tell apart.
 
     Parameters
     ----------
@@ -694,6 +696,12 @@ def keep_response(response: httpx.Response, /) -> Path | None:
         descriptor = capture_dataset(url)
         if descriptor is None:
             return None
+        request = response.request
+        if request.method == "POST" and request.headers.get(
+            "content-type", ""
+        ).startswith("application/x-www-form-urlencoded"):
+            form = request.content.decode("utf-8")
+            url = f"{url}{'&' if '?' in url else '?'}{form}"
         answer = Answer(
             url=strip_credentials(url, get_provider(descriptor.provider)),
             received_at=_now(),
@@ -1382,12 +1390,15 @@ def _harvest(
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
+    raw: Path | None = None,
 ) -> tuple[HarvestReport, list[OperationResult]]:
     """
     `harvest`, with its failures as the failed results of a ``store sync`` (no slot).
 
     One result per failed request, per skipped station, for a run stopped by
-    connection failures and for a station list that could not be read.
+    connection failures and for a station list that could not be read. ``raw`` is the
+    raw root the run seals into: a harvest by watermark (`ProviderAdapter.watermarked`,
+    PIG-PIB's ``mwp_auto``) asks for the rows after the last one it holds.
     """
     descriptor = get_dataset(dataset)
     if not _harvested(descriptor):
@@ -1427,6 +1438,7 @@ def _harvest(
                 stations=codes,
                 session=session,
                 on_notice=on_notice,
+                raw=raw,
             )
         except ObserwatorCancelledError:
             cancelled = True

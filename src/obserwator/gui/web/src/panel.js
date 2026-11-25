@@ -1,15 +1,20 @@
 // The right panel „Stacja” (GUI plan D11): the station's header (name, river, code, provider,
-// kind and, of a groundwater object, whether a bore or a spring, active or not), then its
-// sections as an accordion in the author's order: „Informacje o stacji”, „Pomiary bieżące”
-// (not of a groundwater object: no current data are served for one, ADR-032), „Dane
-// pomiarowo-obserwacyjne”, the hydrological (HYDRO_SECTIONS) or meteorological
-// (METEO_SECTIONS) analyses that apply to the station, then „Pobierz”. A registry entry is
-// `{id, title, component, available?, part?}`: `title` is a key of the catalog, drawn as
-// the card's header; the open card draws `component({station, session, analyses})`, where
-// `analyses` is the list of api/analyses/{code}, fetched here once; `available(station,
-// ids)`, given the Set of the list's ids, leaves out a section no analysis of which
-// applies. A station without series shows its catalog data and says the data root holds
-// none. A section that throws shows its error in its card; the others go on.
+// kind and, of a groundwater object, whether a bore or a spring, active or not; of a
+// provider that is no national meteorological and hydrological service, hydromet P11, the
+// chip „Inne źródło” first among its tags and under them P8's notice in the provider's own
+// words, the session's `source_notice`; the record of its series, a dataset's unverified data
+// labelled), then its sections as an accordion in the author's order: „Informacje o
+// stacji”, „Pomiary bieżące” (not of a groundwater object: no current data are served for
+// one, ADR-032), „Dane pomiarowo-obserwacyjne”, the hydrological (HYDRO_SECTIONS) or
+// meteorological (METEO_SECTIONS) analyses that apply to the station, then „Pobierz”; every
+// chart and table of a station of another source carries the chip „Inne źródło” too
+// (`ChartBadge` of charts/chart.js). A registry entry is `{id, title, component,
+// available?, part?}`: `title` is a key of the catalog, drawn as the card's header; the
+// open card draws `component({station, session, analyses})`, where `analyses` is the list
+// of api/analyses/{code}, fetched here once; `available(station, ids)`, given the Set of the
+// list's ids, leaves out a section no analysis of which applies. A station without series
+// shows its catalog data and says the data root holds none. A section that throws shows its
+// error in its card; the others go on.
 //
 // The panel hands the lines and terms of what it shows (Nogat DEV §20, DEV-20.5) to the
 // view's one strip (`onLines`, main.js): the station's catalog lines of its header,
@@ -22,18 +27,31 @@ import { Component } from "../vendor/preact/preact.mjs";
 import { api } from "./api.js";
 import { catalogSources, compose, merge, useTexts } from "./attribution.js";
 import { scopeOf } from "./instance.js";
-import { fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
-import { ResultLines, Section } from "./sections/common.js";
+import { ChartBadge, fmt, fmtDateTime, html, t, tn, useCallback, useEffect, useMemo, useRef, useState } from "./lib.js";
+import { ResultLines, Section, UnverifiedFlag } from "./sections/common.js";
 import { DANE } from "./sections/dane.js";
 import { HYDRO_SECTIONS } from "./sections/hydro/index.js";
 import { METEO_SECTIONS } from "./sections/meteo/index.js";
 import { Command, Licence, POBIERZ } from "./sections/pobierz.js";
 import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
-import { SERIES_DATASETS, datasetShort, datasetTitle, groundwaterKindName, kindName, providerFullName, providerName, shownKinds } from "./words.js";
+import {
+  KINDS,
+  classGroups,
+  datasetShort,
+  datasetTitle,
+  groundwaterKindName,
+  kindName,
+  providerFullName,
+  providerKinds,
+  providerName,
+  providerOf,
+  seriesDatasets,
+  shownKinds,
+  sourceClass,
+  sourceClassName,
+} from "./words.js";
 
-/** The start of the keys of each provider's datasets (the registry's). */
-const DATASET_PREFIX = { IMGW: "pl.imgw.", CHMU: "cz.chmu." };
 /** The names of the formats of a stations file. */
 const STATIONS_FORMATS = { geojson: "GeoJSON", csv: "CSV" };
 
@@ -115,26 +133,38 @@ function datasetYears(entry) {
   return { first: +spans.map((v) => v.first).sort()[0].slice(0, 4), last: +spans.map((v) => v.last).sort().at(-1).slice(0, 4) };
 }
 
-/** The station's record (ADR-022): its years over every series, and the dataset of each part. */
+/**
+ * The station's record (ADR-022): its years over every series, and the dataset of each
+ * part, labelled where its series are unverified.
+ */
 function Record({ station }) {
   const parts = station.datasets.map((entry) => ({ key: entry.dataset, years: datasetYears(entry) })).filter((part) => part.years);
   if (!station.first || !parts.length) return null;
   parts.sort((a, b) => a.years.first - b.years.first);
   return html`<p class="station-record small">
     ${t("station.record", { years: `${station.first}–${station.last}` })}${" "}
-    ${parts.map((part, at) => html`${at ? " · " : ""}<span title=${datasetTitle(part.key)}>${datasetShort(part.key)} ${part.years.first}–${part.years.last}</span>`)}
+    ${parts.map(
+      (part, at) => html`${at ? " · " : ""}<span title=${datasetTitle(part.key)}>${datasetShort(part.key)} ${part.years.first}–${part.years.last}<${UnverifiedFlag} dataset=${part.key} /></span>`,
+    )}
   </p>`;
 }
 
-/** The header of the station. */
+/**
+ * The header of the station; of a provider of the class "other" (hydromet P11) opening with
+ * the chip of its class and, under the tags, P8's notice in the provider's own words (the
+ * session's `source_notice`, else the page's own note).
+ */
 function StationHead({ station }) {
   const p = station.properties;
+  const other = sourceClass(station.provider) === "other";
+  const provider = providerOf(station.provider);
   return html`<div class="station-head">
     <div class="station-title">
       <h3>${p.name || station.code}</h3>
       ${p.river ? html`<span class="river">${p.river}</span>` : null}
     </div>
     <div class="station-tags">
+      ${other ? html`<span class="chip" data-part="source-class">${t("station.source_other")}</span>` : null}
       <code class="chip">${station.code}</code>
       <span class="chip" title=${providerFullName(station.provider)}>${providerName(station.provider)}</span>
       <span class=${`chip kind-${p.kind}`}>${kindName(p.kind)}</span>
@@ -142,6 +172,7 @@ function StationHead({ station }) {
       <span class=${`badge ${p.active ? "ok" : "warn"}`}>${p.active ? t("station.active") : t("station.inactive")}</span>
       ${station.lon === null ? html`<span class="badge warn">${t("station.no_location")}</span>` : null}
     </div>
+    ${other ? html`<p class="note-box" data-part="source-note">${(provider && provider.source_notice) || t("station.source_other_note")}</p>` : null}
     <${Record} station=${station} />
     ${station.datasets.length ? null : html`<p class="note-box">${t("station.no_series")}</p>`}
   </div>`;
@@ -244,15 +275,19 @@ export function StationPanel({ code, session, open, focus, onToggle, onLines }) 
     onToggle=${onToggle}
     onLines=${cardLines}
   />`;
+  // Every chart and table of a station of another source carries its class (hydromet P11)
+  const badge = sourceClass(station.provider) === "other" ? t("station.source_other") : null;
   return html`<div class="station-panel">
     <${StationHead} station=${station} />
-    <div class="acc">
-      ${sections.slice(0, lead).map(card)}
-      ${waiting ? html`<p class="note" role="status">${t("station.analyses_loading")}</p>` : null}
-      ${list.error ? html`<p class="ana-error" role="alert">${t("station.analyses_failed", { message: list.error.message })}</p>` : null}
-      ${analysed && ids && ids.size === 0 && !list.error ? html`<p class="note" data-part="no-analyses">${t("station.analyses_none")}</p>` : null}
-      ${sections.slice(lead).map(card)}
-    </div>
+    <${ChartBadge.Provider} value=${badge}>
+      <div class="acc">
+        ${sections.slice(0, lead).map(card)}
+        ${waiting ? html`<p class="note" role="status">${t("station.analyses_loading")}</p>` : null}
+        ${list.error ? html`<p class="ana-error" role="alert">${t("station.analyses_failed", { message: list.error.message })}</p>` : null}
+        ${analysed && ids && ids.size === 0 && !list.error ? html`<p class="note" data-part="no-analyses">${t("station.analyses_none")}</p>` : null}
+        ${sections.slice(lead).map(card)}
+      </div>
+    </${ChartBadge.Provider}>
   </div>`;
 }
 
@@ -263,7 +298,8 @@ export function StationPanel({ code, session, open, focus, onToggle, onLines }) 
  * `onDoc`.
  *
  * @param {{provider: string|null, kind: string|null, onDoc: (doc: object|null) => void}}
- *   props null for every one
+ *   props the one provider the list's class switch and chips leave, and the list's kind;
+ *   null for every one
  * @returns {object}
  */
 function StationsFiles({ provider, kind, onDoc }) {
@@ -286,7 +322,7 @@ function StationsFiles({ provider, kind, onDoc }) {
     <${Section} title=${t("station.none.files")} info=${t("station.none.files_info")} guide="lista-stacji">
       <table class="params compact">
         <tbody>
-          <tr><th scope="row">${t("stations.list.provider")}</th><td>${provider ? providerName(provider) : t("stations.list.provider_all")}</td></tr>
+          <tr><th scope="row">${t("station.none.files_provider")}</th><td>${provider ? providerName(provider) : t("station.none.files_provider_all")}</td></tr>
           <tr><th scope="row">${t("stations.list.kind")}</th><td>${kind ? t(`stations.list.kind_${kind}`) : t("stations.list.kind_all")}</td></tr>
           <tr><th scope="row">${t("station.none.files_stations")}</th><td class="files-count">${doc ? fmt(doc.stations) : "…"}</td></tr>
         </tbody>
@@ -305,7 +341,7 @@ function StationsFiles({ provider, kind, onDoc }) {
               ${formats.map(
                 (key) => html`<div data-format=${key}><${Command} line=${doc.formats[key].command} label=${t("station.none.files_cli", { format: STATIONS_FORMATS[key] || key })} /></div>`,
               )}
-              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} />`)}`
+              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} terms=${doc.terms_notice || []} />`)}`
           : html`<p class="muted" role="status">${t("station.files.loading")}</p>`}
     </${Section}>
   </div>`;
@@ -314,15 +350,21 @@ function StationsFiles({ provider, kind, onDoc }) {
 /**
  * The panel without a station: how to choose one, what the data root holds and the
  * stations of the list's provider and kind to download; on an operator's instance only of
- * the providers it serves, in its order (ADR-025).
+ * the providers it serves (ADR-025). The catalogs' stations are counted by provider, in the
+ * order of the list's chips (words.js `classGroups`), and where the providers are of both
+ * classes of sources, by class with its providers under it (hydromet P12), each by the
+ * kinds its providers publish (words.js `providerKinds`: PIG-PIB's groundwater objects
+ * alone). The stored analyses are those of the providers whose stations an analysis
+ * applies to (the session's `root.analyses`: never PIG-PIB's).
  *
- * @param {{session: object|null, stations: object[], provider?: string, kind?: string,
+ * @param {{session: object|null, stations: object[], provider?: string|null, kind?: string,
  *   onLines: (lines: object|null) => void}} props api/session, the stations of
- *   api/stations, the list's provider and kind filters ("all" or none for every one) and
- *   where the lines of the catalogs and of the stations files go
+ *   api/stations, the one provider the list's class switch and chips leave (list.js
+ *   `chosenProvider`; null for more) and the list's kind ("all" for every one), and where
+ *   the lines of the catalogs and of the stations files go
  * @returns {object}
  */
-export function NoStation({ session, stations, provider = "all", kind = "all", onLines }) {
+export function NoStation({ session, stations, provider = null, kind = "all", onLines }) {
   const texts = useTexts();
   const [files, setFiles] = useState(null);
   useLines(onLines, merge(texts, [compose(texts, catalogSources(stations)), files]));
@@ -332,36 +374,65 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
   const catalogs = (root && root.catalogs) || {};
   const analyses = (root && root.analyses) || {};
   const series = Object.entries(held);
-  const providers = scopeOf(session).providers;
+  const scope = scopeOf(session);
+  const providers = [...new Set([...scope.providers, ...stations.map((s) => s.provider)])];
+  // The kinds some of the providers publish (the session's `kinds`) that the views offer
+  // for their stations (`shownKinds`): groundwater only where a catalog has an object
+  const published = (ids) => KINDS.filter((kind) => ids.some((id) => providerKinds(id).includes(kind)));
+  const offeredOf = (ids) => {
+    const shown = shownKinds(stations.filter((s) => ids.includes(s.provider)));
+    return published(ids).filter((kind) => shown.includes(kind));
+  };
   // A dataset the root may hold but does not, of a served provider and of a kind offered
   // for its stations: a groundwater dataset only where its catalog has a groundwater object;
   // never an hourly series (ADR-031), built from the captures and not served while private
-  const offered = Object.fromEntries(providers.map((id) => [id, shownKinds(stations.filter((s) => s.provider === id))]));
-  const missing = Object.keys(SERIES_DATASETS).filter((key) => !held[key] && SERIES_DATASETS[key].step !== "hour" && providers.some((id) => key.startsWith(DATASET_PREFIX[id]) && offered[id].includes(SERIES_DATASETS[key].kind)));
+  const offered = Object.fromEntries(providers.map((id) => [id, offeredOf([id])]));
+  const missing = Object.entries(seriesDatasets())
+    .filter(([key, dataset]) => !held[key] && dataset.step !== "hour" && (offered[dataset.provider] || []).includes(dataset.kind))
+    .map(([key]) => key);
+  const groups = classGroups(providers, scope.featured);
+  const byClass = groups.length > 1;
+  // The kinds a row counts: those offered, else every kind its providers publish, so
+  // PIG-PIB without a catalog reads „PIG-PIB: podziemne” and 0
+  const rowKinds = (ids) => {
+    const kinds = offeredOf(ids);
+    return kinds.length ? kinds : published(ids);
+  };
+  // „IMGW-PIB: hydrologiczne · meteorologiczne” and its counts, of a provider or a class
+  const named = (name, kinds) => (kinds.length ? t("station.none.catalog_kinds", { name, kinds: kinds.map((kind) => t(`station.none.kind.${kind}`)).join(" · ") }) : name);
+  const counted = (own, kinds) => kinds.map((which) => fmt(own.filter((s) => s.kind === which).length)).join(" · ");
+  const rows = groups.flatMap((group) => {
+    const members = group.providers.map(
+      (id) => html`<tr class=${byClass ? "in-class" : null}>
+        <th scope="row">
+          ${named(providerName(id), rowKinds([id]))}
+          ${catalogs[id]
+            ? html`<span class="row-sub">${t("station.none.catalog_version", { version: catalogs[id].version, when: fmtDateTime(catalogs[id].downloaded_at) })}</span>`
+            : null}
+        </th>
+        <td>${counted(stations.filter((s) => s.provider === id), rowKinds([id]))}</td>
+      </tr>`,
+    );
+    if (!byClass) return members;
+    const own = stations.filter((s) => group.providers.includes(s.provider));
+    const kinds = rowKinds(group.providers);
+    return [
+      html`<tr class="class-row" data-class=${group.cls}><th scope="row">${named(sourceClassName(group.cls), kinds)}</th><td>${counted(own, kinds)}</td></tr>`,
+      ...members,
+    ];
+  });
   return html`<div class="no-station">
     <p class="hint-box">${t("station.none.hint")}</p>
     ${root && root.error ? html`<p class="ana-error" role="alert">${t("station.none.root_error", { message: root.error.message })}</p>` : null}
     <h3 class="group-title">${t("station.none.catalogs")}</h3>
-    <table class="params compact">
+    <table class="params compact" data-part="catalogs">
       <tbody>
-        ${providers.map((id) => {
-          const kinds = offered[id];
-          const name = providerName(id);
-          return html`<tr>
-            <th scope="row">
-              ${kinds.includes("groundwater") ? t("station.none.provider_kinds_groundwater", { provider: name }) : t("station.none.provider_kinds", { provider: name })}
-              ${catalogs[id]
-                ? html`<span class="row-sub">${t("station.none.catalog_version", { version: catalogs[id].version, when: fmtDateTime(catalogs[id].downloaded_at) })}</span>`
-                : null}
-            </th>
-            <td>${kinds.map((kind) => count((s) => s.provider === id && s.kind === kind)).join(" · ")}</td>
-          </tr>`;
-        })}
+        ${rows}
         <tr><th scope="row">${t("station.none.with_series")}</th><td>${count((s) => s.datasets.length > 0)}</td></tr>
         <tr><th scope="row">${t("station.none.without_location")}</th><td>${count((s) => s.lon === null)}</td></tr>
       </tbody>
     </table>
-    <${StationsFiles} provider=${provider === "all" ? null : provider} kind=${kind === "all" ? null : kind} onDoc=${setFiles} />
+    <${StationsFiles} provider=${provider} kind=${kind === "all" ? null : kind} onDoc=${setFiles} />
     <h3 class="group-title">${t("station.none.series")}</h3>
     ${series.length
       ? html`<table class="params compact">
@@ -379,7 +450,7 @@ export function NoStation({ session, stations, provider = "all", kind = "all", o
     <h3 class="group-title">${t("station.none.analyses")}</h3>
     <table class="params compact" data-part="analyses">
       <tbody>
-        ${providers.map(
+        ${providers.filter((id) => Object.hasOwn(analyses, id)).map(
           (id) => html`<tr data-provider=${id}>
             <th scope="row">
               ${providerName(id)}

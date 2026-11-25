@@ -1,4 +1,4 @@
-"""Public parsers for IMGW-PIB and ČHMÚ source files and normalized measurements.
+"""Public parsers for IMGW-PIB, ČHMÚ and Gdańskie Wody source files, series files and normalized measurements.
 
 Examples
 --------
@@ -21,6 +21,11 @@ from obserwator._parsing.chmu import (
     parse_chmu_stations,
 )
 from obserwator._parsing.common import IMGW_ENCODING
+from obserwator._parsing.files import parse_series_export
+from obserwator._parsing.gdanskiewody import (
+    parse_gdanskiewody_month,
+    parse_gdanskiewody_stations,
+)
 from obserwator._parsing.hydro import (
     parse_daily_csv,
     parse_monthly_csv,
@@ -48,5 +53,8 @@ __all__ = [
     "parse_chmu_groundwater",
     "parse_chmu_meteo_daily",
     "parse_chmu_stations",
+    "parse_gdanskiewody_month",
+    "parse_gdanskiewody_stations",
+    "parse_series_export",
     "normalize_archive",
 ]

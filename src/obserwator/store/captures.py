@@ -36,6 +36,7 @@ import zlib
 from collections.abc import Iterable, Sequence
 from datetime import date
 from pathlib import Path
+from typing import BinaryIO
 
 from obserwator import captures as _captures
 from obserwator.captures import (
@@ -53,6 +54,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     _capture_file,
     get_dataset,
+    get_provider,
 )
 from obserwator.exceptions import (
     ObserwatorCancelledError,
@@ -75,10 +77,12 @@ from obserwator.store.types import (
 from obserwator.store.writer import write_capture
 
 __all__ = [
+    "Sealer",
     "check_captures",
     "closed_days",
     "decode",
     "encode",
+    "encode_into",
     "is_capture",
     "seal_day",
 ]
@@ -121,19 +125,73 @@ def encode(answers: Iterable[Spooled], /) -> bytes:
         address ``seen``; gzip with level 9, no name and the time 0.
     """
     unique = {answer.identity: answer for answer in answers}
-    last: dict[str, tuple[str, int]] = {}
-    lines = bytearray()
-    for identity in sorted(unique):
-        answer = unique[identity]
-        seen = last.get(answer.address) == (answer.sha256, answer.status)
-        lines += _canonical(answer.record(seen=seen))
-        last[answer.address] = (answer.sha256, answer.status)
     buffer = io.BytesIO()
-    with gzip.GzipFile(
-        filename="", mode="wb", fileobj=buffer, compresslevel=9, mtime=0
-    ) as stream:
-        stream.write(bytes(lines))
+    encode_into(buffer, (unique[identity] for identity in sorted(unique)))
     return buffer.getvalue()
+
+
+def encode_into(stream: BinaryIO, answers: Iterable[Spooled], /) -> int:
+    """
+    Write answers in their order as a sealed file into ``stream``, one at a time.
+
+    `encode` of answers already sorted by their identity, each once, without
+    holding them: a day of S0's backfill holds about 500 MB of answers (ADR-035).
+    The same answers give the bytes `encode` gives.
+
+    Parameters
+    ----------
+    stream : binary file
+        Where the gzip-compressed lines go; left open.
+    answers : iterable of Spooled
+        The answers in the order of `Spooled.identity`, each once.
+
+    Returns
+    -------
+    int
+        How many answers were written.
+    """
+    sealer = Sealer(stream)
+    for answer in answers:
+        sealer.write(answer)
+    sealer.close()
+    return sealer.count
+
+
+class Sealer:
+    """
+    A sealed file written one answer at a time: `encode_into` as a writer.
+
+    For a reader of the answers that is no loop of its own (S0's import gives each
+    answer of a day to `ProviderAdapter.capture_extra` as it seals it, ADR-035).
+
+    Parameters
+    ----------
+    stream : binary file
+        Where the gzip-compressed lines go; left open by `close`.
+
+    Attributes
+    ----------
+    count : int
+        How many answers were written.
+    """
+
+    def __init__(self, stream: BinaryIO, /) -> None:
+        self._packed = gzip.GzipFile(
+            filename="", mode="wb", fileobj=stream, compresslevel=9, mtime=0
+        )
+        self._last: dict[str, tuple[str, int]] = {}
+        self.count = 0
+
+    def write(self, answer: Spooled, /) -> None:
+        """Write the next answer (in the order of `Spooled.identity`, each once)."""
+        seen = self._last.get(answer.address) == (answer.sha256, answer.status)
+        self._packed.write(_canonical(answer.record(seen=seen)))
+        self._last[answer.address] = (answer.sha256, answer.status)
+        self.count += 1
+
+    def close(self) -> None:
+        """End the gzip stream (its trailer); the underlying stream stays open."""
+        self._packed.close()
 
 
 def decode(data: bytes, /) -> list[Spooled]:
@@ -433,8 +491,10 @@ def seal_day(
 
     The day's readable spool files and the answers of the slot's current version
     are joined (each answer once) and written as one version
-    (`obserwator.store.writer.write_capture`) unless the current version holds
-    every answer already (``unchanged``); then the sealed spool files are removed.
+    (`obserwator.store.writer.write_capture`, with what the provider adds to its
+    ``extra.capture``: `ProviderAdapter.capture_extra`, PIG-PIB's watermark) unless
+    the current version holds every answer already (``unchanged``); then the sealed
+    spool files are removed.
 
     Parameters
     ----------
@@ -472,11 +532,15 @@ def seal_day(
             assert entry.version is not None
             status, version = "unchanged", entry.version
         else:
+            sealed = list(merged.values())
             written = write_capture(
                 root,
                 archive=archive,
-                data=encode(merged.values()),
+                data=encode(sealed),
                 answers=len(merged),
+                extra=get_provider(descriptor.provider).adapter.capture_extra(
+                    descriptor.key, sealed
+                ),
                 on_progress=on_progress,
                 on_notice=on_notice,
                 cancel=cancel,

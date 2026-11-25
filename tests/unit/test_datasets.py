@@ -183,6 +183,23 @@ _CHMU_KEYS = [
     "cz.chmu.hydro_hourly",
     "cz.chmu.hydro_subdaily",
 ]
+# Gdańskie Wody's datasets after ČHMÚ's (ADR-034).
+_GDANSKIEWODY_KEYS = [
+    "pl.gdanskiewody.station_list",
+    "pl.gdanskiewody.measurements",
+    "pl.gdanskiewody.hydro_hourly",
+    "pl.gdanskiewody.meteo_hourly",
+    "pl.gdanskiewody.hydro_daily",
+    "pl.gdanskiewody.meteo_daily",
+]
+_PIG_KEYS = [
+    "pl.pig.groundwater_stations",
+    "pl.pig.groundwater_readings",
+    "pl.pig.groundwater_chemistry",
+    "pl.pig.groundwater_watchlist",
+    "pl.pig.groundwater_operational",
+    "pl.pig.groundwater_subdaily",
+]
 
 
 def test_registry_has_the_imgw_descriptors_with_spec_fields():
@@ -217,7 +234,13 @@ def test_datasets_kind_filter():
     meteo = datasets(kind="meteo")
     assert [d.key for d in meteo] == [
         row[0] for row in _REGISTRY if row[1] == "meteo"
-    ] + ["cz.chmu.meteo_daily", "cz.chmu.meteo_stations", "cz.chmu.meteo_now"]
+    ] + [
+        "cz.chmu.meteo_daily",
+        "cz.chmu.meteo_stations",
+        "cz.chmu.meteo_now",
+        "pl.gdanskiewody.meteo_hourly",
+        "pl.gdanskiewody.meteo_daily",
+    ]
     assert [d.key for d in datasets(kind="hydro")] == [
         row[0] for row in _REGISTRY if row[1] == "hydro"
     ] + [
@@ -228,6 +251,8 @@ def test_datasets_kind_filter():
         "cz.chmu.hydro_current",
         "cz.chmu.hydro_hourly",
         "cz.chmu.hydro_subdaily",
+        "pl.gdanskiewody.hydro_hourly",
+        "pl.gdanskiewody.hydro_daily",
     ]
     with pytest.raises(ObserwatorValidationError) as exc:
         datasets(kind="pmaxtp")
@@ -247,7 +272,9 @@ def test_get_dataset_unknown_lists_allowed_keys():
     with pytest.raises(ObserwatorValidationError) as exc:
         get_dataset("hydro/tygodniowe")
     assert exc.value.code == "validation_error"
-    assert exc.value.details["allowed"] == [row[0] for row in _REGISTRY] + _CHMU_KEYS
+    assert exc.value.details["allowed"] == (
+        [row[0] for row in _REGISTRY] + _CHMU_KEYS + _GDANSKIEWODY_KEYS + _PIG_KEYS
+    )
 
 
 def test_every_dataset_key_follows_the_key_convention():
@@ -317,6 +344,9 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
     # ADR-030, ADR-032: the captures, the telemetry and ČHMÚ's groundwater months
     # (recent) are the data of other tiers served; ČHMÚ's hourly set is verified.
     # ADR-031: an hourly series of the tiers has the lowest tier of its inputs.
+    # ADR-034: Gdańskie Wody's measurements and series are operational, its station
+    # list verified. ADR-035: PIG-PIB's automatic measurements and their hourly series
+    # are operational, its points, readings and chemistry verified.
     served = datasets()
     assert {
         d.key: (d.tier, d.time_unit, d.archive_scope)
@@ -328,6 +358,25 @@ def test_every_served_dataset_but_the_operational_ones_is_verified_as_listed():
         "pl.imgw.hydro_subdaily": ("operational", "hour", "country"),
         "cz.chmu.groundwater_recent": ("operational", "day", "station_month"),
         "cz.chmu.hydro_subdaily": ("operational", "hour", "country"),
+        "pl.gdanskiewody.measurements": (
+            "operational",
+            "hour",
+            "station_element_month",
+        ),
+        "pl.gdanskiewody.hydro_hourly": (
+            "operational",
+            "hour",
+            "station_element_month",
+        ),
+        "pl.gdanskiewody.meteo_hourly": (
+            "operational",
+            "hour",
+            "station_element_month",
+        ),
+        "pl.gdanskiewody.hydro_daily": ("operational", "day", "station_element_month"),
+        "pl.gdanskiewody.meteo_daily": ("operational", "day", "station_element_month"),
+        "pl.pig.groundwater_operational": ("operational", "hour", "country_day"),
+        "pl.pig.groundwater_subdaily": ("operational", "hour", "country"),
     }
     listed = run_command("datasets list", options={"limit": 100}).to_json()
     assert [(item["key"], item["tier"]) for item in listed["result"]] == [

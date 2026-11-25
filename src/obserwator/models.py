@@ -760,8 +760,16 @@ class StationListEntry:
         ``"CHMU"``.
     groundwater_kind : {"bore", "spring"} or None, optional
         Groundwater only: ČHMÚ's ``OBJECT_TYPE`` of the object, a borehole or a
-        spring; None for the other families (and left out of the
+        spring (PIG-PIB: ``spring`` for the type „źródło”, ``bore`` for every other,
+        ADR-035); None for the other families (and left out of the
         ``obserwator-station/1`` document then, an optional field, ECO-085).
+    hydrogeology : Mapping of str to object or None, optional
+        A PIG-PIB point's hydrogeological description as published (the type of the
+        point, the confinement, stratigraphy, lithology and medium, the depths of the
+        bore and the water, the screen, the years observed, the numbers of PSH, CBDH
+        and JCWPd, the EU code, the kinds of monitoring and whether the point is
+        automatic; ADR-035 W6); None for every other station (left out of the
+        document then, an optional field, ECO-085).
     """
 
     SCHEMA: ClassVar[str] = "obserwator-station/1"
@@ -777,6 +785,9 @@ class StationListEntry:
     longitude: float | None = None
     provider: str = "IMGW"
     groundwater_kind: Literal["bore", "spring"] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
+    hydrogeology: Mapping[str, object] | None = field(
         default=None, metadata={"omit_none": True}
     )
 

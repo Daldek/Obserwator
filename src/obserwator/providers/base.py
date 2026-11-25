@@ -19,7 +19,7 @@ capture spool, ADR-030 D7).
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -31,7 +31,9 @@ from obserwator.datasets import Kind
 if TYPE_CHECKING:
     import httpx
 
+    from obserwator._provider_files import ProviderFile
     from obserwator.attribution import Origin
+    from obserwator.captures import Spooled
     from obserwator.datasets import (
         ArchiveFile,
         DatasetDescriptor,
@@ -44,7 +46,7 @@ if TYPE_CHECKING:
     from obserwator.messages import Message
     from obserwator.models import NormalizedRecord, StationListEntry
     from obserwator.store.catalog import CatalogBuild
-    from obserwator.store.types import CatalogReport, NoticeHook
+    from obserwator.store.types import CatalogReport, Notice, NoticeHook, PlanAction
 
 __all__ = [
     "Answer",
@@ -52,10 +54,13 @@ __all__ = [
     "Kind",
     "PolledSource",
     "ProviderAdapter",
+    "SeriesContext",
     "SourceAction",
 ]
 
-CheckScope = Literal["country", "folders", "stations", "listing"]
+CheckScope = Literal[
+    "country", "folders", "stations", "listing", "months", "publication"
+]
 """
 How ``store check`` finds and checks the files of a measurement dataset.
 
@@ -65,11 +70,47 @@ HEAD; ``folders``: files named in the index of each folder of the selected years
 directory of the station files (`ProviderAdapter.listed_station`), which is their
 signal; ``listing``: files enumerated offline and published when the provider's
 listing of their directory names them (`ProviderAdapter.listing`), without any HTTP
-signal: a stored file is current, as published once (IMGW-PIB's telemetry).
+signal: a stored file is current, as published once (IMGW-PIB's telemetry);
+``months``: a station's month files gathered from an API's answers, named by the
+station list the raw root holds (`ProviderAdapter.month_files`) and checked against
+the clock without a request: a version downloaded once its month had settled
+(`ProviderAdapter.settled`) is current, an earlier one is fetched again (the provider
+``GDANSKIEWODY``, ADR-034); ``publication``: the one file a service publishes now,
+named by what it holds (`ProviderAdapter.published`: PIG-PIB's readings by the
+calendar month of their rows, ADR-035), without an HTTP signal: ``store sync``
+downloads it and compares its content with the slot's current version.
 """
 
 SourceAction = tuple[Literal["current", "newer", "missing", "unverifiable"], "Message"]
 """Status and detail of an optional catalog source in a ``store catalog`` plan."""
+
+
+@dataclass(frozen=True)
+class SeriesContext:
+    """
+    What a series build gives a provider's parsers beside one stored file (ADR-035).
+
+    Attributes
+    ----------
+    sources : Mapping of str to bytes
+        The current version of each of the provider's `ProviderAdapter.series_sources`
+        in the raw root, by dataset key (PIG-PIB's points, whose ground elevation
+        gives ``H_asl``); a source without a version is left out.
+    on_notice : NoticeHook or None
+        Receives the parser's warnings about what it leaves out or resolves.
+    month : tuple of datetime.date or None
+        Of a sub-daily series, the first and last day of the month being built:
+        only its hours are wanted; None for every other series.
+    state : dict
+        A scratch the parser keeps across the files of one build (one month of a
+        sub-daily series): PIG-PIB's rows of one point and hour read so far, so the
+        later ``OBJECTID`` wins whatever capture holds it.
+    """
+
+    sources: Mapping[str, bytes] = MappingProxyType({})
+    on_notice: NoticeHook | None = None
+    month: tuple[date, date] | None = None
+    state: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -134,13 +175,16 @@ class ProviderAdapter(Protocol):
     `ProviderDescriptor.adapter` gives it. The attributes are the provider's facts the
     code acts on; the methods are its behaviour. Adapters subclass this protocol to
     inherit the defaults of the optional members: `current` (no live current data),
-    `polled` (no source of the hourly poll), `harvested` (no harvest), `live_source`
-    (no live tail), `credential` (none), `capture` (the capture spool),
+    `polled` (no source of the hourly poll), `harvested` and `watermarked` (no
+    harvest), `live_source` (no live tail), `credential` (none), `capture` (the
+    capture spool), `staged` (no interim capture),
     `publication_default` (``private``), `server_name`, `groups`, `identifies`,
     `optional_sources`, `dataset_origin`, `station_origins`, `indexed`, `index_files`,
     `station_key`, `archive_station`, `download`, `folders`, `listed_station`,
-    `listing`, `station_file`, `optional_action`, `location_files`, `harvest_requests`
-    and `live_tail`.
+    `listing`, `month_files`, `settled`, `held_period`, `station_file`,
+    `optional_action`, `location_files`, `harvest_requests`, `live_tail`,
+    `series_reads`, `hourly_points`, `series_read`, `published`, `publication_gaps`,
+    `replaced`, `series_sources`, `capture_extra`, `run_file` and `harvest_answer`.
 
     Attributes
     ----------
@@ -173,6 +217,11 @@ class ProviderAdapter(Protocol):
     harvested : frozenset of str
         Capture datasets whose answers ``store sync`` asks for before it seals them:
         the night's harvest (ADR-030 D9, `harvest_requests`); empty without any.
+    watermarked : frozenset of str
+        Those of `harvested` asked by watermark: every row the source appended after
+        the last one the raw root holds, whatever days they cover (PIG-PIB's
+        ``mwp_auto``, ADR-035 W9), so a harvest of one takes no days and no stations;
+        empty without any.
     live_source : str or None
         The capture dataset of the answers of `live_tail` (the GUI's live tail of a
         station's chart in „teraz”, O6), whose publication state
@@ -184,7 +233,8 @@ class ProviderAdapter(Protocol):
     optional_sources : tuple of str
         Keys of station sources its catalog reads when the raw root holds them
         (IMGW-PIB: hydro.imgw.pl's station details, ADR-021; ČHMÚ: the list and the
-        current metadata of its groundwater objects, ADR-032).
+        current metadata of its groundwater objects, ADR-032; PIG-PIB: the night's
+        capture of ``mwp_auto``, whose layer 0 lists the automatic points, ADR-035).
     kinds : tuple of str
         The station families it publishes, in `obserwator.datasets.KINDS` order: a
         live search of another family asks it nothing (``hydro`` and ``meteo`` by
@@ -195,6 +245,33 @@ class ProviderAdapter(Protocol):
         Whether the sidecars of its archives name the station and the parameter
         (``request.station_code``, ``request.param``, ``extra.period.station_code``);
         IMGW-PIB's keep the layout of 3.0.0 without them.
+    source_class : {"nmhs", "other"}
+        Who operates its network (Nogat plan 2026-11-20, P11): ``nmhs``, a national
+        meteorological and hydrological service of a WMO member (the default:
+        IMGW-PIB, ČHMÚ), or ``other`` (an office, a company, a university, an
+        operator's own network). A label of the operator, never a claim of WMO
+        compliance.
+    source_notice : Message or None
+        P8's notice of a provider of the class ``other``: a catalog message saying
+        that its data do not come from a national hydro-meteorological service and,
+        where the provider says so, that they are unverified, in the provider's own
+        words. Every product with its data carries it after the provider's lines
+        (`obserwator.attribution`), and the GUI's station panel shows it beside the
+        class badge; None for an ``nmhs`` provider (the default).
+    served_by_default : bool
+        Whether the servers serve the provider when ``[obserwator.instance.providers]``
+        names no state for it, and a search that names no provider asks it: True by
+        default; False for a provider the author keeps ``off`` until he decides what
+        it serves (Gdańskie Wody, ADR-034), which is then used only where named.
+    provider_file : ProviderFile or None
+        The provider file of a provider fed by files (ADR-033): its data come from the
+        files it names, imported by ``store import``, never from a server; None for a
+        provider with a server (the default).
+    staged : bool
+        Whether ``store import --staging`` takes in the provider's interim capture:
+        the answers of its services kept outside any store, run by run, before the
+        release that captures them (S0 of PIG-PIB, ADR-035 W15; `run_file`,
+        `harvest_answer`); False by default.
     """
 
     provider_id: str
@@ -206,12 +283,18 @@ class ProviderAdapter(Protocol):
     current: Mapping[str, Callable[[], Any]] = MappingProxyType({})
     polled: tuple[PolledSource, ...] = ()
     harvested: frozenset[str] = frozenset()
+    watermarked: frozenset[str] = frozenset()
     live_source: str | None = None
     station_sources: tuple[str, str, str, str]
     optional_sources: tuple[str, ...] = ()
     kinds: tuple[Kind, ...] = ("hydro", "meteo")
     archive_suffixes: tuple[str, ...]
     sidecar_station: bool
+    source_class: Literal["nmhs", "other"] = "nmhs"
+    source_notice: Message | None = None
+    served_by_default: bool = True
+    provider_file: ProviderFile | None = None
+    staged: bool = False
 
     @property
     def provider(self) -> ProviderDescriptor:
@@ -590,6 +673,169 @@ class ProviderAdapter(Protocol):
         """
         raise ValueError(f"{descriptor.key}: no listing of {directory}")
 
+    def month_files(
+        self,
+        descriptor: DatasetDescriptor,
+        raw: Path,
+        /,
+        *,
+        years: YearsArg,
+        months: MonthsArg | None,
+        stations: Iterable[str] | None,
+        today: date,
+    ) -> tuple[tuple[ArchiveFile, ...], tuple[PlanAction, ...]]:
+        """
+        The month files of a selection of a dataset checked by ``months``.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset whose `check_scope` is ``months``.
+        raw : pathlib.Path
+            The raw root, whose station list names the stations and what they measure.
+        years : YearsArg
+            The selected years.
+        months : MonthsArg or None
+            The selected months of each year; None for every one.
+        stations : iterable of str or None
+            The selected stations; None for every one of the stored list.
+        today : datetime.date
+            Today (UTC): a month that has not begun is no file.
+
+        Returns
+        -------
+        tuple
+            The files, and the ``store sync`` actions of what cannot be named (a
+            station the stored list does not hold).
+
+        Raises
+        ------
+        ObserwatorStoreError
+            ``not_found`` (``missing_source``) without the station list in the raw
+            root.
+        ValueError
+            For a dataset not checked by months (the default: every one).
+        """
+        raise ValueError(f"{descriptor.key}: {self.provider_id} has no month files")
+
+    def settled(self, archive: ArchiveFile, /) -> datetime:
+        """
+        When a version of a month file stops changing: a later download is current.
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A file of `month_files`.
+
+        Returns
+        -------
+        datetime.datetime
+            The time (UTC) from which a stored version is final.
+
+        Raises
+        ------
+        ValueError
+            For a file not checked by months (the default: every one).
+        """
+        raise ValueError(f"{archive.dataset}: {self.provider_id} has no month files")
+
+    def held_period(self, archive: ArchiveFile, /) -> tuple[date, date]:
+        """
+        The first and last UTC day whose hours a file of the provider may hold.
+
+        A sub-daily series reads a file for each month of these days (ADR-031).
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A dated file of one of the provider's datasets.
+
+        Returns
+        -------
+        tuple of datetime.date
+            Its period by default (Gdańskie Wody's provider days end at 05:00 UTC of
+            the next day).
+        """
+        assert archive.period_start is not None and archive.period_end is not None
+        return archive.period_start, archive.period_end
+
+    def published(
+        self, descriptor: DatasetDescriptor, /, *, client: httpx.Client
+    ) -> tuple[ArchiveFile | None, tuple[Notice, ...]]:
+        """
+        The file a dataset checked by ``publication`` is published as now.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset whose `check_scope` is ``publication``.
+        client : httpx.Client
+            The client of the check, for a request that names the file (PIG-PIB's
+            readings: the first and last day of their rows, one query).
+
+        Returns
+        -------
+        tuple of (ArchiveFile or None, tuple of Notice)
+            The file, None when the service publishes nothing now, and the warnings
+            of its naming (PIG-PIB's ``window_unexpected``: rows of more or less than
+            one calendar month; ``no_readings``: an empty table).
+
+        Raises
+        ------
+        ObserwatorConnectionError
+            If the request naming the file fails (``source_unavailable``).
+        ObserwatorDataError
+            If the answer naming the file cannot be read.
+        ValueError
+            For a dataset not checked by ``publication`` (the default: every one).
+        """
+        raise ValueError(f"{descriptor.key}: {self.provider_id} names no publication")
+
+    def publication_gaps(
+        self, descriptor: DatasetDescriptor, raw: Path, /
+    ) -> tuple[ArchiveFile, ...]:
+        """
+        The files of a dataset checked by ``publication`` that no capture can fill now.
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset whose `check_scope` is ``publication``.
+        raw : pathlib.Path
+            The raw root.
+
+        Returns
+        -------
+        tuple of ArchiveFile
+            None by default; PIG-PIB's readings: every calendar month between the
+            first and the last stored that has no version (``not_captured``: the
+            service holds the current month only, ADR-035 W5).
+        """
+        return ()
+
+    def replaced(
+        self, archive: ArchiveFile, previous: bytes, data: bytes, /
+    ) -> tuple[Notice, ...]:
+        """
+        The notices of a new version that replaces the current version of its slot.
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            The file of both versions.
+        previous : bytes
+            The slot's current version before the new one.
+        data : bytes
+            The new version.
+
+        Returns
+        -------
+        tuple of Notice
+            None by default; PIG-PIB's ``month_republished`` with the readings
+            changed, added and removed (ADR-035 W5).
+        """
+        return ()
+
     # --- station sources ---------------------------------------------------------
 
     def station_file(
@@ -809,6 +1055,7 @@ class ProviderAdapter(Protocol):
         carry: dict[str, date] | None,
         stations: Collection[str] | None = None,
         skipped_months: set[date] | None = None,
+        context: SeriesContext | None = None,
     ) -> Iterator[NormalizedRecord]:
         """
         Normalized records of one stored file of the provider's datasets.
@@ -821,6 +1068,9 @@ class ProviderAdapter(Protocol):
             The file's content.
         carry, stations, skipped_months
             As `obserwator._parsing.normalize_in_sequence`.
+        context : SeriesContext or None, optional
+            What the series build gives beside the file (its `series_sources`); None
+            outside a build.
 
         Returns
         -------
@@ -835,6 +1085,111 @@ class ProviderAdapter(Protocol):
             If the file cannot be parsed.
         """
         ...
+
+    def series_reads(self, series: DatasetDescriptor, archive: ArchiveFile, /) -> bool:
+        """
+        Whether a series built from ``inputs`` reads one of their files (ADR-034).
+
+        Parameters
+        ----------
+        series : DatasetDescriptor
+            A series dataset with ``inputs``.
+        archive : ArchiveFile
+            A stored file of one of its inputs.
+
+        Returns
+        -------
+        bool
+            True by default (every file); Gdańskie Wody's month file only for a series
+            holding the variable of its quantity.
+        """
+        return True
+
+    def series_sources(self, series: DatasetDescriptor, /) -> tuple[str, ...]:
+        """
+        Station sources whose current versions a series of the provider reads (ADR-035).
+
+        A series build reads them beside its inputs and hands them to the parsers
+        (`SeriesContext.sources`), and each is an input of every version it builds
+        (``source_files``), so a new version of one rebuilds the series.
+
+        Parameters
+        ----------
+        series : DatasetDescriptor
+            A series dataset of the provider.
+
+        Returns
+        -------
+        tuple of str
+            None by default; PIG-PIB's points (``pl.pig.groundwater_stations``) for
+            its two series, whose ground elevation gives ``H_asl``.
+        """
+        return ()
+
+    def hourly_points(
+        self,
+        archive: ArchiveFile,
+        data: bytes,
+        /,
+        *,
+        context: SeriesContext | None = None,
+    ) -> Iterator[tuple[str, str, list[tuple[object, object]]]]:
+        """
+        The hours of a stored input file of a sub-daily series (ADR-031, ADR-034).
+
+        Parameters
+        ----------
+        archive : ArchiveFile
+            A file of an input dataset: no capture of IMGW-PIB or ČHMÚ (the store
+            reads those itself), or a capture of a provider that reads its own
+            (PIG-PIB's ``mwp_auto``, ADR-035).
+        data : bytes
+            Its content.
+        context : SeriesContext or None, optional
+            The build's sources, the month built and the scratch kept across its
+            files; None outside a build.
+
+        Returns
+        -------
+        Iterator of (str, str, list)
+            Per station and variable, the ``(time, value)`` points (ISO 8601 times
+            with a zone).
+
+        Raises
+        ------
+        ValueError
+            For a dataset the adapter reads no hours of (the default: every one; the
+            store reads IMGW-PIB's and ČHMÚ's inputs itself).
+        """
+        raise ValueError(f"{archive.dataset}: {self.provider_id} gives no hours")
+
+    def series_read(self, context: SeriesContext, label: str, /) -> None:
+        """
+        Tell what a build's parsers left out or resolved, once its files are read.
+
+        A series build reads the files of one build with one context (ADR-035): every
+        input of a series, or the inputs of one month of a sub-daily series; then it
+        calls this hook, so the parsers' findings kept in ``context.state`` reach
+        ``context.on_notice`` once per build, not once per file.
+
+        Parameters
+        ----------
+        context : SeriesContext
+            The context the build's files were read with.
+        label : str
+            What was read: a month ``YYYY-MM`` of a sub-daily series, else the
+            series' dataset key.
+
+        Returns
+        -------
+        None
+            Nothing by default. PIG-PIB's adapter tells the readings of points its
+            points lack (``station_unknown``) and, of a month of its hourly series, the
+            hours whose rows differ, the summer-time hours left unresolved and the rows
+            after their answers (``hour_revised``, ``hour_unresolved``,
+            ``hour_future``).
+        """
+        return None
 
     # --- captures ------------------------------------------------------------------
 
@@ -871,6 +1226,94 @@ class ProviderAdapter(Protocol):
 
         return write_spool(answer)
 
+    def capture_extra(
+        self, key: str, answers: Iterable[Spooled], /
+    ) -> Mapping[str, object]:
+        """
+        What the provider adds to ``extra.capture`` of a capture version's sidecar.
+
+        Read again from the sidecar alone, without the capture: the ``period`` (the
+        first and last UTC day, ISO, whose hours the answers hold) lets a sub-daily
+        series read a capture for the months of those days instead of the 43 days
+        before its day (ADR-031 D3), and names the years of the version's lines
+        (PIG-PIB's W); a harvest by watermark keeps its ``watermark`` (the last
+        ``OBJECTID`` of the pages it appended) and the ``count`` of rows it was told.
+
+        Parameters
+        ----------
+        key : str
+            A capture dataset of the provider.
+        answers : iterable of Spooled
+            The answers of the version, read once in order (a day of S0's backfill
+            holds about 500 MB of them: one at a time, never all at once).
+
+        Returns
+        -------
+        Mapping of str to object
+            Empty by default (the days follow from the capture's day, so the
+            sidecars of IMGW-PIB and ČHMÚ keep their bytes); PIG-PIB's ``mwp_auto``:
+            ``period``, ``watermark`` and ``count`` where its answers give them
+            (ADR-035 W9).
+        """
+        return {}
+
+    def run_file(
+        self, descriptor: DatasetDescriptor, data: bytes, /, *, filename: str
+    ) -> ArchiveFile | None:
+        """
+        The file a run of a dataset's answers is kept as, named by what they hold.
+
+        A provider whose datasets are kept as runs of answers (Obserwator's container
+        of answers, `obserwator.store.captures.encode`) names the file of one run
+        here: what its download names and what ``store import --staging`` writes a
+        run of its interim capture as (`staged`).
+
+        Parameters
+        ----------
+        descriptor : DatasetDescriptor
+            A dataset of the provider.
+        data : bytes
+            The run's answers in Obserwator's container.
+        filename : str
+            What the answers are called in errors.
+
+        Returns
+        -------
+        ArchiveFile or None
+            None by default and for answers that hold nothing to keep; PIG-PIB's:
+            the readings' calendar month (or first and last day) by their rows, the
+            points' and the other tables' one file (ADR-035 W4, W5).
+
+        Raises
+        ------
+        ObserwatorDataError
+            If the answers cannot be read.
+        """
+        return None
+
+    def harvest_answer(self, key: str, address: str, /) -> bool:
+        """
+        Whether an answer of a capture dataset is one its harvest asks for.
+
+        ``store import --staging`` keeps only those of a run of the interim capture
+        (`staged`) in the run day's capture (ADR-035 W15).
+
+        Parameters
+        ----------
+        key : str
+            A capture dataset of the provider.
+        address : str
+            The address asked (of a POST, its URL with the form as the query).
+
+        Returns
+        -------
+        bool
+            True by default; PIG-PIB's ``mwp_auto``: the automatic points (layer
+            0), and of the hourly table the table's count, the rows after a
+            watermark and the stored hour 02 of a summer-time start day (W9).
+        """
+        return True
+
     def publication_default(self, key: str, /) -> Literal["public", "private"]:
         """
         Whether a source of the provider is served when the operator says nothing (P15).
@@ -901,6 +1344,7 @@ class ProviderAdapter(Protocol):
         stations: Sequence[str] | None,
         session: PacedSession,
         on_notice: NoticeHook | None,
+        raw: Path | None = None,
     ) -> tuple[PacedRequest, ...]:
         """
         The requests of the night's harvest of a capture dataset (ADR-030 D9).
@@ -924,6 +1368,10 @@ class ProviderAdapter(Protocol):
             The paced requests of the run.
         on_notice : NoticeHook or None
             Receives the warnings of the planning (a station list read only in part).
+        raw : pathlib.Path or None, optional
+            The raw root the run seals into: of a harvest by watermark (PIG-PIB's
+            ``mwp_auto``, ADR-035 W9) where the last ``OBJECTID`` captured comes from;
+            None outside a ``store sync``.
 
         Returns
         -------

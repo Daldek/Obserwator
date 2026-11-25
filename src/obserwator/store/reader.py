@@ -151,6 +151,8 @@ _SAME_CONTENT = re.compile(r"^[^/]+_[0-9a-f]{8}$")
 _LABEL_SOURCES = ("last_modified", "downloaded", "inputs")
 _PERIODS = ("winter", "summer", "annual")
 _SCALARS = (str, int, float, bool, type(None))
+_NESTED = {"thresholds": 2, "hydrogeology": 1}
+"""The station properties that are objects, with the depth of their objects."""
 # The calendar month of a version of a sub-daily series: the directory of its versions
 # and the selector of its slot, ``series:<key>:<YYYY-MM>`` (ADR-031).
 _MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
@@ -1113,7 +1115,12 @@ def _archive_slot(server_path: str) -> str | None:
                 continue
             valid = True
         else:
-            valid = "/" in selector
+            # A selector with a folder (IMGW-PIB), or a file its adapter names
+            # directly in the directory (PIG-PIB's tables, ADR-035).
+            valid = (
+                "/" in selector
+                or _archive_from_path(descriptor.key, server_path) is not None
+            )
         if not valid or ":" in selector:
             return None
         return f"archive:{descriptor.key}:{selector}"
@@ -1750,8 +1757,14 @@ def current_version(root: RootArg, /, *, slot: str) -> StoreEntry | None:
     return _current(_open(root, kind=_SLOT_ROOTS.get(word)), slot)
 
 
-def _current(path: Path, slot: str) -> StoreEntry | None:
-    """`current_version` of a slot in an opened root."""
+def _current(path: Path, slot: str, as_of: datetime | None = None) -> StoreEntry | None:
+    """
+    `current_version` of a slot in an opened root.
+
+    With ``as_of`` (aware), the version current at that time: of the versions
+    downloaded then or before, the one `current_version` would pick (an import of
+    answers kept elsewhere compares with it, ADR-035); None without one.
+    """
     kind, directory, name, options = _slot_location(path, slot)
     if not directory.is_dir():
         return None
@@ -1772,6 +1785,8 @@ def _current(path: Path, slot: str) -> StoreEntry | None:
                 message("reader.corrupt_version_slot", slot=slot, problem=entry.problem)
             )
         meta = entry.meta
+        if as_of is not None and meta.downloaded_at > as_of:
+            continue
         versions.append(
             (
                 entry.version,
@@ -1927,14 +1942,19 @@ class _Reference:
     observation: Path | None
 
 
-def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
+def _reference_signal(
+    root: RootArg, /, *, slot: str, as_of: datetime | None = None
+) -> _Reference | None:
     """
     Signal the next download of an archive slot is compared with (ADR-003 D18).
 
     The newest observation of the current version (by ``seen_at``, then file
     name) gives the signal; observations of older versions are history. Without
     such an observation the signal is the version's ``extra.http`` and
-    ``size_bytes``, exactly as in a slot without a register.
+    ``size_bytes``, exactly as in a slot without a register. With ``as_of`` the
+    slot is read as it stood then: the version current at that time (`_current`)
+    and its observations seen then or before (an import of answers kept elsewhere,
+    each dated by its run, ADR-035).
 
     Parameters
     ----------
@@ -1942,6 +1962,8 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
         Raw root directory or an open handle of one.
     slot : str
         Archive slot ``archive:<key>:<selector>``.
+    as_of : datetime.datetime or None, optional
+        An aware time the slot is read at; None for now.
 
     Returns
     -------
@@ -1963,12 +1985,15 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
         raise _invalid_slot(
             slot, message("reader.reference_signal_exists_only_archive")
         )
-    entry = current_version(root, slot=slot)
+    entry = _current(_open(root, kind=_SLOT_ROOTS["archive"]), slot, as_of)
     if entry is None or entry.version is None or entry.meta is None:
         return None
     current = entry.version.parent
     register = current.parent / _OBSERVATIONS
     newest: tuple[tuple[str, str], Observation, Path] | None = None
+    seen_by = (
+        None if as_of is None else as_of.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
     for child in sorted(register.iterdir()) if _is_register(register) else ():
         if not _OBSERVATION_FILE.fullmatch(child.name) or not (
             child.is_symlink() or child.is_file()
@@ -1980,7 +2005,9 @@ def _reference_signal(root: RootArg, /, *, slot: str) -> _Reference | None:
                     "symlink", message("reader.symbolic_link_instead_observation")
                 )
             observation = _load_observation(child)
-            if observation.same_content_as != current.name:
+            if observation.same_content_as != current.name or (
+                seen_by is not None and observation.seen_at > seen_by
+            ):
                 continue
             _check_observation(
                 child, observation, slot.split(":")[1], {current.name: entry.meta}.get
@@ -2117,9 +2144,10 @@ def _catalog_features(path: Path) -> tuple[StationFeature, ...]:
             ):
                 raise ValueError(message("reader.invalid_station_object", code=code))
             properties = feature["properties"]
-            # ČHMÚ hydro stations carry the SPA thresholds as an object (§7.4).
+            # Objects: ČHMÚ hydro stations' SPA thresholds (§7.4), PIG-PIB points'
+            # hydrogeological description (ADR-035 W6).
             if not isinstance(properties, dict) or not all(
-                _plain(value, depth=2 if key == "thresholds" else 0)
+                _plain(value, depth=_NESTED.get(key, 0))
                 for key, value in properties.items()
             ):
                 raise ValueError(
@@ -2163,7 +2191,8 @@ def read_catalog(
     Stations without geometry are included. The ``stations.geojson`` bytes are
     verified against the SHA-256 and size recorded in the sidecar, and
     ``StationFeature.provider`` comes from the sidecar. ČHMÚ hydro stations
-    carry their SPA thresholds as the object ``properties["thresholds"]``.
+    carry their SPA thresholds as the object ``properties["thresholds"]``, PIG-PIB's
+    points their hydrogeological description as ``properties["hydrogeology"]``.
 
     Parameters
     ----------

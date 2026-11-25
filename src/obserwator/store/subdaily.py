@@ -1,8 +1,10 @@
 """
 The hourly series of the tiers: one version per calendar month (ADR-031).
 
-A sub-daily series (`obserwator.datasets.monthly_series`: ``pl.imgw.hydro_subdaily``
-and ``cz.chmu.hydro_subdaily``) has no files of its own. The version of a month M,
+A sub-daily series (`obserwator.datasets.monthly_series`: ``pl.imgw.hydro_subdaily``,
+``cz.chmu.hydro_subdaily``, Gdańskie Wody's ``pl.gdanskiewody.hydro_hourly`` and
+``pl.gdanskiewody.meteo_hourly`` and PIG-PIB's ``pl.pig.groundwater_subdaily``) has no
+files of its own. The version of a month M,
 ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``, holds the full hours (UTC) of
 the datasets of its ``inputs`` (highest tier first) in M, read from the current
 versions of the raw root (the plan's D9):
@@ -13,7 +15,23 @@ versions of the raw root (the plan's D9):
   day (closed days: today's hours, the 10-minute tail and the forecasts never enter),
   the latest answer of an hour winning within the dataset;
 - IMGW-PIB's telemetry: the zip of M, its rows at minute 00 (``999`` is no value);
-- ČHMÚ's validated hours: the file of every station of the year of M.
+- ČHMÚ's validated hours: the file of every station of the year of M;
+- Gdańskie Wody's month files (ADR-034 D8): those of M and of the month before, whose
+  last provider day runs to 05:00 UTC of M's first day (`ProviderAdapter.held_period`);
+  every hour of their answers at the UTC start of its label, as the provider's adapter
+  reads them (`ProviderAdapter.hourly_points`), and only the files of the quantities
+  whose variable the series holds (`ProviderAdapter.series_reads`): the precipitation
+  of a hydrological station lies in the meteorological series, the water quality in
+  none.
+- PIG-PIB's captures of ``mwp_auto`` (ADR-035 W8, W9): every capture whose sidecar
+  names days of M among those its rows' hours fall on (``extra.capture.period``; the
+  rows of a day arrive for weeks), read by the provider's adapter with the captures
+  before it in the month (`ProviderAdapter.hourly_points`, one `SeriesContext` a
+  month), so of two rows of one point and hour the later ``OBJECTID`` gives the
+  value; the adapter tells what it left out once the month is read
+  (`ProviderAdapter.series_read`). The points the provider's series read beside
+  their inputs (`ProviderAdapter.series_sources`: the ground elevation of ``H_asl``)
+  are an input of every month with a record.
 
 Per station, variable and hour the first input of ``inputs`` with a value wins and
 the tier of its dataset labels the point, even where the values differ; a lower tier
@@ -42,8 +60,8 @@ import uuid
 import zipfile
 import zlib
 from array import array
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -51,6 +69,7 @@ from typing import Any, Final, Literal
 from urllib.parse import parse_qs
 
 from obserwator._version import __version__
+from obserwator.attribution import Attribution
 from obserwator.captures import Spooled, _instant, from_record
 from obserwator.datasets import (
     CAPTURE_SCOPE,
@@ -70,7 +89,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import message, reason
 from obserwator.models import Tier
-from obserwator.providers.base import Answer
+from obserwator.providers.base import Answer, SeriesContext
 from obserwator.providers.pl.imgw import _SERIES as _HYDRO_BACK_SERIES
 from obserwator.store.series import (
     _FLAGS,
@@ -80,6 +99,7 @@ from obserwator.store.series import (
     _content_fields,
     _copy_hashed,
     _current_series,
+    _downloaded_days,
     _hydro_year,
     _Input,
     _lines,
@@ -92,7 +112,9 @@ from obserwator.store.series import (
     _report,
     _restore_archive,
     _reusable,
+    _series_context,
     _series_versions,
+    _source_inputs,
     _table_metadata,
 )
 from obserwator.store.types import (
@@ -212,18 +234,55 @@ class _Slot:
     months: tuple[_Month, ...]
 
 
-def _held_months(source: DatasetDescriptor, archive: ArchiveFile) -> tuple[_Month, ...]:
-    """The months a file may hold hours of: of its period; of a capture day, its reach."""
-    assert archive.period_start is not None and archive.period_end is not None
-    start, end = archive.period_start, archive.period_end
+def _held_months(
+    source: DatasetDescriptor,
+    archive: ArchiveFile,
+    meta: Mapping[str, Any] | None = None,
+) -> tuple[_Month, ...]:
+    """
+    The months a file may hold hours of.
+
+    Of a capture day, the months of the days its current version's sidecar ``meta``
+    names (``extra.capture.period``, the first and last UTC day of its rows' hours,
+    `ProviderAdapter.capture_extra`: PIG-PIB's harvest by ``OBJECTID``, whose rows of
+    a day arrive for weeks, ADR-035), else its reach (the 43 days before it); of
+    another file, the days its provider says it holds (`ProviderAdapter.held_period`):
+    its period, of a month file of Gdańskie Wody also the next month's first day.
+    """
     if source.archive_scope == CAPTURE_SCOPE:
-        start, end = start - timedelta(days=_REACH), start - timedelta(days=1)
+        period = _capture_period(meta)
+        if period is not None:
+            return tuple(_months(*period))
+        assert archive.period_start is not None
+        day = archive.period_start
+        return tuple(_months(day - timedelta(days=_REACH), day - timedelta(days=1)))
+    start, end = get_provider(source.provider).adapter.held_period(archive)
     return tuple(_months(start, end))
 
 
+def _capture_period(meta: Mapping[str, Any] | None) -> tuple[date, date] | None:
+    """``extra.capture.period`` of a capture's sidecar: its first and last day, or None."""
+    extra = meta.get("extra") if meta is not None else None
+    capture = extra.get("capture") if isinstance(extra, Mapping) else None
+    period = capture.get("period") if isinstance(capture, Mapping) else None
+    if not (isinstance(period, list) and len(period) == 2):
+        return None
+    try:
+        first, last = (date.fromisoformat(str(day)) for day in period)
+    except ValueError:
+        return None
+    return (first, last) if first <= last else None
+
+
 def _slots(raw: Path, descriptor: DatasetDescriptor) -> list[_Slot]:
-    """Every slot of the inputs of a sub-daily series, in ``inputs`` and slot order."""
+    """
+    Every slot of the inputs of a sub-daily series, in ``inputs`` and slot order.
+
+    Only the files the provider gives the series (`ProviderAdapter.series_reads`: of
+    Gdańskie Wody's month files, those of a quantity whose variable it holds).
+    """
     top = raw / "archives" / "versions"
+    reads = get_provider(descriptor.provider).adapter.series_reads
     found: list[_Slot] = []
     for order, key in enumerate(descriptor.inputs or ()):
         source = get_dataset(key)
@@ -239,10 +298,13 @@ def _slots(raw: Path, descriptor: DatasetDescriptor) -> list[_Slot]:
         for slot_dir in sorted(names):
             folder = slot_dir.parent.relative_to(top).as_posix()
             archive = _archive_from_path(key, f"{folder}/{names[slot_dir]}")
-            # The files of another dataset of the directory are no input of this one.
-            if archive is None or (
-                _archive_slot_dir(archive.server_path)
+            # The files of another dataset of the directory are no input of this one,
+            # nor are those its provider does not give the series.
+            if (
+                archive is None
+                or _archive_slot_dir(archive.server_path)
                 != slot_dir.relative_to(raw).as_posix()
+                or not reads(descriptor, archive)
             ):
                 continue
             found.append(_Slot(source, order, archive, _held_months(source, archive)))
@@ -317,11 +379,16 @@ class _Tier:
 
 @dataclass(frozen=True)
 class _Reading:
-    """What the parsers of an input need: the month, the station grammar, its address."""
+    """
+    What the parsers of an input need: the month, the station grammar, its address.
+
+    ``variables`` are those of the series: a file's other variables stay out.
+    """
 
     month: _Month
     code: re.Pattern[str]
     address: str
+    variables: Collection[str]
 
 
 def _full_hour(text: object) -> datetime | None:
@@ -616,7 +683,42 @@ def _chmu_hourly(item: _Input, data: bytes, reading: _Reading, tier: _Tier) -> b
     return held
 
 
-# The parsers of the answers of a capture dataset and of the files of the others.
+def _provider_hours(
+    item: _Input,
+    data: bytes,
+    reading: _Reading,
+    tier: _Tier,
+    context: SeriesContext | None = None,
+) -> bool:
+    """
+    The hours the provider's adapter reads of a file (`ProviderAdapter.hourly_points`).
+
+    Gdańskie Wody's month file (ADR-034 D4): every hour of its answers at the UTC
+    start of its label, null no value; PIG-PIB's capture of ``mwp_auto`` (ADR-035),
+    read with ``context``, the month's: the hours of the month its rows give, each
+    with the value of the later ``OBJECTID`` read so far. A variable the series does
+    not hold and a station outside the provider's grammar stay out.
+
+    Raises
+    ------
+    ObserwatorDataError
+        If the file cannot be read.
+    """
+    adapter = get_provider(get_dataset(item.archive.dataset).provider).adapter
+    held = False
+    for station, variable, points in adapter.hourly_points(
+        item.archive, data, context=context
+    ):
+        if variable not in reading.variables or not reading.code.fullmatch(station):
+            continue
+        if _put_points(tier, station, variable, points, reading, before=None):
+            held = True
+    return held
+
+
+# The parsers of the answers of a capture dataset and of the files of the others; the
+# files and captures of a dataset without one give the hours its provider reads
+# (`_provider_hours`: Gdańskie Wody's month files, PIG-PIB's captures of mwp_auto).
 _ANSWER_PARSERS: Final[Mapping[str, Callable[[Spooled, _Reading, _Tier], bool]]] = (
     MappingProxyType(
         {"pl.imgw.hydro_operational": _hydro_back, "cz.chmu.hydro_recent": _chmu_recent}
@@ -736,9 +838,18 @@ def _answers(item: _Input, data: bytes) -> Iterator[Spooled]:
         ) from exc
 
 
-def _parse(item: _Input, slot: _Slot, tier: _Tier, reading: _Reading) -> bool:
+def _parse(
+    item: _Input,
+    slot: _Slot,
+    tier: _Tier,
+    reading: _Reading,
+    context: SeriesContext | None = None,
+) -> bool:
     """
     Put the records of the month of one input version into its tier.
+
+    ``context`` is the month's (`_Inputs.read`), given to the provider's adapter with
+    the files and captures it reads itself (`ProviderAdapter.hourly_points`).
 
     Returns
     -------
@@ -760,13 +871,16 @@ def _parse(item: _Input, slot: _Slot, tier: _Tier, reading: _Reading) -> bool:
             )
         )
     if slot.source.archive_scope != CAPTURE_SCOPE:
-        return _FILE_PARSERS[slot.source.key](item, data, reading, tier)
-    parse = _ANSWER_PARSERS[slot.source.key]
-    held = False
-    for answer in _answers(item, data):
-        if answer.status == 200 and parse(answer, reading, tier):
-            held = True
-    return held
+        parse_file = _FILE_PARSERS.get(slot.source.key)
+        if parse_file is not None:
+            return parse_file(item, data, reading, tier)
+    elif (parse := _ANSWER_PARSERS.get(slot.source.key)) is not None:
+        held = False
+        for answer in _answers(item, data):
+            if answer.status == 200 and parse(answer, reading, tier):
+                held = True
+        return held
+    return _provider_hours(item, data, reading, tier, context)
 
 
 @dataclass
@@ -790,11 +904,24 @@ class _Inputs:
             _TIERS.index(get_dataset(key).tier) for key in descriptor.inputs or ()
         ]
         self._code = re.compile(get_provider(descriptor.provider).station_code_pattern)
+        self._versions: dict[tuple[str, str], _Input | str | None] = {}
+        # The station sources the provider's series read beside their inputs
+        # (PIG-PIB's points, ADR-035), an input of every month with a record.
+        self.sources, self._failed = _source_inputs(raw, descriptor)
+        self._context: SeriesContext | str | None = None
         self._by_month: dict[_Month, list[_Slot]] = {}
         for slot in _slots(raw, descriptor):
-            for month in slot.months:
-                self._by_month.setdefault(month, []).append(slot)
-        self._versions: dict[tuple[str, str], _Input | str | None] = {}
+            held = slot
+            if slot.source.archive_scope == CAPTURE_SCOPE:
+                # The sidecar of a capture may name the days of its rows' hours.
+                version = self._version(slot)
+                if isinstance(version, _Input):
+                    months = _held_months(
+                        slot.source, slot.archive, version.version.meta
+                    )
+                    held = replace(slot, months=months)
+            for month in held.months:
+                self._by_month.setdefault(month, []).append(held)
 
     def months(self, start: date | None, end: date | None) -> tuple[list[_Month], bool]:
         """
@@ -822,15 +949,47 @@ class _Inputs:
                 self._versions[key] = reason(exc)
         return self._versions[key]
 
+    def _month_context(
+        self, month: _Month, on_notice: NoticeHook | None
+    ) -> SeriesContext | str:
+        """
+        The context of a month's files, or why it cannot be made.
+
+        The station sources are read once a build; the month's bounds and scratch
+        are its own.
+        """
+        if self._context is None:
+            try:
+                self._context = _series_context(self.sources, None)
+            except (ObserwatorDataError, OSError) as exc:
+                self._context = reason(exc)
+        if isinstance(self._context, str):
+            return self._context
+        return replace(
+            self._context,
+            on_notice=on_notice,
+            month=(month.first, month.last),
+            state={},
+        )
+
     def read(
         self,
         month: _Month,
         *,
         cancel: Cancel | None,
         on_progress: ProgressHook | None,
+        on_notice: NoticeHook | None = None,
     ) -> _MonthInputs:
-        """Read every input of a month; the first unreadable one ends the reading."""
+        """
+        Read every input of a month; the first unreadable one ends the reading.
+
+        The month's files share one context (`SeriesContext`): the provider's adapter
+        tells ``on_notice`` what its parsers left out once every file is read
+        (`ProviderAdapter.series_read`). The station sources are inputs of a month
+        that has a record.
+        """
         result = _MonthInputs([_Tier(month.hours) for _ in self.ranks])
+        result.problems.extend(self._failed)
         picked: list[tuple[_Slot, _Input]] = []
         for slot in self._by_month.get(month, ()):
             version = self._version(slot)
@@ -841,13 +1000,22 @@ class _Inputs:
                 result.read.append(version)
         if result.problems:
             return result
+        context = self._month_context(month, on_notice)
+        if isinstance(context, str):
+            result.problems.append(context)
+            return result
         for index, (slot, item) in enumerate(picked, start=1):
             if cancel is not None and cancel():
                 result.cancelled = True
                 return result
-            reading = _Reading(month, self._code, _source_address(slot.source))
+            reading = _Reading(
+                month,
+                self._code,
+                _source_address(slot.source),
+                self.descriptor.variables,
+            )
             try:
-                if _parse(item, slot, result.tiers[slot.order], reading):
+                if _parse(item, slot, result.tiers[slot.order], reading, context):
                     result.contributors.append(item)
             except (ObserwatorDataError, OSError) as exc:
                 result.problems.append(reason(exc))
@@ -862,6 +1030,10 @@ class _Inputs:
                         message("series.archive_read", relative=item.version.relative),
                     )
                 )
+        if result.contributors:
+            result.read.extend(self.sources)
+            result.contributors.extend(self.sources)
+        get_provider(self.descriptor.provider).adapter.series_read(context, month.text)
         return result
 
 
@@ -927,13 +1099,14 @@ def _station_table(
     columns: Mapping[str, tuple[array[float], bytearray]],
     *,
     tiered: bool,
+    lines: Attribution,
 ) -> Any:
     """
     The Parquet table of one station of a month version.
 
     ``time`` (``timestamp[us, tz=UTC]``), ``hydro_year`` and per variable
     ``<V>_value`` and ``<V>_flag``, with ``<V>_tier`` when the version has more than
-    one tier (null without a value).
+    one tier (null without a value); ``lines`` are those of the month's version.
     """
     data: dict[str, Any] = {
         "time": pa.array(
@@ -964,7 +1137,7 @@ def _station_table(
                 ),
                 tiers,
             )
-    return pa.table(data).replace_schema_metadata(_table_metadata(descriptor))
+    return pa.table(data).replace_schema_metadata(_table_metadata(descriptor, lines))
 
 
 def _coverage(
@@ -1033,14 +1206,16 @@ def _write_month(
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancelled: Callable[[], bool],
-    published: Callable[[], None],
+    published: Callable[[Attribution], None],
+    lines: Attribution,
 ) -> _Built:
     """
     Write the version of a month into the data root and publish it atomically.
 
     As a daily version (`obserwator.store.series.build_series`): the station files and
     ``series.json`` staged in ``.incoming``, then published by hard links with the
-    sidecar last, into ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``.
+    sidecar last, into ``series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/``, with the
+    month's ``lines`` (`_month_lines`).
     """
     descriptor = inputs.descriptor
     manifest = _manifest(read.contributors)
@@ -1062,7 +1237,13 @@ def _write_month(
                     return _report("cancelled", sources=sources), frozenset()
                 columns = merged.stations[code]
                 table = _station_table(
-                    pa, descriptor, month, rows, columns, tiered=len(present) > 1
+                    pa,
+                    descriptor,
+                    month,
+                    rows,
+                    columns,
+                    tiered=len(present) > 1,
+                    lines=lines,
                 )
                 built = Path(local) / f"{code}.parquet"
                 pq.write_table(table, built)
@@ -1088,7 +1269,6 @@ def _write_month(
                         )
                     )
         _fsync_dir(staging / "stations")
-        lines = _lines(descriptor)
         series = {
             "schema": SERIES_SCHEMA,
             "dataset": descriptor.key,
@@ -1181,7 +1361,7 @@ def _write_month(
                         sources=sources,
                     ), frozenset(index_stations)
                 continue
-            published()
+            published(lines)
             return _report(
                 "new",
                 version=target / "series.json",
@@ -1196,6 +1376,22 @@ def _write_month(
             shutil.rmtree(staging)
 
 
+def _month_lines(
+    descriptor: DatasetDescriptor, month: _Month, read: _MonthInputs
+) -> Attribution:
+    """
+    The lines of a month's version (`obserwator.store.series._lines`).
+
+    PIG-PIB's W (ADR-035) names the month's year and the UTC days its inputs, the
+    versions holding a record of it and the station sources, were downloaded.
+    """
+    return _lines(
+        descriptor,
+        years=(month.first.year,),
+        days=_downloaded_days(read.contributors),
+    )
+
+
 def _build_month(
     path: Path,
     inputs: _Inputs,
@@ -1207,11 +1403,13 @@ def _build_month(
     on_progress: ProgressHook | None,
     on_notice: NoticeHook | None,
     cancel: Cancel | None,
-    published: Callable[[], None],
+    published: Callable[[Attribution], None],
 ) -> _Built | None:
     """The version of one month; None for a month not given whose inputs hold no value."""
     descriptor = inputs.descriptor
-    read = inputs.read(month, cancel=cancel, on_progress=on_progress)
+    read = inputs.read(
+        month, cancel=cancel, on_progress=on_progress, on_notice=on_notice
+    )
     sources = [item.version.file for item in read.read]
     if read.cancelled:
         return _report("cancelled", sources=sources), frozenset()
@@ -1228,9 +1426,10 @@ def _build_month(
             "series.month_without_value", key=descriptor.key, month=month.text
         )
         return _report("failed", sources=sources, problems=[problem]), frozenset()
+    lines = _month_lines(descriptor, month, read)
     current = _current_series(_series_versions(path, descriptor, month.text))
     if current is not None and _reusable(
-        current, _manifest(read.contributors), descriptor, None
+        current, _manifest(read.contributors), lines, None
     ):
         series = json.loads(current.path.read_text(encoding="utf-8"))
         recorded = [
@@ -1273,6 +1472,7 @@ def _build_month(
         on_notice=on_notice,
         cancelled=cancelled,
         published=published,
+        lines=lines,
     )
 
 
@@ -1337,15 +1537,19 @@ def build_months(
         Both: every month from the month of ``start`` to that of ``end``, each
         reported (a month whose inputs hold no value fails, its problem naming
         it). Otherwise the months an input may hold (the 43 days before a capture
-        day, the month of a telemetry zip, the year of a ČHMÚ file), within the
-        bound given; a month whose inputs hold no value is skipped.
+        day, or the days its sidecar names, the month of a telemetry zip, the year
+        of a ČHMÚ file, the month of a file of Gdańskie Wody and the next one),
+        within the bound given; a month whose inputs hold no value is skipped.
     on_progress : ProgressHook or None, optional
         Called after each input read and each station file written, once for an
         unchanged month and after each month (unit ``month``).
     on_notice : NoticeHook or None, optional
         Receives an ``archive_failed`` warning for every unreadable input, a
-        ``leftover_incoming`` warning for every removed staging directory and the
-        ``license_terms`` notice once a month version is new.
+        ``leftover_incoming`` warning for every removed staging directory, the
+        warnings of the provider's parsers once a month is read
+        (`ProviderAdapter.series_read`: PIG-PIB's ``hour_revised``,
+        ``hour_unresolved`` and ``hour_future``) and the ``license_terms`` notice
+        once a month version is new.
     cancel : Cancel or None, optional
         Polled between steps; once it returns ``True`` the build stops and the
         month being built is ``cancelled``, nothing of it published.
@@ -1377,15 +1581,11 @@ def build_months(
         return SeriesReport("failed", None, 0, (), (problem,), months=())
     noticed = False
 
-    def published() -> None:
+    def published(lines: Attribution) -> None:
         nonlocal noticed
         if not noticed and on_notice is not None:
             provider = get_provider(descriptor.provider)
-            on_notice(
-                Notice(
-                    "info", "license_terms", provider.license_notice(_lines(descriptor))
-                )
-            )
+            on_notice(Notice("info", "license_terms", provider.license_notice(lines)))
         noticed = True
 
     built: list[_Built] = []
@@ -1511,7 +1711,10 @@ def check_months(
         state: SeriesState = "missing"
         if current is not None:
             reusable = _reusable(
-                current, _manifest(read.contributors), descriptor, None
+                current,
+                _manifest(read.contributors),
+                _month_lines(descriptor, month, read),
+                None,
             )
             state = "current" if valued and reusable else "outdated"
         if read.problems or valued:

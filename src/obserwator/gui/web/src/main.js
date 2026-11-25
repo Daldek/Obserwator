@@ -14,10 +14,12 @@
 // with every line and, in a public deployment, „Regulamin serwisu” (ui/welcome.js); a
 // public deployment also links „Regulamin” at the bottom of the left panel (`TermsLink`).
 // „Zgłoś uwagę” (ui/feedback.js) sends the view, the station and the address's parameters.
-// On an operator's instance (ADR-025, instance.js: api/session's `instance`) the list and
-// the map wait for the session, so nothing the instance leaves out shows for a moment; the
-// map's bar offers only the views it serves (an address asking for another falls back to
-// „Stacje”) and the map starts on the instance's box.
+// The providers and their datasets are the session's (api/session `providers`, `datasets`:
+// the registry's, a provider fed by files among them; words.js `setRegistry`), so the list
+// and the map wait for it. On an operator's instance (ADR-025, instance.js: api/session's
+// `instance`) nothing the instance leaves out shows for a moment then; the map's bar offers
+// only the views it serves (an address asking for another falls back to „Stacje”) and the
+// map starts on the instance's box.
 //
 // Every word comes from the message catalog in the page's language (i18n.js): the texts
 // load before the first render, and the page renders again when the language changes.
@@ -28,7 +30,7 @@ import { clock, useCurrent } from "./current.js";
 import { lang, loadTexts, onLangChange, storedLang } from "./i18n.js";
 import { fadesOthers, scopeOf } from "./instance.js";
 import { html, render, t, useEffect, useMemo, useState } from "./lib.js";
-import { StationList, featuredFirst, onMap, prepareStations, startFilters } from "./list.js";
+import { StationList, chosenProvider, featuredFirst, onMap, prepareStations, startFilters } from "./list.js";
 import { StationMap } from "./map.js";
 import { NoStation, StationPanel, sectionTitle } from "./panel.js";
 import { PmaxtpForm } from "./pmaxtp/form.js";
@@ -42,7 +44,7 @@ import { ToastHost, toast } from "./ui/toast.js";
 import { TopBar } from "./ui/top-bar.js";
 import { ViewLayout } from "./ui/view-layout.js";
 import { WelcomeDialog } from "./ui/welcome.js";
-import { shownKinds } from "./words.js";
+import { setRegistry, shownClasses, shownKinds } from "./words.js";
 
 /** The sections open on a first visit: the current measurements and the measurement data. */
 const FIRST_OPEN = ["teraz", "dane"];
@@ -87,9 +89,10 @@ function App({ lang: language }) {
   const [pickFly, setPickFly] = useState(start.point && start.view === "pmaxtp" ? { n: 0 } : null);
   const [method, setMethod] = useState(start.method);
   // What the deployment shows (instance.js), null until the session answers; the same
-  // object while the instance stays (the session comes again in each language)
-  const instanceKey = asked ? JSON.stringify(session ? session.instance : null) : null;
-  const scope = useMemo(() => (asked ? scopeOf(session) : null), [instanceKey]);
+  // object while the instance and the providers stay (the session comes again in each
+  // language)
+  const scopeKey = asked ? JSON.stringify(session ? [session.instance, Object.keys(session.providers)] : null) : null;
+  const scope = useMemo(() => (asked ? scopeOf(session) : null), [scopeKey]);
   // A view the instance does not serve (an old link) falls back to „Stacje”
   const view = scope && !scope.views.includes(chosen) ? VIEWS[0] : chosen;
   const pmaxtpServed = scope !== null && scope.views.includes("pmaxtp");
@@ -114,6 +117,7 @@ function App({ lang: language }) {
       (doc) => {
         if (!live) return;
         setTexts(doc.attribution);
+        setRegistry(doc);
         setSession(doc);
         setAsked(true);
       },
@@ -132,11 +136,19 @@ function App({ lang: language }) {
   const featured = scope ? scope.featured : null;
   const all = useMemo(() => (stations && scope ? featuredFirst(stations, featured) : []), [stations, scope !== null, featured]);
   const byCode = useMemo(() => new Map(all.map((station) => [station.code, station])), [all]);
-  // The kinds the switch offers and the legend names: groundwater only where a catalog has it
+  // The kinds the switch offers and the legend names: groundwater only where a catalog has
+  // it; the classes of the stations' sources: the class switch and the legend's outlines
+  // only where a station of another source is held (hydromet P12, P13)
   const kinds = useMemo(() => shownKinds(all), [all]);
+  const classes = useMemo(() => shownClasses(all), [all]);
   const drawn = useMemo(
     () => (scope ? all.filter((station) => onMap(station, filters, scope)) : []),
-    [all, scope, filters.provider, filters.kind, filters.datasets, filters.active, filters.others],
+    [all, scope, filters.class, filters.kind, filters.datasets, filters.active, filters.others],
+  );
+  // The one provider the class switch and the dataset chips leave, for „Pobierz listę stacji”
+  const listProvider = useMemo(
+    () => (scope ? chosenProvider(all, filters, scope) : null),
+    [all, scope, filters.class, filters.datasets, filters.others],
   );
   // The other providers' stations faded beside the featured one (I6); the instance's start
   // box (I5) unless the address names a station or a PMAXTP point of a view it serves
@@ -202,7 +214,7 @@ function App({ lang: language }) {
         body: failure
           ? html`<p class="ana-error" role="alert">${t("shell.stations_failed", { reason: failure.message })}</p>`
           : stations && scope
-            ? html`<${StationList} stations=${all} kinds=${kinds} filters=${filters} scope=${scope} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
+            ? html`<${StationList} stations=${all} kinds=${kinds} classes=${classes} filters=${filters} scope=${scope} onFilters=${setFilters} selected=${selected} onSelect=${select} />`
             : html`<p class="muted" role="status">${t("shell.stations_loading")}</p>`,
         foot: terms,
       };
@@ -219,6 +231,7 @@ function App({ lang: language }) {
       stations=${drawn}
       byCode=${byCode}
       kinds=${kinds}
+      classes=${classes}
       selected=${selected}
       fly=${fly}
       view=${view}
@@ -255,7 +268,7 @@ function App({ lang: language }) {
         short: station ? station.name || station.code : t("shell.panel.station"),
         body: selected
           ? html`<${StationPanel} key=${selected} code=${selected} session=${session} open=${open} focus=${start.station === selected ? start.section : null} onToggle=${toggle} onLines=${setPanelLines} />`
-          : html`<${NoStation} session=${session} stations=${all} provider=${filters.provider} kind=${filters.kind} onLines=${setPanelLines} />`,
+          : html`<${NoStation} session=${session} stations=${all} provider=${listProvider} kind=${filters.kind} onLines=${setPanelLines} />`,
       };
   return html`
     <${TopBar}

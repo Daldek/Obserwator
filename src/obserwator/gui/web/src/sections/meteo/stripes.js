@@ -9,7 +9,7 @@
 // the CSV the columns `attribution` and `terms_notice`.
 
 import { api } from "../../api.js";
-import { fmt, html, t, tn, useContext, useEffect, useMemo, useRef, useState } from "../../lib.js";
+import { BadgeLine, fmt, html, t, tn, useContext, useEffect, useMemo, useRef, useState } from "../../lib.js";
 import { Figures, Notices, ResultLines, Section, Seg, YearRange } from "../common.js";
 import { Option, Source, useOptions } from "./util.js";
 
@@ -105,7 +105,7 @@ function StripesSvg({ data, label, axis }) {
   const step = tickStep(n, width);
   const ticks = axis ? years.filter((y) => y.year % step === 0) : [];
   const grey = years.map((y, i) => [y, i]).filter(([y]) => y.colour === null);
-  return html`<div class="stripes-host" ref=${host}>
+  return html`<${BadgeLine} /><div class="stripes-host" ref=${host}>
     ${width > 0 &&
     html`<svg
       class=${axis ? "stripes stripes-axis" : "stripes"}

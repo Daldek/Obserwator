@@ -51,6 +51,36 @@ _TERMS_HYDRO = (
     "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
 )
 _TERMS_PMAXTP = f"Regulamin danych PMAXTP: {_PMAXTP_PAGE}"
+# Gdańskie Wody's lines are drafts (ADR-034): its regulamin is shown only to a
+# signed-in user, so neither the wording it requires nor its terms are known (the
+# providers plan's question 1, P9). `obserwator.attribution.provisional` marks them, and
+# no server serves the data they come with until the provider's terms replace them.
+_GDANSKIEWODY_SHORT = "Gdańskie Wody"
+_GDANSKIEWODY_NAME = f"{_GDANSKIEWODY_SHORT} Sp. z o.o."
+_GDANSKIEWODY_ATTRIBUTION = (
+    f"Źródło danych: {_GDANSKIEWODY_NAME}, https://pomiary.gdanskiewody.pl "
+    "(brzmienie robocze do czasu poznania regulaminu dostawcy)"
+)
+_GDANSKIEWODY_PROCESSED = "Dane Gdańskich Wód zostały przetworzone"
+_TERMS_GDANSKIEWODY = (
+    "Regulamin pomiary.gdanskiewody.pl: nieznany, widoczny tylko po zalogowaniu "
+    "(https://pomiary.gdanskiewody.pl/login)"
+)
+# PIG-PIB (ADR-035): W, WP and the terms line RW of Nogat DEV-20.13, quoted from the
+# table of provider lines; `obserwator.attribution` fills W's ``period`` (the years of
+# the readings or hours of a product) and ``date`` (the days of the captures it read).
+_PIG_SHORT = "PIG-PIB"
+_PIG_NAME = "Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy"
+_PIG_ATTRIBUTION = (
+    f"Źródło danych: {_PIG_NAME} ({_PIG_SHORT}), Monitoring Wód Podziemnych państwowej "
+    "służby geologicznej (wytworzono {period}, pozyskano {date}), licencja CC BY 4.0 "
+    "(https://creativecommons.org/licenses/by/4.0/)"
+)
+_PIG_PROCESSED = "Dane PIG-PIB zostały przetworzone"
+_TERMS_PIG = (
+    "Regulamin danych PIG-PIB: "
+    "https://www.pgi.gov.pl/rejestry-i-bazy-danych-geologicznych/zasady-korzystania-z-isp.html"
+)
 
 RETIRED_LINES = (
     "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl",
@@ -97,4 +127,22 @@ MESSAGES = {
     "imgw_terms_danepubliczne": Text(_TERMS_DANEPUBLICZNE, _TERMS_DANEPUBLICZNE),
     "imgw_terms_hydro": Text(_TERMS_HYDRO, _TERMS_HYDRO),
     "imgw_terms_pmaxtp": Text(_TERMS_PMAXTP, _TERMS_PMAXTP),
+    # Gdańskie Wody's names (ADR-034), then its line, processed line and terms line:
+    # drafts until its terms give their wording (Nogat DEV §20 holds no row of it, P9).
+    "gdanskiewody_name": Text(_GDANSKIEWODY_NAME, _GDANSKIEWODY_NAME),
+    "gdanskiewody_short_name": Text(_GDANSKIEWODY_SHORT, _GDANSKIEWODY_SHORT),
+    "gdanskiewody_attribution": Text(
+        _GDANSKIEWODY_ATTRIBUTION, _GDANSKIEWODY_ATTRIBUTION
+    ),
+    "gdanskiewody_processed_attribution": Text(
+        _GDANSKIEWODY_PROCESSED, _GDANSKIEWODY_PROCESSED
+    ),
+    "gdanskiewody_terms": Text(_TERMS_GDANSKIEWODY, _TERMS_GDANSKIEWODY),
+    # PIG-PIB's names, W (with its period and date filled per product), WP and RW of
+    # Nogat DEV-20.13 (ADR-035).
+    "pig_name": Text(_PIG_NAME, _PIG_NAME),
+    "pig_short_name": Text(_PIG_SHORT, _PIG_SHORT),
+    "pig_attribution": Text(_PIG_ATTRIBUTION, _PIG_ATTRIBUTION),
+    "pig_processed_attribution": Text(_PIG_PROCESSED, _PIG_PROCESSED),
+    "pig_terms": Text(_TERMS_PIG, _TERMS_PIG),
 }

@@ -2,7 +2,8 @@
 
 The map draws on a canvas, so what it shows is read from MapLibre: the codes of the rendered
 features of a layer (the map's element keeps the map as ``maplibre``). The fixture server has
-no basemap and answers IMGW-PIB's current data from recordings.
+no basemap and answers IMGW-PIB's current data from recordings; ``basemap_url`` has one,
+whose TileJSON and tiles the tests answer themselves.
 """
 
 import contextlib
@@ -13,7 +14,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from tests.e2e.conftest import FIXTURE_STATIONS, THEMES, WIDTHS
+from tests.e2e.conftest import BASEMAP, FIXTURE_STATIONS, THEMES, WIDTHS
 
 expect = pytest.importorskip("playwright.sync_api").expect
 PlaywrightTimeout = pytest.importorskip("playwright.sync_api").TimeoutError
@@ -249,29 +250,31 @@ def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, c
         wait_listed(page, codes(chosen))
         wait_drawn(page, ["stations"], codes(chosen, located=True))
 
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="ČHMÚ"
-    ).click()
-    check([s for s in catalog if s["provider"] == "CHMU"])
+    # national services alone: no class switch (P12); a provider is chosen by its chips
+    expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
         "radio", name="Meteorologiczne"
     ).click()
-    check([s for s in catalog if s["provider"] == "CHMU" and s["kind"] == "meteo"])
-    # a dataset's chip under another provider is not offered; back to every provider
+    check([s for s in catalog if s["kind"] == "meteo"])
+    chip = page.get_by_role("button", name="Dane meteorologiczne dobowe (ČHMÚ)")
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "true")
+    check([s for s in catalog if "cz.chmu.meteo_daily" in s["datasets"]])
+    # a dataset's chip of another kind is not offered
     expect(
-        page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
+        page.get_by_role("button", name="Dane hydrologiczne dobowe (ČHMÚ)")
     ).to_have_count(0)
-    page.get_by_role("radiogroup", name="Dostawca").get_by_role(
-        "radio", name="Wszyscy"
+    page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
+        "radio", name="Wszystkie"
     ).click()
+    chip.click()
+    expect(chip).to_have_attribute("aria-pressed", "false")
+    check(catalog)
     chip = page.get_by_role("button", name="Dane opadowe dobowe (IMGW-PIB)")
     chip.click()
     expect(chip).to_have_attribute("aria-pressed", "true")
     check([s for s in catalog if "pl.imgw.meteo_precip_daily" in s["datasets"]])
     chip.click()
-    page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
-        "radio", name="Wszystkie"
-    ).click()
     check(catalog)
     page.get_by_role("checkbox", name="tylko czynne").check()
     inactive = codes([s for s in catalog if not s["active"]])
@@ -421,6 +424,121 @@ def test_without_a_basemap_the_packaged_borders_are_the_background(open_page):
     strip = page.locator(".view-foot .nogat-sources-strip")
     expect(strip).to_contain_text("Źródło: GUGiK (PRG)")
     expect(strip).to_contain_text("Źródło: ČÚZK, CC BY 4.0")
+
+
+# --- a basemap whose tiles fail ------------------------------------------------------------
+
+_TILE_ORIGIN = BASEMAP.split("/planet.json")[0]
+_TILEJSON = {
+    "tilejson": "3.0.0",
+    "tiles": [f"{_TILE_ORIGIN}/planet/{{z}}/{{x}}/{{y}}.pbf"],
+    "minzoom": 0,
+    "maxzoom": 14,
+}
+_CORS = {"Access-Control-Allow-Origin": "*"}
+# The map's next `idle`: every tile of the view has answered and is drawn
+_SETTLED = """() => {
+  const map = document.querySelector('.map').maplibre;
+  const settled = map.once('idle');
+  map.triggerRepaint();
+  return settled.then(() => true);
+}"""
+_BACKGROUND = """() => {
+  const map = document.querySelector('.map').maplibre;
+  return { basemap: Boolean(map.getSource('basemap')), borders: Boolean(map.getLayer('borders-fill')) };
+}"""
+BASEMAP_FAILED = (
+    "Podkład mapy się nie wczytał: tło to granice państwowe Polski (PRG, GUGiK) i Czech "
+    "(RÚIAN, ČÚZK)."
+)
+
+
+@pytest.fixture
+def basemap_page(browser, basemap_url):
+    """
+    Open ``basemap_url`` with `BASEMAP` answered here: ``opener(tile)`` returns the page
+    and the statuses of the tiles answered so far, ``tile(n)`` being the status of the n-th
+    tile asked (0 the first; 200 an empty vector tile). At the end the test fails on any
+    console or page error but the browser's own line of each failed tile.
+    """
+    opened: list[tuple[Any, list[str]]] = []
+
+    def opener(tile):
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        context.add_init_script(
+            "localStorage.setItem('obserwator-welcome', '1');"
+            "localStorage.setItem('obserwator-lang', 'pl');"
+        )
+        answered: list[int] = []
+
+        def answer(route):
+            if route.request.url == BASEMAP:
+                route.fulfill(json=_TILEJSON, headers=_CORS)
+                return
+            status = tile(len(answered))
+            answered.append(status)
+            route.fulfill(status=status, body=b"", headers=_CORS)
+
+        context.route(f"{_TILE_ORIGIN}/**", answer)
+        page = context.new_page()
+        problems: list[str] = []
+
+        def console(message):
+            failed_tile = message.text.startswith("Failed to load resource") and str(
+                message.location.get("url", "")
+            ).startswith(_TILE_ORIGIN)
+            if message.type == "error" and not failed_tile:
+                problems.append(f"console error: {message.text}")
+
+        page.on("console", console)
+        page.on("pageerror", lambda error: problems.append(f"page error: {error}"))
+        opened.append((context, problems))
+        page.goto(basemap_url)
+        return page, answered
+
+    yield opener
+    found: list[str] = []
+    for context, problems in opened:
+        found += problems
+        context.close()
+    assert found == []
+
+
+def settle(page, answered, count: int) -> None:
+    """Wait until ``count`` tiles have answered, then for the map's next `idle`."""
+    for _ in range(150):
+        if len(answered) >= count:
+            break
+        page.wait_for_timeout(100)
+    assert len(answered) >= count
+    assert page.evaluate(_SETTLED)
+
+
+def test_a_basemap_whose_first_tile_fails_stays_while_its_others_load(basemap_page):
+    page, answered = basemap_page(lambda n: 503 if n == 0 else 200)
+    settle(page, answered, 2)
+
+    assert answered[0] == 503
+    assert 200 in answered
+    assert page.evaluate(_BACKGROUND) == {"basemap": True, "borders": False}
+    expect(page.locator(".map-legend")).not_to_contain_text(
+        "Podkład mapy się nie wczytał"
+    )
+
+
+def test_a_basemap_none_of_whose_tiles_loads_gives_way_to_the_borders(basemap_page):
+    page, answered = basemap_page(lambda n: 503)
+    page.wait_for_function(
+        "() => { const element = document.querySelector('.map');"
+        " const map = element && element.maplibre;"
+        " return Boolean(map && map.getSource('borders')"
+        " && map.queryRenderedFeatures({ layers: ['borders-fill'] }).length > 0); }",
+        timeout=20_000,
+    )
+
+    assert answered and set(answered) == {503}
+    assert page.evaluate(_BACKGROUND) == {"basemap": False, "borders": True}
+    expect(page.locator(".map-legend")).to_contain_text(BASEMAP_FAILED)
 
 
 def test_the_pmaxtp_view_draws_only_the_point_picked(open_page, catalog):

@@ -306,7 +306,7 @@
         "stations": {
           "type": "object",
           "patternProperties": {
-            "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$": {
+            "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9][A-Za-z0-9_-]{0,31}|[1-9][0-9]{0,5})$": {
               "type": "object",
               "required": [
                 "file",
@@ -317,7 +317,7 @@
               "properties": {
                 "file": {
                   "type": "string",
-                  "pattern": "^stations/([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})\\.parquet$"
+                  "pattern": "^stations/([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9][A-Za-z0-9_-]{0,31}|[1-9][0-9]{0,5})\\.parquet$"
                 },
                 "sha256": {
                   "type": "string",
@@ -467,7 +467,7 @@
               },
               "id": {
                 "type": "string",
-                "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
+                "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9][A-Za-z0-9_-]{0,31}|[1-9][0-9]{0,5})$"
               },
               "geometry": {
                 "oneOf": [
@@ -523,7 +523,7 @@
                 "properties": {
                   "station_code": {
                     "type": "string",
-                    "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16})$"
+                    "pattern": "^([0-9]{9}|0-[0-9]{1,5}-[0-9]{1,5}-[0-9A-Z]{1,16}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9][A-Za-z0-9_-]{0,31}|[1-9][0-9]{0,5})$"
                   },
                   "kind": {
                     "enum": [
@@ -569,19 +569,27 @@
                     ]
                   },
                   "location_source": {
-                    "enum": [
-                      "pl.imgw.hydro_now",
-                      "pl.imgw.meteo_now",
-                      "pl.imgw.meteo_details",
-                      "static",
-                      "user",
-                      "cz.chmu.hydro_now",
-                      "cz.chmu.hydro_stations",
-                      "cz.chmu.meteo_now",
-                      "cz.chmu.meteo_stations",
-                      "cz.chmu.groundwater_now",
-                      "cz.chmu.groundwater_stations",
-                      null
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "pl.imgw.hydro_now",
+                          "pl.imgw.meteo_now",
+                          "pl.imgw.meteo_details",
+                          "static",
+                          "user",
+                          "cz.chmu.hydro_now",
+                          "cz.chmu.hydro_stations",
+                          "cz.chmu.meteo_now",
+                          "cz.chmu.meteo_stations",
+                          "cz.chmu.groundwater_now",
+                          "cz.chmu.groundwater_stations",
+                          null
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[a-z]{2}\\.[a-z][a-z0-9]*\\.station_list$"
+                      }
                     ]
                   },
                   "location_uncertainty_m": {
@@ -1261,6 +1269,7 @@
             "store_unavailable",
             "io_error",
             "forbidden",
+            "no_data",
             "unsupported",
             "method_not_allowed",
             "internal_error"
@@ -1304,6 +1313,7 @@
             "io_error",
             "cancelled",
             "forbidden",
+            "no_data",
             "unsupported",
             "method_not_allowed",
             "internal_error"

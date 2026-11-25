@@ -1,5 +1,5 @@
 """
-Catalog of the 36 data commands and the single dispatcher of public functions.
+Catalog of the 37 data commands and the single dispatcher of public functions.
 
 ``data_commands`` describes every operation of Obserwator (spec §13.3). Each
 command calls exactly one public function whose parameters carry the option
@@ -44,6 +44,9 @@ from obserwator.attribution import (
     border_origin,
     carried,
     dataset_origins,
+    fill,
+    fillable,
+    filled,
     provider_origin,
 )
 from obserwator.config import store_root
@@ -67,6 +70,7 @@ from obserwator.datasets import (
     monthly_series,
     parse_months,
     parse_years,
+    provider_files,
     providers,
 )
 from obserwator.exceptions import (
@@ -80,7 +84,7 @@ from obserwator.exceptions import (
 )
 from obserwator.messages import LANGS, Lang, localize, message, reason
 from obserwator.models import StationListEntry
-from obserwator.output import DATA_MARKER, STORE_MARKER
+from obserwator.output import ATTRIBUTION_FILE, DATA_MARKER, STORE_MARKER
 from obserwator.store import analyses as _analyses
 from obserwator.store import export as _export
 from obserwator.store import reader as _reader
@@ -89,6 +93,7 @@ from obserwator.store import sync as _sync
 from obserwator.store import writer as _writer
 from obserwator.store.analysis_registry import analysis_definitions, get_definition
 from obserwator.store.catalog import _NESTED_CATALOGS, CATALOG_FILE
+from obserwator.store.catalog import _catalog_lines as _catalog_attribution
 from obserwator.store.plain import plain_actions
 from obserwator.store.pmaxtp import CELL_FILE, RESPONSE_FILE
 from obserwator.store.types import (
@@ -99,6 +104,7 @@ from obserwator.store.types import (
     CommandResult,
     DataCommand,
     DownloadReport,
+    ImportReport,
     Meta,
     Notice,
     NoticeHook,
@@ -167,24 +173,38 @@ _SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=\S)")
 # IMGW-PIB's warnings are of hydrological and meteorological stations only.
 _WARNING_KINDS = ("hydro", "meteo")
 _YEAR_TYPES = ("hydrological", "calendar")
+
+
+def _fed_by_files(descriptor: DatasetDescriptor) -> bool:
+    """Whether a dataset is of a provider fed by files: ``store import`` keeps its files."""
+    return get_provider(descriptor.provider).adapter.provider_file is not None
+
+
 # Datasets with source files (spec 2026-10-18 §9.3: 10 IMGW-PIB and 2 ČHMÚ);
-# station lists, PMAXTP and the captures (sealed from the spool, ADR-030 D3) have none.
+# station lists, PMAXTP, the captures (sealed from the spool, ADR-030 D3) and the
+# datasets of a provider fed by files (no server publishes them, ADR-033) have none.
 _ARCHIVE_DATASETS = tuple(
     d.key
     for d in datasets()
     if d.server_dir is not None
     and d.time_unit != "station_list"
     and d.archive_scope != CAPTURE_SCOPE
+    and not _fed_by_files(d)
 )
 _SERIES_DATASETS = tuple(d.key for d in datasets() if builds_series(d))
 # What ``store check`` and ``store sync`` download or seal: the measurement archives
 # (also those no series reads, ADR-032), the station sources of the catalogs (station
 # lists and metadata, ADR-015) and the captures of current data, sealed from the
-# spool per UTC day (ADR-030 D3).
-_SYNC_DATASETS = (
-    tuple(d.key for d in datasets() if keeps_archives(d))
-    + tuple(d.key for d in datasets() if d.in_store and d.time_unit == "station_list")
-    + tuple(d.key for d in datasets() if d.archive_scope == CAPTURE_SCOPE)
+# spool per UTC day (ADR-030 D3); never the files of a provider fed by files, which
+# ``store import`` keeps (ADR-033).
+_SYNC_DATASETS = tuple(
+    d.key
+    for d in (
+        *(d for d in datasets() if keeps_archives(d)),
+        *(d for d in datasets() if d.in_store and d.time_unit == "station_list"),
+        *(d for d in datasets() if d.archive_scope == CAPTURE_SCOPE),
+    )
+    if not _fed_by_files(d)
 )
 _PROVIDERS = tuple(provider.id for provider in providers())
 # Groups reading the sources of one provider only (spec 2026-10-18 §9.3): those its
@@ -215,6 +235,8 @@ _STORE_FUNCTIONS = (
     "sync_store",
     "build_catalog",
     "check_catalog",
+    "import_files",
+    "check_import",
     "export_archive",
     "build_series",
     "check_series",
@@ -1123,6 +1145,40 @@ _CATALOG: tuple[tuple[DataCommand, str], ...] = (
         writes="add",
     ),
     _command(
+        "store import",
+        message("commands.store_import_description"),
+        (
+            _ROOT,
+            _RAW_ROOT,
+            _option(
+                "provider_file",
+                "path",
+                message("commands.store_import_provider_file_help"),
+                path_role="input",
+            ),
+            # An operator's local directory (S0's staging, ADR-035): no REST parameter.
+            _option(
+                "staging",
+                "path",
+                message("commands.store_import_staging_help"),
+                path_role="input",
+                rest="local",
+            ),
+        ),
+        function="import_files",
+        result_type="ImportReport",
+        root="data",
+        store_only=True,
+        check="check_import",
+        method="POST",
+        one_of=(("provider_file",), ("staging",)),
+        rules=(
+            message("commands.store_import_rule"),
+            message("commands.store_import_staging_rule"),
+        ),
+        writes="add",
+    ),
+    _command(
         "store export",
         message("commands.store_export_description"),
         (
@@ -1446,10 +1502,32 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
     The ``dataset``/``datasets`` choices keep the provider's keys and the
     ``provider`` option is fixed to it (required, its only choice, no
     default), so every call valid in the narrowed catalog concerns the
-    provider alone.
+    provider alone. ``store import`` is offered for a provider fed by files, with
+    its provider file (ADR-033), and for one with an interim capture, with its
+    staging (ADR-035).
     """
     if _GROUP_PROVIDERS.get(command.name.split(" ", 1)[0], owner.id) != owner.id:
         return None
+    if command.function == "import_files":
+        form = (
+            "provider_file"
+            if owner.adapter.provider_file is not None
+            else "staging"
+            if owner.adapter.staged
+            else None
+        )
+        if form is None:
+            return None
+        other = {"provider_file", "staging"} - {form}
+        command = replace(
+            command,
+            options=tuple(
+                replace(option, required=True) if option.name == form else option
+                for option in command.options
+                if option.name not in other
+            ),
+            one_of=(),
+        )
     options: list[CommandOption] = []
     for option in command.options:
         narrowed = option
@@ -1466,7 +1544,7 @@ def _narrowed(command: DataCommand, owner: ProviderDescriptor) -> DataCommand | 
 
 def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
     """
-    Return the catalog of all 36 data commands or its view for one provider.
+    Return the catalog of all 37 data commands or its view for one provider.
 
     Parameters
     ----------
@@ -1476,8 +1554,10 @@ def data_commands(*, provider: str | None = None) -> tuple[DataCommand, ...]:
         and ``datasets`` options keep only its datasets, the ``provider``
         option becomes required with that provider as its only choice, and
         commands without any data of the provider are left out (for
-        ``CHMU``: ``current …`` and ``pmaxtp …``). `validate_command` and
-        the other functions always use the whole catalog.
+        ``CHMU``: ``current …``, ``pmaxtp …`` and ``store import``; for a
+        provider fed by files: ``current …``, ``pmaxtp …``, ``datasets
+        files|download`` and ``store check|sync``, ADR-033). `validate_command`
+        and the other functions always use the whole catalog.
 
     Returns
     -------
@@ -1802,9 +1882,16 @@ _PARSERS: dict[str, Callable[[CommandOption, object], object]] = {
 
 
 def _absolutize(options: Options) -> None:
-    """Paths → absolute: ``version`` against ``root``, others against the CWD."""
+    """
+    Paths → absolute: ``version`` against ``root``, others against the CWD.
+
+    ``provider_file`` lies in the directory of ``nogat.toml``, as the paths of
+    ``[obserwator] provider_files`` do (ADR-033).
+    """
     for name, value in list(options.items()):
-        if isinstance(value, Path) and name != "version":
+        if isinstance(value, Path) and name == "provider_file":
+            options[name] = provider_files().resolve(value)
+        elif isinstance(value, Path) and name != "version":
             options[name] = value.absolute()
     version = options.get("version")
     if isinstance(version, Path) and not version.is_absolute():
@@ -2160,7 +2247,8 @@ def validate_command(
     ``"2020-2023"``, ``"2020,2022"``, ``[2020, "2022-2023"]``) and ``months``
     becomes a sorted tuple of numbers, other lists become tuples without
     duplicates, and paths become absolute (``version`` against ``root``,
-    others against the working directory). A command that names no ``root``
+    ``provider_file`` against the directory of ``nogat.toml``, others against
+    the working directory). A command that names no ``root``
     (nor ``version`` or ``output_dir``) gets the default root of its kind
     (`config.store_root`): the raw root of a command on downloaded sources,
     the data root of one on what is built from them (``store info`` and
@@ -2772,7 +2860,8 @@ def _archive_call(
     ``store sync`` of an archive version or of a station source (ADR-015).
 
     A capture (ADR-030 D3) is refused: it holds what a source answered on one UTC
-    day, which no request gives again.
+    day, which no request gives again. So is a file of a provider fed by files
+    (ADR-033): its operator delivers it, no server.
     """
     descriptor = get_dataset(key)
     request = meta.request
@@ -2781,6 +2870,16 @@ def _archive_call(
     if descriptor.archive_scope == CAPTURE_SCOPE:
         _not_rebuildable(
             message("commands.version_command_capture", version=relative, dataset=key),
+            relative,
+            server_path=server_path,
+        )
+    if _fed_by_files(descriptor):
+        _not_rebuildable(
+            message(
+                "commands.version_command_fed_by_files",
+                version=relative,
+                provider=descriptor.provider,
+            ),
             relative,
             server_path=server_path,
         )
@@ -2810,8 +2909,16 @@ def _archive_call(
             options["months"] = [archive.month]
     else:
         options["stations"] = [archive.station_code]
-        if descriptor.archive_scope in ("station_year", "station_month"):
+        if descriptor.archive_scope in (
+            "station_year",
+            "station_month",
+            "station_element_month",
+        ):
             options["years"] = [archive.year]
+        if descriptor.archive_scope == "station_element_month":
+            # Gdańskie Wody's month file (ADR-034): its station's month, every
+            # quantity the stored station list gives it.
+            options["months"] = [archive.month]
     try:
         _, _, candidates, archives, _ = _sync._selection(
             options["datasets"],
@@ -2922,9 +3029,10 @@ def command_for_version(
     provider), each with its own plan item. A version whose metadata does not
     give the call is refused, never guessed: a catalog built with a user's
     coordinates file (only its name is recorded), a sidecar without a field
-    the call needs, a file that ``store sync`` does not select, or a capture of
+    the call needs, a file that ``store sync`` does not select, a capture of
     current data (ADR-030 D3: what a source answered on one UTC day, which no
-    request gives again).
+    request gives again) or a file of a provider fed by files (ADR-033: its
+    operator delivers it; ``store import`` keeps what its provider file names).
 
     Parameters
     ----------
@@ -3105,6 +3213,16 @@ def _status(result: object) -> Status:
         )
     if isinstance(result, SeriesReport | CatalogReport | PMaXTPStoreResult):
         return _outcome(result.status == "cancelled", int(result.status == "failed"), 0)
+    if isinstance(result, ImportReport):
+        # Every file kept is done; a build that failed after them makes it partial.
+        builds = [item.status for item in result.series]
+        if result.catalog is not None:
+            builds.append(result.catalog.status)
+        return _outcome(
+            result.cancelled,
+            builds.count("failed"),
+            len(result.items) + sum(status in _DONE for status in builds),
+        )
     if isinstance(result, _analyses.AnalysesReport):
         providers_ = [item.status for item in result.providers]
         return _outcome(
@@ -3151,15 +3269,61 @@ def _of_datasets(keys: Iterable[str], *, processed: bool = True) -> Attribution:
     )
 
 
+def _held_w(versions: Iterable[tuple[str, Path | None]]) -> Attribution:
+    """
+    PIG-PIB's W as the sidecars of stored versions fill it (ADR-035).
+
+    ``versions`` are (dataset key, version path) pairs; of a dataset whose license
+    formula names its data's years and download day (`fillable`) the sidecar's
+    ``license.attribution`` is that W filled (`obserwator.store.writer`), of every other
+    dataset nothing is read.
+    """
+    lines = Attribution()
+    for key, version in versions:
+        if version is None or not fillable(get_dataset(key).license.attribution):
+            continue
+        lines |= Attribution((_reader.read_meta(version).license.attribution,))
+    return lines
+
+
+def _slot_key(slot: str) -> str:
+    """The dataset key of an archive slot, ``archive:<key>:…``."""
+    return slot.split(":")[1]
+
+
 def _series_lines(options: Options, result: object) -> Attribution:
-    """Processed lines of the series a series command reads or builds."""
+    """
+    Processed lines of the series a series command reads or builds.
+
+    PIG-PIB's W names the years and days of the versions (ADR-035): those a build
+    reports, or those the reader reads (`_series_paths`).
+    """
+    root = options.get("root")
     if options.get("dataset") is not None:
-        return _of_datasets([str(options["dataset"])])
-    series = _reader._series_path(
-        cast(PathArg, options["version"]), root=options.get("root"), dataset=None
-    )
-    meta = _reader.read_meta(series)
-    return _of_datasets([meta.dataset_key or meta.dataset])
+        key = get_dataset(str(options["dataset"])).key
+    else:
+        series = _reader._series_path(
+            cast(PathArg, options["version"]), root=root, dataset=None
+        )
+        meta = _reader.read_meta(series)
+        key = get_dataset(meta.dataset_key or meta.dataset).key
+    lines = _of_datasets([key])
+    descriptor = get_dataset(key)
+    if not fillable(descriptor.license.attribution):
+        return lines
+    if isinstance(result, SeriesReport):
+        months = result.months or (result,)
+        versions = [month.version for month in months if month.version is not None]
+    else:
+        _, found = _reader._series_paths(
+            options.get("version"),
+            root=root,
+            dataset=None if options.get("version") is not None else key,
+            start=options.get("start"),
+            end=options.get("end"),
+        )
+        versions = list(found)
+    return lines | _series._version_lines(descriptor, versions)
 
 
 def _archive_lines(options: Options, result: object) -> Attribution:
@@ -3167,13 +3331,32 @@ def _archive_lines(options: Options, result: object) -> Attribution:
     source = Path(cast(PathArg, options["version"])).expanduser()
     if options.get("root") is not None:
         source = _reader._open(options["root"]) / source
-    meta = _reader.read_meta(_reader._archive_main(source))
-    return _of_datasets([meta.dataset_key or meta.dataset])
+    main = _reader._archive_main(source)
+    meta = _reader.read_meta(main)
+    key = meta.dataset_key or meta.dataset
+    return _of_datasets([key]) | _held_w([(key, main)])
 
 
 def _download_lines(options: Options, result: object) -> Attribution:
-    """Lines of the verbatim files of ``datasets download``."""
-    return _of_datasets([str(options["dataset"])], processed=False)
+    """
+    Lines of the verbatim files of ``datasets download``.
+
+    PIG-PIB's W as written beside the files: in the directory's ``ATTRIBUTION.txt``,
+    or in the sidecars of the store's versions (ADR-035).
+    """
+    lines = _of_datasets([str(options["dataset"])], processed=False)
+    report = cast(DownloadReport, result)
+    if report.mode == "store":
+        return lines | _held_w(
+            (_slot_key(item.slot), item.path)
+            for item in report.items
+            if item.status == "downloaded"
+        )
+    for file in report.files:
+        if file.path.name == ATTRIBUTION_FILE:
+            written = file.path.read_text(encoding="utf-8").splitlines()
+            lines |= Attribution(filled(written))
+    return lines
 
 
 def _sync_lines(options: Options, result: object) -> Attribution:
@@ -3183,19 +3366,23 @@ def _sync_lines(options: Options, result: object) -> Attribution:
     A sync writes raw data only (ADR-015): the provider's files verbatim, except
     the station metadata kept of IMGW-PIB's current-data answers (ADR-015 D5),
     which are processed data. A harvest's answers are kept verbatim (ADR-030 D9),
-    so its dataset's lines stand even when no day was sealed.
+    so its dataset's lines stand even when no day was sealed. PIG-PIB's W is that
+    of the versions written (`_held_w`).
     """
     report = cast(SyncReport, result)
-    keys = [
-        slot.split(":")[1]
+    written = [
+        (_slot_key(slot), item.version)
         for item in report.items
         if (slot := item.slot) is not None and slot.startswith("archive:")
     ]
+    keys = [key for key, _ in written]
     if report.harvest is not None:
         keys.append(report.harvest.dataset)
     kept = [key for key in keys if get_dataset(key).kept_fields]
     verbatim = [key for key in keys if key not in kept]
-    return _of_datasets(verbatim, processed=False) | _of_datasets(kept)
+    return (
+        _of_datasets(verbatim, processed=False) | _of_datasets(kept) | _held_w(written)
+    )
 
 
 def _poll_lines(options: Options, result: object) -> Attribution:
@@ -3214,13 +3401,17 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     (``location_source`` "static") or has the station details of its pages
     (``details_source``, ADR-021); the strings the document was written with are
     not trusted, since a catalog written before ECO-065 holds retired lines.
+    PIG-PIB's W names the years and days of the station sources its sidecar records.
     """
     report = cast(CatalogReport, result)
     if report.version is None:
         return Attribution()
     document = json.loads(report.version.read_bytes())
-    lines = attribution(
-        provider_origin(report.provider), border_origin(report.provider)
+    sources = _reader.read_meta(report.version).extra.get("catalog")
+    lines = _catalog_attribution(
+        get_provider(report.provider),
+        {},
+        sources=cast("list[dict[str, Any]]", sources or ()),
     )
     adapter = get_provider(report.provider).adapter
     return lines | attribution(
@@ -3232,6 +3423,61 @@ def _catalog_lines(options: Options, result: object) -> Attribution:
     )
 
 
+def _import_lines(options: Options, result: object) -> Attribution:
+    """
+    The lines of ``store import`` (ADR-033): the files it kept, then what it built.
+
+    The provider's files in the raw root are copies as they came (its line); its
+    series and its catalog are processed data, the catalog's locations checked against
+    the packaged border of its country (`_catalog_lines`). Of an interim capture
+    (PIG-PIB's S0, ADR-035) W is that of the versions it holds (`_held_w`).
+    """
+    report = cast(ImportReport, result)
+    if not report.items:
+        return Attribution()
+    origin = provider_origin(report.provider)
+    lines = attribution(origin, processed=False) | _held_w(
+        (_slot_key(slot), item.version)
+        for item in report.items
+        if (slot := item.slot) is not None and slot.startswith("archive:")
+    )
+    if any(item.version is not None for item in report.series):
+        lines |= attribution(origin)
+    if report.catalog is not None:
+        lines |= _catalog_lines(options, report.catalog)
+    return lines
+
+
+def _found_w(provider: str, root: object) -> Attribution:
+    """
+    PIG-PIB's W of the stations a search found (ADR-035).
+
+    A store search (``root``) read the provider's current catalog: its W names the
+    years and days of the station sources it was built from, as `store catalog`'s
+    does; a live search (``root`` None) asked the points now: its W names the day of
+    the search and its year.
+    """
+    descriptor = get_provider(provider)
+    formula = descriptor.license.attribution
+    if root is None:
+        today = datetime.now(UTC).date()
+        return Attribution(
+            (fill(formula, period=str(today.year), date=today.isoformat()),)
+        )
+    try:
+        entry = _store.current_version(
+            cast(PathArg, root), slot=f"catalog:{_CATALOG_DATASETS[provider]}"
+        )
+    except ObserwatorStoreError:
+        return Attribution()
+    if entry is None or entry.meta is None:
+        return Attribution()
+    sources = cast("list[dict[str, Any]]", entry.meta.extra.get("catalog") or ())
+    return Attribution(
+        filled(_catalog_attribution(descriptor, {}, sources=sources).attribution)
+    )
+
+
 def _stations_lines(options: Options, result: object) -> Attribution:
     """
     Lines of the providers of the stations found.
@@ -3239,12 +3485,16 @@ def _stations_lines(options: Options, result: object) -> Attribution:
     A store search reads the current catalogs, whose locations were checked
     against the packaged borders (ADR-018): their lines join those of the
     providers. The ``static`` locations of IMGW-PIB stations in the catalog come
-    from hydro.imgw.pl; those add its lines.
+    from hydro.imgw.pl; those add its lines. PIG-PIB's W is filled (`_found_w`).
     """
     entries = cast(Sequence[StationListEntry], result)
     owners = dict.fromkeys(entry.provider for entry in entries)
     lines = attribution(*(provider_origin(owner) for owner in owners))
-    if options.get("source") != "store":
+    store = options.get("source") == "store"
+    for owner in owners:
+        if fillable(get_provider(owner).license.attribution):
+            lines |= _found_w(owner, options["root"] if store else None)
+    if not store:
         return lines
     lines |= attribution(*(border_origin(owner) for owner in owners))
     for owner in owners:
@@ -3339,6 +3589,7 @@ _ATTRIBUTIONS: dict[str, Callable[[Options, object], Attribution]] = {
     "pmaxtp read": _origin_lines("pmaxtp"),
     "store sync": _sync_lines,
     "store catalog": _catalog_lines,
+    "store import": _import_lines,
     "store export": _archive_lines,
     "series build": _series_lines,
     "series select": _series_lines,
@@ -4029,6 +4280,7 @@ _CHECKS: dict[str, Checker] = {
     "store check": _twin("check_store", without=("plan",)),
     "store sync": _check_store_sync,
     "store catalog": _twin("check_catalog"),
+    "store import": _twin("check_import"),
     "store export": _check_store_export,
     "series build": _twin("check_series"),
     "series select": _check_select,
@@ -4062,8 +4314,9 @@ def check_command(
     Plan a command without writing anything or downloading content.
 
     Commands with a check twin use it (``store sync`` → `check_store`,
-    ``store catalog`` → `check_catalog`, ``series build`` → `check_series`,
-    ``pmaxtp sync`` → `check_pmaxtp`); commands that are checks themselves run
+    ``store catalog`` → `check_catalog`, ``store import`` → `check_import`,
+    ``series build`` → `check_series`, ``pmaxtp sync`` → `check_pmaxtp`);
+    commands that are checks themselves run
     without writing their plan file. Every other command gets a general plan of
     `PlanAction` items: validation, URLs and expected paths, without any
     request (read-only commands are reported ``current``, live reads

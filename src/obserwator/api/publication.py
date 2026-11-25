@@ -2,17 +2,18 @@
 The publication state of the sources on the REST routes (P15, ADR-030 D5).
 
 A source of a tier other than ``verified`` (the captures, IMGW-PIB's telemetry,
-ČHMÚ's groundwater months) whose state in force is ``private``
-(`obserwator.captures.publication`: ``[obserwator.capture]`` of ``nogat.toml``, read on
-every request, else the source's default) is left out of the REST API and of MCP over
-HTTP, which answers through these routes: an option naming it (``dataset``,
-``datasets``, an item of a ``store sync`` plan) and a ``version`` below one of its slots
-are ``not_found`` (``details.reason`` ``private``) before any request, a version that
-exists answering like one that does not, as for a station an instance does not serve
-(ADR-025 D2). So is a sub-daily series built from a private source (ADR-031: its state
-follows its inputs), by its dataset and by a version below
-``series/versions/<its slug>/``. The CLI, the library and the MCP server on stdio read
-every source.
+ČHMÚ's groundwater months, a provider fed by files of an unverified tier, ADR-033)
+whose state in force is ``private`` (`obserwator.captures.publication`:
+``[obserwator.capture]`` of ``nogat.toml``, read on every request, else the source's
+default, that of its provider file for a provider fed by files) is left out of the REST
+API and of MCP over HTTP, which answers through these routes: an option naming it
+(``dataset``, ``datasets``, an item of a ``store sync`` plan) and a ``version`` below
+one of its slots or below ``series/versions/<its slug>/`` are ``not_found``
+(``details.reason`` ``private``) before any request, a version that exists answering
+like one that does not, as for a station an instance does not serve (ADR-025 D2). So
+is a sub-daily series built from a private source (ADR-031: its state follows its
+inputs), by its dataset and by a version below ``series/versions/<its slug>/``. The
+CLI, the library and the MCP server on stdio read every source.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from obserwator.datasets import (
     DatasetDescriptor,
     _capture_from_path,
     datasets,
+    get_provider,
 )
 from obserwator.exceptions import ObserwatorError
 from obserwator.messages import message
@@ -50,11 +52,12 @@ def _private() -> tuple[DatasetDescriptor, ...]:
 def _not_found(
     descriptor: DatasetDescriptor, option: str, value: object
 ) -> ObserwatorError:
-    text = (
-        message("api.series_private", dataset=descriptor.key)
-        if descriptor.inputs
-        else message("api.capture_private", dataset=descriptor.key)
-    )
+    if descriptor.inputs:
+        text = message("api.series_private", dataset=descriptor.key)
+    elif get_provider(descriptor.provider).adapter.provider_file is not None:
+        text = message("api.files_private", dataset=descriptor.key)
+    else:
+        text = message("api.capture_private", dataset=descriptor.key)
     return ObserwatorError(
         text,
         code="not_found",
@@ -140,9 +143,10 @@ def refuse_version(parts: Sequence[str]) -> None:
         (``archives/versions/…``, ``series/versions/…``) but not for existence: the
         slot directory of a capture's day is ``<server_dir>/<YYYY-MM-DD>`` (ADR-030
         D3), that of any other file a directory below its dataset's server directory
-        (IMGW-PIB's telemetry: ``Arch/Telemetria/Hydro/<YYYY>/Hydro_<YYYY-MM>``), and
-        the versions of a sub-daily series lie below ``series/versions/<slug>/``
-        (ADR-031).
+        (IMGW-PIB's telemetry: ``Arch/Telemetria/Hydro/<YYYY>/Hydro_<YYYY-MM>``; a
+        provider fed by files: ``files/<acronym>/<dataset>/<station code>``), and the
+        versions of a series lie below ``series/versions/<slug>/`` (a sub-daily one
+        of ADR-031 and the series of a private source alike).
 
     Raises
     ------
@@ -153,7 +157,7 @@ def refuse_version(parts: Sequence[str]) -> None:
     if list(parts[:2]) == ["series", "versions"]:
         slug = parts[2] if len(parts) > 2 else None
         for descriptor in _private():
-            if descriptor.inputs and descriptor.slug == slug:
+            if descriptor.slug == slug:
                 raise _not_found(descriptor, "version", "/".join(parts))
         return
     if list(parts[:2]) != ["archives", "versions"]:

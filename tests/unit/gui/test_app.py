@@ -22,6 +22,7 @@ from starlette.testclient import TestClient
 
 import obserwator
 from obserwator.attribution import attribution
+from obserwator.datasets import get_provider
 from obserwator.exceptions import ERROR_CODES
 from obserwator.gui._config import Basemap
 from obserwator.gui._live import CURRENT_TTL_S, CurrentData
@@ -196,18 +197,58 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert hydro["stations"] == 2
     assert len(hydro["sha256"]) == 64
     assert root["error"] is None
-    # The fixture root stores no analyses
+    # The fixture root stores no analyses; no analysis applies to PIG-PIB's groundwater
+    # objects, so it has no analyses to store
     assert root["analyses"] == {"IMGW": None, "CHMU": None}
-    assert set(session["providers"]) == {"IMGW", "CHMU"}
+    assert set(session["providers"]) == {"IMGW", "CHMU", "PIG"}
     assert session["providers"]["CHMU"]["attribution"] == list(
         attribution("chmu").attribution
     )
+    # national services: their countries, and no notice of another source (P8, P11);
+    # PIG-PIB, a geological survey, is another source and says so in its own words
+    pig_notice = message("datasets.source_notice_pig").localized("pl")
+    assert {
+        provider: (found["country"], found["source_class"], found["source_notice"])
+        for provider, found in session["providers"].items()
+    } == {
+        "IMGW": ("PL", "nmhs", None),
+        "CHMU": ("CZ", "nmhs", None),
+        "PIG": ("PL", "other", pig_notice),
+    }
     origins = session["attribution"]["origins"]
-    assert set(origins) == {"imgw", "imgw_hydro", "pmaxtp", "chmu", "gugik", "cuzk"}
+    assert set(origins) == {
+        "imgw",
+        "imgw_hydro",
+        "pmaxtp",
+        "chmu",
+        "gugik",
+        "cuzk",
+        "pig",
+    }
     assert session["basemap"] is None
     assert session["terms"] is None
     assert session["operator_email"] is None
     assert session["compute"]["available"] is False
+
+
+def test_the_session_gives_the_notice_of_another_source_in_the_pages_language(
+    client, monkeypatch
+):
+    # ČHMÚ's adapter made a source of the class "other" with P8's notice of the files'
+    # providers: the page shows the notice in its language, beside the class
+    adapter = get_provider("CHMU").adapter
+    notice = message("datasets.source_notice_other")
+    monkeypatch.setattr(adapter, "source_class", "other")
+    monkeypatch.setattr(adapter, "source_notice", notice)
+
+    polish = client.get("/api/session").json()["providers"]
+    english = client.get("/api/session", headers=EN).json()["providers"]
+
+    assert polish["CHMU"]["source_class"] == english["CHMU"]["source_class"] == "other"
+    assert polish["CHMU"]["source_notice"] == notice.localized("pl")
+    assert english["CHMU"]["source_notice"] == notice.localized("en")
+    assert polish["CHMU"]["source_notice"] != english["CHMU"]["source_notice"]
+    assert polish["IMGW"]["source_notice"] is english["IMGW"]["source_notice"] is None
 
 
 def test_the_session_names_the_stored_analyses_of_each_provider(
@@ -721,7 +762,7 @@ def test_the_current_values_of_one_station(client):
     assert meteo["record"]["station_name"] == "Warszawa"
     assert "synop" not in meteo  # the code is no synoptic station's
     body = problem(chmu, 404, "not_found", "en")
-    assert body["message"] == message("gui.errors.no_current_chmu")
+    assert body["message"] == message("gui.errors.no_current_provider", provider="ČHMÚ")
 
 
 @pytest.mark.parametrize("path", ["/api/current", f"/api/current/{HYDRO}"])

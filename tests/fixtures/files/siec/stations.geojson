@@ -1,0 +1,63 @@
+{
+  "type": "FeatureCollection",
+  "name": "siec",
+  "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}},
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [17.0316, 51.1177]},
+      "properties": {
+        "station_code": "SIEC-01",
+        "kind": "hydro",
+        "name": "Wrocław Most Pomorski",
+        "river": "Odra",
+        "active": true,
+        "gauge_zero_m": 105.02,
+        "gauge_zero_datum": "PL-EVRF2007-NH",
+        "river_km": 251.6,
+        "catchment_area_km2": 22111.5
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [17.0794, 51.1572]},
+      "properties": {
+        "station_code": "SIEC-02",
+        "kind": "hydro",
+        "name": "Wrocław Sołtysowice",
+        "river": "Widawa"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "station_code": "SIEC-03",
+        "kind": "hydro",
+        "name": "Kanał Powodziowy",
+        "river": "Kanał Powodziowy",
+        "active": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [15.0, 50.0]},
+      "properties": {
+        "station_code": "SIEC-X1",
+        "kind": "hydro",
+        "name": "Punkt poza krajem"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [17.0904, 51.1036]},
+      "properties": {
+        "station_code": "SIEC-M1",
+        "kind": "meteo",
+        "name": "Wrocław Biskupin",
+        "elevation_m": 118,
+        "established_year": 2019
+      }
+    }
+  ]
+}

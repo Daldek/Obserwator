@@ -140,7 +140,7 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
 
     # The table holds the measurements; the station sources (ADR-015, ADR-032) and the
     # captures (ADR-030) are one line each, naming their keys by pattern
-    # (`*_stations`, `pl.imgw.*_{current,operational}`), the datasets outside the
+    # (`*_stations`, `pl.*_{current,operational}`), the datasets outside the
     # store one line of keys folded by prefix (`pl.imgw.{a,b}`).
     table: list[str] = []
     lines: dict[str, list[str]] = {
@@ -171,6 +171,7 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
         "pl.imgw.meteo_states_current",
         "cz.chmu.hydro_recent",
         "cz.chmu.hydro_current",
+        "pl.pig.groundwater_operational",
     ]
     served = [descriptor.key for descriptor in datasets()]
     for name, wanted in lines.items():
@@ -200,6 +201,8 @@ def test_guide_lists_the_datasets_providers_statuses_and_error_codes(lang):
     for owner in providers():
         assert f"`{owner.key_prefix}.*`" in guide
         assert owner.station_code_pattern in guide
+        if owner.credential is not None:
+            assert f"`{owner.credential.variable}`" in guide
 
 
 @pytest.mark.parametrize("lang", ["pl", "en"])

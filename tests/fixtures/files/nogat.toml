@@ -1,0 +1,4 @@
+# The deployment of the tests of a provider fed by files (ADR-033): one provider file
+# beside this file. The tests copy the directory before they use it.
+[obserwator]
+provider_files = ["siec.toml"]

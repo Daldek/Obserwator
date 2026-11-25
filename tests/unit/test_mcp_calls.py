@@ -251,7 +251,9 @@ async def test_a_list_tool_follows_next_cursor_to_the_next_page():
             {"limit": limit, "cursor": first["page"]["next_cursor"]},
         )
     ).structured_content
-    whole = (await call("obserwator_datasets_list", {})).structured_content
+    # More datasets than the default page of 50: the whole registry needs a limit.
+    everything = {"limit": len(datasets())}
+    whole = (await call("obserwator_datasets_list", everything)).structured_content
 
     assert first["page"]["truncated"] is True
     assert second["page"]["next_cursor"] is None

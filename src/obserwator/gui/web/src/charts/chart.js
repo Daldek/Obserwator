@@ -48,17 +48,31 @@
  *
  * The drawing itself is `drawChart` (DOM only); this component mounts it and
  * redraws when `spec` changes. `svgRef.current` is the SVG (for `toPng`).
+ *
+ * `ChartBadge` gives every chart under it a badge above its plot, which the station panel's
+ * tables carry too (`BadgeLine`, sections/common.js `Table`): the station panel names the
+ * class of a station of another source there (hydromet P11), so a screenshot of any chart or
+ * table keeps it.
  */
 
 import htm from "../../vendor/htm/htm.mjs";
-import { h } from "../../vendor/preact/preact.mjs";
-import { useEffect, useRef } from "../../vendor/preact/hooks.mjs";
+import { createContext, h } from "../../vendor/preact/preact.mjs";
+import { useContext, useEffect, useRef } from "../../vendor/preact/hooks.mjs";
 import { drawChart } from "./draw.js";
 
 const html = htm.bind(h);
 
+/** The text of the badge of every chart and table under it; null (the default) for none. */
+export const ChartBadge = createContext(null);
+
+/** The badge above a chart or a table (`ChartBadge`), nothing without one. */
+export function BadgeLine() {
+  const text = useContext(ChartBadge);
+  return text ? html`<p class="data-badge"><span class="chip" data-part="class-badge">${text}</span></p>` : null;
+}
+
 /**
- * A chart drawn from a spec.
+ * A chart drawn from a spec, under its badge where `ChartBadge` gives one.
  *
  * @param {{spec: object, svgRef?: {current: SVGSVGElement | null}, class?: string}} props
  * @returns {import("../../vendor/preact/preact.mjs").VNode}
@@ -81,5 +95,7 @@ export function Chart({ spec, svgRef, class: extra }) {
     if (handle.current) handle.current.update(spec);
   }, [spec]);
 
-  return html`<div class=${extra ? `chart ${extra}` : "chart"} ref=${host}></div>`;
+  // The badge is the chart's sibling, so the element drawChart fills stays the same when
+  // the badge comes or goes
+  return html`<${BadgeLine} /><div class=${extra ? `chart ${extra}` : "chart"} ref=${host}></div>`;
 }

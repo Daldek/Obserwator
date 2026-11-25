@@ -1,5 +1,5 @@
-// Preact with htm, the hooks, the chart component and the page's formats, imported from
-// one place.
+// Preact with htm, the hooks, the chart component with the badge of charts and tables and
+// the page's formats, imported from one place.
 
 import htm from "../vendor/htm/htm.mjs";
 import { h, render, Fragment, createContext } from "../vendor/preact/preact.mjs";
@@ -7,7 +7,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from ".
 
 export const html = htm.bind(h);
 export { Fragment, createContext, h, render, useCallback, useContext, useEffect, useMemo, useRef, useState };
-export { Chart } from "./charts/chart.js";
+export { BadgeLine, Chart, ChartBadge } from "./charts/chart.js";
 export { fmt, fmtDate, fmtDateTime, fmtTime, lang, t, tn } from "./i18n.js";
 
 /** Days since 1970-01-01 of an ISO date "YYYY-MM-DD": the x of the chart's `date` scale. */

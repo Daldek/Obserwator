@@ -82,7 +82,12 @@ def test_store_info_lists_the_providers_of_the_registry(tmp_path):
     for path in (root, tmp_path / "brak"):
         info = store_info(path)
         assert info.providers == providers()
-        assert [provider.id for provider in info.providers] == ["IMGW", "CHMU"]
+        assert [provider.id for provider in info.providers] == [
+            "IMGW",
+            "CHMU",
+            "GDANSKIEWODY",
+            "PIG",
+        ]
 
 
 def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path):
@@ -127,7 +132,7 @@ def test_scan_names_the_provider_of_each_entry_and_filters_by_provider(tmp_path)
     ]
     with pytest.raises(ObserwatorValidationError) as error:
         iter_store(root, provider="SHMU")
-    assert error.value.details["allowed"] == ["IMGW", "CHMU"]
+    assert error.value.details["allowed"] == ["IMGW", "CHMU", "GDANSKIEWODY", "PIG"]
 
 
 def test_provider_catalogs_lie_in_named_directories_of_the_catalog_slot(tmp_path):
@@ -212,7 +217,7 @@ def test_read_catalog_reads_a_version_or_the_current_catalog_of_each_provider(
     assert error.value.details["option"] == "provider"
 
 
-def test_only_the_thresholds_property_may_be_an_object(tmp_path):
+def test_only_thresholds_and_hydrogeology_may_be_objects(tmp_path):
     root = init_store(tmp_path / "store").root
     build(root)
     version = current_version(data_root(root), slot="catalog:cz.chmu.stations").version
@@ -233,10 +238,15 @@ def test_only_the_thresholds_property_may_be_an_object(tmp_path):
 
     without = read_catalog(variant("null", lambda p: p.update(thresholds=None)))
     assert without[3].properties["thresholds"] is None
+    # PIG-PIB's description of a point (ADR-035 W6): an object of simple values.
+    described = {"point_type": "piezometr", "screen_top_m": 4.5, "automatic": True}
+    found = read_catalog(variant("hydro", lambda p: p.update(hydrogeology=described)))
+    assert found[3].properties["hydrogeology"] == described
     for name, change in (
         ("list", lambda p: p.update(thresholds=[1, 2])),
         ("deep", lambda p: p["thresholds"]["H"].update(unit={"cm": 1})),
         ("name", lambda p: p.update(name={"cs": "Špindlerův Mlýn"})),
+        ("nested", lambda p: p.update(hydrogeology={"screen": {"top_m": 4.5}})),
     ):
         with pytest.raises(ObserwatorDataError, match="must be simple values"):
             read_catalog(variant(name, change))

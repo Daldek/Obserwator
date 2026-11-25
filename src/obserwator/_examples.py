@@ -458,6 +458,41 @@ EXAMPLES: Mapping[str, tuple[Example, ...]] = {
             },
         ),
     ),
+    "store import": (
+        Example(
+            "obserwator store import --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--provider-file /etc/nogat/siec.toml --json",
+            {
+                "provider": "SIEC",
+                "items": [
+                    {
+                        "slot": "archive:pl.siec.hydro_daily:SIEC-01.csv",
+                        "status": "new",
+                        "version": f"{_RAW_ROOT}/archives/versions/files/siec/hydro_daily/"
+                        "SIEC-01/2026-11-23_eade9206/SIEC-01.csv",
+                    }
+                ],
+                "series": [
+                    {
+                        "status": "new",
+                        "version": "series/versions/siec_hydro_daily/2026-11-23_6ac7729a/series.json",
+                        "stations": 2,
+                    }
+                ],
+                "catalog": {"status": "new", "station_count": 5},
+                "cancelled": False,
+            },
+        ),
+        Example(
+            "obserwator store import --root /data/obserwator --raw-root /data/obserwator-raw "
+            "--provider-file /etc/nogat/siec.toml --check --json",
+            {
+                "schema": "obserwator-plan/1",
+                "root": _ROOT,
+                "actions": [{"command": "store import", "status": "missing"}],
+            },
+        ),
+    ),
     "store export": (
         Example(
             f"obserwator store export --version /data/obserwator-raw/{_DAILY_VERSION} --root /data/obserwator-raw "
