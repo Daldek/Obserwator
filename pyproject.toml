@@ -36,6 +36,8 @@ dependencies = [
     "platformdirs>=4",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
+    # zoneinfo's IANA database: Windows has none (PIG-PIB's times are Europe/Warsaw, ADR-035).
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

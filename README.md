@@ -34,7 +34,7 @@ uv add "obserwator @ git+https://github.com/Daldek/Obserwator.git@v3.2.0"
 uvx --from "obserwator[mcp] @ git+https://github.com/Daldek/Obserwator.git@v3.2.0" obserwator mcp
 ```
 
-The lines install the CLI of the release 3.2.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs`; the extras add the rest:
+The lines install the CLI of the release 3.2.0, add the library to a project pinned to its tag (Nogat REL-5.1) and start the MCP server once. `pip install "<requirement>"` takes the same requirement strings. The library alone needs `httpx`, `pydantic`, `pydantic-settings` and `platformdirs` (and `tzdata` on Windows, which has no time zone database of its own); the extras add the rest:
 
 | Extra | Adds |
 |---|---|

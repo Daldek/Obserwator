@@ -4,9 +4,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
-## [Unreleased]
+## [3.3.0] - 2026-11-25
 
-Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. PIG-PIB's groundwater monitoring joins them (Nogat plan `2026-11-24-pig-groundwater.md`, ADR-035): each monthly publication of its readings and every hourly row of its automatic points captured before the service replaces them, the catalog `pig_stations`, the readings and hourly series, the GUI's „Podziemne” with PIG-PIB's points and the import of the interim capture S0. `develop` carries `3.3.0.dev0` (Nogat REL-1.1).
+Changes since 3.2.1, in 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. PIG-PIB's groundwater monitoring joins them (Nogat plan `2026-11-24-pig-groundwater.md`, ADR-035): each monthly publication of its readings and every hourly row of its automatic points captured before the service replaces them, the catalog `pig_stations`, the readings and hourly series, the GUI's „Podziemne” with PIG-PIB's points and the import of the interim capture S0.
 
 ### Added
 
@@ -277,13 +277,19 @@ Toward 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I1
 
 ### Fixed
 
+- **`import obserwator` on Windows.** PIG-PIB's parser reads its times in `Europe/Warsaw`
+  (`zoneinfo`), and Windows has no time zone database of its own, so the import ended in
+  `ZoneInfoNotFoundError`; `tzdata` is now a runtime dependency on Windows
+  (`sys_platform == 'win32'`).
+- **The GUI's welcome window stays closed after a reload right after closing it.** Its closing
+  was remembered on the dialog's `close` event, a task later, which a reload or a followed link
+  could pre-empt, so the window opened again; the button, ×, a click beside it and Escape
+  (`cancel`) now remember it as they close it.
 - **The weekly definition in the GUI is no longer ČHMÚ's:** „zwykle w środy” moved into the note
   of ČHMÚ's weekly dataset, since PIG-PIB's weekly readings fall on Mondays (ADR-035 D12).
 - **`store catalog --provider` and the providers' option help** named only IMGW-PIB and ČHMÚ,
   though Gdańskie Wody's catalog was built the same way; they now name the ids of `datasets
   providers`.
-
-### Fixed
 
 - **The map's basemap is no longer dropped for one failed tile.** When the first basemap tile to
   answer was an error, the GUI took the basemap out for good and drew the packaged borders, even

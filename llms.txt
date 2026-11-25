@@ -1,6 +1,6 @@
 # Obserwator
 
-> Python library, CLI, REST API and MCP server for public hydrological and meteorological data: a versioned raw root of archives and a data root of station series, catalogs and analyses, current data and PMAXTP. Version 3.3.0.dev0. Providers: IMGW-PIB — Poland, ČHMÚ — Czechia, Gdańskie Wody — Poland, PIG-PIB — Poland. Datasets in the registry: 61. Commands of the catalog shared by every interface: 37 (groups: 8).
+> Python library, CLI, REST API and MCP server for public hydrological and meteorological data: a versioned raw root of archives and a data root of station series, catalogs and analyses, current data and PMAXTP. Version 3.3.0. Providers: IMGW-PIB — Poland, ČHMÚ — Czechia, Gdańskie Wody — Poland, PIG-PIB — Poland. Datasets in the registry: 61. Commands of the catalog shared by every interface: 37 (groups: 8).
 
 1. **Learn the commands:** `obserwator commands list --json`, then `obserwator commands schema --command … --json` (REST `GET /api/v1/commands/list`, `/schema`; MCP `obserwator_commands_list`, `obserwator_commands_schema`): options in `options`, other rules in `rules`, effects in `effects` (`writes`, `network`, `idempotent`).
 2. **Check without writing:** `--check` (CLI), `?check=true` (REST, POST), `check: true` (MCP; the default of writing commands), `check_command()` (Python) → an `obserwator-plan/1` plan, nothing written or downloaded. `store check` is a check itself. Ask the user about a large plan.

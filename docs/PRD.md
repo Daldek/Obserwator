@@ -50,7 +50,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-1.7 | Projects (pins of store versions) | Moved to Archiwista (ADR-008, 2026-10-31) | Obserwator's project manifest and the `imgw project` command group are removed; Archiwista keeps projects in `archiwista-project/1` and pins versions by the store's `sha256` and `content_sha256` |
 | FR-1.8 | Captures of current data | Implemented (3.2.0, ADR-030) | Every answer of a source of current data kept as it came in the capture spool and sealed into the raw root per UTC day; `current poll` hourly; the night's harvest of hydro-back's hourly series and ČHMÚ's `recent` day files (`store sync --pace-until`); IMGW-PIB's monthly telemetry; each dataset's tier (`verified`, `telemetry`, `operational`) and each source's publication (`[obserwator.capture]`; hydro.imgw.pl's backend `private` by default) |
 | FR-1.9 | Hourly series | Implemented (3.2.0, ADR-031) | `pl.imgw.hydro_subdaily` and `cz.chmu.hydro_subdaily`: H, Q and T per hour, one version per month, per hour the highest tier with a value |
-| FR-1.10 | Providers fed by files | Implemented (3.3.0.dev0, ADR-033) | An operator's own network declared in a provider file listed by `[obserwator] provider_files` of `nogat.toml` (id, names, country, source class `other`, tier, publication, licence, attribution line, daily datasets); its station file and daily series files kept in the raw root and built into the data root by `store import --provider-file`; station codes `<ID>-<code>` |
+| FR-1.10 | Providers fed by files | Implemented (3.3.0, ADR-033) | An operator's own network declared in a provider file listed by `[obserwator] provider_files` of `nogat.toml` (id, names, country, source class `other`, tier, publication, licence, attribution line, daily datasets); its station file and daily series files kept in the raw root and built into the data root by `store import --provider-file`; station codes `<ID>-<code>` |
 
 ### 3.2. Interfaces
 
@@ -136,7 +136,7 @@ Analytical and statistical parts (hydrological calculations, probabilistic model
 | FR-5.13 | Admin panel of the GUI (DEV-15.13): `admin/` with „Zgłoszenia”, „Statystyki”, „Stan” behind `OBSERWATOR_ADMIN_API_KEY` (or the file of `OBSERWATOR_ADMIN_API_KEY_FILE`), not a REST API key | Implemented (ADR-020) |
 | FR-5.20 | An operator's instance (ADR-025): providers `visible`, `hidden` or `off`, a featured provider with the others faded (`others_opacity`) until „Pokaż pozostałych dostawców”, an area (`focus` or `clip`), the start view, PMAXTP on or off, the operator's title, logo and regulamin | Implemented (3.1.0) |
 | FR-5.21 | „Wykres godzinowy” of a hydrological station: its hourly series by tier and the live hours its provider serves now, while both are `public` | Implemented (3.2.0) |
-| FR-5.22 | A provider fed by files in the GUI (ADR-033): its stations, series and line in the sources strip; the chip „Inne źródło” with the note that its data do not come from a national service, and „dane operacyjne, niezweryfikowane” by an unverified dataset; a private series not served | Implemented (3.3.0.dev0) |
+| FR-5.22 | A provider fed by files in the GUI (ADR-033): its stations, series and line in the sources strip; the chip „Inne źródło” with the note that its data do not come from a national service, and „dane operacyjne, niezweryfikowane” by an unverified dataset; a private series not served | Implemented (3.3.0) |
 | FR-5.14 | HTTPS | Through the deployment's authenticating proxy |
 
 ### Not Implemented
@@ -220,7 +220,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 ## 10. Versioning
 
 - SemVer for API and CLI/GUI package
-- Current version: 3.2.0 (release notes: `docs/CHANGELOG.md`); in development: 3.3.0 (`3.3.0.dev0`)
+- Current version: 3.3.0 (release notes: `docs/CHANGELOG.md`)
 - Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ, agent support and the operational tier with the hourly series of 3.2.0 (Nogat ECO-085) add only optional fields and values within `/1`; the project manifest contract left with the projects (ADR-008)
 
 ---

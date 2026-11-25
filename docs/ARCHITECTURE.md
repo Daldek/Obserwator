@@ -11,7 +11,7 @@ System consists of six main components:
    - Command catalog (`obserwator.commands`): 37 commands, one envelope `obserwator-result/1`, one error registry `ERROR_CODES` (ADR-002); English texts with a Polish variant (ADR-006), declared effects (`writes`, `network`, `idempotent`) and the agent guide `agent_guide` (ADR-004)
    - Providers fed by files (ADR-033): an operator's own network declared in a provider file listed by `[obserwator] provider_files` of `nogat.toml`, served by one adapter (`providers/files.py`) and imported by `store import --provider-file`
    - Captures (ADR-030): every answer of a source of current data, whichever interface asked, is kept as it came in the capture spool `<state_dir>/obserwator/captures` (one file per answer, never in a root); `current poll` asks each polled source at most once per its declared interval; `store sync --pace-until` harvests hydro-back's hourly series or ČHMÚ's `recent` day files of the last closed UTC day, or PIG-PIB's automatic measurements appended after the watermark of its newest capture (ADR-035), through `fetch.PacedSession` (spread to a deadline, at least 5 s apart, backoff, gzip), then seals
-   - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings)
+   - Minimal dependencies (httpx, platformdirs, pydantic, pydantic-settings; tzdata on Windows)
 
 2. **Versioned Store** [Parquet: `obserwator[store]`] in two roots (ADR-017)
    - Raw root (marker `obserwator-store.json`): append-only, immutable versions of IMGW-PIB, ČHMÚ, Gdańskie Wody and PIG-PIB archives with provenance sidecars, the station sources of the catalogs, the captures of current data sealed from the spool (one version per dataset and UTC day) and the PMAXTP cells; the downloads and the sealing write only here

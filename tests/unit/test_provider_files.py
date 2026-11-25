@@ -271,7 +271,9 @@ def test_country_cz_gives_its_key_prefix(tmp_path):
 
 
 def test_absolute_and_home_paths_are_kept(tmp_path, monkeypatch):
+    # `~` is the user's home: HOME on POSIX, USERPROFILE on Windows (Path.expanduser).
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     absolute = tmp_path / "elsewhere" / "stations.geojson"
     found = read(
         provider_file(
@@ -316,10 +318,13 @@ def test_file_of_max_bytes_is_read_one_byte_more_refused(tmp_path):
     text = toml_text(MINIMAL)
     padding = MAX_BYTES - len(text.encode()) - 2
     path = tmp_path / "siec.toml"
-    path.write_text(text + "#" + "x" * padding + "\n", encoding="utf-8")
+    # newline="": the bytes counted are those written, without Windows' CRLF.
+    path.write_text(text + "#" + "x" * padding + "\n", encoding="utf-8", newline="")
     assert path.stat().st_size == MAX_BYTES
     assert read(path).id == "SIEC"
-    path.write_text(text + "#" + "x" * (padding + 1) + "\n", encoding="utf-8")
+    path.write_text(
+        text + "#" + "x" * (padding + 1) + "\n", encoding="utf-8", newline=""
+    )
     assert refusal(path)["option"] == "provider_file"
 
 
