@@ -244,6 +244,14 @@ MESSAGES = {
         "niego katalog nie bierze z niego nazw, rodzajów ani położeń obiektów wód "
         "podziemnych ČHMÚ",
     ),
+    # PIG-PIB (ADR-035): the night's capture of mwp_auto lists the automatic points
+    "automatic_not_stored": Text(
+        "source {source}: no capture of the automatic points in the store ({dataset}); "
+        "optional, without it the catalog names no point automatic",
+        "źródło {source}: brak w katalogu surowym zapisu punktów automatycznych "
+        "({dataset}); nieobowiązkowe, bez niego katalog nie oznacza punktów jako "
+        "automatycznych",
+    ),
     "groundwater_sources_missing": Text(
         "The data root holds groundwater series of ČHMÚ, but the store {raw} holds "
         "neither the list nor the current metadata of its groundwater objects: the "

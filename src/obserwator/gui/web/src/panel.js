@@ -36,12 +36,14 @@ import { Command, Licence, POBIERZ } from "./sections/pobierz.js";
 import { STACJA } from "./sections/stacja.js";
 import { TERAZ } from "./sections/teraz.js";
 import {
+  KINDS,
   classGroups,
   datasetShort,
   datasetTitle,
   groundwaterKindName,
   kindName,
   providerFullName,
+  providerKinds,
   providerName,
   providerOf,
   seriesDatasets,
@@ -339,7 +341,7 @@ function StationsFiles({ provider, kind, onDoc }) {
               ${formats.map(
                 (key) => html`<div data-format=${key}><${Command} line=${doc.formats[key].command} label=${t("station.none.files_cli", { format: STATIONS_FORMATS[key] || key })} /></div>`,
               )}
-              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} />`)}`
+              ${doc.licences.map((licence) => html`<${Licence} licence=${licence} terms=${doc.terms_notice || []} />`)}`
           : html`<p class="muted" role="status">${t("station.files.loading")}</p>`}
     </${Section}>
   </div>`;
@@ -350,7 +352,10 @@ function StationsFiles({ provider, kind, onDoc }) {
  * stations of the list's provider and kind to download; on an operator's instance only of
  * the providers it serves (ADR-025). The catalogs' stations are counted by provider, in the
  * order of the list's chips (words.js `classGroups`), and where the providers are of both
- * classes of sources, by class with its providers under it (hydromet P12).
+ * classes of sources, by class with its providers under it (hydromet P12), each by the
+ * kinds its providers publish (words.js `providerKinds`: PIG-PIB's groundwater objects
+ * alone). The stored analyses are those of the providers whose stations an analysis
+ * applies to (the session's `root.analyses`: never PIG-PIB's).
  *
  * @param {{session: object|null, stations: object[], provider?: string|null, kind?: string,
  *   onLines: (lines: object|null) => void}} props api/session, the stations of
@@ -371,33 +376,46 @@ export function NoStation({ session, stations, provider = null, kind = "all", on
   const series = Object.entries(held);
   const scope = scopeOf(session);
   const providers = [...new Set([...scope.providers, ...stations.map((s) => s.provider)])];
+  // The kinds some of the providers publish (the session's `kinds`) that the views offer
+  // for their stations (`shownKinds`): groundwater only where a catalog has an object
+  const published = (ids) => KINDS.filter((kind) => ids.some((id) => providerKinds(id).includes(kind)));
+  const offeredOf = (ids) => {
+    const shown = shownKinds(stations.filter((s) => ids.includes(s.provider)));
+    return published(ids).filter((kind) => shown.includes(kind));
+  };
   // A dataset the root may hold but does not, of a served provider and of a kind offered
   // for its stations: a groundwater dataset only where its catalog has a groundwater object;
   // never an hourly series (ADR-031), built from the captures and not served while private
-  const offered = Object.fromEntries(providers.map((id) => [id, shownKinds(stations.filter((s) => s.provider === id))]));
+  const offered = Object.fromEntries(providers.map((id) => [id, offeredOf([id])]));
   const missing = Object.entries(seriesDatasets())
     .filter(([key, dataset]) => !held[key] && dataset.step !== "hour" && (offered[dataset.provider] || []).includes(dataset.kind))
     .map(([key]) => key);
   const groups = classGroups(providers, scope.featured);
   const byClass = groups.length > 1;
+  // The kinds a row counts: those offered, else every kind its providers publish, so
+  // PIG-PIB without a catalog reads „PIG-PIB: podziemne” and 0
+  const rowKinds = (ids) => {
+    const kinds = offeredOf(ids);
+    return kinds.length ? kinds : published(ids);
+  };
   // „IMGW-PIB: hydrologiczne · meteorologiczne” and its counts, of a provider or a class
-  const named = (name, kinds) => t(kinds.includes("groundwater") ? "station.none.catalog_kinds_groundwater" : "station.none.catalog_kinds", { name });
+  const named = (name, kinds) => (kinds.length ? t("station.none.catalog_kinds", { name, kinds: kinds.map((kind) => t(`station.none.kind.${kind}`)).join(" · ") }) : name);
   const counted = (own, kinds) => kinds.map((which) => fmt(own.filter((s) => s.kind === which).length)).join(" · ");
   const rows = groups.flatMap((group) => {
     const members = group.providers.map(
       (id) => html`<tr class=${byClass ? "in-class" : null}>
         <th scope="row">
-          ${named(providerName(id), offered[id])}
+          ${named(providerName(id), rowKinds([id]))}
           ${catalogs[id]
             ? html`<span class="row-sub">${t("station.none.catalog_version", { version: catalogs[id].version, when: fmtDateTime(catalogs[id].downloaded_at) })}</span>`
             : null}
         </th>
-        <td>${counted(stations.filter((s) => s.provider === id), offered[id])}</td>
+        <td>${counted(stations.filter((s) => s.provider === id), rowKinds([id]))}</td>
       </tr>`,
     );
     if (!byClass) return members;
     const own = stations.filter((s) => group.providers.includes(s.provider));
-    const kinds = shownKinds(own);
+    const kinds = rowKinds(group.providers);
     return [
       html`<tr class="class-row" data-class=${group.cls}><th scope="row">${named(sourceClassName(group.cls), kinds)}</th><td>${counted(own, kinds)}</td></tr>`,
       ...members,
@@ -432,7 +450,7 @@ export function NoStation({ session, stations, provider = null, kind = "all", on
     <h3 class="group-title">${t("station.none.analyses")}</h3>
     <table class="params compact" data-part="analyses">
       <tbody>
-        ${providers.map(
+        ${providers.filter((id) => Object.hasOwn(analyses, id)).map(
           (id) => html`<tr data-provider=${id}>
             <th scope="row">
               ${providerName(id)}

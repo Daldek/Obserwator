@@ -2,16 +2,23 @@
 // lines come byte for byte from the server's one place for them, obserwator.attribution: in
 // the `attribution` and `terms_notice` fields of every response with data or results, and
 // for each origin of data in the session's `attribution` (api/session: `origins.{imgw,
-// imgw_hydro, pmaxtp, chmu, gugik, cuzk}` and those of the providers fed by files, the
+// imgw_hydro, pmaxtp, chmu, pig, gugik, cuzk}` and those of the providers fed by files, the
 // standard's `order` and `terms_order`). This module merges the lines of what a view shows,
 // in the standard's order, each once, as `Attribution.__or__` does on the server, and hands
 // them to the kit's <nogat-sources> (`Sources`): a 12 px strip with S, P, PS, PP and the
-// short forms of ČHMÚ's, GUGiK's and ČÚZK's lines, after them the lines the session declares
-// for it (`screen_lines`: a provider fed by files, its line or its short form, shown while
-// the view's lines carry it), then „Źródła i warunki”, a dialog with every line, the terms
-// and „Regulamin” where the deployment serves one. A view has one strip, across the page
-// under the map and both panels, never one per panel or card. A public deployment also
-// links „Regulamin” at the bottom of the left panel (Nogat DEV-15.7): `TermsLink`.
+// short forms of ČHMÚ's, PIG-PIB's, GUGiK's and ČÚZK's lines, after them the lines the
+// session declares for it (`screen_lines`: a provider fed by files, its line or its short
+// form, shown while the view's lines carry it), then „Źródła i warunki”, a dialog with every
+// line, the terms and „Regulamin” where the deployment serves one. A view has one strip,
+// across the page under the map and both panels, never one per panel or card. A public
+// deployment also links „Regulamin” at the bottom of the left panel (Nogat DEV-15.7):
+// `TermsLink`.
+//
+// PIG-PIB's W names the years and days of each product's data (ADR-035): the session's
+// `fillable` are the formulas whose `<period>` and `<date>` each product fills. A filled
+// line takes its formula's place in the order, and the W lines of what a view shows merge
+// into one naming the first and the last year and day of them all, an unfilled one giving
+// way to any filled (the server's `_canonical` and `_merged_w`).
 //
 // main.js hands the session's `attribution` over with `setTexts` once api/session answers;
 // `useTexts` gives it to every component that composes lines (null until then). The origins
@@ -52,12 +59,76 @@ export function useTexts() {
   return texts;
 }
 
-/** The lines once each: those the standard orders in its order, any other after them. */
-function ordered(order, lines) {
-  const given = new Set(lines);
-  const known = order.filter((line) => given.has(line));
-  const listed = new Set(order);
-  return [...known, ...[...given].filter((line) => !listed.has(line))];
+/** A fillable formula's pattern: its text byte for byte, `<period>` a year or the first and
+ * the last joined by an en dash, `<date>` a day or two joined by a spaced en dash. */
+function fillPattern(formula) {
+  const source = formula
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace("<period>", "(?<period>[0-9]{4}(?:–[0-9]{4})?)")
+    .replace("<date>", "(?<date>[0-9]{4}-[0-9]{2}-[0-9]{2}(?: – [0-9]{4}-[0-9]{2}-[0-9]{2})?)");
+  return new RegExp(`^${source}$`);
+}
+
+/** The patterns of the session's fillable formulas, made once per session. */
+const PATTERNS = new WeakMap();
+
+function patterns(texts) {
+  if (!texts) return [];
+  if (!PATTERNS.has(texts)) PATTERNS.set(texts, (texts.fillable || []).map((formula) => ({ formula, pattern: fillPattern(formula) })));
+  return PATTERNS.get(texts);
+}
+
+/** A line's formula: the fillable one it fills or is, else null. */
+function formulaOf(found, line) {
+  const item = found.find(({ formula, pattern }) => line === formula || pattern.test(line));
+  return item ? item.formula : null;
+}
+
+/**
+ * One line of a formula's lines: the first and the last year and day of every filled one,
+ * the formula itself when none is filled.
+ */
+function mergedLine(formula, pattern, lines) {
+  const years = [];
+  const days = [];
+  for (const line of lines) {
+    const match = pattern.exec(line);
+    if (!match) continue;
+    years.push(...match.groups.period.split("–").map(Number));
+    days.push(...match.groups.date.split(" – "));
+  }
+  if (!years.length) return formula;
+  const first = Math.min(...years);
+  const last = Math.max(...years);
+  days.sort();
+  const period = first === last ? String(first) : `${first}–${last}`;
+  const date = days[0] === days[days.length - 1] ? days[0] : `${days[0]} – ${days[days.length - 1]}`;
+  return formula.replace("<period>", period).replace("<date>", date);
+}
+
+/**
+ * The lines once each: those the standard orders in its order, a filled line in its
+ * formula's place, any other after them; the lines of each fillable formula merged into
+ * one in the place of the first (`mergedLine`).
+ */
+function ordered(texts, order, lines) {
+  const found = patterns(texts);
+  const given = [...new Set(lines)];
+  const merged = [];
+  const done = new Set();
+  for (const line of given) {
+    const formula = found.length ? formulaOf(found, line) : null;
+    if (formula === null) merged.push(line);
+    else if (!done.has(formula)) {
+      done.add(formula);
+      const { pattern } = found.find((item) => item.formula === formula);
+      merged.push(mergedLine(formula, pattern, given.filter((other) => formulaOf(found, other) === formula)));
+    }
+  }
+  const place = new Map(order.map((line, index) => [line, index]));
+  const key = (line) => (found.length ? formulaOf(found, line) || line : line);
+  const known = merged.filter((line) => place.has(key(line))).sort((a, b) => place.get(key(a)) - place.get(key(b)));
+  return [...known, ...merged.filter((line) => !place.has(key(line)))];
 }
 
 /**
@@ -78,7 +149,7 @@ export function compose(texts, sources) {
     lines.push(...(origin.attribution || []));
     terms.push(...(origin.terms_notice || []));
   }
-  return { attribution: ordered(texts.order, lines), terms_notice: ordered(texts.terms_order, terms) };
+  return { attribution: ordered(texts, texts.order, lines), terms_notice: ordered(texts, texts.terms_order, terms) };
 }
 
 /**
@@ -93,9 +164,11 @@ export function allLines(texts) {
 
 /**
  * The lines and terms of several sets, each line once: those the standard orders in its
- * order, any other after them in the order it first appears.
+ * order, any other after them in the order it first appears; the W lines of PIG-PIB merged
+ * into one (`ordered`).
  *
- * @param {object|null} texts from useTexts; without them the order the lines come in
+ * @param {object|null} texts from useTexts; without them the order the lines come in, no
+ *   line merged
  * @param {({attribution?: string[], terms_notice?: string[]}|null)[]} sets
  * @returns {{attribution: string[], terms_notice: string[]}|null} null without a line
  */
@@ -109,8 +182,8 @@ export function merge(texts, sets) {
   }
   if (!lines.length && !terms.length) return null;
   return {
-    attribution: ordered(texts ? texts.order : [], lines),
-    terms_notice: ordered(texts ? texts.terms_order : [], terms),
+    attribution: ordered(texts, texts ? texts.order : [], lines),
+    terms_notice: ordered(texts, texts ? texts.terms_order : [], terms),
   };
 }
 

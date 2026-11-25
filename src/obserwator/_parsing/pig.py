@@ -60,6 +60,7 @@ __all__ = [
     "PigPoint",
     "Reading",
     "auto_hours",
+    "automatic_points",
     "dst_start",
     "level",
     "pages",
@@ -450,6 +451,41 @@ def parse_pig_stations(content: bytes, /, *, filename: str) -> list[StationListE
         )
         for point in read_points(content, filename=filename)
     ]
+
+
+def automatic_points(found: Iterable[Page], /) -> frozenset[str] | None:
+    """
+    The automatic points a capture of ``mwp_auto`` lists: the codes of its layer 0.
+
+    A night's harvest asks ``hydrogeologia/mwp_auto/MapServer/0`` first (W9): the
+    points measured automatically, ``ID_PKT_MWP`` a point's ``ID`` of the points layer.
+
+    Parameters
+    ----------
+    found : iterable of Page
+        The answers of a capture (`pages`).
+
+    Returns
+    -------
+    frozenset of str or None
+        The codes of the last page of layer 0 answered with its rows (a value that is
+        no code left out); None for a capture without such a page.
+    """
+    codes: frozenset[str] | None = None
+    for page in found:
+        rows = page.features
+        if page.layer != "mwp_auto/0" or rows is None:
+            continue
+        listed: set[str] = set()
+        for row in rows:
+            attributes = row.get("attributes") if isinstance(row, dict) else None
+            code = (
+                attributes.get("ID_PKT_MWP") if isinstance(attributes, dict) else None
+            )
+            if isinstance(code, int) and not isinstance(code, bool) and code >= 1:
+                listed.add(str(code))
+        codes = frozenset(listed)
+    return codes
 
 
 # --- the readings ------------------------------------------------------------------

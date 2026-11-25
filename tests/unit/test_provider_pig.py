@@ -10,7 +10,7 @@ follow a fake clock, which the pacing moves instead of sleeping.
 
 import gzip
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -21,6 +21,7 @@ from obserwator.attribution import attribution
 from obserwator.commands import run_command
 from obserwator.store import (
     build_catalog,
+    check_catalog,
     current_version,
     init_store,
     read_catalog,
@@ -33,6 +34,9 @@ from tests.unit.test_paced import FakeClock
 
 POINTS = "pl.pig.groundwater_stations"
 READINGS = "pl.pig.groundwater_readings"
+OPERATIONAL = "pl.pig.groundwater_operational"
+OPERATIONAL_SOURCE = "pig_groundwater_operational"
+"""The source of the catalog that names the automatic points: a capture of mwp_auto."""
 NOW = datetime(2026, 11, 24, 22, 16, tzinfo=UTC)
 """When the probe captured the recorded answers, as the fixture variant's clock."""
 OLSZYC = (22.108861020498814, 52.02697218383176)
@@ -101,6 +105,21 @@ def catalog(data):
         feature.station_code: feature
         for feature in read_catalog(root=data, provider="PIG")
     }
+
+
+def until(clock, minutes):
+    """The ``HH:MM`` of local time ``minutes`` after the fake clock's time: a night's end."""
+    return (clock.now() + timedelta(minutes=minutes)).astimezone().strftime("%H:%M")
+
+
+def actions(data, raw):
+    """The statuses of the PIG catalog's check: the capture's and the catalog's own."""
+    plan = check_catalog(data, raw_root=raw, provider="PIG")
+    found = {"catalog": plan.actions[-1].status}
+    for action in plan.actions[:-1]:
+        if OPERATIONAL_SOURCE in str(action.detail):
+            found[OPERATIONAL_SOURCE] = action.status
+    return found
 
 
 # --------------------------------------------------------------------------
@@ -191,6 +210,59 @@ def test_a_spring_is_the_type_zrodlo_every_other_type_a_bore_and_tak_alone_activ
     }
 
 
+def test_a_point_is_automatic_where_the_nights_capture_lists_it(groundwater_pl_roots):
+    points = catalog(groundwater_pl_roots.data.root)
+
+    # mwp_auto's layer 0 lists 757, 6495, 6713 and 9312: 757 and 6713 have hours of
+    # October only, and 9830 has hours of November but is no automatic point.
+    assert {
+        code: point.properties["hydrogeology"].get("automatic")
+        for code, point in points.items()
+        if point.properties["hydrogeology"] is not None
+    } == {
+        "3": False,
+        "11": False,
+        "757": True,
+        "853": False,
+        "1247": False,
+        "1934": False,
+        "6495": True,
+        "6713": True,
+        "8269": False,
+        "9312": True,
+        "9830": False,
+    }
+
+
+def test_each_new_capture_of_the_automatic_points_rebuilds_the_catalog(
+    tmp_path, server, service, clock
+):
+    raw, data = roots(tmp_path)
+    sync_store(raw, datasets=[POINTS])
+    build_catalog(data, raw_root=raw, provider="PIG")
+    # Without a capture of mwp_auto the catalog does not know which points are
+    # automatic.
+    assert "automatic" not in catalog(data)["9312"].properties["hydrogeology"]
+
+    sync_store(raw, datasets=[OPERATIONAL], pace_until=until(clock, 60))
+    assert actions(data, raw)[OPERATIONAL_SOURCE] == "newer"
+    assert build_catalog(data, raw_root=raw, provider="PIG").status == "new"
+    assert catalog(data)["9312"].properties["hydrogeology"]["automatic"] is True
+    assert actions(data, raw)[OPERATIONAL_SOURCE] == "current"
+
+    # The next night 9312 is no longer listed among the automatic points.
+    automatic = service.tables["mwp_auto/MapServer/0"].rows
+    automatic[:] = [r for r in automatic if r["attributes"]["ID_PKT_MWP"] != 9312]
+    clock.moment = NOW + timedelta(days=1)
+    sync_store(raw, datasets=[OPERATIONAL], pace_until=until(clock, 60))
+
+    planned = actions(data, raw)
+    assert (planned[OPERATIONAL_SOURCE], planned["catalog"]) == ("newer", "newer")
+    assert build_catalog(data, raw_root=raw, provider="PIG").status == "new"
+    assert catalog(data)["9312"].properties["hydrogeology"]["automatic"] is False
+    assert catalog(data)["6495"].properties["hydrogeology"]["automatic"] is True
+
+
 # --------------------------------------------------------------------------
 # stations find (test 16)
 # --------------------------------------------------------------------------
@@ -239,7 +311,8 @@ def test_stations_find_gives_a_point_with_its_hydrogeology_and_a_filled_w(
         "observed_from": 2013,
         "jcwpd": 55,
     }
-    # The catalog knows the points of the hourly series; the live layer does not.
+    # The catalog knows the automatic points of the night's capture; the live layer
+    # does not.
     assert point.hydrogeology.get("automatic") is (True if source == "store" else None)
     # W names the year and the day the points were captured: by the variant's
     # sync, or by this search.

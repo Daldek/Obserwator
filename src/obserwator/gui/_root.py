@@ -47,6 +47,7 @@ from obserwator.store import (
     StationFeature,
     StationSeriesIndex,
     StoreEntry,
+    analysis_definitions,
     current_version,
     export_stations,
     read_catalog,
@@ -73,9 +74,14 @@ CATALOG_SLOTS: Mapping[str, str] = {
 }
 """The catalog of each provider, as `current_version` names it."""
 ANALYSES_SLOTS: Mapping[str, str] = {
-    provider.id: f"analyses:{provider.key_prefix}.analyses" for provider in providers()
+    provider.id: f"analyses:{provider.key_prefix}.analyses"
+    for provider in providers()
+    if {definition.kind for definition in analysis_definitions()}
+    & set(provider.adapter.kinds)
 }
-"""The stored analyses of each provider (ADR-016), as `current_version` names them."""
+"""The stored analyses of each provider whose stations an analysis applies to (ADR-016:
+hydrological and meteorological ones), as `current_version` names them; none of a
+provider of groundwater objects alone (PIG-PIB, ADR-035), which no analysis applies to."""
 
 
 def in_thread(job: Callable[[], None]) -> None:
