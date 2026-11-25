@@ -13,6 +13,7 @@ offers the hand-off to Hydrolog, which stays the national services' (IMGW-PIB, �
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import json
 import os
@@ -30,8 +31,10 @@ import pytest
 
 from tests.contract.support import SERVER_FLAGS, STOP_SIGNAL, obserwator_executable
 from tests.e2e.conftest import WIDTHS, _free_port
+from tests.e2e.test_map import wait_drawn
 
 expect = pytest.importorskip("playwright.sync_api").expect
+PlaywrightTimeout = pytest.importorskip("playwright.sync_api").TimeoutError
 
 WAIT = 15_000
 FILES = Path(__file__).resolve().parents[1] / "fixtures" / "files"
@@ -182,12 +185,9 @@ def test_the_stations_of_a_provider_fed_by_files_are_on_the_list_and_the_map(
         timeout=WAIT,
     )
     expect(page.locator(".ds-group .ds-provider")).to_have_text(["Sieć Testowa"])
-    # the map draws on a canvas: its stations' source holds what it shows
-    page.wait_for_function(
-        "() => { const map = document.querySelector('.map').maplibre;"
-        " return Boolean(map && map.getSource('stations')); }",
-        timeout=WAIT,
-    )
+    # the map draws on a canvas, a while after the list: once it draws the stations, its
+    # stations' source holds where it shows them
+    wait_drawn(page, ["stations"], MAPPED)
     drawn = page.evaluate(
         """async () => {
           const map = document.querySelector('.map').maplibre;
@@ -212,6 +212,22 @@ def test_the_strip_shows_the_declared_line_in_its_short_form(
     strip = page.locator(".view-foot nogat-sources")
     expect(page.locator("nogat-sources")).to_have_count(1)
     expect(strip).to_have_count(1)
+    # the strip is redrawn whenever its lines change: the station's arrive with its page,
+    # the borders' (GUGiK's PRG, ČÚZK's RÚIAN) once the map has them as its background, so
+    # the strip is measured only after both
+    origins = _api(file_provider_site, "api/session")["attribution"]["origins"]
+    lines = [
+        line for name in ("gugik", "cuzk") for line in origins[name]["attribution"]
+    ]
+    lines.append(LINE)
+    with contextlib.suppress(PlaywrightTimeout):
+        page.wait_for_function(
+            "(want) => { const got = document.querySelector('.view-foot nogat-sources')"
+            "?.attribution || []; return want.every((line) => got.includes(line)); }",
+            arg=lines,
+            timeout=WAIT,
+        )
+    assert set(lines) <= set(strip.evaluate("(element) => element.attribution"))
     on_screen = strip.locator(".nogat-sources-strip")
     expect(on_screen).to_contain_text(SHORT)
     expect(on_screen).not_to_contain_text("Operatora sp. z o.o.")
