@@ -116,7 +116,7 @@
 
 /* The station symbols in the list, the legend, the tooltip and the panel: src/symbols.js
    draws the same on the map's canvas; the outline of a station of another source than a
-   national service is dashed and a little wider (hydromet P13) */
+   state service is dashed and a little wider (hydromet P13, state services S4) */
 .sym { flex: none; overflow: visible; vertical-align: middle; }
 .sym .body { fill: var(--sym-fill, var(--imgw-unknown)); }
 .sym .edge { fill: none; stroke: var(--imgw-outline); stroke-width: 2; stroke-linejoin: round; }

@@ -589,8 +589,9 @@ async def session(request: Request) -> Response:
     ``providers`` describes each provider for the page (names, its country as an ISO
     3166-1 alpha-2 code, the prefix of its keys, the families of its stations
     (``kinds``), the origins of its lines and of the border its stations were checked
-    against, the class of its source, P11, and P8's notice of a source of the class
-    ``other`` in the page's language, null for a national service) and ``datasets`` each
+    against, the class of its source, P11 (``state`` or ``other``, Nogat plan
+    2026-11-27, S1), and P8's notice in the page's language, of a source of the class
+    ``other`` and of PIG-PIB, null for IMGW-PIB and ČHMÚ) and ``datasets`` each
     series dataset served (`_session_datasets`), so the page names no provider (P1);
     ``attribution`` holds the lines of each origin (PIG-PIB's W filled as its current
     catalog's, `_catalog_w`), their order, the ``fillable`` formulas among them whose

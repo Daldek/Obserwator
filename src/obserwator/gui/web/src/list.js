@@ -7,7 +7,7 @@
 // station and the map flies to it when it has a location. The filters choose the map's
 // stations too (`onMap`); the search is the list's. The kind switch offers groundwater
 // objects (ČHMÚ's bores and springs, PIG-PIB's points) only where the catalogs hold one (words.js
-// `shownKinds`). The class switch „Wszystkie | Służby | Inne źródła” (hydromet P11, P12)
+// `shownKinds`). The class switch „Wszystkie | Służby państwowe | Inne źródła” (hydromet P11, P12; state services S1, S3)
 // shows only where the stations' sources hold both classes (words.js `shownClasses`) and
 // stays three buttons however many providers come; one provider is chosen by its chips,
 // which stand under their provider's name and country („IMGW-PIB · PL”), the providers
@@ -39,8 +39,8 @@ import {
 /** The words of each kind in the switch „Rodzaj stacji”: catalog keys. */
 const KIND_LABELS = { hydro: "stations.list.kind_hydro", meteo: "stations.list.kind_meteo", groundwater: "stations.list.kind_groundwater" };
 
-/** The words of the class switch „Wszystkie | Służby | Inne źródła”: catalog keys. */
-const CLASS_LABELS = { all: "stations.list.class_all", nmhs: "stations.list.class_nmhs", other: "stations.list.class_other" };
+/** The words of the class switch „Wszystkie | Służby państwowe | Inne źródła”: catalog keys. */
+const CLASS_LABELS = { all: "stations.list.class_all", state: "stations.list.class_state", other: "stations.list.class_other" };
 
 /**
  * The most providers of one class whose chips fit the panel without country headings
@@ -52,7 +52,7 @@ export const COUNTRY_HEADINGS_ABOVE = 6;
 
 /**
  * The filters of „Wyczyść filtry”, which keeps „Pokaż pozostałych dostawców” as it is: every
- * station of the catalogs. `class` is "all", "nmhs" or "other" (words.js `SOURCE_CLASSES`).
+ * station of the catalogs. `class` is "all", "state" or "other" (words.js `SOURCE_CLASSES`).
  */
 export const NO_FILTERS = Object.freeze({ query: "", class: "all", kind: "all", datasets: Object.freeze([]), active: false, others: false });
 

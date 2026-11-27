@@ -204,16 +204,17 @@ def test_the_session_names_the_versions_the_root_and_the_sources(client):
     assert session["providers"]["CHMU"]["attribution"] == list(
         attribution("chmu").attribution
     )
-    # national services: their countries, and no notice of another source (P8, P11);
-    # PIG-PIB, a geological survey, is another source and says so in its own words
+    # state services: their countries; IMGW-PIB and ČHMÚ without a notice (P8, P11);
+    # PIG-PIB, the state geological service, is a state service too (Nogat plan
+    # 2026-11-27, S1) and says in its own words that it is no hydro-meteorological one
     pig_notice = message("datasets.source_notice_pig").localized("pl")
     assert {
         provider: (found["country"], found["source_class"], found["source_notice"])
         for provider, found in session["providers"].items()
     } == {
-        "IMGW": ("PL", "nmhs", None),
-        "CHMU": ("CZ", "nmhs", None),
-        "PIG": ("PL", "other", pig_notice),
+        "IMGW": ("PL", "state", None),
+        "CHMU": ("CZ", "state", None),
+        "PIG": ("PL", "state", pig_notice),
     }
     origins = session["attribution"]["origins"]
     assert set(origins) == {

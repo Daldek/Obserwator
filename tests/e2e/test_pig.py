@@ -2,11 +2,11 @@
 PIG-PIB's points in the browser (ADR-035, test 19 of the plan): ``groundwater_pl_url``.
 
 „Podziemne” draws PIG-PIB's bore 6495 and spring 1247 as the brown diamond with the
-dashed outline of another source; the panel of a point shows PIG-PIB's hydrogeology and
-opens the bore's level H_asl or the spring's yield; the hourly series of the automatic
-bore is labelled „dane operacyjne, niezweryfikowane”; the strip gives PIG-PIB's short form
-WK, the dialog its W filled for what the view shows, WP and RW; and the readings file of
-„Pobierz” carries them too.
+solid outline of a state service, as ČHMÚ's objects; the panel of a point shows PIG-PIB's
+notice, its hydrogeology and opens the bore's level H_asl or the spring's yield; the
+hourly series of the automatic bore is labelled „dane operacyjne, niezweryfikowane”; the
+strip gives PIG-PIB's short form WK, the dialog its W filled for what the view shows, WP
+and RW; and the readings file of „Pobierz” carries them too.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def card(page: Any, section: str) -> Any:
     return item
 
 
-def test_podziemne_draws_pig_pibs_bore_and_spring_with_the_dashed_outline(
+def test_podziemne_draws_pig_pibs_bore_and_spring_with_a_state_services_outline(
     open_page: Any, groundwater_pl_url: str
 ) -> None:
     page = open_page(base=groundwater_pl_url)
@@ -69,16 +69,16 @@ def test_podziemne_draws_pig_pibs_bore_and_spring_with_the_dashed_outline(
         "radio", name="Podziemne"
     ).click()
 
-    for code in (BORE, SPRING):
+    # PIG-PIB's points and ČHMÚ's objects beside them: state services, a solid outline
+    for code in (BORE, SPRING, "0-203-1-VP0624"):
         symbol = page.locator(f'.st-item[data-code="{code}"] svg.sym')
-        expect(symbol).to_have_class(re.compile(r"\bgroundwater\b.*\bdashed\b"))
+        expect(symbol).to_have_class(re.compile(r"\bgroundwater\b"))
+        expect(symbol).not_to_have_class(re.compile(r"\bdashed\b"))
     expect(page.locator(f'.st-item[data-code="{SPRING}"] .st-facts')).to_contain_text(
         "źródło"
     )
-    # ČHMÚ's objects beside them, of a national service, keep the solid outline
-    expect(
-        page.locator('.st-item[data-code="0-203-1-VP0624"] svg.sym')
-    ).not_to_have_class(re.compile(r"\bdashed\b"))
+    # one class of sources: no class switch
+    expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     with contextlib.suppress(PlaywrightTimeout):
         page.wait_for_function(
             f"(codes) => codes.every((code) => code in ({_ICONS})())",
@@ -87,12 +87,12 @@ def test_podziemne_draws_pig_pibs_bore_and_spring_with_the_dashed_outline(
         )
     icons = page.evaluate(_ICONS)
     assert (icons.get(BORE), icons.get(SPRING)) == (
-        "st-groundwater-1-other",
-        "st-groundwater-1-other",
+        "st-groundwater-1-state",
+        "st-groundwater-1-state",
     )
     # The panel without a station counts PIG-PIB's points by the one kind it publishes
     catalogs = page.locator("#panel-right [data-part=catalogs]")
-    expect(catalogs.locator("tr.in-class", has_text="PIG-PIB")).to_contain_text(
+    expect(catalogs.locator("tr", has_text="PIG-PIB")).to_contain_text(
         "PIG-PIB: podziemne"
     )
     expect(page.locator("#panel-right [data-part=analyses]")).not_to_contain_text(
@@ -138,6 +138,12 @@ def test_a_points_panel_shows_its_hydrogeology_and_opens_its_level_or_yield(
     pressed = data.locator('.chips button[aria-pressed="true"]')
     pressed.first.wait_for(timeout=WAIT)
     assert [text.split()[0] for text in pressed.all_inner_texts()] == [variable]
+    # a state service, no chip of another source, but its notice in its own words
+    head = page.locator(".station-head")
+    expect(head.locator("[data-part=source-note]")).to_have_text(
+        str(message("datasets.source_notice_pig", "pl"))
+    )
+    expect(head.locator("[data-part=source-class]")).to_have_count(0)
     expect(data.locator(".data-chart svg")).to_have_count(1)
     expect(data.locator(".ds-title")).to_have_text("Odczyty wód podziemnych (PIG-PIB)")
     expect(data.locator("[data-part=dataset-note]")).to_have_text(

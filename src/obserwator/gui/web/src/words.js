@@ -35,8 +35,8 @@ export function setRegistry(session) {
  *   string, border: string, source_class: string, source_notice: string|null}|null} its
  *   short and full name, its country (ISO 3166-1 alpha-2), the prefix of its dataset keys,
  *   the origin of its lines, the origin of the border its stations were checked against,
- *   the class of its source and, of a source of the class "other", P8's notice in the
- *   page's language (null for a national service); null while the session does not name it
+ *   the class of its source and P8's notice in the page's language (the class "other" and
+ *   PIG-PIB; null for IMGW-PIB and ČHMÚ); null while the session does not name it
  */
 export function providerOf(id) {
   return Object.hasOwn(registry.providers, id) ? registry.providers[id] : null;
@@ -65,8 +65,9 @@ export function providerFullName(id) {
 }
 
 /**
- * The class of a provider's source (hydromet P11): "nmhs", a national meteorological and
- * hydrological service (IMGW-PIB, ČHMÚ), or "other" (a provider fed by files among them).
+ * The class of a provider's source (hydromet P11, state services S1): "state", a state
+ * service set up by statute and run by a state body or state research institute (IMGW-PIB,
+ * ČHMÚ, PIG-PIB), or "other", every other operator (Gdańskie Wody, a provider fed by files).
  *
  * @param {string} id
  * @returns {string|null} null until the session names the provider
@@ -76,8 +77,8 @@ export function sourceClass(id) {
   return provider ? provider.source_class : null;
 }
 
-/** The classes of the providers' sources (hydromet P11) in the page's order: national services, then other sources. */
-export const SOURCE_CLASSES = Object.freeze(["nmhs", "other"]);
+/** The classes of the providers' sources (hydromet P11, state services S1) in the page's order: state services, then other sources. */
+export const SOURCE_CLASSES = Object.freeze(["state", "other"]);
 
 /**
  * The classes the stations' sources hold, in their order: the class switch of „Stacje”
@@ -92,7 +93,7 @@ export function shownClasses(stations) {
   return SOURCE_CLASSES.filter((cls) => held.has(cls));
 }
 
-/** A class of sources as a heading: "Hydrological and meteorological services" or "Other sources". */
+/** A class of sources as a heading: "State services" or "Other sources". */
 export function sourceClassName(cls) {
   return word(`words.source_class.${cls}`, cls || "–");
 }
@@ -108,7 +109,7 @@ const nameOrder = new Intl.Collator("pl", { sensitivity: "base", numeric: true }
 /**
  * Providers grouped by the class of their source (hydromet P12), as the station list's
  * dataset chips and the panel without a station show them: one group per class holding a
- * provider, the featured provider's class first, else national services before other
+ * provider, the featured provider's class first, else state services before other
  * sources; within a class the featured provider first (ADR-025, I6), then by country and
  * short name. A provider the session does not name has no class: its group comes last.
  *

@@ -4,7 +4,7 @@
 // document `obserwator-analysis/1`, api/files/analysis), each with the equivalent command
 // line to copy and the provider's licence with its terms (PIG-PIB's) or disclaimer
 // (ČHMÚ's); a groundwater object has its series only, no analysis applying to one
-// (ADR-032); for a hydrological station of a national service the hand-off of Q or H to
+// (ADR-032); for a hydrological station of a state service the hand-off of Q or H to
 // Hydrolog (D13), whose provenance names the provider by Nogat's registry, which has none
 // of the providers fed by files. Every file and hand-off carries the provider's lines and
 // terms (Nogat DEV §20), the same the panel draws under the card (part "series").
@@ -151,10 +151,11 @@ function ResultFiles({ code, analyses, stored }) {
 
 /**
  * „Przekazanie do Hydrologa”: daily Q and H of the station's daily hydrological dataset,
- * else the annual maxima of the flood frequency; only of a national service's station.
+ * else the annual maxima of the flood frequency; only of a state service's station (state
+ * services S5: a PIG-PIB point has neither Q nor H nor a flood frequency, so it offers none).
  */
 function Handoff({ station, session, analyses }) {
-  if (sourceClass(station.provider) !== "nmhs") return null;
+  if (sourceClass(station.provider) !== "state") return null;
   const daily = station.datasets.find((entry) => hydroDaily(entry.dataset));
   const ids = new Set((analyses || []).map((item) => item.analysis));
   const variables = daily ? ["Q", "H"].filter((name) => daily.variables[name]) : ids.has("flood_frequency.Q") ? ["Q"] : [];

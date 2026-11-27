@@ -19,9 +19,9 @@
 // (ČHMÚ's and PIG-PIB's bores and springs, a kind hydro.imgw.pl does not have) a diamond with rounded
 // corners (viewBox 38 × 38) in a brown of its own, --station-groundwater, with the same
 // outline. A station is drawn by its kind and the class of its source, never by its
-// provider (ADR-025, erratum of 2026-11-21; hydromet P13): the outline tells the class,
-// solid grey for a national meteorological and hydrological service, as hydro.imgw.pl draws
-// every station, and dashed (`DASH`) and a little wider for any other source. Two outline
+// provider (ADR-025, erratum of 2026-11-21; hydromet P13; state services S4): the outline
+// tells the class, solid grey for a state service (IMGW-PIB, ČHMÚ, PIG-PIB), as hydro.imgw.pl
+// draws every station, and dashed (`DASH`) and a little wider for any other source. Two outline
 // styles stay readable at 16 px, a third would not.
 
 import { fmt, html, t } from "./lib.js";
@@ -169,7 +169,7 @@ export function kindShape(kind) {
 /** The dashes of the outline of another source's station [units]: 5 drawn, 3 left out (hydromet P13). */
 export const DASH = Object.freeze([5, 3]);
 
-/** Whether the class of a station's source draws the dashed outline: every class but a national service's ("nmhs"). */
+/** Whether the class of a station's source draws the dashed outline: every class but a state service's ("state"). */
 function dashed(source) {
   return source === "other";
 }

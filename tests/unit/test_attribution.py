@@ -139,7 +139,8 @@ def test_the_fifteen_lines_are_the_table_of_nogat_dev_20_byte_for_byte():
             "geologicznych/zasady-korzystania-z-isp.html"
         ),
     }
-    # P8's notice of the class "other" follows PIG-PIB's lines (ADR-034 D10).
+    # P8's notice follows PIG-PIB's lines (ADR-034 D10; a state service, but no
+    # hydro-meteorological one: Nogat plan 2026-11-27, S5).
     notice = str(message("datasets.source_notice_pig", lang="pl"))
 
     every = attribution(*STANDARD)

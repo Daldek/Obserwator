@@ -220,7 +220,7 @@ The commands and their options are listed by `obserwator commands list` and `obs
 ## 10. Versioning
 
 - SemVer for API and CLI/GUI package
-- Current version: 3.3.0 (release notes: `docs/CHANGELOG.md`)
+- Current version: 3.3.1 (release notes: `docs/CHANGELOG.md`)
 - Contracts (`obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`, `obserwator-plan/1`, `obserwator-pmaxtp/1`, `obserwator-observation/1`, `obserwator-result/1`, `obserwator-commands/1`, the stored analyses' `obserwator-analyses/1` and its family) carry their own `/N` versions, independent of the package version (IMGW-13); ČHMÚ, agent support and the operational tier with the hourly series of 3.2.0 (Nogat ECO-085) add only optional fields and values within `/1`; the project manifest contract left with the projects (ADR-008)
 
 ---

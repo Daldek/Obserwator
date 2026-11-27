@@ -245,19 +245,21 @@ class ProviderAdapter(Protocol):
         Whether the sidecars of its archives name the station and the parameter
         (``request.station_code``, ``request.param``, ``extra.period.station_code``);
         IMGW-PIB's keep the layout of 3.0.0 without them.
-    source_class : {"nmhs", "other"}
-        Who operates its network (Nogat plan 2026-11-20, P11): ``nmhs``, a national
-        meteorological and hydrological service of a WMO member (the default:
-        IMGW-PIB, ČHMÚ), or ``other`` (an office, a company, a university, an
-        operator's own network). A label of the operator, never a claim of WMO
-        compliance.
+    source_class : {"state", "other"}
+        Who operates its network (Nogat plan 2026-11-20, P11, redefined by plan
+        2026-11-27, S1): ``state``, a state service set up by statute and run by a
+        state body or state research institute (the default: IMGW-PIB, ČHMÚ; PIG-PIB),
+        or ``other``, every other operator (a municipal company, an office, a
+        university, an operator's own network: Gdańskie Wody, every provider fed by
+        files). A label of the operator, never a claim of quality.
     source_notice : Message or None
-        P8's notice of a provider of the class ``other``: a catalog message saying
-        that its data do not come from a national hydro-meteorological service and,
-        where the provider says so, that they are unverified, in the provider's own
-        words. Every product with its data carries it after the provider's lines
-        (`obserwator.attribution`), and the GUI's station panel shows it beside the
-        class badge; None for an ``nmhs`` provider (the default).
+        P8's notice of a provider of the class ``other``, or of a state service that
+        is no hydro-meteorological one (PIG-PIB, S5): a catalog message saying that
+        its data do not come from a national hydro-meteorological service and, where
+        the provider says so, that they are unverified, in the provider's own words.
+        Every product with its data carries it after the provider's lines
+        (`obserwator.attribution`), and the GUI's station panel shows it under the
+        station's tags; None for IMGW-PIB and ČHMÚ (the default).
     served_by_default : bool
         Whether the servers serve the provider when ``[obserwator.instance.providers]``
         names no state for it, and a search that names no provider asks it: True by
@@ -290,7 +292,7 @@ class ProviderAdapter(Protocol):
     kinds: tuple[Kind, ...] = ("hydro", "meteo")
     archive_suffixes: tuple[str, ...]
     sidecar_station: bool
-    source_class: Literal["nmhs", "other"] = "nmhs"
+    source_class: Literal["state", "other"] = "state"
     source_notice: Message | None = None
     served_by_default: bool = True
     provider_file: ProviderFile | None = None

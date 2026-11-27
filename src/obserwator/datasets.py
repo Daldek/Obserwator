@@ -322,17 +322,18 @@ class ProviderDescriptor:
         return self.id.lower()
 
     @property
-    def source_class(self) -> Literal["nmhs", "other"]:
+    def source_class(self) -> Literal["state", "other"]:
         """
-        Who operates the provider's network (Nogat plan 2026-11-20, P11).
+        Who operates the provider's network (Nogat plan 2026-11-20, P11; 2026-11-27, S1).
 
         Returns
         -------
-        {"nmhs", "other"}
-            ``nmhs`` for a national meteorological and hydrological service
-            (IMGW-PIB, ČHMÚ), ``other`` for every other operator, a provider fed by
-            files among them (ADR-033); its adapter's ``source_class``. A property,
-            so the ``obserwator-provider/1`` document is unchanged.
+        {"state", "other"}
+            ``state`` for a state service set up by statute and run by a state body
+            or state research institute (IMGW-PIB, ČHMÚ, PIG-PIB), ``other`` for every
+            other operator (Gdańskie Wody, every provider fed by files, ADR-033); its
+            adapter's ``source_class``. A property, so the ``obserwator-provider/1``
+            document is unchanged.
         """
         return self.adapter.source_class
 
@@ -2161,7 +2162,7 @@ def _load_files() -> LoadedFiles:
         ),
         variables=_daily_variables(),
     )
-    # P8: every provider fed by files is of the class "other" (no national service),
+    # P8: every provider fed by files is of the class "other" (no state service),
     # and its notice follows its lines in every product (the Polish text, as the lines).
     notice = localize(message("datasets.source_notice_other"), "pl")
     for provider in loaded.files:

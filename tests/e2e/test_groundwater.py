@@ -127,10 +127,10 @@ def test_podziemne_keeps_the_groundwater_objects_drawn_as_brown_diamonds(
         "źródło"
     )
     wait_drawn(page, objects)
-    # drawn by kind and by the class of the source (ČHMÚ, a national service, solid)
+    # drawn by kind and by the class of the source (ČHMÚ, a state service, solid)
     assert set(page.evaluate(_ICONS)) <= {
-        "st-groundwater-0-nmhs",
-        "st-groundwater-1-nmhs",
+        "st-groundwater-0-state",
+        "st-groundwater-1-state",
     }
     legend = page.locator(".map-legend")
     diamond = legend.locator("li", has_text="wód podziemnych").locator("svg.sym")
