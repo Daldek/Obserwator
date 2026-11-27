@@ -8,15 +8,15 @@ Its stations are on the list and the map; the view's strip (``.view-foot nogat-s
 shows the line the provider file declares in its short form, the full line behind
 „Źródła i warunki”; a station carries the chip „Inne źródło”, P8's notice in the provider's
 own words (the session's ``source_notice``) and the flag of operational, unverified data;
-and nothing offers the hand-off to Hydrolog, which stays the national services' (IMGW-PIB,
+and nothing offers the hand-off to Hydrolog, which stays the state services' (IMGW-PIB,
 ČHMÚ).
 
 Beside IMGW-PIB's and ČHMÚ's stations (``beside_site``, the fixture data root with SIEC
-imported) the page separates the two classes of sources (hydromet P11 to P13): the class
-switch „Wszystkie | Służby | Inne źródła” chooses the stations of the list and the map, the
+imported) the page separates the two classes of sources (hydromet P11 to P13; state
+services S1 to S4): the class switch chooses the stations of the list and the map, the
 dataset chips stand under the headings of their classes and their providers with their
 countries, a station of another source is outlined dashed (on the map's canvas and in the
-list, the legend explaining both outlines) and a service's solid, the panel without a
+list, the legend explaining both outlines) and a state service's solid, the panel without a
 station counts the stations by class, and every chart and table of a station of another
 source carries its class.
 """
@@ -51,6 +51,8 @@ WAIT = 15_000
 FILES = Path(__file__).resolve().parents[1] / "fixtures" / "files"
 DEADLINE_S = 120.0
 """The longest wait for the import, and for the server to start or to stop [s]."""
+OUTLINES = ("stations.legend.source_state", "stations.legend.source_other")
+"""The catalog keys of the legend's words of the two outlines, the state services' first."""
 LINE = (
     "Źródło danych: Sieć Testowa Operatora sp. z o.o., licencja CC BY 4.0 "
     "(https://creativecommons.org/licenses/by/4.0/)"
@@ -65,7 +67,7 @@ MAPPED = {"SIEC-01", "SIEC-02", "SIEC-M1"}
 DASHED = ["5px, 3px", "2.6px"]
 """The outline of a symbol of another source in SVG: its dashes and its width."""
 SOLID = ["none", "2px"]
-"""The outline of a symbol of a national service: hydro.imgw.pl's solid grey line."""
+"""The outline of a symbol of a state service: hydro.imgw.pl's solid grey line."""
 # The image each station drawn on the map takes, by its code
 _ICONS = """() => Object.fromEntries(document.querySelector('.map').maplibre
   .queryRenderedFeatures({ layers: ['stations'] })
@@ -221,6 +223,11 @@ def _api(base: str, path: str) -> Any:
         return json.load(answer)
 
 
+def _pl(key: str) -> str:
+    """A text of the GUI's catalog (area ``gui``) in Polish, as the page shows it."""
+    return str(message(f"gui.{key}", "pl"))
+
+
 def _station(open_page: Any, base: str, code: str, section: str, **options: Any) -> Any:
     """A station's page with a section open: its panel."""
     page = open_page(f"?station={code}&section={section}", base=base, **options)
@@ -249,7 +256,7 @@ def test_the_stations_of_a_provider_fed_by_files_are_on_the_list_and_the_map(
     expect(page.locator(".ds-class-title")).to_have_count(0)
     expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     expect(page.locator(".map-legend .legend-classes li")).to_have_text(
-        ["Służba hydrologiczno-meteorologiczna", "Inne źródło"]
+        [_pl(key) for key in OUTLINES]
     )
     # the map draws on a canvas, a while after the list: once it draws the stations, its
     # stations' source holds where it shows them
@@ -383,8 +390,8 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
     session = _api(beside_site, "api/session")
     sources = _classes(beside_site)
     assert {s["provider"]: sources[c] for c, s in stations.items()} == {
-        "IMGW": "nmhs",
-        "CHMU": "nmhs",
+        "IMGW": "state",
+        "CHMU": "state",
         "SIEC": "other",
     }
 
@@ -400,7 +407,9 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
 
     page = open_page(base=beside_site)
     radios = page.get_by_role("radiogroup", name="Rodzaj źródła").get_by_role("radio")
-    expect(radios).to_have_text(["Wszystkie", "Służby", "Inne źródła"])
+    expect(radios).to_have_text(
+        [_pl(f"stations.list.class_{cls}") for cls in ("all", "state", "other")]
+    )
     expect(radios.nth(0)).to_have_attribute("aria-checked", "true")
     wait_listed(page, shown())
     wait_drawn(page, ["stations"], shown(located=True))
@@ -408,7 +417,7 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
     # providers of a class by country
     chips = page.locator(".ds-filter")
     expect(chips.locator(".ds-class-title")).to_have_text(
-        ["Służby hydrologiczno-meteorologiczne", "Inne źródła"]
+        [_pl("words.source_class.state"), _pl("words.source_class.other")]
     )
     groups = chips.locator(".ds-class")
     expect(groups.nth(0).locator(".ds-provider")).to_have_text(
@@ -419,8 +428,8 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
     rows = page.locator("#panel-right [data-part=catalogs] tr.class-row")
     expect(rows.locator("th")).to_have_text(
         [
-            "Służby hydrologiczno-meteorologiczne: hydrologiczne · meteorologiczne",
-            "Inne źródła: hydrologiczne · meteorologiczne",
+            f"{_pl('words.source_class.state')}: hydrologiczne · meteorologiczne",
+            f"{_pl('words.source_class.other')}: hydrologiczne · meteorologiczne",
         ]
     )
     expect(rows.locator("td")).to_have_text(
@@ -434,7 +443,7 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
                 )
                 for kind in ("hydro", "meteo")
             )
-            for source in ("nmhs", "other")
+            for source in ("state", "other")
         ]
     )
     files = page.locator("#panel-right .stations-files")
@@ -449,10 +458,10 @@ def test_the_class_switch_and_the_chips_separate_the_classes_of_sources(
     expect(files.locator("tr").first).to_contain_text("Sieć Testowa")
     offered = _api(beside_site, "api/downloads/stations?provider=SIEC")["stations"]
     expect(files.locator(".files-count")).to_have_text(str(offered), timeout=WAIT)
-    # „Służby”: the national services' stations, of two providers
+    # the state services: their stations, of two providers
     radios.nth(1).click()
-    wait_listed(page, shown("nmhs"))
-    wait_drawn(page, ["stations"], shown("nmhs", located=True))
+    wait_listed(page, shown("state"))
+    wait_drawn(page, ["stations"], shown("state", located=True))
     expect(files.locator("tr").first).to_contain_text("Wszyscy")
     # one provider chosen by its chips, under both classes again
     radios.nth(0).click()
@@ -477,22 +486,20 @@ def test_a_station_of_another_source_is_outlined_dashed_and_a_service_solid(
     assert {code: icon.rsplit("-", 1)[1] for code, icon in icons.items()} == {
         code: sources[code] for code in located
     }
-    assert {sources[code] for code in icons} == {"nmhs", "other"}
-    # whose outline the canvas draws dashed for another source, solid for a service
-    gaps = page.evaluate(_GAPS, ["st-hydro-1-other", "st-hydro-1-nmhs"])
-    assert gaps["st-hydro-1-nmhs"] == 0
+    assert {sources[code] for code in icons} == {"state", "other"}
+    # whose outline the canvas draws dashed for another source, solid for a state service
+    gaps = page.evaluate(_GAPS, ["st-hydro-1-other", "st-hydro-1-state"])
+    assert gaps["st-hydro-1-state"] == 0
     assert gaps["st-hydro-1-other"] > 5
     # the list draws the same outlines
-    service = min(code for code in located if sources[code] == "nmhs")
+    service = min(code for code in located if sources[code] == "state")
     for code, outline in (("SIEC-01", DASHED), (service, SOLID)):
         symbol = page.locator(f'.st-item[data-code="{code}"] svg.sym')
         assert symbol.evaluate(_OUTLINE) == outline, code
     # and the legend explains both, under the marks of every station
     legend = page.locator(".map-legend")
     entries = legend.locator(".legend-classes li")
-    expect(entries).to_have_text(
-        ["Służba hydrologiczno-meteorologiczna", "Inne źródło"]
-    )
+    expect(entries).to_have_text([_pl(key) for key in OUTLINES])
     assert entries.nth(0).locator("svg.sym").evaluate(_OUTLINE) == SOLID
     assert entries.nth(1).locator("svg.sym").evaluate(_OUTLINE) == DASHED
     expect(legend.locator("li").first).to_have_text("hydrologiczna")
@@ -528,7 +535,7 @@ def test_every_chart_and_table_of_another_source_carries_its_class(
     expect(card.locator("[data-part=class-badge]")).to_have_text(
         ["Inne źródło"] * (charts.count() + 1)
     )
-    # a national service's station of the same page: no class, no notice, no badge (its
+    # IMGW-PIB's station of the same page: no class, no notice, no badge (its
     # „Pomiary bieżące” stays closed: this server answers no current data)
     panel = _station(open_page, beside_site, FIXTURE_STATIONS["hydro"], "dane")
     card = panel.locator('.acc-item[data-section="dane"]')

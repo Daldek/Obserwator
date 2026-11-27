@@ -1,8 +1,9 @@
 // The right panel „Stacja” (GUI plan D11): the station's header (name, river, code, provider,
 // kind and, of a groundwater object, whether a bore or a spring, active or not; of a
-// provider that is no national meteorological and hydrological service, hydromet P11, the
-// chip „Inne źródło” first among its tags and under them P8's notice in the provider's own
-// words, the session's `source_notice`; the record of its series, a dataset's unverified data
+// provider of the class "other", hydromet P11, the chip „Inne źródło” first among its tags;
+// under them P8's notice in the provider's own words, the session's `source_notice`, of a
+// provider of the class "other" and of PIG-PIB, a state service but no hydro-meteorological
+// one (state services S5); the record of its series, a dataset's unverified data
 // labelled), then its sections as an accordion in the author's order: „Informacje o
 // stacji”, „Pomiary bieżące” (not of a groundwater object: no current data are served for
 // one, ADR-032), „Dane pomiarowo-obserwacyjne”, the hydrological (HYDRO_SECTIONS) or
@@ -151,13 +152,15 @@ function Record({ station }) {
 
 /**
  * The header of the station; of a provider of the class "other" (hydromet P11) opening with
- * the chip of its class and, under the tags, P8's notice in the provider's own words (the
- * session's `source_notice`, else the page's own note).
+ * the chip of its class; under the tags P8's notice in the provider's own words, of a
+ * provider of the class "other" (the session's `source_notice`, else the page's own note)
+ * and of a state service that has one, PIG-PIB's (state services S5).
  */
 function StationHead({ station }) {
   const p = station.properties;
   const other = sourceClass(station.provider) === "other";
   const provider = providerOf(station.provider);
+  const notice = (provider && provider.source_notice) || (other ? t("station.source_other_note") : null);
   return html`<div class="station-head">
     <div class="station-title">
       <h3>${p.name || station.code}</h3>
@@ -172,7 +175,7 @@ function StationHead({ station }) {
       <span class=${`badge ${p.active ? "ok" : "warn"}`}>${p.active ? t("station.active") : t("station.inactive")}</span>
       ${station.lon === null ? html`<span class="badge warn">${t("station.no_location")}</span>` : null}
     </div>
-    ${other ? html`<p class="note-box" data-part="source-note">${(provider && provider.source_notice) || t("station.source_other_note")}</p>` : null}
+    ${notice ? html`<p class="note-box" data-part="source-note">${notice}</p>` : null}
     <${Record} station=${station} />
     ${station.datasets.length ? null : html`<p class="note-box">${t("station.no_series")}</p>`}
   </div>`;

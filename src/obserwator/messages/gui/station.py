@@ -17,9 +17,9 @@ MESSAGES: dict[str, Text] = {
     "station.active": Text("active", "czynna"),
     "station.inactive": Text("inactive", "nieczynna"),
     "station.no_location": Text("no coordinates", "bez współrzędnych"),
-    # A station of a provider that is no national meteorological and hydrological service
-    # (hydromet P11: source class "other"): its class beside the provider, and P8's note
-    # under the header
+    # A station of a provider of the class "other" (hydromet P11; state services S1): its
+    # class beside the provider, and P8's note under the header where the provider has no
+    # notice of its own
     "station.source_other": Text("Other source", "Inne źródło"),
     "station.source_other_note": Text(
         "The data of this station do not come from a national hydrological and "

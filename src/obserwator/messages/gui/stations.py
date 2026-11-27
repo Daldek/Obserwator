@@ -11,11 +11,11 @@ MESSAGES: dict[str, Text] = {
         "Search stations by name, river or code",
         "Szukaj stacji po nazwie, rzece albo kodzie",
     ),
-    # The class switch of the sources (hydromet P11, P12), shown only where the stations'
-    # sources hold both classes: national services and every other source
+    # The class switch of the sources (hydromet P11, P12; state services S1, S3), shown only
+    # where the stations' sources hold both classes: state services and every other source
     "stations.list.class": Text("Source type", "Rodzaj źródła"),
     "stations.list.class_all": Text("All", "Wszystkie"),
-    "stations.list.class_nmhs": Text("Services", "Służby"),
+    "stations.list.class_state": Text("State services", "Służby państwowe"),
     "stations.list.class_other": Text("Other sources", "Inne źródła"),
     "stations.list.kind": Text("Station kind", "Rodzaj stacji"),
     "stations.list.kind_all": Text("All", "Wszystkie"),
@@ -111,12 +111,9 @@ MESSAGES: dict[str, Text] = {
     "stations.legend.selected": Text("selected", "wybrana"),
     "stations.legend.others": Text("Other sources", "Pozostałe źródła"),
     "stations.legend.area": Text("service area", "obszar serwisu"),
-    # The outline of the class of a station's source (hydromet P13), where a catalog holds
-    # a station of another source
-    "stations.legend.source_nmhs": Text(
-        "Hydrological and meteorological service",
-        "Służba hydrologiczno-meteorologiczna",
-    ),
+    # The outline of the class of a station's source (hydromet P13; state services S3, S4),
+    # where a catalog holds a station of another source
+    "stations.legend.source_state": Text("State service", "Służba państwowa"),
     "stations.legend.source_other": Text("Other source", "Inne źródło"),
     "stations.legend.stations_note": Text(
         "Station shapes and colours as on IMGW-PIB's map hydro.imgw.pl; the view "

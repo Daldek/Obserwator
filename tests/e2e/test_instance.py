@@ -177,7 +177,7 @@ def chip_groups(page: Any) -> list[str]:
 
 
 def no_class_switch(page: Any) -> None:
-    """National services alone: no class switch, no class heading over the chips (P12)."""
+    """State services alone: no class switch, no class heading over the chips (P12)."""
     expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     expect(page.locator(".ds-class-title")).to_have_count(0)
 
@@ -617,8 +617,9 @@ def test_the_lines_and_the_panel_name_only_the_providers_served(
     assert [row.get_attribute("data-provider") for row in served.all()] == ["CHMU"]
     expect(panel.locator(".no-station")).not_to_contain_text("IMGW")
     # its catalogs table names each provider served by the kinds it publishes: PIG-PIB,
-    # without a catalog in this root, by its groundwater objects alone
-    expect(panel.locator("[data-part=catalogs] tr.in-class th")).to_contain_text(
+    # without a catalog in this root, by its groundwater objects alone; both are state
+    # services, so no class heads them
+    expect(panel.locator("[data-part=catalogs] tr th")).to_contain_text(
         ["ČHMÚ: hydrologiczne · meteorologiczne", "PIG-PIB: podziemne"]
     )
 

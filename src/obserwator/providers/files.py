@@ -158,7 +158,7 @@ class FileFedAdapter(ProviderAdapter):
     kinds = KINDS
     archive_suffixes = (".csv", ".parquet")
     sidecar_station = True
-    source_class: Literal["nmhs", "other"] = "other"
+    source_class: Literal["state", "other"] = "other"
     # P8: an operator's own network says nothing of verification in its provider
     # file, so its notice says only that it is no national service.
     source_notice: Message | None = message("datasets.source_notice_other")

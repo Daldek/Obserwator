@@ -13,8 +13,8 @@
 #              until 06:30, the last two for the UTC days since their last whole
 #              harvest, then the sealing of every other capture dataset's closed
 #              UTC days, then the build of the hourly series of the months those
-#              harvests asked for (ADR-031; PIG-PIB's: every month its captures
-#              hold, ADR-035).
+#              harvests asked for (ADR-031; PIG-PIB's: the months from the first
+#              day of the rows of the captures its harvest stored, ADR-035 W11).
 #   telemetry  06:45 local: IMGW-PIB's monthly telemetry of the current year (and
 #              of the year before in January), the hourly series of each month
 #              whose zip it stored, the listing check of ČHMÚ's validated hourly
@@ -26,8 +26,8 @@
 #   --start    night only: the first UTC day of both harvests (at most 40 days
 #              back), in place of the day after the last whole harvest.
 #   --check    pass --check to every command: plans only, nothing written, no
-#              harvest recorded, nothing built by the telemetry (its builds
-#              follow what a sync stored).
+#              harvest recorded, nothing built by the telemetry nor PIG-PIB's
+#              hourly series by the night (their builds follow what a sync stored).
 #
 # Environment:
 #   OBSERWATOR            the program (default: obserwator on PATH)
@@ -100,14 +100,32 @@ state_dir() {
     python3 -c 'import json, sys; print(json.load(sys.stdin)["keys"]["state_dir"]["value"])'
 }
 
+# The raw root, which the paths of a `--json` envelope are relative to.
+raw_root() {
+  if [[ -n ${OBSERWATOR_RAW_ROOT:-} ]]; then
+    printf '%s\n' "$OBSERWATOR_RAW_ROOT"
+    return
+  fi
+  "$OBSERWATOR" config show --json | python3 -c '
+import json, sys
+
+keys = json.load(sys.stdin)["keys"]
+print(keys["raw_root"]["value"] or keys["data_dir"]["value"] + "/obserwator-raw")
+'
+}
+
 night() {
   local override=$1 stamps end earliest entry dataset until series stamp start build
+  local out first
   local builds=()
   stamps="$(state_dir)/obserwator/timers" || { say "state_dir unknown"; return 1; }
+  out=$(mktemp) || { say "no temporary file"; return 1; }
   end=$(date -u -d yesterday +%F)
   earliest=$(date -u -d "-$HARVEST_DAYS days" +%F)
   read -r dataset until series <<<"$WATERMARKED"
-  step "$OBSERWATOR" store sync --datasets "$dataset" --pace-until "$until" "${check[@]}"
+  step "$OBSERWATOR" store sync --datasets "$dataset" --pace-until "$until" --json \
+    "${check[@]}" >"$out"
+  cat "$out"
   for entry in "${HARVESTS[@]}"; do
     read -r dataset until series <<<"$entry"
     stamp=$stamps/$dataset.harvested
@@ -134,15 +152,54 @@ night() {
     fi
   done
   step "$OBSERWATOR" store sync --datasets "$SEALED" "${check[@]}"
-  # The hourly series (ADR-031): every month PIG-PIB's captures hold, then the months
-  # of the days each other harvest asked for.
-  read -r _ _ series <<<"$WATERMARKED"
-  step "$OBSERWATOR" series build --dataset "$series" "${check[@]}"
+  # The hourly series (ADR-031): PIG-PIB's from the first day of the rows of the
+  # captures its harvest stored, never every month its captures hold (the imported
+  # backfill reaches back to 2000), then the months of the days each other harvest
+  # asked for.
+  if ((${#check[@]} == 0)); then
+    first=$(captured_from "$(raw_root)" <"$out")
+    read -r _ _ series <<<"$WATERMARKED"
+    [[ -n $first ]] && step "$OBSERWATOR" series build --dataset "$series" --start "$first"
+  fi
+  rm -f "$out"
   for build in "${builds[@]}"; do
     read -r series start <<<"$build"
     step "$OBSERWATOR" series build --dataset "$series" --start "$start" --end "$end" \
       "${check[@]}"
   done
+}
+
+# The first UTC day of the rows of the capture versions a `store sync --json` of
+# PIG-PIB's harvest stored (`extra.capture.period` of their sidecars, ADR-035 D4),
+# their paths relative to the raw root given; nothing when it stored none or their
+# rows have no hour.
+captured_from() {
+  python3 -c '
+import json, os, sys
+
+first = []
+for line in sys.stdin:
+    if not line.startswith("{"):
+        continue
+    try:
+        result = json.loads(line).get("result") or {}
+    except (ValueError, AttributeError):
+        continue
+    for item in result.get("items") or ():
+        if item.get("status") not in ("new", "relabeled") or not item.get("version"):
+            continue
+        version = os.path.join(sys.argv[1], str(item["version"]))
+        try:
+            with open(version + ".meta.json", encoding="utf-8") as sidecar:
+                extra = json.load(sidecar).get("extra")
+            period = extra["capture"]["period"]
+        except (OSError, ValueError, AttributeError, KeyError, TypeError):
+            continue
+        if isinstance(period, list) and len(period) == 2:
+            first.append(str(period[0]))
+if first:
+    print(min(first))
+' "$1"
 }
 
 # The months (YYYY-MM) of the telemetry zips a `store sync --json` stored.

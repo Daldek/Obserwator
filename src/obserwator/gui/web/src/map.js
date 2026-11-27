@@ -14,8 +14,8 @@
 //   provides it, and the GUI's own brown diamond for groundwater objects (ČHMÚ's bores and
 //   springs, ADR-032; PIG-PIB's points, ADR-035), which the legend names only where a catalog holds one (`kinds`); a
 //   hollow centre when the station is only in the catalog, inactive ones faded; the
-//   outline tells the class of the station's source (hydromet P13): solid for a national
-//   meteorological and hydrological service, dashed for any other, which the legend names
+//   outline tells the class of the station's source (hydromet P13, state services S4): solid
+//   for a state service, dashed for any other source, which the legend names
 //   only where a catalog holds a station of another source (`classes`);
 // - „Pomiary bieżące”: only IMGW-PIB's current measurements (api/current through
 //   current.js), hydrological stations filled by their water state and meteorological ones
@@ -300,7 +300,7 @@ function paintBackground(map, colors) {
  * and the class of its source, whose outline it draws (hydromet P13), never its provider.
  */
 function stationIcon(kind, data, source) {
-  return `st-${kindShape(kind)}-${data ? 1 : 0}-${source === "other" ? "other" : "nmhs"}`;
+  return `st-${kindShape(kind)}-${data ? 1 : 0}-${source === "other" ? "other" : "state"}`;
 }
 
 /** Every image the map draws: its name and look. */
@@ -878,10 +878,10 @@ function KindItems({ kinds, source = null, opacity = null, size = 14 }) {
   );
 }
 
-/** The outline of each class of sources (hydromet P13): a service's solid, another source's dashed. */
+/** The outline of each class of sources (hydromet P13, state services S4): a state service's solid, another source's dashed. */
 function ClassItems() {
   return html`<ul class="legend-list legend-classes">
-    <li><${StationSymbol} kind="hydro" data=${true} source="nmhs" />${t("stations.legend.source_nmhs")}</li>
+    <li><${StationSymbol} kind="hydro" data=${true} source="state" />${t("stations.legend.source_state")}</li>
     <li><${StationSymbol} kind="hydro" data=${true} source="other" />${t("stations.legend.source_other")}</li>
   </ul>`;
 }
@@ -891,7 +891,7 @@ function ClassItems() {
  * holds a groundwater object, with the note that its diamond is the GUI's own), whoever
  * provides it, and where a catalog holds a station of another source the outline of each
  * class of sources (hydromet P13), every symbol drawn with the outline of the one class
- * held, else a service's. While the other providers' stations are faded beside the
+ * held, else a state service's. While the other providers' stations are faded beside the
  * featured one (`fade`), the featured provider's stations are one group and, while another
  * provider is shown, „Pozostałe źródła” another, drawn as the map draws them (smaller, at
  * the instance's `others_opacity`, dashed where every one of them is another source); no
