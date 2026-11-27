@@ -4,6 +4,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 follow [SemVer](https://semver.org/). Every change of the public API and of the store schemas
 (`obserwator-*/N`) is recorded in this file (ADR-001, policy IMGW-13).
 
+## [3.3.1] - 2026-11-27
+
+Changes since 3.3.0, in 3.3.1: the source classes and one fix of the night's timer, released from `fix/state-services-class` off the tag `v3.3.0` (REL-2.4; Nogat plan `2026-11-27-state-services-class.md`, step O1, approved by the author on 2026-11-27; the fix approved by him the same day).
+
+### Changed
+
+- **The source classes are state services and other sources; PIG-PIB is a state service
+  (ADR-034 and ADR-035, errata of 2026-11-27).** After 3.3.0 was deployed the author reported
+  that PIG-PIB's groundwater data stood under „Inne źródła”, though PIG-PIB is the state
+  hydrogeological service, and chose „Służby państwowe vs inne”. The classes now tell who runs
+  the network: `state`, a state service set up by statute and run by a state body or state
+  research institute (IMGW-PIB, ČHMÚ, PIG-PIB), and `other`, every other operator (Gdańskie
+  Wody, every provider fed by files). The identifier `nmhs` becomes `state`, with no alias:
+  `ProviderAdapter.source_class` and `ProviderDescriptor.source_class` are
+  `Literal["state", "other"]` (`state` by default), the GUI's private `api/session` gives
+  `providers[id].source_class` `state`, the page's class filter and map icons use `state`
+  (`st-<kind>-<0|1>-<state|other>`), and the GUI's catalog keys are
+  `stations.list.class_state`, `stations.legend.source_state` and `words.source_class.state`.
+  `obserwator-provider/1`, every `/N` document and a provider file's `source_class = "other"`
+  are unchanged. The GUI: the switch „Wszystkie | Służby państwowe | Inne źródła” („All |
+  State services | Other sources”), the heading „Służby państwowe”, the legend's „Służba
+  państwowa”; „Inne źródła” and „Inne źródło” stay. PIG-PIB's points have the solid outline
+  and no chip „Inne źródło”, and keep P8's notice („…nie od państwowej służby
+  hydrologiczno-meteorologicznej”) under the station panel's tags and in every product; its
+  lines and tiers are unchanged. The hand-off to Hydrolog is offered for a station of a state
+  service, so a PIG-PIB point, with neither Q nor H nor a flood frequency, still offers none.
+  The guide names the members of each class.
+
+### Fixed
+
+- **The night builds PIG-PIB's hourly series only from the rows its harvest stored (ADR-035
+  erratum of 2026-11-27).** `deploy/obserwator-jobs.sh night` ran `series build --dataset
+  pl.pig.groundwater_subdaily` without bounds, so every night rebuilt every month any capture
+  holds; the backfill imported from S0 reaches back to 2000-01-02, and on the deployment the
+  step walked 323 months (about 75 s and 5.2 GB of memory each, some 6.5 hours). The harvest
+  now runs with `--json`, and the build takes `--start` the earliest first day of
+  `extra.capture.period` of the capture versions it reported `new` or `relabeled` (their
+  sidecars, the envelope's paths relative to the raw root): the months from that day that the
+  captures hold. A harvest that stored no capture with rows, and a `--check` night, build
+  nothing.
+
 ## [3.3.0] - 2026-11-25
 
 Changes since 3.2.1, in 3.3.0 (Nogat plan `2026-11-21-obserwator-instance.md` step 6, decision I13, moved to 3.3.0 by the author on 2026-11-22; Nogat plan `2026-11-20-hydromet-providers.md` P1, P3 to P13, P15): providers fed by files, an operator's own network declared as data beside `nogat.toml` (ADR-033), and Gdańskie Wody, the registry's first provider that is no national hydro-meteorological service, with the source classes in the GUI (ADR-034; the plan's step 5). By the author's decision of 2026-11-25 („Nie czekamy na Gdańskie Wody z licencją, najwyżej wycofamy tę funkcjonalność - ale nie pobieramy danych historycznych. Dopiero wskażę zakres po przygotowaniu kodu.”) its code is built and tested on recorded answers, no history is downloaded, and the provider stays off until he names the range; its terms are unknown, so its lines are drafts and no server may serve it. PIG-PIB's groundwater monitoring joins them (Nogat plan `2026-11-24-pig-groundwater.md`, ADR-035): each monthly publication of its readings and every hourly row of its automatic points captured before the service replaces them, the catalog `pig_stations`, the readings and hourly series, the GUI's „Podziemne” with PIG-PIB's points and the import of the interim capture S0.

@@ -30,8 +30,9 @@ readings the weekly series ``pl.pig.groundwater_readings`` (W7) and the captures
 hourly series ``pl.pig.groundwater_subdaily`` (W8), both with ``H_asl`` derived from
 the points' ground elevation.
 
-PIG-PIB is no national hydro-meteorological service: its source class is ``other``
-(W2), with P8's notice in its words.
+PIG-PIB runs the groundwater monitoring as the state geological service under Prawo
+wodne: its source class is ``state`` (Nogat plan 2026-11-27, S1; W2's erratum), with
+P8's notice in its words, since it is no national hydro-meteorological service (S5).
 """
 
 from __future__ import annotations
@@ -370,7 +371,7 @@ class PigAdapter(ProviderAdapter):
     kinds: tuple[Kind, ...] = ("groundwater",)
     archive_suffixes = (".gz",)
     sidecar_station = False
-    source_class: Literal["nmhs", "other"] = "other"
+    source_class: Literal["state", "other"] = "state"
     source_notice: Message | None = message("datasets.source_notice_pig")
 
     def publication_default(self, key: str, /) -> Literal["public", "private"]:

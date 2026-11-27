@@ -57,12 +57,13 @@ them, its text before its processed line (DEV-20.4 and Nogat's table of provider
 P9).
 
 A provider of the class ``other`` (Nogat plan 2026-11-20, P8, P11; Gdańskie Wody and
-every provider fed by files) has one more line after its own: its notice that the data
-do not come from a national hydro-meteorological service (and, in the provider's words,
-that they are unverified where it says so). It is no line of DEV §20, yet every product
-with the provider's data carries it beside them, so a file keeps the distinction after
-it leaves the GUI. Gdańskie Wody's lines are drafts until its terms are known
-(`provisional`, ADR-034): no server serves its data.
+every provider fed by files) and PIG-PIB, a state service but no hydro-meteorological
+one (Nogat plan 2026-11-27, S5), have one more line after their own: the notice that
+the data do not come from a national hydro-meteorological service (and, in the
+provider's words, that they are unverified where it says so). It is no line of DEV
+§20, yet every product with the provider's data carries it beside them, so a file keeps
+the distinction after it leaves the GUI. Gdańskie Wody's lines are drafts until its
+terms are known (`provisional`, ADR-034): no server serves its data.
 """
 
 from __future__ import annotations

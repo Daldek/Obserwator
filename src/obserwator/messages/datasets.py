@@ -177,9 +177,10 @@ MESSAGES = {
         "warunkiem uznania autorstwa PIG-PIB, podania licencji i oznaczenia zmian.",
     ),
     # P8 (Nogat plan 2026-11-20): the notice of a provider of the class "other", in the
-    # provider's own words where it says more. Every product with its data carries the
-    # Polish text after the provider's lines (obserwator.attribution); the GUI shows it
-    # in the page's language.
+    # provider's own words where it says more, and PIG-PIB's, a state service but no
+    # hydro-meteorological one (Nogat plan 2026-11-27, S5). Every product with its data
+    # carries the Polish text after the provider's lines (obserwator.attribution); the GUI
+    # shows it in the page's language.
     "source_notice_other": Text(
         "The data do not come from a national hydrological and meteorological service",
         "Dane nie pochodzą od państwowej służby hydrologiczno-meteorologicznej",

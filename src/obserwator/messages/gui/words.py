@@ -14,12 +14,9 @@ MESSAGES: dict[str, Text] = {
         "Polish Geological Institute – National Research Institute",
         "Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy",
     ),
-    # The classes of the providers' sources (hydromet P11), as headings: the operator, not
-    # a certificate of quality
-    "words.source_class.nmhs": Text(
-        "Hydrological and meteorological services",
-        "Służby hydrologiczno-meteorologiczne",
-    ),
+    # The classes of the providers' sources (hydromet P11; state services S1, S3), as
+    # headings: the operator, not a certificate of quality
+    "words.source_class.state": Text("State services", "Służby państwowe"),
     "words.source_class.other": Text("Other sources", "Inne źródła"),
     # The countries of the providers (ISO 3166-1 alpha-2, lower case), as headings
     "words.country.pl": Text("Poland", "Polska"),

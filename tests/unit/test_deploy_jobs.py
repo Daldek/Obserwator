@@ -88,6 +88,7 @@ def _job(tmp_path, job, *args, fail="", code=10, weekday=None):
         **os.environ,
         "OBSERWATOR": str(stub),
         "OBSERWATOR_STATE_DIR": str(tmp_path / "state"),
+        "OBSERWATOR_RAW_ROOT": str(tmp_path / "raw"),
         "STUB_LOG": str(log),
         "STUB_FAIL": fail,
         "STUB_CODE": str(code),
@@ -153,7 +154,7 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
     assert done.returncode == 0, done.stdout
     # PIG-PIB's harvest first, from its watermark: no days, no stamp (ADR-035).
     assert calls[0] == (
-        "store sync --datasets pl.pig.groundwater_operational --pace-until 02:45"
+        "store sync --datasets pl.pig.groundwater_operational --pace-until 02:45 --json"
     )
     assert calls[1].startswith(
         "store sync --datasets pl.imgw.hydro_operational --pace-until 05:00"
@@ -167,10 +168,9 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
         yesterday
     )
     assert not _stamp(tmp_path, "pl.pig.groundwater_operational").exists()
-    # After the sealing, the hourly series: every month of PIG-PIB's captures, then
-    # the months of each other harvest's days.
-    assert calls[4] == "series build --dataset pl.pig.groundwater_subdaily"
-    assert calls[5:] == [
+    # After the sealing, the hourly series of the months of each other harvest's days;
+    # PIG-PIB's harvest stored no capture, so its series is not built.
+    assert calls[4:] == [
         f"series build --dataset {series} --start {yesterday} --end {yesterday}"
         for series in ("pl.imgw.hydro_subdaily", "cz.chmu.hydro_subdaily")
     ]
@@ -192,7 +192,7 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
         str(yesterday),
     )
     assert "beyond the source's reach" in done.stdout
-    assert calls[5:] == [
+    assert calls[4:] == [
         "series build --dataset pl.imgw.hydro_subdaily"
         f" --start {yesterday - timedelta(days=2)} --end {yesterday}",
         "series build --dataset cz.chmu.hydro_subdaily"
@@ -200,10 +200,10 @@ def test_the_night_harvests_from_the_day_after_the_last_whole_harvest(tmp_path):
     ]
 
     # Harvested already (a catch-up after a run by hand): no request and no build of
-    # those, PIG-PIB's harvest from its watermark, the sealing and its series run.
+    # those; PIG-PIB's harvest from its watermark and the sealing run.
     done, calls = _night(tmp_path)
     assert done.returncode == 0
-    assert len(calls) == 3 and calls[1].startswith(
+    assert len(calls) == 2 and calls[1].startswith(
         "store sync --datasets pl.imgw.hydro_current,"
     )
 
@@ -220,8 +220,8 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
     # again; the ČHMÚ harvest, the sealing and the hourly series of what it got still
     # run; the exit is the failure's.
     assert done.returncode == 10
-    assert len(calls) == 7
-    assert calls[5] == (
+    assert len(calls) == 6
+    assert calls[4] == (
         "series build --dataset pl.imgw.hydro_subdaily"
         f" --start {yesterday - timedelta(days=1)} --end {yesterday}"
     )
@@ -235,10 +235,76 @@ def test_a_failed_harvest_is_asked_again_and_the_night_goes_on(tmp_path):
 def test_a_checked_night_records_no_harvest(tmp_path):
     done, calls = _night(tmp_path, "--check")
     assert done.returncode == 0
-    assert all(call.endswith("--check") for call in calls) and len(calls) == 7
+    assert all(call.endswith("--check") for call in calls) and len(calls) == 6
     assert not _stamp(tmp_path, "pl.imgw.hydro_operational").exists()
     done, calls = _night(tmp_path, "--start", "2026-13-01")
     assert done.returncode == 64 and not calls
+
+
+PIG_HARVEST = "pl.pig.groundwater_operational"
+
+
+def _capture(tmp_path, day, period):
+    """
+    A capture version of PIG-PIB's harvest whose sidecar names ``period``.
+
+    Its path relative to the raw root, as the envelope of ``store sync --json`` gives it.
+    """
+    version = f"archives/versions/mwp_auto/MapServer/{day}/{day}_0/{day}.jsonl.gz"
+    path = tmp_path / "raw" / version
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    capture = {"answers": 12} if period is None else {"answers": 12, "period": period}
+    meta = {"schema": "obserwator-meta/1", "extra": {"capture": capture}}
+    Path(f"{path}.meta.json").write_text(json.dumps(meta), "utf-8")
+    return version
+
+
+def _harvested(tmp_path, *captures):
+    """The stub's envelope of PIG-PIB's harvest: ``(day, status, period)`` each."""
+    items = [
+        {
+            "slot": f"archive:{PIG_HARVEST}:{day}.jsonl.gz",
+            "status": status,
+            "version": _capture(tmp_path, day, period),
+        }
+        for day, status, period in captures
+    ]
+    envelope = {"schema": "obserwator-result/1", "result": {"items": items}}
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    (out / f"{PIG_HARVEST}.json").write_text(json.dumps(envelope) + "\n", "utf-8")
+
+
+def _pig_builds(calls):
+    return [c for c in calls if c.startswith("series build --dataset pl.pig.")]
+
+
+@posix_tools
+def test_the_night_builds_pig_pibs_hourly_months_from_its_new_captures(tmp_path):
+    # The night's capture and a correction of the day before hold rows from 30
+    # October; the imported backfill, unchanged, reaches back to 2000 and is left out:
+    # the build starts at the new rows' first day, never at the captures' first month.
+    _harvested(
+        tmp_path,
+        ("2026-11-24", "unchanged", ["2000-01-02", "2026-07-20"]),
+        ("2026-11-26", "new", ["2026-10-30", "2026-11-26"]),
+        ("2026-11-27", "new", ["2026-11-08", "2026-11-27"]),
+    )
+    done, calls = _night(tmp_path)
+    assert done.returncode == 0, done.stdout
+    built = [c for c in calls if c.startswith("series build")]
+    assert built[0] == (
+        "series build --dataset pl.pig.groundwater_subdaily --start 2026-10-30"
+    )
+    assert calls.index(built[0]) == 4  # after the sealing, before the other series
+    # A capture whose rows have no hour, or a checked night: nothing to build.
+    _harvested(tmp_path, ("2026-11-28", "new", None))
+    done, calls = _night(tmp_path)
+    assert done.returncode == 0 and not _pig_builds(calls)
+    _harvested(tmp_path, ("2026-11-27", "new", ["2026-11-08", "2026-11-27"]))
+    done, calls = _night(tmp_path, "--check")
+    assert done.returncode == 0 and not _pig_builds(calls)
 
 
 @posix_tools

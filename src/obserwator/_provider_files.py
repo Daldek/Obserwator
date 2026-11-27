@@ -21,7 +21,7 @@ A provider file (paths in it relative to its own directory)::
     short_name = "Sieć Testowa"       # its name in texts
     name = "Sieć Testowa Operatora"   # its full name
     country = "PL"                    # PL or CZ: the border its stations are checked against
-    source_class = "other"            # P11: no national service is fed by files
+    source_class = "other"            # P11, S1: no state service is fed by files
     tier = "operational"              # verified, telemetry or operational (default)
     publication = "public"            # public or private (default) of an unverified tier
     stations = "siec/stations.geojson"
@@ -190,7 +190,7 @@ class ProviderFile:
     country : {"PL", "CZ"}
         Its country: the packaged border its stations are checked against.
     source_class : {"other"}
-        Its source class (P11).
+        Its source class (P11; ``other``, its only value, S2).
     tier : {"verified", "telemetry", "operational"}
         The tier of its data (ADR-030 D1).
     publication : {"public", "private"} or None

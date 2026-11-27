@@ -1,8 +1,8 @@
 """
 Gdańskie Wody, the measurement network of Gdańsk's water company (provider ``GDANSKIEWODY``).
 
-The first provider that is no national hydro-meteorological service (source class
-``other``, Nogat plan 2026-11-20, P11; ADR-034): Gdańskie Wody Sp. z o.o. publishes the
+The first provider that is no state service (source class ``other``, Nogat plan
+2026-11-20, P11, and 2026-11-27, S1; ADR-034): Gdańskie Wody Sp. z o.o. publishes the
 hourly values of its rain gauges, water-level gauges and weather and water-quality
 stations of the Gdańsk agglomeration through an API with a key
 (``https://pomiary.gdanskiewody.pl/rest/``; the facts in ``docs/providers/
@@ -322,7 +322,7 @@ class GdanskieWodyAdapter(ProviderAdapter):
     station_sources = (STATION_LIST, STATION_LIST, STATION_LIST, STATION_LIST)
     archive_suffixes = (_SUFFIX,)
     sidecar_station = True
-    source_class: Literal["nmhs", "other"] = "other"
+    source_class: Literal["state", "other"] = "other"
     source_notice: Message | None = message("datasets.source_notice_gdanskiewody")
     # The author, 2026-11-25: off until he names the range to download (ADR-034 D1).
     served_by_default = False

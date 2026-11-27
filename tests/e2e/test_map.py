@@ -250,7 +250,7 @@ def test_the_filters_choose_the_stations_of_the_list_and_of_the_map(open_page, c
         wait_listed(page, codes(chosen))
         wait_drawn(page, ["stations"], codes(chosen, located=True))
 
-    # national services alone: no class switch (P12); a provider is chosen by its chips
+    # state services alone: no class switch (P12); a provider is chosen by its chips
     expect(page.get_by_role("radiogroup", name="Rodzaj źródła")).to_have_count(0)
     page.get_by_role("radiogroup", name="Rodzaj stacji").get_by_role(
         "radio", name="Meteorologiczne"
